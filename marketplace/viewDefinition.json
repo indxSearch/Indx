@@ -1,0 +1,168 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/viewdefinition/0.0.1-preview/ViewDefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "views": [
+    {
+      "kind": "Overview",
+      "properties": {
+        "header": "Indx Cloud API",
+        "description": "A high-performance full-text search engine for JSON data. This managed application hosts a dedicated single-tenant instance for your organization.",
+        "commands": [
+          {
+            "displayName": "Open application",
+            "path": "[reference('Microsoft.Web/sites', parameters('appName')).defaultHostName]",
+            "icon": "Browse"
+          },
+          {
+            "displayName": "Open Swagger UI",
+            "path": "[concat('https://', reference('Microsoft.Web/sites', parameters('appName')).defaultHostName, '/swagger')]",
+            "icon": "Code"
+          },
+          {
+            "displayName": "Health check",
+            "path": "[concat('https://', reference('Microsoft.Web/sites', parameters('appName')).defaultHostName, '/health')]",
+            "icon": "Heart"
+          }
+        ]
+      }
+    },
+    {
+      "kind": "Metrics",
+      "properties": {
+        "displayName": "Performance",
+        "version": "1.0.0",
+        "charts": [
+          {
+            "displayName": "HTTP requests",
+            "chartType": "Line",
+            "metrics": [
+              {
+                "name": "Requests",
+                "aggregationType": "Sum",
+                "resourceTagFilter": [],
+                "resourceType": "Microsoft.Web/sites",
+                "metricName": "Requests"
+              }
+            ]
+          },
+          {
+            "displayName": "HTTP server errors",
+            "chartType": "Line",
+            "metrics": [
+              {
+                "name": "Http5xx",
+                "aggregationType": "Sum",
+                "resourceTagFilter": [],
+                "resourceType": "Microsoft.Web/sites",
+                "metricName": "Http5xx"
+              }
+            ]
+          },
+          {
+            "displayName": "CPU percent",
+            "chartType": "Line",
+            "metrics": [
+              {
+                "name": "CpuPercentage",
+                "aggregationType": "Average",
+                "resourceTagFilter": [],
+                "resourceType": "Microsoft.Web/serverfarms",
+                "metricName": "CpuPercentage"
+              }
+            ]
+          },
+          {
+            "displayName": "Memory percent",
+            "chartType": "Line",
+            "metrics": [
+              {
+                "name": "MemoryPercentage",
+                "aggregationType": "Average",
+                "resourceTagFilter": [],
+                "resourceType": "Microsoft.Web/serverfarms",
+                "metricName": "MemoryPercentage"
+              }
+            ]
+          },
+          {
+            "displayName": "Average response time (ms)",
+            "chartType": "Line",
+            "metrics": [
+              {
+                "name": "HttpResponseTime",
+                "aggregationType": "Average",
+                "resourceTagFilter": [],
+                "resourceType": "Microsoft.Web/sites",
+                "metricName": "HttpResponseTime"
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "kind": "CustomResources",
+      "properties": {
+        "displayName": "Getting started",
+        "version": "1.0.0",
+        "createUIDefinition": {
+          "parameters": {
+            "steps": [
+              {
+                "name": "gettingStarted",
+                "label": "Next steps",
+                "elements": [
+                  {
+                    "name": "step1",
+                    "type": "Microsoft.Common.InfoBox",
+                    "visible": true,
+                    "options": {
+                      "icon": "Info",
+                      "text": "1. Open the application URL and sign in with the administrator email and password you set during deployment. You will be required to change the password on first login."
+                    }
+                  },
+                  {
+                    "name": "step2",
+                    "type": "Microsoft.Common.InfoBox",
+                    "visible": true,
+                    "options": {
+                      "icon": "Info",
+                      "text": "2. If you did not provide a license URL at deploy time, upload your .license file to /home/data/indx.license through the App Service > Development Tools > Console."
+                    }
+                  },
+                  {
+                    "name": "step3",
+                    "type": "Microsoft.Common.InfoBox",
+                    "visible": true,
+                    "options": {
+                      "icon": "Info",
+                      "text": "3. The Swagger UI is available at /swagger. Use it to issue your first API token and load test data."
+                    }
+                  },
+                  {
+                    "name": "step4",
+                    "type": "Microsoft.Common.InfoBox",
+                    "visible": true,
+                    "options": {
+                      "icon": "Info",
+                      "text": "4. Application logs and traces are sent to the Application Insights resource in this resource group. Use Live Metrics for real-time diagnostics."
+                    }
+                  },
+                  {
+                    "name": "step5",
+                    "type": "Microsoft.Common.InfoBox",
+                    "visible": true,
+                    "options": {
+                      "icon": "Info",
+                      "text": "5. Need support? Contact support@indx.co with your application name and resource group."
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

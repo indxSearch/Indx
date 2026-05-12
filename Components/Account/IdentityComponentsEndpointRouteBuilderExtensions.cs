@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Primitives;
 using System.Security.Claims;
 using System.Text.Json;
@@ -60,7 +61,8 @@ namespace Microsoft.AspNetCore.Routing
                 HttpContext context,
                 [FromServices] SignInManager<ApplicationUser> signInManager,
                 [FromServices] UserManager<ApplicationUser> userManager,
-                [FromServices] ILoggerFactory loggerFactory) =>
+                [FromServices] ILoggerFactory loggerFactory,
+                [FromServices] IMemoryCache memoryCache) =>
             {
                 var logger = loggerFactory.CreateLogger("DeleteAccount");
                 var appUser = await userManager.GetUserAsync(user);
@@ -90,6 +92,7 @@ namespace Microsoft.AspNetCore.Routing
                 }
 
                 // Step 3: Delete from Identity database
+                memoryCache.Remove($"user_exists_{userId}");
                 var result = await userManager.DeleteAsync(appUser);
                 if (!result.Succeeded)
                 {

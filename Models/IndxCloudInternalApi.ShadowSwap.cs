@@ -1,0 +1,183 @@
+using Indx.Api;
+using Indx.Storage;
+using Indx.Utilities;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Concurrent;
+using System.Threading.Tasks;
+
+namespace IndxCloudApi.Models
+{
+    /// <summary>
+    /// Shadow-swap orchestration for heavy mutations.
+    ///
+    /// When a heavy mutation arrives on a dataset that is in <see cref="SystemState.Ready"/>,
+    /// we build a fresh SearchEngine that shares the active instance's persistence, replay
+    /// the document state via <see cref="ICloudSearchEngine.LoadFromDatabaseSync"/>, apply
+    /// the caller's mutation, re-index, and swap the new engine into the dictionary under
+    /// <c>_dictionaryLock</c>. The previous engine is queued for disposal once its in-flight
+    /// searches have drained (best-effort with a grace timeout).
+    ///
+    /// Single-flight semantics: a second heavy mutation on the same dataset while a shadow
+    /// build is in progress throws <see cref="ShadowBusyException"/>, which the controller
+    /// maps to HTTP 409.
+    /// </summary>
+    internal sealed partial class IndxCloudInternalApi
+    {
+        private readonly ConcurrentDictionary<string, DateTime> _shadowBuildsInProgress = new();
+        private const int DisposalGraceSeconds = 30;
+        private const int DisposalPollMilliseconds = 200;
+
+        /// <summary>
+        /// Runs <paramref name="mutation"/> on a shadow SearchEngine and swaps it in
+        /// atomically on success. The active instance keeps serving searches throughout.
+        /// Throws <see cref="ShadowBusyException"/> if a build is already in progress for
+        /// the same (dataSetName, userId) key.
+        /// </summary>
+        internal TResult RunMutationOnShadow<TResult>(
+            string dataSetName,
+            string userId,
+            Func<ICloudSearchEngine, TResult> mutation)
+        {
+            var key = MakeKey(dataSetName, userId);
+            if (!_shadowBuildsInProgress.TryAdd(key, DateTime.UtcNow))
+                throw new ShadowBusyException(dataSetName);
+
+            SearchEngine? shadow = null;
+            try
+            {
+                SearchEngineInstance container;
+                ICloudSearchEngine original;
+                lock (_dictionaryLock)
+                {
+                    if (!_instances.TryGetValue(key, out var found) || found?.theInstance == null)
+                        throw new InvalidOperationException($"No active instance for dataset '{dataSetName}'");
+                    container = found;
+                    original = found.theInstance;
+                }
+
+                // BuildShadowFrom returns a Ready instance (CreateInMemoryClone runs Index
+                // internally), so the mutation can be applied directly.
+                shadow = BuildShadowFrom(original, dataSetName, userId);
+
+                // Apply the caller's mutation on the now-Ready shadow.
+                TResult result = mutation(shadow);
+
+                // Re-index to capture any field-config changes the mutation may have made
+                // (Searchable/BM25Fb/BM25Fk1/WordIndexing/Embeddable). For pure document
+                // mutations (insert/update/delete) this is a no-op against an already
+                // up-to-date index, but the safety guarantee is worth the cost.
+                RunIndex(shadow, "post-mutation");
+
+                // Atomic swap. The container reference returned by FindInstance keeps any
+                // already-routed searches pointing at the same SearchEngineInstance; only
+                // the inner theInstance pointer flips.
+                ICloudSearchEngine? swappedOut;
+                lock (_dictionaryLock)
+                {
+                    swappedOut = container.theInstance;
+                    container.theInstance = shadow;
+                }
+                shadow = null; // ownership transferred to the container
+
+                if (swappedOut != null)
+                    _ = Task.Run(() => DisposeAfterGraceAsync(swappedOut, dataSetName, userId));
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "{Prefix}RunMutationOnShadow failed",
+                    MakeLogPrefix(userId, dataSetName));
+                throw;
+            }
+            finally
+            {
+                // If we built a shadow but never swapped it in (mutation/index/swap threw),
+                // dispose it immediately so its native pools are released.
+                if (shadow != null)
+                {
+                    try { shadow.Dispose(); }
+                    catch (Exception disposeEx)
+                    {
+                        _logger.LogError(disposeEx,
+                            "{Prefix}Failed to dispose abandoned shadow",
+                            MakeLogPrefix(userId, dataSetName));
+                    }
+                }
+                _shadowBuildsInProgress.TryRemove(key, out _);
+            }
+        }
+
+        /// <summary>True while a shadow build is in progress for the given dataset.</summary>
+        internal bool IsShadowBuildInProgress(string dataSetName, string userId)
+            => _shadowBuildsInProgress.ContainsKey(MakeKey(dataSetName, userId));
+
+        /// <summary>UTC timestamp at which the in-progress shadow build started, or null if none.</summary>
+        internal DateTime? ShadowBuildStartedUtc(string dataSetName, string userId)
+            => _shadowBuildsInProgress.TryGetValue(MakeKey(dataSetName, userId), out var started)
+                ? started : null;
+
+        /// <summary>
+        /// Builds a shadow SearchEngine from the original's live in-memory state via
+        /// <see cref="SearchEngine.CreateInMemoryClone"/>, then attaches a fresh
+        /// SQLite connection so mutations applied to the shadow persist independently.
+        /// No SQLite roundtrip is involved in copying the document set — only the
+        /// subsequent mutation writes.
+        /// </summary>
+        private SearchEngine BuildShadowFrom(ICloudSearchEngine original, string dataSetName, string userId)
+        {
+            if (original is not SearchEngine concreteOriginal)
+                throw new InvalidOperationException(
+                    $"Cannot build shadow for '{dataSetName}': original is not a SearchEngine instance");
+
+            var shadow = concreteOriginal.CreateInMemoryClone();
+
+            // Attach a fresh Persistence pointing at the same SQLite file. SQLite supports
+            // multiple connections; the original's persistence is left alone so disposing
+            // the original after the swap does not break the shadow.
+            shadow.Persistence = new Persistence(SearchDbConnectionString, dataSetName, userId);
+
+            return shadow;
+        }
+
+        private static void RunIndex(SearchEngine shadow, string phase)
+        {
+            var monitor = new ProcessMonitor();
+            shadow.Index(monitor: monitor);
+            monitor.WaitForCompletion();
+            if (!monitor.Succeeded)
+                throw new InvalidOperationException(
+                    $"Shadow Index ({phase}) failed: {monitor.ErrorMessage ?? "unknown error"}");
+        }
+
+        /// <summary>
+        /// Waits up to <see cref="DisposalGraceSeconds"/> for the engine's in-flight
+        /// searches to drain, then disposes it. Failure to drain within the grace period
+        /// is logged and we dispose anyway — pending searches will fail their next pool
+        /// access and propagate the disposal to the caller.
+        /// </summary>
+        private async Task DisposeAfterGraceAsync(ICloudSearchEngine engine, string dataSetName, string userId)
+        {
+            try
+            {
+                var deadline = DateTime.UtcNow.AddSeconds(DisposalGraceSeconds);
+                while (DateTime.UtcNow < deadline)
+                {
+                    if (!engine.HasActiveSearches())
+                        break;
+                    await Task.Delay(DisposalPollMilliseconds).ConfigureAwait(false);
+                }
+
+                engine.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "{Prefix}Failed to dispose swapped-out engine after grace period",
+                    MakeLogPrefix(userId, dataSetName));
+            }
+        }
+    }
+}

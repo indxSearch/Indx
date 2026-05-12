@@ -1,12 +1,15 @@
+using Asp.Versioning;
 using IndxCloudApi.Data;
 using IndxCloudApi.Models;
 using IndxCloudApi.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
@@ -31,6 +34,8 @@ public class Program
         // ============================================
         // RAZOR COMPONENTS (Blazor Server UI)
         // ============================================
+        builder.Services.AddMemoryCache();
+
         builder.Services.AddRazorComponents()
             .AddInteractiveServerComponents();
 
@@ -159,10 +164,17 @@ public class Program
             throw new InvalidOperationException("JWT Key is not configured. Please set a secure key in appsettings.json or user secrets.");
         }
 
-        // Warn if using the default/insecure key
+        // Refuse to start in Production with the placeholder key. In other environments,
+        // emit a warning so local dev and tests keep working.
         var defaultKey = "your-secret-key-minimum-32-characters-change-in-production";
         if (jwtkey == defaultKey)
         {
+            if (builder.Environment.IsProduction())
+            {
+                throw new InvalidOperationException(
+                    "Jwt:Key is set to the placeholder value. Configure a unique 32+ character key " +
+                    "via Key Vault reference or app settings before running in Production.");
+            }
             Console.WriteLine("⚠ WARNING: Using default JWT key from appsettings.json");
             Console.WriteLine("⚠ This is OK for development/testing, but MUST be changed in production!");
             Console.WriteLine("⚠ Set a secure key using: dotnet user-secrets set \"Jwt:Key\" \"your-secure-key-here\"");
@@ -194,6 +206,24 @@ public class Program
                         context.Response.Headers.Append("Token-Expired", "true");
                     }
                     return Task.CompletedTask;
+                },
+                OnTokenValidated = async context =>
+                {
+                    var userId = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                    if (userId == null) { context.Fail("Invalid token."); return; }
+
+                    var cache = context.HttpContext.RequestServices.GetRequiredService<IMemoryCache>();
+                    var cacheKey = $"user_exists_{userId}";
+                    if (!cache.TryGetValue(cacheKey, out bool exists))
+                    {
+                        var userManager = context.HttpContext.RequestServices
+                            .GetRequiredService<UserManager<ApplicationUser>>();
+                        exists = await userManager.FindByIdAsync(userId) != null;
+                        cache.Set(cacheKey, exists, TimeSpan.FromMinutes(5));
+                    }
+
+                    if (!exists)
+                        context.Fail("User no longer exists.");
                 }
             };
         });
@@ -242,6 +272,16 @@ public class Program
                 // Optional: Request additional scopes
                 options.Scope.Add("User.Read");
 
+                // Force the account picker so users can choose which Microsoft
+                // account to sign in with instead of being silently logged in
+                // with the most recently cached account.
+                options.Events.OnRedirectToAuthorizationEndpoint = context =>
+                {
+                    var separator = context.RedirectUri.Contains('?') ? "&" : "?";
+                    context.Response.Redirect(context.RedirectUri + separator + "prompt=select_account");
+                    return Task.CompletedTask;
+                };
+
                 // Save tokens for later use
                 options.SaveTokens = true;
             });
@@ -258,12 +298,17 @@ public class Program
         // ============================================
         builder.Services.AddSwaggerGen(c =>
         {
-            c.SwaggerDoc("v1", new OpenApiInfo
+            c.SwaggerDoc("v1.0-alpha", new OpenApiInfo
             {
-                Version = "v1.0",
+                Version = "1.0-alpha",
                 Title = "Indx Cloud API",
                 Description = "JWT Authenticated HTTP API for Indx Search"
             });
+
+            // Include all API descriptions in this doc — there's currently only one
+            // version, and ApiExplorer's per-version grouping would otherwise leave
+            // the doc empty when group names don't exactly match the doc name.
+            c.DocInclusionPredicate((_, _) => true);
 
             var filePath = Path.Combine(AppContext.BaseDirectory, "IndxCloudApi.xml");
             if (File.Exists(filePath))
@@ -318,6 +363,26 @@ public class Program
             options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         });
 
+        // API versioning: default 1.0-alpha. Header/query-based so the existing
+        // /api/... URLs stay unchanged (no breaking change for clients). Clients
+        // that want explicit versioning send `api-version: 1.0-alpha` as a header
+        // or query parameter; otherwise the default version applies.
+        builder.Services.AddApiVersioning(options =>
+        {
+            options.DefaultApiVersion = new ApiVersion(1, 0, "alpha");
+            options.AssumeDefaultVersionWhenUnspecified = true;
+            options.ReportApiVersions = true;
+            options.ApiVersionReader = ApiVersionReader.Combine(
+                new HeaderApiVersionReader("api-version"),
+                new QueryStringApiVersionReader("api-version"));
+        })
+        .AddMvc()
+        .AddApiExplorer(options =>
+        {
+            options.GroupNameFormat = "'v'VVV";
+            options.SubstituteApiVersionInUrl = false;
+        });
+
         builder.Services.Configure<KestrelServerOptions>(options =>
         {
             options.AllowSynchronousIO = true;
@@ -328,12 +393,29 @@ public class Program
             options.AllowSynchronousIO = true;
         });
 
+        // CORS: permissive in dev/test for local frontend work; restricted to
+        // Cors:AllowedOrigins (comma-separated) in Production. Marketplace deployments
+        // pass the App Service hostname here via Bicep app settings.
+        var corsAllowedOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
         builder.Services.AddCors(options =>
         {
-            options.AddPolicy("NewPolicy", builder =>
-                builder.AllowAnyOrigin()
-                    .AllowAnyMethod()
-                    .AllowAnyHeader());
+            options.AddPolicy("NewPolicy", policy =>
+            {
+                if (builder.Environment.IsProduction() && corsAllowedOrigins.Length > 0)
+                {
+                    policy.WithOrigins(corsAllowedOrigins)
+                        .AllowAnyMethod()
+                        .AllowAnyHeader();
+                }
+                else
+                {
+                    policy.AllowAnyOrigin()
+                        .AllowAnyMethod()
+                        .AllowAnyHeader();
+                }
+            });
         });
 
         builder.WebHost.ConfigureKestrel(serverOptions =>
@@ -342,6 +424,19 @@ public class Program
             serverOptions.Limits.MaxRequestBodySize = 2_000_000_000;
             serverOptions.AllowSynchronousIO = true;
         });
+
+        // Health checks for App Service / Container probes and the managed-app dashboard.
+        builder.Services.AddHealthChecks();
+
+        // License bootstrapper: downloads the .license file from a SAS URL on first
+        // start when the local file is absent. No-op when Indx:LicenseDownloadUrl is unset.
+        builder.Services.AddHttpClient();
+        builder.Services.AddSingleton<Services.ILicenseBootstrapper, Services.LicenseBootstrapper>();
+
+        // Application Insights: no-op when APPLICATIONINSIGHTS_CONNECTION_STRING is unset
+        // (so local dev is unaffected). The Bicep template provisions an AI resource and
+        // injects the connection string automatically per customer.
+        builder.Services.AddApplicationInsightsTelemetry();
 
         var app = builder.Build();
 
@@ -358,10 +453,14 @@ public class Program
                 logger.LogInformation("Initializing Identity database...");
                 var context = services.GetRequiredService<ApplicationDbContext>();
 
-                // Ensure database is created
-                logger.LogInformation("Creating database if it doesn't exist...");
-                context.Database.EnsureCreated();
-                logger.LogInformation("✓ Database created successfully");
+                // Apply EF migrations. For deployments that originally created the
+                // database via EnsureCreated() (no __EFMigrationsHistory table),
+                // bootstrap the history table with the initial migration before
+                // calling Migrate() so it doesn't try to re-create existing tables.
+                BootstrapMigrationHistoryIfNeeded(context, logger);
+                logger.LogInformation("Applying EF migrations...");
+                context.Database.Migrate();
+                logger.LogInformation("✓ Database schema is up to date");
 
                 // Enable WAL mode for better concurrency (may not work on all filesystems)
                 try
@@ -379,7 +478,7 @@ public class Program
 
                 // Seed initial data
                 logger.LogInformation("Seeding initial data...");
-                SeedData(services).Wait();
+                SeedData(services, builder.Configuration).Wait();
                 logger.LogInformation("✓ Initial data seeded successfully");
             }
             catch (Exception ex)
@@ -406,6 +505,46 @@ public class Program
 
         app.UseCors("NewPolicy");
         app.UseAuthentication();
+
+        // Password-change gate: a token carrying the must_change_password claim is
+        // restricted to the change-password endpoint and the password-change UI page.
+        // Any other path returns 403 so callers cannot do useful work on the
+        // deployment-time initial credentials.
+        //
+        // The default authentication scheme is the Identity cookie. JWT bearer is
+        // only triggered lazily by [Authorize] endpoints, so this middleware has
+        // to authenticate the bearer scheme explicitly to inspect the claim.
+        app.Use(async (context, next) =>
+        {
+            var principal = context.User;
+            if (principal?.Identity?.IsAuthenticated != true
+                && context.Request.Headers.ContainsKey("Authorization"))
+            {
+                var bearer = await context.AuthenticateAsync(JwtBearerDefaults.AuthenticationScheme);
+                if (bearer.Succeeded && bearer.Principal != null)
+                {
+                    principal = bearer.Principal;
+                }
+            }
+
+            if (principal?.HasClaim("must_change_password", "true") == true)
+            {
+                var path = context.Request.Path;
+                var allowed =
+                    path.StartsWithSegments("/api/changePassword", StringComparison.OrdinalIgnoreCase)
+                    || path.StartsWithSegments("/Account/ChangePassword", StringComparison.OrdinalIgnoreCase);
+
+                if (!allowed)
+                {
+                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    await context.Response.WriteAsync(
+                        "Password change required. Call POST /api/changePassword first.");
+                    return;
+                }
+            }
+            await next();
+        });
+
         app.UseAuthorization();
         app.UseAntiforgery();
 
@@ -424,11 +563,14 @@ public class Program
         // Map API Controllers
         app.MapControllers();
 
+        // Health endpoint - anonymous, used by App Service health probes.
+        app.MapHealthChecks("/health").AllowAnonymous();
+
         // Swagger UI
         app.UseSwagger();
         app.UseSwaggerUI(c =>
         {
-            c.SwaggerEndpoint("/swagger/v1/swagger.json", "Indx Cloud API v1.0");
+            c.SwaggerEndpoint("/swagger/v1.0-alpha/swagger.json", "Indx Cloud API v1.0-alpha");
             c.RoutePrefix = "swagger";
 
             // Auto-authenticate with JWT token if user is logged in
@@ -463,6 +605,14 @@ public class Program
         string? detectedLicenseFile = null;
         int datasetCount = 0;
         int userCount = 0;
+
+        // Bootstrap license from SAS URL if needed (no-op when Indx:LicenseDownloadUrl is unset).
+        using (var bootstrapScope = app.Services.CreateScope())
+        {
+            var bootstrapper = bootstrapScope.ServiceProvider
+                .GetRequiredService<Services.ILicenseBootstrapper>();
+            bootstrapper.EnsureLocalLicenseAsync().GetAwaiter().GetResult();
+        }
 
         try
         {
@@ -553,10 +703,139 @@ public class Program
         app.Run();
     }
 
+    /// <summary>
+    /// When upgrading from a deployment that used <c>EnsureCreated()</c>, the database
+    /// schema exists but the EF migrations history table does not. Calling
+    /// <c>Migrate()</c> in that state would try to re-create existing tables and fail.
+    /// This method detects that situation and seeds the history table with the
+    /// InitialCreate migration row so <c>Migrate()</c> sees no work to do for the
+    /// initial schema and only applies migrations added after.
+    /// </summary>
+    private static void BootstrapMigrationHistoryIfNeeded(
+        ApplicationDbContext context, ILogger<Program> logger)
+    {
+        if (!context.Database.CanConnect())
+        {
+            // Fresh deployment - Migrate() will create everything including the history table.
+            return;
+        }
+
+        var connection = context.Database.GetDbConnection();
+        var wasOpen = connection.State == System.Data.ConnectionState.Open;
+        if (!wasOpen) connection.Open();
+        try
+        {
+            using var checkUsersTable = connection.CreateCommand();
+            checkUsersTable.CommandText =
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='AspNetUsers';";
+            var usersTableExists = checkUsersTable.ExecuteScalar() != null;
+
+            // Schema patch: run unconditionally when the Identity tables exist.
+            // Idempotent - each ALTER fires only when the column is genuinely absent.
+            // Recovers from a stale schema regardless of whether __EFMigrationsHistory
+            // is present (a previous broken bootstrap may have seeded history without
+            // adding the column).
+            if (usersTableExists)
+            {
+                var customColumns = new (string Table, string Column, string AddSql)[]
+                {
+                    ("AspNetUsers", "MustChangePassword",
+                        "ALTER TABLE AspNetUsers ADD COLUMN MustChangePassword INTEGER NOT NULL DEFAULT 0;")
+                };
+
+                foreach (var (table, column, addSql) in customColumns)
+                {
+                    if (!ColumnExists(connection, table, column))
+                    {
+                        using var alter = connection.CreateCommand();
+                        alter.CommandText = addSql;
+                        alter.ExecuteNonQuery();
+                        logger.LogWarning(
+                            "Patched stale schema: added {Column} to {Table}",
+                            column, table);
+                    }
+                }
+            }
+
+            using var checkHistoryTable = connection.CreateCommand();
+            checkHistoryTable.CommandText =
+                "SELECT name FROM sqlite_master WHERE type='table' AND name='__EFMigrationsHistory';";
+            var historyTableExists = checkHistoryTable.ExecuteScalar() != null;
+            if (historyTableExists)
+            {
+                return;
+            }
+
+            if (!usersTableExists)
+            {
+                // Empty database - Migrate() will set everything up from scratch.
+                return;
+            }
+
+            logger.LogWarning(
+                "Detected pre-migration database (EnsureCreated). Bootstrapping __EFMigrationsHistory table.");
+
+            using var createHistory = connection.CreateCommand();
+            createHistory.CommandText =
+                "CREATE TABLE \"__EFMigrationsHistory\" (" +
+                "\"MigrationId\" TEXT NOT NULL CONSTRAINT \"PK___EFMigrationsHistory\" PRIMARY KEY, " +
+                "\"ProductVersion\" TEXT NOT NULL);";
+            createHistory.ExecuteNonQuery();
+
+            // Mark every migration discovered so far as already applied. The
+            // schema was created via EnsureCreated() so it matches the latest
+            // model snapshot, not just the initial migration.
+            var infrastructure = ((Microsoft.EntityFrameworkCore.Infrastructure.IInfrastructure<IServiceProvider>)context).Instance;
+            var historyRepo = infrastructure.GetRequiredService<Microsoft.EntityFrameworkCore.Migrations.IHistoryRepository>();
+            var migrationsAssembly = infrastructure.GetRequiredService<Microsoft.EntityFrameworkCore.Migrations.IMigrationsAssembly>();
+            var productVersion = typeof(ApplicationDbContext).Assembly.GetName().Version?.ToString() ?? "10.0.0";
+
+            foreach (var migration in migrationsAssembly.Migrations.Keys)
+            {
+                using var insert = connection.CreateCommand();
+                insert.CommandText = "INSERT INTO \"__EFMigrationsHistory\" VALUES ($id, $ver);";
+                var idParam = insert.CreateParameter();
+                idParam.ParameterName = "$id";
+                idParam.Value = migration;
+                insert.Parameters.Add(idParam);
+                var verParam = insert.CreateParameter();
+                verParam.ParameterName = "$ver";
+                verParam.Value = productVersion;
+                insert.Parameters.Add(verParam);
+                insert.ExecuteNonQuery();
+            }
+
+            logger.LogInformation(
+                "Bootstrapped {Count} migration(s) into history table",
+                migrationsAssembly.Migrations.Count);
+        }
+        finally
+        {
+            if (!wasOpen) connection.Close();
+        }
+    }
+
+    private static bool ColumnExists(System.Data.Common.DbConnection connection, string table, string column)
+    {
+        using var cmd = connection.CreateCommand();
+        cmd.CommandText = $"PRAGMA table_info(\"{table}\");";
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            // PRAGMA table_info returns: cid, name, type, notnull, dflt_value, pk
+            var name = reader.GetString(reader.GetOrdinal("name"));
+            if (string.Equals(name, column, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     // ============================================
     // SEED DATA METHOD
     // ============================================
-    private static async Task SeedData(IServiceProvider services)
+    private static async Task SeedData(IServiceProvider services, IConfiguration configuration)
     {
         var userManager = services.GetRequiredService<UserManager<ApplicationUser>>();
         var roleManager = services.GetRequiredService<RoleManager<IdentityRole>>();
@@ -573,8 +852,24 @@ public class Program
             }
         }
 
-        // Create admin user
-        var adminEmail = "admin@indx.co";
+        // Admin email + initial password come from configuration so each customer
+        // deployment can supply its own (Marketplace UI -> Bicep -> App Service Settings
+        // -> Key Vault). Defaults preserve the historical dev experience.
+        var adminEmail = configuration["Identity:AdminEmail"];
+        if (string.IsNullOrWhiteSpace(adminEmail))
+        {
+            adminEmail = "admin@indx.co";
+        }
+
+        var adminPassword = configuration["Identity:AdminInitialPassword"];
+        if (string.IsNullOrWhiteSpace(adminPassword))
+        {
+            adminPassword = "Admin123!@#";
+        }
+
+        var skipPasswordChange = configuration.GetValue<bool>(
+            "Identity:SkipPasswordChangeForSeed", false);
+
         var adminUser = await userManager.FindByEmailAsync(adminEmail);
         if (adminUser == null)
         {
@@ -582,14 +877,25 @@ public class Program
             {
                 UserName = adminEmail,
                 Email = adminEmail,
-                EmailConfirmed = true
+                EmailConfirmed = true,
+                MustChangePassword = !skipPasswordChange
             };
 
-            var result = await userManager.CreateAsync(adminUser, "Admin123!@#");
+            var result = await userManager.CreateAsync(adminUser, adminPassword);
             if (result.Succeeded)
             {
                 await userManager.AddToRoleAsync(adminUser, "Admin");
-                logger.LogInformation("Admin user created: {Email}", adminEmail);
+                logger.LogInformation(
+                    "Admin user created: {Email} (must change password: {MustChange})",
+                    adminEmail,
+                    adminUser.MustChangePassword);
+            }
+            else
+            {
+                logger.LogError(
+                    "Failed to create admin user {Email}: {Errors}",
+                    adminEmail,
+                    string.Join("; ", result.Errors.Select(e => e.Description)));
             }
         }
     }

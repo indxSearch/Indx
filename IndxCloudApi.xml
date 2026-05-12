@@ -33,272 +33,351 @@
             <param name="info">Login credentials containing UserEmail and UserPassWord</param>
             <returns>JWT token if successful</returns>
         </member>
+        <member name="M:IndxCloudApi.Controllers.LoginController.ChangePasswordAsync(IndxCloudApi.Models.ChangePasswordRequest)">
+            <summary>
+            Allows a user flagged with MustChangePassword to rotate to a new password
+            of their choosing. On success the gate is lifted and a fresh full-access token
+            can be obtained by re-logging in.
+            </summary>
+            <param name="request">Current and new password</param>
+            <returns>Ok on success, BadRequest with Identity errors otherwise.</returns>
+        </member>
         <member name="T:IndxCloudApi.Controllers.SearchController">
             <summary>
             Provides API endpoints for managing, analyzing, indexing, and searching JSON-based datasets. Supports operations
             such as dataset creation, deletion, field configuration, data loading, and executing search queries. All
             endpoints require authentication and operate on datasets associated with the authenticated user.
             </summary>
-            <remarks>This controller exposes a comprehensive set of endpoints for working with document-oriented
-            datasets in a search engine context. Operations include analyzing JSON data, configuring
-            searchable/filterable/sortable fields, creating and combining filters, loading data from various sources, and
-            performing search queries. Most endpoints require a valid dataset name and user authentication via JWT bearer
-            tokens. Responses typically indicate success or provide detailed error information for invalid requests, such as
-            unauthorized access or invalid dataset names. The controller is intended for use in scenarios where users need
-            to manage and query large collections of JSON documents with flexible field and filter configurations.</remarks>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.AnalyzeStreamAsync(System.String)">
             <summary>
             As Analyze but handles a stream as input text.
             </summary>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.AnalyzeString(System.String,System.String)">
             <summary>
             Analyze the fields of a string containing json. Since json may be invalid, which will cause
             a 400 error, it is sent as plain text.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="jsonData"></param>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.CombineFilters(System.String,Indx.CloudApi.CombinedFilterProxy)">
             <summary>
-            CreateRangeFilter will create a RangeFilter which may be passed to any search.
-            Every endpoint of this API will refer to one or more datasets.
+            CombineFilters will combine two filters using AND or OR operation.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="combineFilters"></param>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.CreateBoost(System.String,Indx.CloudApi.BoostProxy)">
             <summary>
-            CreateBoost will create a Boost setu which may be passed to any search.
-            Every endpoint of this API will refer to one or more datasets.
+            CreateBoost will create a Boost setup which may be passed to any search.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="boost"></param>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.CreateOrOpen(System.String)">
             <summary>
-            CreateOrOpen will create a data set where you can insert, save, index and search for DocumentJson.
-            Every endpoint of this API will refer to one or more datasets.
-            Uses default configuration.
+            CreateOrOpen will create a data set. Uses default configuration.
             </summary>
-            <param name="dataSetName"></param>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.CreateOrOpen(System.String,System.Int32)">
             <summary>
-            CreateOrOpen will create a data set where you can insert, save, index and search for DocumentJson.
-            Every endpoint of this API will refer to one or more datasets.
+            CreateOrOpen will create a data set with specified configuration.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="configuration"></param>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.CreateRangeFilter(System.String,Indx.CloudApi.RangeFilterProxy)">
             <summary>
             CreateRangeFilter will create a RangeFilter which may be passed to any search.
-            Every endpoint of this API will refer to one or more datasets.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="rangeFilter"></param>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.CreateValueFilter(System.String,Indx.CloudApi.ValueFilterProxy)">
             <summary>
             CreateValueFilter will create a ValueFilter which may be passed to any search.
-            Every endpoint of this API will refer to one or more datasets.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="valueFilter"></param>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.DeleteDataSet(System.String)">
             <summary>
             DeleteDataSet, will delete the entire dataSet including all contained Documents.
-            It will take effect immediately and the data cannot be recovered. In case of
-            non existing dataset BadRequest will be returned.
             </summary>
-            <param name="dataSetName"></param>
-            <returns></returns>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteJsonRecord(System.String,System.Int64)">
+            <summary>
+            Deletes a document from the dataset by its key.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteJsonRecords(System.String,System.Int64[])">
+            <summary>
+            Deletes documents from the dataset by their keys.
+            </summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.GetAllFields(System.String)">
             <summary>
-            GetAllFields will return the fields found during analyze. If the client is
-            not authenticated it will return null
+            GetAllFields will return the fields found during analyze.
             </summary>
-            <param name="dataSetName"></param>
-            <returns>SearchState</returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.GetFacetableFields(System.String)">
             <summary>
-            GetFacetableFields will return the array of these field names of. Use SetFacetableFields
-            to assign this property. If the client is not authenticated null is returned.
+            GetFacetableFields will return the array of facetable field names.
             </summary>
-            <param name="dataSetName"></param>
-            <returns>SearchState</returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.GetFilterableFields(System.String)">
             <summary>
-            GetFilterableFields will return the array of these field names of. Use SetFilterAbleFields
-            to assign this property. If the client is not autenticated null is returned.
+            GetFilterableFields will return the array of filterable field names.
             </summary>
-            <param name="dataSetName"></param>
-            <returns>SearchState</returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.GetJson(System.String,System.Int64[])">
             <summary>
-            returns the raw json records as string[] for the keys
+            Returns the raw json records as string[] for the keys.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="keys"></param>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.GetNumberOfJsonRecordsInDb(System.String)">
             <summary>
-            GetStatus will return the status\us of the dataSetName in the search engine. If the client is
-            not authenticated it will return null.If the client is asking for a non-existing dataSetName
-            a SystemState with the field invalidDataSetName= true will be returned.
+            Returns the number of JSON records in the database for the given dataset.
             </summary>
-            <param name="dataSetName"></param>
-            <returns>SearchState</returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.GetSearchableFields(System.String)">
             <summary>
-            GetSearchableFields will return the array of these field names of. Use SetIndexAbleField
-            to assign this property. If the client is not authenticated null is returned.
+            GetSearchableFields will return the array of searchable field names.
             </summary>
-            <param name="dataSetName"></param>
-            <returns>SearchState</returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.GetSortableFields(System.String)">
             <summary>
-            GetSortableFields will return the array of these field names. Use SetSortableField
-            to assign this property. If the client is not authenticated null is returned.
+            GetSortableFields will return the array of sortable field names.
             </summary>
-            <param name="dataSetName"></param>
-            <returns>SearchState</returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.GetStatus(System.String)">
             <summary>
-            GetStatus will return the status\us of the dataSetName in the search engine. If the client is
-            not authenticated it will return null.If the client is asking for a non-existing dataSetName
-            a SystemState with the field invalidDataSetName= true will be returned.
+            GetStatus will return the status of the dataSetName in the search engine.
             </summary>
-            <param name="dataSetName"></param>
-            <returns>SearchState</returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.GetWordIndexingFields(System.String)">
             <summary>
-            GetWordIndexingFields will return the array of these field names. Use SetWordIndexingFields
-            to assign this property. If the client is not authenticated null is returned.
+            GetWordIndexingFields will return the array of word-indexing field names.
             </summary>
-            <param name="dataSetName"></param>
-            <returns>SearchState</returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.GetUserDataSets">
             <summary>
-            Return the datasets created by current user if any. If no datasets are
-            found an empty array will be returned.
+            Return the datasets created by current user if any.
             </summary>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.IndexDataSet(System.String)">
             <summary>
-            IndexDataSet will start indexing of the Loaded documents.
-            Indexing will run asynchronously and the progress may be monitored by GetStatus.
+            IndexDataSet will start indexing of the loaded documents.
             </summary>
-            <param name="dataSetName"></param>
-            <returns></returns>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.InsertJsonRecord(System.String,System.String)">
+            <summary>
+            Inserts one single Json record.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.InsertJsonRecords(System.String,System.String[])">
+            <summary>
+            Inserts new JSON records into the dataset.
+            </summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.LoadFromDatabaseAsync(System.String)">
             <summary>
-            Loads the jsonData into search engine from the database
+            Loads the jsonData into search engine from the database.
             </summary>
-            <param name="dataSetName"></param>
-            <returns>Unauthorized (401), BadRequest(400) or Ok(200)</returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.LoadStreamAsync(System.String)">
             <summary>
-            Loads the jsonData into search engine as a stream
+            Loads the jsonData into search engine as a stream.
             </summary>
-            <param name="dataSetName"></param>
-            <returns>Unauthorized (401), BadRequest(400) or Ok(200)</returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.LoadString(System.String,System.String)">
             <summary>
-            Loads the jsonData into search engine as a string
+            Loads the jsonData into search engine as a string.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="jsonData"></param>
-            <returns>Unauthorized (401), BadRequest(400) or Ok(200)</returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.Search(System.String,Indx.CloudApi.CloudQuery)">
             <summary>
-            Search will validate the search query and return the search result. If no match is found
-            the method will return an empty document array. The method will return null if query is invalid.
-            Max length of search result is truncated to Query.MaxLengthOfSearchResult (pt = 1000).
-            If the dataSetName is non existing this will be reflected in the field InvalidDataSetName. If the status field
-            is set invalid it means that the system is still loading or indexing data. Use GetState to monitor
-            the progress of indexing. An indexing status may also result by a power cycle or restart of the server.
+            Search will validate the search query and return the search result.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="query"></param>
-            <returns>SearchResult</returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.SetFacetableFields(System.String,System.String[])">
             <summary>
-            SetIndexAbleFields will create a data set where you can insert, save, index and search for DocumentJson.
-            Every endpoint of this API will refer to one or more datasets.
+            SetFacetableFields sets the Facetable property on the specified fields.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="fields"></param>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.SetFilterableFields(System.String,System.String[])">
             <summary>
-            SetIndexAbleFields will create a data set where you can insert, save, index and search for DocumentJson.
-            Every endpoint of this API will refer to one or more datasets.
+            SetFilterableFields sets the Filterable property on the specified fields.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="fields"></param>
-            <returns></returns>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.SetSearchableFields(System.String,System.ValueTuple{System.String,System.Int32}[])">
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetSearchableFields(System.String,System.ValueTuple{System.String,System.Single}[])">
             <summary>
-            SetIndexAbleFields will create a data set where you can insert, save, index and search for DocumentJson.
-            Every endpoint of this API will refer to one or more datasets.
+            SetSearchableFields sets the Searchable property and weight on the specified fields.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="fields"></param>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.SetSortableFields(System.String,System.String[])">
             <summary>
-            SetSortableFields will create a data set where you can insert, save, index and search for DocumentJson.
-            Every endpoint of this API will refer to one or more datasets.
+            SetSortableFields sets the Sortable property on the specified fields.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="fields"></param>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.SetWordIndexingFields(System.String,System.String[])">
             <summary>
-            SetWordIndexingFields will set the WordIndexing properties of the fields to true.
-            Every endpoint of this API will refer to one or more datasets.
+            SetWordIndexingFields sets the WordIndexing property on the specified fields.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="fields"></param>
-            <returns></returns>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetFieldConfiguration(System.String,Indx.Api.FieldProxy[])">
+            <summary>
+            SetFieldConfiguration sets any combination of field properties (Searchable, Filterable,
+            Facetable, Sortable, WordIndexing, Embeddable, PreloadFilters, Weight, BM25Fb, BM25Fk1)
+            in one call. Nullable properties have replace semantics: null = leave untouched,
+            any value (including false) = overwrite.
+            On validation failure of any item, returns BadRequest immediately; earlier items in the
+            array remain applied (best-effort, consistent with Set*Fields).
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetFieldConfiguration(System.String)">
+            <summary>
+            GetFieldConfiguration returns the full configuration of every field in the dataset,
+            including all flags, weights and BM25F parameters. Returns an empty array if the
+            dataset does not exist or has no fields yet.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetBM25FFields(System.String,Indx.CloudApi.BM25FFieldProxy[])">
+            <summary>
+            SetBM25FFields sets per-field BM25F parameters (b and k1), activating BM25F multi-field
+            scoring when at least one searchable field has either value set.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateJsonRecords(System.String,System.String[])">
+            <summary>
+            Updates existing JSON records in the dataset.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateJsonRecord(System.String,System.String)">
+            <summary>
+            Updates one single Document.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateField(System.String,System.Int64,Indx.CloudApi.UpdateFieldProxy)">
+            <summary>
+            Updates a single field on a document identified by its key.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteRecordsInFilter(System.String,Indx.CloudApi.FilterProxy)">
+            <summary>
+            Deletes all documents matching the given filter.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateFieldInFilter(System.String,Indx.CloudApi.FilterFieldUpdateProxy)">
+            <summary>
+            Updates a field on all documents matching the given filter. Returns the number of updated documents.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteFilter(System.String,Indx.CloudApi.FilterProxy)">
+            <summary>
+            Deletes a single filter from the filter cache.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteAllFilters(System.String)">
+            <summary>
+            Deletes all filters from the filter cache.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.LoadAllFilters(System.String)">
+            <summary>
+            Pre-loads all registered filters in the background.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetNumberOfFilters(System.String)">
+            <summary>
+            Returns the number of filters currently registered in the filter cache.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.Hibernate(System.String)">
+            <summary>
+            Hibernates the dataset, freeing in-memory structures while retaining persisted data.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.WakeUp(System.String)">
+            <summary>
+            Wakes up a hibernated dataset, restoring it from the persisted state.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetEmbeddableFields(System.String,System.String[])">
+            <summary>
+            Marks the specified fields as embeddable so that their vector values are indexed
+            during the next Load. Must be called after AnalyzeStream and before LoadStream.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.VectorSearch(System.String,Indx.CloudApi.VectorQueryProxy)">
+            <summary>
+            Searches a single embedding field using approximate nearest-neighbour search.
+            The dataset must be in Ready state (fully loaded and indexed).
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.HybridSearch(System.String,Indx.CloudApi.HybridQueryProxy)">
+            <summary>
+            Combines text search with embedding nearest-neighbour search and blends scores.
+            combined score = alpha * embeddingScore + (1 - alpha) * normalisedTextScore.
+            The dataset must be in Ready state (fully loaded and indexed).
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.RunHeavyOnShadowIfReady(System.String,System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,Microsoft.AspNetCore.Mvc.ActionResult})">
+             <summary>
+             Resolves the engine for (dataSetName, userId). If the engine is in Ready state,
+             runs <paramref name="mutation"/> on a shadow instance (so live searches are not
+             blocked) and swaps the result in atomically. Otherwise runs the mutation inline
+             on the live engine. Maps <see cref="T:IndxCloudApi.Models.ShadowBusyException"/> to 409 Conflict.
+            
+             The mutation lambda returns the ActionResult that becomes the response, which
+             preserves the existing endpoints' early-exit semantics (e.g. BadRequest mid-loop).
+             </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.UnwrapJsonElement(System.Object)">
+            <summary>
+            ASP.NET Core deserializes 'object' properties as JsonElement. Unwrap to the
+            appropriate primitive so engine methods (UpdateField, UpdateFieldInFilter) can
+            use type-checking via Field.GetJsonValueKind.
+            </summary>
         </member>
         <member name="T:IndxCloudApi.Data.ApplicationUser">
             <summary>
             Application user entity extending ASP.NET Core Identity user.
             Add custom profile properties here as needed.
             </summary>
+        </member>
+        <member name="P:IndxCloudApi.Data.ApplicationUser.MustChangePassword">
+            <summary>
+            When true the user must change their password before they can call any
+            protected API or UI endpoint other than the password-change flow itself.
+            Set on the seeded admin so first-login forces a rotation away from the
+            deployment-time initial password.
+            </summary>
+        </member>
+        <member name="T:IndxCloudApi.Data.Migrations.InitialCreate">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.InitialCreate.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.InitialCreate.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.InitialCreate.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:IndxCloudApi.Models.ChangePasswordRequest">
+            <summary>
+            Body of POST /api/changePassword. Used to rotate the seeded admin's
+            initial password (set at deployment time) before any other API calls
+            can be made.
+            </summary>
+        </member>
+        <member name="T:IndxCloudApi.Models.IndxCloudInternalApi">
+             <summary>
+             Shadow-swap orchestration for heavy mutations.
+            
+             When a heavy mutation arrives on a dataset that is in <see cref="F:Indx.Api.SystemState.Ready"/>,
+             we build a fresh SearchEngine that shares the active instance's persistence, replay
+             the document state via <see cref="M:Indx.Api.ICloudSearchEngine.LoadFromDatabaseSync(Indx.Api.ProcessMonitor)"/>, apply
+             the caller's mutation, re-index, and swap the new engine into the dictionary under
+             <c>_dictionaryLock</c>. The previous engine is queued for disposal once its in-flight
+             searches have drained (best-effort with a grace timeout).
+            
+             Single-flight semantics: a second heavy mutation on the same dataset while a shadow
+             build is in progress throws <see cref="T:IndxCloudApi.Models.ShadowBusyException"/>, which the controller
+             maps to HTTP 409.
+             </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.DoIndex(System.String,System.String)">
             <summary>
@@ -345,10 +424,51 @@
             <param name="dataSetName">The dataset name to clean up</param>
             <param name="userId">The user ID that owns the dataset</param>
         </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunMutationOnShadow``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})">
+            <summary>
+            Runs <paramref name="mutation"/> on a shadow SearchEngine and swaps it in
+            atomically on success. The active instance keeps serving searches throughout.
+            Throws <see cref="T:IndxCloudApi.Models.ShadowBusyException"/> if a build is already in progress for
+            the same (dataSetName, userId) key.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.IsShadowBuildInProgress(System.String,System.String)">
+            <summary>True while a shadow build is in progress for the given dataset.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ShadowBuildStartedUtc(System.String,System.String)">
+            <summary>UTC timestamp at which the in-progress shadow build started, or null if none.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.BuildShadowFrom(Indx.Api.ICloudSearchEngine,System.String,System.String)">
+            <summary>
+            Builds a shadow SearchEngine from the original's live in-memory state via
+            <see cref="M:Indx.Api.SearchEngine.CreateInMemoryClone(Indx.Api.ProcessMonitor)"/>, then attaches a fresh
+            SQLite connection so mutations applied to the shadow persist independently.
+            No SQLite roundtrip is involved in copying the document set — only the
+            subsequent mutation writes.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.DisposeAfterGraceAsync(Indx.Api.ICloudSearchEngine,System.String,System.String)">
+            <summary>
+            Waits up to <see cref="F:IndxCloudApi.Models.IndxCloudInternalApi.DisposalGraceSeconds"/> for the engine's in-flight
+            searches to drain, then disposes it. Failure to drain within the grace period
+            is logged and we dispose anyway — pending searches will fail their next pool
+            access and propagate the disposal to the caller.
+            </summary>
+        </member>
         <member name="T:IndxCloudApi.Models.LoginInfo">
             <summary>
             Class to support JSON serialization of user credentials
             </summary>
+        </member>
+        <member name="T:IndxCloudApi.Models.ShadowBusyException">
+            <summary>
+            Thrown by <see cref="T:IndxCloudApi.Models.IndxCloudInternalApi"/> when a heavy mutation arrives for a
+            dataset that already has a shadow build in progress. The controller maps this to
+            HTTP 409 Conflict so the client can retry once the prior build completes.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.ShadowBusyException.#ctor(System.String)">
+            <summary>Creates the exception with a message naming the affected dataset.</summary>
         </member>
         <member name="T:IndxCloudApi.Program">
             <summary>
@@ -360,6 +480,16 @@
             Application entry point - configures and starts the web host
             </summary>
             <param name="args">Command line arguments</param>
+        </member>
+        <member name="M:IndxCloudApi.Program.BootstrapMigrationHistoryIfNeeded(IndxCloudApi.Data.ApplicationDbContext,Microsoft.Extensions.Logging.ILogger{IndxCloudApi.Program})">
+            <summary>
+            When upgrading from a deployment that used <c>EnsureCreated()</c>, the database
+            schema exists but the EF migrations history table does not. Calling
+            <c>Migrate()</c> in that state would try to re-create existing tables and fail.
+            This method detects that situation and seeds the history table with the
+            InitialCreate migration row so <c>Migrate()</c> sees no work to do for the
+            initial schema and only applies migrations added after.
+            </summary>
         </member>
         <member name="T:IndxCloudApi.Services.AzureCommunicationEmailSender">
             <summary>
@@ -399,6 +529,37 @@
             <param name="email">Recipient email address</param>
             <param name="subject">Email subject</param>
             <param name="htmlMessage">Email body (HTML format)</param>
+        </member>
+        <member name="T:IndxCloudApi.Services.ILicenseBootstrapper">
+            <summary>
+            Service that ensures a local .license file is present at startup,
+            downloading it from a configured SAS URL when missing.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.ILicenseBootstrapper.EnsureLocalLicenseAsync(System.Threading.CancellationToken)">
+            <summary>
+            Downloads the license file from Indx:LicenseDownloadUrl to the local
+            path resolved from Indx:LicenseFile when the local file is absent.
+            Failures are logged but never thrown.
+            </summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.LicenseBootstrapper">
+             <summary>
+             Downloads the .license file from Indx:LicenseDownloadUrl to a local path
+             when it isn't already present on disk. Used by Marketplace deployments
+             where the customer hands over a SAS URL via createUiDefinition.
+            
+             Failures are logged but never thrown - the app starts in free-tier mode
+             (100k document limit) instead of taking the whole instance down.
+             </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.LicenseBootstrapper.#ctor(Microsoft.Extensions.Configuration.IConfiguration,System.Net.Http.IHttpClientFactory,Microsoft.Extensions.Logging.ILogger{IndxCloudApi.Services.LicenseBootstrapper})">
+            <summary>
+            Initializes a new instance of the <see cref="T:IndxCloudApi.Services.LicenseBootstrapper"/>.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.LicenseBootstrapper.EnsureLocalLicenseAsync(System.Threading.CancellationToken)">
+            <inheritdoc />
         </member>
         <member name="T:IndxCloudApi.Services.RegistrationOptions">
             <summary>

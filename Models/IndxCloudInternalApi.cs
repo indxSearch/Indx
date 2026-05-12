@@ -1,13 +1,13 @@
-﻿
-using Indx.Api;
+﻿using Indx.Api;
 using Indx.CloudApi;
+using Indx.Embeddings;
 using Indx.Storage;
 namespace IndxCloudApi.Models
 {
-    internal sealed class IndxCloudInternalApi
+    internal sealed partial class IndxCloudInternalApi
     {
         #region Public Methods
-        public SearchEngine? FindSearchEngineForInit(string dataSetName, string userId)
+        public ICloudSearchEngine? FindSearchEngineForInit(string dataSetName, string userId)
         {
             var matcher = FindInstance(dataSetName, userId);
             if (matcher == null)
@@ -24,15 +24,15 @@ namespace IndxCloudApi.Models
             persistence.CreateOrOpenDataSet((int)configuration);
 
             var licensePath = GetLicensePath();
-            matcher = new SearchEngine(MakeLogPrefix(userId, dataSetName), Indx.Utilities.ILoggerFactory.GetFactory(logFileName),
+            var newMatcher = new SearchEngine(MakeLogPrefix(userId, dataSetName), Indx.Utilities.ILoggerFactory.GetFactory(logFileName),
                (int)configuration, licensePath)
             {
                 Persistence = persistence
             };
-            _instances.Add(MakeKey(dataSetName, userId), new SearchEngineInstance() { theInstance = matcher });
-            return matcher;
+            _instances.Add(MakeKey(dataSetName, userId), new SearchEngineInstance() { theInstance = newMatcher });
+            return newMatcher;
         }
-        public SearchEngine? FindSearchEngine(string dataSetName, string userId)
+        public ICloudSearchEngine? FindSearchEngine(string dataSetName, string userId)
         {
             return FindInstance(dataSetName, userId);
         }
@@ -115,7 +115,7 @@ namespace IndxCloudApi.Models
                 if (engine != null && (engine.Status.SystemState == SystemState.Loaded
                     || engine.Status.SystemState == SystemState.Ready))
                 {
-                    engine.Index(pm);
+                    engine.Index(monitor: pm);
                     pm.WaitForCompletion();
                     return true;
                 }
@@ -193,6 +193,7 @@ namespace IndxCloudApi.Models
             instance.Load(jsonData, pm);
             return true;
         }
+
         internal bool LoadFromDatabase(string dataSetName, string userId, ProcessMonitor monitor)
         {
             var instance = FindInstance(dataSetName, userId);
@@ -213,6 +214,7 @@ namespace IndxCloudApi.Models
                 return true;
             }
         }
+
         internal async Task<(bool success, string errorMessage)> LoadJsonStreamAsync(string dataSetName, string userId, Stream jsonData)
         {
             var instance = FindInstance(dataSetName, userId);
@@ -222,6 +224,7 @@ namespace IndxCloudApi.Models
             await instance.LoadAsync(jsonData, pm);
             return (pm.Succeeded, pm.ErrorMessage);
         }
+
         /// <summary>
         /// Performs a search. See the model class for details.
         /// Make sure to check for search readiness after a call
@@ -257,7 +260,6 @@ namespace IndxCloudApi.Models
         {
             lock (_dictionaryLock)
             {
-                // Find all keys that start with the userId
                 var keysToRemove = _instances.Keys
                     .Where(k => k.StartsWith(userId))
                     .ToList();
@@ -276,7 +278,6 @@ namespace IndxCloudApi.Models
                         catch (Exception ex)
                         {
                             _logger.LogError($"Error disposing SearchEngine instance {key}: {ex.Message}");
-                            // Continue with other instances even if one fails
                         }
                     }
                 }
@@ -306,9 +307,89 @@ namespace IndxCloudApi.Models
                     catch (Exception ex)
                     {
                         _logger.LogError($"Error disposing SearchEngine instance {key}: {ex.Message}");
-                        // Continue even if disposal fails
                     }
                 }
+            }
+        }
+
+        internal bool SetEmbeddableFields(string[] fieldNames, string dataSetName, string userId)
+        {
+            var engine = FindInstance(dataSetName, userId);
+            if (engine?.DocumentFields == null)
+                return false;
+            foreach (var name in fieldNames)
+            {
+                var field = engine.DocumentFields.GetField(name);
+                if (field == null)
+                    return false;
+                field.Embeddable = true;
+            }
+            return true;
+        }
+
+        internal EmbeddingResultEntry[] VectorSearch(VectorQueryProxy query, string dataSetName, string userId)
+        {
+            try
+            {
+                var engine = FindInstance(dataSetName, userId) as SearchEngine;
+                if (engine == null)
+                    return [];
+                if (!engine.EmbeddingFields.TryGetValue(query.FieldName, out var index))
+                    return [];
+                Filter? filter = query.Filter != null
+                    ? engine.GetFilterFromKey(query.Filter.HashString)
+                    : null;
+                var results = index.Search(query.Vector, query.MaxResults, filter);
+                return results.Select(r => new EmbeddingResultEntry(r.documentKey, r.score)).ToArray();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(MakeLogPrefix(userId, dataSetName) + "IndxCloudInternalApi.VectorSearch exception " + ex);
+                throw;
+            }
+        }
+
+        internal EmbeddingResultEntry[] HybridSearch(HybridQueryProxy query, string dataSetName, string userId)
+        {
+            try
+            {
+                var engine = FindInstance(dataSetName, userId) as SearchEngine;
+                if (engine == null)
+                    return [];
+                if (!engine.EmbeddingFields.TryGetValue(query.EmbeddingField, out var index))
+                    return [];
+
+                // Text search — fetch a larger pool to feed the merge
+                int poolSize = query.MaxNumberOfRecordsToReturn * 2;
+                var cloudQuery = new CloudQuery
+                {
+                    Text = query.Text,
+                    MaxNumberOfRecordsToReturn = poolSize,
+                    Filter = query.Filter,
+                    TimeOutLimitMilliseconds = query.TimeOutLimitMilliseconds,
+                    EnableCoverage = false,
+                    RemoveDuplicates = true
+                };
+                Query textQuery = FromCloudQuery2Query(cloudQuery, engine);
+                var textResult = engine.Search(textQuery);
+
+                // Embedding search — also fetch a larger pool
+                Filter? filter = query.Filter != null
+                    ? engine.GetFilterFromKey(query.Filter.HashString)
+                    : null;
+                var embeddingResults = index.Search(query.Vector, poolSize, filter);
+
+                // Merge and trim
+                var merged = IEmbeddingIndex.MergeHybrid(textResult.Records, embeddingResults, query.Alpha);
+                return merged
+                    .Take(query.MaxNumberOfRecordsToReturn)
+                    .Select(r => new EmbeddingResultEntry(r.documentKey, r.score))
+                    .ToArray();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(MakeLogPrefix(userId, dataSetName) + "IndxCloudInternalApi.HybridSearch exception " + ex);
+                throw;
             }
         }
 
@@ -318,10 +399,8 @@ namespace IndxCloudApi.Models
             {
                 var licensePath = GetLicensePath();
 
-                // Create a temporary SearchEngine instance and initialize it to load license
                 using var tempEngine = new SearchEngine(licensePath);
 
-                // Minimal workflow to trigger license loading: Init, configure field, Load, Index
                 var minimalJson = "[{\"field\":\"value\"}]";
                 using var jsonStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(minimalJson));
 
@@ -368,7 +447,6 @@ namespace IndxCloudApi.Models
                 _logger.LogError($"{nameof(IndxCloudInternalApi)}.{nameof(InitializeSystem)} SearchDbConnectionString is null or empty");
                 throw new InvalidOperationException("SearchDbConnectionString is null or empty");
             }
-            // find registered users in the search database
             try
             {
                 var sqLiteManager = new SqLiteManager(SearchDbConnectionString);
@@ -377,8 +455,6 @@ namespace IndxCloudApi.Models
                     _logger.LogInformation($"{nameof(IndxCloudInternalApi)}.{nameof(InitializeSystem)} no database found at {SearchDbConnectionString}");
                     return;
                 }
-                ;
-                // invariant; database exists
                 var users = sqLiteManager.GetUsers();
                 foreach (var user in users)
                 {
@@ -386,7 +462,7 @@ namespace IndxCloudApi.Models
                     foreach (var dataSet in dataSets)
                     {
                         var instance = FindInstance(dataSet, user);
-                        if (instance == null)  // fields in dataset not configured properly
+                        if (instance == null)
                             continue;
                         var monitor = new ProcessMonitor();
                         if (instance.Persistence == null)
@@ -399,10 +475,8 @@ namespace IndxCloudApi.Models
                         instance.LoadFromDatabaseSync(monitor);
                         monitor.WaitForCompletion();
                         monitor = new ProcessMonitor();
-                        instance.Index(monitor);
+                        instance.Index(monitor: monitor);
                         monitor.WaitForCompletion();
-
-                        ;
                     }
                 }
             }
@@ -412,14 +486,15 @@ namespace IndxCloudApi.Models
                 throw;
             }
         }
-        private static Query FromCloudQuery2Query(CloudQuery cloudQuery, SearchEngine engine)
+
+        private static Query FromCloudQuery2Query(CloudQuery cloudQuery, ICloudSearchEngine engine)
         {
             Query query = new Query(cloudQuery.Text, cloudQuery.MaxNumberOfRecordsToReturn)
             {
                 CoverageSetup = cloudQuery.CoverageSetup,
                 LogPrefix = cloudQuery.LogPrefix,
                 CoverageDepth = cloudQuery.CoverageDepth,
-                RemoveDuplicates = cloudQuery.RemoveDuplicates,  //!!! need to check if it is ok to set this=true (due to arrays)
+                RemoveDuplicates = cloudQuery.RemoveDuplicates,
                 EnableBoost = cloudQuery.EnableBoost,
                 EnableCoverage = cloudQuery.EnableCoverage,
                 EnableFacets = cloudQuery.EnableFacets,
@@ -427,6 +502,8 @@ namespace IndxCloudApi.Models
                 SortBy = cloudQuery.SortBy != null ? engine.DocumentFields.GetField(cloudQuery.SortBy) : null,
                 TimeOutLimitMilliseconds = cloudQuery.TimeOutLimitMilliseconds
             };
+            if (cloudQuery.FieldBoosts != null)
+                query.FieldBoosts = cloudQuery.FieldBoosts;
             if (cloudQuery.Filter != null)
                 query.Filter = engine.GetFilterFromKey(cloudQuery.Filter.HashString);
             if (cloudQuery.Boosts != null)
@@ -452,17 +529,15 @@ namespace IndxCloudApi.Models
             return "User:" + userId + " dataSet:" + dataSetName + " ";
         }
 
-        private SearchEngine? FindInstance(string dataSetName, string userId)
+        private ICloudSearchEngine? FindInstance(string dataSetName, string userId)
         {
             string key = MakeKey(dataSetName, userId);
 
             lock (_dictionaryLock)
             {
-                // Try to get existing instance
                 if (_instances.TryGetValue(key, out var instance))
                     return instance?.theInstance;
 
-                // Create new instance if not found
                 var persistence = new Persistence(SearchDbConnectionString, dataSetName, userId);
                 var configuration = persistence.ReadDataSetConfiguration();
                 if (configuration == null)
@@ -488,10 +563,8 @@ namespace IndxCloudApi.Models
         private sealed class SearchEngineInstance
         {
             #region Internal Fields
-            // to provide one dBOperation at a time
             internal readonly object DbLock = new();
-
-            internal SearchEngine? theInstance;
+            internal ICloudSearchEngine? theInstance;
             #endregion Internal Fields
         }
         #endregion Private Classes

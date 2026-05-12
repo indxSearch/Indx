@@ -1,5 +1,6 @@
 ﻿using IndxCloudApi.Data;
 using IndxCloudApi.Models;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -92,7 +93,41 @@ namespace IndxCloudApi.Controllers
             // Generate JWT token
             var tokenstring = GenerateJasonWebToken(info, user);
 
-            return Ok(new { token = tokenstring });
+            return Ok(new { token = tokenstring, mustChangePassword = user.MustChangePassword });
+        }
+
+        /// <summary>
+        /// Allows a user flagged with MustChangePassword to rotate to a new password
+        /// of their choosing. On success the gate is lifted and a fresh full-access token
+        /// can be obtained by re-logging in.
+        /// </summary>
+        /// <param name="request">Current and new password</param>
+        /// <returns>Ok on success, BadRequest with Identity errors otherwise.</returns>
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+        [HttpPost("/api/changePassword")]
+        public async Task<IActionResult> ChangePasswordAsync([FromBody] ChangePasswordRequest request)
+        {
+            if (request == null
+                || string.IsNullOrEmpty(request.CurrentPassword)
+                || string.IsNullOrEmpty(request.NewPassword))
+            {
+                return BadRequest("CurrentPassword and NewPassword are required");
+            }
+
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null)
+                return Unauthorized("User not found");
+
+            var result = await _userManager.ChangePasswordAsync(
+                user, request.CurrentPassword, request.NewPassword);
+            if (!result.Succeeded)
+            {
+                return BadRequest(new { errors = result.Errors.Select(e => e.Description).ToArray() });
+            }
+
+            user.MustChangePassword = false;
+            await _userManager.UpdateAsync(user);
+            return Ok(new { changed = true });
         }
 
         private string GenerateJasonWebToken(LoginInfo info, ApplicationUser user)  
@@ -115,10 +150,17 @@ namespace IndxCloudApi.Controllers
     };
 
             // Add roles if needed
-            var roles = _userManager.GetRolesAsync(user).Result;  
+            var roles = _userManager.GetRolesAsync(user).Result;
             foreach (var role in roles)
             {
                 claims.Add(new Claim(ClaimTypes.Role, role));
+            }
+
+            // Restricted-token claim - the password-change gate middleware reads this
+            // to block calls to anything other than the password change endpoint.
+            if (user.MustChangePassword)
+            {
+                claims.Add(new Claim("must_change_password", "true"));
             }
 
             var token = new JwtSecurityToken(

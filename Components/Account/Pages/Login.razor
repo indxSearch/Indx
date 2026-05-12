@@ -32,7 +32,7 @@ else if (externalLogins.Count > 0)
     <div style="display: grid; gap: 10px;">
         @foreach (var provider in externalLogins)
         {
-            <form action="Account/PerformExternalLogin" method="post">
+            <form action="Account/PerformExternalLogin" method="post" data-enhance="false">
                 <AntiforgeryToken />
                 <input type="hidden" name="provider" value="@provider.Name" />
                 <input type="hidden" name="returnUrl" value="@ReturnUrl" />
@@ -149,7 +149,7 @@ else if (externalLogins.Count > 0)
             Logger.LogInformation("User {Email} logged in successfully", Input.Email);
 
             // ✅ ENDRING: Redirect til API Key page i stedet for home
-            NavigationManager.NavigateTo("/Account/ApiKey", forceLoad: true);
+            //NavigationManager.NavigateTo("/Account/ApiKey", forceLoad: true);
         }
         else if (result.RequiresTwoFactor)
         {

@@ -47,10 +47,6 @@ else
                         {
                             <p style="color: var(--CSignal); font-weight: bold;">⚠️ License Document Limit Exceeded: @status.DocumentCount.ToString("N0") / @status.LicenseInfo.DocumentLimit.ToString("N0")</p>
                         }
-                        @if (status.ReIndexRequired)
-                        {
-                            <p><strong>⚠️ ReIndex Required:</strong> @status.ReIndexRequired</p>
-                        }
                         @if (status.InvalidArgument)
                         {
                             <p><strong>⚠️ Invalid Argument:</strong> @status.InvalidArgument</p>

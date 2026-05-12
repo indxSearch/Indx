@@ -1,0 +1,297 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/0.1.2-preview/CreateUIDefinition.MultiVm.json#",
+  "handler": "Microsoft.Azure.CreateUIDef",
+  "version": "0.1.2-preview",
+  "parameters": {
+    "basics": [
+      {
+        "name": "appName",
+        "type": "Microsoft.Common.TextBox",
+        "label": "Application name",
+        "toolTip": "3-20 lowercase letters or digits. Used as the public hostname: <name>.azurewebsites.net.",
+        "constraints": {
+          "required": true,
+          "regex": "^[a-z][a-z0-9]{2,19}$",
+          "validationMessage": "Must start with a letter and be 3-20 lowercase letters/digits."
+        }
+      }
+    ],
+    "steps": [
+      {
+        "name": "compute",
+        "label": "Compute",
+        "elements": [
+          {
+            "name": "skuName",
+            "type": "Microsoft.Common.DropDown",
+            "label": "App Service plan size",
+            "defaultValue": "Premium P1v3 (recommended)",
+            "toolTip": "Premium tier is required for guaranteed persistent /home/data storage and the always-on indexing workload.",
+            "constraints": {
+              "allowedValues": [
+                { "label": "Basic B2 (test only)", "value": "B2" },
+                { "label": "Basic B3 (test only)", "value": "B3" },
+                { "label": "Premium P0v3 (light prod)", "value": "P0v3" },
+                { "label": "Premium P1v3 (recommended)", "value": "P1v3" },
+                { "label": "Premium P2v3 (heavy prod)", "value": "P2v3" },
+                { "label": "Premium P3v3 (large prod)", "value": "P3v3" }
+              ],
+              "required": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "admin",
+        "label": "Administrator",
+        "elements": [
+          {
+            "name": "adminEmail",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Administrator email",
+            "toolTip": "Email for the initial administrator account. You'll log in with this address.",
+            "constraints": {
+              "required": true,
+              "regex": "^[\\w.+-]+@[\\w-]+\\.[\\w.-]+$",
+              "validationMessage": "Enter a valid email address."
+            }
+          },
+          {
+            "name": "adminInitialPassword",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "Initial admin password",
+              "confirmPassword": "Confirm password"
+            },
+            "toolTip": "Min 12 chars including uppercase, lowercase, digit, and a non-alphanumeric character. You'll be required to change it on first login.",
+            "constraints": {
+              "required": true,
+              "regex": "^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[^a-zA-Z\\d]).{12,}$",
+              "validationMessage": "Min 12 chars, must contain upper, lower, digit, and a non-alphanumeric character."
+            },
+            "options": {
+              "hideConfirmation": false
+            }
+          },
+          {
+            "name": "registrationMode",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "User registration mode",
+            "defaultValue": "Closed - no public registration",
+            "toolTip": "Controls who can create accounts on this instance.",
+            "constraints": {
+              "allowedValues": [
+                { "label": "Closed - no public registration", "value": "Closed" },
+                { "label": "Open - anyone can register", "value": "Open" },
+                { "label": "Email domain - allow specific domains only", "value": "EmailDomain" }
+              ],
+              "required": true
+            }
+          },
+          {
+            "name": "allowedEmailDomains",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Allowed email domains",
+            "toolTip": "Comma-separated list, e.g. acme.com,acme.co.uk",
+            "visible": "[equals(steps('admin').registrationMode, 'EmailDomain')]",
+            "constraints": {
+              "required": false
+            }
+          }
+        ]
+      },
+      {
+        "name": "email",
+        "label": "Email",
+        "elements": [
+          {
+            "name": "emailInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "Info",
+              "text": "Email is used for password resets, account confirmation, and admin notifications. Console mode logs emails to App Service logs - useful for testing but not for production."
+            }
+          },
+          {
+            "name": "emailProvider",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "Email provider",
+            "defaultValue": "Console (logs only - no real email)",
+            "toolTip": "Choose Azure Communication Services for production. You must have a verified ACS sender domain ready.",
+            "constraints": {
+              "allowedValues": [
+                { "label": "Console (logs only - no real email)", "value": "Console" },
+                { "label": "Azure Communication Services", "value": "AzureCommunicationServices" }
+              ],
+              "required": true
+            }
+          },
+          {
+            "name": "acsConnectionString",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "ACS connection string",
+              "confirmPassword": "Confirm"
+            },
+            "toolTip": "Found in Azure Portal under your Communication Services resource > Keys.",
+            "visible": "[equals(steps('email').emailProvider, 'AzureCommunicationServices')]",
+            "constraints": {
+              "required": true
+            },
+            "options": {
+              "hideConfirmation": true
+            }
+          },
+          {
+            "name": "acsFromAddress",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Sender email address",
+            "toolTip": "Must match a verified domain in your ACS resource, e.g. noreply@your-verified-domain.com",
+            "visible": "[equals(steps('email').emailProvider, 'AzureCommunicationServices')]",
+            "constraints": {
+              "required": true,
+              "regex": "^[\\w.+-]+@[\\w-]+\\.[\\w.-]+$",
+              "validationMessage": "Enter a valid email address."
+            }
+          },
+          {
+            "name": "emailFromName",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Sender display name",
+            "defaultValue": "Indx Authentication",
+            "visible": "[equals(steps('email').emailProvider, 'AzureCommunicationServices')]",
+            "constraints": {
+              "required": false
+            }
+          }
+        ]
+      },
+      {
+        "name": "oauth",
+        "label": "External sign-in",
+        "elements": [
+          {
+            "name": "oauthInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "Info",
+              "text": "All fields here are optional. Skip this step to allow only username/password sign-in. OAuth providers can be added later via Key Vault."
+            }
+          },
+          {
+            "name": "googleClientId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Google OAuth client ID",
+            "toolTip": "From Google Cloud Console > Credentials. Leave blank to disable Google sign-in.",
+            "constraints": {
+              "required": false
+            }
+          },
+          {
+            "name": "googleClientSecret",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "Google OAuth client secret",
+              "confirmPassword": "Confirm"
+            },
+            "visible": "[not(empty(steps('oauth').googleClientId))]",
+            "constraints": {
+              "required": false
+            },
+            "options": {
+              "hideConfirmation": true
+            }
+          },
+          {
+            "name": "microsoftClientId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Microsoft OAuth client ID",
+            "toolTip": "From Microsoft Entra app registration. Leave blank to disable Microsoft sign-in.",
+            "constraints": {
+              "required": false
+            }
+          },
+          {
+            "name": "microsoftClientSecret",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "Microsoft OAuth client secret",
+              "confirmPassword": "Confirm"
+            },
+            "visible": "[not(empty(steps('oauth').microsoftClientId))]",
+            "constraints": {
+              "required": false
+            },
+            "options": {
+              "hideConfirmation": true
+            }
+          }
+        ]
+      },
+      {
+        "name": "licensing",
+        "label": "Licensing",
+        "elements": [
+          {
+            "name": "licenseInfo",
+            "type": "Microsoft.Common.InfoBox",
+            "visible": true,
+            "options": {
+              "icon": "Info",
+              "text": "Without a license, the engine runs with a 100,000-document limit. Provide a SAS URL to your .license file or upload it to /home/data/indx.license post-deploy via the App Service Console."
+            }
+          },
+          {
+            "name": "licenseFileUrl",
+            "type": "Microsoft.Common.TextBox",
+            "label": "License file URL (optional)",
+            "toolTip": "HTTPS URL with SAS token pointing to your .license file. The app will download it on first start.",
+            "constraints": {
+              "required": false,
+              "regex": "^(https://.+|)$",
+              "validationMessage": "Must be an https:// URL or empty."
+            }
+          },
+          {
+            "name": "jwtSigningKey",
+            "type": "Microsoft.Common.PasswordBox",
+            "label": {
+              "password": "JWT signing key",
+              "confirmPassword": "Confirm"
+            },
+            "toolTip": "32+ random characters used to sign API tokens. Click 'generate' below or paste your own. Stored in Key Vault.",
+            "constraints": {
+              "required": true,
+              "regex": "^.{32,}$",
+              "validationMessage": "Must be at least 32 characters."
+            },
+            "options": {
+              "hideConfirmation": true
+            }
+          }
+        ]
+      }
+    ],
+    "outputs": {
+      "appName": "[basics('appName')]",
+      "location": "[location()]",
+      "skuName": "[steps('compute').skuName]",
+      "adminEmail": "[steps('admin').adminEmail]",
+      "adminInitialPassword": "[steps('admin').adminInitialPassword]",
+      "registrationMode": "[steps('admin').registrationMode]",
+      "allowedEmailDomains": "[coalesce(steps('admin').allowedEmailDomains, '')]",
+      "emailProvider": "[steps('email').emailProvider]",
+      "acsConnectionString": "[coalesce(steps('email').acsConnectionString, '')]",
+      "acsFromAddress": "[coalesce(steps('email').acsFromAddress, '')]",
+      "emailFromName": "[coalesce(steps('email').emailFromName, 'Indx Authentication')]",
+      "googleClientId": "[coalesce(steps('oauth').googleClientId, '')]",
+      "googleClientSecret": "[coalesce(steps('oauth').googleClientSecret, '')]",
+      "microsoftClientId": "[coalesce(steps('oauth').microsoftClientId, '')]",
+      "microsoftClientSecret": "[coalesce(steps('oauth').microsoftClientSecret, '')]",
+      "licenseFileUrl": "[coalesce(steps('licensing').licenseFileUrl, '')]",
+      "jwtSigningKey": "[steps('licensing').jwtSigningKey]"
+    }
+  }
+}
