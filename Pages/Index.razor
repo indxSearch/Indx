@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Components.Authorization
 @using System.Security.Claims
@@ -34,6 +34,7 @@ else
     {
         var datasetName = selectedDataset;
         var status = datasetStatuses.ContainsKey(datasetName) ? datasetStatuses[datasetName] : null;
+        var isSaving = _savingDataset == datasetName;
         <div class="indx-dataset-card">
         <Surface>
                 @if (status != null)
@@ -78,15 +79,32 @@ else
                     </div>
                 }
 
-                <div style="margin-top: 8px; margin-bottom: 8px;">
-                    <Button Variant="secondary" Size="micro" IconLeft="_iconFields" @onclick="() => ToggleFieldConfig(datasetName)">
+                <div class="indx-field-config-toolbar">
+                    <Button Variant="secondary" Size="micro" IconLeft="_iconFields" @onclick="() => ToggleFieldConfig(datasetName)" disabled="@isSaving">
                         @(expandedFieldConfig.Contains(datasetName) ? "Hide field configuration" : "Show field configuration")
                     </Button>
+                    @if (IsDirty(datasetName) && !isSaving)
+                    {
+                        <Button Variant="primary" Size="micro" @onclick="() => SaveFieldConfig(datasetName)" disabled="@(!HasSearchable(datasetName))">Save</Button>
+                        <Button Variant="secondary" Size="micro" @onclick="() => CancelFieldConfig(datasetName)">Cancel</Button>
+                        @if (!HasSearchable(datasetName))
+                        {
+                            <span class="indx-field-config-error">At least one field must be searchable</span>
+                        }
+                    }
                 </div>
 
-                @if (expandedFieldConfig.Contains(datasetName))
+                @if (isSaving)
                 {
-                    @if (fieldConfigs.TryGetValue(datasetName, out var fields) && fields != null)
+                    <div class="indx-field-config-saving">
+                        <ProgressBar Value="_shadowBuildPercent" ShowLabel FulfilledColor />
+                        <p class="indx-field-config-saving-label">Reindexing...</p>
+                    </div>
+                }
+
+                @if (expandedFieldConfig.Contains(datasetName) && !isSaving)
+                {
+                    @if (_editedFieldConfigs.TryGetValue(datasetName, out var editedFields) && editedFields != null)
                     {
                         <div class="indx-table-wrap">
                             <table class="indx-table">
@@ -106,7 +124,7 @@ else
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var field in fields)
+                                    @foreach (var field in editedFields)
                                     {
                                         <tr>
                                             <td>
@@ -118,16 +136,22 @@ else
                                                     }
                                                 </div>
                                             </td>
-                                            <td>@BoolDisplay(field.Searchable)</td>
-                                            <td>@BoolDisplay(field.Filterable)</td>
-                                            <td>@BoolDisplay(field.Facetable)</td>
-                                            <td>@BoolDisplay(field.Sortable)</td>
-                                            <td>@BoolDisplay(field.WordIndexing)</td>
-                                            <td>@BoolDisplay(field.Embeddable)</td>
-                                            <td>@BoolDisplay(field.PreloadFilters)</td>
-                                            <td>@FloatDisplay(field.Weight)</td>
-                                            <td>@FloatDisplay(field.BM25Fb)</td>
-                                            <td>@FloatDisplay(field.BM25Fk1)</td>
+                                            <td class="indx-table-check"><Checkbox Checked="@(field.Searchable == true)" CheckedChanged="@(v => { field.Searchable = v; })" /></td>
+                                            <td class="indx-table-check"><Checkbox Checked="@(field.Filterable == true)" CheckedChanged="@(v => { field.Filterable = v; })" /></td>
+                                            <td class="indx-table-check"><Checkbox Checked="@(field.Facetable == true)" CheckedChanged="@(v => { field.Facetable = v; })" /></td>
+                                            <td class="indx-table-check"><Checkbox Checked="@(field.Sortable == true)" CheckedChanged="@(v => { field.Sortable = v; })" /></td>
+                                            <td class="indx-table-check"><Checkbox Checked="@(field.WordIndexing == true)" CheckedChanged="@(v => { field.WordIndexing = v; })" /></td>
+                                            <td class="indx-table-check"><Checkbox Checked="@(field.Embeddable == true)" CheckedChanged="@(v => { field.Embeddable = v; })" /></td>
+                                            <td class="indx-table-check"><Checkbox Checked="@(field.PreloadFilters == true)" CheckedChanged="@(v => { field.PreloadFilters = v; })" /></td>
+                                            <td><input class="indx-num-input" type="number" step="0.1" min="0"
+                                                       value="@(field.Weight.HasValue ? field.Weight.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                                       @onchange="@(e => { field.Weight = ParseFloat(e.Value?.ToString()); })" /></td>
+                                            <td><input class="indx-num-input" type="number" step="0.01" min="0" max="1"
+                                                       value="@(field.BM25Fb.HasValue ? field.BM25Fb.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                                       @onchange="@(e => { field.BM25Fb = ParseFloat(e.Value?.ToString()); })" /></td>
+                                            <td><input class="indx-num-input" type="number" step="0.1" min="0"
+                                                       value="@(field.BM25Fk1.HasValue ? field.BM25Fk1.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                                       @onchange="@(e => { field.BM25Fk1 = ParseFloat(e.Value?.ToString()); })" /></td>
                                         </tr>
                                     }
                                 </tbody>
@@ -150,7 +174,7 @@ else
                 }
                 else
                 {
-                    <Button Variant="secondary" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)">Delete</Button>
+                    <Button Variant="secondary" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)" disabled="@isSaving">Delete</Button>
                 }
         </Surface>
         </div>
@@ -169,6 +193,10 @@ else
     private string? deleteConfirmDataset = null;
     private HashSet<string> expandedFieldConfig = new();
     private Dictionary<string, FieldProxy[]?> fieldConfigs = new();
+    private Dictionary<string, FieldProxy[]> _editedFieldConfigs = new();
+    private string? _savingDataset;
+    private int _shadowBuildPercent;
+    private CancellationTokenSource? _pollingCts;
 
     private string GetVersion()
     {
@@ -176,7 +204,6 @@ else
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion ?? "";
 
-        // Remove git commit hash (everything after '+')
         var plusIndex = version.IndexOf('+');
         if (plusIndex > 0)
             version = version.Substring(0, plusIndex);
@@ -189,14 +216,12 @@ else
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
 
-        // Redirect non-authenticated users to login
         if (user.Identity == null || !user.Identity.IsAuthenticated)
         {
             NavigationManager.NavigateTo("/Account/Login", forceLoad: true);
             return;
         }
 
-        // Get userId from claims
         userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
 
         if (string.IsNullOrEmpty(userId))
@@ -205,7 +230,6 @@ else
             return;
         }
 
-        // Load datasets
         await LoadDatasets();
     }
 
@@ -219,11 +243,10 @@ else
             {
                 datasets = Array.Empty<string>();
                 return;
-            }   
+            }
             var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, "dummy", userId);
             datasets = persistence.GetUserDataSets(userId);
 
-            // Load status for each dataset
             datasetStatuses.Clear();
             if (datasets != null)
             {
@@ -276,13 +299,13 @@ else
                 deleteConfirmDataset = null;
                 expandedFieldConfig.Remove(datasetName);
                 fieldConfigs.Remove(datasetName);
+                _editedFieldConfigs.Remove(datasetName);
                 if (selectedDataset == datasetName) selectedDataset = null;
                 await LoadDatasets();
             }
         }
         catch (Exception ex)
         {
-            // Show error (for now just log to console)
             Console.WriteLine($"Error deleting dataset: {ex.Message}");
             deleteConfirmDataset = null;
         }
@@ -303,13 +326,144 @@ else
             try
             {
                 var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
-                fieldConfigs[datasetName] = engine?.GetFieldConfiguration();
+                var fields = engine?.GetFieldConfiguration();
+                fieldConfigs[datasetName] = fields;
+                if (fields != null)
+                    _editedFieldConfigs[datasetName] = fields.Select(DeepCopy).ToArray();
             }
             catch
             {
                 fieldConfigs[datasetName] = null;
             }
         }
+    }
+
+    private bool IsDirty(string datasetName)
+    {
+        if (!fieldConfigs.TryGetValue(datasetName, out var original) || original == null) return false;
+        if (!_editedFieldConfigs.TryGetValue(datasetName, out var edited) || edited == null) return false;
+        for (int i = 0; i < original.Length && i < edited.Length; i++)
+        {
+            var o = original[i];
+            var e = edited[i];
+            if ((o.Searchable ?? false) != (e.Searchable ?? false)) return true;
+            if ((o.Filterable ?? false) != (e.Filterable ?? false)) return true;
+            if ((o.Facetable ?? false) != (e.Facetable ?? false)) return true;
+            if ((o.Sortable ?? false) != (e.Sortable ?? false)) return true;
+            if ((o.WordIndexing ?? false) != (e.WordIndexing ?? false)) return true;
+            if ((o.Embeddable ?? false) != (e.Embeddable ?? false)) return true;
+            if ((o.PreloadFilters ?? false) != (e.PreloadFilters ?? false)) return true;
+            if (o.Weight != e.Weight) return true;
+            if (o.BM25Fb != e.BM25Fb) return true;
+            if (o.BM25Fk1 != e.BM25Fk1) return true;
+        }
+        return false;
+    }
+
+    private bool HasSearchable(string datasetName)
+    {
+        if (!_editedFieldConfigs.TryGetValue(datasetName, out var edited)) return true;
+        return edited.Any(f => f.Searchable == true);
+    }
+
+    private void CancelFieldConfig(string datasetName)
+    {
+        if (fieldConfigs.TryGetValue(datasetName, out var original) && original != null)
+            _editedFieldConfigs[datasetName] = original.Select(DeepCopy).ToArray();
+        else
+            _editedFieldConfigs.Remove(datasetName);
+    }
+
+    private async Task SaveFieldConfig(string datasetName)
+    {
+        if (!_editedFieldConfigs.TryGetValue(datasetName, out var edited)) return;
+        if (!HasSearchable(datasetName)) return;
+
+        _savingDataset = datasetName;
+        _shadowBuildPercent = 0;
+        StateHasChanged();
+
+        _pollingCts = new CancellationTokenSource();
+        var pollingTask = PollShadowProgress(datasetName, _pollingCts.Token);
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+                if (engine == null) return;
+
+                var df = engine.DocumentFields;
+                bool needsReindex = df?.RequiresReindex(edited) ?? false;
+
+                if (needsReindex && engine.Status.SystemState == SystemState.Ready)
+                {
+                    IndxCloudInternalApi.Manager.RunMutationOnShadow<int>(datasetName, userId!, e =>
+                    {
+                        e.SetFieldConfiguration(edited);
+                        return 0;
+                    });
+                }
+                else
+                {
+                    engine.SetFieldConfiguration(edited);
+                }
+            });
+
+            var freshEngine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+            var freshFields = freshEngine?.GetFieldConfiguration();
+            fieldConfigs[datasetName] = freshFields;
+            _editedFieldConfigs[datasetName] = freshFields?.Select(DeepCopy).ToArray() ?? [];
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"SaveFieldConfig failed: {ex.Message}");
+        }
+        finally
+        {
+            _pollingCts.Cancel();
+            try { await pollingTask; } catch { }
+            _savingDataset = null;
+            _shadowBuildPercent = 0;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PollShadowProgress(string datasetName, CancellationToken ct)
+    {
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                await Task.Delay(100, ct);
+                _shadowBuildPercent = IndxCloudInternalApi.Manager.GetShadowBuildPercent(datasetName, userId!);
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (OperationCanceledException) { break; }
+        }
+    }
+
+    private static FieldProxy DeepCopy(FieldProxy f) => new FieldProxy
+    {
+        FieldName = f.FieldName,
+        FieldType = f.FieldType,
+        IsArray = f.IsArray,
+        Searchable = f.Searchable ?? false,
+        Filterable = f.Filterable ?? false,
+        Facetable = f.Facetable ?? false,
+        Sortable = f.Sortable ?? false,
+        WordIndexing = f.WordIndexing ?? false,
+        Embeddable = f.Embeddable ?? false,
+        PreloadFilters = f.PreloadFilters ?? false,
+        Weight = f.Weight,
+        BM25Fb = f.BM25Fb,
+        BM25Fk1 = f.BM25Fk1
+    };
+
+    private static float? ParseFloat(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        return float.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var f) ? f : null;
     }
 
     private RenderFragment<int> _iconFields => size => @<Fields Size="size" />;

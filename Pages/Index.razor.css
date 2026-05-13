@@ -12,6 +12,53 @@
     margin-bottom: 12px;
 }
 
+.indx-field-config-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+.indx-field-config-error {
+    font: var(--text-xs);
+    color: var(--CSignal);
+}
+
+.indx-field-config-saving {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    max-width: 400px;
+}
+
+.indx-field-config-saving-label {
+    font: var(--text-sm);
+    color: var(--lv5);
+    white-space: nowrap;
+    margin: 0;
+}
+
+.indx-num-input {
+    width: 70px;
+    padding: 3px 6px;
+    font: var(--text-sm);
+    background: var(--lv1);
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius-sm, 4px);
+    color: var(--lv7);
+}
+
+.indx-num-input:focus {
+    outline: none;
+    border-color: var(--lv5);
+}
+
+.indx-table-check {
+    text-align: center;
+}
+
 .cell-inner {
     display: flex;
     align-items: center;
