@@ -36,20 +36,11 @@ else if (externalLogins.Count > 0)
                 <AntiforgeryToken />
                 <input type="hidden" name="provider" value="@provider.Name" />
                 <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                <button type="submit" class="btn-primary">
-                    @if (provider.Name == "Google")
-                    {
-                        <span>Sign in with Google</span>
-                    }
-                    else if (provider.Name == "Microsoft")
-                    {
-                        <span>Sign in with Microsoft</span>
-                    }
-                    else
-                    {
-                        <span>Sign in with @provider.DisplayName</span>
-                    }
-                </button>
+                <Button Type="submit" Variant="primary">
+                    @if (provider.Name == "Google") { <span>Sign in with Google</span> }
+                    else if (provider.Name == "Microsoft") { <span>Sign in with Microsoft</span> }
+                    else { <span>Sign in with @provider.DisplayName</span> }
+                </Button>
             </form>
         }
     </div>
@@ -90,7 +81,7 @@ else if (externalLogins.Count > 0)
         </label>
     </div>
 
-    <button type="submit" class="btn-secondary">Log in</button>
+    <Button Type="submit" Variant="secondary">Log in</Button>
 
     <div style="margin-top: 40px; display: flex; flex-direction: column;">
         <a href="/Account/Register?returnUrl=@ReturnUrl" style="font: var(--text-sm); margin-bottom: 20px;">Register as a new user</a>

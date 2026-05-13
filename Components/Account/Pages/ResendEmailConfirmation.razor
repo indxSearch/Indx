@@ -38,7 +38,7 @@
     </div>
 
     <div style="margin-top: 40px;">
-        <a href="/Account/Login" class="btn btn-secondary">Back to Login</a>
+        <Button Href="/Account/Login" Variant="secondary">Back to Login</Button>
     </div>
 }
 else
@@ -62,16 +62,10 @@ else
             <ValidationMessage For="() => Input.Email" />
         </div>
 
-        <button type="submit" class="btn-secondary" disabled="@isProcessing">
-            @if (isProcessing)
-            {
-                <span>Sending...</span>
-            }
-            else
-            {
-                <span>Resend Confirmation Email</span>
-            }
-        </button>
+        <Button Type="submit" Variant="secondary" Disabled="@isProcessing">
+            @if (isProcessing) { <span>Sending...</span> }
+            else { <span>Resend Confirmation Email</span> }
+        </Button>
 
         <div style="margin-top: 40px; display: flex; flex-direction: column;">
             <a href="/Account/Login" style="font: var(--text-sm);">Back to Login</a>

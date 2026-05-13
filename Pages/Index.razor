@@ -76,9 +76,9 @@ else
                 }
 
                 <div style="margin-top: 8px; margin-bottom: 8px;">
-                    <button class="btn-secondary btn-micro" @onclick="() => ToggleFieldConfig(datasetName)">
+                    <Button Variant="secondary" Size="micro" IconLeft="_iconFields" @onclick="() => ToggleFieldConfig(datasetName)">
                         @(expandedFieldConfig.Contains(datasetName) ? "Hide field configuration" : "Show field configuration")
-                    </button>
+                    </Button>
                 </div>
 
                 @if (expandedFieldConfig.Contains(datasetName))
@@ -141,13 +141,13 @@ else
                 {
                     <div>
                         <p>Are you sure? This cannot be undone.</p>
-                        <button @onclick="() => ConfirmDelete(datasetName)">Yes, Delete</button>
-                        <button @onclick="CancelDelete">Cancel</button>
+                        <Button Variant="danger" Size="micro" @onclick="() => ConfirmDelete(datasetName)">Yes, Delete</Button>
+                        <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
                     </div>
                 }
                 else
                 {
-                    <button class="btn-secondary btn-micro" @onclick="() => ShowDeleteConfirm(datasetName)">Delete</button>
+                    <Button Variant="secondary" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)">Delete</Button>
                 }
             </div>
         }
@@ -301,6 +301,9 @@ else
             }
         }
     }
+
+    private RenderFragment<int> _iconFields => size => @<Fields Size="size" />;
+    private RenderFragment<int> _iconDelete => size => @<Stop Size="size" />;
 
     private static string BoolDisplay(bool? value) => value switch
     {

@@ -38,16 +38,10 @@
 
 @if (string.IsNullOrEmpty(jwtToken))
 {
-    <button class="btn-primary" @onclick="GenerateToken" disabled="@isLoading">
-        @if (isLoading)
-        {
-            <span>Generating...</span>
-        }
-        else
-        {
-            <span>Generate API Token</span>
-        }
-    </button>
+    <Button Variant="primary" @onclick="GenerateToken" Disabled="@isLoading">
+        @if (isLoading) { <span>Generating...</span> }
+        else { <span>Generate API Token</span> }
+    </Button>
 }
 else if (!string.IsNullOrEmpty(jwtToken))
 {
@@ -62,11 +56,7 @@ else if (!string.IsNullOrEmpty(jwtToken))
             <textarea style="flex: 1; padding: 10px; border: 1px solid var(--lv3); border-radius: var(--radius); background: var(--lv0); color: var(--lv8); font-family: monospace; font-size: 11px;"
                   rows="6"
                   readonly>@jwtToken</textarea>
-            <button class="btn-secondary"
-                    type="button"
-                    @onclick="CopyToClipboard">
-                Copy
-            </button>
+            <Button Variant="secondary" @onclick="CopyToClipboard">Copy</Button>
         </div>
     </div>
 
@@ -131,12 +121,8 @@ else if (!string.IsNullOrEmpty(jwtToken))
         </div>
 
         <div style="margin-top: 40px; display: flex; gap: 10px;">
-            <button class="btn-secondary" @onclick="GenerateToken">
-                Regenerate Token
-            </button>
-            <a href="/swagger" class="btn btn-secondary">
-                View API Documentation
-            </a>
+            <Button Variant="secondary" @onclick="GenerateToken">Regenerate Token</Button>
+            <Button Href="/swagger" Variant="secondary">View API Documentation</Button>
         </div>
     </div>
 }
