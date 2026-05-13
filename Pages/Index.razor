@@ -89,7 +89,7 @@ else
                             <table class="indx-table">
                                 <thead>
                                     <tr>
-                                        <th>Field</th>
+                                        <th>Field and type</th>
                                         <th>Searchable</th>
                                         <th>Filterable</th>
                                         <th>Facetable</th>
@@ -106,7 +106,15 @@ else
                                     @foreach (var field in fields)
                                     {
                                         <tr>
-                                            <td>@field.FieldName</td>
+                                            <td>
+                                                <div class="cell-inner">
+                                                    <span>@field.FieldName</span>
+                                                    @if (field.FieldType != null)
+                                                    {
+                                                        <span class="cell-value">@(field.FieldType + (field.IsArray == true ? "[]" : ""))</span>
+                                                    }
+                                                </div>
+                                            </td>
                                             <td>@BoolDisplay(field.Searchable)</td>
                                             <td>@BoolDisplay(field.Filterable)</td>
                                             <td>@BoolDisplay(field.Facetable)</td>

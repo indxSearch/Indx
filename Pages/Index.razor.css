@@ -3,6 +3,20 @@
     margin-bottom: 12px;
 }
 
+.cell-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.cell-value {
+    font: var(--text-xs);
+    font-weight: var(--book);
+    color: var(--lv5);
+    white-space: nowrap;
+}
+
 .indx-table {
     width: 100%;
     border-collapse: collapse;
