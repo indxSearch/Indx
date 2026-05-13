@@ -15,7 +15,7 @@
     text-align: left;
     padding: 0 15px;
     height: 40px;
-    border: 1px solid var(--lv3);
+    border: 0.5px solid var(--lv3);
 }
 
 .indx-table thead tr {
