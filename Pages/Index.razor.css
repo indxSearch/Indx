@@ -1,0 +1,35 @@
+.indx-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 12px;
+}
+
+.indx-table {
+    width: 100%;
+    border-collapse: collapse;
+    font: var(--text-sm);
+    background-color: var(--lv0);
+}
+
+.indx-table th,
+.indx-table td {
+    text-align: left;
+    padding: 0 15px;
+    height: 40px;
+    border: 1px solid var(--lv3);
+}
+
+.indx-table thead tr {
+    background-color: var(--lv2);
+}
+
+.indx-table thead th {
+    font-weight: var(--med);
+}
+
+.indx-table tbody tr {
+    background-color: transparent;
+}
+
+.indx-table tbody td {
+    font-weight: var(--reg);
+}

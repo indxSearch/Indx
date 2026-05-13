@@ -6,6 +6,7 @@
 @using Indx.Api
 @using Indx.Storage
 @using IndxCloudApi.Models
+@using System.Globalization
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
@@ -74,6 +75,60 @@ else
                     </div>
                 }
 
+                <div style="margin-top: 8px; margin-bottom: 8px;">
+                    <button class="btn-secondary btn-micro" @onclick="() => ToggleFieldConfig(datasetName)">
+                        @(expandedFieldConfig.Contains(datasetName) ? "Hide field configuration" : "Show field configuration")
+                    </button>
+                </div>
+
+                @if (expandedFieldConfig.Contains(datasetName))
+                {
+                    @if (fieldConfigs.TryGetValue(datasetName, out var fields) && fields != null)
+                    {
+                        <div class="indx-table-wrap">
+                            <table class="indx-table">
+                                <thead>
+                                    <tr>
+                                        <th>Field</th>
+                                        <th>Searchable</th>
+                                        <th>Filterable</th>
+                                        <th>Facetable</th>
+                                        <th>Sortable</th>
+                                        <th>WordIndexing</th>
+                                        <th>Embeddable</th>
+                                        <th>PreloadFilters</th>
+                                        <th>Weight</th>
+                                        <th>BM25Fb</th>
+                                        <th>BM25Fk1</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var field in fields)
+                                    {
+                                        <tr>
+                                            <td>@field.FieldName</td>
+                                            <td>@BoolDisplay(field.Searchable)</td>
+                                            <td>@BoolDisplay(field.Filterable)</td>
+                                            <td>@BoolDisplay(field.Facetable)</td>
+                                            <td>@BoolDisplay(field.Sortable)</td>
+                                            <td>@BoolDisplay(field.WordIndexing)</td>
+                                            <td>@BoolDisplay(field.Embeddable)</td>
+                                            <td>@BoolDisplay(field.PreloadFilters)</td>
+                                            <td>@FloatDisplay(field.Weight)</td>
+                                            <td>@FloatDisplay(field.BM25Fb)</td>
+                                            <td>@FloatDisplay(field.BM25Fk1)</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p style="color: #888; font-style: italic;">No field configuration available.</p>
+                    }
+                }
+
                 @if (deleteConfirmDataset == datasetName)
                 {
                     <div>
@@ -97,6 +152,8 @@ else
     private bool isLoading = true;
     private string? userId;
     private string? deleteConfirmDataset = null;
+    private HashSet<string> expandedFieldConfig = new();
+    private Dictionary<string, FieldProxy[]?> fieldConfigs = new();
 
     private string GetVersion()
     {
@@ -200,6 +257,8 @@ else
             if (IndxCloudInternalApi.Manager.DeleteDataSet(datasetName, userId))
             {
                 deleteConfirmDataset = null;
+                expandedFieldConfig.Remove(datasetName);
+                fieldConfigs.Remove(datasetName);
                 await LoadDatasets(); // Reload the list
             }
         }
@@ -210,4 +269,38 @@ else
             deleteConfirmDataset = null;
         }
     }
+
+    private void ToggleFieldConfig(string datasetName)
+    {
+        if (expandedFieldConfig.Contains(datasetName))
+        {
+            expandedFieldConfig.Remove(datasetName);
+            return;
+        }
+
+        expandedFieldConfig.Add(datasetName);
+
+        if (!fieldConfigs.ContainsKey(datasetName))
+        {
+            try
+            {
+                var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+                fieldConfigs[datasetName] = engine?.GetFieldConfiguration();
+            }
+            catch
+            {
+                fieldConfigs[datasetName] = null;
+            }
+        }
+    }
+
+    private static string BoolDisplay(bool? value) => value switch
+    {
+        true => "✓",
+        false => "–",
+        null => "",
+    };
+
+    private static string FloatDisplay(float? value) =>
+        value.HasValue ? value.Value.ToString("G4", CultureInfo.InvariantCulture) : "";
 }
