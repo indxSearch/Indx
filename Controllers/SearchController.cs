@@ -620,6 +620,8 @@ namespace IndxCloudApi.Controllers
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized();
+            if (query == null)
+                return BadRequest("Search query body is required");
             Indx.Api.Result res = IndxCloudInternalApi.Manager.Search(query, dataSetName, userId);
             return res;
         }
