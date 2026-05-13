@@ -1,3 +1,12 @@
+.indx-datasets-heading {
+    margin-top: 40px;
+    margin-bottom: calc(var(--spacing) * 4);
+}
+
+.indx-dataset-card {
+    margin-top: calc(var(--spacing) * 4);
+}
+
 .indx-table-wrap {
     overflow-x: auto;
     margin-bottom: 12px;

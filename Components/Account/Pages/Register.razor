@@ -42,7 +42,7 @@ else
         <ValidationSummary style="color: var(--CSignal);" role="alert" />
 
         <div style="margin-bottom: 10px;">
-            <InputText @bind-Value="Input.Email" type="email" autocomplete="username" placeholder="Email" id="email" />
+            <InputField @bind-Value="Input.Email" type="email" autocomplete="username" placeholder="Email" id="email" />
             <ValidationMessage For="() => Input.Email" />
         </div>
 
@@ -54,12 +54,12 @@ else
         }
 
         <div style="margin-bottom: 10px;">
-            <InputText type="password" @bind-Value="Input.Password" autocomplete="new-password" placeholder="Password" id="password" />
+            <InputField type="password" @bind-Value="Input.Password" autocomplete="new-password" placeholder="Password" id="password" />
             <ValidationMessage For="() => Input.Password" />
         </div>
 
         <div style="margin-bottom: 10px;">
-            <InputText type="password" @bind-Value="Input.ConfirmPassword" autocomplete="new-password" placeholder="Confirm Password" id="confirm-password" />
+            <InputField type="password" @bind-Value="Input.ConfirmPassword" autocomplete="new-password" placeholder="Confirm Password" id="confirm-password" />
             <ValidationMessage For="() => Input.ConfirmPassword" />
         </div>
 

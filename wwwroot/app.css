@@ -232,10 +232,6 @@ a.btn:hover {
     opacity: 0.8;
 }
 
-button:hover:not(:disabled) {
-    opacity: 0.8;
-}
-
 button:disabled,
 .btn:disabled {
     opacity: 0.5;
@@ -422,7 +418,6 @@ a.btn-danger:hover {
     height: 30px;
     padding: 0 10px;
     text-decoration: none;
-    transition: all 0.15s;
     cursor: pointer;
 }
 
@@ -436,6 +431,12 @@ a.btn-danger:hover {
     background: var(--lv7);
     color: var(--lv1);
     font-weight: var(--med);
+}
+
+.nav a.active:hover {
+    background: var(--lv7);
+    color: var(--lv1);
+    opacity: 0.8;
 }
 
 /* Mobile */

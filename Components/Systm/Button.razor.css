@@ -58,7 +58,6 @@
 
 .indx-btn-secondary:hover:not(:disabled):not([aria-disabled="true"]) {
     border-color: var(--lv4);
-    opacity: 1;
 }
 
 .indx-btn-ghost {

@@ -14,7 +14,7 @@
 
 <h1>Indx Cloud API @GetVersion()</h1>
 
-<h2 style="margin-top: 40px;">Datasets</h2>
+<h2 class="indx-datasets-heading">Datasets</h2>
 
 @if (isLoading)
 {
@@ -26,13 +26,15 @@ else if (datasets == null || datasets.Length == 0)
 }
 else
 {
-    <div>
-        @foreach (var datasetName in datasets)
-        {
-            var status = datasetStatuses.ContainsKey(datasetName) ? datasetStatuses[datasetName] : null;
-            <div style="margin-bottom: 20px; padding: 10px; border: 1px solid #ccc;">
-                <h3>@datasetName</h3>
+    <Tabs Items="@datasets.Select(d => new Tabs.TabItem(d, d))"
+          @bind-Active="selectedDataset" />
 
+    @if (selectedDataset != null)
+    {
+        var datasetName = selectedDataset;
+        var status = datasetStatuses.ContainsKey(datasetName) ? datasetStatuses[datasetName] : null;
+        <div class="indx-dataset-card">
+        <Surface>
                 @if (status != null)
                 {
                     <div>
@@ -149,9 +151,9 @@ else
                 {
                     <Button Variant="secondary" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)">Delete</Button>
                 }
-            </div>
-        }
-    </div>
+        </Surface>
+        </div>
+    }
 }
 
 @code {
@@ -159,6 +161,7 @@ else
     private Dictionary<string, SystemStatus> datasetStatuses = new();
     private bool isLoading = true;
     private string? userId;
+    private string? selectedDataset;
     private string? deleteConfirmDataset = null;
     private HashSet<string> expandedFieldConfig = new();
     private Dictionary<string, FieldProxy[]?> fieldConfigs = new();
@@ -242,6 +245,8 @@ else
         finally
         {
             isLoading = false;
+            if (selectedDataset == null || datasets?.Contains(selectedDataset) == false)
+                selectedDataset = datasets?.FirstOrDefault();
         }
     }
 
@@ -267,7 +272,8 @@ else
                 deleteConfirmDataset = null;
                 expandedFieldConfig.Remove(datasetName);
                 fieldConfigs.Remove(datasetName);
-                await LoadDatasets(); // Reload the list
+                if (selectedDataset == datasetName) selectedDataset = null;
+                await LoadDatasets();
             }
         }
         catch (Exception ex)

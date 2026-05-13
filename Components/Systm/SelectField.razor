@@ -1,0 +1,63 @@
+@if (!string.IsNullOrEmpty(Label))
+{
+    <div class="indx-select-wrapper">
+        <label for="@_id" class="indx-select-label">@Label</label>
+        <div class="indx-select-trigger">
+            <select id="@_id"
+                    class="indx-select"
+                    value="@Value"
+                    @onchange="OnChange"
+                    @attributes="AdditionalAttributes">
+                @if (!string.IsNullOrEmpty(Placeholder))
+                {
+                    <option value="" disabled selected="@(string.IsNullOrEmpty(Value))">@Placeholder</option>
+                }
+                @foreach (var option in Options)
+                {
+                    <option value="@option.Value" selected="@(Value == option.Value)">@option.Label</option>
+                }
+            </select>
+            <span class="indx-select-icon" aria-hidden="true"><ChevronDown Size="10" /></span>
+        </div>
+    </div>
+}
+else
+{
+    <div class="indx-select-trigger">
+        <select id="@_id"
+                class="indx-select"
+                value="@Value"
+                @onchange="OnChange"
+                @attributes="AdditionalAttributes">
+            @if (!string.IsNullOrEmpty(Placeholder))
+            {
+                <option value="" disabled selected="@(string.IsNullOrEmpty(Value))">@Placeholder</option>
+            }
+            @foreach (var option in Options)
+            {
+                <option value="@option.Value" selected="@(Value == option.Value)">@option.Label</option>
+            }
+        </select>
+        <span class="indx-select-icon" aria-hidden="true"><ChevronDown Size="10" /></span>
+    </div>
+}
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter, EditorRequired] public IEnumerable<SelectOption> Options { get; set; } = [];
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _id => Id ?? _generatedId;
+    private readonly string _generatedId = $"select-{Guid.NewGuid():N}";
+
+    private async Task OnChange(ChangeEventArgs e)
+    {
+        await ValueChanged.InvokeAsync(e.Value?.ToString());
+    }
+
+    public record SelectOption(string Label, string Value);
+}
