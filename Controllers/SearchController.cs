@@ -228,13 +228,8 @@ namespace IndxCloudApi.Controllers
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized();
-            var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, dataSetName, userId);
-            if (!persistence.DataSetExists())
+            if (!IndxCloudInternalApi.Manager.DeleteDataSet(dataSetName, userId))
                 return BadRequest("Attempt to delete non exixting dataset");
-
-            IndxCloudInternalApi.Manager.DisposeDataSetInstance(dataSetName, userId);
-
-            persistence.DeleteDataSet();
             return Ok();
         }
 

@@ -424,6 +424,14 @@
             <param name="dataSetName">The dataset name to clean up</param>
             <param name="userId">The user ID that owns the dataset</param>
         </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.DeleteDataSet(System.String,System.String)">
+            <summary>
+            Deletes a dataset: disposes the in-memory engine and removes the SQLite row.
+            Single entry point so every caller (REST controller, Blazor UI, etc.) shares
+            the same cleanup order and cannot accidentally skip the _instances eviction.
+            </summary>
+            <returns><c>true</c> if the dataset existed and was deleted; <c>false</c> if it did not exist.</returns>
+        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunMutationOnShadow``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})">
             <summary>
             Runs <paramref name="mutation"/> on a shadow SearchEngine and swaps it in

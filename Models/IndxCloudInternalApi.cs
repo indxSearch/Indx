@@ -301,15 +301,36 @@ namespace IndxCloudApi.Models
                     try
                     {
                         instance?.theInstance?.Dispose();
-                        _instances.Remove(key);
                         _logger.LogInformation($"Disposed SearchEngine instance for user {userId}, dataset {dataSetName}");
                     }
                     catch (Exception ex)
                     {
+                        // A stale entry surviving here re-serves "deleted" data on the next FindInstance.
                         _logger.LogError($"Error disposing SearchEngine instance {key}: {ex.Message}");
+                    }
+                    finally
+                    {
+                        _instances.Remove(key);
                     }
                 }
             }
+        }
+
+        /// <summary>
+        /// Deletes a dataset: disposes the in-memory engine and removes the SQLite row.
+        /// Single entry point so every caller (REST controller, Blazor UI, etc.) shares
+        /// the same cleanup order and cannot accidentally skip the _instances eviction.
+        /// </summary>
+        /// <returns><c>true</c> if the dataset existed and was deleted; <c>false</c> if it did not exist.</returns>
+        internal bool DeleteDataSet(string dataSetName, string userId)
+        {
+            var persistence = new Persistence(SearchDbConnectionString, dataSetName, userId);
+            if (!persistence.DataSetExists())
+                return false;
+
+            DisposeDataSetInstance(dataSetName, userId);
+            persistence.DeleteDataSet();
+            return true;
         }
 
         internal bool SetEmbeddableFields(string[] fieldNames, string dataSetName, string userId)

@@ -197,10 +197,8 @@ else
 
         try
         {
-            var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, datasetName, userId);
-            if (persistence.DataSetExists())
+            if (IndxCloudInternalApi.Manager.DeleteDataSet(datasetName, userId))
             {
-                persistence.DeleteDataSet();
                 deleteConfirmDataset = null;
                 await LoadDatasets(); // Reload the list
             }
