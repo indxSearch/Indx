@@ -40,6 +40,9 @@
     --text-3xl: 350 30px/1 var(--font-family);
     --text-4xl: 350 36px/1 var(--font-family);
 
+    --pattern-checkerboard-light: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23080809'/%3E%3Crect x='1' width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-checkerboard-dark: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='1' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+
     --light: 300;
     --book: 350;
     --reg: 400;
@@ -51,6 +54,8 @@
 /* Dark mode via system preference */
 @media (prefers-color-scheme: dark) {
     :root {
+        --pattern-checkerboard-light: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='1' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+
         --lv0: #080809;
         --lv1: #121215;
         --lv2: #1A1A21;
