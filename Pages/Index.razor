@@ -13,6 +13,7 @@
 <PageTitle>Indx Cloud API</PageTitle>
 
 <h1>Indx Cloud API @GetVersion()</h1>
+<p style="color: var(--lv5); margin-top: 4px;">Powered by Indx @_indxVersion</p>
 
 <h2 class="indx-datasets-heading">Datasets</h2>
 
@@ -44,7 +45,7 @@ else
                         <p><strong>Seconds To Index:</strong> @status.SecondsToIndex</p>
                         <p><strong>Time Of Instance Creation:</strong> @status.TimeOfInstanceCreation</p>
                         <p><strong>Time Of Last Index Build:</strong> @status.TimeOfLastIndexBuild</p>
-                        <p><strong>Version:</strong> @status.Version</p>
+
 
                         @if (status.LicenseInfo?.DocumentLimitExceeded == true)
                         {
@@ -157,6 +158,9 @@ else
 }
 
 @code {
+    private static readonly string _indxVersion =
+        Assembly.GetAssembly(typeof(SearchEngine))?.GetName().Version?.ToString(3) ?? "";
+
     private string[]? datasets;
     private Dictionary<string, SystemStatus> datasetStatuses = new();
     private bool isLoading = true;
