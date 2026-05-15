@@ -440,16 +440,27 @@
             the same (dataSetName, userId) key.
             </summary>
         </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunFieldConfigurationOnShadow(System.String,System.String,Indx.Api.FieldProxy[])">
+            <summary>
+            Builds a shadow with the supplied field configuration applied between Init and
+            Load, then atomically swaps it in. Use this for SetFieldConfiguration changes
+            that flip Searchable/WordIndexing/Embeddable/BM25Fb/BM25Fk1: those flags are
+            consumed during LoadSync to build _indexableFields, so they must be set before
+            Load runs. Applying them via the post-mutation callback in
+            <see cref="M:IndxCloudApi.Models.IndxCloudInternalApi.RunMutationOnShadow``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})"/> would leave _indexableFields in the
+            pre-mutation shape and the change would silently have no search-time effect.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.IsShadowBuildInProgress(System.String,System.String)">
             <summary>True while a shadow build is in progress for the given dataset.</summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ShadowBuildStartedUtc(System.String,System.String)">
             <summary>UTC timestamp at which the in-progress shadow build started, or null if none.</summary>
         </member>
-        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.BuildShadowFrom(Indx.Api.ICloudSearchEngine,System.String,System.String)">
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.BuildShadowFrom(Indx.Api.ICloudSearchEngine,System.String,System.String,Indx.Api.FieldProxy[])">
             <summary>
             Builds a shadow SearchEngine from the original's live in-memory state via
-            <see cref="M:Indx.Api.SearchEngine.CreateInMemoryClone(Indx.Api.ProcessMonitor)"/>, then attaches a fresh
+            <see cref="M:Indx.Api.SearchEngine.CreateInMemoryClone(Indx.Api.ProcessMonitor,Indx.Api.FieldProxy[])"/>, then attaches a fresh
             SQLite connection so mutations applied to the shadow persist independently.
             No SQLite roundtrip is involved in copying the document set — only the
             subsequent mutation writes.

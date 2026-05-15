@@ -802,20 +802,23 @@ namespace IndxCloudApi.Controllers
 
             // If any proposed change requires rebuilding the inverted/word/vector index
             // AND the engine is currently serving searches, route via the shadow-swap path
-            // so live searches are not blocked while the new index is built.
+            // so live searches are not blocked while the new index is built. The override
+            // is applied between Init and Load on the shadow so MakeSearchEngines builds
+            // _indexableFields against the new Searchable set — flipping the flag after
+            // Load has no effect because that collection is never refreshed.
             bool needsReindex = df.RequiresReindex(fields);
             if (needsReindex && matcher.Status.SystemState == SystemState.Ready)
             {
+                // Validate up front against the active engine so we can return BadRequest
+                // before kicking off the shadow build.
+                foreach (var cfg in fields)
+                    if (df.GetField(cfg.FieldName) == null)
+                        return BadRequest(
+                            $"SearchController.SetFieldConfiguration non existing fieldname: {cfg.FieldName}");
+
                 try
                 {
-                    IndxCloudInternalApi.Manager.RunMutationOnShadow<int>(dataSetName, userId, engine =>
-                    {
-                        var bad = engine.SetFieldConfiguration(fields);
-                        if (bad != null)
-                            throw new InvalidOperationException(
-                                $"SetFieldConfiguration non existing fieldname: {bad}");
-                        return 0;
-                    });
+                    IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(dataSetName, userId, fields);
                     return Ok();
                 }
                 catch (ShadowBusyException ex)

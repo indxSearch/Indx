@@ -110,6 +110,73 @@ namespace IndxCloudApi.Models
             }
         }
 
+        /// <summary>
+        /// Builds a shadow with the supplied field configuration applied between Init and
+        /// Load, then atomically swaps it in. Use this for SetFieldConfiguration changes
+        /// that flip Searchable/WordIndexing/Embeddable/BM25Fb/BM25Fk1: those flags are
+        /// consumed during LoadSync to build _indexableFields, so they must be set before
+        /// Load runs. Applying them via the post-mutation callback in
+        /// <see cref="RunMutationOnShadow{TResult}"/> would leave _indexableFields in the
+        /// pre-mutation shape and the change would silently have no search-time effect.
+        /// </summary>
+        internal void RunFieldConfigurationOnShadow(
+            string dataSetName,
+            string userId,
+            FieldProxy[] fields)
+        {
+            var key = MakeKey(dataSetName, userId);
+            if (!_shadowBuildsInProgress.TryAdd(key, DateTime.UtcNow))
+                throw new ShadowBusyException(dataSetName);
+
+            SearchEngine? shadow = null;
+            try
+            {
+                SearchEngineInstance container;
+                ICloudSearchEngine original;
+                lock (_dictionaryLock)
+                {
+                    if (!_instances.TryGetValue(key, out var found) || found?.theInstance == null)
+                        throw new InvalidOperationException($"No active instance for dataset '{dataSetName}'");
+                    container = found;
+                    original = found.theInstance;
+                }
+
+                shadow = BuildShadowFrom(original, dataSetName, userId, fields);
+
+                ICloudSearchEngine? swappedOut;
+                lock (_dictionaryLock)
+                {
+                    swappedOut = container.theInstance;
+                    container.theInstance = shadow;
+                }
+                shadow = null;
+
+                if (swappedOut != null)
+                    _ = Task.Run(() => DisposeAfterGraceAsync(swappedOut, dataSetName, userId));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "{Prefix}RunFieldConfigurationOnShadow failed",
+                    MakeLogPrefix(userId, dataSetName));
+                throw;
+            }
+            finally
+            {
+                if (shadow != null)
+                {
+                    try { shadow.Dispose(); }
+                    catch (Exception disposeEx)
+                    {
+                        _logger.LogError(disposeEx,
+                            "{Prefix}Failed to dispose abandoned shadow",
+                            MakeLogPrefix(userId, dataSetName));
+                    }
+                }
+                _shadowBuildsInProgress.TryRemove(key, out _);
+            }
+        }
+
         /// <summary>True while a shadow build is in progress for the given dataset.</summary>
         internal bool IsShadowBuildInProgress(string dataSetName, string userId)
             => _shadowBuildsInProgress.ContainsKey(MakeKey(dataSetName, userId));
@@ -126,13 +193,17 @@ namespace IndxCloudApi.Models
         /// No SQLite roundtrip is involved in copying the document set — only the
         /// subsequent mutation writes.
         /// </summary>
-        private SearchEngine BuildShadowFrom(ICloudSearchEngine original, string dataSetName, string userId)
+        private SearchEngine BuildShadowFrom(
+            ICloudSearchEngine original,
+            string dataSetName,
+            string userId,
+            FieldProxy[]? fieldOverrides = null)
         {
             if (original is not SearchEngine concreteOriginal)
                 throw new InvalidOperationException(
                     $"Cannot build shadow for '{dataSetName}': original is not a SearchEngine instance");
 
-            var shadow = concreteOriginal.CreateInMemoryClone();
+            var shadow = concreteOriginal.CreateInMemoryClone(fieldOverrides: fieldOverrides);
 
             // Attach a fresh Persistence pointing at the same SQLite file. SQLite supports
             // multiple connections; the original's persistence is left alone so disposing
