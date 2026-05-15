@@ -1,0 +1,11 @@
+<svg width="@_width" height="@_height" viewBox="0 0 7 5" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M2 5H1L1 4H2L2 5ZM3 3H4V4L2 4L2 2H3V3ZM5 3H4V2H5V3ZM4 2L3 2L3 1L4 1V2ZM6 2L5 2V1L4 1V0L6 0V2Z" fill="@Color"/>
+</svg>
+
+@code {
+    [Parameter] public string Color { get; set; } = "currentColor";
+    [Parameter] public int Size { get; set; } = 21;
+
+    private string _width => $"{Size}px";
+    private string _height => $"{Size * 0.7142857142857143:F2}px";
+}

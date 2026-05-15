@@ -25,6 +25,7 @@ namespace IndxCloudApi.Models
     internal sealed partial class IndxCloudInternalApi
     {
         private readonly ConcurrentDictionary<string, DateTime> _shadowBuildsInProgress = new();
+        private readonly ConcurrentDictionary<string, ProcessMonitor> _shadowMonitors = new();
         private const int DisposalGraceSeconds = 30;
         private const int DisposalPollMilliseconds = 200;
 
@@ -67,7 +68,7 @@ namespace IndxCloudApi.Models
                 // (Searchable/BM25Fb/BM25Fk1/WordIndexing/Embeddable). For pure document
                 // mutations (insert/update/delete) this is a no-op against an already
                 // up-to-date index, but the safety guarantee is worth the cost.
-                RunIndex(shadow, "post-mutation");
+                RunIndex(shadow, key, "post-mutation");
 
                 // Atomic swap. The container reference returned by FindInstance keeps any
                 // already-routed searches pointing at the same SearchEngineInstance; only
@@ -186,6 +187,10 @@ namespace IndxCloudApi.Models
             => _shadowBuildsInProgress.TryGetValue(MakeKey(dataSetName, userId), out var started)
                 ? started : null;
 
+        /// <summary>Progress percentage (0–100) of the current shadow build's index phase, or 0 if none.</summary>
+        internal int GetShadowBuildPercent(string dataSetName, string userId)
+            => _shadowMonitors.TryGetValue(MakeKey(dataSetName, userId), out var m) ? m.ProgressPercent : 0;
+
         /// <summary>
         /// Builds a shadow SearchEngine from the original's live in-memory state via
         /// <see cref="SearchEngine.CreateInMemoryClone"/>, then attaches a fresh
@@ -213,14 +218,22 @@ namespace IndxCloudApi.Models
             return shadow;
         }
 
-        private static void RunIndex(SearchEngine shadow, string phase)
+        private void RunIndex(SearchEngine shadow, string key, string phase)
         {
             var monitor = new ProcessMonitor();
-            shadow.Index(monitor: monitor);
-            monitor.WaitForCompletion();
-            if (!monitor.Succeeded)
-                throw new InvalidOperationException(
-                    $"Shadow Index ({phase}) failed: {monitor.ErrorMessage ?? "unknown error"}");
+            _shadowMonitors[key] = monitor;
+            try
+            {
+                shadow.Index(monitor: monitor);
+                monitor.WaitForCompletion();
+                if (!monitor.Succeeded)
+                    throw new InvalidOperationException(
+                        $"Shadow Index ({phase}) failed: {monitor.ErrorMessage ?? "unknown error"}");
+            }
+            finally
+            {
+                _shadowMonitors.TryRemove(key, out _);
+            }
         }
 
         /// <summary>

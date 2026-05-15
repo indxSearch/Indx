@@ -1,0 +1,105 @@
+.indx-datasets-heading {
+    margin-top: 40px;
+    margin-bottom: calc(var(--spacing) * 4);
+}
+
+.indx-dataset-card {
+    margin-top: calc(var(--spacing) * 4);
+}
+
+.indx-table-wrap {
+    overflow-x: auto;
+    margin-bottom: 12px;
+}
+
+.indx-field-config-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+}
+
+.indx-field-config-error {
+    font: var(--text-xs);
+    color: var(--CSignal);
+}
+
+.indx-field-config-saving {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    max-width: 400px;
+}
+
+.indx-field-config-saving-label {
+    font: var(--text-sm);
+    color: var(--lv5);
+    white-space: nowrap;
+    margin: 0;
+}
+
+.indx-num-input {
+    width: 70px;
+    padding: 3px 6px;
+    font: var(--text-sm);
+    background: var(--lv1);
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius-sm, 4px);
+    color: var(--lv7);
+}
+
+.indx-num-input:focus {
+    outline: none;
+    border-color: var(--lv5);
+}
+
+.indx-table-check {
+    text-align: center;
+}
+
+.cell-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.cell-value {
+    font: var(--text-xs);
+    font-weight: var(--book);
+    color: var(--lv5);
+    white-space: nowrap;
+}
+
+.indx-table {
+    width: 100%;
+    border-collapse: collapse;
+    font: var(--text-sm);
+    background-color: var(--lv0);
+}
+
+.indx-table th,
+.indx-table td {
+    text-align: left;
+    padding: 0 15px;
+    height: 40px;
+    border: 0.5px solid var(--lv3);
+}
+
+.indx-table thead tr {
+    background-color: var(--lv2);
+}
+
+.indx-table thead th {
+    font-weight: var(--med);
+}
+
+.indx-table tbody tr {
+    background-color: transparent;
+}
+
+.indx-table tbody td {
+    font-weight: var(--reg);
+}

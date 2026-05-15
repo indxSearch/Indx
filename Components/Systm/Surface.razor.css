@@ -1,0 +1,11 @@
+.indx-surface {
+    border-radius: var(--radius);
+    background: var(--lv2);
+    padding: var(--spacing);
+}
+
+@media (prefers-color-scheme: dark) {
+    .indx-surface {
+        background: var(--lv1);
+    }
+}

@@ -26,28 +26,20 @@
 }
 
 <div style="margin: 40px 0;">
-    <label style="display: block; margin-bottom: 10px;"><strong>Token Expiration:</strong></label>
-    <select style="width: 100%; padding: 10px; border: 1px solid var(--lv3); border-radius: var(--radius); background: var(--lv0); color: var(--lv8);" @bind="selectedExpirationDays" disabled="@isLoading">
-        <option value="30">30 Days</option>
-        <option value="90">90 Days (Recommended)</option>
-        <option value="180">180 Days (6 Months)</option>
-        <option value="365">365 Days (1 Year)</option>
-    </select>
+    <SelectField Label="Token Expiration"
+                 Value="@selectedExpirationDays.ToString()"
+                 ValueChanged="@(v => selectedExpirationDays = int.TryParse(v, out var d) ? d : 90)"
+                 Options="@_expirationOptions"
+                 disabled="@isLoading" />
     <p style="color: var(--lv5); margin-top: 5px; font-size: 13px;">Choose how long your API token will remain valid.</p>
 </div>
 
 @if (string.IsNullOrEmpty(jwtToken))
 {
-    <button class="btn-primary" @onclick="GenerateToken" disabled="@isLoading">
-        @if (isLoading)
-        {
-            <span>Generating...</span>
-        }
-        else
-        {
-            <span>Generate API Token</span>
-        }
-    </button>
+    <Button Variant="primary" @onclick="GenerateToken" Disabled="@isLoading">
+        @if (isLoading) { <span>Generating...</span> }
+        else { <span>Generate API Token</span> }
+    </Button>
 }
 else if (!string.IsNullOrEmpty(jwtToken))
 {
@@ -62,11 +54,7 @@ else if (!string.IsNullOrEmpty(jwtToken))
             <textarea style="flex: 1; padding: 10px; border: 1px solid var(--lv3); border-radius: var(--radius); background: var(--lv0); color: var(--lv8); font-family: monospace; font-size: 11px;"
                   rows="6"
                   readonly>@jwtToken</textarea>
-            <button class="btn-secondary"
-                    type="button"
-                    @onclick="CopyToClipboard">
-                Copy
-            </button>
+            <Button Variant="secondary" @onclick="CopyToClipboard">Copy</Button>
         </div>
     </div>
 
@@ -131,12 +119,8 @@ else if (!string.IsNullOrEmpty(jwtToken))
         </div>
 
         <div style="margin-top: 40px; display: flex; gap: 10px;">
-            <button class="btn-secondary" @onclick="GenerateToken">
-                Regenerate Token
-            </button>
-            <a href="/swagger" class="btn btn-secondary">
-                View API Documentation
-            </a>
+            <Button Variant="secondary" @onclick="GenerateToken">Regenerate Token</Button>
+            <Button Href="/swagger" Variant="secondary">View API Documentation</Button>
         </div>
     </div>
 }
@@ -148,6 +132,14 @@ else if (!string.IsNullOrEmpty(jwtToken))
     private string? errorMessage;
     private bool isLoading = false;
     private int selectedExpirationDays = 90;
+
+    private static readonly SelectField.SelectOption[] _expirationOptions =
+    [
+        new("30 Days", "30"),
+        new("90 Days (Recommended)", "90"),
+        new("180 Days (6 Months)", "180"),
+        new("365 Days (1 Year)", "365"),
+    ];
     private int expirationDaysUsed = 90;
 
     protected override Task OnInitializedAsync()

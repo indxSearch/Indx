@@ -1,0 +1,88 @@
+.indx-btn {
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    border-radius: var(--radius);
+    border: none;
+    box-sizing: border-box;
+    text-decoration: none;
+    line-height: normal;
+}
+
+.indx-btn:focus-visible {
+    outline: 2px solid var(--lv5);
+    outline-offset: 2px;
+}
+
+/* Sizes */
+.indx-btn-micro {
+    font: var(--text-xs);
+    font-weight: var(--med);
+    height: 30px;
+    padding: 0 10px;
+    gap: 7px;
+}
+
+.indx-btn-default {
+    font: var(--text-sm);
+    font-weight: var(--med);
+    height: 40px;
+    padding: 0 15px;
+    gap: 10px;
+}
+
+.indx-btn-large {
+    font: var(--text-base);
+    font-weight: var(--med);
+    height: 50px;
+    padding: 0 20px;
+    gap: 10px;
+}
+
+/* Variants */
+.indx-btn-primary {
+    background: var(--lv7);
+    color: var(--lv1);
+    border: none;
+}
+
+.indx-btn-primary:hover:not(:disabled):not([aria-disabled="true"]) {
+    opacity: 0.8;
+}
+
+.indx-btn-secondary {
+    background: transparent;
+    border: 1px solid var(--lv3);
+    color: var(--lv6);
+}
+
+.indx-btn-secondary:hover:not(:disabled):not([aria-disabled="true"]) {
+    border-color: var(--lv4);
+}
+
+.indx-btn-ghost {
+    background: transparent;
+    border: none;
+    color: var(--lv5);
+}
+
+.indx-btn-ghost:hover:not(:disabled):not([aria-disabled="true"]) {
+    background: var(--lv2);
+}
+
+.indx-btn-danger {
+    background: var(--CSignal);
+    color: var(--lv0);
+    border: none;
+}
+
+.indx-btn-danger:hover:not(:disabled):not([aria-disabled="true"]) {
+    opacity: 0.8;
+}
+
+/* Disabled state */
+.indx-btn:disabled,
+.indx-btn[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

@@ -54,16 +54,10 @@
                     }
                     else
                     {
-                        <button class="btn-ghost btn-micro" style="margin-top: 10px;" @onclick="ResendConfirmationEmail" disabled="@isResending">
-                            @if (isResending)
-                            {
-                                <span>Sending...</span>
-                            }
-                            else
-                            {
-                                <span>Resend Confirmation Email</span>
-                            }
-                        </button>
+                        <Button Variant="ghost" Size="micro" style="margin-top: 10px;" @onclick="ResendConfirmationEmail" Disabled="@isResending">
+                            @if (isResending) { <span>Sending...</span> }
+                            else { <span>Resend Confirmation Email</span> }
+                        </Button>
                     }
                 }
             </div>
@@ -118,28 +112,20 @@
                     {
                         <form action="Account/Manage/DeleteAccount" method="post">
                             <AntiforgeryToken />
-                            <button type="submit" class="btn-danger">
-                                Yes, Delete My Account
-                            </button>
+                            <Button Type="submit" Variant="danger">Yes, Delete My Account</Button>
                         </form>
                     }
                     else
                     {
-                        <button class="btn-danger" disabled>
-                            Yes, Delete My Account
-                        </button>
+                        <Button Variant="danger" Disabled="true">Yes, Delete My Account</Button>
                     }
-                    <button class="btn-secondary" @onclick="CancelDelete">
-                        Cancel
-                    </button>
+                    <Button Variant="secondary" @onclick="CancelDelete">Cancel</Button>
                 </div>
             </div>
         }
         else
         {
-            <button class="btn-secondary" style="margin-top: 20px;" @onclick="ShowDeleteConfirmation">
-                Delete My Account
-            </button>
+            <Button Variant="secondary" style="margin-top: 20px;" @onclick="ShowDeleteConfirmation">Delete My Account</Button>
         }
     </div>
 }

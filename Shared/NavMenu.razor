@@ -1,21 +1,31 @@
-﻿<nav class="nav">
-    <NavLink href="" Match="NavLinkMatch.All">
-        Home
-    </NavLink>
+@inject NavigationManager NavigationManager
+
+<nav class="nav">
+    <Button Href="/" Variant="@NavVariant("/", exact: true)" Size="micro" IconLeft="_iconHome">Home</Button>
     <AuthorizeView>
         <Authorized>
-            <NavLink href="Account/ApiKey">
-                API Key
-            </NavLink>
-            <NavLink href="Account/Manage">
-                Account
-            </NavLink>
-            <NavLink href="Account/License">
-                License
-            </NavLink>
+            <Button Href="Account/ApiKey" Variant="@NavVariant("Account/ApiKey")" Size="micro" IconLeft="_iconKey">API Key</Button>
+            <Button Href="Account/Manage" Variant="@NavVariant("Account/Manage")" Size="micro" IconLeft="_iconUser">Account</Button>
+            <Button Href="Account/License" Variant="@NavVariant("Account/License")" Size="micro" IconLeft="_iconDoc">License</Button>
         </Authorized>
     </AuthorizeView>
-    <NavLink href="swagger">
-        Swagger
-    </NavLink>
+    <Button Href="swagger" Variant="@NavVariant("swagger")" Size="micro" IconLeft="_iconApi">Swagger</Button>
 </nav>
+
+@code {
+    private RenderFragment<int> _iconHome => size => @<Home Size="size" />;
+    private RenderFragment<int> _iconKey  => size => @<Key Size="size" />;
+    private RenderFragment<int> _iconUser => size => @<User Size="size" />;
+    private RenderFragment<int> _iconDoc  => size => @<DocumentOrFile Size="size" />;
+    private RenderFragment<int> _iconApi  => size => @<Api Size="size" />;
+
+    private string NavVariant(string href, bool exact = false)
+    {
+        var current = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/');
+        var target = href.Trim('/');
+        var isActive = exact
+            ? current.Equals(target, StringComparison.OrdinalIgnoreCase)
+            : current.StartsWith(target, StringComparison.OrdinalIgnoreCase) && target.Length > 0;
+        return isActive ? "primary" : "ghost";
+    }
+}

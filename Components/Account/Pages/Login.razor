@@ -36,20 +36,11 @@ else if (externalLogins.Count > 0)
                 <AntiforgeryToken />
                 <input type="hidden" name="provider" value="@provider.Name" />
                 <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                <button type="submit" class="btn-primary">
-                    @if (provider.Name == "Google")
-                    {
-                        <span>Sign in with Google</span>
-                    }
-                    else if (provider.Name == "Microsoft")
-                    {
-                        <span>Sign in with Microsoft</span>
-                    }
-                    else
-                    {
-                        <span>Sign in with @provider.DisplayName</span>
-                    }
-                </button>
+                <Button Type="submit" Variant="primary">
+                    @if (provider.Name == "Google") { <span>Sign in with Google</span> }
+                    else if (provider.Name == "Microsoft") { <span>Sign in with Microsoft</span> }
+                    else { <span>Sign in with @provider.DisplayName</span> }
+                </Button>
             </form>
         }
     </div>
@@ -65,32 +56,28 @@ else if (externalLogins.Count > 0)
     <ValidationSummary style="color: var(--CSignal);" role="alert" />
 
     <div style="margin-bottom: 10px;">
-        <InputText @bind-Value="Input.Email"
-                   type="email"
-                   autocomplete="username"
-                   placeholder="Email"
-                   id="email" />
+        <InputField @bind-Value="Input.Email"
+                    type="email"
+                    autocomplete="username"
+                    placeholder="Email"
+                    id="email" />
         <ValidationMessage For="() => Input.Email" />
     </div>
 
     <div style="margin-bottom: 10px;">
-        <InputText type="password"
-                   @bind-Value="Input.Password"
-                   autocomplete="current-password"
-                   placeholder="Password"
-                   id="password" />
+        <InputField type="password"
+                    @bind-Value="Input.Password"
+                    autocomplete="current-password"
+                    placeholder="Password"
+                    id="password" />
         <ValidationMessage For="() => Input.Password" />
     </div>
 
-    <div style="margin-bottom: 20px; display: flex; align-items: center; gap: 8px;">
-        <InputCheckbox @bind-Value="Input.RememberMe"
-                       id="rememberMe" />
-        <label for="rememberMe" style="margin: 0; cursor: pointer;">
-            Remember me
-        </label>
+    <div style="margin-bottom: 20px;">
+        <Checkbox @bind-Checked="Input.RememberMe" Label="Remember me" />
     </div>
 
-    <button type="submit" class="btn-secondary">Log in</button>
+    <Button Type="submit" Variant="secondary">Log in</Button>
 
     <div style="margin-top: 40px; display: flex; flex-direction: column;">
         <a href="/Account/Register?returnUrl=@ReturnUrl" style="font: var(--text-sm); margin-bottom: 20px;">Register as a new user</a>

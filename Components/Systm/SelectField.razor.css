@@ -1,0 +1,55 @@
+.indx-select-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.indx-select-label {
+    font: var(--text-xs);
+    color: var(--lv6);
+}
+
+.indx-select-trigger {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.indx-select {
+    appearance: none;
+    -webkit-appearance: none;
+    font: var(--text-sm);
+    padding: 0 36px 0 15px;
+    height: 40px;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    background: var(--lv0);
+    color: var(--lv7);
+    box-sizing: border-box;
+    width: 100%;
+    cursor: pointer;
+}
+
+.indx-select:not(:disabled):hover {
+    border-color: var(--lv4);
+}
+
+.indx-select:focus {
+    outline: none;
+    border-color: var(--lv5);
+}
+
+.indx-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.indx-select-icon {
+    position: absolute;
+    right: 12px;
+    display: flex;
+    align-items: center;
+    color: var(--lv5);
+    pointer-events: none;
+}
