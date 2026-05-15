@@ -36,7 +36,7 @@ else
         var status = datasetStatuses.ContainsKey(datasetName) ? datasetStatuses[datasetName] : null;
         var isSaving = _savingDataset == datasetName;
         <div class="indx-dataset-card">
-        <Surface>
+        <Surface Transparent>
                 @if (status != null)
                 {
                     <div>
@@ -92,6 +92,15 @@ else
                             <span class="indx-field-config-error">At least one field must be searchable</span>
                         }
                     }
+                    @if (expandedFieldConfig.Contains(datasetName) && !isSaving)
+                    {
+                        <span style="margin-left: auto">
+                            <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
+                                          CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
+                                          Label="Show unused fields"
+                                          Elevated />
+                        </span>
+                    }
                 </div>
 
                 @if (isSaving)
@@ -124,7 +133,7 @@ else
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    @foreach (var field in editedFields)
+                                    @foreach (var field in editedFields.Where(f => _showUnusedFields.Contains(datasetName) || !IsUnused(f)))
                                     {
                                         <tr>
                                             <td>
@@ -192,6 +201,7 @@ else
     private string? selectedDataset;
     private string? deleteConfirmDataset = null;
     private HashSet<string> expandedFieldConfig = new();
+    private HashSet<string> _showUnusedFields = new();
     private Dictionary<string, FieldProxy[]?> fieldConfigs = new();
     private Dictionary<string, FieldProxy[]> _editedFieldConfigs = new();
     private string? _savingDataset;
@@ -459,6 +469,11 @@ else
         BM25Fb = f.BM25Fb,
         BM25Fk1 = f.BM25Fk1
     };
+
+    private static bool IsUnused(FieldProxy f) =>
+        f.Searchable != true && f.Filterable != true && f.Facetable != true &&
+        f.Sortable != true && f.WordIndexing != true && f.Embeddable != true &&
+        f.PreloadFilters != true;
 
     private static float? ParseFloat(string? s)
     {

@@ -9,3 +9,13 @@
         background: var(--lv1);
     }
 }
+
+.indx-surface-transparent {
+    background: transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+    .indx-surface-transparent {
+        background: transparent;
+    }
+}
