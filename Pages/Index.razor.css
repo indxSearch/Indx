@@ -45,12 +45,14 @@
 
 .indx-num-input {
     width: 70px;
-    padding: 2px 5px;
+    padding: 10px;
+    height: 30px;
     font: var(--text-xs);
-    background: var(--lv1);
+    background: transparent;
     border: 1px solid var(--lv3);
-    border-radius: 0;
+    border-radius: var(--radius);
     color: var(--lv7);
+    box-sizing: border-box;
 }
 
 .indx-num-input:hover {
