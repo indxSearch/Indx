@@ -433,12 +433,38 @@
             <returns><c>true</c> if the dataset existed and was deleted; <c>false</c> if it did not exist.</returns>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunMutationOnShadow``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})">
-            <summary>
-            Runs <paramref name="mutation"/> on a shadow SearchEngine and swaps it in
-            atomically on success. The active instance keeps serving searches throughout.
-            Throws <see cref="T:IndxCloudApi.Models.ShadowBusyException"/> if a build is already in progress for
-            the same (dataSetName, userId) key.
-            </summary>
+             <summary>
+             Runs <paramref name="mutation"/> on a shadow SearchEngine and swaps it in
+             atomically on success. The active instance keeps serving searches throughout.
+             Throws <see cref="T:IndxCloudApi.Models.ShadowBusyException"/> if a build is already in progress for
+             the same (dataSetName, userId) key.
+            
+             Private so external callers (including Blazor pages in the same assembly)
+             cannot reach the generic-callback surface and accidentally apply field-config
+             mutations (Searchable/WordIndexing/Embeddable/BM25Fb/BM25Fk1) post-Load. Those
+             must go through <see cref="M:IndxCloudApi.Models.IndxCloudInternalApi.RunFieldConfigurationOnShadow(System.String,System.String,Indx.Api.FieldProxy[])"/> which applies the
+             override before Load so <c>MakeSearchEngines</c> sees the new set when it
+             builds <c>_indexableFields</c>. Internal callers in this class route through
+             <see cref="M:IndxCloudApi.Models.IndxCloudInternalApi.RunHeavyOnShadowIfReady``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})"/> for document mutations and
+             <see cref="M:IndxCloudApi.Models.IndxCloudInternalApi.RunFieldConfigurationOnShadow(System.String,System.String,Indx.Api.FieldProxy[])"/> for field-config changes.
+             </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunHeavyOnShadowIfReady``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})">
+             <summary>
+             Resolves the engine for (dataSetName, userId). If the engine is in Ready state,
+             runs <paramref name="mutation"/> on a shadow instance (so live searches are not
+             blocked) and swaps the result in atomically. Otherwise runs the mutation inline
+             on the live engine.
+            
+             Throws <see cref="T:System.Collections.Generic.KeyNotFoundException"/> if no engine exists for the key, and
+             propagates <see cref="T:IndxCloudApi.Models.ShadowBusyException"/> from a concurrent shadow build.
+             The mutation callback's return value becomes the result, which preserves
+             callsite-specific early-exit semantics (e.g. an HTTP BadRequest mid-loop).
+            
+             Intended for document-level mutations (insert/update/delete records,
+             filter-scoped updates) — field configuration changes must go through
+             <see cref="M:IndxCloudApi.Models.IndxCloudInternalApi.RunFieldConfigurationOnShadow(System.String,System.String,Indx.Api.FieldProxy[])"/> so they are applied pre-Load.
+             </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunFieldConfigurationOnShadow(System.String,System.String,Indx.Api.FieldProxy[])">
             <summary>
@@ -456,6 +482,9 @@
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ShadowBuildStartedUtc(System.String,System.String)">
             <summary>UTC timestamp at which the in-progress shadow build started, or null if none.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetShadowBuildPercent(System.String,System.String)">
+            <summary>Progress percentage (0–100) of the current shadow build's index phase, or 0 if none.</summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.BuildShadowFrom(Indx.Api.ICloudSearchEngine,System.String,System.String,Indx.Api.FieldProxy[])">
             <summary>

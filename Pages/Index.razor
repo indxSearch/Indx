@@ -398,11 +398,12 @@ else
 
                 if (needsReindex && engine.Status.SystemState == SystemState.Ready)
                 {
-                    IndxCloudInternalApi.Manager.RunMutationOnShadow<int>(datasetName, userId!, e =>
-                    {
-                        e.SetFieldConfiguration(edited);
-                        return 0;
-                    });
+                    // Must apply field overrides pre-Load on the shadow so MakeSearchEngines
+                    // builds _indexableFields against the new Searchable/WordIndexing/BM25F
+                    // set. Going through RunMutationOnShadow with a post-Load callback would
+                    // flip the flag but leave _indexableFields shaped by the original config,
+                    // so the change would silently have no search-time effect.
+                    IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(datasetName, userId!, edited);
                 }
                 else
                 {

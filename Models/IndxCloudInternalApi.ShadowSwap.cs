@@ -4,6 +4,7 @@ using Indx.Utilities;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace IndxCloudApi.Models
@@ -34,8 +35,17 @@ namespace IndxCloudApi.Models
         /// atomically on success. The active instance keeps serving searches throughout.
         /// Throws <see cref="ShadowBusyException"/> if a build is already in progress for
         /// the same (dataSetName, userId) key.
+        ///
+        /// Private so external callers (including Blazor pages in the same assembly)
+        /// cannot reach the generic-callback surface and accidentally apply field-config
+        /// mutations (Searchable/WordIndexing/Embeddable/BM25Fb/BM25Fk1) post-Load. Those
+        /// must go through <see cref="RunFieldConfigurationOnShadow"/> which applies the
+        /// override before Load so <c>MakeSearchEngines</c> sees the new set when it
+        /// builds <c>_indexableFields</c>. Internal callers in this class route through
+        /// <see cref="RunHeavyOnShadowIfReady{TResult}"/> for document mutations and
+        /// <see cref="RunFieldConfigurationOnShadow"/> for field-config changes.
         /// </summary>
-        internal TResult RunMutationOnShadow<TResult>(
+        private TResult RunMutationOnShadow<TResult>(
             string dataSetName,
             string userId,
             Func<ICloudSearchEngine, TResult> mutation)
@@ -109,6 +119,36 @@ namespace IndxCloudApi.Models
                 }
                 _shadowBuildsInProgress.TryRemove(key, out _);
             }
+        }
+
+        /// <summary>
+        /// Resolves the engine for (dataSetName, userId). If the engine is in Ready state,
+        /// runs <paramref name="mutation"/> on a shadow instance (so live searches are not
+        /// blocked) and swaps the result in atomically. Otherwise runs the mutation inline
+        /// on the live engine.
+        ///
+        /// Throws <see cref="KeyNotFoundException"/> if no engine exists for the key, and
+        /// propagates <see cref="ShadowBusyException"/> from a concurrent shadow build.
+        /// The mutation callback's return value becomes the result, which preserves
+        /// callsite-specific early-exit semantics (e.g. an HTTP BadRequest mid-loop).
+        ///
+        /// Intended for document-level mutations (insert/update/delete records,
+        /// filter-scoped updates) — field configuration changes must go through
+        /// <see cref="RunFieldConfigurationOnShadow"/> so they are applied pre-Load.
+        /// </summary>
+        internal TResult RunHeavyOnShadowIfReady<TResult>(
+            string dataSetName,
+            string userId,
+            Func<ICloudSearchEngine, TResult> mutation)
+        {
+            ICloudSearchEngine? matcher = FindSearchEngine(dataSetName, userId);
+            if (matcher == null)
+                throw new KeyNotFoundException($"non existing dataset name: {dataSetName}");
+
+            if (matcher.Status.SystemState != SystemState.Ready)
+                return mutation(matcher);
+
+            return RunMutationOnShadow(dataSetName, userId, mutation);
         }
 
         /// <summary>

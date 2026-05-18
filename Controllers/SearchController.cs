@@ -460,10 +460,12 @@ namespace IndxCloudApi.Controllers
             if (matcher.Status.SystemState == SystemState.Ready)
             {
                 // Re-index without blocking searches: build shadow (which loads + indexes
-                // internally) and swap it in. The mutation lambda is a no-op.
+                // internally) and swap it in. Empty FieldProxy[] means no field-config
+                // changes — the shadow just rebuilds from current state.
                 try
                 {
-                    IndxCloudInternalApi.Manager.RunMutationOnShadow<int>(dataSetName, userId, _ => 0);
+                    IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(
+                        dataSetName, userId, Array.Empty<FieldProxy>());
                 }
                 catch (ShadowBusyException ex)
                 {
@@ -1216,16 +1218,13 @@ namespace IndxCloudApi.Controllers
             string operationName,
             Func<ICloudSearchEngine, ActionResult> mutation)
         {
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
-            if (matcher == null)
-                return BadRequest($"{operationName} non existing dataset name");
-
-            if (matcher.Status.SystemState != SystemState.Ready)
-                return mutation(matcher);
-
             try
             {
-                return IndxCloudInternalApi.Manager.RunMutationOnShadow(dataSetName, userId, mutation);
+                return IndxCloudInternalApi.Manager.RunHeavyOnShadowIfReady(dataSetName, userId, mutation);
+            }
+            catch (KeyNotFoundException)
+            {
+                return BadRequest($"{operationName} non existing dataset name");
             }
             catch (ShadowBusyException ex)
             {
