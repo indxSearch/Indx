@@ -398,6 +398,20 @@
             <param name="userId"></param>
             <returns></returns>
         </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.InitFromStreamAsync(System.String,System.String,System.IO.Stream)">
+            <summary>
+            Runs field analysis on <paramref name="jsonStream"/>, sets DocumentFields on the
+            engine, and persists the field configuration. Must be called after CreateOrOpen and
+            before Load. Returns null on success or an error message on failure.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.StartLoadAsync(System.String,System.String,System.IO.Stream)">
+            <summary>
+            Starts an async load and returns the <see cref="T:Indx.Api.ProcessMonitor"/> so the caller can
+            poll progress. Returns null if the dataset is not found.
+            The returned task completes when the load finishes.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.Search(Indx.CloudApi.CloudQuery,System.String,System.String)">
             <summary>
             Performs a search. See the model class for details.
