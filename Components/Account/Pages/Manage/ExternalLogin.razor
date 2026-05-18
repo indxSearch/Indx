@@ -101,6 +101,47 @@
             return;
         }
 
+        // Guard: if the provider sends email_verified, it must be true before we do anything with the email.
+        var emailVerifiedClaim = externalLoginInfo.Principal.FindFirstValue("email_verified");
+        if (emailVerifiedClaim != null && emailVerifiedClaim != "true")
+        {
+            Logger.LogWarning("OAuth email not verified by provider {Provider} for {Email}", externalLoginInfo.LoginProvider, email);
+            NavigationManager.NavigateTo($"/Account/Login?error={Uri.EscapeDataString("Your email address has not been verified by the sign-in provider. Please verify it and try again.")}");
+            return;
+        }
+
+        // Check if an account with this email already exists.
+        var existingUser = await UserManager.FindByEmailAsync(email);
+        if (existingUser != null)
+        {
+            if (!existingUser.EmailConfirmed)
+            {
+                // The existing account was registered without verifying ownership of the address.
+                // The OAuth provider has now verified it, so we take over: confirm the email,
+                // remove the unverified password (locks out whoever registered it), then link.
+                existingUser.EmailConfirmed = true;
+                await UserManager.UpdateAsync(existingUser);
+                await UserManager.RemovePasswordAsync(existingUser);
+                Logger.LogWarning("Took over unverified account for {Email} via {Provider}", email, externalLoginInfo.LoginProvider);
+            }
+
+            var addLoginResult = await UserManager.AddLoginAsync(existingUser, externalLoginInfo);
+            if (addLoginResult.Succeeded)
+            {
+                Logger.LogInformation("Linked {Provider} to existing account {Email}", externalLoginInfo.LoginProvider, email);
+                await SignInManager.SignInAsync(existingUser, isPersistent: false, externalLoginInfo.LoginProvider);
+                RedirectManager.RedirectTo(ReturnUrl ?? "/Account/ApiKey");
+            }
+            else
+            {
+                Logger.LogError("Failed to link {Provider} to existing account {Email}: {Errors}",
+                    externalLoginInfo.LoginProvider, email,
+                    string.Join(", ", addLoginResult.Errors.Select(e => e.Description)));
+                NavigationManager.NavigateTo($"/Account/Login?error={Uri.EscapeDataString("Failed to link the sign-in provider to your account.")}");
+            }
+            return;
+        }
+
         Logger.LogInformation("Creating new user account for OAuth email: {Email}", email);
 
         // Validate registration is allowed
