@@ -190,12 +190,12 @@ namespace IndxCloudApi.Models
         /// engine, and persists the field configuration. Must be called after CreateOrOpen and
         /// before Load. Returns null on success or an error message on failure.
         /// </summary>
-        internal string? InitFromStream(string dataSetName, string userId, Stream jsonStream)
+        internal async Task<string?> InitFromStreamAsync(string dataSetName, string userId, Stream jsonStream)
         {
             var engine = FindSearchEngineForInit(dataSetName, userId);
             if (engine == null)
                 return "Dataset not found";
-            var df = DocumentFields.Analyze(jsonStream, out string error);
+            var (df, error) = await DocumentFields.AnalyzeAsync(jsonStream);
             if (!string.IsNullOrEmpty(error) || df == null)
                 return string.IsNullOrEmpty(error) ? "Analyze returned no fields" : error;
             engine.SetDocumentFieldsInternal(df);
@@ -254,7 +254,9 @@ namespace IndxCloudApi.Models
             if (instance == null)
                 return null;
             var pm = new ProcessMonitor();
-            var task = instance.LoadAsync(jsonData, pm);
+            // Run on thread-pool so MemoryStream reads (which complete synchronously) don't
+            // block the Blazor server thread and freeze the UI on large files.
+            var task = Task.Run(async () => await instance.LoadAsync(jsonData, pm));
             return (task, pm);
         }
 

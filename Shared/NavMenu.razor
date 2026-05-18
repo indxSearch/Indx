@@ -1,7 +1,7 @@
 @inject NavigationManager NavigationManager
 
 <nav class="nav">
-    <Button Href="/" Variant="@NavVariant("/", exact: true)" Size="micro" IconLeft="_iconHome">Home</Button>
+    <Button Href="/" Variant="@NavVariant("/", exact: true)" Size="micro" IconLeft="_iconHome">Datasets</Button>
     <AuthorizeView>
         <Authorized>
             <Button Href="Account/ApiKey" Variant="@NavVariant("Account/ApiKey")" Size="micro" IconLeft="_iconKey">API Key</Button>
@@ -13,7 +13,7 @@
 </nav>
 
 @code {
-    private RenderFragment<int> _iconHome => size => @<Home Size="size" />;
+    private RenderFragment<int> _iconHome => size => @<Database Size="size" />;
     private RenderFragment<int> _iconKey  => size => @<Key Size="size" />;
     private RenderFragment<int> _iconUser => size => @<User Size="size" />;
     private RenderFragment<int> _iconDoc  => size => @<DocumentOrFile Size="size" />;

@@ -24,7 +24,7 @@
         @if (_showNewDatasetForm)
         {
             <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                <input class="indx-text-input" placeholder="Dataset name" @bind="_newDatasetName" @onkeydown="OnNewDatasetKeyDown" />
+                <input class="indx-text-input" placeholder="Dataset name" value="@_newDatasetName" @oninput="e => _newDatasetName = e.Value?.ToString() ?? string.Empty" @onkeydown="OnNewDatasetKeyDown" />
                 <Button Variant="primary" Size="micro" @onclick="CreateDataset" disabled="@string.IsNullOrWhiteSpace(_newDatasetName)">Create</Button>
                 <Button Variant="secondary" Size="micro" @onclick="() => { _showNewDatasetForm = false; _newDatasetName = string.Empty; _createError = null; }">Cancel</Button>
             </div>
@@ -145,6 +145,7 @@ else
                     <div class="indx-field-config-saving">
                         <ProgressBar Value="@_uploadProgress" ShowLabel FulfilledColor />
                         <p class="indx-field-config-saving-label">Uploading…</p>
+                        <Button Variant="secondary" Size="micro" @onclick="CancelUpload">Cancel</Button>
                     </div>
                 }
 
@@ -187,7 +188,7 @@ else
                                                     }
                                                 </div>
                                             </td>
-                                            <td class="indx-table-check"><Checkbox Checked="@(field.Searchable == true)" CheckedChanged="@(v => { field.Searchable = v; })" /></td>
+                                            <td class="indx-table-check"><Checkbox Checked="@(field.Searchable == true)" CheckedChanged="@(v => { field.Searchable = v; _searchableTouched.Add(datasetName); })" /></td>
                                             <td class="indx-table-check"><Checkbox Checked="@(field.Filterable == true)" CheckedChanged="@(v => { field.Filterable = v; })" /></td>
                                             <td class="indx-table-check"><Checkbox Checked="@(field.Facetable == true)" CheckedChanged="@(v => { field.Facetable = v; })" /></td>
                                             <td class="indx-table-check"><Checkbox Checked="@(field.Sortable == true)" CheckedChanged="@(v => { field.Sortable = v; })" /></td>
@@ -220,7 +221,7 @@ else
                             <Button Variant="primary" Size="micro"
                                     @onclick="() => StartLoadAndIndex(datasetName)"
                                     disabled="@(!HasSearchable(datasetName))">Load &amp; Index</Button>
-                            @if (!HasSearchable(datasetName))
+                            @if (_searchableTouched.Contains(datasetName) && !HasSearchable(datasetName))
                             {
                                 <span class="indx-field-config-error">At least one field must be searchable</span>
                             }
@@ -252,7 +253,7 @@ else
                         {
                             <Button Variant="primary" Size="micro" @onclick="() => SaveFieldConfig(datasetName)" disabled="@(!HasSearchable(datasetName))">Save</Button>
                             <Button Variant="secondary" Size="micro" @onclick="() => CancelFieldConfig(datasetName)">Cancel</Button>
-                            @if (!HasSearchable(datasetName))
+                            @if (_searchableTouched.Contains(datasetName) && !HasSearchable(datasetName))
                             {
                                 <span class="indx-field-config-error">At least one field must be searchable</span>
                             }
@@ -310,7 +311,7 @@ else
                                                         }
                                                     </div>
                                                 </td>
-                                                <td class="indx-table-check"><Checkbox Checked="@(field.Searchable == true)" CheckedChanged="@(v => { field.Searchable = v; })" /></td>
+                                                <td class="indx-table-check"><Checkbox Checked="@(field.Searchable == true)" CheckedChanged="@(v => { field.Searchable = v; _searchableTouched.Add(datasetName); })" /></td>
                                                 <td class="indx-table-check"><Checkbox Checked="@(field.Filterable == true)" CheckedChanged="@(v => { field.Filterable = v; })" /></td>
                                                 <td class="indx-table-check"><Checkbox Checked="@(field.Facetable == true)" CheckedChanged="@(v => { field.Facetable = v; })" /></td>
                                                 <td class="indx-table-check"><Checkbox Checked="@(field.Sortable == true)" CheckedChanged="@(v => { field.Sortable = v; })" /></td>
@@ -343,11 +344,14 @@ else
                 @if (engineState == SystemState.Ready)
                 {
                     <div class="indx-search-panel">
-                        <input class="indx-text-input indx-search-input"
-                               type="search"
-                               placeholder="Search…"
-                               value="@(_searchTexts.GetValueOrDefault(datasetName, string.Empty))"
-                               @oninput="@(e => RunQuickSearch(datasetName, e.Value?.ToString() ?? string.Empty))" />
+                        <div class="indx-search-field-wrap">
+                            <Search Size="16" Color="var(--lv4)" class="indx-search-field-icon" />
+                            <input class="indx-search-field-input"
+                                   type="search"
+                                   placeholder="Search…"
+                                   value="@(_searchTexts.GetValueOrDefault(datasetName, string.Empty))"
+                                   @oninput="@(e => RunQuickSearch(datasetName, e.Value?.ToString() ?? string.Empty))" />
+                        </div>
                         @if (_searchResults.TryGetValue(datasetName, out var results) && results != null)
                         {
                             @if (results.Count == 0 && !string.IsNullOrEmpty(_searchTexts.GetValueOrDefault(datasetName)))
@@ -414,6 +418,10 @@ else
     private string? _selectedFileDataset;
     private string? _uploadError;
     private string? _uploadErrorDataset;
+    private CancellationTokenSource? _uploadCts;
+
+    // Tracks datasets where the user has ever toggled a Searchable checkbox
+    private HashSet<string> _searchableTouched = new();
 
     // Buffered files awaiting Load & Index (keyed by dataset name)
     private Dictionary<string, System.IO.MemoryStream> _bufferedFiles = new();
@@ -544,6 +552,11 @@ else
         StateHasChanged();
     }
 
+    private void CancelUpload()
+    {
+        _uploadCts?.Cancel();
+    }
+
     private async Task StartUpload(string datasetName)
     {
         if (_selectedFile == null) return;
@@ -554,20 +567,22 @@ else
         _uploadErrorDataset = null;
         _uploadingDataset = datasetName;
         _uploadProgress = 0;
+        _uploadCts = new CancellationTokenSource();
         StateHasChanged();
 
+        System.IO.MemoryStream? ms = null;
         try
         {
             // Stream file to server with upload progress
-            var ms = new System.IO.MemoryStream();
+            ms = new System.IO.MemoryStream();
             const int chunkSize = 65536;
             var buffer = new byte[chunkSize];
             long totalRead = 0;
             await using var stream = file.OpenReadStream(maxAllowedSize: 2_000_000_000L);
             int bytesRead;
-            while ((bytesRead = await stream.ReadAsync(buffer)) > 0)
+            while ((bytesRead = await stream.ReadAsync(buffer, _uploadCts.Token)) > 0)
             {
-                await ms.WriteAsync(buffer, 0, bytesRead);
+                await ms.WriteAsync(buffer, 0, bytesRead, _uploadCts.Token);
                 totalRead += bytesRead;
                 var pct = file.Size > 0 ? (int)(100L * totalRead / file.Size) : 0;
                 if (pct != _uploadProgress)
@@ -577,14 +592,15 @@ else
                 }
             }
 
-            // Analyze field structure (fast, no separate progress needed)
+            // Analyze field structure asynchronously (avoids blocking Blazor thread on large files)
             ms.Position = 0;
-            var initError = IndxCloudInternalApi.Manager.InitFromStream(datasetName, userId!, ms);
+            var initError = await IndxCloudInternalApi.Manager.InitFromStreamAsync(datasetName, userId!, ms);
             if (!string.IsNullOrEmpty(initError))
             {
                 _uploadError = $"Analyze failed: {initError}";
                 _uploadErrorDataset = datasetName;
                 ms.Dispose();
+                ms = null;
                 return;
             }
 
@@ -592,23 +608,32 @@ else
             if (_bufferedFiles.TryGetValue(datasetName, out var old))
                 old.Dispose();
             _bufferedFiles[datasetName] = ms;
+            ms = null; // ownership transferred
 
-            // Populate field config for display
+            // Populate field config for display; show unused fields by default for new datasets
             var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
             var fields = engine?.GetFieldConfiguration();
             if (fields != null)
             {
                 fieldConfigs[datasetName] = fields;
                 _editedFieldConfigs[datasetName] = fields.Select(DeepCopy).ToArray();
+                _showUnusedFields.Add(datasetName);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            ms?.Dispose();
         }
         catch (Exception ex)
         {
             _uploadError = $"Upload failed: {ex.Message}";
             _uploadErrorDataset = datasetName;
+            ms?.Dispose();
         }
         finally
         {
+            _uploadCts?.Dispose();
+            _uploadCts = null;
             _uploadingDataset = null;
             await LoadDatasets();
             await InvokeAsync(StateHasChanged);
