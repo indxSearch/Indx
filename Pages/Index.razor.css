@@ -191,6 +191,19 @@
     padding-top: 16px;
 }
 
+.indx-perf-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.indx-perf-result {
+    font: var(--text-xs);
+    color: var(--lv5);
+    white-space: nowrap;
+}
+
 .indx-search-field-wrap {
     position: relative;
     display: flex;

@@ -95,7 +95,7 @@ else
                         <p><strong>System State:</strong> @status.SystemState</p>
                         <p><strong>Document Count:</strong> @status.DocumentCount</p>
                         <p><strong>Search Counter:</strong> @status.SearchCounter</p>
-                        <p><strong>Seconds To Index:</strong> @status.SecondsToIndex</p>
+                        <p><strong>Seconds To Index:</strong> @status.SecondsToIndex.ToString("0.##")s</p>
                         <p><strong>Time Of Instance Creation:</strong> @status.TimeOfInstanceCreation</p>
                         <p><strong>Time Of Last Index Build:</strong> @status.TimeOfLastIndexBuild</p>
 
@@ -345,7 +345,7 @@ else
                 {
                     <div class="indx-search-panel">
                         <div class="indx-search-field-wrap">
-                            <Search Size="16" Color="var(--lv4)" class="indx-search-field-icon" />
+                            <span class="indx-search-field-icon"><Search Size="16" Color="var(--lv4)" /></span>
                             <input class="indx-search-field-input"
                                    type="search"
                                    placeholder="Search…"
@@ -358,7 +358,7 @@ else
                             {
                                 <p class="indx-search-empty">No results</p>
                             }
-                            else
+                            else if (results.Count > 0)
                             {
                                 <div class="indx-search-results">
                                     @foreach (var doc in results)
@@ -372,6 +372,17 @@ else
                                                 }
                                             }
                                         </div>
+                                    }
+                                </div>
+                                <div class="indx-perf-toolbar">
+                                    <Button Variant="ghost" Size="micro" IconLeft="_iconZap"
+                                            disabled="@_perfRunning.Contains(datasetName)"
+                                            @onclick="@(() => RunPerfTest(datasetName, _searchTexts.GetValueOrDefault(datasetName, string.Empty)))">
+                                        @(_perfRunning.Contains(datasetName) ? "Running…" : "Run performance test")
+                                    </Button>
+                                    @if (_perfResults.TryGetValue(datasetName, out var perf) && perf != null)
+                                    {
+                                        <span class="indx-perf-result">@perf.Iterations× — avg <strong>@perf.AvgMs.ToString("0.0") ms</strong></span>
                                     }
                                 </div>
                             }
@@ -434,6 +445,12 @@ else
     // Quick search
     private Dictionary<string, string> _searchTexts = new();
     private Dictionary<string, List<JsonElement>?> _searchResults = new();
+
+    // Perf test
+    private Dictionary<string, PerfTestResult?> _perfResults = new();
+    private HashSet<string> _perfRunning = new();
+
+    private record PerfTestResult(int Iterations, double TotalMs, double AvgMs, double MinMs, double MaxMs);
 
     private string GetVersion()
     {
@@ -744,6 +761,7 @@ else
     private void RunQuickSearch(string datasetName, string text)
     {
         _searchTexts[datasetName] = text;
+        _perfResults.Remove(datasetName);
         if (string.IsNullOrWhiteSpace(text))
         {
             _searchResults[datasetName] = null;
@@ -764,6 +782,36 @@ else
             }
         }
         _searchResults[datasetName] = docs;
+    }
+
+    private async Task RunPerfTest(string datasetName, string text)
+    {
+        if (string.IsNullOrWhiteSpace(text) || _perfRunning.Contains(datasetName)) return;
+        _perfRunning.Add(datasetName);
+        _perfResults[datasetName] = null;
+        StateHasChanged();
+        await Task.Yield();
+
+        const int iterations = 100;
+        var timings = new double[iterations];
+        var query = new global::Indx.CloudApi.CloudQuery { Text = text, MaxNumberOfRecordsToReturn = 8 };
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await Task.Run(() =>
+        {
+            for (int i = 0; i < iterations; i++)
+            {
+                var t0 = sw.Elapsed.TotalMilliseconds;
+                IndxCloudInternalApi.Manager.Search(query, datasetName, userId!);
+                timings[i] = sw.Elapsed.TotalMilliseconds - t0;
+            }
+        });
+        var total = timings.Sum();
+        _perfResults[datasetName] = new PerfTestResult(
+            iterations, total,
+            total / iterations,
+            timings.Min(),
+            timings.Max());
+        _perfRunning.Remove(datasetName);
     }
 
     // ── Ready state: collapsible field config + shadow-swap reindex ─────────
@@ -959,6 +1007,7 @@ else
 
     private RenderFragment<int> _iconFields => size => @<Fields Size="size" />;
     private RenderFragment<int> _iconDelete => size => @<Stop Size="size" />;
+    private RenderFragment<int> _iconZap    => size => @<Zap Size="size" />;
 
     private static string BoolDisplay(bool? value) => value switch
     {
