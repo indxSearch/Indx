@@ -5,8 +5,10 @@
 @using System.Reflection
 @using Indx.Api
 @using Indx.Storage
+@using Indx.Utilities
 @using IndxCloudApi.Models
 @using System.Globalization
+@using System.Text.Json
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 
@@ -15,29 +17,79 @@
 <h1>Indx Cloud API @GetVersion()</h1>
 <p style="color: var(--lv5); margin-top: 4px;">Powered by Indx @_indxVersion</p>
 
-<h2 class="indx-datasets-heading">Datasets</h2>
+<div class="indx-datasets-heading">
+    <h2>Datasets</h2>
+    @if (!isLoading)
+    {
+        @if (_showNewDatasetForm)
+        {
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <input class="indx-text-input" placeholder="Dataset name" @bind="_newDatasetName" @onkeydown="OnNewDatasetKeyDown" />
+                <Button Variant="primary" Size="micro" @onclick="CreateDataset" disabled="@string.IsNullOrWhiteSpace(_newDatasetName)">Create</Button>
+                <Button Variant="secondary" Size="micro" @onclick="() => { _showNewDatasetForm = false; _newDatasetName = string.Empty; _createError = null; }">Cancel</Button>
+            </div>
+            @if (!string.IsNullOrEmpty(_createError))
+            {
+                <p style="color:var(--CSignal);margin-top:4px;margin-bottom:0;">@_createError</p>
+            }
+        }
+        else
+        {
+            <Button Variant="secondary" Size="micro" @onclick="() => _showNewDatasetForm = true">New dataset</Button>
+        }
+    }
+</div>
 
 @if (isLoading)
 {
     <p>Loading datasets...</p>
 }
-else if (datasets == null || datasets.Length == 0)
-{
-    <p>No datasets created</p>
-}
 else
 {
-    <Tabs Items="@datasets.Select(d => new Tabs.TabItem(d, d))"
-          @bind-Active="selectedDataset" />
 
-    @if (selectedDataset != null)
+    @if (datasets == null || datasets.Length == 0)
     {
-        var datasetName = selectedDataset;
-        var status = datasetStatuses.ContainsKey(datasetName) ? datasetStatuses[datasetName] : null;
-        var isSaving = _savingDataset == datasetName;
-        <div class="indx-dataset-card">
-        <Surface Transparent>
-                @if (status != null)
+        <p style="margin-top:12px;">No datasets created</p>
+    }
+    else
+    {
+        <Tabs Items="@datasets.Select(d => new Tabs.TabItem(d, d))"
+              @bind-Active="selectedDataset" />
+
+        @if (selectedDataset != null)
+        {
+            var datasetName = selectedDataset;
+            var status = datasetStatuses.ContainsKey(datasetName) ? datasetStatuses[datasetName] : null;
+            var engineState = status?.SystemState ?? SystemState.Created;
+            var isSaving = _savingDataset == datasetName;
+            var isUploading = _uploadingDataset == datasetName;
+            var isLoadIndexing = _loadIndexingDataset == datasetName;
+            var isAnalyzed = _bufferedFiles.ContainsKey(datasetName);
+
+            <div class="indx-dataset-card">
+            <div class="indx-dataset-card-inner">
+                @* ── Delete (top-right) ── *@
+                @if (!isUploading && !isLoadIndexing && !isSaving)
+                {
+                    <div class="indx-dataset-delete-corner">
+                        @if (deleteConfirmDataset == datasetName)
+                        {
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <span style="font:var(--text-xs);color:var(--lv5);">Are you sure?</span>
+                                <Button Variant="danger" Size="micro" @onclick="() => ConfirmDelete(datasetName)">Yes, Delete</Button>
+                                <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
+                            </div>
+                        }
+                        else
+                        {
+                            <Button Variant="secondary" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)">Delete</Button>
+                        }
+                    </div>
+                }
+            <Surface Transparent>
+
+                @* ── Ready: status ── *@
+                @if (engineState == SystemState.Ready && status != null)
                 {
                     <div>
                         <p><strong>System State:</strong> @status.SystemState</p>
@@ -47,72 +99,62 @@ else
                         <p><strong>Time Of Instance Creation:</strong> @status.TimeOfInstanceCreation</p>
                         <p><strong>Time Of Last Index Build:</strong> @status.TimeOfLastIndexBuild</p>
 
-
                         @if (status.LicenseInfo?.DocumentLimitExceeded == true)
                         {
                             <p style="color: var(--CSignal); font-weight: bold;">⚠️ License Document Limit Exceeded: @status.DocumentCount.ToString("N0") / @status.LicenseInfo.DocumentLimit.ToString("N0")</p>
                         }
-                        @if (status.InvalidArgument)
-                        {
-                            <p><strong>⚠️ Invalid Argument:</strong> @status.InvalidArgument</p>
-                        }
-                        @if (status.InvalidState)
-                        {
-                            <p><strong>⚠️ Invalid State:</strong> @status.InvalidState</p>
-                        }
-                        @if (status.TooLongClientText)
-                        {
-                            <p><strong>⚠️ Too Long Client Text:</strong> @status.TooLongClientText</p>
-                        }
-                        @if (status.TooLongSearchText)
-                        {
-                            <p><strong>⚠️ Too Long Search Text:</strong> @status.TooLongSearchText</p>
-                        }
-                        @if (status.UnknownConfigurationError)
-                        {
-                            <p><strong>⚠️ Unknown Configuration Error:</strong> @status.UnknownConfigurationError</p>
-                        }
-                        @if (!string.IsNullOrEmpty(status.ErrorMessage))
-                        {
-                            <p><strong>Error Message:</strong> @status.ErrorMessage</p>
-                        }
+                        @if (status.InvalidArgument)   { <p><strong>⚠️ Invalid Argument:</strong> @status.InvalidArgument</p> }
+                        @if (status.InvalidState)      { <p><strong>⚠️ Invalid State:</strong> @status.InvalidState</p> }
+                        @if (status.TooLongClientText) { <p><strong>⚠️ Too Long Client Text:</strong> @status.TooLongClientText</p> }
+                        @if (status.TooLongSearchText) { <p><strong>⚠️ Too Long Search Text:</strong> @status.TooLongSearchText</p> }
+                        @if (status.UnknownConfigurationError) { <p><strong>⚠️ Unknown Configuration Error:</strong> @status.UnknownConfigurationError</p> }
+                        @if (!string.IsNullOrEmpty(status.ErrorMessage)) { <p><strong>Error Message:</strong> @status.ErrorMessage</p> }
                     </div>
                 }
 
-                <div class="indx-field-config-toolbar">
-                    <Button Variant="secondary" Size="micro" IconLeft="_iconFields" @onclick="() => ToggleFieldConfig(datasetName)" disabled="@isSaving">
-                        @(expandedFieldConfig.Contains(datasetName) ? "Hide field configuration" : "Show field configuration")
-                    </Button>
-                    @if (IsDirty(datasetName) && !isSaving)
-                    {
-                        <Button Variant="primary" Size="micro" @onclick="() => SaveFieldConfig(datasetName)" disabled="@(!HasSearchable(datasetName))">Save</Button>
-                        <Button Variant="secondary" Size="micro" @onclick="() => CancelFieldConfig(datasetName)">Cancel</Button>
-                        @if (!HasSearchable(datasetName))
+                @* ── Created + not yet analyzed: upload panel ── *@
+                @if (engineState == SystemState.Created && !isAnalyzed && !isUploading)
+                {
+                    <p style="color:var(--lv5);">Upload a JSON file to configure and index this dataset.</p>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+                        <InputFile OnChange="@(e => OnFileSelected(datasetName, e))" accept=".json" style="display:none" id="@($"fileinput-{datasetName}")" />
+                        <label for="@($"fileinput-{datasetName}")" class="indx-upload-label">
+                            @if (_selectedFile != null && _selectedFileDataset == datasetName)
+                            {
+                                <span>@_selectedFile.Name (@FormatBytes(_selectedFile.Size))</span>
+                            }
+                            else
+                            {
+                                <span>Choose JSON file…</span>
+                            }
+                        </label>
+                        @if (_selectedFile != null && _selectedFileDataset == datasetName)
                         {
-                            <span class="indx-field-config-error">At least one field must be searchable</span>
+                            <Button Variant="primary" Size="micro" @onclick="() => StartUpload(datasetName)">Upload</Button>
                         }
-                    }
-                    @if (expandedFieldConfig.Contains(datasetName) && !isSaving)
+                    </div>
+                    @if (!string.IsNullOrEmpty(_uploadError) && _uploadErrorDataset == datasetName)
                     {
-                        <span style="margin-left: auto">
-                            <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
-                                          CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
-                                          Label="Show unused fields"
-                                          Elevated />
-                        </span>
+                        <p style="color:var(--CSignal);margin-top:4px;">@_uploadError</p>
                     }
-                </div>
+                }
 
-                @if (isSaving)
+                @* ── Uploading progress ── *@
+                @if (isUploading)
                 {
                     <div class="indx-field-config-saving">
-                        <ProgressBar Value="_shadowBuildPercent" ShowLabel FulfilledColor />
-                        <p class="indx-field-config-saving-label">Reindexing...</p>
+                        <ProgressBar Value="@_uploadProgress" ShowLabel FulfilledColor />
+                        <p class="indx-field-config-saving-label">Uploading…</p>
                     </div>
                 }
 
-                @if (expandedFieldConfig.Contains(datasetName) && !isSaving)
+                @* ── Analyzed: field config + Load & Index button ── *@
+                @if (engineState == SystemState.Created && isAnalyzed && !isUploading && !isLoadIndexing)
                 {
+                    <p style="color:var(--lv5);margin-bottom:8px;">
+                        Configure fields, then click <strong>Load &amp; Index</strong>.
+                    </p>
+
                     @if (_editedFieldConfigs.TryGetValue(datasetName, out var editedFields) && editedFields != null)
                     {
                         <div class="indx-table-wrap">
@@ -166,27 +208,177 @@ else
                                 </tbody>
                             </table>
                         </div>
+                        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+                            <span style="margin-left:auto">
+                                <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
+                                              CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
+                                              Label="Show unused fields"
+                                              Elevated />
+                            </span>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+                            <Button Variant="primary" Size="micro"
+                                    @onclick="() => StartLoadAndIndex(datasetName)"
+                                    disabled="@(!HasSearchable(datasetName))">Load &amp; Index</Button>
+                            @if (!HasSearchable(datasetName))
+                            {
+                                <span class="indx-field-config-error">At least one field must be searchable</span>
+                            }
+                        </div>
                     }
                     else
                     {
-                        <p style="color: #888; font-style: italic;">No field configuration available.</p>
+                        <p style="color:#888;font-style:italic;">No field configuration available.</p>
                     }
                 }
 
-                @if (deleteConfirmDataset == datasetName)
+                @* ── Load & Index progress ── *@
+                @if (isLoadIndexing)
                 {
-                    <div>
-                        <p>Are you sure? This cannot be undone.</p>
-                        <Button Variant="danger" Size="micro" @onclick="() => ConfirmDelete(datasetName)">Yes, Delete</Button>
-                        <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
+                    <div class="indx-field-config-saving">
+                        <ProgressBar Value="_loadIndexProgress" ShowLabel FulfilledColor />
+                        <p class="indx-field-config-saving-label">@_loadIndexPhaseLabel</p>
                     </div>
                 }
-                else
+
+                @* ── Ready: collapsible field config ── *@
+                @if (engineState == SystemState.Ready)
                 {
-                    <Button Variant="secondary" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)" disabled="@isSaving">Delete</Button>
+                    <div class="indx-field-config-toolbar">
+                        <Button Variant="secondary" Size="micro" IconLeft="_iconFields" @onclick="() => ToggleFieldConfig(datasetName)" disabled="@isSaving">
+                            @(expandedFieldConfig.Contains(datasetName) ? "Hide field configuration" : "Show field configuration")
+                        </Button>
+                        @if (IsDirty(datasetName) && !isSaving)
+                        {
+                            <Button Variant="primary" Size="micro" @onclick="() => SaveFieldConfig(datasetName)" disabled="@(!HasSearchable(datasetName))">Save</Button>
+                            <Button Variant="secondary" Size="micro" @onclick="() => CancelFieldConfig(datasetName)">Cancel</Button>
+                            @if (!HasSearchable(datasetName))
+                            {
+                                <span class="indx-field-config-error">At least one field must be searchable</span>
+                            }
+                        }
+                        @if (expandedFieldConfig.Contains(datasetName) && !isSaving)
+                        {
+                            <span style="margin-left: auto">
+                                <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
+                                              CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
+                                              Label="Show unused fields"
+                                              Elevated />
+                            </span>
+                        }
+                    </div>
+
+                    @if (isSaving)
+                    {
+                        <div class="indx-field-config-saving">
+                            <ProgressBar Value="_shadowBuildPercent" ShowLabel FulfilledColor />
+                            <p class="indx-field-config-saving-label">Reindexing...</p>
+                        </div>
+                    }
+
+                    @if (expandedFieldConfig.Contains(datasetName) && !isSaving)
+                    {
+                        @if (_editedFieldConfigs.TryGetValue(datasetName, out var readyFields) && readyFields != null)
+                        {
+                            <div class="indx-table-wrap">
+                                <table class="indx-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Field and type</th>
+                                            <th>Searchable</th>
+                                            <th>Filterable</th>
+                                            <th>Facetable</th>
+                                            <th>Sortable</th>
+                                            <th>WordIndexing</th>
+                                            <th>Embeddable</th>
+                                            <th>PreloadFilters</th>
+                                            <th>Weight</th>
+                                            <th>BM25Fb</th>
+                                            <th>BM25Fk1</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var field in readyFields.Where(f => _showUnusedFields.Contains(datasetName) || !IsUnused(f)))
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <div class="cell-inner">
+                                                        <span>@field.FieldName</span>
+                                                        @if (field.FieldType != null)
+                                                        {
+                                                            <span class="cell-value">@(field.FieldType + (field.IsArray == true ? "[]" : ""))</span>
+                                                        }
+                                                    </div>
+                                                </td>
+                                                <td class="indx-table-check"><Checkbox Checked="@(field.Searchable == true)" CheckedChanged="@(v => { field.Searchable = v; })" /></td>
+                                                <td class="indx-table-check"><Checkbox Checked="@(field.Filterable == true)" CheckedChanged="@(v => { field.Filterable = v; })" /></td>
+                                                <td class="indx-table-check"><Checkbox Checked="@(field.Facetable == true)" CheckedChanged="@(v => { field.Facetable = v; })" /></td>
+                                                <td class="indx-table-check"><Checkbox Checked="@(field.Sortable == true)" CheckedChanged="@(v => { field.Sortable = v; })" /></td>
+                                                <td class="indx-table-check"><Checkbox Checked="@(field.WordIndexing == true)" CheckedChanged="@(v => { field.WordIndexing = v; })" /></td>
+                                                <td class="indx-table-check"><Checkbox Checked="@(field.Embeddable == true)" CheckedChanged="@(v => { field.Embeddable = v; })" /></td>
+                                                <td class="indx-table-check"><Checkbox Checked="@(field.PreloadFilters == true)" CheckedChanged="@(v => { field.PreloadFilters = v; })" /></td>
+                                                <td><input class="indx-num-input" type="number" step="0.1" min="0"
+                                                           value="@(field.Weight.HasValue ? field.Weight.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                                           @onchange="@(e => { field.Weight = ParseFloat(e.Value?.ToString()); })" /></td>
+                                                <td><input class="indx-num-input" type="number" step="0.01" min="0" max="1"
+                                                           value="@(field.BM25Fb.HasValue ? field.BM25Fb.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                                           @onchange="@(e => { field.BM25Fb = ParseFloat(e.Value?.ToString()); })" /></td>
+                                                <td><input class="indx-num-input" type="number" step="0.1" min="0"
+                                                           value="@(field.BM25Fk1.HasValue ? field.BM25Fk1.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                                           @onchange="@(e => { field.BM25Fk1 = ParseFloat(e.Value?.ToString()); })" /></td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        }
+                        else
+                        {
+                            <p style="color: #888; font-style: italic;">No field configuration available.</p>
+                        }
+                    }
                 }
-        </Surface>
-        </div>
+
+                @* ── Quick search ── *@
+                @if (engineState == SystemState.Ready)
+                {
+                    <div class="indx-search-panel">
+                        <input class="indx-text-input indx-search-input"
+                               type="search"
+                               placeholder="Search…"
+                               value="@(_searchTexts.GetValueOrDefault(datasetName, string.Empty))"
+                               @oninput="@(e => RunQuickSearch(datasetName, e.Value?.ToString() ?? string.Empty))" />
+                        @if (_searchResults.TryGetValue(datasetName, out var results) && results != null)
+                        {
+                            @if (results.Count == 0 && !string.IsNullOrEmpty(_searchTexts.GetValueOrDefault(datasetName)))
+                            {
+                                <p class="indx-search-empty">No results</p>
+                            }
+                            else
+                            {
+                                <div class="indx-search-results">
+                                    @foreach (var doc in results)
+                                    {
+                                        <div class="indx-search-result-item">
+                                            @foreach (var prop in doc.EnumerateObject().Take(4))
+                                            {
+                                                @if (prop.Value.ValueKind == JsonValueKind.String || prop.Value.ValueKind == JsonValueKind.Number || prop.Value.ValueKind == JsonValueKind.True || prop.Value.ValueKind == JsonValueKind.False)
+                                                {
+                                                    <span class="indx-search-result-field"><span class="indx-search-result-key">@prop.Name</span> @prop.Value</span>
+                                                }
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            }
+                        }
+                    </div>
+                }
+
+            </Surface>
+            </div>
+            </div>
+        }
     }
 }
 
@@ -199,25 +391,50 @@ else
     private bool isLoading = true;
     private string? userId;
     private string? selectedDataset;
-    private string? deleteConfirmDataset = null;
+    private string? deleteConfirmDataset;
     private HashSet<string> expandedFieldConfig = new();
     private HashSet<string> _showUnusedFields = new();
     private Dictionary<string, FieldProxy[]?> fieldConfigs = new();
     private Dictionary<string, FieldProxy[]> _editedFieldConfigs = new();
+
+    // Shadow-build reindex (Ready state)
     private string? _savingDataset;
     private int _shadowBuildPercent;
     private CancellationTokenSource? _pollingCts;
+
+    // Create dataset
+    private string _newDatasetName = string.Empty;
+    private bool _showNewDatasetForm;
+    private string? _createError;
+
+    // Upload phase (stream file + analyze)
+    private string? _uploadingDataset;
+    private int _uploadProgress;
+    private IBrowserFile? _selectedFile;
+    private string? _selectedFileDataset;
+    private string? _uploadError;
+    private string? _uploadErrorDataset;
+
+    // Buffered files awaiting Load & Index (keyed by dataset name)
+    private Dictionary<string, System.IO.MemoryStream> _bufferedFiles = new();
+
+    // Load & Index phase
+    private string? _loadIndexingDataset;
+    private int _loadIndexProgress;
+    private string _loadIndexPhaseLabel = string.Empty;
+
+    // Quick search
+    private Dictionary<string, string> _searchTexts = new();
+    private Dictionary<string, List<JsonElement>?> _searchResults = new();
 
     private string GetVersion()
     {
         var version = Assembly.GetExecutingAssembly()
             .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
             .InformationalVersion ?? "";
-
         var plusIndex = version.IndexOf('+');
         if (plusIndex > 0)
             version = version.Substring(0, plusIndex);
-
         return version;
     }
 
@@ -225,31 +442,26 @@ else
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var user = authState.User;
-
         if (user.Identity == null || !user.Identity.IsAuthenticated)
         {
             NavigationManager.NavigateTo("/Account/Login", forceLoad: true);
             return;
         }
-
         userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-
         if (string.IsNullOrEmpty(userId))
         {
             isLoading = false;
             return;
         }
-
         await LoadDatasets();
     }
 
     private async Task LoadDatasets()
     {
         isLoading = true;
-
         try
         {
-            if(string.IsNullOrEmpty(userId))
+            if (string.IsNullOrEmpty(userId))
             {
                 datasets = Array.Empty<string>();
                 return;
@@ -265,13 +477,10 @@ else
                     try
                     {
                         var status = IndxCloudInternalApi.Manager.GetState(datasetName, userId);
-                        if(status!= null)
+                        if (status != null)
                             datasetStatuses[datasetName] = status;
                     }
-                    catch
-                    {
-                        // Skip if we can't get status for this dataset
-                    }
+                    catch { }
                 }
             }
         }
@@ -287,21 +496,259 @@ else
         }
     }
 
-    private void ShowDeleteConfirm(string datasetName)
+    // ── Create dataset ──────────────────────────────────────────────────────
+
+    private async Task OnNewDatasetKeyDown(KeyboardEventArgs e)
     {
-        deleteConfirmDataset = datasetName;
+        if (e.Key == "Enter") await CreateDataset();
     }
 
-    private void CancelDelete()
+    private async Task CreateDataset()
     {
-        deleteConfirmDataset = null;
+        _createError = null;
+        var name = _newDatasetName.Trim();
+        if (string.IsNullOrEmpty(name)) return;
+        if (!FileNameValidity.IsValid(name))
+        {
+            _createError = "Invalid dataset name.";
+            return;
+        }
+        try
+        {
+            var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, name, userId!);
+            if (persistence.DataSetExists())
+            {
+                _createError = $"Dataset '{name}' already exists.";
+                return;
+            }
+            persistence.CreateOrOpenDataSet(400);
+            _newDatasetName = string.Empty;
+            _showNewDatasetForm = false;
+            await LoadDatasets();
+            selectedDataset = name;
+        }
+        catch (Exception ex)
+        {
+            _createError = $"Failed to create dataset: {ex.Message}";
+        }
     }
+
+    // ── Upload (stream + analyze) ───────────────────────────────────────────
+
+    private void OnFileSelected(string datasetName, InputFileChangeEventArgs e)
+    {
+        _selectedFile = e.File;
+        _selectedFileDataset = datasetName;
+        _uploadError = null;
+        _uploadErrorDataset = null;
+        StateHasChanged();
+    }
+
+    private async Task StartUpload(string datasetName)
+    {
+        if (_selectedFile == null) return;
+        var file = _selectedFile;
+        _selectedFile = null;
+        _selectedFileDataset = null;
+        _uploadError = null;
+        _uploadErrorDataset = null;
+        _uploadingDataset = datasetName;
+        _uploadProgress = 0;
+        StateHasChanged();
+
+        try
+        {
+            // Stream file to server with upload progress
+            var ms = new System.IO.MemoryStream();
+            const int chunkSize = 65536;
+            var buffer = new byte[chunkSize];
+            long totalRead = 0;
+            await using var stream = file.OpenReadStream(maxAllowedSize: 2_000_000_000L);
+            int bytesRead;
+            while ((bytesRead = await stream.ReadAsync(buffer)) > 0)
+            {
+                await ms.WriteAsync(buffer, 0, bytesRead);
+                totalRead += bytesRead;
+                var pct = file.Size > 0 ? (int)(100L * totalRead / file.Size) : 0;
+                if (pct != _uploadProgress)
+                {
+                    _uploadProgress = pct;
+                    await InvokeAsync(StateHasChanged);
+                }
+            }
+
+            // Analyze field structure (fast, no separate progress needed)
+            ms.Position = 0;
+            var initError = IndxCloudInternalApi.Manager.InitFromStream(datasetName, userId!, ms);
+            if (!string.IsNullOrEmpty(initError))
+            {
+                _uploadError = $"Analyze failed: {initError}";
+                _uploadErrorDataset = datasetName;
+                ms.Dispose();
+                return;
+            }
+
+            // Buffer the stream for the Load & Index step
+            if (_bufferedFiles.TryGetValue(datasetName, out var old))
+                old.Dispose();
+            _bufferedFiles[datasetName] = ms;
+
+            // Populate field config for display
+            var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+            var fields = engine?.GetFieldConfiguration();
+            if (fields != null)
+            {
+                fieldConfigs[datasetName] = fields;
+                _editedFieldConfigs[datasetName] = fields.Select(DeepCopy).ToArray();
+            }
+        }
+        catch (Exception ex)
+        {
+            _uploadError = $"Upload failed: {ex.Message}";
+            _uploadErrorDataset = datasetName;
+        }
+        finally
+        {
+            _uploadingDataset = null;
+            await LoadDatasets();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    // ── Load & Index ────────────────────────────────────────────────────────
+
+    private async Task StartLoadAndIndex(string datasetName)
+    {
+        if (!HasSearchable(datasetName)) return;
+        if (!_bufferedFiles.TryGetValue(datasetName, out var ms)) return;
+
+        // Apply field configuration before Load so MakeSearchEngines sees the correct searchable set
+        if (_editedFieldConfigs.TryGetValue(datasetName, out var edited))
+        {
+            var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+            engine?.SetFieldConfiguration(edited);
+        }
+
+        _loadIndexingDataset = datasetName;
+        _loadIndexProgress = 0;
+        _loadIndexPhaseLabel = "Loading…";
+        StateHasChanged();
+
+        try
+        {
+            // Phase 1: Load
+            ms.Position = 0;
+            var loadResult = IndxCloudInternalApi.Manager.StartLoadAsync(datasetName, userId!, ms);
+            if (loadResult == null)
+            {
+                _uploadError = "Load failed: dataset not found";
+                _uploadErrorDataset = datasetName;
+                return;
+            }
+            var (loadTask, loadMonitor) = loadResult.Value;
+            await PollUntilDone(loadTask, loadMonitor, v =>
+            {
+                _loadIndexProgress = v;
+                _loadIndexPhaseLabel = "Loading…";
+            });
+
+            if (!loadMonitor.Succeeded)
+            {
+                _uploadError = $"Load failed: {loadMonitor.ErrorMessage ?? "unknown error"}";
+                _uploadErrorDataset = datasetName;
+                return;
+            }
+
+            // Release the buffer — no longer needed
+            _bufferedFiles.Remove(datasetName);
+            ms.Dispose();
+
+            // Phase 2: Index
+            _loadIndexProgress = 0;
+            _loadIndexPhaseLabel = "Indexing…";
+            await InvokeAsync(StateHasChanged);
+
+            var indexMonitor = new ProcessMonitor();
+            var indexTask = Task.Run(() =>
+            {
+                var eng = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+                eng?.Index(monitor: indexMonitor);
+                indexMonitor.WaitForCompletion();
+            });
+            await PollUntilDone(indexTask, indexMonitor, v =>
+            {
+                _loadIndexProgress = v;
+                _loadIndexPhaseLabel = "Indexing…";
+            });
+
+            if (!indexMonitor.Succeeded)
+                Console.WriteLine($"Index failed: {indexMonitor.ErrorMessage}");
+
+            // Refresh field config
+            var freshEngine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+            var freshFields = freshEngine?.GetFieldConfiguration();
+            if (freshFields != null)
+            {
+                fieldConfigs[datasetName] = freshFields;
+                _editedFieldConfigs[datasetName] = freshFields.Select(DeepCopy).ToArray();
+            }
+        }
+        finally
+        {
+            _loadIndexingDataset = null;
+            _loadIndexProgress = 0;
+            await LoadDatasets();
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task PollUntilDone(Task task, ProcessMonitor monitor, Action<int> setProgress)
+    {
+        while (!task.IsCompleted)
+        {
+            setProgress(monitor.ProgressPercent);
+            await InvokeAsync(StateHasChanged);
+            await Task.Delay(100);
+        }
+        setProgress(monitor.ProgressPercent);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    // ── Quick search ──────────────────────────────────────────────────────────
+
+    private void RunQuickSearch(string datasetName, string text)
+    {
+        _searchTexts[datasetName] = text;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            _searchResults[datasetName] = null;
+            return;
+        }
+        var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+        if (engine == null) return;
+        var query = new global::Indx.CloudApi.CloudQuery { Text = text, MaxNumberOfRecordsToReturn = 8 };
+        var result = IndxCloudInternalApi.Manager.Search(query, datasetName, userId!);
+        var docs = new List<JsonElement>();
+        foreach (var record in result.Records)
+        {
+            var json = engine.GetJsonDataOfKey(record.DocumentKey);
+            if (!string.IsNullOrEmpty(json))
+            {
+                try { docs.Add(JsonDocument.Parse(json).RootElement.Clone()); }
+                catch { }
+            }
+        }
+        _searchResults[datasetName] = docs;
+    }
+
+    // ── Ready state: collapsible field config + shadow-swap reindex ─────────
+
+    private void ShowDeleteConfirm(string datasetName) => deleteConfirmDataset = datasetName;
+    private void CancelDelete() => deleteConfirmDataset = null;
 
     private async Task ConfirmDelete(string datasetName)
     {
-        if (string.IsNullOrEmpty(userId))
-            return;
-
+        if (string.IsNullOrEmpty(userId)) return;
         try
         {
             if (IndxCloudInternalApi.Manager.DeleteDataSet(datasetName, userId))
@@ -310,6 +757,13 @@ else
                 expandedFieldConfig.Remove(datasetName);
                 fieldConfigs.Remove(datasetName);
                 _editedFieldConfigs.Remove(datasetName);
+                _searchTexts.Remove(datasetName);
+                _searchResults.Remove(datasetName);
+                if (_bufferedFiles.TryGetValue(datasetName, out var buf))
+                {
+                    buf.Dispose();
+                    _bufferedFiles.Remove(datasetName);
+                }
                 if (selectedDataset == datasetName) selectedDataset = null;
                 await LoadDatasets();
             }
@@ -328,9 +782,7 @@ else
             expandedFieldConfig.Remove(datasetName);
             return;
         }
-
         expandedFieldConfig.Add(datasetName);
-
         if (!fieldConfigs.ContainsKey(datasetName))
         {
             try
@@ -354,8 +806,7 @@ else
         if (!_editedFieldConfigs.TryGetValue(datasetName, out var edited) || edited == null) return false;
         for (int i = 0; i < original.Length && i < edited.Length; i++)
         {
-            var o = original[i];
-            var e = edited[i];
+            var o = original[i]; var e = edited[i];
             if ((o.Searchable ?? false) != (e.Searchable ?? false)) return true;
             if ((o.Filterable ?? false) != (e.Filterable ?? false)) return true;
             if ((o.Facetable ?? false) != (e.Facetable ?? false)) return true;
@@ -402,23 +853,12 @@ else
             {
                 var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
                 if (engine == null) return;
-
                 var df = engine.DocumentFields;
                 bool needsReindex = df?.RequiresReindex(edited) ?? false;
-
                 if (needsReindex && engine.Status.SystemState == SystemState.Ready)
-                {
-                    // Must apply field overrides pre-Load on the shadow so MakeSearchEngines
-                    // builds _indexableFields against the new Searchable/WordIndexing/BM25F
-                    // set. Going through RunMutationOnShadow with a post-Load callback would
-                    // flip the flag but leave _indexableFields shaped by the original config,
-                    // so the change would silently have no search-time effect.
                     IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(datasetName, userId!, edited);
-                }
                 else
-                {
                     engine.SetFieldConfiguration(edited);
-                }
             });
 
             var freshEngine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
@@ -454,6 +894,8 @@ else
         }
     }
 
+    // ── Helpers ─────────────────────────────────────────────────────────────
+
     private static FieldProxy DeepCopy(FieldProxy f) => new FieldProxy
     {
         FieldName = f.FieldName,
@@ -482,14 +924,20 @@ else
         return float.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var f) ? f : null;
     }
 
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes >= 1_073_741_824) return $"{bytes / 1_073_741_824.0:F1} GB";
+        if (bytes >= 1_048_576) return $"{bytes / 1_048_576.0:F1} MB";
+        if (bytes >= 1024) return $"{bytes / 1024.0:F1} KB";
+        return $"{bytes} B";
+    }
+
     private RenderFragment<int> _iconFields => size => @<Fields Size="size" />;
     private RenderFragment<int> _iconDelete => size => @<Stop Size="size" />;
 
     private static string BoolDisplay(bool? value) => value switch
     {
-        true => "✓",
-        false => "–",
-        null => "",
+        true => "✓", false => "–", null => "",
     };
 
     private static string FloatDisplay(float? value) =>

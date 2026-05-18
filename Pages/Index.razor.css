@@ -1,10 +1,29 @@
 .indx-datasets-heading {
+    display: flex;
+    align-items: center;
+    gap: 16px;
     margin-top: 40px;
     margin-bottom: calc(var(--spacing) * 4);
 }
 
+.indx-datasets-heading h2 {
+    margin: 0;
+    flex: 1;
+}
+
 .indx-dataset-card {
     margin-top: calc(var(--spacing) * 4);
+}
+
+.indx-dataset-card-inner {
+    position: relative;
+}
+
+.indx-dataset-delete-corner {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 1;
 }
 
 .indx-table-wrap {
@@ -122,4 +141,85 @@
 
 .indx-table tbody td {
     font-weight: var(--reg);
+}
+
+.indx-upload-label {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 12px;
+    height: 30px;
+    font: var(--text-xs);
+    font-weight: var(--med);
+    color: var(--lv7);
+    background: transparent;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    cursor: pointer;
+    white-space: nowrap;
+    box-sizing: border-box;
+    user-select: none;
+}
+
+.indx-upload-label:hover {
+    border-color: var(--lv5);
+}
+
+.indx-text-input {
+    padding: 6px 10px;
+    height: 30px;
+    font: var(--text-xs);
+    background: transparent;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    color: var(--lv7);
+    box-sizing: border-box;
+    min-width: 200px;
+}
+
+.indx-text-input:hover {
+    border-color: var(--lv5);
+}
+
+.indx-text-input:focus {
+    outline: none;
+    border-color: var(--lv5);
+}
+
+.indx-search-panel {
+    margin-top: 20px;
+    border-top: 1px solid var(--lv2);
+    padding-top: 16px;
+}
+
+.indx-search-input {
+    width: 100%;
+    max-width: 480px;
+}
+
+.indx-search-empty {
+    font: var(--text-sm);
+    color: var(--lv4);
+    margin-top: 8px;
+}
+
+.indx-search-results {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.indx-search-result-item {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--lv2);
+    font: var(--text-xs);
+    color: var(--lv6);
+}
+
+.indx-search-result-key {
+    color: var(--lv4);
+    margin-right: 4px;
 }

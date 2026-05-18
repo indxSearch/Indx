@@ -185,6 +185,24 @@ namespace IndxCloudApi.Models
             }
         }
 
+        /// <summary>
+        /// Runs field analysis on <paramref name="jsonStream"/>, sets DocumentFields on the
+        /// engine, and persists the field configuration. Must be called after CreateOrOpen and
+        /// before Load. Returns null on success or an error message on failure.
+        /// </summary>
+        internal string? InitFromStream(string dataSetName, string userId, Stream jsonStream)
+        {
+            var engine = FindSearchEngineForInit(dataSetName, userId);
+            if (engine == null)
+                return "Dataset not found";
+            var df = DocumentFields.Analyze(jsonStream, out string error);
+            if (!string.IsNullOrEmpty(error) || df == null)
+                return string.IsNullOrEmpty(error) ? "Analyze returned no fields" : error;
+            engine.SetDocumentFieldsInternal(df);
+            engine.Persistence?.SaveDocumentFields(df.GetSerialized());
+            return null;
+        }
+
         internal bool Load(string dataSetName, string userId, Stream jsonData, ProcessMonitor pm)
         {
             var instance = FindInstance(dataSetName, userId);
@@ -223,6 +241,21 @@ namespace IndxCloudApi.Models
             var pm = new ProcessMonitor();
             await instance.LoadAsync(jsonData, pm);
             return (pm.Succeeded, pm.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Starts an async load and returns the <see cref="ProcessMonitor"/> so the caller can
+        /// poll progress. Returns null if the dataset is not found.
+        /// The returned task completes when the load finishes.
+        /// </summary>
+        internal (Task loadTask, ProcessMonitor monitor)? StartLoadAsync(string dataSetName, string userId, Stream jsonData)
+        {
+            var instance = FindInstance(dataSetName, userId);
+            if (instance == null)
+                return null;
+            var pm = new ProcessMonitor();
+            var task = instance.LoadAsync(jsonData, pm);
+            return (task, pm);
         }
 
         /// <summary>
