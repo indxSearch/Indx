@@ -74,6 +74,12 @@
                 }
             </p>
         </div>
+
+        <form method="post" action="Account/Logout" style="margin-top: 20px;">
+            <AntiforgeryToken />
+            <input type="hidden" name="returnUrl" value="" />
+            <button type="submit" class="btn btn-secondary btn-micro">Log out</button>
+        </form>
     </div>
 
     <div style="margin-bottom: 40px;">

@@ -163,16 +163,22 @@ else
                                 <thead>
                                     <tr>
                                         <th>Field and type</th>
-                                        <th>Searchable</th>
-                                        <th>Filterable</th>
-                                        <th>Facetable</th>
-                                        <th>Sortable</th>
-                                        <th>WordIndexing</th>
-                                        <th>Embeddable</th>
-                                        <th>PreloadFilters</th>
-                                        <th>Weight</th>
-                                        <th>BM25Fb</th>
-                                        <th>BM25Fk1</th>
+                                        <th><span class="indx-th-tip" data-tooltip="Included in full-text search. At least one field must be searchable.">Searchable</span></th>
+                                        <th><span class="indx-th-tip" data-tooltip="Can be used to filter results by exact value or range.">Filterable</span></th>
+                                        <th><span class="indx-th-tip" data-tooltip="Field values are counted and returned as facets for building filter UI.">Facetable</span></th>
+                                        <th><span class="indx-th-tip" data-tooltip="Results can be sorted by this field's value.">Sortable</span></th>
+                                        @if (_showAdvancedFields.Contains(datasetName))
+                                        {
+                                            <th><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
+                                            <th><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
+                                            <th><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
+                                        }
+                                        <th><span class="indx-th-tip" data-tooltip="Relevance boost multiplier for this field. Higher values make matches in this field rank higher.">Weight</span></th>
+                                        @if (_showAdvancedFields.Contains(datasetName))
+                                        {
+                                            <th><span class="indx-th-tip" data-tooltip="BM25F length normalisation (0–1). Higher values penalise longer fields more. Activates BM25F multi-field scoring.">BM25Fb</span></th>
+                                            <th><span class="indx-th-tip" data-tooltip="BM25F term saturation factor. Higher values give more weight to repeated terms in this field.">BM25Fk1</span></th>
+                                        }
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -192,28 +198,38 @@ else
                                             <td class="indx-table-check"><Checkbox Checked="@(field.Filterable == true)" CheckedChanged="@(v => { field.Filterable = v; })" /></td>
                                             <td class="indx-table-check"><Checkbox Checked="@(field.Facetable == true)" CheckedChanged="@(v => { field.Facetable = v; })" /></td>
                                             <td class="indx-table-check"><Checkbox Checked="@(field.Sortable == true)" CheckedChanged="@(v => { field.Sortable = v; })" /></td>
-                                            <td class="indx-table-check"><Checkbox Checked="@(field.WordIndexing == true)" CheckedChanged="@(v => { field.WordIndexing = v; })" /></td>
-                                            <td class="indx-table-check"><Checkbox Checked="@(field.Embeddable == true)" CheckedChanged="@(v => { field.Embeddable = v; })" /></td>
-                                            <td class="indx-table-check"><Checkbox Checked="@(field.PreloadFilters == true)" CheckedChanged="@(v => { field.PreloadFilters = v; })" /></td>
+                                            @if (_showAdvancedFields.Contains(datasetName))
+                                            {
+                                                <td class="indx-table-check"><Checkbox Checked="@(field.WordIndexing == true)" CheckedChanged="@(v => { field.WordIndexing = v; })" /></td>
+                                                <td class="indx-table-check"><Checkbox Checked="@(field.Embeddable == true)" CheckedChanged="@(v => { field.Embeddable = v; })" /></td>
+                                                <td class="indx-table-check"><Checkbox Checked="@(field.PreloadFilters == true)" CheckedChanged="@(v => { field.PreloadFilters = v; })" /></td>
+                                            }
                                             <td><input class="indx-num-input" type="number" step="0.1" min="0"
                                                        value="@(field.Weight.HasValue ? field.Weight.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
                                                        @onchange="@(e => { field.Weight = ParseFloat(e.Value?.ToString()); })" /></td>
-                                            <td><input class="indx-num-input" type="number" step="0.01" min="0" max="1"
-                                                       value="@(field.BM25Fb.HasValue ? field.BM25Fb.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
-                                                       @onchange="@(e => { field.BM25Fb = ParseFloat(e.Value?.ToString()); })" /></td>
-                                            <td><input class="indx-num-input" type="number" step="0.1" min="0"
-                                                       value="@(field.BM25Fk1.HasValue ? field.BM25Fk1.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
-                                                       @onchange="@(e => { field.BM25Fk1 = ParseFloat(e.Value?.ToString()); })" /></td>
+                                            @if (_showAdvancedFields.Contains(datasetName))
+                                            {
+                                                <td><input class="indx-num-input" type="number" step="0.01" min="0" max="1"
+                                                           value="@(field.BM25Fb.HasValue ? field.BM25Fb.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                                           @onchange="@(e => { field.BM25Fb = ParseFloat(e.Value?.ToString()); })" /></td>
+                                                <td><input class="indx-num-input" type="number" step="0.1" min="0"
+                                                           value="@(field.BM25Fk1.HasValue ? field.BM25Fk1.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                                           @onchange="@(e => { field.BM25Fk1 = ParseFloat(e.Value?.ToString()); })" /></td>
+                                            }
                                         </tr>
                                     }
                                 </tbody>
                             </table>
                         </div>
                         <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
-                            <span style="margin-left:auto">
+                            <span style="margin-left:auto;display:flex;gap:16px;align-items:center;">
                                 <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
                                               CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
                                               Label="Show unused fields"
+                                              Elevated />
+                                <ToggleSwitch Checked="@_showAdvancedFields.Contains(datasetName)"
+                                              CheckedChanged="@(v => { if (v) _showAdvancedFields.Add(datasetName); else _showAdvancedFields.Remove(datasetName); })"
+                                              Label="Advanced"
                                               Elevated />
                             </span>
                         </div>
@@ -260,10 +276,14 @@ else
                         }
                         @if (expandedFieldConfig.Contains(datasetName) && !isSaving)
                         {
-                            <span style="margin-left: auto">
+                            <span style="margin-left: auto; display: flex; gap: 16px; align-items: center;">
                                 <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
                                               CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
                                               Label="Show unused fields"
+                                              Elevated />
+                                <ToggleSwitch Checked="@_showAdvancedFields.Contains(datasetName)"
+                                              CheckedChanged="@(v => { if (v) _showAdvancedFields.Add(datasetName); else _showAdvancedFields.Remove(datasetName); })"
+                                              Label="Advanced"
                                               Elevated />
                             </span>
                         }
@@ -286,16 +306,22 @@ else
                                     <thead>
                                         <tr>
                                             <th>Field and type</th>
-                                            <th>Searchable</th>
-                                            <th>Filterable</th>
-                                            <th>Facetable</th>
-                                            <th>Sortable</th>
-                                            <th>WordIndexing</th>
-                                            <th>Embeddable</th>
-                                            <th>PreloadFilters</th>
-                                            <th>Weight</th>
-                                            <th>BM25Fb</th>
-                                            <th>BM25Fk1</th>
+                                            <th><span class="indx-th-tip" data-tooltip="Included in full-text search. At least one field must be searchable.">Searchable</span></th>
+                                            <th><span class="indx-th-tip" data-tooltip="Can be used to filter results by exact value or range.">Filterable</span></th>
+                                            <th><span class="indx-th-tip" data-tooltip="Field values are counted and returned as facets for building filter UI.">Facetable</span></th>
+                                            <th><span class="indx-th-tip" data-tooltip="Results can be sorted by this field's value.">Sortable</span></th>
+                                            @if (_showAdvancedFields.Contains(datasetName))
+                                            {
+                                                <th><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
+                                                <th><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
+                                                <th><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
+                                            }
+                                            <th><span class="indx-th-tip" data-tooltip="Relevance boost multiplier for this field. Higher values make matches in this field rank higher.">Weight</span></th>
+                                            @if (_showAdvancedFields.Contains(datasetName))
+                                            {
+                                                <th><span class="indx-th-tip" data-tooltip="BM25F length normalisation (0–1). Higher values penalise longer fields more. Activates BM25F multi-field scoring.">BM25Fb</span></th>
+                                                <th><span class="indx-th-tip" data-tooltip="BM25F term saturation factor. Higher values give more weight to repeated terms in this field.">BM25Fk1</span></th>
+                                            }
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -315,18 +341,24 @@ else
                                                 <td class="indx-table-check"><Checkbox Checked="@(field.Filterable == true)" CheckedChanged="@(v => { field.Filterable = v; })" /></td>
                                                 <td class="indx-table-check"><Checkbox Checked="@(field.Facetable == true)" CheckedChanged="@(v => { field.Facetable = v; })" /></td>
                                                 <td class="indx-table-check"><Checkbox Checked="@(field.Sortable == true)" CheckedChanged="@(v => { field.Sortable = v; })" /></td>
-                                                <td class="indx-table-check"><Checkbox Checked="@(field.WordIndexing == true)" CheckedChanged="@(v => { field.WordIndexing = v; })" /></td>
-                                                <td class="indx-table-check"><Checkbox Checked="@(field.Embeddable == true)" CheckedChanged="@(v => { field.Embeddable = v; })" /></td>
-                                                <td class="indx-table-check"><Checkbox Checked="@(field.PreloadFilters == true)" CheckedChanged="@(v => { field.PreloadFilters = v; })" /></td>
+                                                @if (_showAdvancedFields.Contains(datasetName))
+                                                {
+                                                    <td class="indx-table-check"><Checkbox Checked="@(field.WordIndexing == true)" CheckedChanged="@(v => { field.WordIndexing = v; })" /></td>
+                                                    <td class="indx-table-check"><Checkbox Checked="@(field.Embeddable == true)" CheckedChanged="@(v => { field.Embeddable = v; })" /></td>
+                                                    <td class="indx-table-check"><Checkbox Checked="@(field.PreloadFilters == true)" CheckedChanged="@(v => { field.PreloadFilters = v; })" /></td>
+                                                }
                                                 <td><input class="indx-num-input" type="number" step="0.1" min="0"
                                                            value="@(field.Weight.HasValue ? field.Weight.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
                                                            @onchange="@(e => { field.Weight = ParseFloat(e.Value?.ToString()); })" /></td>
-                                                <td><input class="indx-num-input" type="number" step="0.01" min="0" max="1"
-                                                           value="@(field.BM25Fb.HasValue ? field.BM25Fb.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
-                                                           @onchange="@(e => { field.BM25Fb = ParseFloat(e.Value?.ToString()); })" /></td>
-                                                <td><input class="indx-num-input" type="number" step="0.1" min="0"
-                                                           value="@(field.BM25Fk1.HasValue ? field.BM25Fk1.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
-                                                           @onchange="@(e => { field.BM25Fk1 = ParseFloat(e.Value?.ToString()); })" /></td>
+                                                @if (_showAdvancedFields.Contains(datasetName))
+                                                {
+                                                    <td><input class="indx-num-input" type="number" step="0.01" min="0" max="1"
+                                                               value="@(field.BM25Fb.HasValue ? field.BM25Fb.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                                               @onchange="@(e => { field.BM25Fb = ParseFloat(e.Value?.ToString()); })" /></td>
+                                                    <td><input class="indx-num-input" type="number" step="0.1" min="0"
+                                                               value="@(field.BM25Fk1.HasValue ? field.BM25Fk1.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                                               @onchange="@(e => { field.BM25Fk1 = ParseFloat(e.Value?.ToString()); })" /></td>
+                                                }
                                             </tr>
                                         }
                                     </tbody>
@@ -409,6 +441,7 @@ else
     private string? deleteConfirmDataset;
     private HashSet<string> expandedFieldConfig = new();
     private HashSet<string> _showUnusedFields = new();
+    private HashSet<string> _showAdvancedFields = new();
     private Dictionary<string, FieldProxy[]?> fieldConfigs = new();
     private Dictionary<string, FieldProxy[]> _editedFieldConfigs = new();
 

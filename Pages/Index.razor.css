@@ -98,6 +98,37 @@
     text-align: center;
 }
 
+/* Column header tooltips */
+.indx-th-tip {
+    position: relative;
+    cursor: default;
+}
+
+.indx-th-tip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--lv7);
+    color: var(--lv1);
+    font: var(--text-xs);
+    font-weight: var(--book);
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    white-space: normal;
+    width: 200px;
+    z-index: 100;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    line-height: 1.4;
+}
+
+.indx-th-tip:hover::after {
+    opacity: 1;
+}
+
 .cell-inner {
     display: flex;
     align-items: center;
