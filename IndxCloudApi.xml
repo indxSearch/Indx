@@ -500,7 +500,7 @@
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetShadowBuildPercent(System.String,System.String)">
             <summary>Progress percentage (0–100) of the current shadow build's index phase, or 0 if none.</summary>
         </member>
-        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.BuildShadowFrom(Indx.Api.ICloudSearchEngine,System.String,System.String,Indx.Api.FieldProxy[])">
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.BuildShadowFrom(Indx.Api.ICloudSearchEngine,System.String,System.String,Indx.Api.FieldProxy[],Indx.Api.ProcessMonitor)">
             <summary>
             Builds a shadow SearchEngine from the original's live in-memory state via
             <see cref="M:Indx.Api.SearchEngine.CreateInMemoryClone(Indx.Api.ProcessMonitor,Indx.Api.FieldProxy[])"/>, then attaches a fresh

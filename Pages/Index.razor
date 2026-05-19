@@ -317,7 +317,7 @@ else
                         {
                             <div class="indx-field-config-saving">
                                 <ProgressBar Value="_shadowBuildPercent" ShowLabel FulfilledColor />
-                                <p class="indx-field-config-saving-label">Reindexing...</p>
+                                <p class="indx-field-config-saving-label">@(_shadowBuildPercent == 0 ? "Preparing…" : "Reindexing…")</p>
                             </div>
                         }
 
@@ -799,6 +799,9 @@ else
         {
             var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
             engine?.SetFieldConfiguration(edited);
+            var df = engine?.DocumentFields;
+            if (df != null && engine?.Persistence != null)
+                engine.Persistence.SaveDocumentFields(df.GetSerialized());
         }
 
         _loadIndexingDataset = datasetName;
