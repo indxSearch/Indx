@@ -28,6 +28,22 @@
 
     <script src="_framework/blazor.web.js"></script>
     <script>
+        window.indxTriggerFileInput = function(id) {
+            document.getElementById(id)?.click();
+        };
+
+        window.indxDownloadFile = function(filename, content, contentType) {
+            const blob = new Blob([content], { type: contentType });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        };
+
         // Simple clipboard helper
         window.copyToClipboard = function(text) {
             if (navigator.clipboard && window.isSecureContext) {

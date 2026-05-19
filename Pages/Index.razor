@@ -11,6 +11,7 @@
 @using System.Text.Json
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IJSRuntime JSRuntime
 
 <PageTitle>Indx Cloud API</PageTitle>
 
@@ -91,29 +92,30 @@ else
                 @* ── Ready: status ── *@
                 @if (engineState == SystemState.Ready && status != null)
                 {
-                    <div>
-                        <p><strong>System State:</strong> @status.SystemState</p>
-                        <p><strong>Document Count:</strong> @status.DocumentCount</p>
-                        <p><strong>Search Counter:</strong> @status.SearchCounter</p>
-                        <p><strong>Seconds To Index:</strong> @status.SecondsToIndex.ToString("0.##")s</p>
-                        <p><strong>Time Of Instance Creation:</strong> @status.TimeOfInstanceCreation</p>
-                        <p><strong>Time Of Last Index Build:</strong> @status.TimeOfLastIndexBuild</p>
-
-                        @if (status.LicenseInfo?.DocumentLimitExceeded == true)
-                        {
-                            <p style="color: var(--CSignal); font-weight: bold;">⚠️ License Document Limit Exceeded: @status.DocumentCount.ToString("N0") / @status.LicenseInfo.DocumentLimit.ToString("N0")</p>
-                        }
-                        @if (status.InvalidArgument)   { <p><strong>⚠️ Invalid Argument:</strong> @status.InvalidArgument</p> }
-                        @if (status.InvalidState)      { <p><strong>⚠️ Invalid State:</strong> @status.InvalidState</p> }
-                        @if (status.TooLongClientText) { <p><strong>⚠️ Too Long Client Text:</strong> @status.TooLongClientText</p> }
-                        @if (status.TooLongSearchText) { <p><strong>⚠️ Too Long Search Text:</strong> @status.TooLongSearchText</p> }
-                        @if (status.UnknownConfigurationError) { <p><strong>⚠️ Unknown Configuration Error:</strong> @status.UnknownConfigurationError</p> }
-                        @if (!string.IsNullOrEmpty(status.ErrorMessage)) { <p><strong>Error Message:</strong> @status.ErrorMessage</p> }
-                    </div>
+                    <table class="indx-status-table">
+                        <tbody>
+                            <tr><td>System State</td><td>@status.SystemState</td></tr>
+                            <tr><td>Document Count</td><td>@status.DocumentCount</td></tr>
+                            <tr><td>Search Counter</td><td>@status.SearchCounter</td></tr>
+                            <tr><td>Seconds To Index</td><td>@status.SecondsToIndex.ToString("0.##")s</td></tr>
+                            <tr><td>Instance Created</td><td>@status.TimeOfInstanceCreation</td></tr>
+                            <tr><td>Last Index Build</td><td>@status.TimeOfLastIndexBuild</td></tr>
+                            @if (status.LicenseInfo?.DocumentLimitExceeded == true)
+                            {
+                                <tr><td style="color:var(--CSignal);">License Limit</td><td style="color:var(--CSignal);">@status.DocumentCount.ToString("N0") / @status.LicenseInfo.DocumentLimit.ToString("N0")</td></tr>
+                            }
+                            @if (status.InvalidArgument)          { <tr><td style="color:var(--CSignal);">Invalid Argument</td><td>@status.InvalidArgument</td></tr> }
+                            @if (status.InvalidState)             { <tr><td style="color:var(--CSignal);">Invalid State</td><td>@status.InvalidState</td></tr> }
+                            @if (status.TooLongClientText)        { <tr><td style="color:var(--CSignal);">Too Long Client Text</td><td>@status.TooLongClientText</td></tr> }
+                            @if (status.TooLongSearchText)        { <tr><td style="color:var(--CSignal);">Too Long Search Text</td><td>@status.TooLongSearchText</td></tr> }
+                            @if (status.UnknownConfigurationError){ <tr><td style="color:var(--CSignal);">Config Error</td><td>@status.UnknownConfigurationError</td></tr> }
+                            @if (!string.IsNullOrEmpty(status.ErrorMessage)) { <tr><td style="color:var(--CSignal);">Error</td><td>@status.ErrorMessage</td></tr> }
+                        </tbody>
+                    </table>
                 }
 
                 @* ── Created + not yet analyzed: upload panel ── *@
-                @if (engineState == SystemState.Created && !isAnalyzed && !isUploading)
+                @if (engineState != SystemState.Ready && !isAnalyzed && !isUploading && !isLoadIndexing)
                 {
                     <p style="color:var(--lv5);">Upload a JSON file to configure and index this dataset.</p>
                     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
@@ -150,14 +152,42 @@ else
                 }
 
                 @* ── Analyzed: field config + Load & Index button ── *@
-                @if (engineState == SystemState.Created && isAnalyzed && !isUploading && !isLoadIndexing)
+                @if (engineState != SystemState.Ready && isAnalyzed && !isUploading && !isLoadIndexing)
                 {
-                    <p style="color:var(--lv5);margin-bottom:8px;">
-                        Configure fields, then click <strong>Load &amp; Index</strong>.
-                    </p>
-
                     @if (_editedFieldConfigs.TryGetValue(datasetName, out var editedFields) && editedFields != null)
                     {
+                        <div style="margin-bottom:8px;">
+                            <p style="color:var(--lv5);margin:0 0 8px 0;">Configure your fields. At least one field should be searchable.</p>
+                            <div style="display:flex;gap:8px;align-items:center;">
+                                <Button Variant="primary" Size="micro"
+                                        @onclick="() => StartLoadAndIndex(datasetName)"
+                                        disabled="@(!HasSearchable(datasetName))">Load &amp; Index</Button>
+                                @if (_searchableTouched.Contains(datasetName) && !HasSearchable(datasetName))
+                                {
+                                    <span class="indx-field-config-error">At least one field must be searchable</span>
+                                }
+                            </div>
+                            <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                                <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-{datasetName}")" />
+                                <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportFile(datasetName)">Upload field configuration</Button>
+                                @if (_importWarnings.TryGetValue(datasetName, out var warning) && warning != null)
+                                {
+                                    <span class="indx-field-config-import-warning">@warning</span>
+                                }
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap;">
+                            <span style="margin-left:auto;display:flex;gap:16px;align-items:center;">
+                                <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
+                                              CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
+                                              Label="Show unused fields"
+                                              Elevated />
+                                <ToggleSwitch Checked="@_showAdvancedFields.Contains(datasetName)"
+                                              CheckedChanged="@(v => { if (v) _showAdvancedFields.Add(datasetName); else _showAdvancedFields.Remove(datasetName); })"
+                                              Label="Advanced"
+                                              Elevated />
+                            </span>
+                        </div>
                         <div class="indx-table-wrap">
                             <table class="indx-table">
                                 <thead>
@@ -221,26 +251,8 @@ else
                                 </tbody>
                             </table>
                         </div>
-                        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
-                            <span style="margin-left:auto;display:flex;gap:16px;align-items:center;">
-                                <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
-                                              CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
-                                              Label="Show unused fields"
-                                              Elevated />
-                                <ToggleSwitch Checked="@_showAdvancedFields.Contains(datasetName)"
-                                              CheckedChanged="@(v => { if (v) _showAdvancedFields.Add(datasetName); else _showAdvancedFields.Remove(datasetName); })"
-                                              Label="Advanced"
-                                              Elevated />
-                            </span>
-                        </div>
-                        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
-                            <Button Variant="primary" Size="micro"
-                                    @onclick="() => StartLoadAndIndex(datasetName)"
-                                    disabled="@(!HasSearchable(datasetName))">Load &amp; Index</Button>
-                            @if (_searchableTouched.Contains(datasetName) && !HasSearchable(datasetName))
-                            {
-                                <span class="indx-field-config-error">At least one field must be searchable</span>
-                            }
+                        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;margin-bottom:8px;flex-wrap:wrap;">
+                            <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportFieldConfig(datasetName)">Export field configuration as json</Button>
                         </div>
                     }
                     else
@@ -364,6 +376,15 @@ else
                                     </tbody>
                                 </table>
                             </div>
+                            <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+                                <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportFieldConfig(datasetName)">Export field configuration as json</Button>
+                                <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-ready-{datasetName}")" />
+                                <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportReadyFile(datasetName)">Upload field configuration</Button>
+                                @if (_importWarnings.TryGetValue(datasetName, out var readyWarning) && readyWarning != null)
+                                {
+                                    <span class="indx-field-config-import-warning">@readyWarning</span>
+                                }
+                            </div>
                         }
                         else
                         {
@@ -376,13 +397,25 @@ else
                 @if (engineState == SystemState.Ready)
                 {
                     <div class="indx-search-panel">
+                        @if (string.IsNullOrEmpty(_searchTexts.GetValueOrDefault(datasetName)))
+                        {
+                        <svg class="indx-search-bg-logo" viewBox="0 0 203 146" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                            <path d="M58.4248 145.003V145.503H58.9248V145.003H58.4248ZM29.7109 145.003H29.2109V145.503H29.7109V145.003ZM29.7109 116.203V115.703H29.2109V116.203H29.7109ZM58.4248 116.203H58.9248V115.703H58.4248V116.203ZM173.284 145.003V145.503H173.784V145.003H173.284ZM144.57 145.003H144.07V145.503H144.57V145.003ZM144.57 116.203V115.703H144.07V116.203H144.57ZM173.284 116.203H173.784V115.703H173.284V116.203ZM29.7139 116.198V116.698H30.2139V116.198H29.7139ZM1 116.198H0.5V116.698H1V116.198ZM1 87.3984V86.8984H0.5V87.3984H1ZM29.7139 87.3984H30.2139V86.8984H29.7139V87.3984ZM202.003 116.198V116.698H202.503V116.198H202.003ZM173.289 116.198H172.789V116.698H173.289V116.198ZM173.289 87.3984V86.8984H172.789V87.3984H173.289ZM202.003 87.3984H202.503V86.8984H202.003V87.3984ZM144.565 87.4014V87.9014H145.065V87.4014H144.565ZM58.4297 87.4014H57.9297V87.9014H58.4297V87.4014ZM58.4297 58.6016V58.1016H57.9297V58.6016H58.4297ZM144.565 58.6016H145.065V58.1016H144.565V58.6016ZM58.4248 29.7998V30.2998H58.9248V29.7998H58.4248ZM29.7139 29.7998V29.2998H29.2139V29.7998H29.7139ZM29.7139 58.5967V59.0967H30.2139V58.5967H29.7139ZM1 58.5967H0.5V59.0967H1V58.5967ZM1 29.7969V29.2969H0.5V29.7969H1ZM29.7109 29.7969V30.2969H30.2109V29.7969H29.7109ZM29.7109 1V0.5H29.2109V1H29.7109ZM58.4248 1H58.9248V0.5H58.4248V1ZM202.003 58.5967V59.0967H202.503V58.5967H202.003ZM173.289 58.5967H172.789V59.0967H173.289V58.5967ZM173.289 29.7969V29.2969H172.789V29.7969H173.289ZM202.003 29.7969H202.503V29.2969H202.003V29.7969ZM173.284 29.7998V30.2998H173.784V29.7998H173.284ZM144.57 29.7998H144.07V30.2998H144.57V29.7998ZM144.57 1V0.5H144.07V1H144.57ZM173.284 1H173.784V0.5H173.284V1ZM58.4248 145.003V144.503H29.7109V145.003V145.503H58.4248V145.003ZM29.7109 145.003H30.2109V116.203H29.7109H29.2109V145.003H29.7109ZM29.7109 116.203V116.703H58.4248V116.203V115.703H29.7109V116.203ZM58.4248 116.203H57.9248V145.003H58.4248H58.9248V116.203H58.4248ZM173.284 145.003V144.503H144.57V145.003V145.503H173.284V145.003ZM144.57 145.003H145.07V116.203H144.57H144.07V145.003H144.57ZM144.57 116.203V116.703H173.284V116.203V115.703H144.57V116.203ZM173.284 116.203H172.784V145.003H173.284H173.784V116.203H173.284ZM29.7139 116.198V115.698H1V116.198V116.698H29.7139V116.198ZM1 116.198H1.5V87.3984H1H0.5V116.198H1ZM1 87.3984V87.8984H29.7139V87.3984V86.8984H1V87.3984ZM29.7139 87.3984H29.2139V116.198H29.7139H30.2139V87.3984H29.7139ZM202.003 116.198V115.698H173.289V116.198V116.698H202.003V116.198ZM173.289 116.198H173.789V87.3984H173.289H172.789V116.198H173.289ZM173.289 87.3984V87.8984H202.003V87.3984V86.8984H173.289V87.3984ZM202.003 87.3984H201.503V116.198H202.003H202.503V87.3984H202.003ZM144.565 87.4014V86.9014H58.4297V87.4014V87.9014H144.565V87.4014ZM58.4297 87.4014H58.9297V58.6016H58.4297H57.9297V87.4014H58.4297ZM58.4297 58.6016V59.1016H144.565V58.6016V58.1016H58.4297V58.6016ZM144.565 58.6016H144.065V87.4014H144.565H145.065V58.6016H144.565ZM58.4248 29.7998V29.2998H29.7139V29.7998V30.2998H58.4248V29.7998ZM29.7139 29.7998H29.2139V58.5967H29.7139H30.2139V29.7998H29.7139ZM29.7139 58.5967V58.0967H1V58.5967V59.0967H29.7139V58.5967ZM1 58.5967H1.5V29.7969H1H0.5V58.5967H1ZM1 29.7969V30.2969H29.7109V29.7969V29.2969H1V29.7969ZM29.7109 29.7969H30.2109V1H29.7109H29.2109V29.7969H29.7109ZM29.7109 1V1.5H58.4248V1V0.5H29.7109V1ZM58.4248 1H57.9248V29.7998H58.4248H58.9248V1H58.4248ZM202.003 58.5967V58.0967H173.289V58.5967V59.0967H202.003V58.5967ZM173.289 58.5967H173.789V29.7969H173.289H172.789V58.5967H173.289ZM173.289 29.7969V30.2969H202.003V29.7969V29.2969H173.289V29.7969ZM202.003 29.7969H201.503V58.5967H202.003H202.503V29.7969H202.003ZM173.284 29.7998V29.2998H144.57V29.7998V30.2998H173.284V29.7998ZM144.57 29.7998H145.07V1H144.57H144.07V29.7998H144.57ZM144.57 1V1.5H173.284V1V0.5H144.57V1ZM173.284 1H172.784V29.7998H173.284H173.784V1H173.284Z" fill="currentColor"/>
+                        </svg>
+                        }
                         <div class="indx-search-field-wrap">
-                            <span class="indx-search-field-icon"><Search Size="16" Color="var(--lv4)" /></span>
+                            <span class="indx-search-field-icon"><Search Size="16" /></span>
                             <input class="indx-search-field-input"
                                    type="search"
-                                   placeholder="Search…"
+                                   placeholder="Search preview"
                                    value="@(_searchTexts.GetValueOrDefault(datasetName, string.Empty))"
                                    @oninput="@(e => RunQuickSearch(datasetName, e.Value?.ToString() ?? string.Empty))" />
+                            @if (!string.IsNullOrEmpty(_searchTexts.GetValueOrDefault(datasetName)))
+                            {
+                                <div class="indx-search-clear">
+                                    <Button Variant="ghost" Size="micro" @onclick="@(() => ClearSearch(datasetName))">Clear</Button>
+                                </div>
+                            }
                         </div>
                         @if (_searchResults.TryGetValue(datasetName, out var results) && results != null)
                         {
@@ -396,12 +429,9 @@ else
                                     @foreach (var doc in results)
                                     {
                                         <div class="indx-search-result-item">
-                                            @foreach (var prop in doc.EnumerateObject().Take(4))
+                                            @foreach (var prop in GetDisplayFields(datasetName, doc))
                                             {
-                                                @if (prop.Value.ValueKind == JsonValueKind.String || prop.Value.ValueKind == JsonValueKind.Number || prop.Value.ValueKind == JsonValueKind.True || prop.Value.ValueKind == JsonValueKind.False)
-                                                {
-                                                    <span class="indx-search-result-field"><span class="indx-search-result-key">@prop.Name</span> @prop.Value</span>
-                                                }
+                                                <span class="indx-search-result-field"><span class="indx-search-result-key">@prop.Name</span> @prop.Value</span>
                                             }
                                         </div>
                                     }
@@ -474,6 +504,9 @@ else
     private string? _loadIndexingDataset;
     private int _loadIndexProgress;
     private string _loadIndexPhaseLabel = string.Empty;
+
+    // Field config import/export
+    private Dictionary<string, string?> _importWarnings = new();
 
     // Quick search
     private Dictionary<string, string> _searchTexts = new();
@@ -791,6 +824,104 @@ else
 
     // ── Quick search ──────────────────────────────────────────────────────────
 
+    private async Task ExportFieldConfig(string datasetName)
+    {
+        if (!_editedFieldConfigs.TryGetValue(datasetName, out var fields) || fields == null) return;
+        var json = JsonSerializer.Serialize(fields, new JsonSerializerOptions { WriteIndented = true });
+        await JSRuntime.InvokeVoidAsync("indxDownloadFile", $"{datasetName}-field-config.json", json, "application/json");
+    }
+
+    private async Task TriggerImportFile(string datasetName) =>
+        await JSRuntime.InvokeVoidAsync("indxTriggerFileInput", $"fieldconfig-import-{datasetName}");
+
+    private async Task TriggerImportReadyFile(string datasetName) =>
+        await JSRuntime.InvokeVoidAsync("indxTriggerFileInput", $"fieldconfig-import-ready-{datasetName}");
+
+    private async Task ImportFieldConfig(string datasetName, InputFileChangeEventArgs e)
+    {
+        _importWarnings.Remove(datasetName);
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 1_000_000);
+            using var reader = new System.IO.StreamReader(stream);
+            var json = await reader.ReadToEndAsync();
+            var imported = JsonSerializer.Deserialize<FieldProxy[]>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (imported == null || imported.Length == 0)
+            {
+                _importWarnings[datasetName] = "Invalid or empty configuration file.";
+                return;
+            }
+            if (!_editedFieldConfigs.TryGetValue(datasetName, out var current) || current == null) return;
+
+            var currentByName = current.ToDictionary(f => f.FieldName);
+            int matched = 0, unmatched = 0;
+            foreach (var imp in imported)
+            {
+                if (currentByName.TryGetValue(imp.FieldName, out var existing))
+                {
+                    existing.Searchable     = imp.Searchable;
+                    existing.Filterable     = imp.Filterable;
+                    existing.Facetable      = imp.Facetable;
+                    existing.Sortable       = imp.Sortable;
+                    existing.WordIndexing   = imp.WordIndexing;
+                    existing.Embeddable     = imp.Embeddable;
+                    existing.PreloadFilters = imp.PreloadFilters;
+                    existing.Weight         = imp.Weight;
+                    existing.BM25Fb         = imp.BM25Fb;
+                    existing.BM25Fk1        = imp.BM25Fk1;
+                    matched++;
+                }
+                else unmatched++;
+            }
+
+            if (matched == 0)
+                _importWarnings[datasetName] = "No matching fields found. This config may be for a different dataset.";
+            else if (unmatched > imported.Length / 3)
+                _importWarnings[datasetName] = $"{matched} field(s) applied, {unmatched} not found in this dataset and were skipped.";
+        }
+        catch (Exception ex)
+        {
+            _importWarnings[datasetName] = $"Failed to import: {ex.Message}";
+        }
+    }
+
+    private IEnumerable<JsonProperty> GetDisplayFields(string datasetName, JsonElement doc)
+    {
+        const int max = 4;
+        var allProps = doc.EnumerateObject()
+            .Where(p => p.Value.ValueKind is JsonValueKind.String or JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False)
+            .ToList();
+
+        if (!_editedFieldConfigs.TryGetValue(datasetName, out var fields) || fields == null)
+            return allProps.Take(max);
+
+        var searchable = fields.Where(f => f.Searchable == true).Select(f => f.FieldName).ToHashSet();
+        var facetable  = fields.Where(f => f.Facetable  == true).Select(f => f.FieldName).ToHashSet();
+
+        var result = new List<JsonProperty>(max);
+
+        foreach (var p in allProps)
+            if (result.Count < max && searchable.Contains(p.Name))
+                result.Add(p);
+
+        foreach (var p in allProps)
+            if (result.Count < max && facetable.Contains(p.Name) && !searchable.Contains(p.Name))
+                result.Add(p);
+
+        foreach (var p in allProps)
+            if (result.Count < max && !searchable.Contains(p.Name) && !facetable.Contains(p.Name))
+                result.Add(p);
+
+        return result;
+    }
+
+    private void ClearSearch(string datasetName)
+    {
+        _searchTexts[datasetName] = string.Empty;
+        _searchResults[datasetName] = null;
+        _perfResults.Remove(datasetName);
+    }
+
     private void RunQuickSearch(string datasetName, string text)
     {
         _searchTexts[datasetName] = text;
@@ -1038,9 +1169,11 @@ else
         return $"{bytes} B";
     }
 
-    private RenderFragment<int> _iconFields => size => @<Fields Size="size" />;
-    private RenderFragment<int> _iconDelete => size => @<Stop Size="size" />;
-    private RenderFragment<int> _iconZap    => size => @<Zap Size="size" />;
+    private RenderFragment<int> _iconFields      => size => @<Fields Size="size" />;
+    private RenderFragment<int> _iconDelete      => size => @<Stop Size="size" />;
+    private RenderFragment<int> _iconZap         => size => @<Zap Size="size" />;
+    private RenderFragment<int> _iconDownload    => size => @<Download Size="size" />;
+    private RenderFragment<int> _iconDynamicJson => size => @<DynamicJsonField Size="size" />;
 
     private static string BoolDisplay(bool? value) => value switch
     {
