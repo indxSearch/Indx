@@ -26,10 +26,28 @@
     z-index: 1;
 }
 
+.indx-dataset-intro {
+    font: var(--text-sm);
+    color: var(--lv4);
+    margin: 0 0 4px 0;
+}
+
+.indx-dataset-nav {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing) * 2);
+    margin-top: 20px;
+    margin-bottom: 30px;
+}
+
+.indx-status-wrap {
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--lv2);
+}
+
 .indx-status-table {
     border-collapse: collapse;
     font: var(--text-sm);
-    margin-bottom: 12px;
 }
 
 .indx-status-table td {
@@ -70,6 +88,7 @@
     width: 100%;
     padding-right: 12px;
     box-sizing: border-box;
+    min-height: 30px;
 }
 
 .indx-field-config-error {
@@ -193,7 +212,7 @@
 }
 
 .indx-table thead th {
-    font-weight: var(--med);
+    font-weight: var(--reg);
 }
 
 .indx-table tbody tr {
@@ -205,8 +224,10 @@
 }
 
 .indx-upload-label {
-    display: inline-flex;
+    display: flex;
     align-items: center;
+    gap: 7px;
+    margin-bottom: 0;
     padding: 0 12px;
     height: 30px;
     font: var(--text-xs);
