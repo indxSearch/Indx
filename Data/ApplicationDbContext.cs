@@ -10,6 +10,8 @@ namespace IndxCloudApi.Data
             : base(options)
         {
         }
+
+        public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     }
 #pragma warning restore 1591
 }

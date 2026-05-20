@@ -1,4 +1,4 @@
-﻿@page "/Account/ApiKey"
+@page "/Account/ApiKey"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
@@ -7,212 +7,281 @@
 @using System.Security.Claims
 @using System.Text
 @using IndxCloudApi.Data
+@using Microsoft.EntityFrameworkCore
 @attribute [Authorize]
 @inject UserManager<ApplicationUser> UserManager
 @inject IConfiguration Configuration
 @inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ApplicationDbContext Db
 @inject IJSRuntime JSRuntime
 @inject ILogger<ApiKey> Logger
 
-<PageTitle>API Key / JWT Token</PageTitle>
+<PageTitle>API Keys</PageTitle>
 
-<h2>Your API Token</h2>
+<h2>API Keys</h2>
+<p style="color:var(--lv5); margin-bottom: 32px;">
+    API keys authenticate your requests to the Indx API. Each key is shown only once at creation — store it securely.
+</p>
 
 @if (!string.IsNullOrEmpty(errorMessage))
 {
-    <div style="padding: 20px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255, 66, 56, 0.1); margin: 20px 0;">
-        <strong>Error:</strong> @errorMessage
+    <div style="padding: 16px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255,66,56,0.08); margin-bottom: 24px;">
+        @errorMessage
     </div>
 }
 
-<div style="margin: 40px 0;">
-    <SelectField Label="Token Expiration"
-                 Value="@selectedExpirationDays.ToString()"
-                 ValueChanged="@(v => selectedExpirationDays = int.TryParse(v, out var d) ? d : 90)"
-                 Options="@_expirationOptions"
-                 disabled="@isLoading" />
-    <p style="color: var(--lv5); margin-top: 5px; font-size: 13px;">Choose how long your API token will remain valid.</p>
-</div>
-
-@if (string.IsNullOrEmpty(jwtToken))
+@* ── NEW KEY REVEAL ── *@
+@if (newlyCreatedToken != null)
 {
-    <Button Variant="primary" @onclick="GenerateToken" Disabled="@isLoading">
-        @if (isLoading) { <span>Generating...</span> }
-        else { <span>Generate API Token</span> }
-    </Button>
+    <div style="padding: 20px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114,245,198,0.08); margin-bottom: 32px;">
+        <strong>Key created — copy it now. You won't be able to see it again.</strong>
+        <div style="display:flex; gap:10px; margin-top:12px;">
+            <textarea style="flex:1; padding:10px; border:1px solid var(--lv3); border-radius:var(--radius); background:var(--lv0); color:var(--lv8); font-family:monospace; font-size:11px;"
+                      rows="5" readonly>@newlyCreatedToken</textarea>
+            <button class="btn-secondary" @onclick="CopyNewToken">Copy</button>
+        </div>
+        @if (!string.IsNullOrEmpty(copyMessage))
+        {
+            <p style="margin-top:8px; color:var(--CTeal); font-size:13px;">@copyMessage</p>
+        }
+    </div>
 }
-else if (!string.IsNullOrEmpty(jwtToken))
+
+@* ── EXISTING KEYS TABLE ── *@
+@if (existingKeys.Count > 0)
 {
-    <div style="padding: 20px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114, 245, 198, 0.1); margin: 20px 0;">
-        <h3>Token Generated Successfully!</h3>
-        <p>Use this token to authenticate your API requests.</p>
+    <table style="width:100%; border-collapse:collapse; margin-bottom:32px; font-size:13px;">
+        <thead>
+            <tr style="border-bottom:1px solid var(--lv3); color:var(--lv5);">
+                <th style="text-align:left; padding:8px 12px; font-weight:500;">Name</th>
+                <th style="text-align:left; padding:8px 12px; font-weight:500;">Key prefix</th>
+                <th style="text-align:left; padding:8px 12px; font-weight:500;">Created</th>
+                <th style="text-align:left; padding:8px 12px; font-weight:500;">Expires</th>
+                <th style="text-align:left; padding:8px 12px; font-weight:500;">Status</th>
+                <th style="padding:8px 12px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var key in existingKeys)
+            {
+                var expired = key.ExpiresAt < DateTime.UtcNow;
+                <tr style="border-bottom:1px solid var(--lv2);">
+                    <td style="padding:10px 12px;">@key.Name</td>
+                    <td style="padding:10px 12px; font-family:monospace; color:var(--lv6);">@key.KeyPrefix…</td>
+                    <td style="padding:10px 12px; color:var(--lv5);">@key.CreatedAt.ToString("yyyy-MM-dd")</td>
+                    <td style="padding:10px 12px; color:@(expired ? "var(--CSignal)" : "var(--lv5)");">
+                        @key.ExpiresAt.ToString("yyyy-MM-dd")
+                        @if (expired) { <span> (expired)</span> }
+                    </td>
+                    <td style="padding:10px 12px;">
+                        @if (key.IsRevoked)
+                        {
+                            <IndxCloudApi.Components.Systm.Chip Color="var(--lv3)" TextColor="var(--lv5)">Revoked</IndxCloudApi.Components.Systm.Chip>
+                        }
+                        else if (expired)
+                        {
+                            <IndxCloudApi.Components.Systm.Chip Color="var(--lv3)" TextColor="var(--lv5)">Expired</IndxCloudApi.Components.Systm.Chip>
+                        }
+                        else
+                        {
+                            <IndxCloudApi.Components.Systm.Chip Color="var(--CTeal)" TextColor="var(--lv8)">Active</IndxCloudApi.Components.Systm.Chip>
+                        }
+                    </td>
+                    <td style="padding:10px 12px; text-align:right;">
+                        @if (!key.IsRevoked && !expired)
+                        {
+                            <button class="btn-secondary" style="font-size:12px; padding:4px 10px;"
+                                    @onclick="() => ConfirmRevoke(key.Id)">Revoke</button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+else if (newlyCreatedToken == null)
+{
+    <p style="color:var(--lv5); margin-bottom:32px;">No API keys yet.</p>
+}
+
+@* ── REVOKE CONFIRMATION ── *@
+@if (revokeConfirmId.HasValue)
+{
+    <div style="padding:16px; border:1px solid var(--CWarning); border-radius:var(--radius); background:rgba(255,178,41,0.08); margin-bottom:24px; display:flex; align-items:center; gap:16px;">
+        <span>Revoke this key? Any requests using it will immediately fail.</span>
+        <button class="btn-secondary" style="color:var(--CSignal)" @onclick="ExecuteRevoke">Yes, revoke</button>
+        <button class="btn-secondary" @onclick="() => revokeConfirmId = null">Cancel</button>
     </div>
+}
 
-    <div style="margin: 40px 0;">
-        <label style="display: block; margin-bottom: 10px;"><strong>Your JWT Token:</strong></label>
-        <div style="display: flex; gap: 10px;">
-            <textarea style="flex: 1; padding: 10px; border: 1px solid var(--lv3); border-radius: var(--radius); background: var(--lv0); color: var(--lv8); font-family: monospace; font-size: 11px;"
-                  rows="6"
-                  readonly>@jwtToken</textarea>
-            <Button Variant="secondary" @onclick="CopyToClipboard">Copy</Button>
+@* ── CREATE FORM ── *@
+@if (!showCreateForm)
+{
+    <button class="btn-primary" @onclick="() => showCreateForm = true">New API key</button>
+}
+else
+{
+    <div style="border:1px solid var(--lv3); border-radius:var(--radius); padding:24px; max-width:480px; margin-bottom:32px;">
+        <h3 style="margin-top:0;">Create API key</h3>
+
+        <label style="display:block; margin-bottom:6px; font-size:13px;">Name</label>
+        <input style="width:100%; padding:10px; border:1px solid var(--lv3); border-radius:var(--radius); background:var(--lv0); color:var(--lv8); font-size:13px; box-sizing:border-box; margin-bottom:16px;"
+               placeholder="e.g. Production, CI/CD"
+               @bind="newKeyName" />
+
+        <label style="display:block; margin-bottom:6px; font-size:13px;">Expiration</label>
+        <select style="width:100%; padding:10px; border:1px solid var(--lv3); border-radius:var(--radius); background:var(--lv0); color:var(--lv8); font-size:13px; margin-bottom:20px;"
+                @bind="selectedExpirationDays">
+            <option value="30">30 days</option>
+            <option value="90">90 days (recommended)</option>
+            <option value="180">180 days</option>
+            <option value="365">1 year</option>
+        </select>
+
+        <div style="display:flex; gap:10px;">
+            <button class="btn-primary" @onclick="CreateKey" disabled="@isCreating">
+                @(isCreating ? "Creating…" : "Create")
+            </button>
+            <button class="btn-secondary" @onclick='() => { showCreateForm = false; newKeyName = ""; }'>Cancel</button>
         </div>
     </div>
+}
 
-    @if (tokenExpiry.HasValue)
-    {
-        <div style="padding: 20px; border: 1px solid var(--CLightBlue); border-radius: var(--radius); background: rgba(107, 158, 255, 0.1); margin: 20px 0;">
-            <strong>Expires:</strong> @tokenExpiry.Value.ToString("yyyy-MM-dd HH:mm:ss UTC")
-            <br />
-            <span style="font-size: 13px;">This token is valid for @expirationDaysUsed days from generation.</span>
-        </div>
-    }
+@* ── USAGE EXAMPLES (shown after creation) ── *@
+@if (newlyCreatedToken != null)
+{
+    <div style="margin-top:32px;">
+        <h3>How to use this key</h3>
 
-    @if (!string.IsNullOrEmpty(copyMessage))
-    {
-        <div style="padding: 20px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114, 245, 198, 0.1); margin: 20px 0;">
-            @copyMessage
-        </div>
-    }
+        <h4>cURL</h4>
+        <pre style="padding:15px; background:var(--lv1); border:1px solid var(--lv3); border-radius:var(--radius); overflow-x:auto; font-family:monospace; font-size:11px; margin:10px 0 24px;"><code>curl -X PUT "https://localhost:5001/api/CreateOrOpen/myDataset/1" \
+     -H "Authorization: Bearer @newlyCreatedToken"</code></pre>
 
-    <div style="margin: 40px 0;">
-        <h3>How to use this token:</h3>
+        <h4>JavaScript / Fetch</h4>
+        <pre style="padding:15px; background:var(--lv1); border:1px solid var(--lv3); border-radius:var(--radius); overflow-x:auto; font-family:monospace; font-size:11px; margin:10px 0 24px;"><code>fetch('https://localhost:5001/api/CreateOrOpen/myDataset/1', {
+  method: 'PUT',
+  headers: { 'Authorization': 'Bearer @newlyCreatedToken' }
+})</code></pre>
 
-        <div style="margin-top: 20px;">
-            <h4>cURL Example</h4>
-            <pre style="padding: 15px; background: var(--lv1); border: 1px solid var(--lv3); border-radius: var(--radius); overflow-x: auto; font-family: monospace; font-size: 11px; margin: 10px 0 30px 0;"><code>curl -X PUT "https://localhost:5001/api/CreateOrOpen/myDataset/1" \
-     -H "Authorization: Bearer @jwtToken"</code></pre>
+        <h4>C# HttpClient</h4>
+        <pre style="padding:15px; background:var(--lv1); border:1px solid var(--lv3); border-radius:var(--radius); overflow-x:auto; font-family:monospace; font-size:11px; margin:10px 0 24px;"><code>client.DefaultRequestHeaders.Authorization =
+    new AuthenticationHeaderValue("Bearer", "@newlyCreatedToken");</code></pre>
 
-            <h4>JavaScript / Fetch Example</h4>
-            <pre style="padding: 15px; background: var(--lv1); border: 1px solid var(--lv3); border-radius: var(--radius); overflow-x: auto; font-family: monospace; font-size: 11px; margin: 10px 0 30px 0;"><code>fetch('https://localhost:5001/api/CreateOrOpen/myDataset/1', {
-     method: 'PUT',
-     headers: {
-       'Authorization': 'Bearer @jwtToken'
-     }
-   })
-   .then(response => response.json())
-   .then(data => console.log(data));</code></pre>
+        <h4>Python</h4>
+        <pre style="padding:15px; background:var(--lv1); border:1px solid var(--lv3); border-radius:var(--radius); overflow-x:auto; font-family:monospace; font-size:11px; margin:10px 0;"><code>headers = { 'Authorization': f'Bearer @newlyCreatedToken' }</code></pre>
 
-            <h4>C# HttpClient Example</h4>
-            <pre style="padding: 15px; background: var(--lv1); border: 1px solid var(--lv3); border-radius: var(--radius); overflow-x: auto; font-family: monospace; font-size: 11px; margin: 10px 0 30px 0;"><code>var client = new HttpClient();
-   client.DefaultRequestHeaders.Authorization =
-       new AuthenticationHeaderValue("Bearer", "@jwtToken");
-
-   var response = await client.PutAsync(
-       "https://localhost:5001/api/CreateOrOpen/myDataset/1",
-       null);
-
-   var result = await response.Content.ReadAsStringAsync();</code></pre>
-
-            <h4>Python Requests Example</h4>
-            <pre style="padding: 15px; background: var(--lv1); border: 1px solid var(--lv3); border-radius: var(--radius); overflow-x: auto; font-family: monospace; font-size: 11px; margin: 10px 0 30px 0;"><code>import requests
-
-   headers = {
-       'Authorization': f'Bearer @jwtToken'
-   }
-
-   response = requests.put(
-       'https://localhost:5001/api/CreateOrOpen/myDataset/1',
-       headers=headers
-   )
-
-   print(response.json())</code></pre>
-        </div>
-
-        <div style="margin-top: 40px; display: flex; gap: 10px;">
-            <Button Variant="secondary" @onclick="GenerateToken">Regenerate Token</Button>
-            <Button Href="/swagger" Variant="secondary">View API Documentation</Button>
+        <div style="margin-top:24px;">
+            <a href="/swagger" class="btn btn-secondary">View API docs</a>
         </div>
     </div>
 }
 
 @code {
-    private string? jwtToken;
-    private DateTime? tokenExpiry;
+    private List<Data.ApiKey> existingKeys = new();
+    private string? newlyCreatedToken;
     private string? copyMessage;
     private string? errorMessage;
-    private bool isLoading = false;
+    private bool showCreateForm = false;
+    private bool isCreating = false;
+    private string newKeyName = "";
     private int selectedExpirationDays = 90;
+    private int? revokeConfirmId;
+    private string? currentUserId;
 
-    private static readonly SelectField.SelectOption[] _expirationOptions =
-    [
-        new("30 Days", "30"),
-        new("90 Days (Recommended)", "90"),
-        new("180 Days (6 Months)", "180"),
-        new("365 Days (1 Year)", "365"),
-    ];
-    private int expirationDaysUsed = 90;
-
-    protected override Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync()
     {
-        // Don't auto-generate - let user choose expiration and click button
-        return Task.CompletedTask;
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var appUser = await UserManager.GetUserAsync(authState.User);
+        if (appUser == null) return;
+        currentUserId = appUser.Id;
+        await LoadKeys();
     }
 
-    private async Task GenerateToken()
+    private async Task LoadKeys()
     {
-        isLoading = true;
-        copyMessage = null;
+        if (currentUserId == null) return;
+        existingKeys = await Db.ApiKeys
+            .Where(k => k.UserId == currentUserId)
+            .OrderByDescending(k => k.CreatedAt)
+            .ToListAsync();
+    }
+
+    private async Task CreateKey()
+    {
+        if (string.IsNullOrWhiteSpace(newKeyName))
+        {
+            errorMessage = "Please enter a name for this key.";
+            return;
+        }
+
+        isCreating = true;
         errorMessage = null;
+        newlyCreatedToken = null;
         StateHasChanged();
 
         try
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var user = authState.User;
+            var appUser = await UserManager.GetUserAsync(authState.User);
+            if (appUser == null) { errorMessage = "User not found."; return; }
 
-            if (user.Identity?.IsAuthenticated != true)
+            var jti = Guid.NewGuid().ToString();
+            var token = GenerateJwtToken(appUser, selectedExpirationDays, jti);
+
+            var record = new Data.ApiKey
             {
-                errorMessage = "You must be logged in to generate a token.";
-                Logger.LogWarning("Unauthorized token generation attempt");
-                isLoading = false;
-                return;
-            }
+                UserId = appUser.Id,
+                Name = newKeyName.Trim(),
+                KeyPrefix = token[..Math.Min(24, token.Length)],
+                Jti = jti,
+                CreatedAt = DateTime.UtcNow,
+                ExpiresAt = DateTime.UtcNow.AddDays(selectedExpirationDays),
+                IsRevoked = false
+            };
 
-            var email = user.FindFirst(ClaimTypes.Email)?.Value
-                        ?? user.FindFirst(ClaimTypes.Name)?.Value;
+            Db.ApiKeys.Add(record);
+            await Db.SaveChangesAsync();
 
-            if (string.IsNullOrEmpty(email))
-            {
-                errorMessage = "Unable to determine user email.";
-                Logger.LogWarning("Email claim not found for authenticated user");
-                isLoading = false;
-                return;
-            }
-
-            var appUser = await UserManager.FindByEmailAsync(email);
-            if (appUser == null)
-            {
-                errorMessage = "User not found in database.";
-                Logger.LogWarning("User {Email} not found in database", email);
-                isLoading = false;
-                return;
-            }
-
-            jwtToken = GenerateJwtToken(appUser, selectedExpirationDays);
-            tokenExpiry = DateTime.UtcNow.AddDays(selectedExpirationDays);
-            expirationDaysUsed = selectedExpirationDays;
-
-            Logger.LogInformation("JWT token generated for user {Email} with {Days} days expiration", email, selectedExpirationDays);
+            newlyCreatedToken = token;
+            showCreateForm = false;
+            newKeyName = "";
+            await LoadKeys();
+            Logger.LogInformation("API key created for user {UserId}, expires {Expires}", appUser.Id, record.ExpiresAt);
         }
         catch (Exception ex)
         {
-            errorMessage = "An error occurred while generating the token.";
-            Logger.LogError(ex, "Error generating JWT token");
+            errorMessage = "Failed to create key.";
+            Logger.LogError(ex, "Error creating API key");
         }
         finally
         {
-            isLoading = false;
+            isCreating = false;
             StateHasChanged();
         }
     }
 
-    private string GenerateJwtToken(ApplicationUser user, int expirationDays)
+    private void ConfirmRevoke(int id)
     {
-        var jwtKey = Configuration["Jwt:Key"];
-        if (string.IsNullOrEmpty(jwtKey))
-        {
-            throw new InvalidOperationException("JWT Key is not configured");
-        }
+        revokeConfirmId = id;
+    }
+
+    private async Task ExecuteRevoke()
+    {
+        if (revokeConfirmId == null) return;
+        var key = existingKeys.FirstOrDefault(k => k.Id == revokeConfirmId);
+        if (key == null || key.UserId != currentUserId) return;
+
+        key.IsRevoked = true;
+        await Db.SaveChangesAsync();
+        revokeConfirmId = null;
+        await LoadKeys();
+        Logger.LogInformation("API key {Id} revoked for user {UserId}", key.Id, key.UserId);
+    }
+
+    private string GenerateJwtToken(ApplicationUser user, int expirationDays, string jti)
+    {
+        var jwtKey = Configuration["Jwt:Key"]
+            ?? throw new InvalidOperationException("JWT Key is not configured");
 
         var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
         var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
@@ -224,53 +293,39 @@ else if (!string.IsNullOrEmpty(jwtToken))
             new Claim(ClaimTypes.Name, user.UserName ?? user.Email ?? ""),
             new Claim(JwtRegisteredClaimNames.Sub, user.Id),
             new Claim(JwtRegisteredClaimNames.Email, user.Email ?? ""),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+            new Claim(JwtRegisteredClaimNames.Jti, jti)
         };
 
-        // Add roles
         var roles = UserManager.GetRolesAsync(user).Result;
         foreach (var role in roles)
-        {
             claims.Add(new Claim(ClaimTypes.Role, role));
-        }
 
         var token = new JwtSecurityToken(
             issuer: Configuration["Jwt:Issuer"],
             audience: Configuration["Jwt:Audience"],
             claims: claims,
             expires: DateTime.UtcNow.AddDays(expirationDays),
-            signingCredentials: credentials
-        );
+            signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    private async Task CopyToClipboard()
+    private async Task CopyNewToken()
     {
-        Logger.LogInformation("CopyToClipboard method called!"); // DEBUG
-
-        if (!string.IsNullOrEmpty(jwtToken))
+        if (string.IsNullOrEmpty(newlyCreatedToken)) return;
+        try
         {
-            try
-            {
-                await JSRuntime.InvokeVoidAsync("copyToClipboard", jwtToken);
-                copyMessage = "✅ Token copied to clipboard!";
-                Logger.LogInformation("Token copied to clipboard");
-                StateHasChanged();
-                await Task.Delay(3000);
-                copyMessage = null;
-                StateHasChanged();
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "Failed to copy to clipboard");
-                copyMessage = "❌ Failed to copy. Please copy manually.";
-                StateHasChanged();
-            }
+            await JSRuntime.InvokeVoidAsync("copyToClipboard", newlyCreatedToken);
+            copyMessage = "Copied to clipboard";
+            StateHasChanged();
+            await Task.Delay(3000);
+            copyMessage = null;
+            StateHasChanged();
         }
-        else
+        catch
         {
-            Logger.LogWarning("jwtToken is empty!"); // DEBUG
+            copyMessage = "Copy failed — please select and copy manually.";
+            StateHasChanged();
         }
     }
 }

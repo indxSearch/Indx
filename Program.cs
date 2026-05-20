@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -71,7 +72,8 @@ public class Program
         }
 
         builder.Services.AddDbContext<ApplicationDbContext>(options =>
-            options.UseSqlite(identityConnectionString));
+            options.UseSqlite(identityConnectionString)
+                   .ConfigureWarnings(w => w.Ignore(Microsoft.EntityFrameworkCore.Diagnostics.RelationalEventId.PendingModelChangesWarning)));
 
         builder.Services.AddDatabaseDeveloperPageExceptionFilter();
 
@@ -213,6 +215,7 @@ public class Program
                     if (userId == null) { context.Fail("Invalid token."); return; }
 
                     var cache = context.HttpContext.RequestServices.GetRequiredService<IMemoryCache>();
+
                     var cacheKey = $"user_exists_{userId}";
                     if (!cache.TryGetValue(cacheKey, out bool exists))
                     {
@@ -222,8 +225,21 @@ public class Program
                         cache.Set(cacheKey, exists, TimeSpan.FromMinutes(5));
                     }
 
-                    if (!exists)
-                        context.Fail("User no longer exists.");
+                    if (!exists) { context.Fail("User no longer exists."); return; }
+
+                    var jti = context.Principal?.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti)?.Value;
+                    if (jti != null)
+                    {
+                        var revokeCacheKey = $"jti_revoked_{jti}";
+                        if (!cache.TryGetValue(revokeCacheKey, out bool revoked))
+                        {
+                            var db = context.HttpContext.RequestServices
+                                .GetRequiredService<ApplicationDbContext>();
+                            revoked = await db.ApiKeys.AnyAsync(k => k.Jti == jti && k.IsRevoked);
+                            cache.Set(revokeCacheKey, revoked, TimeSpan.FromMinutes(5));
+                        }
+                        if (revoked) context.Fail("Token has been revoked.");
+                    }
                 }
             };
         });
