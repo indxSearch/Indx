@@ -680,3 +680,14 @@ a.btn-danger:hover {
         padding: 0;
     }
 }
+
+/* Chip */
+.indx-chip {
+    display: inline-block;
+    color: var(--lv6);
+    background-color: var(--lv2);
+    font: var(--text-xs);
+    border-radius: 10px;
+    padding: 2px 6px;
+    white-space: nowrap;
+}

@@ -78,7 +78,7 @@ else
                     <div class="indx-status-wrap">
                     <table class="indx-status-table">
                         <tbody>
-                            <tr><td>System State</td><td>@status.SystemState</td></tr>
+                            <tr><td>System State</td><td><Chip Color="@(engineState == SystemState.Ready ? "var(--CTeal)" : null)" TextColor="@(engineState == SystemState.Ready ? "var(--lv8)" : null)">@status.SystemState</Chip></td></tr>
                             <tr><td>Document Count</td><td>@status.DocumentCount</td></tr>
                             <tr><td>Search Counter</td><td>@status.SearchCounter</td></tr>
                             <tr><td>Seconds To Index</td><td>@status.SecondsToIndex.ToString("0.##")s</td></tr>

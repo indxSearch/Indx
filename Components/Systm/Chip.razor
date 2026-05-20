@@ -1,0 +1,19 @@
+<span class="indx-chip @Class" style="@_style">@ChildContent</span>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public string? TextColor { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private string _style
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(Color))     parts.Add($"background-color:{Color}");
+            if (!string.IsNullOrEmpty(TextColor)) parts.Add($"color:{TextColor}");
+            return string.Join(";", parts);
+        }
+    }
+}
