@@ -169,6 +169,9 @@ namespace IndxCloudApi.Models
             if (!_shadowBuildsInProgress.TryAdd(key, DateTime.UtcNow))
                 throw new ShadowBusyException(dataSetName);
 
+            var monitor = new ProcessMonitor();
+            _shadowMonitors[key] = monitor;
+
             SearchEngine? shadow = null;
             try
             {
@@ -182,7 +185,11 @@ namespace IndxCloudApi.Models
                     original = found.theInstance;
                 }
 
-                shadow = BuildShadowFrom(original, dataSetName, userId, fields);
+                shadow = BuildShadowFrom(original, dataSetName, userId, fields, monitor);
+                monitor.WaitForCompletion();
+                if (!monitor.Succeeded)
+                    throw new InvalidOperationException(
+                        $"Shadow indexing failed: {monitor.ErrorMessage ?? "unknown error"}");
 
                 ICloudSearchEngine? swappedOut;
                 lock (_dictionaryLock)
@@ -190,6 +197,11 @@ namespace IndxCloudApi.Models
                     swappedOut = container.theInstance;
                     container.theInstance = shadow;
                 }
+
+                var df = shadow.DocumentFields;
+                if (df != null)
+                    shadow.Persistence?.SaveDocumentFields(df.GetSerialized());
+
                 shadow = null;
 
                 if (swappedOut != null)
@@ -204,6 +216,7 @@ namespace IndxCloudApi.Models
             }
             finally
             {
+                _shadowMonitors.TryRemove(key, out _);
                 if (shadow != null)
                 {
                     try { shadow.Dispose(); }
@@ -242,13 +255,14 @@ namespace IndxCloudApi.Models
             ICloudSearchEngine original,
             string dataSetName,
             string userId,
-            FieldProxy[]? fieldOverrides = null)
+            FieldProxy[]? fieldOverrides = null,
+            ProcessMonitor? monitor = null)
         {
             if (original is not SearchEngine concreteOriginal)
                 throw new InvalidOperationException(
                     $"Cannot build shadow for '{dataSetName}': original is not a SearchEngine instance");
 
-            var shadow = concreteOriginal.CreateInMemoryClone(fieldOverrides: fieldOverrides);
+            var shadow = concreteOriginal.CreateInMemoryClone(monitor: monitor, fieldOverrides: fieldOverrides);
 
             // Attach a fresh Persistence pointing at the same SQLite file. SQLite supports
             // multiple connections; the original's persistence is left alone so disposing

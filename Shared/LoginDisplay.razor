@@ -3,11 +3,6 @@
 <AuthorizeView>
     <Authorized>
         <a href="Account/Manage" class="btn btn-ghost btn-micro">@context.User.Identity?.Name</a>
-        <form method="post" action="Account/Logout">
-            <AntiforgeryToken />
-            <input type="hidden" name="returnUrl" value="" />
-            <button type="submit" class="btn-secondary btn-micro">Log out</button>
-        </form>
     </Authorized>
     <NotAuthorized>
         <a href="Account/Register" class="btn btn-secondary btn-micro">Register</a>
