@@ -20,7 +20,7 @@ namespace IndxCloudApi.Controllers
     /// such as dataset creation, deletion, field configuration, data loading, and executing search queries. All
     /// endpoints require authentication and operate on datasets associated with the authenticated user.
     /// </summary>
-    [ApiVersion("1.0-alpha")]
+    [ApiVersion("2.0-alpha")]
     [Route("api")]
     [ApiController]
     public class SearchController : Controller
@@ -781,7 +781,7 @@ namespace IndxCloudApi.Controllers
 
         /// <summary>
         /// SetFieldConfiguration sets any combination of field properties (Searchable, Filterable,
-        /// Facetable, Sortable, WordIndexing, Embeddable, PreloadFilters, Weight, BM25Fb, BM25Fk1)
+        /// Facetable, Sortable, WordIndexing, Embeddable, PreloadFilters, Weight, BM25b, BM25k1)
         /// in one call. Nullable properties have replace semantics: null = leave untouched,
         /// any value (including false) = overwrite.
         /// On validation failure of any item, returns BadRequest immediately; earlier items in the
@@ -861,37 +861,6 @@ namespace IndxCloudApi.Controllers
             return matcher.GetFieldConfiguration();
         }
 
-        /// <summary>
-        /// SetBM25FFields sets per-field BM25F parameters (b and k1), activating BM25F multi-field
-        /// scoring when at least one searchable field has either value set.
-        /// </summary>
-        [Obsolete("Use SetFieldConfiguration instead. Scheduled for removal in a future release.")]
-        [HttpPut("SetBM25FFields/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public IActionResult SetBM25FFields(string dataSetName, [FromBody] BM25FFieldProxy[] fields)
-        {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
-            if (matcher == null)
-                return BadRequest("non existing dataSetName");
-            var df = matcher.DocumentFields;
-            if (df == null)
-                return BadRequest("SearchController.SetBM25FFields invalid status");
-            foreach (var item in fields)
-            {
-                var f = df.GetField(item.FieldName);
-                if (f == null)
-                    return BadRequest($"SearchController.SetBM25FFields non existing fieldname: {item.FieldName}");
-                f.BM25Fb = item.BM25Fb;
-                f.BM25Fk1 = item.BM25Fk1;
-            }
-            return Ok();
-        }
 
         /// <summary>
         /// Updates existing JSON records in the dataset.
