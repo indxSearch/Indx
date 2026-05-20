@@ -670,6 +670,7 @@ else
     private static string StateChipTextColor(SystemState state) => state switch
     {
         SystemState.Error => "var(--lv0)",
+        SystemState.Ready => "#080809",
         _                 => state == SystemState.Created || state == SystemState.Loaded || state == SystemState.Hibernated
                              ? "var(--lv5)"
                              : "var(--lv8)",
@@ -1371,6 +1372,16 @@ else
 
         _transferConfirmDataset = null;
         _transferEmailInput = null;
+
+        try
+        {
+            await EmailSender.SendEmailAsync(
+                newOwner.Email!,
+                $"Dataset \"{datasetName}\" has been transferred to you",
+                $"<p>Ownership of the dataset <strong>{datasetName}</strong> on Indx Cloud API has been transferred to your account.</p>");
+        }
+        catch { /* email failure is non-fatal */ }
+
         await LoadDatasets();
     }
 

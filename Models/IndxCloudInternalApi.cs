@@ -514,6 +514,18 @@ namespace IndxCloudApi.Models
             DisposeDataSetInstance(dataSetName, currentOwnerId);
             var db = new SqLiteManager(SearchDbConnectionString);
             db.TransferOwnership(dataSetName, currentOwnerId, newOwnerId);
+
+            // Warm up the engine for the new owner, same as InitializeSystem does on startup.
+            var instance = FindInstance(dataSetName, newOwnerId);
+            if (instance?.Persistence != null && instance.Persistence.NumberOfJsonRecords() > 0)
+            {
+                var loadMonitor = new ProcessMonitor();
+                instance.LoadFromDatabaseSync(loadMonitor);
+                loadMonitor.WaitForCompletion();
+                var indexMonitor = new ProcessMonitor();
+                instance.Index(monitor: indexMonitor);
+                indexMonitor.WaitForCompletion();
+            }
         }
 
         internal LicenseInfo? GetLicenseInfo()
