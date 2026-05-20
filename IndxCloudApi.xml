@@ -324,6 +324,9 @@
             use type-checking via Field.GetJsonValueKind.
             </summary>
         </member>
+        <member name="P:IndxCloudApi.Data.ApiKey.Jti">
+            <summary>JWT jti claim — used for revocation checks.</summary>
+        </member>
         <member name="T:IndxCloudApi.Data.ApplicationUser">
             <summary>
             Application user entity extending ASP.NET Core Identity user.
@@ -348,6 +351,18 @@
             <inheritdoc />
         </member>
         <member name="M:IndxCloudApi.Data.Migrations.InitialCreate.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:IndxCloudApi.Data.Migrations.AddApiKeys">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.AddApiKeys.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.AddApiKeys.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.AddApiKeys.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
             <inheritdoc />
         </member>
         <member name="T:IndxCloudApi.Models.ChangePasswordRequest">
