@@ -4,6 +4,35 @@
         <name>IndxCloudApi</name>
     </assembly>
     <members>
+        <member name="T:IndxCloudApi.Controllers.AccessShareController">
+            <summary>
+            Endpoints for sharing dataset access and transferring ownership between users.
+            All operations require the caller to be the dataset owner.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.AccessShareController.#ctor(Microsoft.AspNetCore.Identity.UserManager{IndxCloudApi.Data.ApplicationUser})">
+            <summary>Initializes a new instance of <see cref="T:IndxCloudApi.Controllers.AccessShareController"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.AccessShareController.GetAccessGrants(System.String)">
+            <summary>
+            Lists all current access grants for a dataset.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.AccessShareController.GrantAccess(System.String,IndxCloudApi.Controllers.GrantAccessRequest)">
+            <summary>
+            Grants (or updates) access for a user on a dataset. Role must be "editor" or "viewer".
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.AccessShareController.RevokeAccess(System.String,System.String)">
+            <summary>
+            Revokes a user's access to a dataset.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.AccessShareController.TransferOwnership(System.String,IndxCloudApi.Controllers.TransferOwnershipRequest)">
+            <summary>
+            Transfers dataset ownership to another user. Returns 409 if a shadow build is in progress.
+            </summary>
+        </member>
         <member name="T:IndxCloudApi.Controllers.LoginController">
             <summary>
             Endpoint to provide JWT bearer token based authentication
@@ -152,7 +181,9 @@
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.GetUserDataSets">
             <summary>
-            Return the datasets created by current user if any.
+            Returns all datasets the current user owns or has been granted access to.
+            Each entry includes the dataset name, the owner's user ID (null for owned datasets),
+            and the caller's role ("owner", "editor", or "viewer").
             </summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.IndexDataSet(System.String)">
@@ -324,6 +355,12 @@
             use type-checking via Field.GetJsonValueKind.
             </summary>
         </member>
+        <member name="T:IndxCloudApi.Controllers.DataSetListDto">
+            <summary>Dataset entry returned by GetUserDatasets.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.DataSetListDto.#ctor(System.String,System.String,System.String)">
+            <summary>Dataset entry returned by GetUserDatasets.</summary>
+        </member>
         <member name="P:IndxCloudApi.Data.ApiKey.Jti">
             <summary>JWT jti claim — used for revocation checks.</summary>
         </member>
@@ -454,6 +491,49 @@
             the same cleanup order and cannot accidentally skip the _instances eviction.
             </summary>
             <returns><c>true</c> if the dataset existed and was deleted; <c>false</c> if it did not exist.</returns>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetEffectiveRole(System.String,System.String,System.String)">
+            <summary>
+            Returns the effective role for a requesting user on a dataset owned by ownerUserId.
+            Returns "owner", "editor", "viewer", or null if no access.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.FindSearchEngineAsGrantee(System.String,System.String,System.String)">
+            <summary>
+            Returns the owner's engine if the grantee has access, null otherwise.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GrantAccess(System.String,System.String,System.String,System.String)">
+            <summary>
+            Grants or updates access for a grantee on an owned dataset.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RevokeAccess(System.String,System.String,System.String)">
+            <summary>
+            Revokes a grantee's access to an owned dataset.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetAccessGrants(System.String,System.String)">
+            <summary>
+            Returns all grants on a dataset (for the owner's sharing panel).
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetAccessibleDataSets(System.String)">
+            <summary>
+            Returns all datasets shared with a grantee (datasets they don't own).
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.TransferOwnership(System.String,System.String,System.String)">
+            <summary>
+            Transfers ownership: evicts the old engine, updates SQLite atomically.
+            Returns 409 if a shadow build is in progress.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ResolveEngine(System.String,System.String)">
+            <summary>
+            Finds the engine for a dataset, falling back to a grantee lookup if the user doesn't
+            own the dataset. The grantee→owner mapping is cached in memory after the first DB hit.
+            </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunMutationOnShadow``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})">
              <summary>

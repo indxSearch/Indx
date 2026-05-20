@@ -133,6 +133,11 @@
     border-color: var(--lv5);
 }
 
+.indx-num-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .indx-num-input::-webkit-inner-spin-button,
 .indx-num-input::-webkit-outer-spin-button {
     -webkit-appearance: none;

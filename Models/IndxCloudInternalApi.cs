@@ -133,7 +133,7 @@ namespace IndxCloudApi.Models
         {
             try
             {
-                var engine = FindInstance(dataSetName, userId);
+                var engine = ResolveEngine(dataSetName, userId);
                 if (engine == null)
                     return Array.Empty<string>();
                 var fields = engine.GetFieldList();
@@ -173,10 +173,7 @@ namespace IndxCloudApi.Models
         {
             try
             {
-                var engine = FindInstance(dataSetName, userId);
-                if (engine == null)
-                    return null;
-                return engine.Status;
+                return ResolveEngine(dataSetName, userId)?.Status;
             }
             catch (System.Exception ex)
             {
@@ -273,7 +270,7 @@ namespace IndxCloudApi.Models
         {
             try
             {
-                var engine = FindInstance(dataSetName, userId);
+                var engine = ResolveEngine(dataSetName, userId);
                 if (engine == null)
                     return Result.MakeEmptyResult();
                 Query query = FromCloudQuery2Query(cloudQuery, engine);
@@ -449,6 +446,76 @@ namespace IndxCloudApi.Models
             }
         }
 
+        /// <summary>
+        /// Returns the effective role for a requesting user on a dataset owned by ownerUserId.
+        /// Returns "owner", "editor", "viewer", or null if no access.
+        /// </summary>
+        internal string? GetEffectiveRole(string dataSetName, string ownerUserId, string requestingUserId)
+        {
+            var db = new SqLiteManager(SearchDbConnectionString);
+            return db.GetEffectiveRole(dataSetName, ownerUserId, requestingUserId);
+        }
+
+        /// <summary>
+        /// Returns the owner's engine if the grantee has access, null otherwise.
+        /// </summary>
+        internal ICloudSearchEngine? FindSearchEngineAsGrantee(string dataSetName, string ownerUserId, string granteeUserId)
+        {
+            var db = new SqLiteManager(SearchDbConnectionString);
+            var role = db.GetEffectiveRole(dataSetName, ownerUserId, granteeUserId);
+            if (role == null) return null;
+            return FindInstance(dataSetName, ownerUserId);
+        }
+
+        /// <summary>
+        /// Grants or updates access for a grantee on an owned dataset.
+        /// </summary>
+        internal void GrantAccess(string dataSetName, string ownerUserId, string granteeUserId, string role)
+        {
+            var db = new SqLiteManager(SearchDbConnectionString);
+            db.GrantAccess(dataSetName, ownerUserId, granteeUserId, role);
+            _granteeOwnerCache[granteeUserId + "\0" + dataSetName] = ownerUserId;
+        }
+
+        /// <summary>
+        /// Revokes a grantee's access to an owned dataset.
+        /// </summary>
+        internal void RevokeAccess(string dataSetName, string ownerUserId, string granteeUserId)
+        {
+            var db = new SqLiteManager(SearchDbConnectionString);
+            db.RevokeAccess(dataSetName, ownerUserId, granteeUserId);
+            _granteeOwnerCache.TryRemove(granteeUserId + "\0" + dataSetName, out _);
+        }
+
+        /// <summary>
+        /// Returns all grants on a dataset (for the owner's sharing panel).
+        /// </summary>
+        internal List<(string GranteeUserId, string Role)> GetAccessGrants(string dataSetName, string ownerUserId)
+        {
+            var db = new SqLiteManager(SearchDbConnectionString);
+            return db.GetAccessGrants(dataSetName, ownerUserId);
+        }
+
+        /// <summary>
+        /// Returns all datasets shared with a grantee (datasets they don't own).
+        /// </summary>
+        internal List<(string DataSetName, string OwnerUserId, string Role)> GetAccessibleDataSets(string granteeUserId)
+        {
+            var db = new SqLiteManager(SearchDbConnectionString);
+            return db.GetAccessibleDataSets(granteeUserId);
+        }
+
+        /// <summary>
+        /// Transfers ownership: evicts the old engine, updates SQLite atomically.
+        /// Returns 409 if a shadow build is in progress.
+        /// </summary>
+        internal void TransferOwnership(string dataSetName, string currentOwnerId, string newOwnerId)
+        {
+            DisposeDataSetInstance(dataSetName, currentOwnerId);
+            var db = new SqLiteManager(SearchDbConnectionString);
+            db.TransferOwnership(dataSetName, currentOwnerId, newOwnerId);
+        }
+
         internal LicenseInfo? GetLicenseInfo()
         {
             try
@@ -484,6 +551,9 @@ namespace IndxCloudApi.Models
         private readonly Dictionary<string, SearchEngineInstance> _instances = [];
         private readonly ILogger<IndxCloudInternalApi> _logger;
         private static IndxCloudInternalApi? _manager;
+        // In-memory cache: (granteeUserId + "\0" + dataSetName) → ownerUserId
+        // Populated lazily on first grantee search, updated on grant/revoke. Never hits the DB on hot path.
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _granteeOwnerCache = new();
         #endregion Private Fields
 
         #region Private Constructors
@@ -573,6 +643,40 @@ namespace IndxCloudApi.Models
                 query.Boosts = boosts;
             }
             return query;
+        }
+
+        /// <summary>
+        /// Finds the engine for a dataset, falling back to a grantee lookup if the user doesn't
+        /// own the dataset. The grantee→owner mapping is cached in memory after the first DB hit.
+        /// </summary>
+        internal ICloudSearchEngine? ResolveEngine(string dataSetName, string userId)
+        {
+            var engine = FindInstance(dataSetName, userId);
+            if (engine != null)
+            {
+                // Ready/Loading/etc — definitely theirs.
+                if (engine.Status.SystemState != SystemState.Created)
+                    return engine;
+                // Created state: could be a stale shell left by the indx-react auth handshake
+                // on a grantee account (before the CreateOrOpen guard was added). Only fall
+                // through to the grantee path if the user doesn't actually own this dataset.
+                var ownedPersistence = new Persistence(SearchDbConnectionString, dataSetName, userId);
+                if (ownedPersistence.DataSetExists())
+                    return engine;
+            }
+
+            var cacheKey = userId + "\0" + dataSetName;
+            if (!_granteeOwnerCache.TryGetValue(cacheKey, out var ownerUserId))
+            {
+                var db = new SqLiteManager(SearchDbConnectionString);
+                var accessible = db.GetAccessibleDataSets(userId);
+                var entry = accessible.FirstOrDefault(a => a.DataSetName == dataSetName);
+                if (entry == default)
+                    return null;
+                ownerUserId = entry.OwnerUserName;
+                _granteeOwnerCache[cacheKey] = ownerUserId;
+            }
+            return FindInstance(dataSetName, ownerUserId);
         }
 
         private static string MakeKey(string dataSetName, string userId)

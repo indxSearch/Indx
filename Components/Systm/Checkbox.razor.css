@@ -45,7 +45,6 @@
 .indx-checkbox:disabled {
     opacity: 0.5;
     cursor: not-allowed;
-    pointer-events: none;
 }
 
 .indx-checkbox-label {

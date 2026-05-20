@@ -636,6 +636,11 @@ public class Program
             IndxCloudInternalApi.StartUpSystem(searchConnectionString, licensePath);
             Console.WriteLine($"✓ Search system initialized at: {searchDbPath}");
 
+            // Ensure the DataSetAccess table exists for existing databases (idempotent).
+            var accessTableManager = new Indx.Storage.SqLiteManager(searchConnectionString);
+            if (accessTableManager.DatabaseExists())
+                accessTableManager.EnsureDataSetAccessTableExists();
+
             // Detect license file for summary
             if (!string.IsNullOrWhiteSpace(licensePath) && File.Exists(licensePath))
             {

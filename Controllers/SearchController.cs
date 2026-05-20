@@ -101,7 +101,7 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
             if (matcher == null)
                 return BadRequest("CombineFilters, non existing dataset name");
             var fa = matcher.GetFilterFromKey(combineFilters.A.HashString);
@@ -129,7 +129,7 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
             if (matcher == null)
                 return BadRequest("CreateBoost non existing dataset name");
             var filter = matcher.GetFilterFromKey(boost.FilterProxy.HashString);
@@ -167,7 +167,14 @@ namespace IndxCloudApi.Controllers
                 return BadRequest("illegal configuration number");
             var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, dataSetName, userId);
             if (!persistence.DataSetExists())
+            {
+                // Don't create a shadow dataset if the user is already a grantee on one with this name
+                var db = new Indx.Storage.SqLiteManager(IndxCloudInternalApi.SearchDbConnectionString);
+                var accessible = db.GetAccessibleDataSets(userId);
+                if (accessible.Any(a => a.DataSetName == dataSetName))
+                    return Ok(); // acknowledged — the grantee path handles all subsequent calls
                 persistence.CreateOrOpenDataSet(configuration);
+            }
             return Ok();
         }
 
@@ -184,7 +191,7 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
             if (matcher == null)
                 return BadRequest("CreateRangeFilter non existing dataset name");
             var filter = matcher.CreateRangeFilter(rangeFilter.FieldName, rangeFilter.LowerLimit, rangeFilter.UpperLimit);
@@ -207,7 +214,7 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
             if (matcher == null)
                 return BadRequest("CreateRangeFilter non existing dataset name");
             var filter = matcher.CreateValueFilter(valueFilter.FieldName, valueFilter.Value);
@@ -333,7 +340,7 @@ namespace IndxCloudApi.Controllers
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized();
-            ICloudSearchEngine? engine = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            ICloudSearchEngine? engine = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
             if (engine == null)
                 return BadRequest("GetJson non existing dataset name");
             if (engine.Status.SystemState == SystemState.Created || engine.Status.SystemState == SystemState.Loading)
@@ -426,18 +433,27 @@ namespace IndxCloudApi.Controllers
         }
 
         /// <summary>
-        /// Return the datasets created by current user if any.
+        /// Returns all datasets the current user owns or has been granted access to.
+        /// Each entry includes the dataset name, the owner's user ID (null for owned datasets),
+        /// and the caller's role ("owner", "editor", or "viewer").
         /// </summary>
         [HttpGet("GetUserDatasets")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         [EnableCors("AllowAllHeaders")]
-        public ActionResult<string[]> GetUserDataSets()
+        public ActionResult<DataSetListDto[]> GetUserDataSets()
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized();
+
             var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, "dummy", userId);
-            return persistence.GetUserDataSets(userId);
+            var owned = persistence.GetUserDataSets(userId)
+                .Select(n => new DataSetListDto(n, null, "owner"));
+
+            var shared = IndxCloudInternalApi.Manager.GetAccessibleDataSets(userId)
+                .Select(s => new DataSetListDto(s.DataSetName, s.OwnerUserId, s.Role));
+
+            return owned.Concat(shared).ToArray();
         }
 
         /// <summary>
@@ -855,7 +871,7 @@ namespace IndxCloudApi.Controllers
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized();
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
             if (matcher == null)
                 return Array.Empty<FieldProxy>();
             return matcher.GetFieldConfiguration();
@@ -992,7 +1008,7 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
             if (matcher == null)
                 return BadRequest("DeleteFilter non existing dataset name");
             var filter = matcher.GetFilterFromKey(filterProxy.HashString);
@@ -1017,7 +1033,7 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
             if (matcher == null)
                 return BadRequest("DeleteAllFilters non existing dataset name");
             matcher.DeleteAllFilters();
@@ -1037,7 +1053,7 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
             if (matcher == null)
                 return BadRequest("LoadAllFilters non existing dataset name");
             matcher.LoadAllFilters();
@@ -1057,7 +1073,7 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
             if (matcher == null)
                 return BadRequest("GetNumberOfFilters non existing dataset name");
             return Ok(matcher.NumberOfFilters);
@@ -1227,4 +1243,9 @@ namespace IndxCloudApi.Controllers
 
         #endregion Private Methods
     }
+
+#pragma warning disable 1591
+    /// <summary>Dataset entry returned by GetUserDatasets.</summary>
+    public record DataSetListDto(string Name, string? OwnerUserId, string Role);
+#pragma warning restore 1591
 }
