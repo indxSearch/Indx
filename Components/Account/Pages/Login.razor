@@ -134,9 +134,7 @@ else if (externalLogins.Count > 0)
         if (result.Succeeded)
         {
             Logger.LogInformation("User {Email} logged in successfully", Input.Email);
-
-            // ✅ ENDRING: Redirect til API Key page i stedet for home
-            //NavigationManager.NavigateTo("/Account/ApiKey", forceLoad: true);
+            NavigationManager.NavigateTo(ReturnUrl ?? "/", forceLoad: true);
         }
         else if (result.RequiresTwoFactor)
         {
