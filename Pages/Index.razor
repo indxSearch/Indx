@@ -72,13 +72,21 @@ else
             <div class="indx-dataset-card-inner">
             <Surface Transparent>
 
-                @* ── Status (always at top when Ready) ── *@
+                @* ── Status chip (always shown when status is available) ── *@
+                @if (status != null)
+                {
+                    <div class="indx-status-wrap">
+                    <Chip Color="@StateChipColor(engineState)" TextColor="@StateChipTextColor(engineState)">@status.SystemState</Chip>
+                    </div>
+                }
+
+                @* ── Detailed status table (Ready only) ── *@
                 @if (engineState == SystemState.Ready && status != null)
                 {
                     <div class="indx-status-wrap">
                     <table class="indx-status-table">
                         <tbody>
-                            <tr><td>System State</td><td><Chip Color="@(engineState == SystemState.Ready ? "var(--CTeal)" : null)" TextColor="@(engineState == SystemState.Ready ? "var(--lv8)" : null)">@status.SystemState</Chip></td></tr>
+                            <tr><td>System State</td><td><Chip Color="@StateChipColor(engineState)" TextColor="@StateChipTextColor(engineState)">@status.SystemState</Chip></td></tr>
                             <tr><td>Document Count</td><td>@status.DocumentCount</td></tr>
                             <tr><td>Search Counter</td><td>@status.SearchCounter</td></tr>
                             <tr><td>Seconds To Index</td><td>@status.SecondsToIndex.ToString("0.##")s</td></tr>
@@ -514,6 +522,23 @@ else
         Assembly.GetAssembly(typeof(SearchEngine))?.GetName().Version?.ToString(3) ?? "";
 
     private string[]? datasets;
+    private static string StateChipColor(SystemState state) => state switch
+    {
+        SystemState.Ready      => "var(--CTeal)",
+        SystemState.Loading    => "var(--CLightBlue)",
+        SystemState.Indexing   => "var(--CWarning)",
+        SystemState.Error      => "var(--CSignal)",
+        _                      => "var(--lv3)",
+    };
+
+    private static string StateChipTextColor(SystemState state) => state switch
+    {
+        SystemState.Error => "var(--lv0)",
+        _                 => state == SystemState.Created || state == SystemState.Loaded || state == SystemState.Hibernated
+                             ? "var(--lv5)"
+                             : "var(--lv8)",
+    };
+
     private Dictionary<string, SystemStatus> datasetStatuses = new();
     private bool isLoading = true;
     private string? userId;
