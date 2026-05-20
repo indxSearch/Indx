@@ -78,7 +78,13 @@ else
                     <div class="indx-status-wrap">
                     <table class="indx-status-table">
                         <tbody>
-                            <tr><td>System State</td><td><Chip Color="@StateChipColor(engineState)" TextColor="@StateChipTextColor(engineState)">@status.SystemState</Chip></td></tr>
+                            <tr><td>System State</td><td style="display:flex; gap:6px; align-items:center;">
+                                <Chip Color="@StateChipColor(engineState)" TextColor="@StateChipTextColor(engineState)">@status.SystemState</Chip>
+                                @if (isSaving && engineState == SystemState.Ready)
+                                {
+                                    <Chip Color="var(--lv8)" TextColor="var(--lv0)">Shadow indexing</Chip>
+                                }
+                            </td></tr>
                             @if (engineState == SystemState.Ready)
                             {
                                 <tr><td>Document Count</td><td>@status.DocumentCount</td></tr>
@@ -193,7 +199,7 @@ else
                                                   Elevated />
                                     <ToggleSwitch Checked="@_showAdvancedFields.Contains(datasetName)"
                                                   CheckedChanged="@(v => { if (v) _showAdvancedFields.Add(datasetName); else _showAdvancedFields.Remove(datasetName); })"
-                                                  Label="Advanced"
+                                                  Label="Show advanced settings"
                                                   Elevated />
                                 </span>
                             </div>
@@ -310,7 +316,7 @@ else
                                               Elevated />
                                 <ToggleSwitch Checked="@_showAdvancedFields.Contains(datasetName)"
                                               CheckedChanged="@(v => { if (v) _showAdvancedFields.Add(datasetName); else _showAdvancedFields.Remove(datasetName); })"
-                                              Label="Advanced"
+                                              Label="Show advanced settings"
                                               Elevated />
                             </span>
                         </div>
