@@ -409,7 +409,7 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             var status = IndxCloudInternalApi.Manager.GetState(dataSetName, userId);
             if (status == null)
-                return BadRequest("GetStatus failed, status==null");
+                return BadRequest($"GetStatus failed: dataset '{dataSetName}' not found for user '{userId}'");
 
             return new CloudSystemStatus(status)
             {
