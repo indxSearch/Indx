@@ -407,6 +407,7 @@ namespace IndxCloudApi.Controllers
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized();
+            // TEMPORARY: catch exposes stack trace for diagnostics — remove before release
             try
             {
                 var status = IndxCloudInternalApi.Manager.GetState(dataSetName, userId);
@@ -421,7 +422,7 @@ namespace IndxCloudApi.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, $"GetStatus exception: {ex}");
+                return StatusCode(500, $"GetStatus exception: {ex}"); // TEMPORARY
             }
         }
 
