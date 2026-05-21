@@ -402,7 +402,7 @@ namespace IndxCloudApi.Controllers
         [HttpGet("GetStatus/{dataSetname}")]
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
         [EnableCors("AllowAllHeaders")]
-        public ActionResult<SystemStatus> GetStatus(string dataSetName)
+        public ActionResult<CloudSystemStatus> GetStatus(string dataSetName)
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId))
@@ -411,11 +411,11 @@ namespace IndxCloudApi.Controllers
             if (status == null)
                 return BadRequest("GetStatus failed, status==null");
 
-            // Augment with shadow-build progress so clients can poll while a bulk update
-            // or reindex is running.
-            status.ShadowBuildInProgress = IndxCloudInternalApi.Manager.IsShadowBuildInProgress(dataSetName, userId);
-            status.ShadowBuildStartedUtc = IndxCloudInternalApi.Manager.ShadowBuildStartedUtc(dataSetName, userId);
-            return status;
+            return new CloudSystemStatus(status)
+            {
+                ShadowBuildInProgress = IndxCloudInternalApi.Manager.IsShadowBuildInProgress(dataSetName, userId),
+                ShadowBuildStartedUtc = IndxCloudInternalApi.Manager.ShadowBuildStartedUtc(dataSetName, userId),
+            };
         }
 
         /// <summary>

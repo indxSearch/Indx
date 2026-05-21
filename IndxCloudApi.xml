@@ -416,6 +416,23 @@
             can be made.
             </summary>
         </member>
+        <member name="T:IndxCloudApi.Models.CloudSystemStatus">
+            <summary>
+            SystemStatus extended with cloud-layer fields that the core library has no knowledge of.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.CloudSystemStatus.#ctor">
+            <summary>For serialization.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.CloudSystemStatus.#ctor(Indx.Api.SystemStatus)">
+            <summary>Copy from a core SystemStatus, then set cloud fields separately.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Models.CloudSystemStatus.ShadowBuildInProgress">
+            <summary>True while a shadow-instance rebuild is in progress for this dataset.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Models.CloudSystemStatus.ShadowBuildStartedUtc">
+            <summary>UTC timestamp at which the in-progress shadow build started, or null if none is active.</summary>
+        </member>
         <member name="T:IndxCloudApi.Models.IndxCloudInternalApi">
              <summary>
              Shadow-swap orchestration for heavy mutations.
