@@ -36,11 +36,24 @@ else if (externalLogins.Count > 0)
                 <AntiforgeryToken />
                 <input type="hidden" name="provider" value="@provider.Name" />
                 <input type="hidden" name="returnUrl" value="@ReturnUrl" />
-                <Button Type="submit" Variant="primary">
-                    @if (provider.Name == "Google") { <span>Sign in with Google</span> }
-                    else if (provider.Name == "Microsoft") { <span>Sign in with Microsoft</span> }
-                    else { <span>Sign in with @provider.DisplayName</span> }
-                </Button>
+                @if (provider.Name == "Google")
+                {
+                    <Button Type="submit" Variant="primary">
+                        <IconLeft><Google Size="@context" Color="currentColor" /></IconLeft>
+                        <ChildContent>Sign in with Google</ChildContent>
+                    </Button>
+                }
+                else if (provider.Name == "Microsoft")
+                {
+                    <Button Type="submit" Variant="primary">
+                        <IconLeft><MicrosoftLogo Size="@context" Color="currentColor" /></IconLeft>
+                        <ChildContent>Sign in with Microsoft</ChildContent>
+                    </Button>
+                }
+                else
+                {
+                    <Button Type="submit" Variant="primary">Sign in with @provider.DisplayName</Button>
+                }
             </form>
         }
     </div>
