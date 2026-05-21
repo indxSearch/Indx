@@ -384,7 +384,7 @@ namespace IndxCloudApi.Models
         {
             try
             {
-                var engine = FindInstance(dataSetName, userId) as SearchEngine;
+                var engine = ResolveEngine(dataSetName, userId) as SearchEngine;
                 if (engine == null)
                     return [];
                 if (!engine.EmbeddingFields.TryGetValue(query.FieldName, out var index))
@@ -406,7 +406,7 @@ namespace IndxCloudApi.Models
         {
             try
             {
-                var engine = FindInstance(dataSetName, userId) as SearchEngine;
+                var engine = ResolveEngine(dataSetName, userId) as SearchEngine;
                 if (engine == null)
                     return [];
                 if (!engine.EmbeddingFields.TryGetValue(query.EmbeddingField, out var index))
@@ -689,6 +689,30 @@ namespace IndxCloudApi.Models
                 _granteeOwnerCache[cacheKey] = ownerUserId;
             }
             return FindInstance(dataSetName, ownerUserId);
+        }
+
+        /// <summary>
+        /// Resolves the owner's engine for a dataset when the requesting user is either the
+        /// owner or a grantee with editor role. Returns (null, null) for viewers and
+        /// non-grantees. Use this for all write operations that editors should be able to perform.
+        /// </summary>
+        internal (ICloudSearchEngine? Engine, string? OwnerUserId) ResolveEngineAsEditor(string dataSetName, string userId)
+        {
+            // Owner path
+            var ownedEngine = FindSearchEngine(dataSetName, userId);
+            if (ownedEngine != null)
+                return (ownedEngine, userId);
+
+            // Grantee editor path — always hits DB so role changes take effect immediately
+            var db = new SqLiteManager(SearchDbConnectionString);
+            var accessible = db.GetAccessibleDataSets(userId);
+            var entry = accessible.FirstOrDefault(a => a.DataSetName == dataSetName);
+            if (entry == default || entry.Role != "editor")
+                return (null, null);
+
+            var ownerUserId = entry.OwnerUserName;
+            _granteeOwnerCache[userId + "\0" + dataSetName] = ownerUserId; // keep read cache warm
+            return (FindInstance(dataSetName, ownerUserId), ownerUserId);
         }
 
         private static string MakeKey(string dataSetName, string userId)

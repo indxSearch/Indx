@@ -253,9 +253,9 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
             if (matcher == null)
-                return BadRequest("DeleteDocument non existing dataset name");
+                return BadRequest("DeleteDocument non existing dataset name or insufficient permissions");
             var result = matcher.DeleteJsonRecord(documentKey);
             if (!result)
                 return BadRequest("DeleteDocument document not found");
@@ -275,7 +275,7 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            return RunHeavyOnShadowIfReady(dataSetName, userId, "DeleteJsonRecords", engine =>
+            return RunHeavyAsEditor(dataSetName, userId, "DeleteJsonRecords", engine =>
             {
                 foreach (var documentKey in documentKeys)
                 {
@@ -362,10 +362,10 @@ namespace IndxCloudApi.Controllers
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized();
-            var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, dataSetName, userId);
-            if (!persistence.DataSetExists())
+            var engine = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
+            if (engine == null)
                 return BadRequest("invalid dataSetName");
-            return persistence.NumberOfJsonRecords();
+            return engine.Persistence?.NumberOfJsonRecords() ?? 0;
         }
 
         /// <summary>
@@ -469,9 +469,9 @@ namespace IndxCloudApi.Controllers
             if (string.IsNullOrEmpty(userId))
                 return BadRequest("unauthorized");
 
-            var matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            var (matcher, ownerUserId) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
             if (matcher == null)
-                return BadRequest("IndexDataSet non existing dataset name");
+                return BadRequest("IndexDataSet non existing dataset name or insufficient permissions");
 
             if (matcher.Status.SystemState == SystemState.Ready)
             {
@@ -481,17 +481,17 @@ namespace IndxCloudApi.Controllers
                 try
                 {
                     IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(
-                        dataSetName, userId, Array.Empty<FieldProxy>());
+                        dataSetName, ownerUserId!, Array.Empty<FieldProxy>());
                 }
                 catch (ShadowBusyException ex)
                 {
                     return StatusCode(StatusCodes.Status409Conflict, ex.Message);
                 }
             }
-            else if (!IndxCloudInternalApi.Manager.DoIndex(dataSetName, userId))
+            else if (!IndxCloudInternalApi.Manager.DoIndex(dataSetName, ownerUserId!))
             {
                 // Pre-Ready: first-time indexing path (Loaded -> Indexing -> Ready).
-                var status1 = IndxCloudInternalApi.Manager.GetState(dataSetName, userId);
+                var status1 = IndxCloudInternalApi.Manager.GetState(dataSetName, ownerUserId!);
                 if (status1 == null)
                     return BadRequest("IndexDataSet failed, DoIndex returned false");
                 if (status1.SystemState == SystemState.Created)
@@ -501,7 +501,7 @@ namespace IndxCloudApi.Controllers
                 }
             }
 
-            var status = IndxCloudInternalApi.Manager.GetState(dataSetName, userId);
+            var status = IndxCloudInternalApi.Manager.GetState(dataSetName, ownerUserId!);
             if (status == null)
                 return BadRequest("IndexDataSet failed, status==null");
             return status;
@@ -520,9 +520,9 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
             if (matcher == null)
-                return BadRequest("InsertJsonRecord non existing dataset name");
+                return BadRequest("InsertJsonRecord non existing dataset name or insufficient permissions");
             var result = matcher.InsertJsonRecord(jsonData, out string error);
             if (!result)
                 return BadRequest(error);
@@ -542,7 +542,7 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            return RunHeavyOnShadowIfReady(dataSetName, userId, "InsertJsonRecords", engine =>
+            return RunHeavyAsEditor(dataSetName, userId, "InsertJsonRecords", engine =>
             {
                 engine.InsertJsonRecords(jsonRecords, null, out _);
                 return Ok();
@@ -902,7 +902,7 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            return RunHeavyOnShadowIfReady(dataSetName, userId, "UpdateJsonRecords", engine =>
+            return RunHeavyAsEditor(dataSetName, userId, "UpdateJsonRecords", engine =>
             {
                 foreach (var jsonData in jsonRecords)
                 {
@@ -927,9 +927,9 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
             if (matcher == null)
-                return BadRequest("UpdateJsonRecord non existing dataset name");
+                return BadRequest("UpdateJsonRecord non existing dataset name or insufficient permissions");
             var result = matcher.UpdateJsonRecord(jsonData, out string error);
             if (!result)
                 return BadRequest(error);
@@ -948,9 +948,9 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
             if (matcher == null)
-                return BadRequest("UpdateField non existing dataset name");
+                return BadRequest("UpdateField non existing dataset name or insufficient permissions");
             var result = matcher.UpdateField(documentKey, update.FieldName, UnwrapJsonElement(update.Value)!, out string error);
             if (!result)
                 return BadRequest(error);
@@ -970,7 +970,7 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            return RunHeavyOnShadowIfReady(dataSetName, userId, "DeleteRecordsInFilter", engine =>
+            return RunHeavyAsEditor(dataSetName, userId, "DeleteRecordsInFilter", engine =>
             {
                 var filter = engine.GetFilterFromKey(filterProxy.HashString);
                 if (filter == null)
@@ -994,7 +994,7 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            return RunHeavyOnShadowIfReady(dataSetName, userId, "UpdateFieldInFilter", engine =>
+            return RunHeavyAsEditor(dataSetName, userId, "UpdateFieldInFilter", engine =>
             {
                 var filter = engine.GetFilterFromKey(payload.Filter.HashString);
                 if (filter == null)
@@ -1019,9 +1019,9 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
+            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
             if (matcher == null)
-                return BadRequest("DeleteFilter non existing dataset name");
+                return BadRequest("DeleteFilter non existing dataset name or insufficient permissions");
             var filter = matcher.GetFilterFromKey(filterProxy.HashString);
             if (filter == null)
                 return BadRequest("DeleteFilter invalid filter key");
@@ -1044,9 +1044,9 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
+            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
             if (matcher == null)
-                return BadRequest("DeleteAllFilters non existing dataset name");
+                return BadRequest("DeleteAllFilters non existing dataset name or insufficient permissions");
             matcher.DeleteAllFilters();
             return Ok();
         }
@@ -1064,9 +1064,9 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
+            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
             if (matcher == null)
-                return BadRequest("LoadAllFilters non existing dataset name");
+                return BadRequest("LoadAllFilters non existing dataset name or insufficient permissions");
             matcher.LoadAllFilters();
             return Ok();
         }
@@ -1103,9 +1103,9 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
             if (matcher == null)
-                return BadRequest("Hibernate non existing dataset name");
+                return BadRequest("Hibernate non existing dataset name or insufficient permissions");
             var result = matcher.Hibernate(out string errorMessage);
             if (!result)
                 return BadRequest(errorMessage);
@@ -1125,9 +1125,9 @@ namespace IndxCloudApi.Controllers
                 return Unauthorized();
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
             if (matcher == null)
-                return BadRequest("WakeUp non existing dataset name");
+                return BadRequest("WakeUp non existing dataset name or insufficient permissions");
             var result = matcher.WakeUp();
             if (!result)
                 return BadRequest("WakeUp failed");
@@ -1226,6 +1226,23 @@ namespace IndxCloudApi.Controllers
             {
                 return StatusCode(StatusCodes.Status409Conflict, ex.Message);
             }
+        }
+
+        /// <summary>
+        /// Like RunHeavyOnShadowIfReady but resolves editor access first. Accepts the grantee
+        /// userId and resolves the owner internally, so callers don't need to pre-resolve.
+        /// Returns Forbidden for viewers and non-grantees.
+        /// </summary>
+        private ActionResult RunHeavyAsEditor(
+            string dataSetName,
+            string userId,
+            string operationName,
+            Func<ICloudSearchEngine, ActionResult> mutation)
+        {
+            var (_, ownerUserId) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
+            if (ownerUserId == null)
+                return BadRequest($"{operationName} non existing dataset name or insufficient permissions");
+            return RunHeavyOnShadowIfReady(dataSetName, ownerUserId, operationName, mutation);
         }
 
         /// <summary>

@@ -348,6 +348,13 @@
              preserves the existing endpoints' early-exit semantics (e.g. BadRequest mid-loop).
              </summary>
         </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.RunHeavyAsEditor(System.String,System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,Microsoft.AspNetCore.Mvc.ActionResult})">
+            <summary>
+            Like RunHeavyOnShadowIfReady but resolves editor access first. Accepts the grantee
+            userId and resolves the owner internally, so callers don't need to pre-resolve.
+            Returns Forbidden for viewers and non-grantees.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.UnwrapJsonElement(System.Object)">
             <summary>
             ASP.NET Core deserializes 'object' properties as JsonElement. Unwrap to the
@@ -533,6 +540,13 @@
             <summary>
             Finds the engine for a dataset, falling back to a grantee lookup if the user doesn't
             own the dataset. The grantee→owner mapping is cached in memory after the first DB hit.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ResolveEngineAsEditor(System.String,System.String)">
+            <summary>
+            Resolves the owner's engine for a dataset when the requesting user is either the
+            owner or a grantee with editor role. Returns (null, null) for viewers and
+            non-grantees. Use this for all write operations that editors should be able to perform.
             </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunMutationOnShadow``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})">
