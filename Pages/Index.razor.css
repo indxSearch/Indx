@@ -277,7 +277,8 @@
     position: relative;
     overflow: hidden;
     margin-top: 20px;
-    background: var(--lv1);
+    background: var(--lv0);
+    border: 0.5px solid var(--lv3);
     padding: 5px;
     min-height: 350px;
     box-sizing: border-box;
@@ -302,6 +303,7 @@
     margin-top: 8px;
 }
 
+
 .indx-perf-result {
     font: var(--text-xs);
     color: var(--lv5);
@@ -320,7 +322,7 @@
 }
 
 .indx-search-field-wrap:focus-within {
-    border-color: var(--lv5);
+    border-color: transparent;
 }
 
 .indx-search-field-icon {
@@ -401,7 +403,7 @@
     flex-wrap: wrap;
     gap: 12px;
     padding: 8px 5px;
-    border-bottom: 1px solid var(--lv2);
+    border-bottom: 1px solid var(--lv3);
     font: var(--text-xs);
     color: var(--lv6);
 }

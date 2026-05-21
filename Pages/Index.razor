@@ -483,10 +483,10 @@ else
                                         }
                                     </div>
                                     <div class="indx-perf-toolbar">
-                                        <Button Variant="ghost" Size="micro" IconLeft="_iconZap"
+                                        <Button Variant="ghost" Size="micro" IconLeft="_iconSpeedometer"
                                                 disabled="@_perfRunning.Contains(datasetName)"
                                                 @onclick="@(() => RunPerfTest(datasetName, ownerUserId, _searchTexts.GetValueOrDefault(datasetName, string.Empty)))">
-                                            @(_perfRunning.Contains(datasetName) ? "Running…" : "Run performance test")
+                                            @(_perfRunning.Contains(datasetName) ? "Running…" : "Run performance benchmark")
                                         </Button>
                                         @if (_perfResults.TryGetValue(datasetName, out var perf) && perf != null)
                                         {
@@ -510,28 +510,36 @@ else
                 {
                     <div style="margin-top:8px;">
                         @* Transfer ownership *@
-                        <h3 style="margin-bottom:8px;">Transfer ownership</h3>
-                        <p style="color:var(--lv5);font:var(--text-xs);margin-bottom:12px;">Transfer this dataset to another user. You will lose owner access.</p>
-                        @if (_transferConfirmDataset == datasetName)
+                        <Button Variant="secondary" Size="micro" IconLeft="_iconUserAlias"
+                                @onclick="() => { if (_showTransferSection.Contains(datasetName)) _showTransferSection.Remove(datasetName); else _showTransferSection.Add(datasetName); }">
+                            Transfer Ownership
+                        </Button>
+                        @if (_showTransferSection.Contains(datasetName))
                         {
-                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                                <span style="font:var(--text-xs);color:var(--lv5);">Transfer to @_transferEmailInput?</span>
-                                <Button Variant="danger" Size="micro" @onclick="() => ConfirmTransfer(datasetName, ownerUserId)">Yes, transfer</Button>
-                                <Button Variant="secondary" Size="micro" @onclick="() => { _transferConfirmDataset = null; _transferEmailInput = null; _transferError = null; }">Cancel</Button>
+                            <div style="margin-top:12px;">
+                                <p style="color:var(--lv5);font:var(--text-xs);margin-bottom:12px;">Transfer this dataset to another user. You will lose owner access.</p>
+                                @if (_transferConfirmDataset == datasetName)
+                                {
+                                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                        <span style="font:var(--text-xs);color:var(--lv5);">Transfer to @_transferEmailInput?</span>
+                                        <Button Variant="danger" Size="micro" @onclick="() => ConfirmTransfer(datasetName, ownerUserId)">Yes, transfer</Button>
+                                        <Button Variant="secondary" Size="micro" @onclick="() => { _transferConfirmDataset = null; _transferEmailInput = null; _transferError = null; }">Cancel</Button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
+                                        <input class="indx-text-input" placeholder="New owner email" @bind="_transferEmailInput" @bind:event="oninput" />
+                                        <Button Variant="secondary" Size="micro"
+                                                disabled="@string.IsNullOrWhiteSpace(_transferEmailInput)"
+                                                @onclick="() => _transferConfirmDataset = datasetName">Transfer</Button>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(_transferError))
+                                {
+                                    <p style="color:var(--CSignal);font:var(--text-xs);margin-top:4px;">@_transferError</p>
+                                }
                             </div>
-                        }
-                        else
-                        {
-                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
-                                <input class="indx-text-input" placeholder="New owner email" @bind="_transferEmailInput" />
-                                <Button Variant="secondary" Size="micro"
-                                        disabled="@string.IsNullOrWhiteSpace(_transferEmailInput)"
-                                        @onclick="() => _transferConfirmDataset = datasetName">Transfer</Button>
-                            </div>
-                        }
-                        @if (!string.IsNullOrEmpty(_transferError))
-                        {
-                            <p style="color:var(--CSignal);font:var(--text-xs);margin-top:4px;">@_transferError</p>
                         }
 
                         @if (engineState == SystemState.Ready)
@@ -684,6 +692,7 @@ else
     private HashSet<string> expandedFieldConfig = new();
     private HashSet<string> _showUnusedFields = new();
     private HashSet<string> _showAdvancedFields = new();
+    private HashSet<string> _showTransferSection = new();
     private Dictionary<string, FieldProxy[]?> fieldConfigs = new();
     private Dictionary<string, FieldProxy[]> _editedFieldConfigs = new();
 
@@ -1578,12 +1587,14 @@ else
 
     private RenderFragment<int> _iconFields      => size => @<Field Size="size" />;
     private RenderFragment<int> _iconDelete      => size => @<Stop Size="size" />;
-    private RenderFragment<int> _iconZap         => size => @<Zap Size="size" />;
+    private RenderFragment<int> _iconZap          => size => @<Zap Size="size" />;
+    private RenderFragment<int> _iconSpeedometer  => size => @<Speedometer Size="size" />;
     private RenderFragment<int> _iconDownload    => size => @<Download Size="size" />;
     private RenderFragment<int> _iconDynamicJson => size => @<DynamicJsonField Size="size" />;
     private RenderFragment<int> _iconSearch      => size => @<Search Size="size" />;
     private RenderFragment<int> _iconSliders     => size => @<SlidersHorizontal Size="size" />;
     private RenderFragment<int> _iconUser        => size => @<User Size="size" />;
+    private RenderFragment<int> _iconUserAlias   => size => @<UserAlias Size="size" />;
     private RenderFragment<int> _iconUserPlus    => size => @<UserPlus Size="size" />;
 
     private static string BoolDisplay(bool? value) => value switch
