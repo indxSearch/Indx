@@ -323,7 +323,7 @@ else
                         <div class="indx-field-config-toolbar">
                             @if (isEditor && IsDirty(datasetName))
                             {
-                                <Button Variant="primary" Size="micro" @onclick="() => SaveFieldConfig(datasetName)" disabled="@(!HasSearchable(datasetName))">Save</Button>
+                                <Button Variant="primary" Size="micro" @onclick="() => SaveFieldConfig(datasetName, ownerUserId)" disabled="@(!HasSearchable(datasetName))">Save</Button>
                                 <Button Variant="secondary" Size="micro" @onclick="() => CancelFieldConfig(datasetName)">Cancel</Button>
                                 @if (_searchableTouched.Contains(datasetName) && !HasSearchable(datasetName))
                                 {
@@ -1479,7 +1479,7 @@ else
             _editedFieldConfigs.Remove(datasetName);
     }
 
-    private async Task SaveFieldConfig(string datasetName)
+    private async Task SaveFieldConfig(string datasetName, string engineOwnerUserId)
     {
         if (!_editedFieldConfigs.TryGetValue(datasetName, out var edited)) return;
         if (!HasSearchable(datasetName)) return;
@@ -1489,23 +1489,23 @@ else
         StateHasChanged();
 
         _pollingCts = new CancellationTokenSource();
-        var pollingTask = PollShadowProgress(datasetName, _pollingCts.Token);
+        var pollingTask = PollShadowProgress(datasetName, engineOwnerUserId, _pollingCts.Token);
 
         try
         {
             await Task.Run(() =>
             {
-                var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+                var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, engineOwnerUserId);
                 if (engine == null) return;
                 var df = engine.DocumentFields;
                 bool needsReindex = df?.RequiresReindex(edited) ?? false;
                 if (needsReindex && engine.Status.SystemState == SystemState.Ready)
-                    IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(datasetName, userId!, edited);
+                    IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(datasetName, engineOwnerUserId, edited);
                 else
                     engine.SetFieldConfiguration(edited);
             });
 
-            var freshEngine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+            var freshEngine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, engineOwnerUserId);
             var freshFields = freshEngine?.GetFieldConfiguration();
             fieldConfigs[datasetName] = freshFields;
             _editedFieldConfigs[datasetName] = freshFields?.Select(DeepCopy).ToArray() ?? [];
@@ -1524,14 +1524,14 @@ else
         }
     }
 
-    private async Task PollShadowProgress(string datasetName, CancellationToken ct)
+    private async Task PollShadowProgress(string datasetName, string engineOwnerUserId, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
             try
             {
                 await Task.Delay(100, ct);
-                _shadowBuildPercent = IndxCloudInternalApi.Manager.GetShadowBuildPercent(datasetName, userId!);
+                _shadowBuildPercent = IndxCloudInternalApi.Manager.GetShadowBuildPercent(datasetName, engineOwnerUserId);
                 await InvokeAsync(StateHasChanged);
             }
             catch (OperationCanceledException) { break; }

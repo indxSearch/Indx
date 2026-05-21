@@ -814,8 +814,19 @@ namespace IndxCloudApi.Controllers
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
+            string engineOwnerUserId = userId;
             if (matcher == null)
-                return BadRequest("non existing dataSetName");
+            {
+                // The user doesn't own this dataset — check if they are a grantee with editor access.
+                var grant = IndxCloudInternalApi.Manager.GetAccessibleDataSets(userId)
+                    .FirstOrDefault(a => a.DataSetName == dataSetName);
+                if (grant == default || grant.Role != "editor")
+                    return BadRequest("non existing dataSetName");
+                engineOwnerUserId = grant.OwnerUserId;
+                matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, engineOwnerUserId);
+                if (matcher == null)
+                    return BadRequest("non existing dataSetName");
+            }
             var df = matcher.DocumentFields;
             if (df == null)
                 return BadRequest("SearchController.SetFieldConfiguration invalid status");
@@ -838,7 +849,7 @@ namespace IndxCloudApi.Controllers
 
                 try
                 {
-                    IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(dataSetName, userId, fields);
+                    IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(dataSetName, engineOwnerUserId, fields);
                     return Ok();
                 }
                 catch (ShadowBusyException ex)
