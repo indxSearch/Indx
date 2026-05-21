@@ -151,7 +151,7 @@ else
                     @* ── Not yet uploaded ── *@
                     @if (engineState != SystemState.Ready && !isAnalyzed && !isUploading && !isLoadIndexing && isEditor)
                     {
-                        <p style="color:var(--lv5);">Upload a JSON file to configure and index this dataset.</p>
+                        <p style="color:var(--lv5);margin-top:16px;">Upload a JSON file to configure and index this dataset.</p>
                         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
                             <InputFile OnChange="@(e => OnFileSelected(datasetName, e))" accept=".json" style="display:none" id="@($"fileinput-{datasetName}")" />
                             <label for="@($"fileinput-{datasetName}")" class="indx-upload-label">
@@ -669,11 +669,11 @@ else
 
     private static string StateChipTextColor(SystemState state) => state switch
     {
-        SystemState.Error => "var(--lv0)",
-        SystemState.Ready => "#080809",
-        _                 => state == SystemState.Created || state == SystemState.Loaded || state == SystemState.Hibernated
-                             ? "var(--lv5)"
-                             : "var(--lv8)",
+        SystemState.Error    => "var(--lv0)",
+        SystemState.Ready    => "#080809",
+        SystemState.Loading  => "#080809",
+        SystemState.Indexing => "#080809",
+        _                    => "var(--lv5)",
     };
 
     private Dictionary<string, SystemStatus> datasetStatuses = new();
