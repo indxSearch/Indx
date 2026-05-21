@@ -66,9 +66,12 @@
 		<PackageReference Include="System.ServiceModel.Syndication" Version="10.0.3" />
 	</ItemGroup>
 
-	<ItemGroup>
-	  <!-- <PackageReference Include="IndxSearchLib" Version="4.1.2" /> -->
+	<!-- Switch: set IndxFromNuGet=true at publish time to use the obfuscated NuGet package -->
+	<ItemGroup Condition="'$(IndxFromNuGet)' != 'true'">
 	  <ProjectReference Include="..\Indx\Indx.csproj" />
+	</ItemGroup>
+	<ItemGroup Condition="'$(IndxFromNuGet)' == 'true'">
+	  <PackageReference Include="IndxSearchLib" Version="5.0.0" />
 	</ItemGroup>
 
 </Project>
