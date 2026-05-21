@@ -407,15 +407,22 @@ namespace IndxCloudApi.Controllers
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized();
-            var status = IndxCloudInternalApi.Manager.GetState(dataSetName, userId);
-            if (status == null)
-                return BadRequest($"GetStatus failed: dataset '{dataSetName}' not found for user '{userId}'");
-
-            return new CloudSystemStatus(status)
+            try
             {
-                ShadowBuildInProgress = IndxCloudInternalApi.Manager.IsShadowBuildInProgress(dataSetName, userId),
-                ShadowBuildStartedUtc = IndxCloudInternalApi.Manager.ShadowBuildStartedUtc(dataSetName, userId),
-            };
+                var status = IndxCloudInternalApi.Manager.GetState(dataSetName, userId);
+                if (status == null)
+                    return BadRequest($"GetStatus failed: dataset '{dataSetName}' not found for user '{userId}'");
+
+                return new CloudSystemStatus(status)
+                {
+                    ShadowBuildInProgress = IndxCloudInternalApi.Manager.IsShadowBuildInProgress(dataSetName, userId),
+                    ShadowBuildStartedUtc = IndxCloudInternalApi.Manager.ShadowBuildStartedUtc(dataSetName, userId),
+                };
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"GetStatus exception: {ex}");
+            }
         }
 
         /// <summary>
