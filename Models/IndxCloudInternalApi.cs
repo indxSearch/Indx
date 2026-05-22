@@ -290,28 +290,38 @@ namespace IndxCloudApi.Models
         /// <param name="userId">The user ID to clean up</param>
         internal void DisposeUserInstances(string userId)
         {
+            // Collect all of the user's entries under the lock, then dispose
+            // outside. Each SearchEngine.Dispose can take seconds; doing N of
+            // them inside _dictionaryLock would freeze every other Blazor
+            // session that needs an engine reference for the full duration.
+            List<(string Key, SearchEngineInstance Instance)> toDispose;
             lock (_dictionaryLock)
             {
                 var keysToRemove = _instances.Keys
                     .Where(k => k.StartsWith(userId))
                     .ToList();
 
-                _logger.LogInformation($"Disposing {keysToRemove.Count} SearchEngine instances for user {userId}");
-
+                toDispose = new List<(string, SearchEngineInstance)>(keysToRemove.Count);
                 foreach (var key in keysToRemove)
                 {
-                    if (_instances.TryGetValue(key, out var instance))
+                    if (_instances.TryGetValue(key, out var instance) && instance != null)
                     {
-                        try
-                        {
-                            instance?.theInstance?.Dispose();
-                            _instances.Remove(key);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError($"Error disposing SearchEngine instance {key}: {ex.Message}");
-                        }
+                        toDispose.Add((key, instance));
+                        _instances.Remove(key);
                     }
+                }
+            }
+
+            _logger.LogInformation($"Disposing {toDispose.Count} SearchEngine instances for user {userId}");
+            foreach (var (key, instance) in toDispose)
+            {
+                try
+                {
+                    instance.theInstance?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError($"Error disposing SearchEngine instance {key}: {ex.Message}");
                 }
             }
         }
@@ -324,27 +334,28 @@ namespace IndxCloudApi.Models
         /// <param name="userId">The user ID that owns the dataset</param>
         internal void DisposeDataSetInstance(string dataSetName, string userId)
         {
+            // Remove the entry under the lock so concurrent FindInstance calls
+            // immediately stop seeing it, but Dispose outside — SearchEngine.Dispose
+            // can take seconds (task.Wait timeouts, native pool free) and holding
+            // _dictionaryLock during that freezes every other Blazor session that
+            // needs an engine reference.
+            var key = MakeKey(dataSetName, userId);
+            SearchEngineInstance? instance;
             lock (_dictionaryLock)
             {
-                var key = MakeKey(dataSetName, userId);
+                if (!_instances.TryGetValue(key, out instance))
+                    return;
+                _instances.Remove(key);
+            }
 
-                if (_instances.TryGetValue(key, out var instance))
-                {
-                    try
-                    {
-                        instance?.theInstance?.Dispose();
-                        _logger.LogInformation($"Disposed SearchEngine instance for user {userId}, dataset {dataSetName}");
-                    }
-                    catch (Exception ex)
-                    {
-                        // A stale entry surviving here re-serves "deleted" data on the next FindInstance.
-                        _logger.LogError($"Error disposing SearchEngine instance {key}: {ex.Message}");
-                    }
-                    finally
-                    {
-                        _instances.Remove(key);
-                    }
-                }
+            try
+            {
+                instance?.theInstance?.Dispose();
+                _logger.LogInformation($"Disposed SearchEngine instance for user {userId}, dataset {dataSetName}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error disposing SearchEngine instance {key}: {ex.Message}");
             }
         }
 

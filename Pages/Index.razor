@@ -1404,7 +1404,11 @@ else
         if (string.IsNullOrEmpty(userId)) return;
         try
         {
-            if (IndxCloudInternalApi.Manager.DeleteDataSet(datasetName, userId))
+            // Run off the SignalR circuit dispatcher — SearchEngine.Dispose can
+            // take seconds (task.Wait timeouts, native pool free), and running
+            // it inline would freeze this user's UI for the full duration.
+            var ok = await Task.Run(() => IndxCloudInternalApi.Manager.DeleteDataSet(datasetName, userId));
+            if (ok)
             {
                 deleteConfirmDataset = null;
                 expandedFieldConfig.Remove(datasetName);
