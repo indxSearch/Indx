@@ -77,585 +77,647 @@ else
             var activeTab = _datasetTabs.GetValueOrDefault(selectedDataset, "fields");
 
             <div class="indx-dataset-card">
-            <div class="indx-dataset-card-inner">
-            <Surface Transparent>
+                <div class="indx-dataset-card-inner">
+                    <Surface Transparent>
 
-                @* ── Shared dataset banner ── *@
-                @if (isShared)
-                {
-                    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
-                        <Chip Color="var(--lv2)" TextColor="var(--lv5)">Shared by @_sharedDatasets[selectedDataset].OwnerEmail</Chip>
-                        <Chip Color="var(--lv2)" TextColor="var(--lv5)">@(char.ToUpper(currentRole[0]) + currentRole[1..])</Chip>
-                    </div>
-                }
-
-                @* ── Status table (always shown when status is available) ── *@
-                @if (status != null)
-                {
-                    <div class="indx-status-wrap">
-                    <table class="indx-status-table">
-                        <tbody>
-                            <tr><td>System State</td><td style="display:flex; gap:6px; align-items:center;">
-                                <Chip Color="@StateChipColor(engineState)" TextColor="@StateChipTextColor(engineState)">@status.SystemState</Chip>
-                                @if (isSaving && engineState == SystemState.Ready)
-                                {
-                                    <Chip Color="var(--lv8)" TextColor="var(--lv0)">Shadow indexing</Chip>
-                                }
-                            </td></tr>
-                            @if (engineState == SystemState.Ready)
-                            {
-                                <tr><td>Document Count</td><td>@status.DocumentCount</td></tr>
-                                <tr><td>Search Counter</td><td>@status.SearchCounter</td></tr>
-                                <tr><td>Seconds To Index</td><td>@status.SecondsToIndex.ToString("0.##")s</td></tr>
-                                <tr><td>Instance Created</td><td>@status.TimeOfInstanceCreation</td></tr>
-                                <tr><td>Last Index Build</td><td>@status.TimeOfLastIndexBuild</td></tr>
-                                @if (status.LicenseInfo?.DocumentLimitExceeded == true)
-                                {
-                                    <tr><td style="color:var(--CSignal);">License Limit</td><td style="color:var(--CSignal);">@status.DocumentCount.ToString("N0") / @status.LicenseInfo.DocumentLimit.ToString("N0")</td></tr>
-                                }
-                                @if (status.InvalidArgument)          { <tr><td style="color:var(--CSignal);">Invalid Argument</td><td>@status.InvalidArgument</td></tr> }
-                                @if (status.InvalidState)             { <tr><td style="color:var(--CSignal);">Invalid State</td><td>@status.InvalidState</td></tr> }
-                                @if (status.TooLongClientText)        { <tr><td style="color:var(--CSignal);">Too Long Client Text</td><td>@status.TooLongClientText</td></tr> }
-                                @if (status.TooLongSearchText)        { <tr><td style="color:var(--CSignal);">Too Long Search Text</td><td>@status.TooLongSearchText</td></tr> }
-                                @if (status.UnknownConfigurationError){ <tr><td style="color:var(--CSignal);">Config Error</td><td>@status.UnknownConfigurationError</td></tr> }
-                                @if (!string.IsNullOrEmpty(status.ErrorMessage)) { <tr><td style="color:var(--CSignal);">Error</td><td>@status.ErrorMessage</td></tr> }
-                            }
-                        </tbody>
-                    </table>
-                    </div>
-                }
-
-
-                @* ── Dataset tab nav ── *@
-                @if (engineState == SystemState.Ready || (isAnalyzed && !isLoadIndexing && isEditor))
-                {
-                    <nav class="indx-dataset-nav">
-                        <Button Variant="@(activeTab == "fields" ? "primary" : "ghost")" Size="micro" IconLeft="_iconFields" @onclick="@(() => _datasetTabs[selectedDataset] = "fields")">Field configuration</Button>
-                        @if (engineState == SystemState.Ready)
+                        @* ── Shared dataset banner ── *@
+                        @if (isShared)
                         {
-                            <Button Variant="@(activeTab == "search" ? "primary" : "ghost")" Size="micro" IconLeft="_iconSearch" @onclick="@(() => _datasetTabs[selectedDataset] = "search")">Search preview</Button>
-                        }
-                        @if (currentRole == "owner")
-                        {
-                            <Button Variant="@(activeTab == "options" ? "primary" : "ghost")" Size="micro" IconLeft="_iconSliders" @onclick="@(() => _datasetTabs[selectedDataset] = "options")">Options</Button>
-                        }
-                        <Button Variant="@(activeTab == "members" ? "primary" : "ghost")" Size="micro" IconLeft="_iconUser" @onclick="@(async () => { _datasetTabs[selectedDataset] = "members"; await LoadAccessGrants(datasetName, ownerUserId); })">Members</Button>
-                    </nav>
-                }
-
-                @* ════════════════════════════════════════
-                   Tab: Field configuration
-                   ════════════════════════════════════════ *@
-                @if (activeTab == "fields")
-                {
-                    @* ── Not yet uploaded ── *@
-                    @if (engineState != SystemState.Ready && !isAnalyzed && !isUploading && !isLoadIndexing && isEditor)
-                    {
-                        <p style="color:var(--lv5);margin-top:16px;">Upload a JSON file to configure and index this dataset.</p>
-                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
-                            <InputFile OnChange="@(e => OnFileSelected(datasetName, e))" accept=".json" style="display:none" id="@($"fileinput-{datasetName}")" />
-                            <label for="@($"fileinput-{datasetName}")" class="indx-upload-label">
-                                <Json Size="14" />
-                                @if (_selectedFile != null && _selectedFileDataset == datasetName)
-                                {
-                                    <span>@_selectedFile.Name (@FormatBytes(_selectedFile.Size))</span>
-                                }
-                                else
-                                {
-                                    <span>Choose JSON file…</span>
-                                }
-                            </label>
-                            @if (_selectedFile != null && _selectedFileDataset == datasetName)
-                            {
-                                <Button Variant="primary" Size="micro" @onclick="() => StartUpload(datasetName)">Upload</Button>
-                            }
-                        </div>
-                        @if (!string.IsNullOrEmpty(_uploadError) && _uploadErrorDataset == datasetName)
-                        {
-                            <p style="color:var(--CSignal);margin-top:4px;">@_uploadError</p>
-                        }
-                        <div style="margin-top:16px;">
-                            @if (deleteConfirmDataset == datasetName)
-                            {
-                                <div style="display:flex;gap:8px;align-items:center;">
-                                    <span style="font:var(--text-xs);color:var(--lv5);">Are you sure?</span>
-                                    <Button Variant="danger" Size="micro" @onclick="() => ConfirmDelete(datasetName)">Yes, Delete</Button>
-                                    <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
-                                </div>
-                            }
-                            else
-                            {
-                                <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)">Delete dataset</Button>
-                            }
-                        </div>
-                    }
-
-                    @* ── Uploading progress ── *@
-                    @if (isUploading)
-                    {
-                        <div class="indx-field-config-saving">
-                            <ProgressBar Value="@_uploadProgress" ShowLabel FulfilledColor />
-                            <p class="indx-field-config-saving-label">Uploading…</p>
-                            <Button Variant="secondary" Size="micro" @onclick="CancelUpload">Cancel</Button>
-                        </div>
-                    }
-
-                    @* ── Analyzed: configure + Load and Index ── *@
-                    @if (engineState != SystemState.Ready && isAnalyzed && !isUploading && !isLoadIndexing)
-                    {
-                        @if (_editedFieldConfigs.TryGetValue(datasetName, out var editedFields) && editedFields != null)
-                        {
-                            <div class="indx-field-config-toolbar">
-                                <Button Variant="primary" Size="micro"
-                                        @onclick="() => StartLoadAndIndex(datasetName)"
-                                        disabled="@(!HasSearchable(datasetName))">Load and Index</Button>
-                                @if (_searchableTouched.Contains(datasetName) && !HasSearchable(datasetName))
-                                {
-                                    <span class="indx-field-config-error">At least one field must be searchable</span>
-                                }
-                                <span style="margin-left:auto;display:flex;gap:16px;align-items:center;">
-                                    <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
-                                                  CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
-                                                  Label="Show unused fields"
-                                                  Elevated />
-                                    <ToggleSwitch Checked="@_showAdvancedFields.Contains(datasetName)"
-                                                  CheckedChanged="@(v => { if (v) _showAdvancedFields.Add(datasetName); else _showAdvancedFields.Remove(datasetName); })"
-                                                  Label="Show advanced settings"
-                                                  Elevated />
-                                </span>
+                            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+                                <Chip Color="var(--lv2)" TextColor="var(--lv5)">Shared by @_sharedDatasets[selectedDataset].OwnerEmail</Chip>
+                                <Chip Color="var(--lv2)" TextColor="var(--lv5)">@(char.ToUpper(currentRole[0]) + currentRole[1..])</Chip>
                             </div>
-                            <div class="indx-table-wrap">
-                                <table class="indx-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Field and type</th>
-                                            <th><span class="indx-th-tip" data-tooltip="Included in full-text search. At least one field must be searchable.">Searchable</span></th>
-                                            <th><span class="indx-th-tip" data-tooltip="Can be used to filter results by exact value or range.">Filterable</span></th>
-                                            <th><span class="indx-th-tip" data-tooltip="Field values are counted and returned as facets for building filter UI.">Facetable</span></th>
-                                            <th><span class="indx-th-tip" data-tooltip="Results can be sorted by this field's value.">Sortable</span></th>
-                                            @if (_showAdvancedFields.Contains(datasetName))
-                                            {
-                                                <th><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
-                                                <th><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
-                                                <th><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
-                                            }
-                                            <th><span class="indx-th-tip" data-tooltip="Relevance weight for this field (recommended range 0.5–3.0). Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0.">Weight</span></th>
-                                            @if (_showAdvancedFields.Contains(datasetName))
-                                            {
-                                                <th><span class="indx-th-tip" data-tooltip="BM25F length normalisation (0–1). Higher values penalise longer fields more. Activates BM25F multi-field scoring.">BM25b</span></th>
-                                                <th><span class="indx-th-tip" data-tooltip="BM25F term saturation factor. Higher values give more weight to repeated terms in this field.">BM25k1</span></th>
-                                            }
-                                        </tr>
-                                    </thead>
+                        }
+
+                        @* ── Status table (always shown when status is available) ── *@
+                        @if (status != null)
+                        {
+                            <div class="indx-status-wrap">
+                                <table class="indx-status-table">
                                     <tbody>
-                                        @foreach (var field in editedFields.Where(f => _showUnusedFields.Contains(datasetName) || !IsUnused(f)))
+                                        <tr>
+                                            <td>System State</td>
+                                            <td style="display:flex; gap:6px; align-items:center;">
+                                                <Chip Color="@StateChipColor(engineState)" TextColor="@StateChipTextColor(engineState)">@status.SystemState</Chip>
+                                                @if (isSaving && engineState == SystemState.Ready)
+                                                {
+                                                    <Chip Color="var(--lv8)" TextColor="var(--lv0)">Shadow indexing</Chip>
+                                                }
+                                            </td>
+                                        </tr>
+                                        @if (engineState == SystemState.Ready)
                                         {
-                                            <tr>
-                                                <td>
-                                                    <div class="cell-inner">
-                                                        <span>@field.FieldName</span>
-                                                        @if (field.FieldType != null)
-                                                        {
-                                                            <span class="cell-value">@(field.FieldType + (field.IsArray == true ? "[]" : ""))</span>
-                                                        }
-                                                    </div>
-                                                </td>
-                                                <td class="indx-table-check"><Checkbox Checked="@(field.Searchable == true)" CheckedChanged="@(v => { field.Searchable = v; _searchableTouched.Add(datasetName); })" /></td>
-                                                <td class="indx-table-check"><Checkbox Checked="@(field.Filterable == true)" CheckedChanged="@(v => { field.Filterable = v; })" /></td>
-                                                <td class="indx-table-check"><Checkbox Checked="@(field.Facetable == true)" CheckedChanged="@(v => { field.Facetable = v; })" /></td>
-                                                <td class="indx-table-check"><Checkbox Checked="@(field.Sortable == true)" CheckedChanged="@(v => { field.Sortable = v; })" /></td>
-                                                @if (_showAdvancedFields.Contains(datasetName))
-                                                {
-                                                    <td class="indx-table-check"><Checkbox Checked="@(field.WordIndexing == true)" CheckedChanged="@(v => { field.WordIndexing = v; })" /></td>
-                                                    <td class="indx-table-check"><Checkbox Checked="@(field.Embeddable == true)" CheckedChanged="@(v => { field.Embeddable = v; })" /></td>
-                                                    <td class="indx-table-check"><Checkbox Checked="@(field.PreloadFilters == true)" CheckedChanged="@(v => { field.PreloadFilters = v; })" /></td>
-                                                }
-                                                <td><input class="indx-num-input" type="number" step="0.1" min="0"
-                                                           value="@(field.Weight.HasValue ? field.Weight.Value.ToString("0.0##", CultureInfo.InvariantCulture) : "")"
-                                                           @onchange="@(e => { field.Weight = ParseFloat(e.Value?.ToString()); })" /></td>
-                                                @if (_showAdvancedFields.Contains(datasetName))
-                                                {
-                                                    <td><input class="indx-num-input" type="number" step="0.01" min="0" max="1"
-                                                               value="@(field.BM25b.HasValue ? field.BM25b.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
-                                                               @onchange="@(e => { field.BM25b = ParseFloat(e.Value?.ToString()); })" /></td>
-                                                    <td><input class="indx-num-input" type="number" step="0.1" min="0"
-                                                               value="@(field.BM25k1.HasValue ? field.BM25k1.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
-                                                               @onchange="@(e => { field.BM25k1 = ParseFloat(e.Value?.ToString()); })" /></td>
-                                                }
-                                            </tr>
+                                            <tr><td>Document Count</td><td>@status.DocumentCount</td></tr>
+                                            <tr><td>Search Counter</td><td>@status.SearchCounter</td></tr>
+                                            <tr><td>Seconds To Index</td><td>@status.SecondsToIndex.ToString("0.##")s</td></tr>
+                                            <tr><td>Instance Created</td><td>@status.TimeOfInstanceCreation</td></tr>
+                                            <tr><td>Last Index Build</td><td>@status.TimeOfLastIndexBuild</td></tr>
+                                            @if (status.LicenseInfo?.DocumentLimitExceeded == true)
+                                            {
+                                                <tr><td style="color:var(--CSignal);">License Limit</td><td style="color:var(--CSignal);">@status.DocumentCount.ToString("N0") / @status.LicenseInfo.DocumentLimit.ToString("N0")</td></tr>
+                                            }
+                                            @if (status.InvalidArgument)
+                                            {
+                                                <tr><td style="color:var(--CSignal);">Invalid Argument</td><td>@status.InvalidArgument</td></tr>
+                                            }
+                                            @if (status.InvalidState)
+                                            {
+                                                <tr><td style="color:var(--CSignal);">Invalid State</td><td>@status.InvalidState</td></tr>
+                                            }
+                                            @if (status.TooLongClientText)
+                                            {
+                                                <tr><td style="color:var(--CSignal);">Too Long Client Text</td><td>@status.TooLongClientText</td></tr>
+                                            }
+                                            @if (status.TooLongSearchText)
+                                            {
+                                                <tr><td style="color:var(--CSignal);">Too Long Search Text</td><td>@status.TooLongSearchText</td></tr>
+                                            }
+                                            @if (status.UnknownConfigurationError)
+                                            {
+                                                <tr><td style="color:var(--CSignal);">Config Error</td><td>@status.UnknownConfigurationError</td></tr>
+                                            }
+                                            @if (!string.IsNullOrEmpty(status.ErrorMessage))
+                                            {
+                                                <tr><td style="color:var(--CSignal);">Error</td><td>@status.ErrorMessage</td></tr>
+                                            }
                                         }
                                     </tbody>
                                 </table>
                             </div>
-                            <div style="display:flex;gap:8px;align-items:center;margin-top:8px;margin-bottom:8px;flex-wrap:wrap;">
-                                <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-{datasetName}")" />
-                                <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportFile(datasetName)">Upload field configuration</Button>
-                                @if (_importWarnings.TryGetValue(datasetName, out var warning) && warning != null)
+                        }
+
+
+                        @* ── Dataset tab nav ── *@
+                        @if (engineState == SystemState.Ready || (isAnalyzed && !isLoadIndexing && isEditor))
+                        {
+                            <nav class="indx-dataset-nav">
+                                <Button Variant="@(activeTab == "fields" ? "primary" : "ghost")" Size="micro" IconLeft="_iconFields" @onclick="@(() => _datasetTabs[selectedDataset] = "fields")">Field configuration</Button>
+                                @if (engineState == SystemState.Ready)
                                 {
-                                    <span class="indx-field-config-import-warning">@warning</span>
+                                    <Button Variant="@(activeTab == "search" ? "primary" : "ghost")" Size="micro" IconLeft="_iconSearch" @onclick="@(() => _datasetTabs[selectedDataset] = "search")">Search preview</Button>
                                 }
-                                <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportFieldConfig(datasetName)">Export field configuration as json</Button>
-                            </div>
-                        }
-                    }
-
-                    @* ── Load & Index progress ── *@
-                    @if (isLoadIndexing)
-                    {
-                        <div class="indx-field-config-saving">
-                            <ProgressBar Value="_loadProgress" ShowLabel FulfilledColor />
-                            <p class="indx-field-config-saving-label">Loading…</p>
-                        </div>
-                        @if (_isIndexingPhase)
-                        {
-                            <div class="indx-field-config-saving">
-                                <ProgressBar Value="_indexProgress" ShowLabel FulfilledColor />
-                                <p class="indx-field-config-saving-label">Indexing…</p>
-                            </div>
-                        }
-                    }
-
-                    @* ── Ready: field config table ── *@
-                    @if (engineState == SystemState.Ready)
-                    {
-                        @if (!isSaving)
-                        {
-                        <div class="indx-field-config-toolbar">
-                            @if (isEditor && IsDirty(datasetName))
-                            {
-                                <Button Variant="primary" Size="micro" @onclick="() => SaveFieldConfig(datasetName, ownerUserId)" disabled="@(!HasSearchable(datasetName))">Save</Button>
-                                <Button Variant="secondary" Size="micro" @onclick="() => CancelFieldConfig(datasetName)">Cancel</Button>
-                                @if (_searchableTouched.Contains(datasetName) && !HasSearchable(datasetName))
+                                @if (currentRole == "owner")
                                 {
-                                    <span class="indx-field-config-error">At least one field must be searchable</span>
+                                    <Button Variant="@(activeTab == "options" ? "primary" : "ghost")" Size="micro" IconLeft="_iconSliders" @onclick="@(() => _datasetTabs[selectedDataset] = "options")">Options</Button>
                                 }
-                            }
-                            <span style="margin-left:auto;display:flex;gap:16px;align-items:center;">
-                                <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
-                                              CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
-                                              Label="Show unused fields"
-                                              Elevated />
-                                <ToggleSwitch Checked="@_showAdvancedFields.Contains(datasetName)"
-                                              CheckedChanged="@(v => { if (v) _showAdvancedFields.Add(datasetName); else _showAdvancedFields.Remove(datasetName); })"
-                                              Label="Show advanced settings"
-                                              Elevated />
-                            </span>
-                        </div>
+                                <Button Variant="@(activeTab == "members" ? "primary" : "ghost")" Size="micro" IconLeft="_iconUser" @onclick="@(async () => { _datasetTabs[selectedDataset] = "members"; await LoadAccessGrants(datasetName, ownerUserId); })">Members</Button>
+                            </nav>
                         }
 
-                        @if (isSaving)
+                        @* ════════════════════════════════════════
+                   Tab: Field configuration
+                   ════════════════════════════════════════ *@
+                        @if (activeTab == "fields")
                         {
-                            <div class="indx-field-config-saving">
-                                <ProgressBar Value="_shadowBuildPercent" ShowLabel FulfilledColor />
-                                <p class="indx-field-config-saving-label">@(_shadowBuildPercent == 0 ? "Preparing…" : "Reindexing…")</p>
-                            </div>
-                        }
-
-                        @if (!isSaving)
-                        {
-                            @if (_editedFieldConfigs.TryGetValue(datasetName, out var readyFields) && readyFields != null)
+                            @* ── Loading / Indexing in progress (navigated back while engine is busy) ── *@
+                            @if ((engineState is SystemState.Loading or SystemState.Loaded or SystemState.Indexing) && !isLoadIndexing)
                             {
-                                <div class="indx-table-wrap">
-                                    <table class="indx-table">
-                                        <thead>
-                                            <tr>
-                                                <th>Field and type</th>
-                                                <th><span class="indx-th-tip" data-tooltip="Included in full-text search. At least one field must be searchable.">Searchable</span></th>
-                                                <th><span class="indx-th-tip" data-tooltip="Can be used to filter results by exact value or range.">Filterable</span></th>
-                                                <th><span class="indx-th-tip" data-tooltip="Field values are counted and returned as facets for building filter UI.">Facetable</span></th>
-                                                <th><span class="indx-th-tip" data-tooltip="Results can be sorted by this field's value.">Sortable</span></th>
-                                                @if (_showAdvancedFields.Contains(datasetName))
-                                                {
-                                                    <th><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
-                                                    <th><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
-                                                    <th><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
-                                                }
-                                                <th><span class="indx-th-tip" data-tooltip="Relevance weight for this field (recommended range 0.5–3.0). Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0.">Weight</span></th>
-                                                @if (_showAdvancedFields.Contains(datasetName))
-                                                {
-                                                    <th><span class="indx-th-tip" data-tooltip="BM25F length normalisation (0–1). Higher values penalise longer fields more. Activates BM25F multi-field scoring.">BM25b</span></th>
-                                                    <th><span class="indx-th-tip" data-tooltip="BM25F term saturation factor. Higher values give more weight to repeated terms in this field.">BM25k1</span></th>
-                                                }
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            @foreach (var field in readyFields.Where(f => _showUnusedFields.Contains(datasetName) || !IsUnused(f)))
-                                            {
-                                                <tr title="@(!isEditor ? "Read-only — editor access is required to change field configuration" : null)">
-                                                    <td>
-                                                        <div class="cell-inner">
-                                                            <span>@field.FieldName</span>
-                                                            @if (field.FieldType != null)
-                                                            {
-                                                                <span class="cell-value">@(field.FieldType + (field.IsArray == true ? "[]" : ""))</span>
-                                                            }
-                                                        </div>
-                                                    </td>
-                                                    <td class="indx-table-check"><Checkbox Checked="@(field.Searchable == true)" CheckedChanged="@(v => { field.Searchable = v; _searchableTouched.Add(datasetName); })" Disabled="@(!isEditor)" /></td>
-                                                    <td class="indx-table-check"><Checkbox Checked="@(field.Filterable == true)" CheckedChanged="@(v => { field.Filterable = v; })" Disabled="@(!isEditor)" /></td>
-                                                    <td class="indx-table-check"><Checkbox Checked="@(field.Facetable == true)" CheckedChanged="@(v => { field.Facetable = v; })" Disabled="@(!isEditor)" /></td>
-                                                    <td class="indx-table-check"><Checkbox Checked="@(field.Sortable == true)" CheckedChanged="@(v => { field.Sortable = v; })" Disabled="@(!isEditor)" /></td>
-                                                    @if (_showAdvancedFields.Contains(datasetName))
-                                                    {
-                                                        <td class="indx-table-check"><Checkbox Checked="@(field.WordIndexing == true)" CheckedChanged="@(v => { field.WordIndexing = v; })" Disabled="@(!isEditor)" /></td>
-                                                        <td class="indx-table-check"><Checkbox Checked="@(field.Embeddable == true)" CheckedChanged="@(v => { field.Embeddable = v; })" Disabled="@(!isEditor)" /></td>
-                                                        <td class="indx-table-check"><Checkbox Checked="@(field.PreloadFilters == true)" CheckedChanged="@(v => { field.PreloadFilters = v; })" Disabled="@(!isEditor)" /></td>
-                                                    }
-                                                    <td><input class="indx-num-input" type="number" step="0.1" min="0" disabled="@(!isEditor)"
-                                                               value="@(field.Weight.HasValue ? field.Weight.Value.ToString("0.0##", CultureInfo.InvariantCulture) : "")"
-                                                               @onchange="@(e => { field.Weight = ParseFloat(e.Value?.ToString()); })" /></td>
-                                                    @if (_showAdvancedFields.Contains(datasetName))
-                                                    {
-                                                        <td><input class="indx-num-input" type="number" step="0.01" min="0" max="1" disabled="@(!isEditor)"
-                                                                   value="@(field.BM25b.HasValue ? field.BM25b.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
-                                                                   @onchange="@(e => { field.BM25b = ParseFloat(e.Value?.ToString()); })" /></td>
-                                                        <td><input class="indx-num-input" type="number" step="0.1" min="0" disabled="@(!isEditor)"
-                                                                   value="@(field.BM25k1.HasValue ? field.BM25k1.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
-                                                                   @onchange="@(e => { field.BM25k1 = ParseFloat(e.Value?.ToString()); })" /></td>
-                                                    }
-                                                </tr>
-                                            }
-                                        </tbody>
-                                    </table>
+                                <div class="indx-field-config-saving" style="margin-top:16px;">
+                                    <p class="indx-field-config-saving-label">
+                                        @(engineState == SystemState.Indexing ? "Indexing in progress…" : "Loading in progress…")
+                                    </p>
                                 </div>
-                                <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
-                                    <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportFieldConfig(datasetName)">Export field configuration as json</Button>
-                                    @if (isEditor)
-                                    {
-                                        <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-ready-{datasetName}")" />
-                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportReadyFile(datasetName)">Upload field configuration</Button>
-                                        @if (_importWarnings.TryGetValue(datasetName, out var readyWarning) && readyWarning != null)
+                            }
+
+                            @* ── Not yet uploaded ── *@
+                            @if (engineState == SystemState.Created && !isAnalyzed && !isUploading && !isLoadIndexing && isEditor)
+                            {
+                                <p style="color:var(--lv5);margin-top:16px;">Upload a JSON file to configure and index this dataset.</p>
+                                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+                                    <InputFile OnChange="@(e => OnFileSelected(datasetName, e))" accept=".json" style="display:none" id="@($"fileinput-{datasetName}")" />
+                                    <label for="@($"fileinput-{datasetName}")" class="indx-upload-label">
+                                        <Json Size="14" />
+                                        @if (_selectedFile != null && _selectedFileDataset == datasetName)
                                         {
-                                            <span class="indx-field-config-import-warning">@readyWarning</span>
+                                            <span>@_selectedFile.Name (@FormatBytes(_selectedFile.Size))</span>
                                         }
+                                        else
+                                        {
+                                            <span>Choose JSON file…</span>
+                                        }
+                                    </label>
+                                    @if (_selectedFile != null && _selectedFileDataset == datasetName)
+                                    {
+                                        <Button Variant="primary" Size="micro" @onclick="() => StartUpload(datasetName)">Upload</Button>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrEmpty(_uploadError) && _uploadErrorDataset == datasetName)
+                                {
+                                    <p style="color:var(--CSignal);margin-top:4px;">@_uploadError</p>
+                                }
+                                <div style="margin-top:16px;">
+                                    @if (deleteConfirmDataset == datasetName)
+                                    {
+                                        <div style="display:flex;gap:8px;align-items:center;">
+                                            <span style="font:var(--text-xs);color:var(--lv5);">Are you sure?</span>
+                                            <Button Variant="danger" Size="micro" @onclick="() => ConfirmDelete(datasetName)">Yes, Delete</Button>
+                                            <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)">Delete dataset</Button>
                                     }
                                 </div>
                             }
-                        }
-                    }
-                }
 
-                @* ════════════════════════════════════════
-                   Tab: Search preview
-                   ════════════════════════════════════════ *@
-                @if (activeTab == "search")
-                {
-                    @if (engineState == SystemState.Ready)
-                    {
-                        <div class="indx-search-panel">
-                            @if (string.IsNullOrEmpty(_searchTexts.GetValueOrDefault(datasetName)))
+                            @* ── Uploading progress ── *@
+                            @if (isUploading)
                             {
-                            <svg class="indx-search-bg-logo" viewBox="0 0 203 146" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                <path d="M58.4248 145.003V145.503H58.9248V145.003H58.4248ZM29.7109 145.003H29.2109V145.503H29.7109V145.003ZM29.7109 116.203V115.703H29.2109V116.203H29.7109ZM58.4248 116.203H58.9248V115.703H58.4248V116.203ZM173.284 145.003V145.503H173.784V145.003H173.284ZM144.57 145.003H144.07V145.503H144.57V145.003ZM144.57 116.203V115.703H144.07V116.203H144.57ZM173.284 116.203H173.784V115.703H173.284V116.203ZM29.7139 116.198V116.698H30.2139V116.198H29.7139ZM1 116.198H0.5V116.698H1V116.198ZM1 87.3984V86.8984H0.5V87.3984H1ZM29.7139 87.3984H30.2139V86.8984H29.7139V87.3984ZM202.003 116.198V116.698H202.503V116.198H202.003ZM173.289 116.198H172.789V116.698H173.289V116.198ZM173.289 87.3984V86.8984H172.789V87.3984H173.289ZM202.003 87.3984H202.503V86.8984H202.003V87.3984ZM144.565 87.4014V87.9014H145.065V87.4014H144.565ZM58.4297 87.4014H57.9297V87.9014H58.4297V87.4014ZM58.4297 58.6016V58.1016H57.9297V58.6016H58.4297ZM144.565 58.6016H145.065V58.1016H144.565V58.6016ZM58.4248 29.7998V30.2998H58.9248V29.7998H58.4248ZM29.7139 29.7998V29.2998H29.2139V29.7998H29.7139ZM29.7139 58.5967V59.0967H30.2139V58.5967H29.7139ZM1 58.5967H0.5V59.0967H1V58.5967ZM1 29.7969V29.2969H0.5V29.7969H1ZM29.7109 29.7969V30.2969H30.2109V29.7969H29.7109ZM29.7109 1V0.5H29.2109V1H29.7109ZM58.4248 1H58.9248V0.5H58.4248V1ZM202.003 58.5967V59.0967H202.503V58.5967H202.003ZM173.289 58.5967H172.789V59.0967H173.289V58.5967ZM173.289 29.7969V29.2969H172.789V29.7969H173.289ZM202.003 29.7969H202.503V29.2969H202.003V29.7969ZM173.284 29.7998V30.2998H173.784V29.7998H173.284ZM144.57 29.7998H144.07V30.2998H144.57V29.7998ZM144.57 1V0.5H144.07V1H144.57ZM173.284 1H173.784V0.5H173.284V1ZM58.4248 145.003V144.503H29.7109V145.003V145.503H58.4248V145.003ZM29.7109 145.003H30.2109V116.203H29.7109H29.2109V145.003H29.7109ZM29.7109 116.203V116.703H58.4248V116.203V115.703H29.7109V116.203ZM58.4248 116.203H57.9248V145.003H58.4248H58.9248V116.203H58.4248ZM173.284 145.003V144.503H144.57V145.003V145.503H173.284V145.003ZM144.57 145.003H145.07V116.203H144.57H144.07V145.003H144.57ZM144.57 116.203V116.703H173.284V116.203V115.703H144.57V116.203ZM173.284 116.203H172.784V145.003H173.284H173.784V116.203H173.284ZM29.7139 116.198V115.698H1V116.198V116.698H29.7139V116.198ZM1 116.198H1.5V87.3984H1H0.5V116.198H1ZM1 87.3984V87.8984H29.7139V87.3984V86.8984H1V87.3984ZM29.7139 87.3984H29.2139V116.198H29.7139H30.2139V87.3984H29.7139ZM202.003 116.198V115.698H173.289V116.198V116.698H202.003V116.198ZM173.289 116.198H173.789V87.3984H173.289H172.789V116.198H173.289ZM173.289 87.3984V87.8984H202.003V87.3984V86.8984H173.289V87.3984ZM202.003 87.3984H201.503V116.198H202.003H202.503V87.3984H202.003ZM144.565 87.4014V86.9014H58.4297V87.4014V87.9014H144.565V87.4014ZM58.4297 87.4014H58.9297V58.6016H58.4297H57.9297V87.4014H58.4297ZM58.4297 58.6016V59.1016H144.565V58.6016V58.1016H58.4297V58.6016ZM144.565 58.6016H144.065V87.4014H144.565H145.065V58.6016H144.565ZM58.4248 29.7998V29.2998H29.7139V29.7998V30.2998H58.4248V29.7998ZM29.7139 29.7998H29.2139V58.5967H29.7139H30.2139V29.7998H29.7139ZM29.7139 58.5967V58.0967H1V58.5967V59.0967H29.7139V58.5967ZM1 58.5967H1.5V29.7969H1H0.5V58.5967H1ZM1 29.7969V30.2969H29.7109V29.7969V29.2969H1V29.7969ZM29.7109 29.7969H30.2109V1H29.7109H29.2109V29.7969H29.7109ZM29.7109 1V1.5H58.4248V1V0.5H29.7109V1ZM58.4248 1H57.9248V29.7998H58.4248H58.9248V1H58.4248ZM202.003 58.5967V58.0967H173.289V58.5967V59.0967H202.003V58.5967ZM173.289 58.5967H173.789V29.7969H173.289H172.789V58.5967H173.289ZM173.289 29.7969V30.2969H202.003V29.7969V29.2969H173.289V29.7969ZM202.003 29.7969H201.503V58.5967H202.003H202.503V29.7969H202.003ZM173.284 29.7998V29.2998H144.57V29.7998V30.2998H173.284V29.7998ZM144.57 29.7998H145.07V1H144.57H144.07V29.7998H144.57ZM144.57 1V1.5H173.284V1V0.5H144.57V1ZM173.284 1H172.784V29.7998H173.284H173.784V1H173.284Z" fill="currentColor"/>
-                            </svg>
+                                <div class="indx-field-config-saving">
+                                    <ProgressBar Value="@_uploadProgress" ShowLabel FulfilledColor />
+                                    <p class="indx-field-config-saving-label">Uploading…</p>
+                                    <Button Variant="secondary" Size="micro" @onclick="CancelUpload">Cancel</Button>
+                                </div>
                             }
-                            <div class="indx-search-field-wrap">
-                                <span class="indx-search-field-icon"><Search Size="16" /></span>
-                                <input class="indx-search-field-input"
-                                       type="search"
-                                       placeholder="@($"Search {datasetName}")"
-                                       value="@(_searchTexts.GetValueOrDefault(datasetName, string.Empty))"
-                                       @oninput="@(e => RunQuickSearch(datasetName, ownerUserId, e.Value?.ToString() ?? string.Empty))" />
-                                @if (!string.IsNullOrEmpty(_searchTexts.GetValueOrDefault(datasetName)))
+
+                            @* ── Analyzed: configure + Load and Index ── *@
+                            @if (engineState != SystemState.Ready && isAnalyzed && !isUploading && !isLoadIndexing)
+                            {
+                                @if (_editedFieldConfigs.TryGetValue(datasetName, out var editedFields) && editedFields != null)
                                 {
-                                    <div class="indx-search-clear">
-                                        <Button Variant="ghost" Size="micro" @onclick="@(() => ClearSearch(datasetName))">Clear</Button>
+                                    <div class="indx-field-config-toolbar">
+                                        <Button Variant="primary" Size="micro"
+                                                @onclick="() => StartLoadAndIndex(datasetName)"
+                                                disabled="@(!HasSearchable(datasetName))">
+                                            Load and Index
+                                        </Button>
+                                        @if (_searchableTouched.Contains(datasetName) && !HasSearchable(datasetName))
+                                        {
+                                            <span class="indx-field-config-error">At least one field must be searchable</span>
+                                        }
+                                        <span style="margin-left:auto;display:flex;gap:16px;align-items:center;">
+                                            <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
+                                                          CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
+                                                          Label="Show unused fields"
+                                                          Elevated />
+                                            <ToggleSwitch Checked="@_showAdvancedFields.Contains(datasetName)"
+                                                          CheckedChanged="@(v => { if (v) _showAdvancedFields.Add(datasetName); else _showAdvancedFields.Remove(datasetName); })"
+                                                          Label="Show advanced settings"
+                                                          Elevated />
+                                        </span>
+                                    </div>
+                                    <div class="indx-table-wrap">
+                                        <table class="indx-table">
+                                            <thead>
+                                                <tr>
+                                                    <th>Field and type</th>
+                                                    <th><span class="indx-th-tip" data-tooltip="Included in full-text search. At least one field must be searchable.">Searchable</span></th>
+                                                    <th><span class="indx-th-tip" data-tooltip="Can be used to filter results by exact value or range.">Filterable</span></th>
+                                                    <th><span class="indx-th-tip" data-tooltip="Field values are counted and returned as facets for building filter UI.">Facetable</span></th>
+                                                    <th><span class="indx-th-tip" data-tooltip="Results can be sorted by this field's value.">Sortable</span></th>
+                                                    @if (_showAdvancedFields.Contains(datasetName))
+                                                    {
+                                                        <th><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
+                                                        <th><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
+                                                        <th><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
+                                                    }
+                                                    <th><span class="indx-th-tip" data-tooltip="Relevance weight for this field (recommended range 0.5–3.0). Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0.">Weight</span></th>
+                                                    @if (_showAdvancedFields.Contains(datasetName))
+                                                    {
+                                                        <th><span class="indx-th-tip" data-tooltip="BM25F length normalisation (0–1). Higher values penalise longer fields more. Activates BM25F multi-field scoring.">BM25b</span></th>
+                                                        <th><span class="indx-th-tip" data-tooltip="BM25F term saturation factor. Higher values give more weight to repeated terms in this field.">BM25k1</span></th>
+                                                    }
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                @foreach (var field in editedFields.Where(f => _showUnusedFields.Contains(datasetName) || !IsUnused(f)))
+                                                {
+                                                    <tr>
+                                                        <td>
+                                                            <div class="cell-inner">
+                                                                <span>@field.FieldName</span>
+                                                                @if (field.FieldType != null)
+                                                                {
+                                                                    <span class="cell-value">@(field.FieldType + (field.IsArray == true ? "[]" : ""))</span>
+                                                                }
+                                                            </div>
+                                                        </td>
+                                                        <td class="indx-table-check"><Checkbox Checked="@(field.Searchable == true)" CheckedChanged="@(v => { field.Searchable = v; _searchableTouched.Add(datasetName); })" /></td>
+                                                        <td class="indx-table-check"><Checkbox Checked="@(field.Filterable == true)" CheckedChanged="@(v => { field.Filterable = v; })" /></td>
+                                                        <td class="indx-table-check"><Checkbox Checked="@(field.Facetable == true)" CheckedChanged="@(v => { field.Facetable = v; })" /></td>
+                                                        <td class="indx-table-check"><Checkbox Checked="@(field.Sortable == true)" CheckedChanged="@(v => { field.Sortable = v; })" /></td>
+                                                        @if (_showAdvancedFields.Contains(datasetName))
+                                                        {
+                                                            <td class="indx-table-check"><Checkbox Checked="@(field.WordIndexing == true)" CheckedChanged="@(v => { field.WordIndexing = v; })" /></td>
+                                                            <td class="indx-table-check"><Checkbox Checked="@(field.Embeddable == true)" CheckedChanged="@(v => { field.Embeddable = v; })" /></td>
+                                                            <td class="indx-table-check"><Checkbox Checked="@(field.PreloadFilters == true)" CheckedChanged="@(v => { field.PreloadFilters = v; })" /></td>
+                                                        }
+                                                        <td>
+                                                            <input class="indx-num-input" type="number" step="0.1" min="0"
+                                                                   value="@(field.Weight.HasValue ? field.Weight.Value.ToString("0.0##", CultureInfo.InvariantCulture) : "")"
+                                                                   @onchange="@(e => { field.Weight = ParseFloat(e.Value?.ToString()); })" />
+                                                        </td>
+                                                        @if (_showAdvancedFields.Contains(datasetName))
+                                                        {
+                                                            <td>
+                                                                <input class="indx-num-input" type="number" step="0.01" min="0" max="1"
+                                                                       value="@(field.BM25b.HasValue ? field.BM25b.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                                                       @onchange="@(e => { field.BM25b = ParseFloat(e.Value?.ToString()); })" />
+                                                            </td>
+                                                            <td>
+                                                                <input class="indx-num-input" type="number" step="0.1" min="0"
+                                                                       value="@(field.BM25k1.HasValue ? field.BM25k1.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                                                       @onchange="@(e => { field.BM25k1 = ParseFloat(e.Value?.ToString()); })" />
+                                                            </td>
+                                                        }
+                                                    </tr>
+                                                }
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;margin-bottom:8px;flex-wrap:wrap;">
+                                        <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-{datasetName}")" />
+                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportFile(datasetName)">Upload field configuration</Button>
+                                        @if (_importWarnings.TryGetValue(datasetName, out var warning) && warning != null)
+                                        {
+                                            <span class="indx-field-config-import-warning">@warning</span>
+                                        }
+                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportFieldConfig(datasetName)">Export field configuration as json</Button>
                                     </div>
                                 }
-                            </div>
-                            @if (_searchResults.TryGetValue(datasetName, out var results) && results != null)
+                            }
+
+                            @* ── Load & Index progress ── *@
+                            @if (isLoadIndexing)
                             {
-                                @if (results.Count == 0 && !string.IsNullOrEmpty(_searchTexts.GetValueOrDefault(datasetName)))
+                                <div class="indx-field-config-saving">
+                                    <ProgressBar Value="_loadProgress" ShowLabel FulfilledColor />
+                                    <p class="indx-field-config-saving-label">Loading…</p>
+                                </div>
+                                @if (_isIndexingPhase)
                                 {
-                                    <p class="indx-search-empty">No results</p>
+                                    <div class="indx-field-config-saving">
+                                        <ProgressBar Value="_indexProgress" ShowLabel FulfilledColor />
+                                        <p class="indx-field-config-saving-label">Indexing…</p>
+                                    </div>
                                 }
-                                else if (results.Count > 0)
+                            }
+
+                            @* ── Ready: field config table ── *@
+                            @if (engineState == SystemState.Ready)
+                            {
+                                @if (!isSaving)
                                 {
-                                    <div class="indx-search-results">
-                                        @foreach (var doc in results)
+                                    <div class="indx-field-config-toolbar">
+                                        @if (isEditor && IsDirty(datasetName))
                                         {
-                                            <div class="indx-search-result-item">
-                                                @foreach (var prop in GetDisplayFields(datasetName, doc))
+                                            <Button Variant="primary" Size="micro" @onclick="() => SaveFieldConfig(datasetName, ownerUserId)" disabled="@(!HasSearchable(datasetName))">Save</Button>
+                                            <Button Variant="secondary" Size="micro" @onclick="() => CancelFieldConfig(datasetName)">Cancel</Button>
+                                            @if (_searchableTouched.Contains(datasetName) && !HasSearchable(datasetName))
+                                            {
+                                                <span class="indx-field-config-error">At least one field must be searchable</span>
+                                            }
+                                        }
+                                        <span style="margin-left:auto;display:flex;gap:16px;align-items:center;">
+                                            <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
+                                                          CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
+                                                          Label="Show unused fields"
+                                                          Elevated />
+                                            <ToggleSwitch Checked="@_showAdvancedFields.Contains(datasetName)"
+                                                          CheckedChanged="@(v => { if (v) _showAdvancedFields.Add(datasetName); else _showAdvancedFields.Remove(datasetName); })"
+                                                          Label="Show advanced settings"
+                                                          Elevated />
+                                        </span>
+                                    </div>
+                                }
+
+                                @if (!string.IsNullOrEmpty(_saveError) && _saveErrorDataset == datasetName)
+                                {
+                                    <p style="color:var(--CSignal);margin-top:4px;">@_saveError</p>
+                                }
+
+                                @if (isSaving)
+                                {
+                                    <div class="indx-field-config-saving">
+                                        <ProgressBar Value="_shadowBuildPercent" ShowLabel FulfilledColor />
+                                        <p class="indx-field-config-saving-label">@(_shadowBuildPercent == 0 ? "Preparing…" : "Reindexing…")</p>
+                                    </div>
+                                }
+
+                                @if (!isSaving)
+                                {
+                                    @if (_editedFieldConfigs.TryGetValue(datasetName, out var readyFields) && readyFields != null)
+                                    {
+                                        <div class="indx-table-wrap">
+                                            <table class="indx-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Field and type</th>
+                                                        <th><span class="indx-th-tip" data-tooltip="Included in full-text search. At least one field must be searchable.">Searchable</span></th>
+                                                        <th><span class="indx-th-tip" data-tooltip="Can be used to filter results by exact value or range.">Filterable</span></th>
+                                                        <th><span class="indx-th-tip" data-tooltip="Field values are counted and returned as facets for building filter UI.">Facetable</span></th>
+                                                        <th><span class="indx-th-tip" data-tooltip="Results can be sorted by this field's value.">Sortable</span></th>
+                                                        @if (_showAdvancedFields.Contains(datasetName))
+                                                        {
+                                                            <th><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
+                                                            <th><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
+                                                            <th><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
+                                                        }
+                                                        <th><span class="indx-th-tip" data-tooltip="Relevance weight for this field (recommended range 0.5–3.0). Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0.">Weight</span></th>
+                                                        @if (_showAdvancedFields.Contains(datasetName))
+                                                        {
+                                                            <th><span class="indx-th-tip" data-tooltip="BM25F length normalisation (0–1). Higher values penalise longer fields more. Activates BM25F multi-field scoring.">BM25b</span></th>
+                                                            <th><span class="indx-th-tip" data-tooltip="BM25F term saturation factor. Higher values give more weight to repeated terms in this field.">BM25k1</span></th>
+                                                        }
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var field in readyFields.Where(f => _showUnusedFields.Contains(datasetName) || !IsUnused(f)))
+                                                    {
+                                                        <tr title="@(!isEditor ? "Read-only — editor access is required to change field configuration" : null)">
+                                                            <td>
+                                                                <div class="cell-inner">
+                                                                    <span>@field.FieldName</span>
+                                                                    @if (field.FieldType != null)
+                                                                    {
+                                                                        <span class="cell-value">@(field.FieldType + (field.IsArray == true ? "[]" : ""))</span>
+                                                                    }
+                                                                </div>
+                                                            </td>
+                                                            <td class="indx-table-check"><Checkbox Checked="@(field.Searchable == true)" CheckedChanged="@(v => { field.Searchable = v; _searchableTouched.Add(datasetName); })" Disabled="@(!isEditor)" /></td>
+                                                            <td class="indx-table-check"><Checkbox Checked="@(field.Filterable == true)" CheckedChanged="@(v => { field.Filterable = v; })" Disabled="@(!isEditor)" /></td>
+                                                            <td class="indx-table-check"><Checkbox Checked="@(field.Facetable == true)" CheckedChanged="@(v => { field.Facetable = v; })" Disabled="@(!isEditor)" /></td>
+                                                            <td class="indx-table-check"><Checkbox Checked="@(field.Sortable == true)" CheckedChanged="@(v => { field.Sortable = v; })" Disabled="@(!isEditor)" /></td>
+                                                            @if (_showAdvancedFields.Contains(datasetName))
+                                                            {
+                                                                <td class="indx-table-check"><Checkbox Checked="@(field.WordIndexing == true)" CheckedChanged="@(v => { field.WordIndexing = v; })" Disabled="@(!isEditor)" /></td>
+                                                                <td class="indx-table-check"><Checkbox Checked="@(field.Embeddable == true)" CheckedChanged="@(v => { field.Embeddable = v; })" Disabled="@(!isEditor)" /></td>
+                                                                <td class="indx-table-check"><Checkbox Checked="@(field.PreloadFilters == true)" CheckedChanged="@(v => { field.PreloadFilters = v; })" Disabled="@(!isEditor)" /></td>
+                                                            }
+                                                            <td>
+                                                                <input class="indx-num-input" type="number" step="0.1" min="0" disabled="@(!isEditor)"
+                                                                       value="@(field.Weight.HasValue ? field.Weight.Value.ToString("0.0##", CultureInfo.InvariantCulture) : "")"
+                                                                       @onchange="@(e => { field.Weight = ParseFloat(e.Value?.ToString()); })" />
+                                                            </td>
+                                                            @if (_showAdvancedFields.Contains(datasetName))
+                                                            {
+                                                                <td>
+                                                                    <input class="indx-num-input" type="number" step="0.01" min="0" max="1" disabled="@(!isEditor)"
+                                                                           value="@(field.BM25b.HasValue ? field.BM25b.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                                                           @onchange="@(e => { field.BM25b = ParseFloat(e.Value?.ToString()); })" />
+                                                                </td>
+                                                                <td>
+                                                                    <input class="indx-num-input" type="number" step="0.1" min="0" disabled="@(!isEditor)"
+                                                                           value="@(field.BM25k1.HasValue ? field.BM25k1.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                                                           @onchange="@(e => { field.BM25k1 = ParseFloat(e.Value?.ToString()); })" />
+                                                                </td>
+                                                            }
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
+                                            <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportFieldConfig(datasetName)">Export field configuration as json</Button>
+                                            @if (isEditor)
+                                            {
+                                                <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-ready-{datasetName}")" />
+                                                <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportReadyFile(datasetName)">Upload field configuration</Button>
+                                                @if (_importWarnings.TryGetValue(datasetName, out var readyWarning) && readyWarning != null)
                                                 {
-                                                    <span class="indx-search-result-field"><span class="indx-search-result-key">@prop.Name</span> @prop.Value</span>
+                                                    <span class="indx-field-config-import-warning">@readyWarning</span>
                                                 }
+                                            }
+                                        </div>
+                                    }
+                                }
+                            }
+                        }
+
+                        @* ════════════════════════════════════════
+                   Tab: Search preview
+                   ════════════════════════════════════════ *@
+                        @if (activeTab == "search")
+                        {
+                            @if (engineState == SystemState.Ready)
+                            {
+                                <div class="indx-search-panel">
+                                    @if (string.IsNullOrEmpty(_searchTexts.GetValueOrDefault(datasetName)))
+                                    {
+                                        <svg class="indx-search-bg-logo" viewBox="0 0 203 146" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                                            <path d="M58.4248 145.003V145.503H58.9248V145.003H58.4248ZM29.7109 145.003H29.2109V145.503H29.7109V145.003ZM29.7109 116.203V115.703H29.2109V116.203H29.7109ZM58.4248 116.203H58.9248V115.703H58.4248V116.203ZM173.284 145.003V145.503H173.784V145.003H173.284ZM144.57 145.003H144.07V145.503H144.57V145.003ZM144.57 116.203V115.703H144.07V116.203H144.57ZM173.284 116.203H173.784V115.703H173.284V116.203ZM29.7139 116.198V116.698H30.2139V116.198H29.7139ZM1 116.198H0.5V116.698H1V116.198ZM1 87.3984V86.8984H0.5V87.3984H1ZM29.7139 87.3984H30.2139V86.8984H29.7139V87.3984ZM202.003 116.198V116.698H202.503V116.198H202.003ZM173.289 116.198H172.789V116.698H173.289V116.198ZM173.289 87.3984V86.8984H172.789V87.3984H173.289ZM202.003 87.3984H202.503V86.8984H202.003V87.3984ZM144.565 87.4014V87.9014H145.065V87.4014H144.565ZM58.4297 87.4014H57.9297V87.9014H58.4297V87.4014ZM58.4297 58.6016V58.1016H57.9297V58.6016H58.4297ZM144.565 58.6016H145.065V58.1016H144.565V58.6016ZM58.4248 29.7998V30.2998H58.9248V29.7998H58.4248ZM29.7139 29.7998V29.2998H29.2139V29.7998H29.7139ZM29.7139 58.5967V59.0967H30.2139V58.5967H29.7139ZM1 58.5967H0.5V59.0967H1V58.5967ZM1 29.7969V29.2969H0.5V29.7969H1ZM29.7109 29.7969V30.2969H30.2109V29.7969H29.7109ZM29.7109 1V0.5H29.2109V1H29.7109ZM58.4248 1H58.9248V0.5H58.4248V1ZM202.003 58.5967V59.0967H202.503V58.5967H202.003ZM173.289 58.5967H172.789V59.0967H173.289V58.5967ZM173.289 29.7969V29.2969H172.789V29.7969H173.289ZM202.003 29.7969H202.503V29.2969H202.003V29.7969ZM173.284 29.7998V30.2998H173.784V29.7998H173.284ZM144.57 29.7998H144.07V30.2998H144.57V29.7998ZM144.57 1V0.5H144.07V1H144.57ZM173.284 1H173.784V0.5H173.284V1ZM58.4248 145.003V144.503H29.7109V145.003V145.503H58.4248V145.003ZM29.7109 145.003H30.2109V116.203H29.7109H29.2109V145.003H29.7109ZM29.7109 116.203V116.703H58.4248V116.203V115.703H29.7109V116.203ZM58.4248 116.203H57.9248V145.003H58.4248H58.9248V116.203H58.4248ZM173.284 145.003V144.503H144.57V145.003V145.503H173.284V145.003ZM144.57 145.003H145.07V116.203H144.57H144.07V145.003H144.57ZM144.57 116.203V116.703H173.284V116.203V115.703H144.57V116.203ZM173.284 116.203H172.784V145.003H173.284H173.784V116.203H173.284ZM29.7139 116.198V115.698H1V116.198V116.698H29.7139V116.198ZM1 116.198H1.5V87.3984H1H0.5V116.198H1ZM1 87.3984V87.8984H29.7139V87.3984V86.8984H1V87.3984ZM29.7139 87.3984H29.2139V116.198H29.7139H30.2139V87.3984H29.7139ZM202.003 116.198V115.698H173.289V116.198V116.698H202.003V116.198ZM173.289 116.198H173.789V87.3984H173.289H172.789V116.198H173.289ZM173.289 87.3984V87.8984H202.003V87.3984V86.8984H173.289V87.3984ZM202.003 87.3984H201.503V116.198H202.003H202.503V87.3984H202.003ZM144.565 87.4014V86.9014H58.4297V87.4014V87.9014H144.565V87.4014ZM58.4297 87.4014H58.9297V58.6016H58.4297H57.9297V87.4014H58.4297ZM58.4297 58.6016V59.1016H144.565V58.6016V58.1016H58.4297V58.6016ZM144.565 58.6016H144.065V87.4014H144.565H145.065V58.6016H144.565ZM58.4248 29.7998V29.2998H29.7139V29.7998V30.2998H58.4248V29.7998ZM29.7139 29.7998H29.2139V58.5967H29.7139H30.2139V29.7998H29.7139ZM29.7139 58.5967V58.0967H1V58.5967V59.0967H29.7139V58.5967ZM1 58.5967H1.5V29.7969H1H0.5V58.5967H1ZM1 29.7969V30.2969H29.7109V29.7969V29.2969H1V29.7969ZM29.7109 29.7969H30.2109V1H29.7109H29.2109V29.7969H29.7109ZM29.7109 1V1.5H58.4248V1V0.5H29.7109V1ZM58.4248 1H57.9248V29.7998H58.4248H58.9248V1H58.4248ZM202.003 58.5967V58.0967H173.289V58.5967V59.0967H202.003V58.5967ZM173.289 58.5967H173.789V29.7969H173.289H172.789V58.5967H173.289ZM173.289 29.7969V30.2969H202.003V29.7969V29.2969H173.289V29.7969ZM202.003 29.7969H201.503V58.5967H202.003H202.503V29.7969H202.003ZM173.284 29.7998V29.2998H144.57V29.7998V30.2998H173.284V29.7998ZM144.57 29.7998H145.07V1H144.57H144.07V29.7998H144.57ZM144.57 1V1.5H173.284V1V0.5H144.57V1ZM173.284 1H172.784V29.7998H173.284H173.784V1H173.284Z" fill="currentColor" />
+                                        </svg>
+                                    }
+                                    <div class="indx-search-field-wrap">
+                                        <span class="indx-search-field-icon"><Search Size="16" /></span>
+                                        <input class="indx-search-field-input"
+                                               type="search"
+                                               placeholder="@($"Search {datasetName}")"
+                                               value="@(_searchTexts.GetValueOrDefault(datasetName, string.Empty))"
+                                               @oninput="@(e => RunQuickSearch(datasetName, ownerUserId, e.Value?.ToString() ?? string.Empty))" />
+                                        @if (!string.IsNullOrEmpty(_searchTexts.GetValueOrDefault(datasetName)))
+                                        {
+                                            <div class="indx-search-clear">
+                                                <Button Variant="ghost" Size="micro" @onclick="@(() => ClearSearch(datasetName))">Clear</Button>
                                             </div>
                                         }
                                     </div>
-                                    <div class="indx-perf-toolbar">
-                                        <Button Variant="ghost" Size="micro" IconLeft="_iconSpeedometer"
-                                                disabled="@_perfRunning.Contains(datasetName)"
-                                                @onclick="@(() => RunPerfTest(datasetName, ownerUserId, _searchTexts.GetValueOrDefault(datasetName, string.Empty)))">
-                                            @(_perfRunning.Contains(datasetName) ? "Running…" : "Run performance benchmark")
-                                        </Button>
-                                        @if (_perfResults.TryGetValue(datasetName, out var perf) && perf != null)
+                                    @if (_searchResults.TryGetValue(datasetName, out var results) && results != null)
+                                    {
+                                        @if (results.Count == 0 && !string.IsNullOrEmpty(_searchTexts.GetValueOrDefault(datasetName)))
                                         {
-                                            <span class="indx-perf-result">@perf.Iterations× — avg <strong>@perf.AvgMs.ToString("0.0") ms</strong></span>
+                                            <p class="indx-search-empty">No results</p>
+                                        }
+                                        else if (results.Count > 0)
+                                        {
+                                            <div class="indx-search-results">
+                                                @foreach (var doc in results)
+                                                {
+                                                    <div class="indx-search-result-item">
+                                                        @foreach (var prop in GetDisplayFields(datasetName, doc))
+                                                        {
+                                                            <span class="indx-search-result-field"><span class="indx-search-result-key">@prop.Name</span> @prop.Value</span>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                            <div class="indx-perf-toolbar">
+                                                <Button Variant="ghost" Size="micro" IconLeft="_iconSpeedometer"
+                                                        disabled="@_perfRunning.Contains(datasetName)"
+                                                        @onclick="@(() => RunPerfTest(datasetName, ownerUserId, _searchTexts.GetValueOrDefault(datasetName, string.Empty)))">
+                                                    @(_perfRunning.Contains(datasetName) ? "Running…" : "Run performance benchmark")
+                                                </Button>
+                                                @if (_perfResults.TryGetValue(datasetName, out var perf) && perf != null)
+                                                {
+                                                    <span class="indx-perf-result">@perf.Iterations× — avg <strong>@perf.AvgMs.ToString("0.0") ms</strong></span>
+                                                }
+                                            </div>
+                                        }
+                                    }
+                                </div>
+                            }
+                            else
+                            {
+                                <p style="color:var(--lv5);margin-top:16px;">Index your dataset first to enable search preview.</p>
+                            }
+                        }
+
+                        @* ════════════════════════════════════════
+                   Tab: Options (owned only)
+                   ════════════════════════════════════════ *@
+                        @if (activeTab == "options")
+                        {
+                            <div style="margin-top:8px;">
+                                @* Transfer ownership *@
+                                <Button Variant="secondary" Size="micro" IconLeft="_iconUserAlias"
+                                        @onclick="() => { if (_showTransferSection.Contains(datasetName)) _showTransferSection.Remove(datasetName); else _showTransferSection.Add(datasetName); }">
+                                    Transfer Ownership
+                                </Button>
+                                @if (_showTransferSection.Contains(datasetName))
+                                {
+                                    <div style="margin-top:12px;">
+                                        <p style="color:var(--lv5);font:var(--text-xs);margin-bottom:12px;">Transfer this dataset to another user. You will lose owner access.</p>
+                                        @if (_transferConfirmDataset == datasetName)
+                                        {
+                                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                                <span style="font:var(--text-xs);color:var(--lv5);">Transfer to @_transferEmailInput?</span>
+                                                <Button Variant="danger" Size="micro" @onclick="() => ConfirmTransfer(datasetName, ownerUserId)">Yes, transfer</Button>
+                                                <Button Variant="secondary" Size="micro" @onclick="() => { _transferConfirmDataset = null; _transferEmailInput = null; _transferError = null; }">Cancel</Button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
+                                                <input class="indx-text-input" placeholder="New owner email" @bind="_transferEmailInput" @bind:event="oninput" />
+                                                <Button Variant="secondary" Size="micro"
+                                                        disabled="@string.IsNullOrWhiteSpace(_transferEmailInput)"
+                                                        @onclick="() => _transferConfirmDataset = datasetName">
+                                                    Transfer
+                                                </Button>
+                                            </div>
+                                        }
+                                        @if (!string.IsNullOrEmpty(_transferError))
+                                        {
+                                            <p style="color:var(--CSignal);font:var(--text-xs);margin-top:4px;">@_transferError</p>
                                         }
                                     </div>
                                 }
-                            }
-                        </div>
-                    }
-                    else
-                    {
-                        <p style="color:var(--lv5);margin-top:16px;">Index your dataset first to enable search preview.</p>
-                    }
-                }
 
-                @* ════════════════════════════════════════
-                   Tab: Options (owned only)
-                   ════════════════════════════════════════ *@
-                @if (activeTab == "options")
-                {
-                    <div style="margin-top:8px;">
-                        @* Transfer ownership *@
-                        <Button Variant="secondary" Size="micro" IconLeft="_iconUserAlias"
-                                @onclick="() => { if (_showTransferSection.Contains(datasetName)) _showTransferSection.Remove(datasetName); else _showTransferSection.Add(datasetName); }">
-                            Transfer Ownership
-                        </Button>
-                        @if (_showTransferSection.Contains(datasetName))
-                        {
-                            <div style="margin-top:12px;">
-                                <p style="color:var(--lv5);font:var(--text-xs);margin-bottom:12px;">Transfer this dataset to another user. You will lose owner access.</p>
-                                @if (_transferConfirmDataset == datasetName)
+                                @if (engineState == SystemState.Ready)
                                 {
-                                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                                        <span style="font:var(--text-xs);color:var(--lv5);">Transfer to @_transferEmailInput?</span>
-                                        <Button Variant="danger" Size="micro" @onclick="() => ConfirmTransfer(datasetName, ownerUserId)">Yes, transfer</Button>
-                                        <Button Variant="secondary" Size="micro" @onclick="() => { _transferConfirmDataset = null; _transferEmailInput = null; _transferError = null; }">Cancel</Button>
-                                    </div>
+                                    <h3 style="color:var(--CSignal);margin-top:24px;margin-bottom:8px;">Danger Zone</h3>
+                                }
+                                @if (!isUploading && !isLoadIndexing && !isSaving)
+                                {
+                                    @if (deleteConfirmDataset == datasetName)
+                                    {
+                                        <div style="display:flex;gap:8px;align-items:center;">
+                                            <span style="font:var(--text-xs);color:var(--lv5);">Are you sure?</span>
+                                            <Button Variant="danger" Size="micro" @onclick="() => ConfirmDelete(datasetName)">Yes, Delete</Button>
+                                            <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <Button Variant="@(engineState == SystemState.Ready ? "secondary" : "ghost")" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)">Delete dataset</Button>
+                                    }
                                 }
                                 else
                                 {
-                                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
-                                        <input class="indx-text-input" placeholder="New owner email" @bind="_transferEmailInput" @bind:event="oninput" />
-                                        <Button Variant="secondary" Size="micro"
-                                                disabled="@string.IsNullOrWhiteSpace(_transferEmailInput)"
-                                                @onclick="() => _transferConfirmDataset = datasetName">Transfer</Button>
-                                    </div>
-                                }
-                                @if (!string.IsNullOrEmpty(_transferError))
-                                {
-                                    <p style="color:var(--CSignal);font:var(--text-xs);margin-top:4px;">@_transferError</p>
+                                    <p style="color:var(--lv4);font:var(--text-xs);">Cannot delete while an operation is in progress.</p>
                                 }
                             </div>
                         }
 
-                        @if (engineState == SystemState.Ready)
-                        {
-                            <h3 style="color:var(--CSignal);margin-top:24px;margin-bottom:8px;">Danger Zone</h3>
-                        }
-                        @if (!isUploading && !isLoadIndexing && !isSaving)
-                        {
-                            @if (deleteConfirmDataset == datasetName)
-                            {
-                                <div style="display:flex;gap:8px;align-items:center;">
-                                    <span style="font:var(--text-xs);color:var(--lv5);">Are you sure?</span>
-                                    <Button Variant="danger" Size="micro" @onclick="() => ConfirmDelete(datasetName)">Yes, Delete</Button>
-                                    <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
-                                </div>
-                            }
-                            else
-                            {
-                                <Button Variant="@(engineState == SystemState.Ready ? "secondary" : "ghost")" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)">Delete dataset</Button>
-                            }
-                        }
-                        else
-                        {
-                            <p style="color:var(--lv4);font:var(--text-xs);">Cannot delete while an operation is in progress.</p>
-                        }
-                    </div>
-                }
-
-                @* ════════════════════════════════════════
+                        @* ════════════════════════════════════════
                    Tab: Members (owner + grantees)
                    ════════════════════════════════════════ *@
-                @if (activeTab == "members")
-                {
-                    <div style="margin-top:8px;">
-                        <h3 style="margin-bottom:16px;">Members</h3>
+                        @if (activeTab == "members")
+                        {
+                            <div style="margin-top:8px;">
+                                <h3 style="margin-bottom:16px;">Members</h3>
 
-                        @* Members table — owner row first, then grants *@
-                        <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px;">
-                            <thead>
-                                <tr style="border-bottom:1px solid var(--lv3);color:var(--lv5);">
-                                    <th style="text-align:left;padding:6px 12px;font-weight:500;">Email</th>
-                                    <th style="text-align:left;padding:6px 12px;font-weight:500;">Role</th>
-                                    <th style="padding:6px 12px;"></th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                @* Owner row *@
-                                @if (_ownerEmail.TryGetValue(datasetName, out var ownerEmail))
-                                {
-                                    <tr style="border-bottom:1px solid var(--lv2);">
-                                        <td style="padding:8px 12px;">@ownerEmail</td>
-                                        <td style="padding:8px 12px;"><Chip Color="var(--lv8)" TextColor="var(--lv0)">Owner</Chip></td>
-                                        <td></td>
-                                    </tr>
-                                }
-                                @* Grantee rows *@
-                                @if (_accessGrants.TryGetValue(datasetName, out var grants))
-                                {
-                                    @foreach (var (email, role) in grants)
-                                    {
-                                        <tr style="border-bottom:1px solid var(--lv2);">
-                                            <td style="padding:8px 12px;">@email</td>
-                                            <td style="padding:8px 12px;"><Chip Color="var(--lv2)" TextColor="var(--lv6)">@(char.ToUpper(role[0]) + role[1..])</Chip></td>
-                                            <td style="padding:8px 12px;text-align:right;">
-                                                @if (currentRole == "owner")
-                                                {
-                                                    <Button Variant="ghost" Size="micro"
-                                                            @onclick="async () => await RevokeShareAccess(datasetName, ownerUserId, email)">Revoke</Button>
-                                                }
-                                                else if (email == _currentUserEmail)
-                                                {
-                                                    <Button Variant="ghost" Size="micro"
-                                                            @onclick="async () => await LeaveDataset(datasetName, ownerUserId)">Leave</Button>
-                                                }
-                                            </td>
+                                @* Members table — owner row first, then grants *@
+                                <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px;">
+                                    <thead>
+                                        <tr style="border-bottom:1px solid var(--lv3);color:var(--lv5);">
+                                            <th style="text-align:left;padding:6px 12px;font-weight:500;">Email</th>
+                                            <th style="text-align:left;padding:6px 12px;font-weight:500;">Role</th>
+                                            <th style="padding:6px 12px;"></th>
                                         </tr>
+                                    </thead>
+                                    <tbody>
+                                        @* Owner row *@
+                                        @if (_ownerEmail.TryGetValue(datasetName, out var ownerEmail))
+                                        {
+                                            <tr style="border-bottom:1px solid var(--lv2);">
+                                                <td style="padding:8px 12px;">@ownerEmail</td>
+                                                <td style="padding:8px 12px;"><Chip Color="var(--lv8)" TextColor="var(--lv0)">Owner</Chip></td>
+                                                <td></td>
+                                            </tr>
+                                        }
+                                        @* Grantee rows *@
+                                        @if (_accessGrants.TryGetValue(datasetName, out var grants))
+                                        {
+                                            @foreach (var (email, role) in grants)
+                                            {
+                                                <tr style="border-bottom:1px solid var(--lv2);">
+                                                    <td style="padding:8px 12px;">@email</td>
+                                                    <td style="padding:8px 12px;"><Chip Color="var(--lv2)" TextColor="var(--lv6)">@(char.ToUpper(role[0]) + role[1..])</Chip></td>
+                                                    <td style="padding:8px 12px;text-align:right;">
+                                                        @if (currentRole == "owner")
+                                                        {
+                                                            <Button Variant="ghost" Size="micro"
+                                                                    @onclick="async () => await RevokeShareAccess(datasetName, ownerUserId, email)">
+                                                                Revoke
+                                                            </Button>
+                                                        }
+                                                        else if (email == _currentUserEmail)
+                                                        {
+                                                            <Button Variant="ghost" Size="micro"
+                                                                    @onclick="async () => await LeaveDataset(datasetName, ownerUserId)">
+                                                                Leave
+                                                            </Button>
+                                                        }
+                                                    </td>
+                                                </tr>
+                                            }
+                                        }
+                                    </tbody>
+                                </table>
+
+                                @* Grant form — owner only *@
+                                @if (currentRole == "owner")
+                                {
+                                    @if (!_showGrantForm)
+                                    {
+                                        <Button Variant="secondary" Size="micro" IconLeft="_iconUserPlus"
+                                                @onclick="() => { _showGrantForm = true; _shareError = null; }">
+                                            Add a user
+                                        </Button>
+                                    }
+                                    else
+                                    {
+                                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
+                                            <input class="indx-text-input" placeholder="Email address"
+                                                   @bind="_shareEmailInput" style="min-width:220px;" />
+                                            <select style="padding:6px 8px;border:1px solid var(--lv3);border-radius:var(--radius);background:var(--lv0);color:var(--lv8);font-size:13px;width:auto;"
+                                                    @bind="_shareRoleInput">
+                                                <option value="viewer">Viewer</option>
+                                                <option value="editor">Editor</option>
+                                            </select>
+                                            <Button Variant="primary" Size="micro"
+                                                    disabled="@string.IsNullOrWhiteSpace(_shareEmailInput)"
+                                                    @onclick="async () => { await GrantShareAccess(datasetName, ownerUserId); if (string.IsNullOrEmpty(_shareError)) _showGrantForm = false; }">
+                                                Grant access
+                                            </Button>
+                                            <Button Variant="ghost" Size="micro"
+                                                    @onclick="() => { _showGrantForm = false; _shareEmailInput = string.Empty; _shareError = null; }">
+                                                Cancel
+                                            </Button>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(_shareError))
+                                        {
+                                            <p style="color:var(--CSignal);font:var(--text-xs);margin-top:4px;">@_shareError</p>
+                                        }
                                     }
                                 }
-                            </tbody>
-                        </table>
-
-                        @* Grant form — owner only *@
-                        @if (currentRole == "owner")
-                        {
-                            @if (!_showGrantForm)
-                            {
-                                <Button Variant="secondary" Size="micro" IconLeft="_iconUserPlus"
-                                        @onclick="() => { _showGrantForm = true; _shareError = null; }">Add a user</Button>
-                            }
-                            else
-                            {
-                                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
-                                    <input class="indx-text-input" placeholder="Email address"
-                                           @bind="_shareEmailInput" style="min-width:220px;" />
-                                    <select style="padding:6px 8px;border:1px solid var(--lv3);border-radius:var(--radius);background:var(--lv0);color:var(--lv8);font-size:13px;width:auto;"
-                                            @bind="_shareRoleInput">
-                                        <option value="viewer">Viewer</option>
-                                        <option value="editor">Editor</option>
-                                    </select>
-                                    <Button Variant="primary" Size="micro"
-                                            disabled="@string.IsNullOrWhiteSpace(_shareEmailInput)"
-                                            @onclick="async () => { await GrantShareAccess(datasetName, ownerUserId); if (string.IsNullOrEmpty(_shareError)) _showGrantForm = false; }">Grant access</Button>
-                                    <Button Variant="ghost" Size="micro"
-                                            @onclick="() => { _showGrantForm = false; _shareEmailInput = string.Empty; _shareError = null; }">Cancel</Button>
-                                </div>
-                                @if (!string.IsNullOrEmpty(_shareError))
-                                {
-                                    <p style="color:var(--CSignal);font:var(--text-xs);margin-top:4px;">@_shareError</p>
-                                }
-                            }
+                            </div>
                         }
-                    </div>
-                }
 
-            </Surface>
-            </div>
+                    </Surface>
+                </div>
             </div>
         }
     }
@@ -668,20 +730,20 @@ else
     private string[]? datasets;
     private static string StateChipColor(SystemState state) => state switch
     {
-        SystemState.Ready      => "var(--CTeal)",
-        SystemState.Loading    => "var(--CLightBlue)",
-        SystemState.Indexing   => "var(--CWarning)",
-        SystemState.Error      => "var(--CSignal)",
-        _                      => "var(--lv3)",
+        SystemState.Ready => "var(--CTeal)",
+        SystemState.Loading => "var(--CLightBlue)",
+        SystemState.Indexing => "var(--CWarning)",
+        SystemState.Error => "var(--CSignal)",
+        _ => "var(--lv3)",
     };
 
     private static string StateChipTextColor(SystemState state) => state switch
     {
-        SystemState.Error    => "var(--lv0)",
-        SystemState.Ready    => "#080809",
-        SystemState.Loading  => "#080809",
+        SystemState.Error => "var(--lv0)",
+        SystemState.Ready => "#080809",
+        SystemState.Loading => "#080809",
         SystemState.Indexing => "#080809",
-        _                    => "var(--lv5)",
+        _ => "var(--lv5)",
     };
 
     private Dictionary<string, SystemStatus> datasetStatuses = new();
@@ -700,6 +762,8 @@ else
     private string? _savingDataset;
     private int _shadowBuildPercent;
     private CancellationTokenSource? _pollingCts;
+    private string? _saveError;
+    private string? _saveErrorDataset;
 
     // Create dataset
     private string _newDatasetName = string.Empty;
@@ -720,6 +784,9 @@ else
 
     // Buffered files awaiting Load & Index (keyed by dataset name)
     private Dictionary<string, System.IO.MemoryStream> _bufferedFiles = new();
+
+    // Transitional-state polling (when navigating back to a busy engine)
+    private CancellationTokenSource? _transitionPollCts;
 
     // Load & Index phase
     private string? _loadIndexingDataset;
@@ -789,6 +856,58 @@ else
             return;
         }
         await LoadDatasets();
+        StartTransitionPollingIfNeeded();
+    }
+
+    private void StartTransitionPollingIfNeeded()
+    {
+        if (_transitionPollCts != null) return;
+        var hasTransitional = datasetStatuses.Values.Any(s =>
+            s.SystemState is SystemState.Loading or SystemState.Loaded or SystemState.Indexing);
+        if (hasTransitional)
+        {
+            _transitionPollCts = new CancellationTokenSource();
+            _ = PollTransitionalStateAsync(_transitionPollCts.Token);
+        }
+    }
+
+    private async Task PollTransitionalStateAsync(CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(1000, ct);
+                bool anyTransitional = false;
+                foreach (var datasetName in datasets ?? [])
+                {
+                    var status = IndxCloudInternalApi.Manager.GetState(datasetName, userId!);
+                    if (status != null)
+                    {
+                        datasetStatuses[datasetName] = status;
+                        if (status.SystemState is SystemState.Loading or SystemState.Loaded or SystemState.Indexing)
+                            anyTransitional = true;
+                        else if (status.SystemState == SystemState.Ready && !fieldConfigs.ContainsKey(datasetName))
+                        {
+                            var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+                            var fields = engine?.GetFieldConfiguration();
+                            fieldConfigs[datasetName] = fields;
+                            if (fields != null)
+                                _editedFieldConfigs[datasetName] = fields.Select(DeepCopy).ToArray();
+                        }
+                    }
+                }
+                await InvokeAsync(StateHasChanged);
+                if (!anyTransitional) break;
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { }
+        finally
+        {
+            _transitionPollCts?.Dispose();
+            _transitionPollCts = null;
+        }
     }
 
     // ── Tab key helpers ──────────────────────────────────────────────────────
@@ -1037,7 +1156,7 @@ else
 
     // ── Load & Index ────────────────────────────────────────────────────────
 
-    private async Task StartLoadAndIndex(string datasetName)
+    private void StartLoadAndIndex(string datasetName)
     {
         if (!HasSearchable(datasetName)) return;
         if (!_bufferedFiles.TryGetValue(datasetName, out var ms)) return;
@@ -1056,8 +1175,13 @@ else
         _loadProgress = 0;
         _indexProgress = 0;
         _isIndexingPhase = false;
-        StateHasChanged();
 
+        _ = RunLoadAndIndexAsync(datasetName, ms);
+    }
+
+    private async Task RunLoadAndIndexAsync(string datasetName, MemoryStream ms)
+    {
+        var pollCts = new CancellationTokenSource();
         try
         {
             // Phase 1: Load
@@ -1067,15 +1191,23 @@ else
             {
                 _uploadError = "Load failed: dataset not found";
                 _uploadErrorDataset = datasetName;
+                await InvokeAsync(StateHasChanged);
                 return;
             }
             var (loadTask, loadMonitor) = loadResult.Value;
-            await PollUntilDone(loadTask, loadMonitor, v => _loadProgress = v);
+
+            var pollTask = PollProgressAsync(loadMonitor, v => _loadProgress = v, pollCts.Token);
+            await loadTask;
+            pollCts.Cancel();
+            try { await pollTask; } catch { }
+            _loadProgress = loadMonitor.ProgressPercent;
+            await InvokeAsync(StateHasChanged);
 
             if (!loadMonitor.Succeeded)
             {
                 _uploadError = $"Load failed: {loadMonitor.ErrorMessage ?? "unknown error"}";
                 _uploadErrorDataset = datasetName;
+                await InvokeAsync(StateHasChanged);
                 return;
             }
 
@@ -1090,13 +1222,19 @@ else
             await InvokeAsync(StateHasChanged);
 
             var indexMonitor = new ProcessMonitor();
-            var indexTask = Task.Run(() =>
+            pollCts = new CancellationTokenSource();
+            pollTask = PollProgressAsync(indexMonitor, v => _indexProgress = v, pollCts.Token);
+
+            await Task.Run(() =>
             {
                 var eng = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
                 eng?.Index(monitor: indexMonitor);
                 indexMonitor.WaitForCompletion();
             });
-            await PollUntilDone(indexTask, indexMonitor, v => _indexProgress = v);
+            pollCts.Cancel();
+            try { await pollTask; } catch { }
+            _indexProgress = indexMonitor.ProgressPercent;
+            await InvokeAsync(StateHasChanged);
 
             if (!indexMonitor.Succeeded)
                 Console.WriteLine($"Index failed: {indexMonitor.ErrorMessage}");
@@ -1110,27 +1248,40 @@ else
                 _editedFieldConfigs[datasetName] = freshFields.Select(DeepCopy).ToArray();
             }
         }
+        catch (ObjectDisposedException) { }
         finally
         {
+            pollCts.Cancel();
+            pollCts.Dispose();
             _loadIndexingDataset = null;
             _loadProgress = 0;
             _indexProgress = 0;
             _isIndexingPhase = false;
-            await LoadDatasets();
-            await InvokeAsync(StateHasChanged);
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadDatasets();
+                    StateHasChanged();
+                });
+            }
+            catch (ObjectDisposedException) { }
         }
     }
 
-    private async Task PollUntilDone(Task task, ProcessMonitor monitor, Action<int> setProgress)
+    private async Task PollProgressAsync(ProcessMonitor monitor, Action<int> setProgress, CancellationToken ct)
     {
-        while (!task.IsCompleted)
+        try
         {
-            setProgress(monitor.ProgressPercent);
-            await InvokeAsync(StateHasChanged);
-            await Task.Delay(100);
+            while (!ct.IsCancellationRequested)
+            {
+                await Task.Delay(150, ct);
+                setProgress(monitor.ProgressPercent);
+                await InvokeAsync(StateHasChanged);
+            }
         }
-        setProgress(monitor.ProgressPercent);
-        await InvokeAsync(StateHasChanged);
+        catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { }
     }
 
     // ── Quick search ──────────────────────────────────────────────────────────
@@ -1170,16 +1321,16 @@ else
             {
                 if (currentByName.TryGetValue(imp.FieldName, out var existing))
                 {
-                    existing.Searchable     = imp.Searchable;
-                    existing.Filterable     = imp.Filterable;
-                    existing.Facetable      = imp.Facetable;
-                    existing.Sortable       = imp.Sortable;
-                    existing.WordIndexing   = imp.WordIndexing;
-                    existing.Embeddable     = imp.Embeddable;
+                    existing.Searchable = imp.Searchable;
+                    existing.Filterable = imp.Filterable;
+                    existing.Facetable = imp.Facetable;
+                    existing.Sortable = imp.Sortable;
+                    existing.WordIndexing = imp.WordIndexing;
+                    existing.Embeddable = imp.Embeddable;
                     existing.PreloadFilters = imp.PreloadFilters;
-                    existing.Weight         = imp.Weight;
-                    existing.BM25b         = imp.BM25b;
-                    existing.BM25k1        = imp.BM25k1;
+                    existing.Weight = imp.Weight;
+                    existing.BM25b = imp.BM25b;
+                    existing.BM25k1 = imp.BM25k1;
                     matched++;
                 }
                 else unmatched++;
@@ -1207,7 +1358,7 @@ else
             return allProps.Take(max);
 
         var searchable = fields.Where(f => f.Searchable == true).Select(f => f.FieldName).ToHashSet();
-        var facetable  = fields.Where(f => f.Facetable  == true).Select(f => f.FieldName).ToHashSet();
+        var facetable = fields.Where(f => f.Facetable == true).Select(f => f.FieldName).ToHashSet();
 
         var result = new List<JsonProperty>(max);
 
@@ -1492,15 +1643,21 @@ else
             _editedFieldConfigs.Remove(datasetName);
     }
 
-    private async Task SaveFieldConfig(string datasetName, string engineOwnerUserId)
+    private void SaveFieldConfig(string datasetName, string engineOwnerUserId)
     {
         if (!_editedFieldConfigs.TryGetValue(datasetName, out var edited)) return;
         if (!HasSearchable(datasetName)) return;
 
         _savingDataset = datasetName;
         _shadowBuildPercent = 0;
-        StateHasChanged();
+        _saveError = null;
+        _saveErrorDataset = null;
 
+        _ = RunSaveFieldConfigAsync(datasetName, engineOwnerUserId, edited);
+    }
+
+    private async Task RunSaveFieldConfigAsync(string datasetName, string engineOwnerUserId, FieldProxy[] edited)
+    {
         _pollingCts = new CancellationTokenSource();
         var pollingTask = PollShadowProgress(datasetName, engineOwnerUserId, _pollingCts.Token);
 
@@ -1523,17 +1680,25 @@ else
             fieldConfigs[datasetName] = freshFields;
             _editedFieldConfigs[datasetName] = freshFields?.Select(DeepCopy).ToArray() ?? [];
         }
+        catch (ShadowBusyException)
+        {
+            _saveError = "A shadow build is already in progress. Please wait for it to complete.";
+            _saveErrorDataset = datasetName;
+        }
+        catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            Console.WriteLine($"SaveFieldConfig failed: {ex.Message}");
+            _saveError = $"Save failed: {ex.Message}";
+            _saveErrorDataset = datasetName;
         }
         finally
         {
-            _pollingCts.Cancel();
+            _pollingCts?.Cancel();
             try { await pollingTask; } catch { }
             _savingDataset = null;
             _shadowBuildPercent = 0;
-            await InvokeAsync(StateHasChanged);
+            try { await InvokeAsync(StateHasChanged); }
+            catch (ObjectDisposedException) { }
         }
     }
 
@@ -1589,21 +1754,23 @@ else
         return $"{bytes} B";
     }
 
-    private RenderFragment<int> _iconFields      => size => @<Field Size="size" />;
-    private RenderFragment<int> _iconDelete      => size => @<Stop Size="size" />;
-    private RenderFragment<int> _iconZap          => size => @<Zap Size="size" />;
-    private RenderFragment<int> _iconSpeedometer  => size => @<Speedometer Size="size" />;
-    private RenderFragment<int> _iconDownload    => size => @<Download Size="size" />;
+    private RenderFragment<int> _iconFields => size => @<Field Size="size" />;
+    private RenderFragment<int> _iconDelete => size => @<Stop Size="size" />;
+    private RenderFragment<int> _iconZap => size => @<Zap Size="size" />;
+    private RenderFragment<int> _iconSpeedometer => size => @<Speedometer Size="size" />;
+    private RenderFragment<int> _iconDownload => size => @<Download Size="size" />;
     private RenderFragment<int> _iconDynamicJson => size => @<DynamicJsonField Size="size" />;
-    private RenderFragment<int> _iconSearch      => size => @<Search Size="size" />;
-    private RenderFragment<int> _iconSliders     => size => @<SlidersHorizontal Size="size" />;
-    private RenderFragment<int> _iconUser        => size => @<User Size="size" />;
-    private RenderFragment<int> _iconUserAlias   => size => @<UserAlias Size="size" />;
-    private RenderFragment<int> _iconUserPlus    => size => @<UserPlus Size="size" />;
+    private RenderFragment<int> _iconSearch => size => @<Search Size="size" />;
+    private RenderFragment<int> _iconSliders => size => @<SlidersHorizontal Size="size" />;
+    private RenderFragment<int> _iconUser => size => @<User Size="size" />;
+    private RenderFragment<int> _iconUserAlias => size => @<UserAlias Size="size" />;
+    private RenderFragment<int> _iconUserPlus => size => @<UserPlus Size="size" />;
 
     private static string BoolDisplay(bool? value) => value switch
     {
-        true => "✓", false => "–", null => "",
+        true => "✓",
+        false => "–",
+        null => "",
     };
 
     private static string FloatDisplay(float? value) =>
