@@ -24,7 +24,14 @@ else if (licenseInfo != null)
     }
 
     <div style="margin: 40px 0;">
-        @if (licenseInfo.Licensed && licenseInfo.ValidLicense)
+        @if (isSourceBuild)
+        {
+            <div style="padding: 20px; border: 1px solid var(--CLightBlue); border-radius: var(--radius); background: rgba(107, 158, 255, 0.1); margin: 20px 0;">
+                <h3>Source Build</h3>
+                <p>Running from source. License validation is only available in obfuscated NuGet builds.</p>
+            </div>
+        }
+        else if (licenseInfo.Licensed && licenseInfo.ValidLicense)
         {
             <div style="padding: 20px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114, 245, 198, 0.1); margin: 20px 0;">
                 <h3>✓ Licensed</h3>
@@ -144,6 +151,100 @@ else if (licenseInfo != null)
                 </div>
             </div>
         }
+
+        @* ── LICENSE FILE MANAGEMENT ── *@
+        <div style="margin-top: 40px;">
+            <h3>License Files</h3>
+
+            @if (!string.IsNullOrEmpty(fileOpMessage))
+            {
+                <div style="padding: 14px 18px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114,245,198,0.08); margin: 16px 0;">
+                    @fileOpMessage
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(fileOpError))
+            {
+                <div style="padding: 14px 18px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255,66,56,0.08); margin: 16px 0;">
+                    @fileOpError
+                </div>
+            }
+
+            @if (licenseFiles.Count > 0)
+            {
+                <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid var(--lv3); color: var(--lv5);">
+                            <th style="text-align: left; padding: 8px 12px; font-weight: 500;">File</th>
+                            <th style="padding: 8px 12px; font-weight: 500;">Status</th>
+                            <th style="padding: 8px 12px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var f in licenseFiles)
+                        {
+                            <tr style="border-bottom: 1px solid var(--lv2);">
+                                <td style="padding: 10px 12px; font-family: monospace; color: var(--lv6);">@f.Filename</td>
+                                <td style="padding: 10px 12px; text-align: center;">
+                                    @if (f.IsActive)
+                                    {
+                                        <IndxCloudApi.Components.Systm.Chip Color="var(--CTeal)" TextColor="#080809">Active</IndxCloudApi.Components.Systm.Chip>
+                                    }
+                                    else
+                                    {
+                                        <IndxCloudApi.Components.Systm.Chip Color="var(--lv3)" TextColor="var(--lv5)">Inactive</IndxCloudApi.Components.Systm.Chip>
+                                    }
+                                </td>
+                                <td style="padding: 10px 12px; text-align: right;">
+                                    <button class="btn-secondary" style="font-size: 12px; padding: 4px 10px; color: var(--CSignal);"
+                                            @onclick="() => ConfirmDelete(f.Filename)">Delete</button>
+                                </td>
+                            </tr>
+                            @if (deleteConfirmFile == f.Filename)
+                            {
+                                <tr>
+                                    <td colspan="3" style="padding: 12px; background: rgba(255,178,41,0.06); border-bottom: 1px solid var(--lv2);">
+                                        <div style="display: flex; align-items: center; gap: 16px;">
+                                            <span style="font-size: 13px;">Delete <strong>@f.Filename</strong>? This cannot be undone.</span>
+                                            <button class="btn-secondary" style="font-size: 12px; padding: 4px 10px; color: var(--CSignal);"
+                                                    @onclick="ExecuteDelete">Yes, delete</button>
+                                            <button class="btn-secondary" style="font-size: 12px; padding: 4px 10px;"
+                                                    @onclick="() => deleteConfirmFile = null">Cancel</button>
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p style="color: var(--lv5); font-size: 13px; margin: 16px 0;">No license files in <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">./IndxData/</code>.</p>
+            }
+
+            @* ── UPLOAD ── *@
+            <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                <InputFile OnChange="HandleFileSelected" accept=".license" style="display:none" id="license-file-input" />
+                <label for="license-file-input" class="indx-upload-label">
+                    <Card Size="14" />
+                    @if (selectedFile != null)
+                    {
+                        <span>@selectedFile.Name (@((selectedFile.Size / 1024.0).ToString("F1")) KB)</span>
+                    }
+                    else
+                    {
+                        <span>Choose a .license file to upload</span>
+                    }
+                </label>
+                @if (selectedFile != null)
+                {
+                    <Button Variant="primary" Size="micro" @onclick="UploadFile" Disabled="@isUploading">
+                        @(isUploading ? "Uploading…" : "Upload")
+                    </Button>
+                    <Button Variant="ghost" Size="micro" @onclick="() => { selectedFile = null; fileOpError = null; }">Cancel</Button>
+                }
+            </div>
+        </div>
     </div>
 }
 else
@@ -157,10 +258,22 @@ else
     private LicenseInfo? licenseInfo;
     private string? errorMessage;
     private bool isLoading = true;
+#if SOURCE_BUILD
+    private bool isSourceBuild = true;
+#else
+    private bool isSourceBuild = false;
+#endif
+
+    private List<IndxCloudInternalApi.LicenseFileInfo> licenseFiles = [];
+    private string? deleteConfirmFile;
+    private string? fileOpMessage;
+    private string? fileOpError;
+    private IBrowserFile? selectedFile;
+    private bool isUploading;
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadLicenseInfo();
+        await Task.WhenAll(LoadLicenseInfo(), LoadLicenseFiles());
     }
 
     private async Task LoadLicenseInfo()
@@ -190,5 +303,87 @@ else
         {
             isLoading = false;
         }
+    }
+
+    private async Task LoadLicenseFiles()
+    {
+        await Task.Run(() =>
+        {
+            licenseFiles = [.. IndxCloudInternalApi.Manager.GetLicenseFiles()];
+        });
+    }
+
+    private void HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        selectedFile = e.File;
+        fileOpMessage = null;
+        fileOpError = null;
+    }
+
+    private async Task UploadFile()
+    {
+        if (selectedFile == null) return;
+
+        if (!selectedFile.Name.EndsWith(".license", StringComparison.OrdinalIgnoreCase))
+        {
+            fileOpError = "Only .license files are accepted.";
+            return;
+        }
+        if (selectedFile.Size > 1_048_576)
+        {
+            fileOpError = "File is too large. Maximum size is 1 MB.";
+            return;
+        }
+
+        isUploading = true;
+        fileOpMessage = null;
+        fileOpError = null;
+        StateHasChanged();
+
+        try
+        {
+            using var stream = selectedFile.OpenReadStream(1_048_576);
+            await IndxCloudInternalApi.Manager.SaveLicenseFileAsync(selectedFile.Name, stream);
+            fileOpMessage = $"'{selectedFile.Name}' uploaded. New datasets will use this license immediately. Restart the server to apply to existing datasets.";
+            selectedFile = null;
+            await Task.WhenAll(LoadLicenseFiles(), LoadLicenseInfo());
+        }
+        catch (Exception ex)
+        {
+            fileOpError = $"Upload failed: {ex.Message}";
+            Logger.LogError(ex, "Error uploading license file");
+        }
+        finally
+        {
+            isUploading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ConfirmDelete(string filename)
+    {
+        deleteConfirmFile = filename;
+        fileOpMessage = null;
+        fileOpError = null;
+    }
+
+    private async Task ExecuteDelete()
+    {
+        if (deleteConfirmFile == null) return;
+        var name = deleteConfirmFile;
+        deleteConfirmFile = null;
+
+        try
+        {
+            IndxCloudInternalApi.Manager.DeleteLicenseFile(name);
+            fileOpMessage = $"'{name}' deleted. Restart the server to apply to existing datasets.";
+            await Task.WhenAll(LoadLicenseFiles(), LoadLicenseInfo());
+        }
+        catch (Exception ex)
+        {
+            fileOpError = $"Delete failed: {ex.Message}";
+            Logger.LogError(ex, "Error deleting license file {Filename}", name);
+        }
+        StateHasChanged();
     }
 }

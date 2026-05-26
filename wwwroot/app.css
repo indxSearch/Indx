@@ -681,6 +681,31 @@ a.btn-danger:hover {
     }
 }
 
+/* Upload label — styled as a secondary micro button, used wherever a file input needs a clickable label */
+.indx-upload-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 10px;
+    font: var(--text-xs);
+    font-weight: var(--med);
+    color: var(--lv6);
+    background: transparent;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    cursor: pointer;
+    white-space: nowrap;
+    box-sizing: border-box;
+    user-select: none;
+    margin: 0;
+    line-height: normal;
+}
+
+.indx-upload-label:hover {
+    border-color: var(--lv4);
+}
+
 /* Chip */
 .indx-chip {
     display: inline-block;

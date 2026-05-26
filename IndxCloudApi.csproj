@@ -67,6 +67,9 @@
 	</ItemGroup>
 
 	<!-- Switch: set IndxFromNuGet=true at publish time to use the obfuscated NuGet package -->
+	<PropertyGroup Condition="'$(IndxFromNuGet)' != 'true'">
+	  <DefineConstants>$(DefineConstants);SOURCE_BUILD</DefineConstants>
+	</PropertyGroup>
 	<ItemGroup Condition="'$(IndxFromNuGet)' != 'true'">
 	  <ProjectReference Include="..\Indx\Indx.csproj" />
 	</ItemGroup>

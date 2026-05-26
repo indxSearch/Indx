@@ -567,6 +567,44 @@ namespace IndxCloudApi.Models
                 throw;
             }
         }
+
+        internal IReadOnlyList<LicenseFileInfo> GetLicenseFiles()
+        {
+            var dataDir = "./IndxData";
+            if (!Directory.Exists(dataDir))
+                return [];
+            var activePath = GetLicensePath();
+            return Directory.GetFiles(dataDir, "*.license")
+                .Select(f => new LicenseFileInfo(
+                    Path.GetFileName(f),
+                    string.Equals(Path.GetFullPath(f), activePath, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(f => f.Filename)
+                .ToList();
+        }
+
+        internal async Task SaveLicenseFileAsync(string filename, Stream content)
+        {
+            var safeName = Path.GetFileName(filename);
+            if (!safeName.EndsWith(".license", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Only .license files are accepted.");
+            var dataDir = "./IndxData";
+            Directory.CreateDirectory(dataDir);
+            using var fs = File.Create(Path.Combine(dataDir, safeName));
+            await content.CopyToAsync(fs);
+        }
+
+        internal void DeleteLicenseFile(string filename)
+        {
+            var safeName = Path.GetFileName(filename);
+            if (!safeName.EndsWith(".license", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Only .license files can be deleted.");
+            var dataDir = Path.GetFullPath("./IndxData");
+            var fullPath = Path.GetFullPath(Path.Combine("./IndxData", safeName));
+            if (!fullPath.StartsWith(dataDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Invalid file path.");
+            if (File.Exists(fullPath))
+                File.Delete(fullPath);
+        }
         #endregion Internal Methods
 
         #region Private Fields
@@ -767,6 +805,8 @@ namespace IndxCloudApi.Models
         #endregion Private Methods
 
         #region Private Classes
+        internal record LicenseFileInfo(string Filename, bool IsActive);
+
         private sealed class SearchEngineInstance
         {
             #region Internal Fields
