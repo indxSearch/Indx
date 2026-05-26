@@ -1,25 +1,93 @@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IDisposable
 @inject NavigationManager NavigationManager
 
 <nav class="nav">
-    <Button Href="/" Variant="@NavVariant("/", exact: true)" Size="micro" IconLeft="_iconHome">Datasets</Button>
-    <AuthorizeView>
-        <Authorized>
-            <Button Href="Account/ApiKey" Variant="@NavVariant("Account/ApiKey")" Size="micro" IconLeft="_iconKey">API Key</Button>
-            <Button Href="Account/Manage" Variant="@NavVariant("Account/Manage")" Size="micro" IconLeft="_iconUser">Account</Button>
-            <Button Href="Account/License" Variant="@NavVariant("Account/License")" Size="micro" IconLeft="_iconDoc">License</Button>
-        </Authorized>
-    </AuthorizeView>
-    <Button Href="swagger" Variant="@NavVariant("swagger")" Size="micro" IconLeft="_iconApi">Swagger ↗</Button>
-    <Button Href="https://v5.docs.indx.co" Variant="ghost" Size="micro" IconLeft="_iconBook">Docs ↗</Button>
+    <span class="nav-current-page">
+        @CurrentPage.Icon(14)
+        @CurrentPage.Label
+    </span>
+
+    <button class="nav-hamburger" @onclick="ToggleMenu" aria-label="Menu">
+        @if (_menuOpen)
+        {
+            <XOrError Size="16" />
+        }
+        else
+        {
+            <Menu Size="16" />
+        }
+    </button>
+
+    <div class="nav-items @(_menuOpen ? "open" : "")">
+        <Button Href="/" Variant="@NavVariant("/", exact: true)" Size="micro" IconLeft="_iconHome">Datasets</Button>
+        <AuthorizeView>
+            <Authorized>
+                <Button Href="Account/ApiKey" Variant="@NavVariant("Account/ApiKey")" Size="micro" IconLeft="_iconKey">API Key</Button>
+                <Button Href="Account/Manage" Variant="@NavVariant("Account/Manage")" Size="micro" IconLeft="_iconUser">Account</Button>
+                <Button Href="Account/License" Variant="@NavVariant("Account/License")" Size="micro" IconLeft="_iconDoc">License</Button>
+            </Authorized>
+        </AuthorizeView>
+        <Button Href="swagger" Variant="@NavVariant("swagger")" Size="micro" IconLeft="_iconApi">Swagger ↗</Button>
+        <Button Href="https://v5.docs.indx.co" Variant="ghost" Size="micro" IconLeft="_iconBook">Docs ↗</Button>
+        <AuthorizeView>
+            <NotAuthorized>
+                <div class="nav-mobile-auth">
+                    <a href="Account/Register" class="btn btn-secondary btn-micro">Register</a>
+                    <a href="Account/Login" class="btn btn-secondary btn-micro">Log in</a>
+                </div>
+            </NotAuthorized>
+        </AuthorizeView>
+    </div>
+
+    @if (_menuOpen)
+    {
+        <div class="nav-backdrop" @onclick="CloseMenu"></div>
+    }
 </nav>
 
 @code {
+    private bool _menuOpen;
+
     private RenderFragment<int> _iconHome => size => @<Database Size="size" />;
     private RenderFragment<int> _iconKey  => size => @<Key Size="size" />;
     private RenderFragment<int> _iconUser => size => @<UserId Size="size" />;
     private RenderFragment<int> _iconDoc  => size => @<DocumentOrFile Size="size" />;
     private RenderFragment<int> _iconApi  => size => @<Api Size="size" />;
     private RenderFragment<int> _iconBook => size => @<Book Size="size" />;
+
+    protected override void OnInitialized()
+    {
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        _menuOpen = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+
+    private void ToggleMenu() => _menuOpen = !_menuOpen;
+    private void CloseMenu() => _menuOpen = false;
+
+    private (string Label, RenderFragment<int> Icon) CurrentPage
+    {
+        get
+        {
+            var path = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
+            if (path == "") return ("Datasets", _iconHome);
+            if (path.StartsWith("account/apikey")) return ("API Key", _iconKey);
+            if (path.StartsWith("account/license")) return ("License", _iconDoc);
+            if (path.StartsWith("account/manage")) return ("Account", _iconUser);
+            if (path.StartsWith("swagger")) return ("Swagger", _iconApi);
+            return ("Datasets", _iconHome);
+        }
+    }
 
     private string NavVariant(string href, bool exact = false)
     {

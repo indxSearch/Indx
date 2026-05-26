@@ -432,25 +432,97 @@ a.btn-danger:hover {
     text-decoration: none;
 }
 
+.nav-current-page {
+    display: none;
+}
+
+.nav-hamburger {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius);
+    color: var(--lv5);
+    cursor: pointer;
+}
+
+.nav-hamburger:hover {
+    background: var(--lv2);
+    color: var(--lv8);
+}
+
+.nav-mobile-auth {
+    display: none;
+}
+
+.nav-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 99;
+}
+
 /* Mobile */
-@media (max-width: 500px) {
+@media (max-width: 768px) {
     .header {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: calc(var(--spacing) * 3);
+        padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 3);
+    }
+
+    .header-right {
+        display: none;
     }
 
     .header-left {
         width: 100%;
-        flex-direction: column;
-        align-items: flex-start;
-        gap: calc(var(--spacing) * 3);
     }
 
     .nav {
-        flex-direction: column;
-        align-items: flex-start;
         width: 100%;
+        justify-content: flex-end;
+    }
+
+    .nav-hamburger {
+        display: flex;
+    }
+
+    .nav-current-page {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        flex: 1;
+        font: var(--text-xs);
+        font-weight: var(--med);
+        color: var(--lv6);
+    }
+
+    .nav-items {
+        display: none;
+        position: fixed;
+        top: 48px;
+        left: 0;
+        right: 0;
+        flex-direction: column;
+        align-items: stretch;
+        gap: calc(var(--spacing) * 1);
+        padding: calc(var(--spacing) * 2);
+        background: var(--lv1);
+        border-bottom: 1px solid var(--lv2);
+        z-index: 100;
+    }
+
+    .nav-items.open {
+        display: flex;
+    }
+
+    .nav-mobile-auth {
+        display: flex;
+        gap: calc(var(--spacing) * 2);
+        padding-top: calc(var(--spacing) * 2);
+        border-top: 1px solid var(--lv2);
+        margin-top: calc(var(--spacing) * 1);
     }
 
     .content {
