@@ -407,7 +407,12 @@ a.btn-danger:hover {
 .nav {
     display: flex;
     align-items: center;
-    gap: calc(var(--spacing) * 2);
+}
+
+.nav-items {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .nav a {
