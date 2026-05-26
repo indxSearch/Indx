@@ -449,10 +449,11 @@ public class Program
         builder.Services.AddHttpClient();
         builder.Services.AddSingleton<Services.ILicenseBootstrapper, Services.LicenseBootstrapper>();
 
-        // Application Insights: no-op when APPLICATIONINSIGHTS_CONNECTION_STRING is unset
-        // (so local dev is unaffected). The Bicep template provisions an AI resource and
-        // injects the connection string automatically per customer.
-        builder.Services.AddApplicationInsightsTelemetry();
+        // Application Insights: only activate when a connection string is configured.
+        // The Bicep template provisions an AI resource and injects the connection string
+        // automatically per customer.
+        if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
+            builder.Services.AddApplicationInsightsTelemetry();
 
         var app = builder.Build();
 
