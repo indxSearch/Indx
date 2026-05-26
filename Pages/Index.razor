@@ -40,7 +40,7 @@
         }
         else
         {
-            <Button Variant="secondary" Size="micro" @onclick="() => _showNewDatasetForm = true">New dataset</Button>
+            <Button Variant="secondary" Size="micro" IconLeft="_iconPanelAdd" @onclick="() => _showNewDatasetForm = true">New dataset</Button>
         }
     }
 </div>
@@ -54,7 +54,15 @@ else
 
     @if ((datasets == null || datasets.Length == 0) && _sharedDatasets.Count == 0)
     {
-        <p style="margin-top:12px;">No datasets created</p>
+        <div style="margin-top: 40px; max-width: 520px;">
+            <p style="color: var(--lv5); margin-bottom: 20px;">A dataset holds your JSON documents and search index. Create one here to get started.</p>
+            <Button Variant="primary" Size="default" @onclick="() => _showNewDatasetForm = true">Create your first dataset</Button>
+
+            <div style="margin-top: 24px;">
+                <p style="color: var(--lv5); margin-bottom: 8px;">Using an LLM to set up your search? Get the skill.</p>
+                <Button Variant="secondary" Size="micro" IconLeft="_iconAgent" Href="https://www.skills.sh/indxsearch/skill-indx-search/indx-search">Indx Agent Skill ↗</Button>
+            </div>
+        </div>
     }
     else
     {
@@ -1757,6 +1765,8 @@ else
         return $"{bytes} B";
     }
 
+    private RenderFragment<int> _iconAgent => size => @<AiAgent Size="size" />;
+    private RenderFragment<int> _iconPanelAdd => size => @<PanelAdd Size="size" />;
     private RenderFragment<int> _iconFields => size => @<Field Size="size" />;
     private RenderFragment<int> _iconDelete => size => @<Stop Size="size" />;
     private RenderFragment<int> _iconZap => size => @<Zap Size="size" />;

@@ -9,7 +9,8 @@
             <Button Href="Account/License" Variant="@NavVariant("Account/License")" Size="micro" IconLeft="_iconDoc">License</Button>
         </Authorized>
     </AuthorizeView>
-    <Button Href="swagger" Variant="@NavVariant("swagger")" Size="micro" IconLeft="_iconApi">Swagger</Button>
+    <Button Href="swagger" Variant="@NavVariant("swagger")" Size="micro" IconLeft="_iconApi">Swagger ↗</Button>
+    <Button Href="https://v5.docs.indx.co" Variant="ghost" Size="micro" IconLeft="_iconBook">Docs ↗</Button>
 </nav>
 
 @code {
@@ -18,6 +19,7 @@
     private RenderFragment<int> _iconUser => size => @<UserId Size="size" />;
     private RenderFragment<int> _iconDoc  => size => @<DocumentOrFile Size="size" />;
     private RenderFragment<int> _iconApi  => size => @<Api Size="size" />;
+    private RenderFragment<int> _iconBook => size => @<Book Size="size" />;
 
     private string NavVariant(string href, bool exact = false)
     {

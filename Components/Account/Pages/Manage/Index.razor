@@ -28,7 +28,6 @@
 
         <div style="margin-top: 20px;">
             <p><strong>Email:</strong> @user.Email</p>
-            <p><strong>Username:</strong> @user.UserName</p>
 
             <div style="margin-bottom: 20px;">
                 <p>
@@ -62,17 +61,6 @@
                 }
             </div>
 
-            <p>
-                <strong>Two-Factor Auth:</strong>
-                @if (user.TwoFactorEnabled)
-                {
-                    <span style="color: var(--CTeal); margin-left: 10px;">✓ Enabled</span>
-                }
-                else
-                {
-                    <span style="color: var(--lv5); margin-left: 10px;">Disabled</span>
-                }
-            </p>
         </div>
 
         <form method="post" action="Account/Logout" style="margin-top: 20px;">
@@ -83,16 +71,6 @@
     </div>
 
     <div style="margin-bottom: 40px;">
-        <h3>Account Management</h3>
-        <div style="margin-top: 20px;">
-            <a href="/Account/ApiKey" style="display: block; padding: 10px; border: 1px solid var(--lv3); border-radius: var(--radius); margin-bottom: 10px; text-decoration: none;">
-                <strong>API Key / JWT Token</strong>
-                <p style="color: var(--lv5); margin-top: 5px;">Generate and manage your API access token</p>
-            </a>
-        </div>
-    </div>
-
-    <div style="margin-bottom: 40px;">
         <h3 style="color: var(--CSignal);">Danger Zone</h3>
         <p style="color: var(--lv5); margin-top: 10px;">
             Once you delete your account, there is no going back. This will permanently delete your account and all associated data.
@@ -100,38 +78,26 @@
 
         @if (showDeleteConfirmation)
         {
-            <div style="margin-top: 20px; padding: 20px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255, 66, 56, 0.1);">
-                <p><strong>Are you absolutely sure?</strong></p>
-                <p>This action cannot be undone and will permanently delete:</p>
-                <ul style="margin: 10px 0 10px 20px;">
-                    <li>Your account and login credentials</li>
-                    <li>All datasets, documents, and search indexes</li>
-                </ul>
-                <p style="color: var(--CWarning); margin: 15px 0;">
-                    <strong>⚠ Security Note:</strong> Any active JWT bearer tokens will remain cryptographically
-                    valid until they expire. Stop using tokens before deletion to prevent orphaned data.
-                </p>
-                <p>Type your email address to confirm:</p>
-                <input type="text" style="margin: 10px 0; width: 100%;" @bind="confirmEmail" @bind:event="oninput" placeholder="Enter your email" />
-                <div style="display: flex; gap: 10px; margin-top: 10px;">
-                    @if (CanDeleteAccount)
-                    {
-                        <form action="Account/Manage/DeleteAccount" method="post">
-                            <AntiforgeryToken />
-                            <Button Type="submit" Variant="danger">Yes, Delete My Account</Button>
-                        </form>
-                    }
-                    else
-                    {
-                        <Button Variant="danger" Disabled="true">Yes, Delete My Account</Button>
-                    }
-                    <Button Variant="secondary" @onclick="CancelDelete">Cancel</Button>
-                </div>
+            <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+                <span style="font: var(--text-xs); color: var(--lv5);">Type your email to confirm:</span>
+                <input class="indx-text-input" @bind="confirmEmail" @bind:event="oninput" placeholder="@user?.Email" style="min-width: 200px;" />
+                @if (CanDeleteAccount)
+                {
+                    <form action="Account/Manage/DeleteAccount" method="post" style="display:contents;">
+                        <AntiforgeryToken />
+                        <Button Type="submit" Variant="danger" Size="micro">Yes, Delete My Account</Button>
+                    </form>
+                }
+                else
+                {
+                    <Button Variant="danger" Size="micro" Disabled="true">Yes, Delete My Account</Button>
+                }
+                <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
             </div>
         }
         else
         {
-            <Button Variant="secondary" style="margin-top: 20px;" @onclick="ShowDeleteConfirmation">Delete My Account</Button>
+            <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" style="margin-top: 8px;" @onclick="ShowDeleteConfirmation">Delete My Account</Button>
         }
     </div>
 }
@@ -141,6 +107,8 @@ else
 }
 
 @code {
+    private RenderFragment<int> _iconDelete => size => @<Delete Size="size" />;
+
     private ApplicationUser? user;
     private bool showDeleteConfirmation = false;
     private string confirmEmail = "";
