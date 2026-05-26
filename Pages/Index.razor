@@ -783,7 +783,7 @@ else
     private HashSet<string> _searchableTouched = new();
 
     // Buffered files awaiting Load & Index (keyed by dataset name)
-    private Dictionary<string, System.IO.MemoryStream> _bufferedFiles = new();
+    private Dictionary<string, System.IO.FileStream> _bufferedFiles = new();
 
     // Transitional-state polling (when navigating back to a busy engine)
     private CancellationTokenSource? _transitionPollCts;
@@ -1084,11 +1084,14 @@ else
         _uploadCts = new CancellationTokenSource();
         StateHasChanged();
 
-        System.IO.MemoryStream? ms = null;
+        System.IO.FileStream? fs = null;
+        string? tempPath = null;
         try
         {
-            // Stream file to server with upload progress
-            ms = new System.IO.MemoryStream();
+            // Stream file to a temp file instead of memory to avoid large heap allocations
+            tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"indx-upload-{Guid.NewGuid():N}.tmp");
+            fs = new System.IO.FileStream(tempPath, System.IO.FileMode.Create, System.IO.FileAccess.ReadWrite,
+                System.IO.FileShare.None, bufferSize: 65536, System.IO.FileOptions.DeleteOnClose);
             const int chunkSize = 65536;
             var buffer = new byte[chunkSize];
             long totalRead = 0;
@@ -1096,7 +1099,7 @@ else
             int bytesRead;
             while ((bytesRead = await stream.ReadAsync(buffer, _uploadCts.Token)) > 0)
             {
-                await ms.WriteAsync(buffer, 0, bytesRead, _uploadCts.Token);
+                await fs.WriteAsync(buffer, 0, bytesRead, _uploadCts.Token);
                 totalRead += bytesRead;
                 var pct = file.Size > 0 ? (int)(100L * totalRead / file.Size) : 0;
                 if (pct != _uploadProgress)
@@ -1107,22 +1110,22 @@ else
             }
 
             // Analyze field structure asynchronously (avoids blocking Blazor thread on large files)
-            ms.Position = 0;
-            var initError = await IndxCloudInternalApi.Manager.InitFromStreamAsync(datasetName, userId!, ms);
+            fs.Position = 0;
+            var initError = await IndxCloudInternalApi.Manager.InitFromStreamAsync(datasetName, userId!, fs);
             if (!string.IsNullOrEmpty(initError))
             {
                 _uploadError = $"Analyze failed: {initError}";
                 _uploadErrorDataset = datasetName;
-                ms.Dispose();
-                ms = null;
+                fs.Dispose();
+                fs = null;
                 return;
             }
 
             // Buffer the stream for the Load & Index step
             if (_bufferedFiles.TryGetValue(datasetName, out var old))
                 old.Dispose();
-            _bufferedFiles[datasetName] = ms;
-            ms = null; // ownership transferred
+            _bufferedFiles[datasetName] = fs;
+            fs = null; // ownership transferred
 
             // Populate field config for display; show unused fields by default for new datasets
             var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
@@ -1136,13 +1139,13 @@ else
         }
         catch (OperationCanceledException)
         {
-            ms?.Dispose();
+            fs?.Dispose();
         }
         catch (Exception ex)
         {
             _uploadError = $"Upload failed: {ex.Message}";
             _uploadErrorDataset = datasetName;
-            ms?.Dispose();
+            fs?.Dispose();
         }
         finally
         {
@@ -1179,7 +1182,7 @@ else
         _ = RunLoadAndIndexAsync(datasetName, ms);
     }
 
-    private async Task RunLoadAndIndexAsync(string datasetName, MemoryStream ms)
+    private async Task RunLoadAndIndexAsync(string datasetName, FileStream ms)
     {
         var pollCts = new CancellationTokenSource();
         try
