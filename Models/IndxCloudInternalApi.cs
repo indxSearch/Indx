@@ -360,11 +360,8 @@ namespace IndxCloudApi.Models
         }
 
         /// <summary>
-        /// Deletes a dataset: disposes the in-memory engine and removes the SQLite row.
-        /// Single entry point so every caller (REST controller, Blazor UI, etc.) shares
-        /// the same cleanup order and cannot accidentally skip the _instances eviction.
+        /// Returns all datasets across all users, each with the owner user ID and the number of access grants.
         /// </summary>
-        /// <returns><c>true</c> if the dataset existed and was deleted; <c>false</c> if it did not exist.</returns>
         internal List<(string DataSetName, string UserId, int AccessCount)> GetAllDataSets()
         {
             var db = new SqLiteManager(SearchDbConnectionString);
@@ -376,6 +373,12 @@ namespace IndxCloudApi.Models
             }).ToList();
         }
 
+        /// <summary>
+        /// Deletes a dataset: disposes the in-memory engine and removes the SQLite row.
+        /// Single entry point so every caller (REST controller, Blazor UI, etc.) shares
+        /// the same cleanup order and cannot accidentally skip the _instances eviction.
+        /// </summary>
+        /// <returns><c>true</c> if the dataset existed and was deleted; <c>false</c> if it did not exist.</returns>
         internal bool DeleteDataSet(string dataSetName, string userId)
         {
             var persistence = new Persistence(SearchDbConnectionString, dataSetName, userId);

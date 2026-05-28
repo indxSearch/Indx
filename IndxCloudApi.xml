@@ -508,6 +508,11 @@
             <param name="dataSetName">The dataset name to clean up</param>
             <param name="userId">The user ID that owns the dataset</param>
         </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetAllDataSets">
+            <summary>
+            Returns all datasets across all users, each with the owner user ID and the number of access grants.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.DeleteDataSet(System.String,System.String)">
             <summary>
             Deletes a dataset: disposes the in-memory engine and removes the SQLite row.
@@ -759,6 +764,11 @@
             Example: ["yourcompany.com", "partner.com"]
             </summary>
         </member>
+        <member name="P:IndxCloudApi.Services.RegistrationOptions.RequireEmailVerification">
+            <summary>
+            When true, users must confirm their email before signing in.
+            </summary>
+        </member>
         <member name="T:IndxCloudApi.Services.RegistrationMode">
             <summary>
             Registration mode enum
@@ -779,68 +789,10 @@
             Registration is closed - only admins can create accounts
             </summary>
         </member>
-        <member name="T:IndxCloudApi.Services.RegistrationValidator">
+        <member name="F:IndxCloudApi.Services.RegistrationMode.Invite">
             <summary>
-            Service for validating user registration based on configured policies
+            Only specific email addresses added to the invite list can register
             </summary>
-        </member>
-        <member name="M:IndxCloudApi.Services.RegistrationValidator.#ctor(Microsoft.Extensions.Options.IOptions{IndxCloudApi.Services.RegistrationOptions},Microsoft.Extensions.Logging.ILogger{IndxCloudApi.Services.RegistrationValidator})">
-            <summary>
-            Initializes a new instance of the RegistrationValidator class
-            </summary>
-            <param name="options">Registration configuration options</param>
-            <param name="logger">Logger instance</param>
-        </member>
-        <member name="M:IndxCloudApi.Services.RegistrationValidator.ValidateRegistrationAllowed">
-            <summary>
-            Validates if registration is allowed based on current mode
-            </summary>
-            <returns>ValidationResult with success status and message</returns>
-        </member>
-        <member name="M:IndxCloudApi.Services.RegistrationValidator.ValidateEmail(System.String)">
-            <summary>
-            Validates if an email address is allowed to register
-            </summary>
-            <param name="email">Email address to validate</param>
-            <returns>ValidationResult with success status and message</returns>
-        </member>
-        <member name="M:IndxCloudApi.Services.RegistrationValidator.GetCurrentMode">
-            <summary>
-            Gets the current registration mode
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Services.RegistrationValidator.GetRegistrationInfoMessage">
-            <summary>
-            Gets a user-friendly message about current registration restrictions
-            </summary>
-        </member>
-        <member name="T:IndxCloudApi.Services.RegistrationValidationResult">
-            <summary>
-            Result of registration validation
-            </summary>
-        </member>
-        <member name="P:IndxCloudApi.Services.RegistrationValidationResult.IsValid">
-            <summary>
-            Gets whether the validation passed
-            </summary>
-        </member>
-        <member name="P:IndxCloudApi.Services.RegistrationValidationResult.ErrorMessage">
-            <summary>
-            Gets the error message if validation failed, or null if successful
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Services.RegistrationValidationResult.Success">
-            <summary>
-            Creates a successful validation result
-            </summary>
-            <returns>A successful validation result</returns>
-        </member>
-        <member name="M:IndxCloudApi.Services.RegistrationValidationResult.Failure(System.String)">
-            <summary>
-            Creates a failed validation result with an error message
-            </summary>
-            <param name="errorMessage">The error message describing why validation failed</param>
-            <returns>A failed validation result</returns>
         </member>
         <member name="T:IndxCloudApi.Swagger.ProxySchemaFilter">
             <summary>
