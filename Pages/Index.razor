@@ -118,8 +118,8 @@ else
                                             <tr><td>Document Count</td><td>@status.DocumentCount</td></tr>
                                             <tr><td>Search Counter</td><td>@status.SearchCounter</td></tr>
                                             <tr><td>Seconds To Index</td><td>@status.SecondsToIndex.ToString("0.##")s</td></tr>
-                                            <tr><td>Instance Created</td><td>@status.TimeOfInstanceCreation</td></tr>
-                                            <tr><td>Last Index Build</td><td>@status.TimeOfLastIndexBuild</td></tr>
+                                            <tr><td>Instance Created</td><td>@TimeAgo(status.TimeOfInstanceCreation)</td></tr>
+                                            <tr><td>Last Index Build</td><td>@TimeAgo(status.TimeOfLastIndexBuild)</td></tr>
                                             @if (status.LicenseInfo?.DocumentLimitExceeded == true)
                                             {
                                                 <tr><td style="color:var(--CSignal);">License Limit</td><td style="color:var(--CSignal);">@status.DocumentCount.ToString("N0") / @status.LicenseInfo.DocumentLimit.ToString("N0")</td></tr>
@@ -1751,6 +1751,18 @@ else
     {
         if (string.IsNullOrWhiteSpace(s)) return null;
         return float.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var f) ? f : null;
+    }
+
+    private static string TimeAgo(DateTime dt)
+    {
+        if (dt == default) return "—";
+        var age = DateTime.Now - dt;
+        if (age.TotalSeconds < 60) return "just now";
+        if (age.TotalMinutes < 60) return $"{(int)age.TotalMinutes}m ago";
+        if (age.TotalHours < 24) return $"{(int)age.TotalHours}h ago";
+        if (age.TotalDays < 30) return $"{(int)age.TotalDays}d ago";
+        if (age.TotalDays < 365) return $"{(int)(age.TotalDays / 30)}mo ago";
+        return $"{(int)(age.TotalDays / 365)}y ago";
     }
 
     private static string FormatBytes(long bytes)

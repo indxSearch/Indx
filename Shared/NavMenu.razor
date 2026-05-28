@@ -1,12 +1,45 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
 @inject NavigationManager NavigationManager
+@inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
 
 <nav class="nav">
     <span class="nav-current-page">
         @CurrentPage.Icon(14)
         @CurrentPage.Label
     </span>
+
+    <div class="nav-items @(_menuOpen ? "open" : "")">
+        <Button Href="/" Variant="@NavVariant("/", exact: true)" Size="micro" IconLeft="_iconHome">Datasets</Button>
+        <AuthorizeView>
+            <Authorized>
+                <Button Href="Account/ApiKey" Variant="@NavVariant("Account/ApiKey")" Size="micro" IconLeft="_iconKey">API Key</Button>
+                <Button Href="Account/License" Variant="@NavVariant("Account/License")" Size="micro" IconLeft="_iconDoc">License</Button>
+            </Authorized>
+        </AuthorizeView>
+        <AuthorizeView Roles="Admin">
+            <Button Href="Admin/Users" Variant="@NavVariant("Admin")" Size="micro" IconLeft="_iconAdmin">Admin</Button>
+        </AuthorizeView>
+        <div class="nav-external-links">
+            <Button Href="swagger" Variant="ghost" Size="micro" IconLeft="_iconApi">Swagger ↗</Button>
+            <Button Href="https://v5.docs.indx.co" Variant="ghost" Size="micro" IconLeft="_iconBook">Docs ↗</Button>
+        </div>
+    </div>
+
+    <div class="nav-right">
+        <AuthorizeView>
+            <Authorized>
+                <button class="nav-bell" aria-label="Notifications">
+                    <Bell Size="16" />
+                </button>
+                <Button Href="Account/Manage" Variant="@NavVariant("Account/Manage")" Size="micro" IconLeft="_iconUser">@context.User.Identity?.Name</Button>
+            </Authorized>
+            <NotAuthorized>
+                <a href="Account/Register" class="btn btn-secondary btn-micro">Register</a>
+                <a href="Account/Login" class="btn btn-secondary btn-micro">Log in</a>
+            </NotAuthorized>
+        </AuthorizeView>
+    </div>
 
     <button class="nav-hamburger" @onclick="ToggleMenu" aria-label="Menu">
         @if (_menuOpen)
@@ -19,30 +52,6 @@
         }
     </button>
 
-    <div class="nav-items @(_menuOpen ? "open" : "")">
-        <Button Href="/" Variant="@NavVariant("/", exact: true)" Size="micro" IconLeft="_iconHome">Datasets</Button>
-        <AuthorizeView>
-            <Authorized>
-                <Button Href="Account/ApiKey" Variant="@NavVariant("Account/ApiKey")" Size="micro" IconLeft="_iconKey">API Key</Button>
-                <Button Href="Account/Manage" Variant="@NavVariant("Account/Manage")" Size="micro" IconLeft="_iconUser">Account</Button>
-                <Button Href="Account/License" Variant="@NavVariant("Account/License")" Size="micro" IconLeft="_iconDoc">License</Button>
-            </Authorized>
-        </AuthorizeView>
-        <AuthorizeView Roles="Admin">
-            <Button Href="Admin/Settings" Variant="@NavVariant("Admin")" Size="micro" IconLeft="_iconAdmin">Admin</Button>
-        </AuthorizeView>
-        <Button Href="swagger" Variant="@NavVariant("swagger")" Size="micro" IconLeft="_iconApi">Swagger ↗</Button>
-        <Button Href="https://v5.docs.indx.co" Variant="ghost" Size="micro" IconLeft="_iconBook">Docs ↗</Button>
-        <AuthorizeView>
-            <NotAuthorized>
-                <div class="nav-mobile-auth">
-                    <a href="Account/Register" class="btn btn-secondary btn-micro">Register</a>
-                    <a href="Account/Login" class="btn btn-secondary btn-micro">Log in</a>
-                </div>
-            </NotAuthorized>
-        </AuthorizeView>
-    </div>
-
     @if (_menuOpen)
     {
         <div class="nav-backdrop" @onclick="CloseMenu"></div>
@@ -51,6 +60,7 @@
 
 @code {
     private bool _menuOpen;
+    private string _instanceName = "Indx";
 
     private RenderFragment<int> _iconHome  => size => @<Database Size="size" />;
     private RenderFragment<int> _iconKey   => size => @<Key Size="size" />;
@@ -59,9 +69,11 @@
     private RenderFragment<int> _iconApi   => size => @<Api Size="size" />;
     private RenderFragment<int> _iconBook  => size => @<Book Size="size" />;
     private RenderFragment<int> _iconAdmin => size => @<Shield Size="size" />;
+    private RenderFragment<int> _iconBell  => size => @<Bell Size="size" />;
 
     protected override void OnInitialized()
     {
+        _instanceName = InstanceSettingsService.Load().InstanceName;
         NavigationManager.LocationChanged += OnLocationChanged;
     }
 
