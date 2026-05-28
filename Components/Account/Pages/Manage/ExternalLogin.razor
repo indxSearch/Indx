@@ -176,7 +176,8 @@
         if (createResult.Succeeded)
         {
             // Add to default role
-            await UserManager.AddToRoleAsync(user, "User");
+            var isFirst = UserManager.Users.Count() == 1;
+            await UserManager.AddToRoleAsync(user, isFirst ? "Admin" : "Member");
             Logger.LogInformation("Added user to default role");
 
             var addLoginResult = await UserManager.AddLoginAsync(user, externalLoginInfo);

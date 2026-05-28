@@ -1,0 +1,297 @@
+@page "/Admin/Users"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using IndxCloudApi.Data
+@attribute [Authorize(Roles = "Admin")]
+@inject UserManager<ApplicationUser> UserManager
+@inject ILogger<Users> Logger
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IndxCloudApi.Services.InstanceSettingsService SettingsService
+
+<PageTitle>Admin — Users</PageTitle>
+
+<div style="display: flex; gap: 8px; margin-bottom: 40px; border-bottom: 1px solid var(--lv2); padding-bottom: 0;">
+    <a href="/Admin/Users" style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--lv6); text-decoration: none; border-bottom: 2px solid var(--lv6); margin-bottom: -1px;">Users</a>
+    <a href="/Admin/Datasets" style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--lv5); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;">Datasets</a>
+    <a href="/Admin/Settings" style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--lv5); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;">Settings</a>
+</div>
+
+<div style="display: flex; align-items: center; gap: 16px; margin-bottom: 40px;">
+    <div>
+        <h2 style="margin-bottom: 4px;">Users</h2>
+        <p style="color: var(--lv5);">Manage user accounts and roles.</p>
+    </div>
+    <Button Variant="ghost" Size="micro" IconLeft="_iconRefresh" style="margin-left: auto;" @onclick="LoadUsers">Refresh</Button>
+</div>
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div style="padding: 14px 18px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114,245,198,0.08); margin-bottom: 24px;">
+        @_message
+    </div>
+}
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div style="padding: 14px 18px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255,66,56,0.08); margin-bottom: 24px;">
+        @_errorMessage
+    </div>
+}
+
+@if (_users == null)
+{
+    <p>Loading...</p>
+}
+else if (_users.Count == 0)
+{
+    <p style="color: var(--lv5);">No users found.</p>
+}
+else
+{
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <thead>
+            <tr style="border-bottom: 1px solid var(--lv3); color: var(--lv5);">
+                <th style="text-align: left; padding: 8px 12px; font-weight: 500;">Email</th>
+                <th style="padding: 8px 12px; font-weight: 500;">Role</th>
+                <th style="padding: 8px 12px; font-weight: 500;">Confirmed</th>
+                <th style="padding: 8px 12px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var u in _users)
+            {
+                <tr style="border-bottom: 1px solid var(--lv2);">
+                    <td style="padding: 10px 12px; color: var(--lv6);">@u.Email</td>
+                    <td style="padding: 10px 12px; text-align: center;">
+                        @if (u.IsAdmin)
+                        {
+                            <IndxCloudApi.Components.Systm.Chip Color="var(--CLightBlue)" TextColor="#080809">Admin</IndxCloudApi.Components.Systm.Chip>
+                        }
+                        else
+                        {
+                            <IndxCloudApi.Components.Systm.Chip Color="var(--lv3)" TextColor="var(--lv5)">Member</IndxCloudApi.Components.Systm.Chip>
+                        }
+                    </td>
+                    <td style="padding: 10px 12px; text-align: center; color: @(u.EmailConfirmed ? "var(--CTeal)" : "var(--lv4)");">
+                        @(u.EmailConfirmed ? "✓" : "–")
+                    </td>
+                    <td style="padding: 10px 12px; text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
+                        @if (u.IsAdmin)
+                        {
+                            @if (u.Id != _currentUserId && (_users?.Count(r => r.IsAdmin) ?? 0) > 1)
+                            {
+                                <Button Variant="ghost" Size="micro" @onclick="() => DemoteUser(u.Id)">Remove Admin</Button>
+                            }
+                        }
+                        else
+                        {
+                            <Button Variant="ghost" Size="micro" @onclick="() => PromoteUser(u.Id)">Make Admin</Button>
+                        }
+                        @if (_deleteConfirmId == u.Id)
+                        {
+                            <Button Variant="danger" Size="micro" @onclick="() => DeleteUser(u.Id)">Confirm Delete</Button>
+                            <Button Variant="ghost" Size="micro" @onclick="() => _deleteConfirmId = null">Cancel</Button>
+                        }
+                        else
+                        {
+                            <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="() => _deleteConfirmId = u.Id" />
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@if (_isInviteMode)
+{
+    <div style="margin-top: 48px;">
+        <h3 style="margin-bottom: 4px;">Pending Invites</h3>
+        <p style="color: var(--lv5); margin: 8px 0 20px; font: var(--text-xs);">
+            Invited addresses can register once. They are removed automatically after the account is created.
+        </p>
+
+        @if (_inviteEmails.Count > 0)
+        {
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px;">
+                <tbody>
+                    @foreach (var email in _inviteEmails)
+                    {
+                        <tr style="border-bottom: 1px solid var(--lv2);">
+                            <td style="padding: 8px 12px; color: var(--lv6);">@email</td>
+                            <td style="padding: 8px 12px;">
+                                <IndxCloudApi.Components.Systm.Chip Color="var(--lv2)" TextColor="var(--lv5)">Pending</IndxCloudApi.Components.Systm.Chip>
+                            </td>
+                            <td style="padding: 8px 12px; text-align: right;">
+                                <Button Variant="ghost" Size="micro" @onclick="() => RevokeInvite(email)">Revoke</Button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p style="color: var(--lv4); font-size: 13px; margin-bottom: 16px;">No pending invites.</p>
+        }
+
+        @if (!_showAddInvite)
+        {
+            <Button Variant="secondary" Size="micro" IconLeft="_iconUserPlus" @onclick="() => { _showAddInvite = true; _inviteError = null; }">
+                Invite a user
+            </Button>
+        }
+        else
+        {
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px;">
+                <input class="indx-input"
+                       placeholder="Email address"
+                       @bind="_inviteEmailInput"
+                       style="width: 220px;" />
+                <Button Variant="primary" Size="micro"
+                        Disabled="@(!IsValidEmail(_inviteEmailInput))"
+                        @onclick="AddInvite">Add</Button>
+                <Button Variant="ghost" Size="micro"
+                        @onclick="() => { _showAddInvite = false; _inviteEmailInput = string.Empty; _inviteError = null; }">Cancel</Button>
+            </div>
+            @if (!string.IsNullOrEmpty(_inviteError))
+            {
+                <p style="color: var(--CSignal); font: var(--text-xs); margin-top: 4px;">@_inviteError</p>
+            }
+        }
+    </div>
+}
+
+@code {
+    private RenderFragment<int> _iconDelete   => size => @<UserX Size="size" />;
+    private RenderFragment<int> _iconRefresh  => size => @<Refresh Size="size" />;
+    private RenderFragment<int> _iconUserPlus => size => @<UserPlus Size="size" />;
+
+    private List<UserRow>? _users;
+    private string? _message;
+    private string? _errorMessage;
+    private string? _deleteConfirmId;
+    private string? _currentUserId;
+    private bool _isInviteMode;
+    private List<string> _inviteEmails = [];
+    private string _inviteEmailInput = "";
+    private bool _showAddInvite;
+    private string? _inviteError;
+
+    private record UserRow(string Id, string? Email, bool IsAdmin, bool EmailConfirmed);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _currentUserId = UserManager.GetUserId(auth.User);
+        LoadInvites();
+        await LoadUsers();
+    }
+
+    private void LoadInvites()
+    {
+        var settings = SettingsService.Load();
+        _isInviteMode = settings.RegistrationMode == IndxCloudApi.Services.RegistrationMode.Invite;
+        _inviteEmails = [.. settings.AllowedEmails];
+    }
+
+    private void AddInvite()
+    {
+        var email = _inviteEmailInput.Trim();
+        if (!IsValidEmail(email)) return;
+        if (_inviteEmails.Any(e => e.Equals(email, StringComparison.OrdinalIgnoreCase)))
+        {
+            _inviteError = "This email is already on the invite list.";
+            return;
+        }
+        _inviteEmails.Add(email);
+        _inviteEmailInput = string.Empty;
+        _showAddInvite = false;
+        _inviteError = null;
+        PersistInvites();
+    }
+
+    private void RevokeInvite(string email)
+    {
+        _inviteEmails.RemoveAll(e => e.Equals(email, StringComparison.OrdinalIgnoreCase));
+        PersistInvites();
+    }
+
+    private void PersistInvites()
+    {
+        var settings = SettingsService.Load();
+        settings.AllowedEmails = [.. _inviteEmails];
+        SettingsService.Save(settings);
+    }
+
+    private static bool IsValidEmail(string email) =>
+        !string.IsNullOrWhiteSpace(email) && email.Contains('@') && email.Contains('.');
+
+    private async Task LoadUsers()
+    {
+        var all = UserManager.Users.ToList();
+        var rows = new List<UserRow>();
+        foreach (var u in all)
+        {
+            var isAdmin = await UserManager.IsInRoleAsync(u, "Admin");
+            rows.Add(new UserRow(u.Id, u.Email, isAdmin, u.EmailConfirmed));
+        }
+        _users = [.. rows.OrderByDescending(r => r.IsAdmin).ThenBy(r => r.Email)];
+    }
+
+    private async Task PromoteUser(string userId)
+    {
+        _message = null; _errorMessage = null;
+        var user = await UserManager.FindByIdAsync(userId);
+        if (user == null) return;
+        await UserManager.AddToRoleAsync(user, "Admin");
+        Logger.LogInformation("Promoted {Email} to Admin", user.Email);
+        _message = $"{user.Email} is now an Admin.";
+        await LoadUsers();
+    }
+
+    private async Task DemoteUser(string userId)
+    {
+        _message = null; _errorMessage = null;
+
+        if (userId == _currentUserId)
+        {
+            _errorMessage = "You cannot remove your own admin role.";
+            return;
+        }
+
+        var adminCount = _users?.Count(u => u.IsAdmin) ?? 0;
+        if (adminCount <= 1)
+        {
+            _errorMessage = "Cannot remove the last admin.";
+            return;
+        }
+
+        var user = await UserManager.FindByIdAsync(userId);
+        if (user == null) return;
+        await UserManager.RemoveFromRoleAsync(user, "Admin");
+        Logger.LogInformation("Removed Admin from {Email}", user.Email);
+        _message = $"{user.Email} is now a Member.";
+        await LoadUsers();
+    }
+
+    private async Task DeleteUser(string userId)
+    {
+        _message = null; _errorMessage = null;
+        _deleteConfirmId = null;
+        var user = await UserManager.FindByIdAsync(userId);
+        if (user == null) return;
+        var email = user.Email;
+        var result = await UserManager.DeleteAsync(user);
+        if (result.Succeeded)
+        {
+            Logger.LogInformation("Deleted user {Email}", email);
+            _message = $"{email} deleted.";
+            await LoadUsers();
+        }
+        else
+        {
+            _errorMessage = $"Delete failed: {string.Join(", ", result.Errors.Select(e => e.Description))}";
+        }
+    }
+}

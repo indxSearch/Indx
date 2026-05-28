@@ -28,6 +28,9 @@
                 <Button Href="Account/License" Variant="@NavVariant("Account/License")" Size="micro" IconLeft="_iconDoc">License</Button>
             </Authorized>
         </AuthorizeView>
+        <AuthorizeView Roles="Admin">
+            <Button Href="Admin/Settings" Variant="@NavVariant("Admin")" Size="micro" IconLeft="_iconAdmin">Admin</Button>
+        </AuthorizeView>
         <Button Href="swagger" Variant="@NavVariant("swagger")" Size="micro" IconLeft="_iconApi">Swagger ↗</Button>
         <Button Href="https://v5.docs.indx.co" Variant="ghost" Size="micro" IconLeft="_iconBook">Docs ↗</Button>
         <AuthorizeView>
@@ -49,12 +52,13 @@
 @code {
     private bool _menuOpen;
 
-    private RenderFragment<int> _iconHome => size => @<Database Size="size" />;
-    private RenderFragment<int> _iconKey  => size => @<Key Size="size" />;
-    private RenderFragment<int> _iconUser => size => @<UserId Size="size" />;
-    private RenderFragment<int> _iconDoc  => size => @<DocumentOrFile Size="size" />;
-    private RenderFragment<int> _iconApi  => size => @<Api Size="size" />;
-    private RenderFragment<int> _iconBook => size => @<Book Size="size" />;
+    private RenderFragment<int> _iconHome  => size => @<Database Size="size" />;
+    private RenderFragment<int> _iconKey   => size => @<Key Size="size" />;
+    private RenderFragment<int> _iconUser  => size => @<UserId Size="size" />;
+    private RenderFragment<int> _iconDoc   => size => @<DocumentOrFile Size="size" />;
+    private RenderFragment<int> _iconApi   => size => @<Api Size="size" />;
+    private RenderFragment<int> _iconBook  => size => @<Book Size="size" />;
+    private RenderFragment<int> _iconAdmin => size => @<Shield Size="size" />;
 
     protected override void OnInitialized()
     {
@@ -85,6 +89,7 @@
             if (path.StartsWith("account/license")) return ("License", _iconDoc);
             if (path.StartsWith("account/manage")) return ("Account", _iconUser);
             if (path.StartsWith("swagger")) return ("Swagger", _iconApi);
+            if (path.StartsWith("admin")) return ("Admin", _iconAdmin);
             return ("Datasets", _iconHome);
         }
     }

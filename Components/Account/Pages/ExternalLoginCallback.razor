@@ -112,7 +112,8 @@
             }
 
             // Add to default role
-            await UserManager.AddToRoleAsync(user, "User");
+            var isFirst = UserManager.Users.Count() == 1;
+            await UserManager.AddToRoleAsync(user, isFirst ? "Admin" : "Member");
             Logger.LogInformation("Created new user from external login: {Email}", email);
         }
 

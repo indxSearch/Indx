@@ -1,0 +1,151 @@
+@page "/Admin/Settings"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@using IndxCloudApi.Services
+@attribute [Authorize(Roles = "Admin")]
+@inject InstanceSettingsService SettingsService
+@inject ILogger<Settings> Logger
+
+<PageTitle>Admin — Settings</PageTitle>
+
+<div style="display: flex; gap: 8px; margin-bottom: 40px; border-bottom: 1px solid var(--lv2); padding-bottom: 0;">
+    <a href="/Admin/Users" style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--lv5); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;">Users</a>
+    <a href="/Admin/Datasets" style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--lv5); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;">Datasets</a>
+    <a href="/Admin/Settings" style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--lv6); text-decoration: none; border-bottom: 2px solid var(--lv6); margin-bottom: -1px;">Settings</a>
+</div>
+
+<h2>Instance Settings</h2>
+<p style="color: var(--lv5); margin-bottom: 40px;">Configure registration and access control for this Indx instance.</p>
+
+@if (!string.IsNullOrEmpty(_successMessage))
+{
+    <div style="padding: 14px 18px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114,245,198,0.08); margin-bottom: 24px;">
+        @_successMessage
+    </div>
+}
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div style="padding: 14px 18px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255,66,56,0.08); margin-bottom: 24px;">
+        @_errorMessage
+    </div>
+}
+
+<div style="max-width: 520px;">
+
+    <div style="margin-bottom: 32px;">
+        <h3>General</h3>
+        <p style="color: var(--lv5); margin: 8px 0 20px;">Basic configuration for this instance.</p>
+        <InputField Label="Instance Name" @bind-Value="_instanceName" placeholder="Indx" />
+        <p style="font: var(--text-xs); color: var(--lv4); margin-top: 6px;">Shown in emails and the browser title.</p>
+    </div>
+
+    <div style="margin-bottom: 32px;">
+        <h3>Access</h3>
+        <p style="color: var(--lv5); margin: 8px 0 20px;">Control sign-in and account behaviour.</p>
+        <div style="display: flex; flex-direction: column; gap: 16px;">
+            <div>
+                <ToggleSwitch Label="Require email verification" @bind-Checked="_requireEmailVerification" />
+                <p style="font: var(--text-xs); color: var(--lv4); margin-top: 4px; margin-left: 48px;">Users must confirm their email address before they can sign in.</p>
+            </div>
+            <div>
+                <ToggleSwitch Label="Allow users to delete their own account" @bind-Checked="_allowUserSelfDeletion" />
+                <p style="font: var(--text-xs); color: var(--lv4); margin-top: 4px; margin-left: 48px;">When disabled, only admins can delete accounts.</p>
+            </div>
+        </div>
+    </div>
+
+    <div style="margin-bottom: 32px;">
+        <h3>Registration</h3>
+        <p style="color: var(--lv5); margin: 8px 0 20px;">Control who can create accounts on this instance.</p>
+
+        <SelectField Label="Registration Mode"
+                     Value="@_registrationMode"
+                     ValueChanged="OnModeChanged"
+                     Options="_modeOptions" />
+
+        @if (_registrationMode == "EmailDomain")
+        {
+            <div style="margin-top: 20px;">
+                <p style="font: var(--text-xs); color: var(--lv5); margin-bottom: 8px;">
+                    Allowed domains — one per line (e.g. <code style="background: var(--lv1); padding: 2px 5px; border-radius: 3px;">yourcompany.com</code>)
+                </p>
+                <textarea class="indx-text-input"
+                          rows="4"
+                          style="width: 100%; resize: vertical; font-family: monospace; font-size: 12px;"
+                          @bind="_allowedDomainsText"
+                          placeholder="yourcompany.com&#10;partner.com"></textarea>
+            </div>
+        }
+    </div>
+
+    <Button Variant="primary" Size="default" @onclick="Save">Save Settings</Button>
+
+</div>
+
+@code {
+    private string _instanceName = "Indx";
+    private bool _requireEmailVerification;
+    private bool _allowUserSelfDeletion = true;
+    private string _registrationMode = "Open";
+    private string _allowedDomainsText = "";
+    private string? _successMessage;
+    private string? _errorMessage;
+
+    private static readonly IEnumerable<SelectField.SelectOption> _modeOptions =
+    [
+        new("Open — anyone can register", "Open"),
+        new("Email Domain — restrict to specific domains", "EmailDomain"),
+        new("Invite — specific email addresses only", "Invite"),
+        new("Closed — no new registrations", "Closed"),
+    ];
+
+    protected override void OnInitialized()
+    {
+        var settings = SettingsService.Load();
+        _instanceName = settings.InstanceName;
+        _requireEmailVerification = settings.RequireEmailVerification;
+        _allowUserSelfDeletion = settings.AllowUserSelfDeletion;
+        _registrationMode = settings.RegistrationMode.ToString();
+        _allowedDomainsText = string.Join("\n", settings.AllowedDomains);
+    }
+
+    private void OnModeChanged(string? value)
+    {
+        _registrationMode = value ?? "Open";
+        _successMessage = null;
+        _errorMessage = null;
+    }
+
+    private void Save()
+    {
+        _successMessage = null;
+        _errorMessage = null;
+
+        try
+        {
+            var mode = Enum.Parse<RegistrationMode>(_registrationMode);
+            var domains = _allowedDomainsText
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(d => d.Contains('.'))
+                .ToList();
+
+            var settings = SettingsService.Load();
+            SettingsService.Save(new InstanceSettings
+            {
+                InstanceName = _instanceName.Trim(),
+                RequireEmailVerification = _requireEmailVerification,
+                AllowUserSelfDeletion = _allowUserSelfDeletion,
+                RegistrationMode = mode,
+                AllowedDomains = domains,
+                AllowedEmails = settings.AllowedEmails,
+            });
+
+            _successMessage = "Settings saved.";
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to save: {ex.Message}";
+            Logger.LogError(ex, "Error saving instance settings");
+        }
+    }
+}

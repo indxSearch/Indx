@@ -365,6 +365,17 @@ namespace IndxCloudApi.Models
         /// the same cleanup order and cannot accidentally skip the _instances eviction.
         /// </summary>
         /// <returns><c>true</c> if the dataset existed and was deleted; <c>false</c> if it did not exist.</returns>
+        internal List<(string DataSetName, string UserId, int AccessCount)> GetAllDataSets()
+        {
+            var db = new SqLiteManager(SearchDbConnectionString);
+            var all = db.GetAllDataSets();
+            return all.Select(row =>
+            {
+                var grants = db.GetAccessGrants(row.DataSetName, row.UserName);
+                return (row.DataSetName, row.UserName, grants.Count);
+            }).ToList();
+        }
+
         internal bool DeleteDataSet(string dataSetName, string userId)
         {
             var persistence = new Persistence(SearchDbConnectionString, dataSetName, userId);

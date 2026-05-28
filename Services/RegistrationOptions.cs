@@ -15,6 +15,11 @@ public class RegistrationOptions
     /// Example: ["yourcompany.com", "partner.com"]
     /// </summary>
     public List<string> AllowedDomains { get; set; } = new();
+
+    /// <summary>
+    /// When true, users must confirm their email before signing in.
+    /// </summary>
+    public bool RequireEmailVerification { get; set; } = false;
 }
 
 /// <summary>
@@ -35,5 +40,10 @@ public enum RegistrationMode
     /// <summary>
     /// Registration is closed - only admins can create accounts
     /// </summary>
-    Closed
+    Closed,
+
+    /// <summary>
+    /// Only specific email addresses added to the invite list can register
+    /// </summary>
+    Invite
 }

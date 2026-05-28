@@ -15,6 +15,7 @@
 @inject IEmailSender EmailSender
 @inject NavigationManager NavigationManager
 @inject ILogger<Index> Logger
+@inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
 
 <PageTitle>Manage Account</PageTitle>
 
@@ -70,6 +71,8 @@
         </form>
     </div>
 
+    @if (InstanceSettingsService.Load().AllowUserSelfDeletion)
+    {
     <div style="margin-bottom: 40px;">
         <h3 style="color: var(--CSignal);">Danger Zone</h3>
         <p style="color: var(--lv5); margin-top: 10px;">
@@ -80,7 +83,7 @@
         {
             <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
                 <span style="font: var(--text-xs); color: var(--lv5);">Type your email to confirm:</span>
-                <input class="indx-text-input" @bind="confirmEmail" @bind:event="oninput" placeholder="@user?.Email" style="min-width: 200px;" />
+                <input class="indx-input" @bind="confirmEmail" @bind:event="oninput" placeholder="@user?.Email" style="width: 200px;" />
                 @if (CanDeleteAccount)
                 {
                     <form action="Account/Manage/DeleteAccount" method="post" style="display:contents;">
@@ -100,6 +103,7 @@
             <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" style="margin-top: 8px;" @onclick="ShowDeleteConfirmation">Delete My Account</Button>
         }
     </div>
+    }
 }
 else
 {

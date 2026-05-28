@@ -87,6 +87,7 @@ public class Program
         builder.Services.Configure<RegistrationOptions>(
             builder.Configuration.GetSection("Registration"));
         builder.Services.AddScoped<RegistrationValidator>();
+        builder.Services.AddSingleton<InstanceSettingsService>();
 
         var registrationMode = builder.Configuration["Registration:Mode"] ?? "Open";
         Console.WriteLine($"ℹ Registration mode: {registrationMode}");
@@ -864,7 +865,7 @@ public class Program
         var logger = services.GetRequiredService<ILogger<Program>>();
 
         // Create roles
-        string[] roleNames = { "Admin", "User", "ApiUser" };
+        string[] roleNames = { "Admin", "Member" };
         foreach (var roleName in roleNames)
         {
             if (!await roleManager.RoleExistsAsync(roleName))
@@ -874,13 +875,14 @@ public class Program
             }
         }
 
-        // Admin email + initial password come from configuration so each customer
-        // deployment can supply its own (Marketplace UI -> Bicep -> App Service Settings
-        // -> Key Vault). Defaults preserve the historical dev experience.
+        // Only seed an admin user when Identity:AdminEmail is explicitly configured
+        // (e.g. Azure Managed App deployment via ARM template). In dev/self-hosted
+        // deployments the first registered user is promoted to Admin automatically.
         var adminEmail = configuration["Identity:AdminEmail"];
         if (string.IsNullOrWhiteSpace(adminEmail))
         {
-            adminEmail = "admin@indx.co";
+            logger.LogInformation("No Identity:AdminEmail configured — first registered user will become Admin.");
+            return;
         }
 
         var adminPassword = configuration["Identity:AdminInitialPassword"];

@@ -1456,20 +1456,16 @@ else
     private async Task LoadAccessGrants(string datasetName, string ownerUserId)
     {
         var grants = IndxCloudInternalApi.Manager.GetAccessGrants(datasetName, ownerUserId);
-        var result = new List<(string Email, string Role)>();
-        foreach (var (granteeId, role) in grants)
-        {
-            var user = await UserManager.FindByIdAsync(granteeId);
-            result.Add((user?.Email ?? granteeId, role));
-        }
-        _accessGrants[datasetName] = result;
+        var ids = grants.Select(g => g.GranteeUserId).Append(ownerUserId).ToHashSet();
+        var userMap = await Task.Run(() =>
+            UserManager.Users.Where(u => ids.Contains(u.Id)).ToDictionary(u => u.Id, u => u.Email));
 
-        // Resolve owner email for the members table header row
+        _accessGrants[datasetName] = grants
+            .Select(g => (userMap.GetValueOrDefault(g.GranteeUserId) ?? g.GranteeUserId, g.Role))
+            .ToList();
+
         if (!_ownerEmail.ContainsKey(datasetName))
-        {
-            var owner = await UserManager.FindByIdAsync(ownerUserId);
-            _ownerEmail[datasetName] = owner?.Email ?? ownerUserId;
-        }
+            _ownerEmail[datasetName] = userMap.GetValueOrDefault(ownerUserId) ?? ownerUserId;
     }
 
     private async Task GrantShareAccess(string datasetName, string ownerUserId)

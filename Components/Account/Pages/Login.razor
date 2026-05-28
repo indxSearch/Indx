@@ -6,8 +6,10 @@
 @using IndxCloudApi.Data
 @using System.ComponentModel.DataAnnotations
 @inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager NavigationManager
 @inject ILogger<Login> Logger
+@inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
 
 <PageTitle>Log in</PageTitle>
 
@@ -137,6 +139,17 @@ else if (externalLogins.Count > 0)
 
     private async Task LoginUser()
     {
+        var settings = InstanceSettingsService.Load();
+        if (settings.RequireEmailVerification)
+        {
+            var u = await UserManager.FindByEmailAsync(Input.Email);
+            if (u != null && !u.EmailConfirmed)
+            {
+                errorMessage = "You must confirm your email before signing in. Check your inbox for a confirmation link.";
+                return;
+            }
+        }
+
         // Sign in the user with password
         var result = await SignInManager.PasswordSignInAsync(
             Input.Email,

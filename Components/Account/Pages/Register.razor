@@ -21,6 +21,7 @@
 @inject NavigationManager NavigationManager
 @inject IdentityRedirectManager RedirectManager
 @inject RegistrationValidator RegistrationValidator
+@inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
 
 
 <PageTitle>Register</PageTitle>
@@ -103,20 +104,24 @@ else
 
     public async Task RegisterUser(EditContext editContext)
     {
-        // Validate registration is allowed
-        var allowedResult = RegistrationValidator.ValidateRegistrationAllowed();
-        if (!allowedResult.IsValid)
-        {
-            identityErrors = new[] { new IdentityError { Description = allowedResult.ErrorMessage ?? "Registration not allowed" } };
-            return;
-        }
+        // First user always gets through — they become the admin
+        var isFirstUser = !UserManager.Users.Any();
 
-        // Validate email domain
-        var emailResult = RegistrationValidator.ValidateEmail(Input.Email);
-        if (!emailResult.IsValid)
+        if (!isFirstUser)
         {
-            identityErrors = new[] { new IdentityError { Description = emailResult.ErrorMessage ?? "Email not allowed" } };
-            return;
+            var allowedResult = RegistrationValidator.ValidateRegistrationAllowed();
+            if (!allowedResult.IsValid)
+            {
+                identityErrors = new[] { new IdentityError { Description = allowedResult.ErrorMessage ?? "Registration not allowed" } };
+                return;
+            }
+
+            var emailResult = RegistrationValidator.ValidateEmail(Input.Email);
+            if (!emailResult.IsValid)
+            {
+                identityErrors = new[] { new IdentityError { Description = emailResult.ErrorMessage ?? "Email not allowed" } };
+                return;
+            }
         }
 
         var user = CreateUser();
@@ -133,6 +138,15 @@ else
         }
 
         Logger.LogInformation("User created a new account with password.");
+        await UserManager.AddToRoleAsync(user, isFirstUser ? "Admin" : "Member");
+
+        // Consume invite if applicable
+        var settings = InstanceSettingsService.Load();
+        if (settings.RegistrationMode == RegistrationMode.Invite)
+        {
+            settings.AllowedEmails.RemoveAll(e => e.Equals(Input.Email, StringComparison.OrdinalIgnoreCase));
+            InstanceSettingsService.Save(settings);
+        }
 
         var userId = await UserManager.GetUserIdAsync(user);
         var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
@@ -141,9 +155,12 @@ else
             NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
             new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code, ["returnUrl"] = ReturnUrl });
         if (user.Email != null)
-            await EmailSender.SendEmailAsync(user.Email, "IndxAuth Please verify your email", HtmlEncoder.Default.Encode(callbackUrl));
+        {
+            var instanceName = InstanceSettingsService.Load().InstanceName;
+            await EmailSender.SendEmailAsync(user.Email, $"{instanceName} — Please verify your email", HtmlEncoder.Default.Encode(callbackUrl));
+        }
 
-        if (UserManager.Options.SignIn.RequireConfirmedAccount)
+        if (InstanceSettingsService.Load().RequireEmailVerification)
         {
             RedirectManager.RedirectTo(
                 "Account/RegisterConfirmation",
