@@ -161,25 +161,25 @@ public class Program
 
         // JWT Authentication for API
         var jwtkey = builder.Configuration["Jwt:Key"];
-        if (string.IsNullOrEmpty(jwtkey))
-        {
-            throw new InvalidOperationException("JWT Key is not configured. Please set a secure key in appsettings.json or user secrets.");
-        }
-
-        // Refuse to start in Production with the placeholder key. In other environments,
-        // emit a warning so local dev and tests keep working.
         var defaultKey = "your-secret-key-minimum-32-characters-change-in-production";
-        if (jwtkey == defaultKey)
+        var jwtKeyFile = "./IndxData/jwt.key";
+
+        if (string.IsNullOrEmpty(jwtkey) || jwtkey == defaultKey)
         {
-            if (builder.Environment.IsProduction())
+            // Try to load a previously auto-generated key
+            if (File.Exists(jwtKeyFile))
             {
-                throw new InvalidOperationException(
-                    "Jwt:Key is set to the placeholder value. Configure a unique 32+ character key " +
-                    "via Key Vault reference or app settings before running in Production.");
+                jwtkey = File.ReadAllText(jwtKeyFile).Trim();
+                Console.WriteLine("✓ JWT key loaded from IndxData/jwt.key");
             }
-            Console.WriteLine("⚠ WARNING: Using default JWT key from appsettings.json");
-            Console.WriteLine("⚠ This is OK for development/testing, but MUST be changed in production!");
-            Console.WriteLine("⚠ Set a secure key using: dotnet user-secrets set \"Jwt:Key\" \"your-secure-key-here\"");
+            else
+            {
+                // Generate and persist a new key on first run
+                Directory.CreateDirectory("./IndxData");
+                jwtkey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
+                File.WriteAllText(jwtKeyFile, jwtkey);
+                Console.WriteLine("✓ JWT key auto-generated and saved to IndxData/jwt.key");
+            }
         }
         else
         {
