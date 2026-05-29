@@ -1,5 +1,8 @@
 {
   "RegistrationMode": 3,
   "AllowedDomains": [],
-  "AllowedEmails": []
+  "AllowedEmails": [],
+  "RequireEmailVerification": false,
+  "AllowUserSelfDeletion": true,
+  "InstanceName": "Indx"
 }
