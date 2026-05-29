@@ -96,7 +96,9 @@ else
                         }
                         else
                         {
-                            <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="() => _deleteConfirmId = u.Id" />
+                            <Tooltip Content="Delete user">
+                                <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="() => _deleteConfirmId = u.Id" />
+                            </Tooltip>
                         }
                     </td>
                 </tr>

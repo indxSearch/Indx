@@ -82,7 +82,9 @@ else
                         }
                         else
                         {
-                            <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="() => _deleteConfirmKey = row.Key" />
+                            <Tooltip Content="Delete dataset">
+                                <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="() => _deleteConfirmKey = row.Key" />
+                            </Tooltip>
                         }
                     </td>
                 </tr>

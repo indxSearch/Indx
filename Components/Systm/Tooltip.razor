@@ -1,0 +1,10 @@
+<span class="indx-tooltip-wrapper indx-tooltip-@Position">
+    @ChildContent
+    <span class="indx-tooltip" role="tooltip">@Content</span>
+</span>
+
+@code {
+    [Parameter, EditorRequired] public string Content { get; set; } = "";
+    [Parameter] public string Position { get; set; } = "top";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -29,9 +29,11 @@
     <div class="nav-right">
         <AuthorizeView>
             <Authorized>
-                <button class="nav-bell" aria-label="Notifications">
-                    <Bell Size="16" />
-                </button>
+                <Tooltip Content="Notifications">
+                    <button class="nav-bell" aria-label="Notifications">
+                        <Bell Size="16" />
+                    </button>
+                </Tooltip>
                 <Button Href="Account/Manage" Variant="@NavVariant("Account/Manage")" Size="micro" IconLeft="_iconUser">@context.User.Identity?.Name</Button>
             </Authorized>
             <NotAuthorized>

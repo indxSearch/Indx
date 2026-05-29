@@ -1,0 +1,90 @@
+.indx-tooltip-wrapper {
+    display: inline-flex;
+    position: relative;
+}
+
+.indx-tooltip {
+    position: absolute;
+    z-index: 100;
+    background: var(--lv3);
+    color: var(--lv6);
+    font: var(--text-xs);
+    font-weight: var(--med);
+    white-space: nowrap;
+    padding: 4px 8px;
+    border-radius: 0;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 100ms ease;
+    transition-delay: 0ms;
+}
+
+/* Arrow */
+.indx-tooltip::after {
+    content: '';
+    position: absolute;
+    border: 4px solid transparent;
+}
+
+/* ── top ── */
+.indx-tooltip-top .indx-tooltip {
+    bottom: calc(100% + 7px);
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.indx-tooltip-top .indx-tooltip::after {
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border-top-color: var(--lv3);
+}
+
+/* ── bottom ── */
+.indx-tooltip-bottom .indx-tooltip {
+    top: calc(100% + 7px);
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.indx-tooltip-bottom .indx-tooltip::after {
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border-bottom-color: var(--lv3);
+}
+
+/* ── left ── */
+.indx-tooltip-left .indx-tooltip {
+    right: calc(100% + 7px);
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.indx-tooltip-left .indx-tooltip::after {
+    left: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    border-left-color: var(--lv3);
+}
+
+/* ── right ── */
+.indx-tooltip-right .indx-tooltip {
+    left: calc(100% + 7px);
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+.indx-tooltip-right .indx-tooltip::after {
+    right: 100%;
+    top: 50%;
+    transform: translateY(-50%);
+    border-right-color: var(--lv3);
+}
+
+/* Show on hover and keyboard focus */
+.indx-tooltip-wrapper:hover .indx-tooltip,
+.indx-tooltip-wrapper:focus-within .indx-tooltip {
+    opacity: 1;
+    transition-delay: 80ms;
+}
