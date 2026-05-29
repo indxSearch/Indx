@@ -166,7 +166,8 @@ else
         if (user.Email != null)
         {
             var instanceName = InstanceSettingsService.Load().InstanceName;
-            await EmailSender.SendEmailAsync(user.Email, $"{instanceName} — Please verify your email", HtmlEncoder.Default.Encode(callbackUrl));
+            await EmailSender.SendEmailAsync(user.Email, $"{instanceName} — Please verify your email",
+                IndxCloudApi.Services.EmailTemplates.VerifyEmail(instanceName, callbackUrl));
         }
 
         if (InstanceSettingsService.Load().RequireEmailVerification)
