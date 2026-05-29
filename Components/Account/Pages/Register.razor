@@ -146,7 +146,7 @@ else
             await NotificationService.CreateForAdminsAsync(
                 IndxCloudApi.Data.NotificationType.UserRegistered,
                 $"New user registered: {Input.Email}",
-                $"{Input.Email} has created an account and is awaiting access.");
+                $"{Input.Email} has created an account.");
         }
 
         // Consume invite if applicable
