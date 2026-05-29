@@ -5,22 +5,22 @@
 <div class="notif-wrapper">
     @if (_open)
     {
-        <button class="nav-bell notif-trigger notif-trigger--active" aria-label="Notifications" @onclick="Toggle">
+        <button class="nav-bell notif-trigger notif-trigger--active @(_unreadCount > 0 ? "notif-trigger--has-unread" : "")" aria-label="Notifications" @onclick="Toggle">
             <Bell Size="16" />
             @if (_unreadCount > 0)
             {
-                <span class="notif-badge">@(_unreadCount > 9 ? "9+" : _unreadCount.ToString())</span>
+                <span class="notif-badge"></span>
             }
         </button>
     }
     else
     {
         <Tooltip Content="Notifications" Position="bottom">
-            <button class="nav-bell notif-trigger" aria-label="Notifications" @onclick="Toggle">
+            <button class="nav-bell notif-trigger @(_unreadCount > 0 ? "notif-trigger--has-unread" : "")" aria-label="Notifications" @onclick="Toggle">
                 <Bell Size="16" />
                 @if (_unreadCount > 0)
                 {
-                    <span class="notif-badge">@(_unreadCount > 9 ? "9+" : _unreadCount.ToString())</span>
+                    <span class="notif-badge"></span>
                 }
             </button>
         </Tooltip>
