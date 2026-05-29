@@ -46,10 +46,6 @@ else
                     <p style="font:var(--text-xs); color:var(--lv5); margin:0 0 6px;">@n.Body</p>
                     <p style="font-size:11px; color:var(--lv4); margin:0;">@n.CreatedAt.ToString("yyyy-MM-dd HH:mm") UTC</p>
                 </div>
-                @if (!n.IsRead)
-                {
-                    <IndxCloudApi.Components.Systm.Chip Color="var(--lv2)" TextColor="var(--lv5)">New</IndxCloudApi.Components.Systm.Chip>
-                }
             </div>
         }
         @if (_all.Last() is { } last)
