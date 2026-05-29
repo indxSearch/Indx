@@ -1,0 +1,116 @@
+@inject IndxCloudApi.Services.NotificationService NotificationService
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager NavigationManager
+
+<div class="notif-wrapper">
+    <Tooltip Content="Notifications" Position="bottom">
+        <button class="nav-bell notif-trigger" aria-label="Notifications" @onclick="Toggle">
+            <Bell Size="16" />
+            @if (_unreadCount > 0)
+            {
+                <span class="notif-badge">@(_unreadCount > 9 ? "9+" : _unreadCount.ToString())</span>
+            }
+        </button>
+    </Tooltip>
+
+    @if (_open)
+    {
+        <div class="notif-backdrop" @onclick="Close"></div>
+
+        <div class="notif-panel" role="dialog" aria-label="Notifications">
+            <div class="notif-panel-header">
+                <span class="notif-panel-title">Notifications</span>
+                @if (_unreadCount > 0)
+                {
+                    <button class="notif-mark-all" @onclick="MarkAllRead">Mark all read</button>
+                }
+            </div>
+
+            @if (_notifications.Count == 0)
+            {
+                <p class="notif-empty">No notifications yet.</p>
+            }
+            else
+            {
+                <ul class="notif-list">
+                    @foreach (var n in _notifications)
+                    {
+                        <li class="notif-row @(!n.IsRead ? "notif-row--unread" : "")"
+                            @onclick="() => MarkRead(n)">
+                            <div class="notif-dot-col">
+                                @if (!n.IsRead)
+                                {
+                                    <span class="notif-dot"></span>
+                                }
+                            </div>
+                            <div class="notif-content">
+                                <p class="notif-title">@n.Title</p>
+                                <p class="notif-body">@n.Body</p>
+                                <p class="notif-time">@RelativeTime(n.CreatedAt)</p>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+
+            <div class="notif-panel-footer">
+                <a href="/Account/Notifications" @onclick="Close">See all notifications</a>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _open;
+    private int _unreadCount;
+    private string? _userId;
+    private List<IndxCloudApi.Data.Notification> _notifications = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (_userId != null)
+            _unreadCount = await NotificationService.GetUnreadCountAsync(_userId);
+    }
+
+    private async Task Toggle()
+    {
+        _open = !_open;
+        if (_open && _userId != null)
+        {
+            _notifications = await NotificationService.GetRecentAsync(_userId, 10);
+            _unreadCount   = await NotificationService.GetUnreadCountAsync(_userId);
+        }
+    }
+
+    private void Close() => _open = false;
+
+    private async Task MarkRead(IndxCloudApi.Data.Notification n)
+    {
+        if (!n.IsRead && _userId != null)
+        {
+            await NotificationService.MarkReadAsync(n.Id, _userId);
+            n.IsRead = true;
+            _unreadCount = Math.Max(0, _unreadCount - 1);
+        }
+    }
+
+    private async Task MarkAllRead()
+    {
+        if (_userId == null) return;
+        await NotificationService.MarkAllReadAsync(_userId);
+        foreach (var n in _notifications) n.IsRead = true;
+        _unreadCount = 0;
+    }
+
+    private static string RelativeTime(DateTime utc)
+    {
+        var diff = DateTime.UtcNow - utc;
+        if (diff.TotalMinutes < 1)  return "just now";
+        if (diff.TotalHours   < 1)  return $"{(int)diff.TotalMinutes}m ago";
+        if (diff.TotalDays    < 1)  return $"{(int)diff.TotalHours}h ago";
+        if (diff.TotalDays    < 7)  return $"{(int)diff.TotalDays}d ago";
+        return utc.ToString("yyyy-MM-dd");
+    }
+}

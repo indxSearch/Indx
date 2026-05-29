@@ -22,6 +22,7 @@
 @inject IdentityRedirectManager RedirectManager
 @inject RegistrationValidator RegistrationValidator
 @inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
+@inject IndxCloudApi.Services.NotificationService NotificationService
 
 
 <PageTitle>Register</PageTitle>
@@ -139,6 +140,14 @@ else
 
         Logger.LogInformation("User created a new account with password.");
         await UserManager.AddToRoleAsync(user, isFirstUser ? "Admin" : "Member");
+
+        if (!isFirstUser)
+        {
+            await NotificationService.CreateForAdminsAsync(
+                IndxCloudApi.Data.NotificationType.UserRegistered,
+                $"New user registered: {Input.Email}",
+                $"{Input.Email} has created an account and is awaiting access.");
+        }
 
         // Consume invite if applicable
         var settings = InstanceSettingsService.Load();

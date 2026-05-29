@@ -1,0 +1,91 @@
+@page "/Account/Notifications"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@using IndxCloudApi.Data
+@using IndxCloudApi.Services
+@attribute [Authorize]
+@inject NotificationService NotificationService
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Notifications</PageTitle>
+
+<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:24px;">
+    <div>
+        <h2 style="margin-bottom:4px;">Notifications</h2>
+        <p style="color:var(--lv5); margin:0;">@_all.Count notification@(_all.Count == 1 ? "" : "s") total</p>
+    </div>
+    @if (_all.Any(n => !n.IsRead))
+    {
+        <Button Variant="secondary" Size="micro" @onclick="MarkAllRead">Mark all read</Button>
+    }
+</div>
+
+@if (_loading)
+{
+    <p style="color:var(--lv5);">Loading...</p>
+}
+else if (_all.Count == 0)
+{
+    <p style="color:var(--lv5);">No notifications yet.</p>
+}
+else
+{
+    <div style="border:1px solid var(--lv2); border-radius:var(--radius); overflow:hidden;">
+        @foreach (var n in _all)
+        {
+            <div style="display:flex; gap:12px; padding:14px 16px; border-bottom:1px solid var(--lv2); background:@(n.IsRead ? "transparent" : "var(--lv1)"); cursor:pointer;"
+                 @onclick="() => MarkRead(n)">
+                <div style="width:8px; display:flex; align-items:flex-start; padding-top:5px; flex-shrink:0;">
+                    @if (!n.IsRead)
+                    {
+                        <span style="width:6px; height:6px; border-radius:3px; background:var(--CTeal); display:block;"></span>
+                    }
+                </div>
+                <div style="flex:1; min-width:0;">
+                    <p style="font:var(--text-sm); font-weight:var(--med); color:var(--lv7); margin:0 0 4px;">@n.Title</p>
+                    <p style="font:var(--text-xs); color:var(--lv5); margin:0 0 6px;">@n.Body</p>
+                    <p style="font-size:11px; color:var(--lv4); margin:0;">@n.CreatedAt.ToString("yyyy-MM-dd HH:mm") UTC</p>
+                </div>
+                @if (!n.IsRead)
+                {
+                    <IndxCloudApi.Components.Systm.Chip Color="var(--lv2)" TextColor="var(--lv5)">New</IndxCloudApi.Components.Systm.Chip>
+                }
+            </div>
+        }
+        @if (_all.Last() is { } last)
+        {
+            <div @key="last.Id" style="border-bottom:none;"></div>
+        }
+    </div>
+}
+
+@code {
+    private List<Notification> _all = [];
+    private bool _loading = true;
+    private string? _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (_userId != null)
+            _all = await NotificationService.GetAllAsync(_userId);
+        _loading = false;
+    }
+
+    private async Task MarkRead(Notification n)
+    {
+        if (!n.IsRead && _userId != null)
+        {
+            await NotificationService.MarkReadAsync(n.Id, _userId);
+            n.IsRead = true;
+        }
+    }
+
+    private async Task MarkAllRead()
+    {
+        if (_userId == null) return;
+        await NotificationService.MarkAllReadAsync(_userId);
+        foreach (var n in _all) n.IsRead = true;
+    }
+}

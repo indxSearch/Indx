@@ -15,5 +15,8 @@ namespace IndxCloudApi.Data
         /// deployment-time initial password.
         /// </summary>
         public bool MustChangePassword { get; set; }
+
+        /// <summary>When false, no notification emails are sent to this user.</summary>
+        public bool EmailNotificationsEnabled { get; set; } = true;
     }
 }

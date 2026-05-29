@@ -88,6 +88,8 @@ public class Program
             builder.Configuration.GetSection("Registration"));
         builder.Services.AddScoped<RegistrationValidator>();
         builder.Services.AddSingleton<InstanceSettingsService>();
+        builder.Services.AddScoped<IndxCloudApi.Services.NotificationService>();
+        builder.Services.AddHostedService<IndxCloudApi.Services.TokenExpiryNotificationJob>();
 
         var registrationMode = builder.Configuration["Registration:Mode"] ?? "Open";
         Console.WriteLine($"ℹ Registration mode: {registrationMode}");

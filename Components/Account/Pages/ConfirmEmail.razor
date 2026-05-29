@@ -6,6 +6,7 @@
 @using IndxCloudApi.Data
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager NavigationManager
+@inject IndxCloudApi.Services.NotificationService NotificationService
 
 <PageTitle>Confirm Email</PageTitle>
 
@@ -74,6 +75,10 @@ else
             if (result.Succeeded)
             {
                 success = true;
+                await NotificationService.CreateForAdminsAsync(
+                    IndxCloudApi.Data.NotificationType.UserConfirmedEmail,
+                    $"{user.Email} confirmed their email",
+                    $"{user.Email} has verified their email address and can now log in.");
             }
             else
             {

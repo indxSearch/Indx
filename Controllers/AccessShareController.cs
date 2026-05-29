@@ -1,6 +1,7 @@
 using Asp.Versioning;
 using IndxCloudApi.Data;
 using IndxCloudApi.Models;
+using IndxCloudApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors;
@@ -17,15 +18,11 @@ namespace IndxCloudApi.Controllers
     [ApiVersion("2.0-alpha")]
     [Route("api/datasets")]
     [ApiController]
-    public class AccessShareController : Controller
+    public class AccessShareController(
+        UserManager<ApplicationUser> userManager,
+        NotificationService notificationService) : Controller
     {
-        private readonly UserManager<ApplicationUser> _userManager;
-
-        /// <summary>Initializes a new instance of <see cref="AccessShareController"/>.</summary>
-        public AccessShareController(UserManager<ApplicationUser> userManager)
-        {
-            _userManager = userManager;
-        }
+        private readonly UserManager<ApplicationUser> _userManager = userManager;
 
         /// <summary>
         /// Lists all current access grants for a dataset.
@@ -73,6 +70,14 @@ namespace IndxCloudApi.Controllers
             if (grantee.Id == ownerId) return BadRequest("Cannot grant access to yourself");
 
             IndxCloudInternalApi.Manager.GrantAccess(dataSetName, ownerId, grantee.Id, request.Role);
+
+            var owner = await _userManager.FindByIdAsync(ownerId);
+            await notificationService.CreateAsync(
+                grantee.Id,
+                NotificationType.DatasetShared,
+                $"Dataset \"{dataSetName}\" shared with you",
+                $"{owner?.Email ?? "Someone"} shared the dataset \"{dataSetName}\" with you as {request.Role}.");
+
             return Ok();
         }
 
@@ -94,6 +99,14 @@ namespace IndxCloudApi.Controllers
             if (grantee == null) return BadRequest("User not found");
 
             IndxCloudInternalApi.Manager.RevokeAccess(dataSetName, ownerId, grantee.Id);
+
+            var owner = await _userManager.FindByIdAsync(ownerId);
+            await notificationService.CreateAsync(
+                grantee.Id,
+                NotificationType.AccessRevoked,
+                $"Access to \"{dataSetName}\" removed",
+                $"{owner?.Email ?? "Someone"} removed your access to the dataset \"{dataSetName}\".");
+
             return Ok();
         }
 

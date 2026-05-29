@@ -12,6 +12,7 @@ namespace IndxCloudApi.Data
         }
 
         public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
+        public DbSet<Notification> Notifications => Set<Notification>();
     }
 #pragma warning restore 1591
 }

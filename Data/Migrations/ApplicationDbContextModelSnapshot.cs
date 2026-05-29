@@ -60,6 +60,50 @@ namespace IndxCloudApi.Data.Migrations
                     b.ToTable("ApiKeys");
                 });
 
+            modelBuilder.Entity("IndxCloudApi.Data.Notification", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsRead")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Metadata")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceId")
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Type")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserId", "Type", "SourceId");
+
+                    b.ToTable("Notifications");
+                });
+
             modelBuilder.Entity("IndxCloudApi.Data.ApplicationUser", b =>
                 {
                     b.Property<string>("Id")
@@ -84,6 +128,9 @@ namespace IndxCloudApi.Data.Migrations
 
                     b.Property<DateTimeOffset?>("LockoutEnd")
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("EmailNotificationsEnabled")
+                        .HasColumnType("INTEGER");
 
                     b.Property<bool>("MustChangePassword")
                         .HasColumnType("INTEGER");
@@ -256,6 +303,17 @@ namespace IndxCloudApi.Data.Migrations
                 });
 
             modelBuilder.Entity("IndxCloudApi.Data.ApiKey", b =>
+                {
+                    b.HasOne("IndxCloudApi.Data.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("IndxCloudApi.Data.Notification", b =>
                 {
                     b.HasOne("IndxCloudApi.Data.ApplicationUser", "User")
                         .WithMany()
