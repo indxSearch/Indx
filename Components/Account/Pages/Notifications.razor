@@ -16,7 +16,7 @@
     </div>
     @if (_all.Any(n => !n.IsRead))
     {
-        <Button Variant="secondary" Size="micro" @onclick="MarkAllRead">Mark all read</Button>
+        <Button Variant="secondary" Size="micro" IconLeft="_iconCheck" @onclick="MarkAllRead">Mark all read</Button>
     }
 </div>
 
@@ -60,6 +60,8 @@ else
 }
 
 @code {
+    private RenderFragment<int> _iconCheck => size => @<Check Size="size" />;
+
     private List<Notification> _all = [];
     private bool _loading = true;
     private string? _userId;
