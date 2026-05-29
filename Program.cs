@@ -725,6 +725,11 @@ public class Program
         Console.WriteLine("╚═══════════════════════════════════════════════════════════╝");
         Console.WriteLine();
 
+        // Reset static Manager on shutdown so a subsequent startup (e.g. test factories)
+        // can call StartUpSystem again cleanly.
+        var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+        lifetime.ApplicationStopped.Register(IndxCloudInternalApi.Shutdown);
+
         app.Run();
     }
 

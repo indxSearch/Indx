@@ -66,6 +66,17 @@ namespace IndxCloudApi.Models
             Manager = new IndxCloudInternalApi(dbConnectionString);
             Manager.InitializeSystem();
         }
+
+        /// <summary>
+        /// Resets the static Manager so the next startup can reinitialize cleanly.
+        /// Called from the application host's ApplicationStopped event.
+        /// </summary>
+        internal static void Shutdown()
+        {
+            _manager = null;
+            SearchDbConnectionString = "";
+            LicensePath = "";
+        }
         internal static string SearchDbConnectionString { get; private set; } = "";
         internal static string LicensePath { get; private set; } = "";
 
