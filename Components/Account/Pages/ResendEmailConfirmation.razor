@@ -108,7 +108,7 @@ else
                     var instanceName = InstanceSettingsService.Load().InstanceName;
                     await EmailSender.SendEmailAsync(
                         Input.Email,
-                        $"{instanceName} — Please verify your email",
+                        IndxCloudApi.Services.EmailTemplates.Subject(instanceName, "Please verify your email"),
                         IndxCloudApi.Services.EmailTemplates.ResendConfirmation(instanceName, callbackUrl));
 
                     Logger.LogInformation("Resent confirmation email to {Email}", Input.Email);

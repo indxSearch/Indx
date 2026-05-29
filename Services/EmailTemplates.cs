@@ -2,6 +2,9 @@ namespace IndxCloudApi.Services;
 
 public static class EmailTemplates
 {
+    public static string Subject(string instanceName, string message) =>
+        $"Indx Search System - {instanceName} - {message}";
+
     public static string VerifyEmail(string instanceName, string confirmUrl) =>
         Build(
             instanceName,

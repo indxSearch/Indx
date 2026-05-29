@@ -171,7 +171,7 @@ else
             var instanceName = InstanceSettingsService.Load().InstanceName;
             await EmailSender.SendEmailAsync(
                 user.Email,
-                $"{instanceName} — Confirm your new email address",
+                IndxCloudApi.Services.EmailTemplates.Subject(instanceName, "Confirm your new email address"),
                 IndxCloudApi.Services.EmailTemplates.ConfirmEmailChange(instanceName, callbackUrl));
 
             Logger.LogInformation("Resent confirmation email to {Email}", user.Email);
