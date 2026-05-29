@@ -2,6 +2,16 @@ namespace IndxCloudApi.Services;
 
 public static class EmailTemplates
 {
+    public static string Invite(string instanceName, string registerUrl) =>
+        Build(
+            instanceName,
+            "You have been invited",
+            $"You have been invited to join <strong>{instanceName}</strong>. Click the button below to create your account.",
+            registerUrl,
+            "Create Account",
+            "If you were not expecting this invitation, you can safely ignore this email."
+        );
+
     public static string Subject(string instanceName, string message) =>
         $"Indx Search System - {instanceName} - {message}";
 

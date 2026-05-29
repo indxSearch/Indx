@@ -44,16 +44,19 @@
 
         _emails =
         [
-            new("Verify email (on registration)", $"{instanceName} — Please verify your email",
+            new("Invite", EmailTemplates.Subject(instanceName, "You have been invited"),
+                EmailTemplates.Invite(instanceName, exampleUrl)),
+
+            new("Verify email (on registration)", EmailTemplates.Subject(instanceName, "Please verify your email"),
                 EmailTemplates.VerifyEmail(instanceName, exampleUrl)),
 
-            new("Reset password", $"{instanceName} — Reset your password",
+            new("Reset password", EmailTemplates.Subject(instanceName, "Reset your password"),
                 EmailTemplates.ResetPassword(instanceName, exampleUrl)),
 
-            new("Confirm email change", $"{instanceName} — Confirm your new email address",
+            new("Confirm email change", EmailTemplates.Subject(instanceName, "Confirm your new email address"),
                 EmailTemplates.ConfirmEmailChange(instanceName, exampleUrl)),
 
-            new("Resend verification", $"{instanceName} — Please verify your email",
+            new("Resend verification", EmailTemplates.Subject(instanceName, "Please verify your email"),
                 EmailTemplates.ResendConfirmation(instanceName, exampleUrl)),
         ];
     }
