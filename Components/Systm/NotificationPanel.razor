@@ -3,15 +3,28 @@
 @inject NavigationManager NavigationManager
 
 <div class="notif-wrapper">
-    <Tooltip Content="Notifications" Position="bottom">
-        <button class="nav-bell notif-trigger" aria-label="Notifications" @onclick="Toggle">
+    @if (_open)
+    {
+        <button class="nav-bell notif-trigger notif-trigger--active" aria-label="Notifications" @onclick="Toggle">
             <Bell Size="16" />
             @if (_unreadCount > 0)
             {
                 <span class="notif-badge">@(_unreadCount > 9 ? "9+" : _unreadCount.ToString())</span>
             }
         </button>
-    </Tooltip>
+    }
+    else
+    {
+        <Tooltip Content="Notifications" Position="bottom">
+            <button class="nav-bell notif-trigger" aria-label="Notifications" @onclick="Toggle">
+                <Bell Size="16" />
+                @if (_unreadCount > 0)
+                {
+                    <span class="notif-badge">@(_unreadCount > 9 ? "9+" : _unreadCount.ToString())</span>
+                }
+            </button>
+        </Tooltip>
+    }
 
     @if (_open)
     {

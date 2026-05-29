@@ -8,6 +8,11 @@
     position: relative;
 }
 
+.notif-trigger--active {
+    background: var(--lv2);
+    color: var(--lv8);
+}
+
 .notif-badge {
     position: absolute;
     top: 2px;
