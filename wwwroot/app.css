@@ -381,6 +381,7 @@ a.btn-danger:hover {
     padding: calc(var(--spacing) * 8);
     max-width: 1440px;
     width: 100%;
+    margin: 0 auto;
 }
 
 /* Navigation */
@@ -389,6 +390,8 @@ a.btn-danger:hover {
     align-items: center;
     width: 100%;
     gap: 10px;
+    max-width: 1440px;
+    margin: 0 auto;
 }
 
 .nav-items {
