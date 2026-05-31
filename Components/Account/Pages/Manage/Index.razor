@@ -66,10 +66,7 @@
 
         <div style="margin-top: 28px;">
             <h3 style="margin-bottom: 12px;">Notifications</h3>
-            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font:var(--text-sm); color:var(--lv6);">
-                <ToggleSwitch Checked="@(user.EmailNotificationsEnabled)" OnChange="SaveEmailPref" />
-                Send notification emails
-            </label>
+            <ToggleSwitch Checked="@(user.EmailNotificationsEnabled)" CheckedChanged="SaveEmailPref" Label="Send notification emails" />
             <p style="font:var(--text-xs); color:var(--lv4); margin:6px 0 0;">
                 In-app notifications are always delivered. This controls whether emails are also sent.
             </p>
