@@ -76,15 +76,15 @@
                     <td style="padding:10px 12px;">
                         @if (key.IsRevoked)
                         {
-                            <IndxCloudApi.Components.Systm.Chip Color="var(--lv3)" TextColor="var(--lv5)">Revoked</IndxCloudApi.Components.Systm.Chip>
+                            <Chip Color="var(--lv3)" TextColor="var(--lv5)">Revoked</Chip>
                         }
                         else if (expired)
                         {
-                            <IndxCloudApi.Components.Systm.Chip Color="var(--lv3)" TextColor="var(--lv5)">Expired</IndxCloudApi.Components.Systm.Chip>
+                            <Chip Color="var(--lv3)" TextColor="var(--lv5)">Expired</Chip>
                         }
                         else
                         {
-                            <IndxCloudApi.Components.Systm.Chip Color="var(--CTeal)" TextColor="#080809">Active</IndxCloudApi.Components.Systm.Chip>
+                            <Chip Color="var(--CTeal)" TextColor="#080809">Active</Chip>
                         }
                     </td>
                     <td style="padding:10px 12px; text-align:right;">

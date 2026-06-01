@@ -66,6 +66,10 @@
 		<PackageReference Include="System.ServiceModel.Syndication" Version="10.0.3" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<ProjectReference Include="..\Indx.Systm.Blazor\Indx.Systm.Blazor.csproj" />
+	</ItemGroup>
+
 	<!-- Switch: set IndxFromNuGet=true at publish time to use the obfuscated NuGet package -->
 	<PropertyGroup Condition="'$(IndxFromNuGet)' != 'true'">
 	  <DefineConstants>$(DefineConstants);SOURCE_BUILD</DefineConstants>

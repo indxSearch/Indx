@@ -5,68 +5,8 @@
     padding: 0;
 }
 
-/* Systm Design Tokens */
-:root {
-    --spacing: 5px;
-    --radius: 1px;
-
-    --lv0: #FFFFFF;
-    --lv1: #FBFBFB;
-    --lv2: #EFEFEF;
-    --lv3: #CFCFCF;
-    --lv4: #757575;
-    --lv5: #4A4A50;
-    --lv6: #1A1A21;
-    --lv7: #121215;
-    --lv8: #080809;
-
-    --CSignal: #FF4238;
-    --CTeal: #72F5C6;
-    --CPureBlue: #0000ff;
-    --CLightBlue: #6B9EFF;
-    --CWarning: #FFC107;
-
-    /* FONT FAMILY */
-    --font-family: 'Inter', sans-serif;
-
-    /* TEXT */
-    --text-2xs: 350 10px/1 var(--font-family);
-    --text-xs: 350 11px/1 var(--font-family);
-    --text-sm: 350 13px/1 var(--font-family);
-    --text-base: 350 15px/1 var(--font-family);
-    --text-lg: 350 17px/1 var(--font-family);
-    --text-xl: 350 19px/1 var(--font-family);
-    --text-2xl: 350 24px/1 var(--font-family);
-    --text-3xl: 350 30px/1 var(--font-family);
-    --text-4xl: 350 36px/1 var(--font-family);
-
-    --pattern-checkerboard-light: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23080809'/%3E%3Crect x='1' width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
-    --pattern-checkerboard-dark: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='1' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
-
-    --light: 300;
-    --book: 350;
-    --reg: 400;
-    --med: 500;
-    --semi: 600;
-    --bold: 700;
-}
-
-/* Dark mode via system preference */
-@media (prefers-color-scheme: dark) {
-    :root {
-        --pattern-checkerboard-light: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='1' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
-
-        --lv0: #080809;
-        --lv1: #121215;
-        --lv2: #1A1A21;
-        --lv3: #393941;
-        --lv4: #565661;
-        --lv5: #8F8F97;
-        --lv6: #EFEFEF;
-        --lv7: #FBFBFB;
-        --lv8: #FFFFFF;
-    }
-}
+/* Design tokens (:root vars) + dark mode now live in the Indx.Systm.Blazor RCL:
+   _content/Indx.Systm.Blazor/indx-systm.css (linked in App.razor before this file). */
 
 /* Base Styles */
 html, body {
@@ -345,22 +285,9 @@ a.btn-danger:hover {
     opacity: 0.8;
 }
 
-/* Font Faces */
-@font-face {
-    font-family: 'Inter';
-    src: url('/fonts/Inter-Regular.woff2');
-    font-weight: 400;
-    font-display: swap;
-}
+/* Font @font-face declarations (FunktionalGrotesk + Inter) now live in the
+   Indx.Systm.Blazor RCL: _content/Indx.Systm.Blazor/fonts/fonts.css */
 
-@font-face {
-    font-family: 'Inter';
-    src: url('/fonts/Inter-Medium.woff2');
-    font-weight: 500;
-    font-display: swap;
-}
-
-/* Layout */
 /* Layout */
 .layout {
     display: flex;
@@ -827,13 +754,4 @@ a.btn-danger:hover {
 .indx-input-border-bottom.indx-input-error { border-bottom-color: var(--CSignal); }
 .indx-input-border-bottom.indx-input-error:focus { border-bottom-color: var(--CSignal); }
 
-/* Chip */
-.indx-chip {
-    display: inline-block;
-    color: var(--lv6);
-    background-color: var(--lv2);
-    font: var(--text-xs);
-    border-radius: 10px;
-    padding: 2px 6px;
-    white-space: nowrap;
-}
+/* Chip styling now lives with the component: Indx.Systm.Blazor/Chip.razor.css */

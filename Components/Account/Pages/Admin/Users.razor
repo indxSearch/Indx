@@ -70,11 +70,11 @@ else
                     <td style="padding: 10px 12px; text-align: center;">
                         @if (u.IsAdmin)
                         {
-                            <IndxCloudApi.Components.Systm.Chip Color="var(--CLightBlue)" TextColor="#080809">Admin</IndxCloudApi.Components.Systm.Chip>
+                            <Chip Color="var(--CLightBlue)" TextColor="#080809">Admin</Chip>
                         }
                         else
                         {
-                            <IndxCloudApi.Components.Systm.Chip Color="var(--lv3)" TextColor="var(--lv5)">Member</IndxCloudApi.Components.Systm.Chip>
+                            <Chip Color="var(--lv3)" TextColor="var(--lv5)">Member</Chip>
                         }
                     </td>
                     <td style="padding: 10px 12px; text-align: center; color: @(u.EmailConfirmed ? "var(--CTeal)" : "var(--lv4)");">
@@ -127,7 +127,7 @@ else
                         <tr style="border-bottom: 1px solid var(--lv2);">
                             <td style="padding: 8px 12px; color: var(--lv6);">@email</td>
                             <td style="padding: 8px 12px;">
-                                <IndxCloudApi.Components.Systm.Chip Color="var(--lv2)" TextColor="var(--lv5)">Pending</IndxCloudApi.Components.Systm.Chip>
+                                <Chip Color="var(--lv2)" TextColor="var(--lv5)">Pending</Chip>
                             </td>
                             <td style="padding: 8px 12px; text-align: right;">
                                 <Button Variant="ghost" Size="micro" @onclick="() => RevokeInvite(email)">Revoke</Button>
