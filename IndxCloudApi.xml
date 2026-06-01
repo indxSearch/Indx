@@ -473,6 +473,12 @@
              maps to HTTP 409.
              </summary>
         </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.Shutdown">
+            <summary>
+            Resets the static Manager so the next startup can reinitialize cleanly.
+            Called from the application host's ApplicationStopped event.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.DoIndex(System.String,System.String)">
             <summary>
             After Loading, insertions and deletions call this function

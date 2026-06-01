@@ -75,32 +75,30 @@ For basic authentication, the default permissions are sufficient. If you need ad
 
 1. Navigate to [Google Cloud Console](https://console.cloud.google.com/)
 2. Create a new project or select an existing one
-3. Note your Project ID
 
-### Step 2: Enable Google+ API
+### Step 2: Configure the OAuth Consent Screen
 
-1. In your project, navigate to **APIs & Services** > **Library**
-2. Search for "Google+ API"
-3. Click **Enable**
+1. Navigate to **APIs & Services** > **OAuth consent screen**
+2. Choose **External** as the user type
+3. Fill in the required fields:
+   - **App name**: `IndxCloudApi` (or your preferred name)
+   - **User support email**: your email
+   - **Developer contact information**: your email
+4. Click **Save and Continue** through the Scopes and Test Users screens
+5. Click **Back to Dashboard**
 
 ### Step 3: Create OAuth Credentials
 
 1. Navigate to **APIs & Services** > **Credentials**
 2. Click **+ CREATE CREDENTIALS** > **OAuth client ID**
-3. If prompted, configure the OAuth consent screen first:
-   - User Type: **External**
-   - App name: `IndxCloudApi`
-   - User support email: your email
-   - Developer contact: your email
-   - Save and continue through the scopes and test users screens
-4. Back to Create OAuth client ID:
-   - Application type: **Web application**
-   - Name: `IndxCloudApi`
+3. Fill in the form:
+   - **Application type**: Web application
+   - **Name**: `IndxCloudApi`
    - **Authorized redirect URIs**:
-     - `https://localhost:5001/signin-google`
+     - `https://localhost:5001/signin-google` (development)
      - `https://yourdomain.com/signin-google` (production)
-5. Click **Create**
-6. Copy your **Client ID** and **Client Secret**
+4. Click **Create**
+5. Copy your **Client ID** and **Client Secret**
 
 ---
 

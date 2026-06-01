@@ -75,8 +75,17 @@
 }
 
 .indx-table-wrap {
-    overflow-x: auto;
     margin-bottom: 12px;
+}
+
+@media (max-width: 1440px) {
+    .indx-table-wrap {
+        overflow-x: auto;
+    }
+
+    .indx-table thead {
+        position: static;
+    }
 }
 
 .indx-field-config-toolbar {
@@ -213,8 +222,15 @@
     border: 0.5px solid var(--lv3);
 }
 
+.indx-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
 .indx-table thead tr {
     background-color: var(--lv2);
+    box-shadow: 0 0.5px 0 var(--lv3);
 }
 
 .indx-table thead th {

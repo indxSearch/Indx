@@ -8,6 +8,8 @@
 @inject ILogger<Users> Logger
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IndxCloudApi.Services.InstanceSettingsService SettingsService
+@inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
+@inject NavigationManager NavigationManager
 
 <PageTitle>Admin — Users</PageTitle>
 
@@ -17,6 +19,7 @@
     <a href="/Admin/Users" style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--lv6); text-decoration: none; border-bottom: 2px solid var(--lv6); margin-bottom: -1px;">Users</a>
     <a href="/Admin/Datasets" style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--lv5); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;">Datasets</a>
     <a href="/Admin/Settings" style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--lv5); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;">Settings</a>
+    <a href="/Admin/EmailPreview" style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--lv5); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;">Email Preview</a>
 </div>
 
 <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 40px;">
@@ -154,7 +157,7 @@ else
                        style="width: 220px;" />
                 <Button Variant="primary" Size="micro"
                         Disabled="@(!IsValidEmail(_inviteEmailInput))"
-                        @onclick="AddInvite">Add</Button>
+                        @onclick="AddInviteAsync">Add</Button>
                 <Button Variant="ghost" Size="micro"
                         @onclick="() => { _showAddInvite = false; _inviteEmailInput = string.Empty; _inviteError = null; }">Cancel</Button>
             </div>
@@ -199,7 +202,7 @@ else
         _inviteEmails = [.. settings.AllowedEmails];
     }
 
-    private void AddInvite()
+    private async Task AddInviteAsync()
     {
         var email = _inviteEmailInput.Trim();
         if (!IsValidEmail(email)) return;
@@ -213,6 +216,23 @@ else
         _showAddInvite = false;
         _inviteError = null;
         PersistInvites();
+
+        var instanceName = SettingsService.Load().InstanceName;
+        var registerUrl = NavigationManager.ToAbsoluteUri("/Account/Register").ToString();
+        try
+        {
+            await EmailSender.SendEmailAsync(
+                email,
+                IndxCloudApi.Services.EmailTemplates.Subject(instanceName, "You have been invited"),
+                IndxCloudApi.Services.EmailTemplates.Invite(instanceName, registerUrl));
+            Logger.LogInformation("Invite sent to {Email}", email);
+            _message = $"Invite sent to {email}.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to send invite email to {Email}", email);
+            _message = $"{email} added to invite list, but the email could not be sent.";
+        }
     }
 
     private void RevokeInvite(string email)

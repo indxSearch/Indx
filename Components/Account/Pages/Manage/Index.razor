@@ -66,10 +66,7 @@
 
         <div style="margin-top: 28px;">
             <h3 style="margin-bottom: 12px;">Notifications</h3>
-            <label style="display:flex; align-items:center; gap:10px; cursor:pointer; font:var(--text-sm); color:var(--lv6);">
-                <ToggleSwitch Checked="@(user.EmailNotificationsEnabled)" OnChange="SaveEmailPref" />
-                Send notification emails
-            </label>
+            <ToggleSwitch Checked="@(user.EmailNotificationsEnabled)" CheckedChanged="SaveEmailPref" Label="Send notification emails" />
             <p style="font:var(--text-xs); color:var(--lv4); margin:6px 0 0;">
                 In-app notifications are always delivered. This controls whether emails are also sent.
             </p>
@@ -168,28 +165,11 @@ else
                 NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
                 new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code });
 
+            var instanceName = InstanceSettingsService.Load().InstanceName;
             await EmailSender.SendEmailAsync(
                 user.Email,
-                "Confirm your email",
-                $@"
-                <html>
-                <body style='font-family: Arial, sans-serif; line-height: 1.6; color: #333;'>
-                    <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
-                        <h2 style='color: #0066cc;'>Confirm Your Email</h2>
-                        <p>Please confirm your account by clicking the button below:</p>
-                        <div style='text-align: center; margin: 30px 0;'>
-                            <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'
-                               style='background-color: #0066cc; color: white; padding: 12px 30px; text-decoration: none; border-radius: 4px; display: inline-block;'>
-                                Confirm Email
-                            </a>
-                        </div>
-                        <p style='color: #666; font-size: 14px;'>
-                            Or copy and paste this link into your browser:<br/>
-                            <a href='{HtmlEncoder.Default.Encode(callbackUrl)}'>{HtmlEncoder.Default.Encode(callbackUrl)}</a>
-                        </p>
-                    </div>
-                </body>
-                </html>");
+                IndxCloudApi.Services.EmailTemplates.Subject(instanceName, "Confirm your new email address"),
+                IndxCloudApi.Services.EmailTemplates.ConfirmEmailChange(instanceName, callbackUrl));
 
             Logger.LogInformation("Resent confirmation email to {Email}", user.Email);
             emailResendSuccess = true;
