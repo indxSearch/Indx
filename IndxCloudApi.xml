@@ -10,8 +10,11 @@
             All operations require the caller to be the dataset owner.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.AccessShareController.#ctor(Microsoft.AspNetCore.Identity.UserManager{IndxCloudApi.Data.ApplicationUser})">
-            <summary>Initializes a new instance of <see cref="T:IndxCloudApi.Controllers.AccessShareController"/>.</summary>
+        <member name="M:IndxCloudApi.Controllers.AccessShareController.#ctor(Microsoft.AspNetCore.Identity.UserManager{IndxCloudApi.Data.ApplicationUser},IndxCloudApi.Services.NotificationService)">
+            <summary>
+            Endpoints for sharing dataset access and transferring ownership between users.
+            All operations require the caller to be the dataset owner.
+            </summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.AccessShareController.GetAccessGrants(System.String)">
             <summary>
@@ -385,6 +388,9 @@
             deployment-time initial password.
             </summary>
         </member>
+        <member name="P:IndxCloudApi.Data.ApplicationUser.EmailNotificationsEnabled">
+            <summary>When false, no notification emails are sent to this user.</summary>
+        </member>
         <member name="T:IndxCloudApi.Data.Migrations.InitialCreate">
             <inheritdoc />
         </member>
@@ -408,6 +414,24 @@
         </member>
         <member name="M:IndxCloudApi.Data.Migrations.AddApiKeys.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
             <inheritdoc />
+        </member>
+        <member name="T:IndxCloudApi.Data.Migrations.AddNotifications">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.AddNotifications.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.AddNotifications.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.AddNotifications.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="P:IndxCloudApi.Data.Notification.Metadata">
+            <summary>Optional JSON payload — dataset name, API key ID, link target etc.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Data.Notification.SourceId">
+            <summary>Stable identifier for background-job deduplication (e.g. ApiKey.Id as string).</summary>
         </member>
         <member name="T:IndxCloudApi.Models.ChangePasswordRequest">
             <summary>
@@ -747,6 +771,12 @@
         </member>
         <member name="M:IndxCloudApi.Services.LicenseBootstrapper.EnsureLocalLicenseAsync(System.Threading.CancellationToken)">
             <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Services.NotificationService.CreateForAdminsAsync(IndxCloudApi.Data.NotificationType,System.String,System.String,System.String)">
+            <summary>Creates a notification for every user in the Admin role.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.NotificationService.ExistsAsync(System.String,IndxCloudApi.Data.NotificationType,System.String)">
+            <summary>True if an unread notification of this type+sourceId already exists for the user.</summary>
         </member>
         <member name="T:IndxCloudApi.Services.RegistrationOptions">
             <summary>
