@@ -166,8 +166,16 @@ public class Program
         var jwtkey = builder.Configuration["Jwt:Key"];
         var defaultKey = "your-secret-key-minimum-32-characters-change-in-production";
         var jwtKeyFile = "./IndxData/jwt.key";
+        var keyMissingOrPlaceholder = string.IsNullOrEmpty(jwtkey) || jwtkey == defaultKey;
 
-        if (string.IsNullOrEmpty(jwtkey) || jwtkey == defaultKey)
+        if (builder.Environment.IsProduction() && keyMissingOrPlaceholder)
+        {
+            throw new InvalidOperationException(
+                "Jwt:Key is missing or set to the placeholder value in Production. " +
+                "Set Jwt:Key to a real secret (>= 32 chars) via Key Vault or environment variable.");
+        }
+
+        if (keyMissingOrPlaceholder)
         {
             // Try to load a previously auto-generated key
             if (File.Exists(jwtKeyFile))
