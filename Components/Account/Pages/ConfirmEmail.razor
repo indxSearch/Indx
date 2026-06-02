@@ -8,9 +8,9 @@
 @inject NavigationManager NavigationManager
 @inject IndxCloudApi.Services.NotificationService NotificationService
 
-<PageTitle>Confirm Email</PageTitle>
+<PageTitle>Confirm email</PageTitle>
 
-<h3>Confirm Email</h3>
+<h3>Confirm email</h3>
 
 @if (isLoading)
 {
@@ -21,10 +21,10 @@
 else if (success)
 {
     <div style="padding: 20px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114, 245, 198, 0.1); margin: 20px 0;">
-        <h4>Email Confirmed!</h4>
+        <h4>Email confirmed</h4>
         <p>Thank you for confirming your email address.</p>
         <div style="margin-top: 20px;">
-            <Button Href="/Account/Login" Variant="primary">Go to Login</Button>
+            <Button Href="/Account/Login" Variant="primary">Log in</Button>
         </div>
     </div>
 }
@@ -34,7 +34,7 @@ else
         <h4>Error</h4>
         <p>@errorMessage</p>
         <div style="margin-top: 20px;">
-            <Button Href="/" Variant="secondary">Go to Home</Button>
+            <Button Href="/" Variant="secondary">Go to home</Button>
         </div>
     </div>
 }

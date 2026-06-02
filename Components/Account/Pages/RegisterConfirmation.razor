@@ -4,9 +4,9 @@
 @using IndxCloudApi.Data
 @inject UserManager<ApplicationUser> UserManager
 
-<PageTitle>Register Confirmation</PageTitle>
+<PageTitle>Register confirmation</PageTitle>
 
-<h3>Registration Successful</h3>
+<h3>Registration successful</h3>
 
 @if (!string.IsNullOrEmpty(Email))
 {
@@ -23,7 +23,7 @@
         </p>
     </div>
     <div style="margin-top: 20px;">
-        <Button Href="/Account/Login" Variant="primary">Go to Login</Button>
+        <Button Href="/Account/Login" Variant="primary">Log in</Button>
     </div>
 }
 else
@@ -32,7 +32,7 @@ else
         <p>Invalid registration confirmation request.</p>
     </div>
     <div style="margin-top: 20px;">
-        <Button Href="/" Variant="secondary">Go to Home</Button>
+        <Button Href="/" Variant="secondary">Go to home</Button>
     </div>
 }
 

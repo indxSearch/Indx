@@ -17,29 +17,29 @@
 @inject ILogger<Index> Logger
 @inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
 
-<PageTitle>Manage Account</PageTitle>
+<PageTitle>Manage account</PageTitle>
 
-<h2>Manage Your Account</h2>
+<h2>Manage your account</h2>
 <p style="color: var(--lv5); margin-bottom: 40px;">Manage your account settings and preferences.</p>
 
 @if (user != null)
 {
     <div style="margin-bottom: 40px;">
-        <h3>Account Information</h3>
+        <h3>Account information</h3>
 
         <div style="margin-top: 20px;">
             <p><strong>Email:</strong> @user.Email</p>
 
             <div style="margin-bottom: 20px;">
                 <p>
-                    <strong>Email Confirmed:</strong>
+                    <strong>Email confirmed:</strong>
                     @if (user.EmailConfirmed)
                     {
-                        <span style="color: var(--CTeal); margin-left: 10px;">✓ Confirmed</span>
+                        <span style="color: var(--CConfirmed); margin-left: 10px;">✓ Confirmed</span>
                     }
                     else
                     {
-                        <span style="color: var(--CWarning); margin-left: 10px;">⚠ Not Confirmed</span>
+                        <span style="color: var(--CWarning); margin-left: 10px;">⚠ Not confirmed</span>
                     }
                 </p>
                 @if (!user.EmailConfirmed)
@@ -54,14 +54,22 @@
                     }
                     else
                     {
-                        <Button Variant="ghost" Size="micro" style="margin-top: 10px;" @onclick="ResendConfirmationEmail" Disabled="@isResending">
+                        <Button Variant="ghost" Size="micro" style="margin-top: 10px;" IconLeft="_iconMail" @onclick="ResendConfirmationEmail" Disabled="@isResending">
                             @if (isResending) { <span>Sending...</span> }
-                            else { <span>Resend Confirmation Email</span> }
+                            else { <span>Resend confirmation email</span> }
                         </Button>
                     }
                 }
             </div>
 
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top: 16px;">
+                <form method="post" action="Account/Logout" style="display:contents;">
+                    <AntiforgeryToken />
+                    <input type="hidden" name="returnUrl" value="" />
+                    <Button Type="submit" Variant="ghost" Size="micro" IconLeft="_iconLogout">Log out</Button>
+                </form>
+                <Button Href="/Account/ChangePassword" Variant="ghost" Size="micro" IconLeft="_iconKey">Change password</Button>
+            </div>
         </div>
 
         <div style="margin-top: 28px;">
@@ -75,18 +83,12 @@
                 <p style="font:var(--text-xs); color:var(--CTeal); margin:6px 0 0;">@_emailPrefMessage</p>
             }
         </div>
-
-        <form method="post" action="Account/Logout" style="margin-top: 28px;">
-            <AntiforgeryToken />
-            <input type="hidden" name="returnUrl" value="" />
-            <button type="submit" class="btn btn-secondary btn-micro">Log out</button>
-        </form>
     </div>
 
     @if (InstanceSettingsService.Load().AllowUserSelfDeletion)
     {
     <div style="margin-bottom: 40px;">
-        <h3 style="color: var(--CSignal);">Danger Zone</h3>
+        <h3 style="color: var(--CSignal);">Danger zone</h3>
         <p style="color: var(--lv5); margin-top: 10px;">
             Once you delete your account, there is no going back. This will permanently delete your account and all associated data.
         </p>
@@ -100,19 +102,19 @@
                 {
                     <form action="Account/Manage/DeleteAccount" method="post" style="display:contents;">
                         <AntiforgeryToken />
-                        <Button Type="submit" Variant="danger" Size="micro">Yes, Delete My Account</Button>
+                        <Button Type="submit" Variant="danger" Size="micro">Yes, delete my account</Button>
                     </form>
                 }
                 else
                 {
-                    <Button Variant="danger" Size="micro" Disabled="true">Yes, Delete My Account</Button>
+                    <Button Variant="danger" Size="micro" Disabled="true">Yes, delete my account</Button>
                 }
                 <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
             </div>
         }
         else
         {
-            <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" style="margin-top: 8px;" @onclick="ShowDeleteConfirmation">Delete My Account</Button>
+            <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" style="margin-top: 8px;" @onclick="ShowDeleteConfirmation">Delete my account</Button>
         }
     </div>
     }
@@ -124,6 +126,9 @@ else
 
 @code {
     private RenderFragment<int> _iconDelete => size => @<UserX Size="size" />;
+    private RenderFragment<int> _iconKey    => size => @<Key Size="size" />;
+    private RenderFragment<int> _iconMail   => size => @<Mail Size="size" />;
+    private RenderFragment<int> _iconLogout => size => @<Logout Size="size" />;
 
     private ApplicationUser? user;
     private bool showDeleteConfirmation = false;

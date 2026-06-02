@@ -13,14 +13,14 @@
 @inject ILogger<ResendEmailConfirmation> Logger
 @inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
 
-<PageTitle>Resend Email Confirmation</PageTitle>
+<PageTitle>Resend email confirmation</PageTitle>
 
-<h3>Resend Email Confirmation</h3>
+<h3>Resend email confirmation</h3>
 
 @if (emailSent)
 {
     <div style="padding: 20px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114, 245, 198, 0.1); margin: 20px 0;">
-        <h4>Email Sent!</h4>
+        <h4>Email sent</h4>
         <p>
             We've sent a new confirmation email to <strong>@Input.Email</strong>.
         </p>
@@ -39,7 +39,7 @@
     </div>
 
     <div style="margin-top: 40px;">
-        <Button Href="/Account/Login" Variant="secondary">Back to Login</Button>
+        <Button Href="/Account/Login" Variant="secondary">Back to log in</Button>
     </div>
 }
 else
@@ -65,11 +65,11 @@ else
 
         <Button Type="submit" Variant="secondary" Disabled="@isProcessing">
             @if (isProcessing) { <span>Sending...</span> }
-            else { <span>Resend Confirmation Email</span> }
+            else { <span>Resend confirmation email</span> }
         </Button>
 
         <div style="margin-top: 40px; display: flex; flex-direction: column;">
-            <a href="/Account/Login" style="font: var(--text-sm);">Back to Login</a>
+            <a href="/Account/Login" style="font: var(--text-sm);">Back to log in</a>
         </div>
     </EditForm>
 }
