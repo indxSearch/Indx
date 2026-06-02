@@ -5,6 +5,7 @@
 @using IndxCloudApi.Models
 @attribute [Authorize]
 @inject ILogger<License> Logger
+@inject Services.ILicenseBootstrapper Bootstrapper
 
 <PageTitle>License Information</PageTitle>
 
@@ -109,6 +110,33 @@ else if (licenseInfo != null)
                         <tr style="border-bottom: 1px solid var(--lv2);">
                             <td style="padding: 12px 0; font-weight: bold;">License File:</td>
                             <td style="padding: 12px 0; font-family: monospace; font-size: 12px;">@licenseInfo.LicenseFileName</td>
+                        </tr>
+                        <tr style="border-bottom: 1px solid var(--lv2);">
+                            <td style="padding: 12px 0; font-weight: bold;">Auto-fetch:</td>
+                            <td style="padding: 12px 0;">
+                                @if (autoFetch is null || !autoFetch.UrlConfigured)
+                                {
+                                    <span style="color: var(--lv5);">Not configured</span>
+                                    <span style="color: var(--lv5); margin-left: 8px; font-size: 12px;">
+                                        (set <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">Indx:LicenseDownloadUrl</code> + <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">Indx:LicenseToken</code>)
+                                    </span>
+                                }
+                                else if (!autoFetch.TokenConfigured)
+                                {
+                                    <span style="color: var(--CSignal);">⚠ URL set — token missing</span>
+                                }
+                                else
+                                {
+                                    <span style="color: var(--CTeal);">✓ Configured</span>
+                                    <span style="color: var(--lv5); margin-left: 8px; font-size: 12px;">token set · re-fetched on every startup</span>
+                                    @if (autoFetch.FileExists)
+                                    {
+                                        <span style="color: var(--lv5); margin-left: 8px; font-size: 12px;">
+                                            · last fetched @(autoFetch.LastWriteUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm")) (@FormatBytes(autoFetch.FileBytes))
+                                        </span>
+                                    }
+                                }
+                            </td>
                         </tr>
                         <tr>
                             <td style="padding: 12px 0; font-weight: bold;">Valid:</td>
@@ -256,6 +284,7 @@ else
 
 @code {
     private LicenseInfo? licenseInfo;
+    private Services.LicenseAutoFetchStatus? autoFetch;
     private string? errorMessage;
     private bool isLoading = true;
 #if SOURCE_BUILD
@@ -273,7 +302,15 @@ else
 
     protected override async Task OnInitializedAsync()
     {
+        autoFetch = Bootstrapper.GetStatus();
         await Task.WhenAll(LoadLicenseInfo(), LoadLicenseFiles());
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes >= 1024 * 1024) return $"{bytes / (1024.0 * 1024.0):0.#} MB";
+        if (bytes >= 1024) return $"{bytes / 1024.0:0.#} KB";
+        return $"{bytes} B";
     }
 
     private async Task LoadLicenseInfo()
