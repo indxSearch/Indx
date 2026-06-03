@@ -70,15 +70,44 @@
 		<ProjectReference Include="..\Indx.Systm.Blazor\Indx.Systm.Blazor.csproj" />
 	</ItemGroup>
 
-	<!-- Switch: set IndxFromNuGet=true at publish time to use the obfuscated NuGet package -->
-	<PropertyGroup Condition="'$(IndxFromNuGet)' != 'true'">
+	<!-- ===== Indx engine reference selection =====
+	     Three modes, resolved into $(IndxReferenceMode):
+	       Source  - ProjectReference to ..\Indx (full IndxSolutions checkout). Default for us.
+	       NuGet   - obfuscated IndxSearchLib package. Default for the public IndxCloudApi repo.
+	       LocalDll- a local obfuscated Indx.dll next to this .csproj. Testing only; opt-in.
+	     Auto-detect: if the Indx source project is present we default to Source, otherwise NuGet.
+	     Override explicitly with:  -p:IndxFromNuGet=true   or   -p:IndxFromLocalDll=true  -->
+	<PropertyGroup>
+	  <IndxReferenceMode Condition="'$(IndxFromLocalDll)' == 'true'">LocalDll</IndxReferenceMode>
+	  <IndxReferenceMode Condition="'$(IndxReferenceMode)' == '' And '$(IndxFromNuGet)' == 'true'">NuGet</IndxReferenceMode>
+	  <IndxReferenceMode Condition="'$(IndxReferenceMode)' == '' And Exists('../Indx/Indx.csproj')">Source</IndxReferenceMode>
+	  <IndxReferenceMode Condition="'$(IndxReferenceMode)' == ''">NuGet</IndxReferenceMode>
+	</PropertyGroup>
+
+	<!-- Source build: project reference + SOURCE_BUILD constant -->
+	<PropertyGroup Condition="'$(IndxReferenceMode)' == 'Source'">
 	  <DefineConstants>$(DefineConstants);SOURCE_BUILD</DefineConstants>
 	</PropertyGroup>
-	<ItemGroup Condition="'$(IndxFromNuGet)' != 'true'">
+	<ItemGroup Condition="'$(IndxReferenceMode)' == 'Source'">
 	  <ProjectReference Include="..\Indx\Indx.csproj" />
 	</ItemGroup>
-	<ItemGroup Condition="'$(IndxFromNuGet)' == 'true'">
+
+	<!-- Obfuscated NuGet package -->
+	<ItemGroup Condition="'$(IndxReferenceMode)' == 'NuGet'">
 	  <PackageReference Include="IndxSearchLib" Version="5.0.0" />
+	</ItemGroup>
+
+	<!-- Local obfuscated DLL (testing only, opt-in: -p:IndxFromLocalDll=true).
+	     A bare <Reference> does not restore the DLL's transitive NuGet dependencies,
+	     so they are listed explicitly here (see IndxSearchLib.nuspec for the same set). -->
+	<ItemGroup Condition="'$(IndxReferenceMode)' == 'LocalDll'">
+	  <Reference Include="Indx">
+	    <HintPath>Indx.dll</HintPath>
+	  </Reference>
+	  <PackageReference Include="NLog.Extensions.Logging" Version="6.0.0" />
+	  <PackageReference Include="HNSW" Version="26.1.63669" />
+	  <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.3" />
+	  <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.0" />
 	</ItemGroup>
 
 </Project>
