@@ -94,7 +94,7 @@
 
 	<!-- Obfuscated NuGet package -->
 	<ItemGroup Condition="'$(IndxReferenceMode)' == 'NuGet'">
-	  <PackageReference Include="IndxSearchLib" Version="5.0.0" />
+	  <PackageReference Include="IndxSearchLib" Version="5.0.0-alpha.20260603" />
 	</ItemGroup>
 
 	<!-- Local obfuscated DLL (testing only, opt-in: -p:IndxFromLocalDll=true).
