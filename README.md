@@ -103,7 +103,9 @@ OAuth users are auto-confirmed. Requires a real email provider when enabled.
 
 ## License
 
-Indx Search enforces a **100,000 document limit** without a license file. A free developer license removing this limit is available at [indx.co](https://indx.co).
+Indx Search enforces a **100,000 document limit** without a license file. A free extended license removing this limit is available from the Indx License Portal at [license.indx.co](https://license.indx.co).
+
+### Manual placement
 
 Place the `.license` file in `./IndxData/`:
 
@@ -118,6 +120,17 @@ The app detects any `.license` file in that directory on startup. Custom path vi
 ```
 Indx__LicenseFile = /path/to/your.license
 ```
+
+### Auto-fetch from the license portal
+
+Instead of placing the file manually, IndxCloudApi can pull its license straight from the Indx License Portal ([license.indx.co](https://license.indx.co)) on startup. On your portal license page, create a license token, then configure:
+
+```
+Indx__LicenseDownloadUrl = https://license.indx.co/api/license/current
+Indx__LicenseToken       = <token from your portal license page>
+```
+
+With a token set, a **fresh license is fetched on every startup** (the portal rolls Pro/Free expiry forward) and written to `Indx:LicenseFile` (default `./IndxData/indx.license`). Without a token, the URL is fetched only when no local file exists yet (e.g. a one-off SAS URL). Fetch failures are logged but never fatal — the server keeps any existing file, or falls back to free-tier mode. Set these via environment variables or Key Vault, not in `appsettings.json`.
 
 ## Deployment
 
