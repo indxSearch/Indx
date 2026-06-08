@@ -34,7 +34,7 @@ namespace IndxCloudApi.Models
         /// Runs <paramref name="mutation"/> on a shadow SearchEngine and swaps it in
         /// atomically on success. The active instance keeps serving searches throughout.
         /// Throws <see cref="ShadowBusyException"/> if a build is already in progress for
-        /// the same (dataSetName, userId) key.
+        /// the same (dataSetName, teamId) key.
         ///
         /// Private so external callers (including Blazor pages in the same assembly)
         /// cannot reach the generic-callback surface and accidentally apply field-config
@@ -47,10 +47,10 @@ namespace IndxCloudApi.Models
         /// </summary>
         private TResult RunMutationOnShadow<TResult>(
             string dataSetName,
-            string userId,
+            string teamId,
             Func<ICloudSearchEngine, TResult> mutation)
         {
-            var key = MakeKey(dataSetName, userId);
+            var key = MakeKey(dataSetName, teamId);
             if (!_shadowBuildsInProgress.TryAdd(key, DateTime.UtcNow))
                 throw new ShadowBusyException(dataSetName);
 
@@ -69,7 +69,7 @@ namespace IndxCloudApi.Models
 
                 // BuildShadowFrom returns a Ready instance (CreateInMemoryClone runs Index
                 // internally), so the mutation can be applied directly.
-                shadow = BuildShadowFrom(original, dataSetName, userId);
+                shadow = BuildShadowFrom(original, dataSetName, teamId);
 
                 // Apply the caller's mutation on the now-Ready shadow.
                 TResult result = mutation(shadow);
@@ -92,7 +92,7 @@ namespace IndxCloudApi.Models
                 shadow = null; // ownership transferred to the container
 
                 if (swappedOut != null)
-                    _ = Task.Run(() => DisposeAfterGraceAsync(swappedOut, dataSetName, userId));
+                    _ = Task.Run(() => DisposeAfterGraceAsync(swappedOut, dataSetName, teamId));
 
                 return result;
             }
@@ -100,7 +100,7 @@ namespace IndxCloudApi.Models
             {
                 _logger.LogError(ex,
                     "{Prefix}RunMutationOnShadow failed",
-                    MakeLogPrefix(userId, dataSetName));
+                    MakeLogPrefix(teamId, dataSetName));
                 throw;
             }
             finally
@@ -114,7 +114,7 @@ namespace IndxCloudApi.Models
                     {
                         _logger.LogError(disposeEx,
                             "{Prefix}Failed to dispose abandoned shadow",
-                            MakeLogPrefix(userId, dataSetName));
+                            MakeLogPrefix(teamId, dataSetName));
                     }
                 }
                 _shadowBuildsInProgress.TryRemove(key, out _);
@@ -122,7 +122,7 @@ namespace IndxCloudApi.Models
         }
 
         /// <summary>
-        /// Resolves the engine for (dataSetName, userId). If the engine is in Ready state,
+        /// Resolves the engine for (dataSetName, teamId). If the engine is in Ready state,
         /// runs <paramref name="mutation"/> on a shadow instance (so live searches are not
         /// blocked) and swaps the result in atomically. Otherwise runs the mutation inline
         /// on the live engine.
@@ -138,17 +138,17 @@ namespace IndxCloudApi.Models
         /// </summary>
         internal TResult RunHeavyOnShadowIfReady<TResult>(
             string dataSetName,
-            string userId,
+            string teamId,
             Func<ICloudSearchEngine, TResult> mutation)
         {
-            ICloudSearchEngine? matcher = FindSearchEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = FindSearchEngine(dataSetName, teamId);
             if (matcher == null)
                 throw new KeyNotFoundException($"non existing dataset name: {dataSetName}");
 
             if (matcher.Status.SystemState != SystemState.Ready)
                 return mutation(matcher);
 
-            return RunMutationOnShadow(dataSetName, userId, mutation);
+            return RunMutationOnShadow(dataSetName, teamId, mutation);
         }
 
         /// <summary>
@@ -162,10 +162,10 @@ namespace IndxCloudApi.Models
         /// </summary>
         internal void RunFieldConfigurationOnShadow(
             string dataSetName,
-            string userId,
+            string teamId,
             FieldProxy[] fields)
         {
-            var key = MakeKey(dataSetName, userId);
+            var key = MakeKey(dataSetName, teamId);
             if (!_shadowBuildsInProgress.TryAdd(key, DateTime.UtcNow))
                 throw new ShadowBusyException(dataSetName);
 
@@ -185,7 +185,7 @@ namespace IndxCloudApi.Models
                     original = found.theInstance;
                 }
 
-                shadow = BuildShadowFrom(original, dataSetName, userId, fields, monitor);
+                shadow = BuildShadowFrom(original, dataSetName, teamId, fields, monitor);
                 monitor.WaitForCompletion();
                 if (!monitor.Succeeded)
                     throw new InvalidOperationException(
@@ -205,13 +205,13 @@ namespace IndxCloudApi.Models
                 shadow = null;
 
                 if (swappedOut != null)
-                    _ = Task.Run(() => DisposeAfterGraceAsync(swappedOut, dataSetName, userId));
+                    _ = Task.Run(() => DisposeAfterGraceAsync(swappedOut, dataSetName, teamId));
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex,
                     "{Prefix}RunFieldConfigurationOnShadow failed",
-                    MakeLogPrefix(userId, dataSetName));
+                    MakeLogPrefix(teamId, dataSetName));
                 throw;
             }
             finally
@@ -224,7 +224,7 @@ namespace IndxCloudApi.Models
                     {
                         _logger.LogError(disposeEx,
                             "{Prefix}Failed to dispose abandoned shadow",
-                            MakeLogPrefix(userId, dataSetName));
+                            MakeLogPrefix(teamId, dataSetName));
                     }
                 }
                 _shadowBuildsInProgress.TryRemove(key, out _);
@@ -232,17 +232,17 @@ namespace IndxCloudApi.Models
         }
 
         /// <summary>True while a shadow build is in progress for the given dataset.</summary>
-        internal bool IsShadowBuildInProgress(string dataSetName, string userId)
-            => _shadowBuildsInProgress.ContainsKey(MakeKey(dataSetName, userId));
+        internal bool IsShadowBuildInProgress(string dataSetName, string teamId)
+            => _shadowBuildsInProgress.ContainsKey(MakeKey(dataSetName, teamId));
 
         /// <summary>UTC timestamp at which the in-progress shadow build started, or null if none.</summary>
-        internal DateTime? ShadowBuildStartedUtc(string dataSetName, string userId)
-            => _shadowBuildsInProgress.TryGetValue(MakeKey(dataSetName, userId), out var started)
+        internal DateTime? ShadowBuildStartedUtc(string dataSetName, string teamId)
+            => _shadowBuildsInProgress.TryGetValue(MakeKey(dataSetName, teamId), out var started)
                 ? started : null;
 
         /// <summary>Progress percentage (0–100) of the current shadow build's index phase, or 0 if none.</summary>
-        internal int GetShadowBuildPercent(string dataSetName, string userId)
-            => _shadowMonitors.TryGetValue(MakeKey(dataSetName, userId), out var m) ? m.ProgressPercent : 0;
+        internal int GetShadowBuildPercent(string dataSetName, string teamId)
+            => _shadowMonitors.TryGetValue(MakeKey(dataSetName, teamId), out var m) ? m.ProgressPercent : 0;
 
         /// <summary>
         /// Builds a shadow SearchEngine from the original's live in-memory state via
@@ -254,7 +254,7 @@ namespace IndxCloudApi.Models
         private SearchEngine BuildShadowFrom(
             ICloudSearchEngine original,
             string dataSetName,
-            string userId,
+            string teamId,
             FieldProxy[]? fieldOverrides = null,
             ProcessMonitor? monitor = null)
         {
@@ -267,7 +267,7 @@ namespace IndxCloudApi.Models
             // Attach a fresh Persistence pointing at the same SQLite file. SQLite supports
             // multiple connections; the original's persistence is left alone so disposing
             // the original after the swap does not break the shadow.
-            shadow.Persistence = new Persistence(SearchDbConnectionString, dataSetName, userId);
+            shadow.Persistence = new Persistence(SearchDbConnectionString, dataSetName, teamId);
 
             return shadow;
         }
@@ -296,7 +296,7 @@ namespace IndxCloudApi.Models
         /// is logged and we dispose anyway — pending searches will fail their next pool
         /// access and propagate the disposal to the caller.
         /// </summary>
-        private async Task DisposeAfterGraceAsync(ICloudSearchEngine engine, string dataSetName, string userId)
+        private async Task DisposeAfterGraceAsync(ICloudSearchEngine engine, string dataSetName, string teamId)
         {
             try
             {
@@ -314,7 +314,7 @@ namespace IndxCloudApi.Models
             {
                 _logger.LogError(ex,
                     "{Prefix}Failed to dispose swapped-out engine after grace period",
-                    MakeLogPrefix(userId, dataSetName));
+                    MakeLogPrefix(teamId, dataSetName));
             }
         }
     }

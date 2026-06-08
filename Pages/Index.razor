@@ -9,11 +9,13 @@
 @using Indx.Utilities
 @using IndxCloudApi.Data
 @using IndxCloudApi.Models
+@using IndxCloudApi.Services
 @using System.Globalization
 @using System.Text.Json
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject UserManager<ApplicationUser> UserManager
+@inject IndxCloudApi.Services.TeamService TeamService
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject IJSRuntime JSRuntime
 
@@ -73,8 +75,11 @@ else
         {
             var isShared = _sharedDatasets.ContainsKey(selectedDataset);
             var datasetName = GetDatasetName(selectedDataset);
-            var ownerUserId = isShared ? _sharedDatasets[selectedDataset].OwnerUserId : userId!;
-            var currentRole = isShared ? _sharedDatasets[selectedDataset].Role : "owner";
+            // Owner key is the active team id; the legacy role strings (owner/editor/viewer) are
+            // derived from the user's team role (Admin->owner, Editor->editor, Viewer->viewer) so
+            // the existing permission checks in this view keep working unchanged.
+            var ownerUserId = activeTeamId ?? "";
+            var currentRole = TeamRoles.CanAdmin(activeRole) ? "owner" : TeamRoles.CanWrite(activeRole) ? "editor" : "viewer";
             var isEditor = currentRole == "owner" || currentRole == "editor";
             var status = datasetStatuses.ContainsKey(selectedDataset) ? datasetStatuses[selectedDataset] : null;
             var engineState = status?.SystemState ?? SystemState.Created;
@@ -567,41 +572,8 @@ else
                         @if (activeTab == "options")
                         {
                             <div style="margin-top:8px;">
-                                @* Transfer ownership *@
-                                <Button Variant="secondary" Size="micro" IconLeft="_iconUserAlias"
-                                        @onclick="() => { if (_showTransferSection.Contains(datasetName)) _showTransferSection.Remove(datasetName); else _showTransferSection.Add(datasetName); }">
-                                    Transfer Ownership
-                                </Button>
-                                @if (_showTransferSection.Contains(datasetName))
-                                {
-                                    <div style="margin-top:12px;">
-                                        <p style="color:var(--lv5);font:var(--text-xs);margin-bottom:12px;">Transfer this dataset to another user. You will lose owner access.</p>
-                                        @if (_transferConfirmDataset == datasetName)
-                                        {
-                                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                                                <span style="font:var(--text-xs);color:var(--lv5);">Transfer to @_transferEmailInput?</span>
-                                                <Button Variant="danger" Size="micro" @onclick="() => ConfirmTransfer(datasetName, ownerUserId)">Yes, transfer</Button>
-                                                <Button Variant="secondary" Size="micro" @onclick="() => { _transferConfirmDataset = null; _transferEmailInput = null; _transferError = null; }">Cancel</Button>
-                                            </div>
-                                        }
-                                        else
-                                        {
-                                            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
-                                                <input class="indx-text-input" placeholder="New owner email" @bind="_transferEmailInput" @bind:event="oninput" />
-                                                <Button Variant="secondary" Size="micro"
-                                                        disabled="@string.IsNullOrWhiteSpace(_transferEmailInput)"
-                                                        @onclick="() => _transferConfirmDataset = datasetName">
-                                                    Transfer
-                                                </Button>
-                                            </div>
-                                        }
-                                        @if (!string.IsNullOrEmpty(_transferError))
-                                        {
-                                            <p style="color:var(--CSignal);font:var(--text-xs);margin-top:4px;">@_transferError</p>
-                                        }
-                                    </div>
-                                }
-
+                                @* Dataset ownership is by team; moving a dataset between teams is an
+                                   Admin action available via the API (POST .../transfer). *@
                                 @if (engineState == SystemState.Ready)
                                 {
                                     <h3 style="color:var(--CSignal);margin-top:24px;margin-bottom:8px;">Danger Zone</h3>
@@ -757,6 +729,13 @@ else
     private Dictionary<string, SystemStatus> datasetStatuses = new();
     private bool isLoading = true;
     private string? userId;
+    // Active team: datasets are owned by a team, so the dashboard operates within one team at a
+    // time. Defaults to the user's first team (their personal team for migrated/registered users);
+    // a selector appears when the user belongs to more than one.
+    private List<(Team Team, string Role)> _myTeams = new();
+    private string? activeTeamId;
+    private string? activeTeamName;
+    private string? activeRole;
     private string? selectedDataset;
     private string? deleteConfirmDataset;
     private HashSet<string> expandedFieldConfig = new();
@@ -863,8 +842,27 @@ else
             isLoading = false;
             return;
         }
+        _myTeams = await TeamService.GetTeamsForUserAsync(userId);
+        if (_myTeams.Count > 0)
+            SetActiveTeam(_myTeams[0]);
         await LoadDatasets();
         StartTransitionPollingIfNeeded();
+    }
+
+    private void SetActiveTeam((Team Team, string Role) entry)
+    {
+        activeTeamId = entry.Team.Id.ToString();
+        activeTeamName = entry.Team.Name;
+        activeRole = entry.Role;
+    }
+
+    private async Task SwitchTeam(string teamId)
+    {
+        var entry = _myTeams.FirstOrDefault(t => t.Team.Id.ToString() == teamId);
+        if (entry.Team == null) return;
+        SetActiveTeam(entry);
+        selectedDataset = null;
+        await LoadDatasets();
     }
 
     private void StartTransitionPollingIfNeeded()
@@ -889,7 +887,7 @@ else
                 bool anyTransitional = false;
                 foreach (var datasetName in datasets ?? [])
                 {
-                    var status = IndxCloudInternalApi.Manager.GetState(datasetName, userId!);
+                    var status = IndxCloudInternalApi.Manager.GetState(datasetName, activeTeamId!);
                     if (status != null)
                     {
                         datasetStatuses[datasetName] = status;
@@ -897,7 +895,7 @@ else
                             anyTransitional = true;
                         else if (status.SystemState == SystemState.Ready && !fieldConfigs.ContainsKey(datasetName))
                         {
-                            var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+                            var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, activeTeamId!);
                             var fields = engine?.GetFieldConfiguration();
                             fieldConfigs[datasetName] = fields;
                             if (fields != null)
@@ -941,39 +939,28 @@ else
         isLoading = true;
         try
         {
-            if (string.IsNullOrEmpty(userId))
+            if (string.IsNullOrEmpty(activeTeamId))
             {
                 datasets = Array.Empty<string>();
                 return;
             }
-            var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, "dummy", userId);
-            datasets = persistence.GetUserDataSets(userId);
-
-            // Load shared datasets
-            _sharedDatasets.Clear();
-            var sharedAccess = IndxCloudInternalApi.Manager.GetAccessibleDataSets(userId);
-            foreach (var (dsName, ownerUserId, role) in sharedAccess)
-            {
-                var ownerUser = await UserManager.FindByIdAsync(ownerUserId);
-                var key = MakeSharedKey(ownerUserId, dsName);
-                _sharedDatasets[key] = (ownerUserId, ownerUser?.Email ?? ownerUserId, role);
-            }
+            datasets = IndxCloudInternalApi.Manager.GetTeamDataSets(activeTeamId).ToArray();
 
             datasetStatuses.Clear();
-            // Load status for owned datasets
+            // Load status for the active team's datasets
             if (datasets != null)
             {
                 foreach (var datasetName in datasets)
                 {
                     try
                     {
-                        var status = IndxCloudInternalApi.Manager.GetState(datasetName, userId);
+                        var status = IndxCloudInternalApi.Manager.GetState(datasetName, activeTeamId);
                         if (status != null)
                         {
                             datasetStatuses[datasetName] = status;
                             if (status.SystemState == SystemState.Ready && !fieldConfigs.ContainsKey(datasetName))
                             {
-                                var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId);
+                                var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, activeTeamId);
                                 var fields = engine?.GetFieldConfiguration();
                                 fieldConfigs[datasetName] = fields;
                                 if (fields != null)
@@ -984,28 +971,6 @@ else
                     catch { }
                 }
             }
-            // Load status and field configs for shared datasets (status keyed by synthetic tab key, fields by dataset name)
-            foreach (var (tabKey, info) in _sharedDatasets)
-            {
-                try
-                {
-                    var sharedName = GetDatasetName(tabKey);
-                    var status = IndxCloudInternalApi.Manager.GetState(sharedName, info.OwnerUserId);
-                    if (status != null)
-                    {
-                        datasetStatuses[tabKey] = status;
-                        if (status.SystemState == SystemState.Ready && !fieldConfigs.ContainsKey(sharedName))
-                        {
-                            var engine = IndxCloudInternalApi.Manager.FindSearchEngine(sharedName, info.OwnerUserId);
-                            var fields = engine?.GetFieldConfiguration();
-                            fieldConfigs[sharedName] = fields;
-                            if (fields != null)
-                                _editedFieldConfigs[sharedName] = fields.Select(DeepCopy).ToArray();
-                        }
-                    }
-                }
-                catch { }
-            }
         }
         catch
         {
@@ -1014,8 +979,7 @@ else
         finally
         {
             isLoading = false;
-            var allKeys = (datasets ?? Array.Empty<string>())
-                .Concat(_sharedDatasets.Keys).ToArray();
+            var allKeys = datasets ?? Array.Empty<string>();
             if (selectedDataset == null || !allKeys.Contains(selectedDataset))
                 selectedDataset = allKeys.FirstOrDefault();
         }
@@ -1045,7 +1009,7 @@ else
                 _createError = $"You already have access to a shared dataset named '{name}'. Choose a different name.";
                 return;
             }
-            var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, name, userId!);
+            var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, name, activeTeamId!);
             if (persistence.DataSetExists())
             {
                 _createError = $"Dataset '{name}' already exists.";
@@ -1119,7 +1083,7 @@ else
 
             // Analyze field structure asynchronously (avoids blocking Blazor thread on large files)
             fs.Position = 0;
-            var initError = await IndxCloudInternalApi.Manager.InitFromStreamAsync(datasetName, userId!, fs);
+            var initError = await IndxCloudInternalApi.Manager.InitFromStreamAsync(datasetName, activeTeamId!,fs);
             if (!string.IsNullOrEmpty(initError))
             {
                 _uploadError = $"Analyze failed: {initError}";
@@ -1136,7 +1100,7 @@ else
             fs = null; // ownership transferred
 
             // Populate field config for display; show unused fields by default for new datasets
-            var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+            var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, activeTeamId!);
             var fields = engine?.GetFieldConfiguration();
             if (fields != null)
             {
@@ -1175,7 +1139,7 @@ else
         // Apply field configuration before Load so MakeSearchEngines sees the correct searchable set
         if (_editedFieldConfigs.TryGetValue(datasetName, out var edited))
         {
-            var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+            var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, activeTeamId!);
             engine?.SetFieldConfiguration(edited);
             var df = engine?.DocumentFields;
             if (df != null && engine?.Persistence != null)
@@ -1197,7 +1161,7 @@ else
         {
             // Phase 1: Load
             ms.Position = 0;
-            var loadResult = IndxCloudInternalApi.Manager.StartLoadAsync(datasetName, userId!, ms);
+            var loadResult = IndxCloudInternalApi.Manager.StartLoadAsync(datasetName, activeTeamId!,ms);
             if (loadResult == null)
             {
                 _uploadError = "Load failed: dataset not found";
@@ -1238,7 +1202,7 @@ else
 
             await Task.Run(() =>
             {
-                var eng = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+                var eng = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, activeTeamId!);
                 eng?.Index(monitor: indexMonitor);
                 indexMonitor.WaitForCompletion();
             });
@@ -1251,7 +1215,7 @@ else
                 Console.WriteLine($"Index failed: {indexMonitor.ErrorMessage}");
 
             // Refresh field config
-            var freshEngine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+            var freshEngine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, activeTeamId!);
             var freshFields = freshEngine?.GetFieldConfiguration();
             if (freshFields != null)
             {
@@ -1453,102 +1417,78 @@ else
 
     // ── Members / sharing ───────────────────────────────────────────────────
 
-    private async Task LoadAccessGrants(string datasetName, string ownerUserId)
+    // The "Members" tab now manages the membership of the team that owns the dataset — access to a
+    // dataset follows team membership. ownerKey is the active team id.
+    private async Task LoadAccessGrants(string datasetName, string ownerKey)
     {
-        var grants = IndxCloudInternalApi.Manager.GetAccessGrants(datasetName, ownerUserId);
-        var ids = grants.Select(g => g.GranteeUserId).Append(ownerUserId).ToHashSet();
+        if (!Guid.TryParse(ownerKey, out var teamGuid)) return;
+
+        var members = await TeamService.GetMembersAsync(teamGuid);
+        var ids = members.Select(m => m.UserId).ToHashSet();
         var userMap = await Task.Run(() =>
             UserManager.Users.Where(u => ids.Contains(u.Id)).ToDictionary(u => u.Id, u => u.Email));
 
-        _accessGrants[datasetName] = grants
-            .Select(g => (userMap.GetValueOrDefault(g.GranteeUserId) ?? g.GranteeUserId, g.Role))
+        _accessGrants[datasetName] = members
+            .Select(m => (userMap.GetValueOrDefault(m.UserId) ?? m.UserId, m.Role))
             .ToList();
 
-        if (!_ownerEmail.ContainsKey(datasetName))
-            _ownerEmail[datasetName] = userMap.GetValueOrDefault(ownerUserId) ?? ownerUserId;
+        // No single "owner" in the team model — show the owning team in that row instead.
+        _ownerEmail[datasetName] = activeTeamName != null ? $"Team: {activeTeamName}" : "Team";
     }
 
-    private async Task GrantShareAccess(string datasetName, string ownerUserId)
+    private async Task GrantShareAccess(string datasetName, string ownerKey)
     {
         _shareError = null;
+        if (!Guid.TryParse(ownerKey, out var teamGuid)) { _shareError = "Invalid team."; return; }
         var email = _shareEmailInput.Trim();
         if (string.IsNullOrEmpty(email)) return;
 
         var grantee = await UserManager.FindByEmailAsync(email);
         if (grantee == null) { _shareError = "User not found."; return; }
-        if (grantee.Id == userId) { _shareError = "Cannot grant access to yourself."; return; }
 
-        var granteeDb = new SqLiteManager(IndxCloudInternalApi.SearchDbConnectionString);
-        var granteePersistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, datasetName, grantee.Id);
-        if (granteePersistence.DataSetExists())
+        // Map the form's viewer/editor selection onto the team roles.
+        var role = _shareRoleInput == "editor" ? TeamRoles.Editor : TeamRoles.Viewer;
+        try
         {
-            _shareError = $"This user already owns a dataset named '{datasetName}'. They must delete or rename it before access can be granted.";
-            return;
+            await TeamService.AddMemberAsync(teamGuid, grantee.Id, role);
         }
-        if (granteeDb.GetAccessibleDataSets(grantee.Id).Any(a => a.DataSetName == datasetName))
-        {
-            _shareError = $"This user already has shared access to a dataset named '{datasetName}'.";
-            return;
-        }
-
-        IndxCloudInternalApi.Manager.GrantAccess(datasetName, ownerUserId, grantee.Id, _shareRoleInput);
+        catch (TeamService.TeamException ex) { _shareError = ex.Message; return; }
         _shareEmailInput = "";
 
-        // Send email notification
         try
         {
             await EmailSender.SendEmailAsync(
                 email,
-                $"You've been granted access to dataset \"{datasetName}\"",
-                $"<p>You have been granted <strong>{_shareRoleInput}</strong> access to the dataset <strong>{datasetName}</strong> on Indx Cloud API.</p>");
+                $"You've been added to team \"{activeTeamName}\"",
+                $"<p>You have been added to the team <strong>{activeTeamName}</strong> as <strong>{role}</strong> on Indx Cloud API.</p>");
         }
         catch { /* email failure is non-fatal */ }
 
-        await LoadAccessGrants(datasetName, ownerUserId);
+        await LoadAccessGrants(datasetName, ownerKey);
     }
 
-    private async Task RevokeShareAccess(string datasetName, string ownerUserId, string granteeEmail)
+    private async Task RevokeShareAccess(string datasetName, string ownerKey, string granteeEmail)
     {
+        if (!Guid.TryParse(ownerKey, out var teamGuid)) return;
         var grantee = await UserManager.FindByEmailAsync(granteeEmail);
         if (grantee == null) return;
-        IndxCloudInternalApi.Manager.RevokeAccess(datasetName, ownerUserId, grantee.Id);
-        await LoadAccessGrants(datasetName, ownerUserId);
+        try { await TeamService.RemoveMemberAsync(teamGuid, grantee.Id); }
+        catch (TeamService.TeamException) { /* e.g. last admin — ignore in this minimal UI */ }
+        await LoadAccessGrants(datasetName, ownerKey);
     }
 
-    private async Task LeaveDataset(string datasetName, string ownerUserId)
+    private async Task LeaveDataset(string datasetName, string ownerKey)
     {
-        if (string.IsNullOrEmpty(userId)) return;
-        IndxCloudInternalApi.Manager.RevokeAccess(datasetName, ownerUserId, userId);
-        await LoadDatasets();
-    }
-
-    private async Task ConfirmTransfer(string datasetName, string ownerUserId)
-    {
-        _transferError = null;
-        if (string.IsNullOrEmpty(_transferEmailInput)) return;
-
-        var newOwner = await UserManager.FindByEmailAsync(_transferEmailInput.Trim());
-        if (newOwner == null) { _transferError = "User not found."; return; }
-        if (newOwner.Id == userId) { _transferError = "Cannot transfer to yourself."; return; }
-
-        try
+        if (string.IsNullOrEmpty(userId) || !Guid.TryParse(ownerKey, out var teamGuid)) return;
+        try { await TeamService.RemoveMemberAsync(teamGuid, userId); }
+        catch (TeamService.TeamException) { /* last admin cannot leave */ }
+        _myTeams = await TeamService.GetTeamsForUserAsync(userId);
+        if (_myTeams.Count > 0)
+            SetActiveTeam(_myTeams[0]);
+        else
         {
-            IndxCloudInternalApi.Manager.TransferOwnership(datasetName, ownerUserId, newOwner.Id);
+            activeTeamId = null; activeTeamName = null; activeRole = null;
         }
-        catch (InvalidOperationException ex) { _transferError = ex.Message; return; }
-
-        _transferConfirmDataset = null;
-        _transferEmailInput = null;
-
-        try
-        {
-            await EmailSender.SendEmailAsync(
-                newOwner.Email!,
-                $"Dataset \"{datasetName}\" has been transferred to you",
-                $"<p>Ownership of the dataset <strong>{datasetName}</strong> on Indx Cloud API has been transferred to your account.</p>");
-        }
-        catch { /* email failure is non-fatal */ }
-
         await LoadDatasets();
     }
 
@@ -1565,7 +1505,7 @@ else
             // Run off the SignalR circuit dispatcher — SearchEngine.Dispose can
             // take seconds (task.Wait timeouts, native pool free), and running
             // it inline would freeze this user's UI for the full duration.
-            var ok = await Task.Run(() => IndxCloudInternalApi.Manager.DeleteDataSet(datasetName, userId));
+            var ok = await Task.Run(() => IndxCloudInternalApi.Manager.DeleteDataSet(datasetName, activeTeamId!));
             if (ok)
             {
                 deleteConfirmDataset = null;
@@ -1602,7 +1542,7 @@ else
         {
             try
             {
-                var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, userId!);
+                var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, activeTeamId!);
                 var fields = engine?.GetFieldConfiguration();
                 fieldConfigs[datasetName] = fields;
                 if (fields != null)

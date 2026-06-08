@@ -6,34 +6,25 @@
     <members>
         <member name="T:IndxCloudApi.Controllers.AccessShareController">
             <summary>
-            Endpoints for sharing dataset access and transferring ownership between users.
-            All operations require the caller to be the dataset owner.
+            Moving a dataset between teams. Per-user dataset sharing is gone in the team model —
+            access follows team membership, which is managed from the Blazor team pages, not the API.
+            The only remaining cross-boundary operation is reassigning a dataset to a different team,
+            which requires the caller to be an Admin of both the source and target teams.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.AccessShareController.#ctor(Microsoft.AspNetCore.Identity.UserManager{IndxCloudApi.Data.ApplicationUser},IndxCloudApi.Services.NotificationService)">
+        <member name="M:IndxCloudApi.Controllers.AccessShareController.#ctor(IndxCloudApi.Services.TeamContextResolver,Microsoft.AspNetCore.Identity.UserManager{IndxCloudApi.Data.ApplicationUser},IndxCloudApi.Services.NotificationService)">
             <summary>
-            Endpoints for sharing dataset access and transferring ownership between users.
-            All operations require the caller to be the dataset owner.
+            Moving a dataset between teams. Per-user dataset sharing is gone in the team model —
+            access follows team membership, which is managed from the Blazor team pages, not the API.
+            The only remaining cross-boundary operation is reassigning a dataset to a different team,
+            which requires the caller to be an Admin of both the source and target teams.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.AccessShareController.GetAccessGrants(System.String)">
+        <member name="M:IndxCloudApi.Controllers.AccessShareController.TransferToTeam(System.String,System.String,IndxCloudApi.Controllers.TransferToTeamRequest)">
             <summary>
-            Lists all current access grants for a dataset.
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Controllers.AccessShareController.GrantAccess(System.String,IndxCloudApi.Controllers.GrantAccessRequest)">
-            <summary>
-            Grants (or updates) access for a user on a dataset. Role must be "editor" or "viewer".
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Controllers.AccessShareController.RevokeAccess(System.String,System.String)">
-            <summary>
-            Revokes a user's access to a dataset.
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Controllers.AccessShareController.TransferOwnership(System.String,IndxCloudApi.Controllers.TransferOwnershipRequest)">
-            <summary>
-            Transfers dataset ownership to another user. Returns 409 if a shadow build is in progress.
+            Moves a dataset from <c>{teamName}</c> to another team. Caller must be Admin of both.
+            Returns 409 if a shadow build is in progress, 400 if the target team already owns a
+            dataset with the same name.
             </summary>
         </member>
         <member name="T:IndxCloudApi.Controllers.LoginController">
@@ -76,287 +67,286 @@
         </member>
         <member name="T:IndxCloudApi.Controllers.SearchController">
             <summary>
-            Provides API endpoints for managing, analyzing, indexing, and searching JSON-based datasets. Supports operations
-            such as dataset creation, deletion, field configuration, data loading, and executing search queries. All
-            endpoints require authentication and operate on datasets associated with the authenticated user.
+            API endpoints for managing, analyzing, indexing, and searching JSON datasets. Datasets are
+            owned by a <b>team</b>: every dataset endpoint is scoped under
+            <c>api/teams/{teamName}/datasets/{dataSetName}</c>. The caller must be a member of the team;
+            their team role (Admin/Editor/Viewer) decides what they may do. Membership is checked on
+            every request, so removing a user from a team takes effect immediately.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.AnalyzeStreamAsync(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.#ctor(IndxCloudApi.Services.TeamContextResolver,IndxCloudApi.Services.TeamService)">
+            <summary>
+            API endpoints for managing, analyzing, indexing, and searching JSON datasets. Datasets are
+            owned by a <b>team</b>: every dataset endpoint is scoped under
+            <c>api/teams/{teamName}/datasets/{dataSetName}</c>. The caller must be a member of the team;
+            their team role (Admin/Editor/Viewer) decides what they may do. Membership is checked on
+            every request, so removing a user from a team takes effect immediately.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.AnalyzeStreamAsync(System.String,System.String)">
             <summary>
             As Analyze but handles a stream as input text.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.AnalyzeString(System.String,System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.AnalyzeString(System.String,System.String,System.String)">
             <summary>
             Analyze the fields of a string containing json. Since json may be invalid, which will cause
             a 400 error, it is sent as plain text.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.CombineFilters(System.String,Indx.CloudApi.CombinedFilterProxy)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.CombineFilters(System.String,System.String,Indx.CloudApi.CombinedFilterProxy)">
             <summary>
             CombineFilters will combine two filters using AND or OR operation.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.CreateBoost(System.String,Indx.CloudApi.BoostProxy)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.CreateBoost(System.String,System.String,Indx.CloudApi.BoostProxy)">
             <summary>
             CreateBoost will create a Boost setup which may be passed to any search.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.CreateOrOpen(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.CreateOrOpen(System.String,System.String)">
             <summary>
             CreateOrOpen will create a data set. Uses default configuration.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.CreateOrOpen(System.String,System.Int32)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.CreateOrOpen(System.String,System.String,System.Int32)">
             <summary>
             CreateOrOpen will create a data set with specified configuration.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.CreateRangeFilter(System.String,Indx.CloudApi.RangeFilterProxy)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.CreateRangeFilter(System.String,System.String,Indx.CloudApi.RangeFilterProxy)">
             <summary>
             CreateRangeFilter will create a RangeFilter which may be passed to any search.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.CreateValueFilter(System.String,Indx.CloudApi.ValueFilterProxy)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.CreateValueFilter(System.String,System.String,Indx.CloudApi.ValueFilterProxy)">
             <summary>
             CreateValueFilter will create a ValueFilter which may be passed to any search.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteDataSet(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteDataSet(System.String,System.String)">
             <summary>
             DeleteDataSet, will delete the entire dataSet including all contained Documents.
+            Requires team Admin.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteJsonRecord(System.String,System.Int64)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteJsonRecord(System.String,System.String,System.Int64)">
             <summary>
             Deletes a document from the dataset by its key.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteJsonRecords(System.String,System.Int64[])">
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteJsonRecords(System.String,System.String,System.Int64[])">
             <summary>
             Deletes documents from the dataset by their keys.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.GetAllFields(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetAllFields(System.String,System.String)">
             <summary>
             GetAllFields will return the fields found during analyze.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.GetFacetableFields(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetFacetableFields(System.String,System.String)">
             <summary>
             GetFacetableFields will return the array of facetable field names.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.GetFilterableFields(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetFilterableFields(System.String,System.String)">
             <summary>
             GetFilterableFields will return the array of filterable field names.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.GetJson(System.String,System.Int64[])">
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetJson(System.String,System.String,System.Int64[])">
             <summary>
             Returns the raw json records as string[] for the keys.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.GetNumberOfJsonRecordsInDb(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetNumberOfJsonRecordsInDb(System.String,System.String)">
             <summary>
             Returns the number of JSON records in the database for the given dataset.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.GetSearchableFields(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetSearchableFields(System.String,System.String)">
             <summary>
             GetSearchableFields will return the array of searchable field names.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.GetSortableFields(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetSortableFields(System.String,System.String)">
             <summary>
             GetSortableFields will return the array of sortable field names.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.GetStatus(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetStatus(System.String,System.String)">
             <summary>
             GetStatus will return the status of the dataSetName in the search engine.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.GetWordIndexingFields(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetWordIndexingFields(System.String,System.String)">
             <summary>
             GetWordIndexingFields will return the array of word-indexing field names.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.GetUserDataSets">
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetMyDataSets">
             <summary>
-            Returns all datasets the current user owns or has been granted access to.
-            Each entry includes the dataset name, the owner's user ID (null for owned datasets),
-            and the caller's role ("owner", "editor", or "viewer").
+            Returns all datasets the current user can reach via team membership, across every team
+            they belong to. Each entry carries the owning team name and the caller's role on it.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.IndexDataSet(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetTeamDataSets(System.String)">
+            <summary>
+            Lists the datasets owned by a single team.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.IndexDataSet(System.String,System.String)">
             <summary>
             IndexDataSet will start indexing of the loaded documents.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.InsertJsonRecord(System.String,System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.InsertJsonRecord(System.String,System.String,System.String)">
             <summary>
             Inserts one single Json record.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.InsertJsonRecords(System.String,System.String[])">
+        <member name="M:IndxCloudApi.Controllers.SearchController.InsertJsonRecords(System.String,System.String,System.String[])">
             <summary>
             Inserts new JSON records into the dataset.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.LoadFromDatabaseAsync(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.LoadFromDatabaseAsync(System.String,System.String)">
             <summary>
             Loads the jsonData into search engine from the database.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.LoadStreamAsync(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.LoadStreamAsync(System.String,System.String)">
             <summary>
             Loads the jsonData into search engine as a stream.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.LoadString(System.String,System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.LoadString(System.String,System.String,System.String)">
             <summary>
             Loads the jsonData into search engine as a string.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.Search(System.String,Indx.CloudApi.CloudQuery)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.Search(System.String,System.String,Indx.CloudApi.CloudQuery)">
             <summary>
             Search will validate the search query and return the search result.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.SetFacetableFields(System.String,System.String[])">
-            <summary>
-            SetFacetableFields sets the Facetable property on the specified fields.
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.SetFilterableFields(System.String,System.String[])">
-            <summary>
-            SetFilterableFields sets the Filterable property on the specified fields.
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.SetSearchableFields(System.String,System.ValueTuple{System.String,System.Single}[])">
-            <summary>
-            SetSearchableFields sets the Searchable property and weight on the specified fields.
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.SetSortableFields(System.String,System.String[])">
-            <summary>
-            SetSortableFields sets the Sortable property on the specified fields.
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.SetWordIndexingFields(System.String,System.String[])">
-            <summary>
-            SetWordIndexingFields sets the WordIndexing property on the specified fields.
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.SetFieldConfiguration(System.String,Indx.Api.FieldProxy[])">
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetFieldConfiguration(System.String,System.String,Indx.Api.FieldProxy[])">
             <summary>
             SetFieldConfiguration sets any combination of field properties (Searchable, Filterable,
             Facetable, Sortable, WordIndexing, Embeddable, PreloadFilters, Weight, BM25b, BM25k1)
             in one call. Nullable properties have replace semantics: null = leave untouched,
             any value (including false) = overwrite.
-            On validation failure of any item, returns BadRequest immediately; earlier items in the
-            array remain applied (best-effort, consistent with Set*Fields).
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.GetFieldConfiguration(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetSearchableFields(System.String,System.String,System.ValueTuple{System.String,System.Single}[])">
+            <summary>Sets the Searchable property and weight on the specified fields (legacy helper).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetFilterableFields(System.String,System.String,System.String[])">
+            <summary>Sets the Filterable property on the specified fields (legacy helper).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetFacetableFields(System.String,System.String,System.String[])">
+            <summary>Sets the Facetable property on the specified fields (legacy helper).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetSortableFields(System.String,System.String,System.String[])">
+            <summary>Sets the Sortable property on the specified fields (legacy helper).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetWordIndexingFields(System.String,System.String,System.String[])">
+            <summary>Sets the WordIndexing property on the specified fields (legacy helper).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetFieldConfiguration(System.String,System.String)">
             <summary>
-            GetFieldConfiguration returns the full configuration of every field in the dataset,
-            including all flags, weights and BM25F parameters. Returns an empty array if the
-            dataset does not exist or has no fields yet.
+            GetFieldConfiguration returns the full configuration of every field in the dataset.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateJsonRecords(System.String,System.String[])">
+        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateJsonRecords(System.String,System.String,System.String[])">
             <summary>
             Updates existing JSON records in the dataset.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateJsonRecord(System.String,System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateJsonRecord(System.String,System.String,System.String)">
             <summary>
             Updates one single Document.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateField(System.String,System.Int64,Indx.CloudApi.UpdateFieldProxy)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateField(System.String,System.String,System.Int64,Indx.CloudApi.UpdateFieldProxy)">
             <summary>
             Updates a single field on a document identified by its key.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteRecordsInFilter(System.String,Indx.CloudApi.FilterProxy)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteRecordsInFilter(System.String,System.String,Indx.CloudApi.FilterProxy)">
             <summary>
             Deletes all documents matching the given filter.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateFieldInFilter(System.String,Indx.CloudApi.FilterFieldUpdateProxy)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateFieldInFilter(System.String,System.String,Indx.CloudApi.FilterFieldUpdateProxy)">
             <summary>
             Updates a field on all documents matching the given filter. Returns the number of updated documents.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteFilter(System.String,Indx.CloudApi.FilterProxy)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteFilter(System.String,System.String,Indx.CloudApi.FilterProxy)">
             <summary>
             Deletes a single filter from the filter cache.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteAllFilters(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteAllFilters(System.String,System.String)">
             <summary>
             Deletes all filters from the filter cache.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.LoadAllFilters(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.LoadAllFilters(System.String,System.String)">
             <summary>
             Pre-loads all registered filters in the background.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.GetNumberOfFilters(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetNumberOfFilters(System.String,System.String)">
             <summary>
             Returns the number of filters currently registered in the filter cache.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.Hibernate(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.Hibernate(System.String,System.String)">
             <summary>
             Hibernates the dataset, freeing in-memory structures while retaining persisted data.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.WakeUp(System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.WakeUp(System.String,System.String)">
             <summary>
             Wakes up a hibernated dataset, restoring it from the persisted state.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.SetEmbeddableFields(System.String,System.String[])">
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetEmbeddableFields(System.String,System.String,System.String[])">
             <summary>
             Marks the specified fields as embeddable so that their vector values are indexed
             during the next Load. Must be called after AnalyzeStream and before LoadStream.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.VectorSearch(System.String,Indx.CloudApi.VectorQueryProxy)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.VectorSearch(System.String,System.String,Indx.CloudApi.VectorQueryProxy)">
             <summary>
             Searches a single embedding field using approximate nearest-neighbour search.
-            The dataset must be in Ready state (fully loaded and indexed).
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.HybridSearch(System.String,Indx.CloudApi.HybridQueryProxy)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.HybridSearch(System.String,System.String,Indx.CloudApi.HybridQueryProxy)">
             <summary>
             Combines text search with embedding nearest-neighbour search and blends scores.
-            combined score = alpha * embeddingScore + (1 - alpha) * normalisedTextScore.
-            The dataset must be in Ready state (fully loaded and indexed).
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.RunHeavyOnShadowIfReady(System.String,System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,Microsoft.AspNetCore.Mvc.ActionResult})">
-             <summary>
-             Resolves the engine for (dataSetName, userId). If the engine is in Ready state,
-             runs <paramref name="mutation"/> on a shadow instance (so live searches are not
-             blocked) and swaps the result in atomically. Otherwise runs the mutation inline
-             on the live engine. Maps <see cref="T:IndxCloudApi.Models.ShadowBusyException"/> to 409 Conflict.
-            
-             The mutation lambda returns the ActionResult that becomes the response, which
-             preserves the existing endpoints' early-exit semantics (e.g. BadRequest mid-loop).
-             </summary>
-        </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.RunHeavyAsEditor(System.String,System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,Microsoft.AspNetCore.Mvc.ActionResult})">
+        <member name="M:IndxCloudApi.Controllers.SearchController.ResolveTeam(System.String,Microsoft.AspNetCore.Mvc.ActionResult@,System.Boolean,System.Boolean)">
             <summary>
-            Like RunHeavyOnShadowIfReady but resolves editor access first. Accepts the grantee
-            userId and resolves the owner internally, so callers don't need to pre-resolve.
-            Returns Forbidden for viewers and non-grantees.
+            Resolves the team from the route and the JWT user id, enforcing membership and the
+            requested permission level. On failure sets <paramref name="error"/> to the response
+            to return (401 if unauthenticated, 403 if not a member or insufficient role) and
+            returns null.
             </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.RunHeavy(System.String,System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,Microsoft.AspNetCore.Mvc.ActionResult})">
+            <summary>
+            Runs a heavy mutation against the team's dataset, using the shadow-swap path when the
+            engine is Ready so live searches are not blocked. Maps not-found to 400 and a concurrent
+            shadow build to 409.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetFieldFlag(System.String,System.String,System.Collections.Generic.IEnumerable{System.String},System.Action{Indx.Api.Field,System.String})">
+            <summary>Shared body for the legacy Set*Fields helpers — resolve, validate, mutate each field.</summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.UnwrapJsonElement(System.Object)">
             <summary>
@@ -366,10 +356,10 @@
             </summary>
         </member>
         <member name="T:IndxCloudApi.Controllers.DataSetListDto">
-            <summary>Dataset entry returned by GetUserDatasets.</summary>
+            <summary>Dataset entry returned by GetMyDataSets — the owning team and the caller's role.</summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.DataSetListDto.#ctor(System.String,System.String,System.String)">
-            <summary>Dataset entry returned by GetUserDatasets.</summary>
+            <summary>Dataset entry returned by GetMyDataSets — the owning team and the caller's role.</summary>
         </member>
         <member name="P:IndxCloudApi.Data.ApiKey.Jti">
             <summary>JWT jti claim — used for revocation checks.</summary>
@@ -427,11 +417,44 @@
         <member name="M:IndxCloudApi.Data.Migrations.AddNotifications.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
             <inheritdoc />
         </member>
+        <member name="T:IndxCloudApi.Data.Migrations.AddTeams">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.AddTeams.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.AddTeams.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.AddTeams.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
         <member name="P:IndxCloudApi.Data.Notification.Metadata">
             <summary>Optional JSON payload — dataset name, API key ID, link target etc.</summary>
         </member>
         <member name="P:IndxCloudApi.Data.Notification.SourceId">
             <summary>Stable identifier for background-job deduplication (e.g. ApiKey.Id as string).</summary>
+        </member>
+        <member name="T:IndxCloudApi.Data.Team">
+            <summary>
+            A team owns datasets. The team <see cref="P:IndxCloudApi.Data.Team.Name"/> is the single, globally-unique,
+            human-facing label — it doubles as the URL segment, so there is no separate slug or
+            display name. The surrogate <see cref="P:IndxCloudApi.Data.Team.Id"/> is the stable internal key everything
+            (incl. the soft <c>DataSet.TeamId</c> column in indx.db) points at, so a rename never
+            rewrites references.
+            </summary>
+        </member>
+        <member name="P:IndxCloudApi.Data.Team.Name">
+            <summary>Globally unique, URL-safe (a-z, 0-9, '-'). The only name a team has.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Data.TeamMember">
+            <summary>
+            Join row: a user's membership in a team, carrying their role on that team's datasets.
+            Composite primary key (TeamId, UserId) gives exactly one membership row per user/team.
+            </summary>
+        </member>
+        <member name="P:IndxCloudApi.Data.TeamMember.Role">
+            <summary>"Admin" | "Editor" | "Viewer" — role on every dataset owned by the team.</summary>
         </member>
         <member name="T:IndxCloudApi.Models.ChangePasswordRequest">
             <summary>
@@ -458,6 +481,13 @@
             <summary>UTC timestamp at which the in-progress shadow build started, or null if none is active.</summary>
         </member>
         <member name="T:IndxCloudApi.Models.IndxCloudInternalApi">
+            <summary>
+            In-process registry of <see cref="T:Indx.Api.SearchEngine"/> instances, keyed by the owning team.
+            Datasets are owned by a team: the storage layer's owner column holds a team id (GUID
+            string) where it historically held a user id. Authorization (who may touch a team's
+            datasets) is decided in the controllers via team membership, so this class no longer
+            carries any per-user sharing/grantee logic — it just maps (dataSetName, teamId) to an engine.
+            </summary>
              <summary>
              Shadow-swap orchestration for heavy mutations.
             
@@ -485,18 +515,12 @@
             to perform the actual indexing. Use the GetState method
             to monitor progress and readiness for Search.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="userId"></param>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetState(System.String,System.String)">
             <summary>
             Returns status of the system see the model
             class for details.
             </summary>
-            <param name="dataSetName"></param>
-            <param name="userId"></param>
-            <returns></returns>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.InitFromStreamAsync(System.String,System.String,System.IO.Stream)">
             <summary>
@@ -518,30 +542,26 @@
             Make sure to check for search readiness after a call
             to DoIndexAsync.
             </summary>
-            <param name="cloudQuery"></param>
-            <param name="dataSetName"></param>
-            <param name="userId"></param>
-            <returns></returns>
         </member>
-        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.DisposeUserInstances(System.String)">
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.DisposeTeamInstances(System.String)">
             <summary>
-            Removes and disposes all SearchEngine instances for a specific user.
-            This should be called before deleting a user from the database.
+            Removes and disposes all SearchEngine instances owned by a specific team.
+            Call before deleting a team.
             </summary>
-            <param name="userId">The user ID to clean up</param>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.DisposeDataSetInstance(System.String,System.String)">
             <summary>
             Removes and disposes a specific SearchEngine instance for a dataset.
             This should be called before deleting a dataset from the database.
             </summary>
-            <param name="dataSetName">The dataset name to clean up</param>
-            <param name="userId">The user ID that owns the dataset</param>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetAllDataSets">
             <summary>
-            Returns all datasets across all users, each with the owner user ID and the number of access grants.
+            Returns all datasets across all teams, each with the owning team id.
             </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetTeamDataSets(System.String)">
+            <summary>Returns the names of all datasets owned by a team.</summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.DeleteDataSet(System.String,System.String)">
             <summary>
@@ -551,54 +571,17 @@
             </summary>
             <returns><c>true</c> if the dataset existed and was deleted; <c>false</c> if it did not exist.</returns>
         </member>
-        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetEffectiveRole(System.String,System.String,System.String)">
-            <summary>
-            Returns the effective role for a requesting user on a dataset owned by ownerUserId.
-            Returns "owner", "editor", "viewer", or null if no access.
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.FindSearchEngineAsGrantee(System.String,System.String,System.String)">
-            <summary>
-            Returns the owner's engine if the grantee has access, null otherwise.
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GrantAccess(System.String,System.String,System.String,System.String)">
-            <summary>
-            Grants or updates access for a grantee on an owned dataset.
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RevokeAccess(System.String,System.String,System.String)">
-            <summary>
-            Revokes a grantee's access to an owned dataset.
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetAccessGrants(System.String,System.String)">
-            <summary>
-            Returns all grants on a dataset (for the owner's sharing panel).
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetAccessibleDataSets(System.String)">
-            <summary>
-            Returns all datasets shared with a grantee (datasets they don't own).
-            </summary>
-        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.TransferOwnership(System.String,System.String,System.String)">
             <summary>
-            Transfers ownership: evicts the old engine, updates SQLite atomically.
-            Returns 409 if a shadow build is in progress.
+            Moves a dataset from one team to another (the team-ownership equivalent of the old
+            per-user ownership transfer): evicts the old engine, updates SQLite atomically,
+            then warms up the engine under the new owning team.
             </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ResolveEngine(System.String,System.String)">
             <summary>
-            Finds the engine for a dataset, falling back to a grantee lookup if the user doesn't
-            own the dataset. The grantee→owner mapping is cached in memory after the first DB hit.
-            </summary>
-        </member>
-        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ResolveEngineAsEditor(System.String,System.String)">
-            <summary>
-            Resolves the owner's engine for a dataset when the requesting user is either the
-            owner or a grantee with editor role. Returns (null, null) for viewers and
-            non-grantees. Use this for all write operations that editors should be able to perform.
+            Returns the engine for a team-owned dataset, or null if the dataset doesn't exist.
+            Authorization is the controller's responsibility (team membership) — this only resolves.
             </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunMutationOnShadow``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})">
@@ -606,7 +589,7 @@
              Runs <paramref name="mutation"/> on a shadow SearchEngine and swaps it in
              atomically on success. The active instance keeps serving searches throughout.
              Throws <see cref="T:IndxCloudApi.Models.ShadowBusyException"/> if a build is already in progress for
-             the same (dataSetName, userId) key.
+             the same (dataSetName, teamId) key.
             
              Private so external callers (including Blazor pages in the same assembly)
              cannot reach the generic-callback surface and accidentally apply field-config
@@ -620,7 +603,7 @@
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunHeavyOnShadowIfReady``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})">
              <summary>
-             Resolves the engine for (dataSetName, userId). If the engine is in Ready state,
+             Resolves the engine for (dataSetName, teamId). If the engine is in Ready state,
              runs <paramref name="mutation"/> on a shadow instance (so live searches are not
              blocked) and swaps the result in atomically. Otherwise runs the mutation inline
              on the live engine.
@@ -747,6 +730,32 @@
             <param name="subject">Email subject</param>
             <param name="htmlMessage">Email body (HTML format)</param>
         </member>
+        <member name="T:IndxCloudApi.Services.DataMigrationService">
+             <summary>
+             One-time, idempotent migration from per-user dataset ownership to team ownership.
+             Runs at startup before the search engines are warmed up. For every existing user it
+             ensures a personal team exists, then rewrites the owner key of that user's datasets in
+             indx.db from their user id to their team id (a single-row-per-table UPDATE via the
+             existing <see cref="M:Indx.Storage.SqLiteManager.TransferOwnership(System.String,System.String,System.String)"/>).
+            
+             Idempotency comes from the data shape, not a flag: after migration a dataset's owner key
+             is a team id, which never matches a known user id, so a second run finds nothing to move.
+             Users that already have a team (e.g. created via registration) are left as-is.
+             </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.DataMigrationService.#ctor(IndxCloudApi.Data.ApplicationDbContext,IndxCloudApi.Services.TeamService,Microsoft.Extensions.Logging.ILogger{IndxCloudApi.Services.DataMigrationService})">
+             <summary>
+             One-time, idempotent migration from per-user dataset ownership to team ownership.
+             Runs at startup before the search engines are warmed up. For every existing user it
+             ensures a personal team exists, then rewrites the owner key of that user's datasets in
+             indx.db from their user id to their team id (a single-row-per-table UPDATE via the
+             existing <see cref="M:Indx.Storage.SqLiteManager.TransferOwnership(System.String,System.String,System.String)"/>).
+            
+             Idempotency comes from the data shape, not a flag: after migration a dataset's owner key
+             is a team id, which never matches a known user id, so a second run finds nothing to move.
+             Users that already have a team (e.g. created via registration) are left as-is.
+             </summary>
+        </member>
         <member name="T:IndxCloudApi.Services.ILicenseBootstrapper">
             <summary>
             Service that ensures a local .license file is present at startup,
@@ -853,6 +862,119 @@
         <member name="F:IndxCloudApi.Services.RegistrationMode.Invite">
             <summary>
             Only specific email addresses added to the invite list can register
+            </summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.TeamContext">
+            <summary>
+            Result of resolving a team-scoped request: the owning team and the requesting user's
+            role on it. <see cref="P:IndxCloudApi.Services.TeamContext.TeamId"/> (as a string) is the owner key used by the storage layer.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamContext.#ctor(System.Guid,System.String,System.String)">
+            <summary>
+            Result of resolving a team-scoped request: the owning team and the requesting user's
+            role on it. <see cref="P:IndxCloudApi.Services.TeamContext.TeamId"/> (as a string) is the owner key used by the storage layer.
+            </summary>
+        </member>
+        <member name="P:IndxCloudApi.Services.TeamContext.OwnerKey">
+            <summary>The owner key the storage layer expects (where it used to receive a userId).</summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.TeamContextResolver">
+            <summary>
+            Resolves <c>{teamName}</c> + the JWT user id into a <see cref="T:IndxCloudApi.Services.TeamContext"/>, checking
+            membership server-side on every request — so removing a user from a team takes effect
+            immediately, without waiting for their JWT to expire. Returns null when the team is
+            unknown or the user is not a member (caller maps that to 403).
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamContextResolver.#ctor(IndxCloudApi.Services.TeamService)">
+            <summary>
+            Resolves <c>{teamName}</c> + the JWT user id into a <see cref="T:IndxCloudApi.Services.TeamContext"/>, checking
+            membership server-side on every request — so removing a user from a team takes effect
+            immediately, without waiting for their JWT to expire. Returns null when the team is
+            unknown or the user is not a member (caller maps that to 403).
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamContextResolver.Resolve(System.String,System.String)">
+            <summary>Synchronous resolve for the MVC request path (SQLite is a sync provider).</summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.TeamRoles">
+            <summary>
+            The roles a user can hold on a team's datasets. Distinct from the platform-wide
+            Identity roles ("Admin"/"Member") that gate the /Admin/* pages.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamRoles.Rank(System.String)">
+            <summary>Higher rank = more access. Used to pick the strongest of several roles.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamRoles.Max(System.String,System.String)">
+            <summary>Returns the stronger of two roles (null = no access).</summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.TeamService">
+            <summary>
+            Server-side team and membership management. Team CRUD is intentionally NOT exposed over
+            HTTP — the Blazor pages (and registration) call this service directly. The team
+            <see cref="P:IndxCloudApi.Data.Team.Name"/> is the only human-facing name; it is globally unique and URL-safe.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamService.#ctor(IndxCloudApi.Data.ApplicationDbContext)">
+            <summary>
+            Server-side team and membership management. Team CRUD is intentionally NOT exposed over
+            HTTP — the Blazor pages (and registration) call this service directly. The team
+            <see cref="P:IndxCloudApi.Data.Team.Name"/> is the only human-facing name; it is globally unique and URL-safe.
+            </summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.TeamService.TeamException">
+            <summary>Thrown when an operation would violate a team invariant (name taken, last admin, etc.).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamService.TeamException.#ctor(System.String)">
+            <summary>Thrown when an operation would violate a team invariant (name taken, last admin, etc.).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamService.GetTeamsForUserAsync(System.String)">
+            <summary>All teams the user belongs to, with the user's role on each.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamService.GetAllAsync">
+            <summary>All teams (admin view).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamService.CreateTeamAsync(System.String,System.String)">
+            <summary>
+            Creates a team with the given (raw) name — sanitised to a URL-safe, globally-unique
+            slug — and makes <paramref name="ownerUserId"/> its first Admin. Both rows commit together.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamService.CreatePersonalTeamAsync(IndxCloudApi.Data.ApplicationUser,System.String)">
+            <summary>
+            Creates the personal team for a freshly-registered user. Name comes from the optional
+            form field, else the email prefix; always sanitised and made unique.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamService.RenameTeamAsync(System.Guid,System.String)">
+            <summary>Renames a team. Surrogate Id is the key, so no references need rewriting.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamService.DeleteTeamAsync(System.Guid)">
+            <summary>Deletes a team. Membership rows cascade; dataset reassignment is the caller's concern.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamService.IsLastAdminAsync(System.Guid,System.String)">
+            <summary>True if <paramref name="userId"/> is the only Admin left on the team.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamService.EnsureUniqueNameAsync(System.String)">
+            <summary>
+            Returns <paramref name="baseName"/> if free, else appends -2, -3, … until unique.
+            The unique index on Team.Name is the final guard against races.
+            </summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.TeamSlug">
+            <summary>
+            Normalises a free-text name into the single URL-safe team name used both as identity and
+            URL segment. There is deliberately no separate "display name" — this is the only name a
+            team has, so we constrain rather than duplicate it.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.TeamSlug.Sanitize(System.String)">
+            <summary>
+            Lowercases, strips diacritics (æøå → ae/oe/aa style handled by best-effort folding),
+            replaces runs of non [a-z0-9] with a single '-', and trims leading/trailing '-'.
+            Returns "team" if nothing usable remains.
             </summary>
         </member>
         <member name="T:IndxCloudApi.Swagger.ProxySchemaFilter">

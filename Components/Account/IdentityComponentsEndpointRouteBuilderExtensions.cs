@@ -74,22 +74,10 @@ namespace Microsoft.AspNetCore.Routing
                 var userId = appUser.Id;
                 logger.LogInformation($"Starting account deletion for user {userId}");
 
-                try
-                {
-                    // Step 1: Dispose all in-memory SearchEngine instances for this user
-                    IndxCloudInternalApi.Manager.DisposeUserInstances(userId);
-                    logger.LogInformation($"Disposed in-memory instances for user {userId}");
-
-                    // Step 2: Delete user from Search database (triggers CASCADE delete)
-                    var sqLiteManager = new SqLiteManager(IndxCloudInternalApi.SearchDbConnectionString);
-                    sqLiteManager.DeleteUser(userId);
-                    logger.LogInformation($"Deleted user {userId} from Search database");
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError($"Failed to delete user data from Search database: {ex.Message}");
-                    return Results.BadRequest($"Failed to delete user data: {ex.Message}");
-                }
+                // Datasets are owned by teams, not by users — so deleting a user must NOT delete
+                // any datasets (that continuity is the whole point of team ownership). The user's
+                // TeamMember rows cascade-delete via the FK to AspNetUsers when Identity removes
+                // the account below; the team and its datasets survive.
 
                 // Step 3: Delete from Identity database
                 memoryCache.Remove($"user_exists_{userId}");

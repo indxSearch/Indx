@@ -89,6 +89,9 @@ public class Program
         builder.Services.AddScoped<RegistrationValidator>();
         builder.Services.AddSingleton<InstanceSettingsService>();
         builder.Services.AddScoped<IndxCloudApi.Services.NotificationService>();
+        builder.Services.AddScoped<IndxCloudApi.Services.TeamService>();
+        builder.Services.AddScoped<IndxCloudApi.Services.TeamContextResolver>();
+        builder.Services.AddScoped<IndxCloudApi.Services.DataMigrationService>();
         builder.Services.AddHostedService<IndxCloudApi.Services.TokenExpiryNotificationJob>();
 
         var registrationMode = builder.Configuration["Registration:Mode"] ?? "Open";
@@ -647,6 +650,24 @@ public class Program
             var bootstrapper = bootstrapScope.ServiceProvider
                 .GetRequiredService<Services.ILicenseBootstrapper>();
             bootstrapper.EnsureLocalLicenseAsync().GetAwaiter().GetResult();
+        }
+
+        // Migrate per-user dataset ownership to team ownership BEFORE warming up engines, so the
+        // search instances are keyed by team id from the start. Idempotent — safe on every boot.
+        using (var migrationScope = app.Services.CreateScope())
+        {
+            try
+            {
+                var migrator = migrationScope.ServiceProvider
+                    .GetRequiredService<Services.DataMigrationService>();
+                migrator.MigrateAsync(searchConnectionString).GetAwaiter().GetResult();
+            }
+            catch (Exception migEx)
+            {
+                migrationScope.ServiceProvider.GetRequiredService<ILogger<Program>>()
+                    .LogError(migEx, "Team-ownership data migration failed");
+                throw;
+            }
         }
 
         try

@@ -6,6 +6,7 @@
 @using IndxCloudApi.Models
 @attribute [Authorize(Roles = "Admin")]
 @inject UserManager<ApplicationUser> UserManager
+@inject IndxCloudApi.Services.TeamService TeamService
 @inject ILogger<Datasets> Logger
 
 <PageTitle>Admin — Datasets</PageTitle>
@@ -22,7 +23,7 @@
 <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 40px;">
     <div>
         <h2 style="margin-bottom: 4px;">Datasets</h2>
-        <p style="color: var(--lv5);">All datasets across all users.</p>
+        <p style="color: var(--lv5);">All datasets across all teams.</p>
     </div>
     <Button Variant="ghost" Size="micro" IconLeft="_iconRefresh" style="margin-left: auto;" @onclick="Load">Refresh</Button>
 </div>
@@ -54,8 +55,7 @@ else
         <thead>
             <tr style="border-bottom: 1px solid var(--lv3); color: var(--lv5);">
                 <th style="text-align: left; padding: 8px 12px; font-weight: 500;">Dataset</th>
-                <th style="text-align: left; padding: 8px 12px; font-weight: 500;">Owner</th>
-                <th style="padding: 8px 12px; font-weight: 500;">Shared with</th>
+                <th style="text-align: left; padding: 8px 12px; font-weight: 500;">Team</th>
                 <th style="padding: 8px 12px;"></th>
             </tr>
         </thead>
@@ -64,21 +64,11 @@ else
             {
                 <tr style="border-bottom: 1px solid var(--lv2);">
                     <td style="padding: 10px 12px; color: var(--lv6); font-family: monospace;">@row.DataSetName</td>
-                    <td style="padding: 10px 12px; color: var(--lv5);">@(row.OwnerEmail ?? row.OwnerId)</td>
-                    <td style="padding: 10px 12px; text-align: center; color: var(--lv5);">
-                        @if (row.AccessCount > 0)
-                        {
-                            <Chip Color="var(--lv2)" TextColor="var(--lv5)">@row.AccessCount</Chip>
-                        }
-                        else
-                        {
-                            <span style="color: var(--lv3);">—</span>
-                        }
-                    </td>
+                    <td style="padding: 10px 12px; color: var(--lv5);">@(row.TeamName ?? row.TeamId)</td>
                     <td style="padding: 10px 12px; text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
                         @if (_deleteConfirmKey == row.Key)
                         {
-                            <Button Variant="danger" Size="micro" @onclick="() => DeleteDataset(row.DataSetName, row.OwnerId)">Confirm Delete</Button>
+                            <Button Variant="danger" Size="micro" @onclick="() => DeleteDataset(row.DataSetName, row.TeamId)">Confirm Delete</Button>
                             <Button Variant="ghost" Size="micro" @onclick="() => _deleteConfirmKey = null">Cancel</Button>
                         }
                         else
@@ -98,9 +88,9 @@ else
     private RenderFragment<int> _iconDelete  => size => @<UserX Size="size" />;
     private RenderFragment<int> _iconRefresh => size => @<Refresh Size="size" />;
 
-    private record DatasetRow(string DataSetName, string OwnerId, string? OwnerEmail, int AccessCount)
+    private record DatasetRow(string DataSetName, string TeamId, string? TeamName)
     {
-        public string Key => $"{OwnerId}/{DataSetName}";
+        public string Key => $"{TeamId}/{DataSetName}";
     }
 
     private List<DatasetRow>? _rows;
@@ -112,26 +102,24 @@ else
 
     private async Task Load()
     {
-        var userMap = await Task.Run(() =>
-            UserManager.Users.ToDictionary(u => u.Id, u => u.Email));
+        // Owner keys are team ids; map them to team names for display.
+        var teamMap = (await TeamService.GetAllAsync())
+            .ToDictionary(t => t.Id.ToString(), t => t.Name);
 
         var all = IndxCloudInternalApi.Manager.GetAllDataSets();
         var rows = all.Select(r =>
-        {
-            var email = userMap.GetValueOrDefault(r.UserId);
-            return new DatasetRow(r.DataSetName, r.UserId, email, r.AccessCount);
-        });
-        _rows = [.. rows.OrderBy(r => r.OwnerEmail ?? r.OwnerId).ThenBy(r => r.DataSetName)];
+            new DatasetRow(r.DataSetName, r.TeamId, teamMap.GetValueOrDefault(r.TeamId)));
+        _rows = [.. rows.OrderBy(r => r.TeamName ?? r.TeamId).ThenBy(r => r.DataSetName)];
     }
 
-    private async Task DeleteDataset(string dataSetName, string ownerId)
+    private async Task DeleteDataset(string dataSetName, string teamId)
     {
         _message = null; _errorMessage = null;
         _deleteConfirmKey = null;
-        var deleted = IndxCloudInternalApi.Manager.DeleteDataSet(dataSetName, ownerId);
+        var deleted = IndxCloudInternalApi.Manager.DeleteDataSet(dataSetName, teamId);
         if (deleted)
         {
-            Logger.LogInformation("Admin deleted dataset {DataSetName} owned by {OwnerId}", dataSetName, ownerId);
+            Logger.LogInformation("Admin deleted dataset {DataSetName} owned by team {TeamId}", dataSetName, teamId);
             _message = $"Dataset \"{dataSetName}\" deleted.";
             await Load();
         }

@@ -5,6 +5,7 @@ using Indx.Core;
 using Indx.Storage;
 using Indx.Utilities;
 using IndxCloudApi.Models;
+using IndxCloudApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors;
@@ -16,29 +17,32 @@ using System.Text.Json;
 namespace IndxCloudApi.Controllers
 {
     /// <summary>
-    /// Provides API endpoints for managing, analyzing, indexing, and searching JSON-based datasets. Supports operations
-    /// such as dataset creation, deletion, field configuration, data loading, and executing search queries. All
-    /// endpoints require authentication and operate on datasets associated with the authenticated user.
+    /// API endpoints for managing, analyzing, indexing, and searching JSON datasets. Datasets are
+    /// owned by a <b>team</b>: every dataset endpoint is scoped under
+    /// <c>api/teams/{teamName}/datasets/{dataSetName}</c>. The caller must be a member of the team;
+    /// their team role (Admin/Editor/Viewer) decides what they may do. Membership is checked on
+    /// every request, so removing a user from a team takes effect immediately.
     /// </summary>
     [ApiVersion("2.0-alpha")]
     [Route("api")]
     [ApiController]
-    public class SearchController : Controller
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+    [EnableCors("AllowAllHeaders")]
+    public class SearchController(TeamContextResolver resolver, TeamService teams) : Controller
     {
+        private const string DataSetRoute = "teams/{teamName}/datasets/{dataSetName}";
+
         #region Public Methods
         /// <summary>
         /// As Analyze but handles a stream as input text.
         /// </summary>
-        [HttpPost("AnalyzeStreamAsync/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public async Task<ActionResult<SystemStatus>> AnalyzeStreamAsync(string dataSetName)
+        [HttpPost(DataSetRoute + "/AnalyzeStreamAsync")]
+        public async Task<ActionResult<SystemStatus>> AnalyzeStreamAsync(string teamName, string dataSetName)
         {
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             HttpContext.Request.EnableBuffering();
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngineForInit(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngineForInit(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("AnalyzeStreamAsync non existing dataset name or configuration");
             var state = matcher.Status;
@@ -62,25 +66,22 @@ namespace IndxCloudApi.Controllers
         /// a 400 error, it is sent as plain text.
         /// </summary>
         [RequestSizeLimit(2_000_000_000)]
-        [HttpPost("AnalyzeString/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<SystemStatus> AnalyzeString(string dataSetName, [FromBody] string jsonData)
+        [HttpPost(DataSetRoute + "/AnalyzeString")]
+        public ActionResult<SystemStatus> AnalyzeString(string teamName, string dataSetName, [FromBody] string jsonData)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (string.IsNullOrEmpty(jsonData))
                 return BadRequest("null or empty jsonData argument");
-            var state = IndxCloudInternalApi.Manager.GetState(dataSetName, userId);
+            var state = IndxCloudInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
             if (state == null || state.InvalidDataSetName)
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngineForInit(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngineForInit(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("AnalyzeString non existing dataset name or configuration");
-            var df = DocumentFields.Analyze(jsonData, out string error);
-            if (!string.IsNullOrEmpty(error) || df == null)
-                return BadRequest(error);
+            var df = DocumentFields.Analyze(jsonData, out string error2);
+            if (!string.IsNullOrEmpty(error2) || df == null)
+                return BadRequest(error2);
             matcher.SetDocumentFieldsInternal(df);
             if (matcher.Persistence == null)
                 return BadRequest("Analyze failed, Persistence==null");
@@ -91,17 +92,14 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// CombineFilters will combine two filters using AND or OR operation.
         /// </summary>
-        [HttpPut("CombineFilters/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<FilterProxy> CombineFilters(string dataSetName, [FromBody] CombinedFilterProxy combineFilters)
+        [HttpPut(DataSetRoute + "/CombineFilters")]
+        public ActionResult<FilterProxy> CombineFilters(string teamName, string dataSetName, [FromBody] CombinedFilterProxy combineFilters)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("CombineFilters, non existing dataset name");
             var fa = matcher.GetFilterFromKey(combineFilters.A.HashString);
@@ -119,17 +117,14 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// CreateBoost will create a Boost setup which may be passed to any search.
         /// </summary>
-        [HttpPut("CreateBoost/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<BoostProxy> CreateBoost(string dataSetName, [FromBody] BoostProxy boost)
+        [HttpPut(DataSetRoute + "/CreateBoost")]
+        public ActionResult<BoostProxy> CreateBoost(string teamName, string dataSetName, [FromBody] BoostProxy boost)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("CreateBoost non existing dataset name");
             var filter = matcher.GetFilterFromKey(boost.FilterProxy.HashString);
@@ -142,56 +137,41 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// CreateOrOpen will create a data set. Uses default configuration.
         /// </summary>
-        [HttpPut("CreateOrOpen/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public IActionResult CreateOrOpen(string dataSetName)
+        [HttpPut(DataSetRoute + "/CreateOrOpen")]
+        public IActionResult CreateOrOpen(string teamName, string dataSetName)
         {
-            return CreateOrOpen(dataSetName, 400);
+            return CreateOrOpen(teamName, dataSetName, 400);
         }
 
         /// <summary>
         /// CreateOrOpen will create a data set with specified configuration.
         /// </summary>
-        [HttpPut("CreateOrOpen/{dataSetName}/{configuration}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public IActionResult CreateOrOpen(string dataSetName, int configuration)
+        [HttpPut(DataSetRoute + "/CreateOrOpen/{configuration}")]
+        public IActionResult CreateOrOpen(string teamName, string dataSetName, int configuration)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
             if (!CoreSearchEngine.ConfigurationExists(configuration))
                 return BadRequest("illegal configuration number");
-            var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, dataSetName, userId);
+            var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, dataSetName, ctx.OwnerKey);
             if (!persistence.DataSetExists())
-            {
-                // Don't create a shadow dataset if the user is already a grantee on one with this name
-                var db = new Indx.Storage.SqLiteManager(IndxCloudInternalApi.SearchDbConnectionString);
-                var accessible = db.GetAccessibleDataSets(userId);
-                if (accessible.Any(a => a.DataSetName == dataSetName))
-                    return Ok(); // acknowledged — the grantee path handles all subsequent calls
                 persistence.CreateOrOpenDataSet(configuration);
-            }
             return Ok();
         }
 
         /// <summary>
         /// CreateRangeFilter will create a RangeFilter which may be passed to any search.
         /// </summary>
-        [HttpPut("CreateRangeFilter/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<FilterProxy> CreateRangeFilter(string dataSetName, [FromBody] RangeFilterProxy rangeFilter)
+        [HttpPut(DataSetRoute + "/CreateRangeFilter")]
+        public ActionResult<FilterProxy> CreateRangeFilter(string teamName, string dataSetName, [FromBody] RangeFilterProxy rangeFilter)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("CreateRangeFilter non existing dataset name");
             var filter = matcher.CreateRangeFilter(rangeFilter.FieldName, rangeFilter.LowerLimit, rangeFilter.UpperLimit);
@@ -204,17 +184,14 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// CreateValueFilter will create a ValueFilter which may be passed to any search.
         /// </summary>
-        [HttpPut("CreateValueFilter/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<FilterProxy> CreateValueFilter(string dataSetName, [FromBody] ValueFilterProxy valueFilter)
+        [HttpPut(DataSetRoute + "/CreateValueFilter")]
+        public ActionResult<FilterProxy> CreateValueFilter(string teamName, string dataSetName, [FromBody] ValueFilterProxy valueFilter)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("CreateRangeFilter non existing dataset name");
             var filter = matcher.CreateValueFilter(valueFilter.FieldName, valueFilter.Value);
@@ -226,16 +203,14 @@ namespace IndxCloudApi.Controllers
 
         /// <summary>
         /// DeleteDataSet, will delete the entire dataSet including all contained Documents.
+        /// Requires team Admin.
         /// </summary>
-        [HttpDelete("DeleteDataSet/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public IActionResult DeleteDataSet(string dataSetName)
+        [HttpDelete(DataSetRoute)]
+        public IActionResult DeleteDataSet(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            if (!IndxCloudInternalApi.Manager.DeleteDataSet(dataSetName, userId))
+            var ctx = ResolveTeam(teamName, out var error, admin: true);
+            if (ctx == null) return error!;
+            if (!IndxCloudInternalApi.Manager.DeleteDataSet(dataSetName, ctx.OwnerKey))
                 return BadRequest("Attempt to delete non exixting dataset");
             return Ok();
         }
@@ -243,19 +218,16 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Deletes a document from the dataset by its key.
         /// </summary>
-        [HttpDelete("{dataSetName}/{documentKey}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult DeleteJsonRecord(string dataSetName, long documentKey)
+        [HttpDelete(DataSetRoute + "/documents/{documentKey:long}")]
+        public ActionResult DeleteJsonRecord(string teamName, string dataSetName, long documentKey)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
+            var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("DeleteDocument non existing dataset name or insufficient permissions");
+                return BadRequest("DeleteDocument non existing dataset name");
             var result = matcher.DeleteJsonRecord(documentKey);
             if (!result)
                 return BadRequest("DeleteDocument document not found");
@@ -265,17 +237,14 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Deletes documents from the dataset by their keys.
         /// </summary>
-        [HttpDelete("{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult DeleteJsonRecords(string dataSetName, [FromBody] long[] documentKeys)
+        [HttpDelete(DataSetRoute + "/documents")]
+        public ActionResult DeleteJsonRecords(string teamName, string dataSetName, [FromBody] long[] documentKeys)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            return RunHeavyAsEditor(dataSetName, userId, "DeleteJsonRecords", engine =>
+            return RunHeavy(dataSetName, ctx.OwnerKey, "DeleteJsonRecords", engine =>
             {
                 foreach (var documentKey in documentKeys)
                 {
@@ -290,57 +259,45 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// GetAllFields will return the fields found during analyze.
         /// </summary>
-        [HttpGet("GetallFields/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<string[]> GetAllFields(string dataSetName)
+        [HttpGet(DataSetRoute + "/GetallFields")]
+        public ActionResult<string[]> GetAllFields(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            return IndxCloudInternalApi.Manager.GetFields(dataSetName, userId, true, false, false, false, false, false);
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            return IndxCloudInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, true, false, false, false, false, false);
         }
 
         /// <summary>
         /// GetFacetableFields will return the array of facetable field names.
         /// </summary>
-        [HttpGet("GetFacetableFields/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<string[]> GetFacetableFields(string dataSetName)
+        [HttpGet(DataSetRoute + "/GetFacetableFields")]
+        public ActionResult<string[]> GetFacetableFields(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            return IndxCloudInternalApi.Manager.GetFields(dataSetName, userId, false, false, false, false, true, false);
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            return IndxCloudInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, false, false, true, false);
         }
 
         /// <summary>
         /// GetFilterableFields will return the array of filterable field names.
         /// </summary>
-        [HttpGet("GetFilterableFields/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<string[]> GetFilterableFields(string dataSetName)
+        [HttpGet(DataSetRoute + "/GetFilterableFields")]
+        public ActionResult<string[]> GetFilterableFields(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            return IndxCloudInternalApi.Manager.GetFields(dataSetName, userId, false, false, false, true, false, false);
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            return IndxCloudInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, false, true, false, false);
         }
 
         /// <summary>
         /// Returns the raw json records as string[] for the keys.
         /// </summary>
-        [HttpPost("GetJson/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<string[]> GetJson(string dataSetName, [FromBody] long[] keys)
+        [HttpPost(DataSetRoute + "/GetJson")]
+        public ActionResult<string[]> GetJson(string teamName, string dataSetName, [FromBody] long[] keys)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            ICloudSearchEngine? engine = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            ICloudSearchEngine? engine = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (engine == null)
                 return BadRequest("GetJson non existing dataset name");
             if (engine.Status.SystemState == SystemState.Created || engine.Status.SystemState == SystemState.Loading)
@@ -354,15 +311,12 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Returns the number of JSON records in the database for the given dataset.
         /// </summary>
-        [HttpGet("GetNumberOfJsonRecordsInDb/{dataSetname}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<int> GetNumberOfJsonRecordsInDb(string dataSetName)
+        [HttpGet(DataSetRoute + "/GetNumberOfJsonRecordsInDb")]
+        public ActionResult<int> GetNumberOfJsonRecordsInDb(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            var engine = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            var engine = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (engine == null)
                 return BadRequest("invalid dataSetName");
             return engine.Persistence?.NumberOfJsonRecords() ?? 0;
@@ -371,135 +325,117 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// GetSearchableFields will return the array of searchable field names.
         /// </summary>
-        [HttpGet("GetSearchableFields/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<string[]> GetSearchableFields(string dataSetName)
+        [HttpGet(DataSetRoute + "/GetSearchableFields")]
+        public ActionResult<string[]> GetSearchableFields(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            return IndxCloudInternalApi.Manager.GetFields(dataSetName, userId, false, true, false, false, false, false);
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            return IndxCloudInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, true, false, false, false, false);
         }
 
         /// <summary>
         /// GetSortableFields will return the array of sortable field names.
         /// </summary>
-        [HttpGet("GetSortableFields/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<string[]> GetSortableFields(string dataSetName)
+        [HttpGet(DataSetRoute + "/GetSortableFields")]
+        public ActionResult<string[]> GetSortableFields(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            return IndxCloudInternalApi.Manager.GetFields(dataSetName, userId, false, false, true, false, false, false);
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            return IndxCloudInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, true, false, false, false);
         }
 
         /// <summary>
         /// GetStatus will return the status of the dataSetName in the search engine.
         /// </summary>
-        [HttpGet("GetStatus/{dataSetname}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<CloudSystemStatus> GetStatus(string dataSetName)
+        [HttpGet(DataSetRoute + "/GetStatus")]
+        public ActionResult<CloudSystemStatus> GetStatus(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            // TEMPORARY: catch exposes stack trace for diagnostics — remove before release
-            try
-            {
-                var status = IndxCloudInternalApi.Manager.GetState(dataSetName, userId);
-                if (status == null)
-                    return BadRequest($"GetStatus failed: dataset '{dataSetName}' not found for user '{userId}'");
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            var status = IndxCloudInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
+            if (status == null)
+                return BadRequest($"GetStatus failed: dataset '{dataSetName}' not found in team '{teamName}'");
 
-                return new CloudSystemStatus(status)
-                {
-                    ShadowBuildInProgress = IndxCloudInternalApi.Manager.IsShadowBuildInProgress(dataSetName, userId),
-                    ShadowBuildStartedUtc = IndxCloudInternalApi.Manager.ShadowBuildStartedUtc(dataSetName, userId),
-                };
-            }
-            catch (Exception ex)
+            return new CloudSystemStatus(status)
             {
-                return StatusCode(500, $"GetStatus exception: {ex}"); // TEMPORARY
-            }
+                ShadowBuildInProgress = IndxCloudInternalApi.Manager.IsShadowBuildInProgress(dataSetName, ctx.OwnerKey),
+                ShadowBuildStartedUtc = IndxCloudInternalApi.Manager.ShadowBuildStartedUtc(dataSetName, ctx.OwnerKey),
+            };
         }
 
         /// <summary>
         /// GetWordIndexingFields will return the array of word-indexing field names.
         /// </summary>
-        [HttpGet("GetWordIndexingFields/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<string[]> GetWordIndexingFields(string dataSetName)
+        [HttpGet(DataSetRoute + "/GetWordIndexingFields")]
+        public ActionResult<string[]> GetWordIndexingFields(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            return IndxCloudInternalApi.Manager.GetFields(dataSetName, userId, false, false, false, false, false, true);
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            return IndxCloudInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, false, false, false, true);
         }
 
         /// <summary>
-        /// Returns all datasets the current user owns or has been granted access to.
-        /// Each entry includes the dataset name, the owner's user ID (null for owned datasets),
-        /// and the caller's role ("owner", "editor", or "viewer").
+        /// Returns all datasets the current user can reach via team membership, across every team
+        /// they belong to. Each entry carries the owning team name and the caller's role on it.
         /// </summary>
-        [HttpGet("GetUserDatasets")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<DataSetListDto[]> GetUserDataSets()
+        [HttpGet("me/datasets")]
+        public async Task<ActionResult<DataSetListDto[]>> GetMyDataSets()
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized();
 
-            var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, "dummy", userId);
-            var owned = persistence.GetUserDataSets(userId)
-                .Select(n => new DataSetListDto(n, null, "owner"));
+            var result = new List<DataSetListDto>();
+            foreach (var (team, role) in await teams.GetTeamsForUserAsync(userId))
+            {
+                foreach (var name in IndxCloudInternalApi.Manager.GetTeamDataSets(team.Id.ToString()))
+                    result.Add(new DataSetListDto(name, team.Name, role));
+            }
+            return result.ToArray();
+        }
 
-            var shared = IndxCloudInternalApi.Manager.GetAccessibleDataSets(userId)
-                .Select(s => new DataSetListDto(s.DataSetName, s.OwnerUserId, s.Role));
-
-            return owned.Concat(shared).ToArray();
+        /// <summary>
+        /// Lists the datasets owned by a single team.
+        /// </summary>
+        [HttpGet("teams/{teamName}/datasets")]
+        public ActionResult<string[]> GetTeamDataSets(string teamName)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            return IndxCloudInternalApi.Manager.GetTeamDataSets(ctx.OwnerKey).ToArray();
         }
 
         /// <summary>
         /// IndexDataSet will start indexing of the loaded documents.
         /// </summary>
-        [HttpGet]
-        [Route("IndexDataSet/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<SystemStatus> IndexDataSet(string dataSetName)
+        [HttpGet(DataSetRoute + "/IndexDataSet")]
+        public ActionResult<SystemStatus> IndexDataSet(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return BadRequest("unauthorized");
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
 
-            var (matcher, ownerUserId) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
+            var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("IndexDataSet non existing dataset name or insufficient permissions");
+                return BadRequest("IndexDataSet non existing dataset name");
 
             if (matcher.Status.SystemState == SystemState.Ready)
             {
                 // Re-index without blocking searches: build shadow (which loads + indexes
-                // internally) and swap it in. Empty FieldProxy[] means no field-config
-                // changes — the shadow just rebuilds from current state.
+                // internally) and swap it in. Empty FieldProxy[] means no field-config changes.
                 try
                 {
                     IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(
-                        dataSetName, ownerUserId!, Array.Empty<FieldProxy>());
+                        dataSetName, ctx.OwnerKey, Array.Empty<FieldProxy>());
                 }
                 catch (ShadowBusyException ex)
                 {
                     return StatusCode(StatusCodes.Status409Conflict, ex.Message);
                 }
             }
-            else if (!IndxCloudInternalApi.Manager.DoIndex(dataSetName, ownerUserId!))
+            else if (!IndxCloudInternalApi.Manager.DoIndex(dataSetName, ctx.OwnerKey))
             {
                 // Pre-Ready: first-time indexing path (Loaded -> Indexing -> Ready).
-                var status1 = IndxCloudInternalApi.Manager.GetState(dataSetName, ownerUserId!);
+                var status1 = IndxCloudInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
                 if (status1 == null)
                     return BadRequest("IndexDataSet failed, DoIndex returned false");
                 if (status1.SystemState == SystemState.Created)
@@ -509,7 +445,7 @@ namespace IndxCloudApi.Controllers
                 }
             }
 
-            var status = IndxCloudInternalApi.Manager.GetState(dataSetName, ownerUserId!);
+            var status = IndxCloudInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
             if (status == null)
                 return BadRequest("IndexDataSet failed, status==null");
             return status;
@@ -518,39 +454,33 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Inserts one single Json record.
         /// </summary>
-        [HttpPost("{dataSetName}/insert/{documentKey:long}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult InsertJsonRecord(string dataSetName, [FromBody] string jsonData)
+        [HttpPost(DataSetRoute + "/insert/{documentKey:long}")]
+        public ActionResult InsertJsonRecord(string teamName, string dataSetName, [FromBody] string jsonData)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
+            var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("InsertJsonRecord non existing dataset name or insufficient permissions");
-            var result = matcher.InsertJsonRecord(jsonData, out string error);
+                return BadRequest("InsertJsonRecord non existing dataset name");
+            var result = matcher.InsertJsonRecord(jsonData, out string error2);
             if (!result)
-                return BadRequest(error);
+                return BadRequest(error2);
             return Ok();
         }
 
         /// <summary>
         /// Inserts new JSON records into the dataset.
         /// </summary>
-        [HttpPost("{dataSetName}/insert")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult InsertJsonRecords(string dataSetName, [FromBody] string[] jsonRecords)
+        [HttpPost(DataSetRoute + "/insert")]
+        public ActionResult InsertJsonRecords(string teamName, string dataSetName, [FromBody] string[] jsonRecords)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            return RunHeavyAsEditor(dataSetName, userId, "InsertJsonRecords", engine =>
+            return RunHeavy(dataSetName, ctx.OwnerKey, "InsertJsonRecords", engine =>
             {
                 engine.InsertJsonRecords(jsonRecords, null, out _);
                 return Ok();
@@ -560,17 +490,14 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Loads the jsonData into search engine from the database.
         /// </summary>
-        [HttpGet("LoadFromDatabase/{dataSetName}")]
-        [EnableCors("AllowAllHeaders")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        public async Task<ActionResult> LoadFromDatabaseAsync(string dataSetName)
+        [HttpGet(DataSetRoute + "/LoadFromDatabase")]
+        public async Task<ActionResult> LoadFromDatabaseAsync(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
 
             var pm = new ProcessMonitor();
-            var success = IndxCloudInternalApi.Manager.LoadFromDatabase(dataSetName, userId, pm);
+            var success = IndxCloudInternalApi.Manager.LoadFromDatabase(dataSetName, ctx.OwnerKey, pm);
             if (!success)
                 return BadRequest("LoadFromDatabaseAsync failed, success==null");
             await pm.WaitForCompletionAsync();
@@ -582,21 +509,18 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Loads the jsonData into search engine as a stream.
         /// </summary>
-        [HttpPut("LoadStream/{dataSetName}")]
-        [EnableCors("AllowAllHeaders")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        public async Task<ActionResult> LoadStreamAsync(string dataSetName)
+        [HttpPut(DataSetRoute + "/LoadStream")]
+        public ActionResult LoadStreamAsync(string teamName, string dataSetName)
         {
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             HttpContext.Request.EnableBuffering();
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
             if (HttpContext.Request.ContentLength == null || HttpContext.Request.ContentLength == 0)
                 return BadRequest("Empty request body, stream missing");
             var bodyStream = HttpContext.Request.Body;
             bodyStream.Position = 0;
             var pm = new ProcessMonitor();
-            if (IndxCloudInternalApi.Manager.Load(dataSetName, userId, bodyStream, pm))
+            if (IndxCloudInternalApi.Manager.Load(dataSetName, ctx.OwnerKey, bodyStream, pm))
                 pm.WaitForCompletion();
             else
                 return BadRequest("LoadStreamAsync failed, Load returned false");
@@ -610,14 +534,11 @@ namespace IndxCloudApi.Controllers
         /// Loads the jsonData into search engine as a string.
         /// </summary>
         [RequestSizeLimit(2_000_000_000)]
-        [HttpPut("LoadString/{dataSetName}")]
-        [EnableCors("AllowAllHeaders")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        public IActionResult LoadString(string dataSetName, [FromBody] string jsonData)
+        [HttpPut(DataSetRoute + "/LoadString")]
+        public IActionResult LoadString(string teamName, string dataSetName, [FromBody] string jsonData)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             var memoryStream = new MemoryStream();
             using (var writer = new StreamWriter(memoryStream, Encoding.UTF8, leaveOpen: true))
             {
@@ -626,7 +547,7 @@ namespace IndxCloudApi.Controllers
             }
             memoryStream.Position = 0;
             var pm = new ProcessMonitor();
-            if (IndxCloudInternalApi.Manager.Load(dataSetName, userId, memoryStream, pm))
+            if (IndxCloudInternalApi.Manager.Load(dataSetName, ctx.OwnerKey, memoryStream, pm))
                 pm.WaitForCompletion();
             else
                 return BadRequest("LoadString failed, Load returned false");
@@ -638,169 +559,15 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Search will validate the search query and return the search result.
         /// </summary>
-        [HttpPost("Search/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<Indx.Api.Result> Search(string dataSetName, [FromBody] CloudQuery query)
+        [HttpPost(DataSetRoute + "/Search")]
+        public ActionResult<Indx.Api.Result> Search(string teamName, string dataSetName, [FromBody] CloudQuery query)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
             if (query == null)
                 return BadRequest("Search query body is required");
-            Indx.Api.Result res = IndxCloudInternalApi.Manager.Search(query, dataSetName, userId);
+            Indx.Api.Result res = IndxCloudInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey);
             return res;
-        }
-
-        /// <summary>
-        /// SetFacetableFields sets the Facetable property on the specified fields.
-        /// </summary>
-        [Obsolete("Use SetFieldConfiguration instead. Scheduled for removal in a future release.")]
-        [HttpPut("SetFacetableFields/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public IActionResult SetFacetableFields(string dataSetName, [FromBody] string[] fields)
-        {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
-            if (matcher == null)
-                return BadRequest("non existing dataSetName");
-            var df = matcher.DocumentFields;
-            if (df == null)
-                return BadRequest("SearchController.SetFacetableFields invalid status");
-            foreach (var item in fields)
-            {
-                var f = df.GetField(item);
-                if (f == null)
-                    return BadRequest("SearchController.SetFacetableFields non existing fieldname");
-                f.Facetable = true;
-            }
-            return Ok();
-        }
-
-        /// <summary>
-        /// SetFilterableFields sets the Filterable property on the specified fields.
-        /// </summary>
-        [Obsolete("Use SetFieldConfiguration instead. Scheduled for removal in a future release.")]
-        [HttpPut("SetFilterableFields/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public IActionResult SetFilterableFields(string dataSetName, [FromBody] string[] fields)
-        {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
-            if (matcher == null)
-                return BadRequest("non existing dataSetName");
-            var df = matcher.DocumentFields;
-            if (df == null)
-                return BadRequest("SearchController.SetFilterableFields invalid status");
-            foreach (var item in fields)
-            {
-                var f = df.GetField(item);
-                if (f == null)
-                    return BadRequest("SearchController.SetFilterableFields non existing fieldname");
-                f.Filterable = true;
-            }
-            return Ok();
-        }
-
-        /// <summary>
-        /// SetSearchableFields sets the Searchable property and weight on the specified fields.
-        /// </summary>
-        [Obsolete("Use SetFieldConfiguration instead. Scheduled for removal in a future release.")]
-        [HttpPut("SetSearchableFields/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public IActionResult SetSearchableFields(string dataSetName, [FromBody] (string Name, float Weight)[] fields)
-        {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
-            if (matcher == null)
-                return BadRequest("non existing dataSetName");
-            var df = matcher.DocumentFields;
-            if (df == null)
-                return BadRequest("SearchController.SetSearchableFields invalid status");
-            foreach (var item in fields)
-            {
-                var f = df.GetField(item.Name);
-                if (f == null)
-                    return BadRequest("SearchController.SetSearchableFields non existing fieldname");
-                f.Searchable = true;
-                f.Weight = item.Weight;
-            }
-            return Ok();
-        }
-
-        /// <summary>
-        /// SetSortableFields sets the Sortable property on the specified fields.
-        /// </summary>
-        [Obsolete("Use SetFieldConfiguration instead. Scheduled for removal in a future release.")]
-        [HttpPut("SetSortableFields/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public IActionResult SetSortableFields(string dataSetName, [FromBody] string[] fields)
-        {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
-            if (matcher == null)
-                return BadRequest("non existing dataSetName");
-            var df = matcher.DocumentFields;
-            if (df == null)
-                return BadRequest("SearchController.SetSortableFields invalid status");
-            foreach (var item in fields)
-            {
-                var f = df.GetField(item);
-                if (f == null)
-                    return BadRequest("SearchController.SetSortableFields non existing fieldname");
-                f.Sortable = true;
-            }
-            return Ok();
-        }
-
-        /// <summary>
-        /// SetWordIndexingFields sets the WordIndexing property on the specified fields.
-        /// </summary>
-        [Obsolete("Use SetFieldConfiguration instead. Scheduled for removal in a future release.")]
-        [HttpPut("SetWordIndexingFields/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public IActionResult SetWordIndexingFields(string dataSetName, [FromBody] string[] fields)
-        {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
-            if (matcher == null)
-                return BadRequest("non existing dataSetName");
-            var df = matcher.DocumentFields;
-            if (df == null)
-                return BadRequest("SearchController.SetWordIndexingFields invalid status");
-            foreach (var item in fields)
-            {
-                var f = df.GetField(item);
-                if (f == null)
-                    return BadRequest("SearchController.SetWordIndexingFields non existing fieldname");
-                f.WordIndexing = true;
-            }
-            return Ok();
         }
 
         /// <summary>
@@ -808,48 +575,28 @@ namespace IndxCloudApi.Controllers
         /// Facetable, Sortable, WordIndexing, Embeddable, PreloadFilters, Weight, BM25b, BM25k1)
         /// in one call. Nullable properties have replace semantics: null = leave untouched,
         /// any value (including false) = overwrite.
-        /// On validation failure of any item, returns BadRequest immediately; earlier items in the
-        /// array remain applied (best-effort, consistent with Set*Fields).
         /// </summary>
-        [HttpPut("SetFieldConfiguration/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public IActionResult SetFieldConfiguration(string dataSetName, [FromBody] FieldProxy[] fields)
+        [HttpPut(DataSetRoute + "/SetFieldConfiguration")]
+        public IActionResult SetFieldConfiguration(string teamName, string dataSetName, [FromBody] FieldProxy[] fields)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, userId);
-            string engineOwnerUserId = userId;
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-            {
-                // The user doesn't own this dataset — check if they are a grantee with editor access.
-                var grant = IndxCloudInternalApi.Manager.GetAccessibleDataSets(userId)
-                    .FirstOrDefault(a => a.DataSetName == dataSetName);
-                if (grant == default || grant.Role != "editor")
-                    return BadRequest("non existing dataSetName");
-                engineOwnerUserId = grant.OwnerUserId;
-                matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, engineOwnerUserId);
-                if (matcher == null)
-                    return BadRequest("non existing dataSetName");
-            }
+                return BadRequest("non existing dataSetName");
             var df = matcher.DocumentFields;
             if (df == null)
                 return BadRequest("SearchController.SetFieldConfiguration invalid status");
 
-            // If any proposed change requires rebuilding the inverted/word/vector index
-            // AND the engine is currently serving searches, route via the shadow-swap path
-            // so live searches are not blocked while the new index is built. The override
-            // is applied between Init and Load on the shadow so MakeSearchEngines builds
-            // _indexableFields against the new Searchable set — flipping the flag after
-            // Load has no effect because that collection is never refreshed.
+            // If any proposed change requires rebuilding the index AND the engine is serving
+            // searches, route via the shadow-swap path so live searches are not blocked. The
+            // override is applied between Init and Load on the shadow so MakeSearchEngines builds
+            // _indexableFields against the new Searchable set.
             bool needsReindex = df.RequiresReindex(fields);
             if (needsReindex && matcher.Status.SystemState == SystemState.Ready)
             {
-                // Validate up front against the active engine so we can return BadRequest
-                // before kicking off the shadow build.
                 foreach (var cfg in fields)
                     if (df.GetField(cfg.FieldName) == null)
                         return BadRequest(
@@ -857,7 +604,7 @@ namespace IndxCloudApi.Controllers
 
                 try
                 {
-                    IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(dataSetName, engineOwnerUserId, fields);
+                    IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(dataSetName, ctx.OwnerKey, fields);
                     return Ok();
                 }
                 catch (ShadowBusyException ex)
@@ -877,46 +624,62 @@ namespace IndxCloudApi.Controllers
             return Ok();
         }
 
+        /// <summary>Sets the Searchable property and weight on the specified fields (legacy helper).</summary>
+        [HttpPut(DataSetRoute + "/SetSearchableFields")]
+        public IActionResult SetSearchableFields(string teamName, string dataSetName, [FromBody] (string Name, float Weight)[] fields)
+            => SetFieldFlag(teamName, dataSetName, fields.Select(f => f.Name), (f, t) => { f.Searchable = true; f.Weight = fields.First(x => x.Name == t).Weight; });
+
+        /// <summary>Sets the Filterable property on the specified fields (legacy helper).</summary>
+        [HttpPut(DataSetRoute + "/SetFilterableFields")]
+        public IActionResult SetFilterableFields(string teamName, string dataSetName, [FromBody] string[] fields)
+            => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.Filterable = true);
+
+        /// <summary>Sets the Facetable property on the specified fields (legacy helper).</summary>
+        [HttpPut(DataSetRoute + "/SetFacetableFields")]
+        public IActionResult SetFacetableFields(string teamName, string dataSetName, [FromBody] string[] fields)
+            => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.Facetable = true);
+
+        /// <summary>Sets the Sortable property on the specified fields (legacy helper).</summary>
+        [HttpPut(DataSetRoute + "/SetSortableFields")]
+        public IActionResult SetSortableFields(string teamName, string dataSetName, [FromBody] string[] fields)
+            => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.Sortable = true);
+
+        /// <summary>Sets the WordIndexing property on the specified fields (legacy helper).</summary>
+        [HttpPut(DataSetRoute + "/SetWordIndexingFields")]
+        public IActionResult SetWordIndexingFields(string teamName, string dataSetName, [FromBody] string[] fields)
+            => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.WordIndexing = true);
+
         /// <summary>
-        /// GetFieldConfiguration returns the full configuration of every field in the dataset,
-        /// including all flags, weights and BM25F parameters. Returns an empty array if the
-        /// dataset does not exist or has no fields yet.
+        /// GetFieldConfiguration returns the full configuration of every field in the dataset.
         /// </summary>
-        [HttpGet("GetFieldConfiguration/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<FieldProxy[]> GetFieldConfiguration(string dataSetName)
+        [HttpGet(DataSetRoute + "/GetFieldConfiguration")]
+        public ActionResult<FieldProxy[]> GetFieldConfiguration(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return Array.Empty<FieldProxy>();
             return matcher.GetFieldConfiguration();
         }
 
-
         /// <summary>
         /// Updates existing JSON records in the dataset.
         /// </summary>
-        [HttpPut("{dataSetName}/update")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult UpdateJsonRecords(string dataSetName, [FromBody] string[] jsonRecords)
+        [HttpPut(DataSetRoute + "/update")]
+        public ActionResult UpdateJsonRecords(string teamName, string dataSetName, [FromBody] string[] jsonRecords)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            return RunHeavyAsEditor(dataSetName, userId, "UpdateJsonRecords", engine =>
+            return RunHeavy(dataSetName, ctx.OwnerKey, "UpdateJsonRecords", engine =>
             {
                 foreach (var jsonData in jsonRecords)
                 {
-                    var result = engine.UpdateJsonRecord(jsonData, out string error);
+                    var result = engine.UpdateJsonRecord(jsonData, out string error2);
                     if (!result)
-                        return BadRequest(error);
+                        return BadRequest(error2);
                 }
                 return Ok();
             });
@@ -925,60 +688,52 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Updates one single Document.
         /// </summary>
-        [HttpPut("{dataSetName}/update/{documentKey:long}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult UpdateJsonRecord(string dataSetName, [FromBody] string jsonData)
+        [HttpPut(DataSetRoute + "/update/{documentKey:long}")]
+        public ActionResult UpdateJsonRecord(string teamName, string dataSetName, [FromBody] string jsonData)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
+            var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("UpdateJsonRecord non existing dataset name or insufficient permissions");
-            var result = matcher.UpdateJsonRecord(jsonData, out string error);
+                return BadRequest("UpdateJsonRecord non existing dataset name");
+            var result = matcher.UpdateJsonRecord(jsonData, out string error2);
             if (!result)
-                return BadRequest(error);
+                return BadRequest(error2);
             return Ok();
         }
+
         /// <summary>
         /// Updates a single field on a document identified by its key.
         /// </summary>
-        [HttpPut("{dataSetName}/field/{documentKey:long}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult UpdateField(string dataSetName, long documentKey, [FromBody] UpdateFieldProxy update)
+        [HttpPut(DataSetRoute + "/field/{documentKey:long}")]
+        public ActionResult UpdateField(string teamName, string dataSetName, long documentKey, [FromBody] UpdateFieldProxy update)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
+            var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("UpdateField non existing dataset name or insufficient permissions");
-            var result = matcher.UpdateField(documentKey, update.FieldName, UnwrapJsonElement(update.Value)!, out string error);
+                return BadRequest("UpdateField non existing dataset name");
+            var result = matcher.UpdateField(documentKey, update.FieldName, UnwrapJsonElement(update.Value)!, out string error2);
             if (!result)
-                return BadRequest(error);
+                return BadRequest(error2);
             return Ok();
         }
 
         /// <summary>
         /// Deletes all documents matching the given filter.
         /// </summary>
-        [HttpDelete("DeleteRecordsInFilter/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult DeleteRecordsInFilter(string dataSetName, [FromBody] FilterProxy filterProxy)
+        [HttpDelete(DataSetRoute + "/DeleteRecordsInFilter")]
+        public ActionResult DeleteRecordsInFilter(string teamName, string dataSetName, [FromBody] FilterProxy filterProxy)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            return RunHeavyAsEditor(dataSetName, userId, "DeleteRecordsInFilter", engine =>
+            return RunHeavy(dataSetName, ctx.OwnerKey, "DeleteRecordsInFilter", engine =>
             {
                 var filter = engine.GetFilterFromKey(filterProxy.HashString);
                 if (filter == null)
@@ -992,24 +747,21 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Updates a field on all documents matching the given filter. Returns the number of updated documents.
         /// </summary>
-        [HttpPut("UpdateFieldInFilter/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<int> UpdateFieldInFilter(string dataSetName, [FromBody] FilterFieldUpdateProxy payload)
+        [HttpPut(DataSetRoute + "/UpdateFieldInFilter")]
+        public ActionResult<int> UpdateFieldInFilter(string teamName, string dataSetName, [FromBody] FilterFieldUpdateProxy payload)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            return RunHeavyAsEditor(dataSetName, userId, "UpdateFieldInFilter", engine =>
+            return RunHeavy(dataSetName, ctx.OwnerKey, "UpdateFieldInFilter", engine =>
             {
                 var filter = engine.GetFilterFromKey(payload.Filter.HashString);
                 if (filter == null)
                     return BadRequest("UpdateFieldInFilter invalid filter key");
-                var count = engine.UpdateFieldInFilter(filter, payload.FieldName, UnwrapJsonElement(payload.Value)!, out string error);
-                if (count == 0 && !string.IsNullOrEmpty(error))
-                    return BadRequest(error);
+                var count = engine.UpdateFieldInFilter(filter, payload.FieldName, UnwrapJsonElement(payload.Value)!, out string error2);
+                if (count == 0 && !string.IsNullOrEmpty(error2))
+                    return BadRequest(error2);
                 return Ok(count);
             });
         }
@@ -1017,19 +769,16 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Deletes a single filter from the filter cache.
         /// </summary>
-        [HttpDelete("DeleteFilter/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult DeleteFilter(string dataSetName, [FromBody] FilterProxy filterProxy)
+        [HttpDelete(DataSetRoute + "/DeleteFilter")]
+        public ActionResult DeleteFilter(string teamName, string dataSetName, [FromBody] FilterProxy filterProxy)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
+            var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("DeleteFilter non existing dataset name or insufficient permissions");
+                return BadRequest("DeleteFilter non existing dataset name");
             var filter = matcher.GetFilterFromKey(filterProxy.HashString);
             if (filter == null)
                 return BadRequest("DeleteFilter invalid filter key");
@@ -1042,19 +791,16 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Deletes all filters from the filter cache.
         /// </summary>
-        [HttpDelete("DeleteAllFilters/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult DeleteAllFilters(string dataSetName)
+        [HttpDelete(DataSetRoute + "/DeleteAllFilters")]
+        public ActionResult DeleteAllFilters(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
+            var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("DeleteAllFilters non existing dataset name or insufficient permissions");
+                return BadRequest("DeleteAllFilters non existing dataset name");
             matcher.DeleteAllFilters();
             return Ok();
         }
@@ -1062,19 +808,16 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Pre-loads all registered filters in the background.
         /// </summary>
-        [HttpPost("LoadAllFilters/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult LoadAllFilters(string dataSetName)
+        [HttpPost(DataSetRoute + "/LoadAllFilters")]
+        public ActionResult LoadAllFilters(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
+            var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("LoadAllFilters non existing dataset name or insufficient permissions");
+                return BadRequest("LoadAllFilters non existing dataset name");
             matcher.LoadAllFilters();
             return Ok();
         }
@@ -1082,17 +825,14 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Returns the number of filters currently registered in the filter cache.
         /// </summary>
-        [HttpGet("GetNumberOfFilters/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult<int> GetNumberOfFilters(string dataSetName)
+        [HttpGet(DataSetRoute + "/GetNumberOfFilters")]
+        public ActionResult<int> GetNumberOfFilters(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, userId);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("GetNumberOfFilters non existing dataset name");
             return Ok(matcher.NumberOfFilters);
@@ -1101,19 +841,16 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Hibernates the dataset, freeing in-memory structures while retaining persisted data.
         /// </summary>
-        [HttpPut("Hibernate/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult Hibernate(string dataSetName)
+        [HttpPut(DataSetRoute + "/Hibernate")]
+        public ActionResult Hibernate(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
+            var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("Hibernate non existing dataset name or insufficient permissions");
+                return BadRequest("Hibernate non existing dataset name");
             var result = matcher.Hibernate(out string errorMessage);
             if (!result)
                 return BadRequest(errorMessage);
@@ -1123,19 +860,16 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Wakes up a hibernated dataset, restoring it from the persisted state.
         /// </summary>
-        [HttpPut("WakeUp/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public ActionResult WakeUp(string dataSetName)
+        [HttpPut(DataSetRoute + "/WakeUp")]
+        public ActionResult WakeUp(string teamName, string dataSetName)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            var (matcher, _) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
+            var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("WakeUp non existing dataset name or insufficient permissions");
+                return BadRequest("WakeUp non existing dataset name");
             var result = matcher.WakeUp();
             if (!result)
                 return BadRequest("WakeUp failed");
@@ -1146,61 +880,48 @@ namespace IndxCloudApi.Controllers
         /// Marks the specified fields as embeddable so that their vector values are indexed
         /// during the next Load. Must be called after AnalyzeStream and before LoadStream.
         /// </summary>
-        [Obsolete("Use SetFieldConfiguration instead. Scheduled for removal in a future release.")]
-        [HttpPut("SetEmbeddableFields/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
-        public IActionResult SetEmbeddableFields(string dataSetName, [FromBody] string[] fields)
+        [HttpPut(DataSetRoute + "/SetEmbeddableFields")]
+        public IActionResult SetEmbeddableFields(string teamName, string dataSetName, [FromBody] string[] fields)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            if (!IndxCloudInternalApi.Manager.SetEmbeddableFields(fields, dataSetName, userId))
+            if (!IndxCloudInternalApi.Manager.SetEmbeddableFields(fields, dataSetName, ctx.OwnerKey))
                 return BadRequest("SetEmbeddableFields failed — dataset not found or unknown field name");
             return Ok();
         }
 
         /// <summary>
         /// Searches a single embedding field using approximate nearest-neighbour search.
-        /// The dataset must be in Ready state (fully loaded and indexed).
         /// </summary>
-        [HttpPost("VectorSearch/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
+        [HttpPost(DataSetRoute + "/VectorSearch")]
         public ActionResult<Indx.CloudApi.EmbeddingResultEntry[]> VectorSearch(
-            string dataSetName, [FromBody] Indx.CloudApi.VectorQueryProxy query)
+            string teamName, string dataSetName, [FromBody] Indx.CloudApi.VectorQueryProxy query)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
             if (query?.Vector == null || query.Vector.Length == 0)
                 return BadRequest("Vector must be a non-empty float array");
             if (string.IsNullOrEmpty(query.FieldName))
                 return BadRequest("FieldName is required");
-            return IndxCloudInternalApi.Manager.VectorSearch(query, dataSetName, userId);
+            return IndxCloudInternalApi.Manager.VectorSearch(query, dataSetName, ctx.OwnerKey);
         }
 
         /// <summary>
         /// Combines text search with embedding nearest-neighbour search and blends scores.
-        /// combined score = alpha * embeddingScore + (1 - alpha) * normalisedTextScore.
-        /// The dataset must be in Ready state (fully loaded and indexed).
         /// </summary>
-        [HttpPost("HybridSearch/{dataSetName}")]
-        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [EnableCors("AllowAllHeaders")]
+        [HttpPost(DataSetRoute + "/HybridSearch")]
         public ActionResult<Indx.CloudApi.EmbeddingResultEntry[]> HybridSearch(
-            string dataSetName, [FromBody] Indx.CloudApi.HybridQueryProxy query)
+            string teamName, string dataSetName, [FromBody] Indx.CloudApi.HybridQueryProxy query)
         {
-            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
-                return Unauthorized();
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
             if (query?.Vector == null || query.Vector.Length == 0)
                 return BadRequest("Vector must be a non-empty float array");
             if (string.IsNullOrEmpty(query.EmbeddingField))
                 return BadRequest("EmbeddingField is required");
-            return IndxCloudInternalApi.Manager.HybridSearch(query, dataSetName, userId);
+            return IndxCloudInternalApi.Manager.HybridSearch(query, dataSetName, ctx.OwnerKey);
         }
 
         #endregion Public Methods
@@ -1208,23 +929,38 @@ namespace IndxCloudApi.Controllers
         #region Private Methods
 
         /// <summary>
-        /// Resolves the engine for (dataSetName, userId). If the engine is in Ready state,
-        /// runs <paramref name="mutation"/> on a shadow instance (so live searches are not
-        /// blocked) and swaps the result in atomically. Otherwise runs the mutation inline
-        /// on the live engine. Maps <see cref="ShadowBusyException"/> to 409 Conflict.
-        ///
-        /// The mutation lambda returns the ActionResult that becomes the response, which
-        /// preserves the existing endpoints' early-exit semantics (e.g. BadRequest mid-loop).
+        /// Resolves the team from the route and the JWT user id, enforcing membership and the
+        /// requested permission level. On failure sets <paramref name="error"/> to the response
+        /// to return (401 if unauthenticated, 403 if not a member or insufficient role) and
+        /// returns null.
         /// </summary>
-        private ActionResult RunHeavyOnShadowIfReady(
+        private TeamContext? ResolveTeam(string teamName, out ActionResult? error, bool write = false, bool admin = false)
+        {
+            error = null;
+            var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId)) { error = Unauthorized(); return null; }
+
+            var ctx = resolver.Resolve(teamName, userId);
+            if (ctx == null) { error = StatusCode(StatusCodes.Status403Forbidden, "Not a member of this team, or team does not exist"); return null; }
+            if (admin && !TeamRoles.CanAdmin(ctx.Role)) { error = StatusCode(StatusCodes.Status403Forbidden, "Team Admin role required"); return null; }
+            if (write && !TeamRoles.CanWrite(ctx.Role)) { error = StatusCode(StatusCodes.Status403Forbidden, "Team Editor role required"); return null; }
+            return ctx;
+        }
+
+        /// <summary>
+        /// Runs a heavy mutation against the team's dataset, using the shadow-swap path when the
+        /// engine is Ready so live searches are not blocked. Maps not-found to 400 and a concurrent
+        /// shadow build to 409.
+        /// </summary>
+        private ActionResult RunHeavy(
             string dataSetName,
-            string userId,
+            string teamId,
             string operationName,
             Func<ICloudSearchEngine, ActionResult> mutation)
         {
             try
             {
-                return IndxCloudInternalApi.Manager.RunHeavyOnShadowIfReady(dataSetName, userId, mutation);
+                return IndxCloudInternalApi.Manager.RunHeavyOnShadowIfReady(dataSetName, teamId, mutation);
             }
             catch (KeyNotFoundException)
             {
@@ -1236,21 +972,27 @@ namespace IndxCloudApi.Controllers
             }
         }
 
-        /// <summary>
-        /// Like RunHeavyOnShadowIfReady but resolves editor access first. Accepts the grantee
-        /// userId and resolves the owner internally, so callers don't need to pre-resolve.
-        /// Returns Forbidden for viewers and non-grantees.
-        /// </summary>
-        private ActionResult RunHeavyAsEditor(
-            string dataSetName,
-            string userId,
-            string operationName,
-            Func<ICloudSearchEngine, ActionResult> mutation)
+        /// <summary>Shared body for the legacy Set*Fields helpers — resolve, validate, mutate each field.</summary>
+        private IActionResult SetFieldFlag(string teamName, string dataSetName, IEnumerable<string> fieldNames, Action<Indx.Api.Field, string> apply)
         {
-            var (_, ownerUserId) = IndxCloudInternalApi.Manager.ResolveEngineAsEditor(dataSetName, userId);
-            if (ownerUserId == null)
-                return BadRequest($"{operationName} non existing dataset name or insufficient permissions");
-            return RunHeavyOnShadowIfReady(dataSetName, ownerUserId, operationName, mutation);
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return BadRequest("invalid dataSetName");
+            var matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return BadRequest("non existing dataSetName");
+            var df = matcher.DocumentFields;
+            if (df == null)
+                return BadRequest("invalid status");
+            foreach (var name in fieldNames)
+            {
+                var f = df.GetField(name);
+                if (f == null)
+                    return BadRequest($"non existing fieldname: {name}");
+                apply(f, name);
+            }
+            return Ok();
         }
 
         /// <summary>
@@ -1281,7 +1023,7 @@ namespace IndxCloudApi.Controllers
     }
 
 #pragma warning disable 1591
-    /// <summary>Dataset entry returned by GetUserDatasets.</summary>
-    public record DataSetListDto(string Name, string? OwnerUserId, string Role);
+    /// <summary>Dataset entry returned by GetMyDataSets — the owning team and the caller's role.</summary>
+    public record DataSetListDto(string Name, string TeamName, string Role);
 #pragma warning restore 1591
 }

@@ -23,6 +23,7 @@
 @inject RegistrationValidator RegistrationValidator
 @inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
 @inject IndxCloudApi.Services.NotificationService NotificationService
+@inject IndxCloudApi.Services.TeamService TeamService
 
 
 <PageTitle>Register</PageTitle>
@@ -68,6 +69,13 @@ else
         <p style="font: var(--text-xs); color: var(--lv5); margin-bottom: 20px;">
             Passwords must have at least one non alphanumeric character, one digit ('0'-'9'), and one uppercase ('A'-'Z').
         </p>
+
+        <div style="margin-bottom: 10px;">
+            <InputField @bind-Value="Input.TeamName" placeholder="Team name (optional)" id="teamName" />
+            <p style="font: var(--text-xs); color: var(--lv5); margin-top: 4px;">
+                Your datasets are owned by a team. Leave blank to use a personal team named after your email.
+            </p>
+        </div>
 
         <Button Type="submit" Variant="secondary">Register</Button>
 
@@ -140,6 +148,11 @@ else
 
         Logger.LogInformation("User created a new account with password.");
         await UserManager.AddToRoleAsync(user, isFirstUser ? "Admin" : "Member");
+
+        // Every user gets a team that owns their datasets — created here so the dashboard has a
+        // team context immediately. The team Name is the only name a team has (no display name);
+        // blank falls back to the email prefix, sanitised and made globally unique.
+        await TeamService.CreatePersonalTeamAsync(user, Input.TeamName);
 
         if (!isFirstUser)
         {
@@ -221,5 +234,8 @@ else
         [Display(Name = "Confirm password")]
         [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
         public string ConfirmPassword { get; set; } = "";
+
+        [Display(Name = "Team name")]
+        public string? TeamName { get; set; }
     }
 }
