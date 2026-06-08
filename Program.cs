@@ -197,6 +197,13 @@ public class Program
             Console.WriteLine("✓ JWT authentication configured with custom key");
         }
 
+        // The LoginController signs tokens via _config["Jwt:Key"], but the validation
+        // below may have resolved a different effective key (the auto-generated
+        // IndxData/jwt.key fallback used when Jwt:Key is missing/placeholder). Write the
+        // resolved key back so signing and validation always agree — otherwise tokens are
+        // rejected with "The signature key was not found".
+        builder.Configuration["Jwt:Key"] = jwtkey;
+
         authBuilder.AddJwtBearer(options =>
         {
             options.TokenValidationParameters = new TokenValidationParameters
