@@ -24,9 +24,9 @@
 else
 {
     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:24px 0 8px;">
+        <TeamSwitcher IconOnly="true" ShowManage="false" />
         <h2 style="margin:0;">@ActiveTeam.ActiveTeamName</h2>
         <Chip Color="var(--lv2)" TextColor="var(--lv6)">@ActiveTeam.ActiveRole</Chip>
-        <TeamSwitcher IconOnly="true" ShowManage="false" />
     </div>
 
     @if (!string.IsNullOrEmpty(_error))
@@ -52,12 +52,7 @@ else
                     <td style="padding:8px 12px;">
                         @if (_canAdmin && m.UserId != _userId)
                         {
-                            <select style="@SelectStyle" value="@m.Role" @onchange="e => OnChangeRole(m.UserId, e)">
-                                @foreach (var r in TeamRoles.All)
-                                {
-                                    <option value="@r">@r</option>
-                                }
-                            </select>
+                            <SelectField Value="@m.Role" ValueChanged="@(v => OnChangeRole(m.UserId, v))" Options="_roleOptions" />
                         }
                         else
                         {
@@ -90,21 +85,8 @@ else
         else
         {
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <select style="@SelectStyle min-width:220px;" @bind="_addUserId">
-                    <option value="">Select a user…</option>
-                    @foreach (var u in _addableUsers)
-                    {
-                        <option value="@u.Id">@u.Email</option>
-                    }
-                </select>
-                <select style="@SelectStyle" @bind="_addRole">
-                    <option value="@TeamRoles.Viewer">Viewer</option>
-                    <option value="@TeamRoles.Editor">Editor</option>
-                    @if (_canAdmin)
-                    {
-                        <option value="@TeamRoles.Admin">Admin</option>
-                    }
-                </select>
+                <SelectField Placeholder="Select a user…" @bind-Value="_addUserId" Options="_userOptions" />
+                <SelectField @bind-Value="_addRole" Options="_addRoleOptions" />
                 <Button Variant="primary" Size="micro" disabled="@string.IsNullOrEmpty(_addUserId)" @onclick="OnAddMember">Add</Button>
             </div>
         }
@@ -115,7 +97,7 @@ else
     {
         <h3 style="margin-top:32px; margin-bottom:12px;">Team settings</h3>
         <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
-            <input class="indx-text-input" style="min-width:220px;" @bind="_renameInput" />
+            <InputField @bind-Value="_renameInput" style="min-width:220px;" />
             <Button Variant="secondary" Size="micro" @onclick="OnRename">Rename</Button>
         </div>
         @if (!_confirmDelete)
@@ -139,14 +121,16 @@ else
     @* ── Create team (any user) ── *@
     <h3 style="margin-top:32px; margin-bottom:12px;">Create a team</h3>
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-        <input class="indx-text-input" style="min-width:220px;" placeholder="New team name" @bind="_newTeamName" />
+        <InputField @bind-Value="_newTeamName" placeholder="New team name" style="min-width:220px;" />
         <Button Variant="secondary" Size="micro" disabled="@string.IsNullOrWhiteSpace(_newTeamName)" @onclick="OnCreateTeam">Create team</Button>
     </div>
 }
 
 @code {
-    private const string SelectStyle =
-        "padding:6px 8px;border:1px solid var(--lv3);border-radius:var(--radius);background:var(--lv0);color:var(--lv8);font-size:13px;width:auto;";
+    private readonly List<SelectField.SelectOption> _roleOptions =
+        TeamRoles.All.Select(r => new SelectField.SelectOption(r, r)).ToList();
+    private List<SelectField.SelectOption> _userOptions = new();
+    private List<SelectField.SelectOption> _addRoleOptions = new();
 
     private string _userId = "";
     private bool _canAdmin;
@@ -202,6 +186,13 @@ else
         var memberIds = members.Select(m => m.UserId).ToHashSet();
         var others = UserManager.Users.Where(u => !memberIds.Contains(u.Id)).OrderBy(u => u.Email).ToList();
         _addableUsers = others.Select(u => new UserRow(u.Id, u.Email ?? "")).ToList();
+        _userOptions = _addableUsers.Select(u => new SelectField.SelectOption(u.Email, u.Id)).ToList();
+        _addRoleOptions = new List<SelectField.SelectOption>
+        {
+            new(TeamRoles.Viewer, TeamRoles.Viewer),
+            new(TeamRoles.Editor, TeamRoles.Editor),
+        };
+        if (_canAdmin) _addRoleOptions.Add(new(TeamRoles.Admin, TeamRoles.Admin));
         _addUserId = "";
     }
 
@@ -230,9 +221,9 @@ else
         await LoadAsync();
     }
 
-    private async Task OnChangeRole(string userId, ChangeEventArgs e)
+    private async Task OnChangeRole(string userId, string? role)
     {
-        var role = e.Value?.ToString() ?? "";
+        if (string.IsNullOrEmpty(role)) return;
         _error = null;
         try { await TeamService.ChangeRoleAsync(ActiveTeam.ActiveTeamId!.Value, userId, role); }
         catch (TeamService.TeamException ex) { _error = ex.Message; }
