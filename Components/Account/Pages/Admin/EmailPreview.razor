@@ -10,7 +10,16 @@
 
 <AdminNav Active="EmailPreview" />
 
-<p style="color: var(--lv5); margin-bottom: 32px; font-size: 14px;">Live preview of all transactional emails. Instance name and styling reflect current settings.</p>
+<p style="color: var(--lv5); margin-bottom: 20px; font-size: 14px;">Live preview of all transactional emails. Instance name and styling reflect current settings.</p>
+
+<div style="display:flex; align-items:center; gap:8px; margin-bottom:32px;">
+    <span style="font-size:13px; color:var(--lv5);">Preview mode:</span>
+    <Button Variant="@(_dark ? "ghost" : "secondary")" Size="micro" @onclick="() => SetDark(false)">Light</Button>
+    <Button Variant="@(_dark ? "secondary" : "ghost")" Size="micro" @onclick="() => SetDark(true)">Dark</Button>
+    <span style="font-size:12px; color:var(--lv4); margin-left:8px;">
+        Dark mode simulates a dark-mode email client (clients that support <code>prefers-color-scheme</code>).
+    </span>
+</div>
 
 <div style="display: flex; flex-direction: column; gap: 40px;">
     @foreach (var email in _emails)
@@ -21,7 +30,7 @@
                 <span style="font-size: 12px; color: var(--lv4);">Subject: @email.Subject</span>
             </div>
             <iframe srcdoc="@email.Html"
-                    style="width: 100%; height: 480px; border: 1px solid var(--lv2); border-radius: 6px; background: #fff;"
+                    style="width: 100%; height: 480px; border: 1px solid var(--lv2); border-radius: 6px; background: @(_dark ? "#16161C" : "#fff");"
                     sandbox="allow-same-origin">
             </iframe>
         </div>
@@ -31,8 +40,18 @@
 @code {
     private record EmailPreviewEntry(string Label, string Subject, string Html);
     private List<EmailPreviewEntry> _emails = [];
+    private bool _dark;
 
-    protected override void OnInitialized()
+    protected override void OnInitialized() => BuildEmails();
+
+    private void SetDark(bool dark)
+    {
+        if (_dark == dark) return;
+        _dark = dark;
+        BuildEmails();
+    }
+
+    private void BuildEmails()
     {
         var instanceName = InstanceSettingsService.Load().InstanceName;
         var exampleUrl = "https://example.indx.co/Account/ConfirmEmail?code=example-token";
@@ -40,19 +59,19 @@
         _emails =
         [
             new("Invite", EmailTemplates.Subject(instanceName, "You have been invited"),
-                EmailTemplates.Invite(instanceName, exampleUrl)),
+                EmailTemplates.Invite(instanceName, exampleUrl, _dark)),
 
             new("Verify email (on registration)", EmailTemplates.Subject(instanceName, "Please verify your email"),
-                EmailTemplates.VerifyEmail(instanceName, exampleUrl)),
+                EmailTemplates.VerifyEmail(instanceName, exampleUrl, _dark)),
 
             new("Reset password", EmailTemplates.Subject(instanceName, "Reset your password"),
-                EmailTemplates.ResetPassword(instanceName, exampleUrl)),
+                EmailTemplates.ResetPassword(instanceName, exampleUrl, _dark)),
 
             new("Confirm email change", EmailTemplates.Subject(instanceName, "Confirm your new email address"),
-                EmailTemplates.ConfirmEmailChange(instanceName, exampleUrl)),
+                EmailTemplates.ConfirmEmailChange(instanceName, exampleUrl, _dark)),
 
             new("Resend verification", EmailTemplates.Subject(instanceName, "Please verify your email"),
-                EmailTemplates.ResendConfirmation(instanceName, exampleUrl)),
+                EmailTemplates.ResendConfirmation(instanceName, exampleUrl, _dark)),
         ];
     }
 }
