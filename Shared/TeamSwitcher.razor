@@ -32,8 +32,9 @@
                 @if (_showNewTeamForm)
                 {
                     <div style="display:flex; gap:6px;">
-                        <input class="indx-text-input" style="font-size:13px; min-width:0; flex:1;" placeholder="Team name"
-                               @bind="_newTeamName" @bind:event="oninput" @onkeydown="OnNewTeamKeyDown" />
+                        <InputField @bind-Value="_newTeamName" placeholder="Team name"
+                                    @oninput="OnNewTeamInput" @onkeydown="OnNewTeamKeyDown"
+                                    style="font-size:13px; min-width:0; flex:1;" />
                         <Button Variant="primary" Size="micro" @onclick="CreateTeam" disabled="@string.IsNullOrWhiteSpace(_newTeamName)">Create</Button>
                     </div>
                     @if (!string.IsNullOrEmpty(_error))
@@ -112,6 +113,10 @@
         _open = false;
         ActiveTeam.Switch(id); // host pages react to OnChange
     }
+
+    // Keep _newTeamName live on every keystroke so the Create button enables immediately
+    // and Enter submits the current text (InputField's @bind-Value alone commits on blur).
+    private void OnNewTeamInput(ChangeEventArgs e) => _newTeamName = e.Value?.ToString();
 
     private async Task OnNewTeamKeyDown(KeyboardEventArgs e)
     {
