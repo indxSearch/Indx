@@ -739,8 +739,31 @@ else
     {
         SyncFromActiveTeam();
         selectedDataset = null;
+        ClearDatasetCaches();   // caches are keyed by dataset name — avoid bleed across teams
         await LoadDatasets();
         await InvokeAsync(StateHasChanged);
+    }
+
+    // Per-dataset state is keyed by name, so two teams with a same-named dataset would otherwise
+    // share cached field config / search state. Drop it all when the active team changes.
+    private void ClearDatasetCaches()
+    {
+        foreach (var fs in _bufferedFiles.Values)
+        {
+            try { fs.Dispose(); } catch { /* best effort */ }
+        }
+        _bufferedFiles.Clear();
+        fieldConfigs.Clear();
+        _editedFieldConfigs.Clear();
+        _searchableTouched.Clear();
+        _searchTexts.Clear();
+        _searchResults.Clear();
+        _perfResults.Clear();
+        _importWarnings.Clear();
+        _datasetTabs.Clear();
+        expandedFieldConfig.Clear();
+        _showUnusedFields.Clear();
+        _showAdvancedFields.Clear();
     }
 
     public void Dispose() => ActiveTeam.OnChange -= HandleTeamChanged;
