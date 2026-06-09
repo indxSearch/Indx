@@ -7,6 +7,7 @@
 @attribute [Authorize]
 @inject ILogger<License> Logger
 @inject Services.ILicenseBootstrapper Bootstrapper
+@inject Services.InstanceSettingsService InstanceSettingsService
 
 <PageTitle>License Information</PageTitle>
 
@@ -274,6 +275,35 @@ else if (licenseInfo != null)
                     <Button Variant="ghost" Size="micro" @onclick="() => { selectedFile = null; fileOpError = null; }">Cancel</Button>
                 }
             </div>
+
+            @* ── AUTO-FETCH FROM LICENSE SERVER ── *@
+            <div style="margin-top: 32px;">
+                <h4 style="margin-bottom: 4px;">Auto-fetch from license server</h4>
+                <p style="color: var(--lv5); font-size: 13px; margin-bottom: 12px;">
+                    With a URL and token set, a fresh license is fetched automatically on every startup.
+                    Use <strong>Fetch now</strong> to pull one immediately.
+                </p>
+                <div style="display: flex; flex-direction: column; gap: 8px; max-width: 520px;">
+                    <InputField @bind-Value="_licenseUrl" placeholder="https://license.indx.co/…" />
+                    <InputField @bind-Value="_licenseTokenInput" type="password"
+                                placeholder="@(autoFetch?.TokenConfigured == true ? "Token set — leave blank to keep" : "Paste license token")" />
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <Button Variant="primary" Size="micro" @onclick="SaveAutoFetch" Disabled="@_isFetching">Save</Button>
+                        <Button Variant="secondary" Size="micro" @onclick="FetchNow"
+                                Disabled="@(_isFetching || autoFetch?.UrlConfigured != true)">
+                            @(_isFetching ? "Fetching…" : "Fetch now")
+                        </Button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_fetchMessage))
+                    {
+                        <p style="color: var(--CTeal); font-size: 12px; margin: 0;">@_fetchMessage</p>
+                    }
+                    @if (!string.IsNullOrEmpty(_fetchError))
+                    {
+                        <p style="color: var(--CSignal); font-size: 12px; margin: 0;">@_fetchError</p>
+                    }
+                </div>
+            </div>
         </div>
         </AuthorizeView>
     </div>
@@ -303,6 +333,13 @@ else
     private IBrowserFile? selectedFile;
     private bool isUploading;
 
+    // Auto-fetch editor state.
+    private string _licenseUrl = "";
+    private string _licenseTokenInput = "";
+    private string? _fetchMessage;
+    private string? _fetchError;
+    private bool _isFetching;
+
     [CascadingParameter]
     private Task<AuthenticationState>? AuthState { get; set; }
     private bool isAdmin;
@@ -315,6 +352,7 @@ else
             isAdmin = authState.User.IsInRole("Admin");
         }
         autoFetch = Bootstrapper.GetStatus();
+        _licenseUrl = autoFetch?.Url ?? "";
         await Task.WhenAll(LoadLicenseInfo(), LoadLicenseFiles());
     }
 
@@ -367,6 +405,58 @@ else
         selectedFile = e.File;
         fileOpMessage = null;
         fileOpError = null;
+    }
+
+    private void SaveAutoFetch()
+    {
+        _fetchMessage = null; _fetchError = null;
+        if (!isAdmin)
+        {
+            _fetchError = "Only administrators can change the license source.";
+            return;
+        }
+
+        var settings = InstanceSettingsService.Load();
+        settings.LicenseDownloadUrl = string.IsNullOrWhiteSpace(_licenseUrl) ? null : _licenseUrl.Trim();
+        // Only overwrite the token when a new one is entered; a blank field keeps the existing one.
+        if (!string.IsNullOrWhiteSpace(_licenseTokenInput))
+            settings.LicenseToken = _licenseTokenInput.Trim();
+        InstanceSettingsService.Save(settings);
+
+        _licenseTokenInput = "";
+        autoFetch = Bootstrapper.GetStatus();
+        _fetchMessage = "Saved.";
+    }
+
+    private async Task FetchNow()
+    {
+        _fetchMessage = null; _fetchError = null;
+        if (!isAdmin)
+        {
+            _fetchError = "Only administrators can fetch the license.";
+            return;
+        }
+
+        _isFetching = true;
+        StateHasChanged();
+        try
+        {
+            await Bootstrapper.EnsureLocalLicenseAsync();
+            await Task.WhenAll(LoadLicenseFiles(), LoadLicenseInfo());
+            autoFetch = Bootstrapper.GetStatus();
+            _fetchMessage = autoFetch.FileExists
+                ? $"License fetched ({FormatBytes(autoFetch.FileBytes)})."
+                : "Fetch completed but no file was written — check the URL and token.";
+        }
+        catch (Exception ex)
+        {
+            _fetchError = $"Fetch failed: {ex.Message}";
+            Logger.LogError(ex, "Manual license fetch failed");
+        }
+        finally
+        {
+            _isFetching = false;
+        }
     }
 
     private async Task UploadFile()

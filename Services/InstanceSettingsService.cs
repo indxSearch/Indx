@@ -11,6 +11,14 @@ internal class InstanceSettings
     public bool RequireEmailVerification { get; set; } = false;
     public bool AllowUserSelfDeletion { get; set; } = true;
     public string InstanceName { get; set; } = "Indx";
+
+    /// <summary>license.indx.co (or other) endpoint the license is auto-fetched from.
+    /// When set, overrides the Indx:LicenseDownloadUrl app setting.</summary>
+    public string? LicenseDownloadUrl { get; set; }
+
+    /// <summary>Bearer token for the license endpoint. When set, overrides the
+    /// Indx:LicenseToken app setting. Stored locally (settings.json) like other secrets.</summary>
+    public string? LicenseToken { get; set; }
 }
 
 internal class InstanceSettingsService

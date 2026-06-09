@@ -48,10 +48,11 @@ namespace IndxCloudApi.Services
     /// Failures are logged but never thrown - the app starts in free-tier mode
     /// (100k document limit) instead of taking the whole instance down.
     /// </summary>
-    public class LicenseBootstrapper : ILicenseBootstrapper
+    internal class LicenseBootstrapper : ILicenseBootstrapper
     {
         private readonly IConfiguration _configuration;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly InstanceSettingsService _settings;
         private readonly ILogger<LicenseBootstrapper> _logger;
 
         /// <summary>
@@ -60,17 +61,35 @@ namespace IndxCloudApi.Services
         public LicenseBootstrapper(
             IConfiguration configuration,
             IHttpClientFactory httpClientFactory,
+            InstanceSettingsService settings,
             ILogger<LicenseBootstrapper> logger)
         {
             _configuration = configuration;
             _httpClientFactory = httpClientFactory;
+            _settings = settings;
             _logger = logger;
+        }
+
+        /// <summary>
+        /// Resolves the effective download URL + token: instance settings (set via the admin
+        /// UI) take precedence over the Indx:LicenseDownloadUrl / Indx:LicenseToken app settings.
+        /// </summary>
+        private (string? Url, string? Token) ResolveSource()
+        {
+            var settings = _settings.Load();
+            var url = !string.IsNullOrWhiteSpace(settings.LicenseDownloadUrl)
+                ? settings.LicenseDownloadUrl
+                : _configuration["Indx:LicenseDownloadUrl"];
+            var token = !string.IsNullOrWhiteSpace(settings.LicenseToken)
+                ? settings.LicenseToken
+                : _configuration["Indx:LicenseToken"];
+            return (url, token);
         }
 
         /// <inheritdoc />
         public async Task EnsureLocalLicenseAsync(CancellationToken cancellationToken = default)
         {
-            var url = _configuration["Indx:LicenseDownloadUrl"];
+            var (url, token) = ResolveSource();
             if (string.IsNullOrWhiteSpace(url))
             {
                 return;
@@ -80,7 +99,6 @@ namespace IndxCloudApi.Services
             // fresh license on EVERY startup (rolling 90-day Pro / 365-day Free files).
             // Without a token we keep the legacy behaviour: download only when missing
             // (e.g. a one-off SAS URL).
-            var token = _configuration["Indx:LicenseToken"];
             var hasToken = !string.IsNullOrWhiteSpace(token);
 
             var localPath = ResolveLocalPath();
@@ -135,8 +153,7 @@ namespace IndxCloudApi.Services
         /// <inheritdoc />
         public LicenseAutoFetchStatus GetStatus()
         {
-            var url = _configuration["Indx:LicenseDownloadUrl"];
-            var token = _configuration["Indx:LicenseToken"];
+            var (url, token) = ResolveSource();
             var localPath = ResolveLocalPath();
 
             long bytes = 0;
