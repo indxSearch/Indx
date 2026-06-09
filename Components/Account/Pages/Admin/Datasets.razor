@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Identity
 @using IndxCloudApi.Data
 @using IndxCloudApi.Models
+@using Indx.Api
 @attribute [Authorize(Roles = "Admin")]
 @inject UserManager<ApplicationUser> UserManager
 @inject IndxCloudApi.Services.TeamService TeamService
@@ -13,12 +14,7 @@
 
 <h2 style="margin-bottom: 24px;">Admin</h2>
 
-<div style="display: flex; gap: 8px; margin-bottom: 40px; border-bottom: 1px solid var(--lv2); padding-bottom: 0;">
-    <a href="/Admin/Users" style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--lv5); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;">Users</a>
-    <a href="/Admin/Datasets" style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--lv6); text-decoration: none; border-bottom: 2px solid var(--lv6); margin-bottom: -1px;">Datasets</a>
-    <a href="/Admin/Settings" style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--lv5); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;">Settings</a>
-    <a href="/Admin/EmailPreview" style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: var(--lv5); text-decoration: none; border-bottom: 2px solid transparent; margin-bottom: -1px;">Email Preview</a>
-</div>
+<AdminNav Active="Datasets" />
 
 <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 40px;">
     <div>
@@ -56,6 +52,9 @@ else
             <tr style="border-bottom: 1px solid var(--lv3); color: var(--lv5);">
                 <th style="text-align: left; padding: 8px 12px; font-weight: 500;">Dataset</th>
                 <th style="text-align: left; padding: 8px 12px; font-weight: 500;">Team</th>
+                <th style="text-align: left; padding: 8px 12px; font-weight: 500;">State</th>
+                <th style="text-align: right; padding: 8px 12px; font-weight: 500;">Documents</th>
+                <th style="text-align: left; padding: 8px 12px; font-weight: 500;">Last indexed</th>
                 <th style="padding: 8px 12px;"></th>
             </tr>
         </thead>
@@ -65,6 +64,22 @@ else
                 <tr style="border-bottom: 1px solid var(--lv2);">
                     <td style="padding: 10px 12px; color: var(--lv6); font-family: monospace;">@row.DataSetName</td>
                     <td style="padding: 10px 12px; color: var(--lv5);">@(row.TeamName ?? row.TeamId)</td>
+                    <td style="padding: 10px 12px;">
+                        @if (row.State is null)
+                        {
+                            <span style="color: var(--lv4);">—</span>
+                        }
+                        else
+                        {
+                            <Chip Color="@StateColor(row.State.Value)" TextColor="#080809">@row.State.Value.ToString()</Chip>
+                        }
+                    </td>
+                    <td style="padding: 10px 12px; text-align: right; color: var(--lv5); font-variant-numeric: tabular-nums;">
+                        @(row.State is null ? "—" : row.DocumentCount.ToString("N0"))
+                    </td>
+                    <td style="padding: 10px 12px; color: var(--lv5);">
+                        @(row.LastIndexed is { } t && t > DateTime.MinValue ? t.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "—")
+                    </td>
                     <td style="padding: 10px 12px; text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
                         @if (_deleteConfirmKey == row.Key)
                         {
@@ -88,10 +103,20 @@ else
     private RenderFragment<int> _iconDelete  => size => @<UserX Size="size" />;
     private RenderFragment<int> _iconRefresh => size => @<Refresh Size="size" />;
 
-    private record DatasetRow(string DataSetName, string TeamId, string? TeamName)
+    private record DatasetRow(
+        string DataSetName, string TeamId, string? TeamName,
+        SystemState? State, int DocumentCount, DateTime? LastIndexed)
     {
         public string Key => $"{TeamId}/{DataSetName}";
     }
+
+    private static string StateColor(SystemState state) => state switch
+    {
+        SystemState.Ready => "var(--CTeal)",
+        SystemState.Loaded => "var(--CLightBlue)",
+        SystemState.Created => "var(--lv3)",
+        _ => "var(--CWarning)",
+    };
 
     private List<DatasetRow>? _rows;
     private string? _message;
@@ -108,7 +133,13 @@ else
 
         var all = IndxCloudInternalApi.Manager.GetAllDataSets();
         var rows = all.Select(r =>
-            new DatasetRow(r.DataSetName, r.TeamId, teamMap.GetValueOrDefault(r.TeamId)));
+        {
+            // In-memory status of the warmed engine (null if not currently instantiated).
+            var status = IndxCloudInternalApi.Manager.GetState(r.DataSetName, r.TeamId);
+            return new DatasetRow(
+                r.DataSetName, r.TeamId, teamMap.GetValueOrDefault(r.TeamId),
+                status?.SystemState, status?.DocumentCount ?? 0, status?.TimeOfLastIndexBuild);
+        });
         _rows = [.. rows.OrderBy(r => r.TeamName ?? r.TeamId).ThenBy(r => r.DataSetName)];
     }
 

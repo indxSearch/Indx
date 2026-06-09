@@ -51,6 +51,17 @@ namespace IndxCloudApi.Services
         public Task<List<Team>> GetAllAsync() =>
             db.Teams.OrderBy(t => t.Name).ToListAsync();
 
+        /// <summary>All teams with their member counts, ordered by name (admin view).</summary>
+        public async Task<List<(Team Team, int MemberCount)>> GetAllWithMemberCountsAsync()
+        {
+            var teams = await db.Teams.OrderBy(t => t.Name).ToListAsync();
+            var counts = await db.TeamMembers
+                .GroupBy(m => m.TeamId)
+                .Select(g => new { TeamId = g.Key, Count = g.Count() })
+                .ToDictionaryAsync(x => x.TeamId, x => x.Count);
+            return teams.Select(t => (t, counts.GetValueOrDefault(t.Id))).ToList();
+        }
+
         // ---- Team CRUD ---------------------------------------------------------------------
 
         /// <summary>

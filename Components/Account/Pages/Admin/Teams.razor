@@ -1,0 +1,79 @@
+@page "/Admin/Teams"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@using IndxCloudApi.Data
+@using IndxCloudApi.Models
+@attribute [Authorize(Roles = "Admin")]
+@inject IndxCloudApi.Services.TeamService TeamService
+
+<PageTitle>Admin — Teams</PageTitle>
+
+<h2 style="margin-bottom: 24px;">Admin</h2>
+
+<AdminNav Active="Teams" />
+
+<div style="display: flex; align-items: center; gap: 16px; margin-bottom: 40px;">
+    <div>
+        <h2 style="margin-bottom: 4px;">Teams</h2>
+        <p style="color: var(--lv5);">All teams created on this instance.</p>
+    </div>
+    <Button Variant="ghost" Size="micro" IconLeft="_iconRefresh" style="margin-left: auto;" @onclick="Load">Refresh</Button>
+</div>
+
+@if (_rows == null)
+{
+    <p>Loading...</p>
+}
+else if (_rows.Count == 0)
+{
+    <p style="color: var(--lv5);">No teams found.</p>
+}
+else
+{
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <thead>
+            <tr style="border-bottom: 1px solid var(--lv3); color: var(--lv5);">
+                <th style="text-align: left; padding: 8px 12px; font-weight: 500;">Team</th>
+                <th style="text-align: right; padding: 8px 12px; font-weight: 500;">Members</th>
+                <th style="text-align: right; padding: 8px 12px; font-weight: 500;">Datasets</th>
+                <th style="text-align: left; padding: 8px 12px; font-weight: 500;">Created</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in _rows)
+            {
+                <tr style="border-bottom: 1px solid var(--lv2);">
+                    <td style="padding: 10px 12px; color: var(--lv6); font-family: monospace;">@row.Name</td>
+                    <td style="padding: 10px 12px; text-align: right; color: var(--lv5); font-variant-numeric: tabular-nums;">@row.MemberCount</td>
+                    <td style="padding: 10px 12px; text-align: right; color: var(--lv5); font-variant-numeric: tabular-nums;">@row.DatasetCount</td>
+                    <td style="padding: 10px 12px; color: var(--lv5);">@row.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private RenderFragment<int> _iconRefresh => size => @<Refresh Size="size" />;
+
+    private record TeamRow(string Name, int MemberCount, int DatasetCount, DateTime CreatedAt);
+
+    private List<TeamRow>? _rows;
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    private async Task Load()
+    {
+        // Dataset owner key is the team id (as string); count per team.
+        var datasetCounts = IndxCloudInternalApi.Manager.GetAllDataSets()
+            .GroupBy(d => d.TeamId)
+            .ToDictionary(g => g.Key, g => g.Count());
+
+        var teams = await TeamService.GetAllWithMemberCountsAsync();
+        _rows = [.. teams.Select(t => new TeamRow(
+            t.Team.Name,
+            t.MemberCount,
+            datasetCounts.GetValueOrDefault(t.Team.Id.ToString()),
+            t.Team.CreatedAt))];
+    }
+}

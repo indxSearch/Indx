@@ -1,0 +1,23 @@
+@* Shared admin section tab bar. Pass the active tab's key via Active. *@
+<div style="display: flex; gap: 8px; margin-bottom: 40px; border-bottom: 1px solid var(--lv2); padding-bottom: 0;">
+    @foreach (var tab in _tabs)
+    {
+        var active = tab.Key == Active;
+        <a href="@tab.Href"
+           style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: @(active ? "var(--lv6)" : "var(--lv5)"); text-decoration: none; border-bottom: 2px solid @(active ? "var(--lv6)" : "transparent"); margin-bottom: -1px;">@tab.Label</a>
+    }
+</div>
+
+@code {
+    /// <summary>Key of the active tab: Users | Teams | Datasets | Settings | EmailPreview.</summary>
+    [Parameter] public string Active { get; set; } = "";
+
+    private static readonly (string Key, string Label, string Href)[] _tabs =
+    [
+        ("Users", "Users", "/Admin/Users"),
+        ("Teams", "Teams", "/Admin/Teams"),
+        ("Datasets", "Datasets", "/Admin/Datasets"),
+        ("Settings", "Settings", "/Admin/Settings"),
+        ("EmailPreview", "Email Preview", "/Admin/EmailPreview"),
+    ];
+}
