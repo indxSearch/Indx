@@ -1,10 +1,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
-@using System.Security.Claims
 @inject NavigationManager NavigationManager
 @inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
-@inject IndxCloudApi.Services.ActiveTeamState ActiveTeam
-@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <nav class="nav">
     <span class="nav-current-page">
@@ -13,34 +10,6 @@
     </span>
 
     <div class="nav-items @(_menuOpen ? "open" : "")">
-        @if (ActiveTeam.HasTeam && OnDatasetsPage)
-        {
-            <div class="team-switcher">
-                <Button Variant="ghost" Size="micro" @onclick="ToggleTeamMenu">
-                    <IconLeft><UserGroup Size="@context" Color="currentColor" /></IconLeft>
-                    <ChildContent>@ActiveTeam.ActiveTeamName</ChildContent>
-                    <IconRight><ChevronDown Size="@context" Color="currentColor" /></IconRight>
-                </Button>
-                @if (_teamMenuOpen)
-                {
-                    <div class="team-backdrop" @onclick="CloseTeamMenu"></div>
-                    <div class="team-menu">
-                        @foreach (var t in ActiveTeam.Teams)
-                        {
-                            <button class="team-menu-item" @onclick="() => SelectTeam(t.Team.Id)">
-                                <span>@t.Team.Name</span>
-                                @if (t.Team.Id == ActiveTeam.ActiveTeamId)
-                                {
-                                    <Check Size="12" />
-                                }
-                            </button>
-                        }
-                        <div class="team-menu-divider"></div>
-                        <a class="team-menu-link" href="Team">Manage teams</a>
-                    </div>
-                }
-            </div>
-        }
         <Button Href="/" Variant="@NavVariant("/", exact: true)" Size="micro" IconLeft="_iconHome">Datasets</Button>
         <AuthorizeView>
             <Authorized>
@@ -109,38 +78,15 @@
         NavigationManager.LocationChanged += OnLocationChanged;
     }
 
-    protected override async Task OnInitializedAsync()
-    {
-        ActiveTeam.OnChange += OnTeamChanged;
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        if (!string.IsNullOrEmpty(userId))
-            await ActiveTeam.EnsureInitializedAsync(userId);
-    }
-
-    private bool _teamMenuOpen;
-    private void ToggleTeamMenu() => _teamMenuOpen = !_teamMenuOpen;
-    private void CloseTeamMenu() => _teamMenuOpen = false;
-
-    private void SelectTeam(Guid id)
-    {
-        ActiveTeam.Switch(id);
-        _teamMenuOpen = false;
-    }
-
-    private async void OnTeamChanged() => await InvokeAsync(StateHasChanged);
-
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         _menuOpen = false;
-        _teamMenuOpen = false;
         InvokeAsync(StateHasChanged);
     }
 
     public void Dispose()
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
-        ActiveTeam.OnChange -= OnTeamChanged;
     }
 
     private void ToggleMenu() => _menuOpen = !_menuOpen;
@@ -161,11 +107,6 @@
             return ("Datasets", _iconHome);
         }
     }
-
-    // Team context only matters on the Datasets page — datasets are team-owned;
-    // API Key / License / Admin are not team-scoped, so the switcher is hidden there.
-    private bool OnDatasetsPage =>
-        string.IsNullOrEmpty(new Uri(NavigationManager.Uri).AbsolutePath.Trim('/'));
 
     private string NavVariant(string href, bool exact = false)
     {

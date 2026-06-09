@@ -27,7 +27,39 @@
 <p style="color: var(--lv5); margin-top: 4px;">Powered by Indx @_indxVersion</p>
 
 <div class="indx-datasets-heading">
-    <h2>Datasets</h2>
+    @if (ActiveTeam.HasTeam)
+    {
+        <div style="display:flex; align-items:center; gap:8px;">
+            <div class="team-switcher">
+                <Button Variant="ghost" Size="micro" @onclick="ToggleTeamMenu">
+                    <IconLeft><UserGroup Size="@context" Color="currentColor" /></IconLeft>
+                    <ChildContent>@ActiveTeam.ActiveTeamName</ChildContent>
+                    <IconRight><ChevronDown Size="@context" Color="currentColor" /></IconRight>
+                </Button>
+                @if (_teamMenuOpen)
+                {
+                    <div class="team-backdrop" @onclick="CloseTeamMenu"></div>
+                    <div class="team-menu">
+                        @foreach (var t in ActiveTeam.Teams)
+                        {
+                            <button class="team-menu-item" @onclick="() => SelectTeam(t.Team.Id)">
+                                <span>@t.Team.Name</span>
+                                @if (t.Team.Id == ActiveTeam.ActiveTeamId)
+                                {
+                                    <Check Size="12" />
+                                }
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+            <Button Variant="secondary" Size="micro" Href="Team">Manage team</Button>
+        </div>
+    }
+    else
+    {
+        <h2>Datasets</h2>
+    }
     @if (!isLoading)
     {
         @if (_showNewDatasetForm)
@@ -822,6 +854,16 @@ else
         _transferConfirmDataset = null;
         selectedDataset = null;
         await LoadDatasets(); // dataset now belongs to another team — drops off this view
+    }
+
+    private bool _teamMenuOpen;
+    private void ToggleTeamMenu() => _teamMenuOpen = !_teamMenuOpen;
+    private void CloseTeamMenu() => _teamMenuOpen = false;
+
+    private void SelectTeam(Guid id)
+    {
+        _teamMenuOpen = false;
+        ActiveTeam.Switch(id); // → HandleTeamChanged reloads the new team's datasets
     }
 
     public void Dispose() => ActiveTeam.OnChange -= HandleTeamChanged;
