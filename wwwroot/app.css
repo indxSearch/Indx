@@ -369,7 +369,6 @@ a.btn-danger:hover {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 
 /* Right-aligned dropdown for a switcher sitting on the right side of the page. */
