@@ -1034,5 +1034,11 @@
             <param name="encoding"></param>
             <returns></returns>
         </member>
+        <member name="P:IndxCloudApi.Shared.TeamSwitcher.IconOnly">
+            <summary>Trigger shows only the team icon + caret, not the team name.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Shared.TeamSwitcher.ShowManage">
+            <summary>Include the "Manage team" link (hide it when already on /Team).</summary>
+        </member>
     </members>
 </doc>

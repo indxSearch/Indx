@@ -1,0 +1,132 @@
+@using System.Security.Claims
+@using IndxCloudApi.Data
+@using IndxCloudApi.Services
+@inject ActiveTeamState ActiveTeam
+@inject TeamService TeamService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@implements IDisposable
+
+@if (ActiveTeam.HasTeam)
+{
+    <div class="team-switcher">
+        <Button Variant="ghost" Size="micro" @onclick="Toggle">
+            <IconLeft><UserGroup Size="@context" Color="currentColor" /></IconLeft>
+            <ChildContent>@(IconOnly ? "" : ActiveTeam.ActiveTeamName)</ChildContent>
+            <IconRight><ChevronDown Size="@context" Color="currentColor" /></IconRight>
+        </Button>
+        @if (_open)
+        {
+            <div class="team-backdrop" @onclick="Close"></div>
+            <Surface Class="team-menu team-menu--right">
+                @foreach (var t in ActiveTeam.Teams)
+                {
+                    <Button Variant="ghost" Size="micro" @onclick="() => Select(t.Team.Id)" style="width:100%; justify-content:space-between;">
+                        <span>@t.Team.Name</span>
+                        @if (t.Team.Id == ActiveTeam.ActiveTeamId)
+                        {
+                            <Check Size="12" />
+                        }
+                    </Button>
+                }
+                <div class="team-menu-divider"></div>
+                @if (_showNewTeamForm)
+                {
+                    <div style="display:flex; gap:6px;">
+                        <input class="indx-text-input" style="font-size:13px; min-width:0; flex:1;" placeholder="Team name"
+                               @bind="_newTeamName" @bind:event="oninput" @onkeydown="OnNewTeamKeyDown" />
+                        <Button Variant="primary" Size="micro" @onclick="CreateTeam" disabled="@string.IsNullOrWhiteSpace(_newTeamName)">Create</Button>
+                    </div>
+                    @if (!string.IsNullOrEmpty(_error))
+                    {
+                        <p style="color:var(--CSignal); font:var(--text-2xs); margin:2px 0 0;">@_error</p>
+                    }
+                }
+                else
+                {
+                    <Button Variant="ghost" Size="micro" @onclick="ShowNewTeamForm" style="width:100%; justify-content:flex-start;">
+                        <IconLeft><Plus Size="@context" Color="currentColor" /></IconLeft>
+                        <ChildContent>New team</ChildContent>
+                    </Button>
+                }
+                @if (ShowManage)
+                {
+                    <Button Variant="ghost" Size="micro" Href="Team" style="width:100%; justify-content:flex-start;">
+                        <IconLeft><Users Size="@context" Color="currentColor" /></IconLeft>
+                        <ChildContent>Manage team</ChildContent>
+                    </Button>
+                }
+            </Surface>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Trigger shows only the team icon + caret, not the team name.</summary>
+    [Parameter] public bool IconOnly { get; set; }
+
+    /// <summary>Include the "Manage team" link (hide it when already on /Team).</summary>
+    [Parameter] public bool ShowManage { get; set; } = true;
+
+    private string _userId = "";
+    private bool _open;
+    private bool _showNewTeamForm;
+    private string _newTeamName = "";
+    private string? _error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ActiveTeam.OnChange += OnTeamChanged;
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+    }
+
+    private async void OnTeamChanged() => await InvokeAsync(StateHasChanged);
+
+    public void Dispose() => ActiveTeam.OnChange -= OnTeamChanged;
+
+    private void Toggle()
+    {
+        _open = !_open;
+        if (!_open) { _showNewTeamForm = false; _error = null; }
+    }
+
+    private void Close()
+    {
+        _open = false;
+        _showNewTeamForm = false;
+        _error = null;
+    }
+
+    private void ShowNewTeamForm()
+    {
+        _showNewTeamForm = true;
+        _error = null;
+    }
+
+    private void Select(Guid id)
+    {
+        _open = false;
+        ActiveTeam.Switch(id); // host pages react to OnChange
+    }
+
+    private async Task OnNewTeamKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CreateTeam();
+    }
+
+    private async Task CreateTeam()
+    {
+        if (string.IsNullOrWhiteSpace(_newTeamName) || string.IsNullOrEmpty(_userId)) return;
+        _error = null;
+        try
+        {
+            var team = await TeamService.CreateTeamAsync(_newTeamName, _userId);
+            _newTeamName = "";
+            _showNewTeamForm = false;
+            _open = false;
+            await ActiveTeam.ReloadAsync();
+            ActiveTeam.Switch(team.Id);
+        }
+        catch (TeamService.TeamException ex) { _error = ex.Message; }
+    }
+}

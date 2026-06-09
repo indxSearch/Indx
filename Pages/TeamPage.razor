@@ -26,16 +26,7 @@ else
     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:24px 0 8px;">
         <h2 style="margin:0;">@ActiveTeam.ActiveTeamName</h2>
         <Chip Color="var(--lv2)" TextColor="var(--lv6)">@ActiveTeam.ActiveRole</Chip>
-        @if (ActiveTeam.Teams.Count > 1)
-        {
-            <span style="color:var(--lv4);">·</span>
-            <select style="@SelectStyle" value="@ActiveTeam.ActiveTeamId" @onchange="OnSwitchTeam">
-                @foreach (var t in ActiveTeam.Teams)
-                {
-                    <option value="@t.Team.Id">@t.Team.Name</option>
-                }
-            </select>
-        }
+        <TeamSwitcher IconOnly="true" ShowManage="false" />
     </div>
 
     @if (!string.IsNullOrEmpty(_error))
@@ -214,11 +205,6 @@ else
         _addUserId = "";
     }
 
-    private void OnSwitchTeam(ChangeEventArgs e)
-    {
-        if (Guid.TryParse(e.Value?.ToString(), out var id))
-            ActiveTeam.Switch(id); // → OnChange → reload
-    }
 
     private async Task OnAddMember()
     {

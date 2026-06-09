@@ -15,7 +15,6 @@
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject UserManager<ApplicationUser> UserManager
-@inject IndxCloudApi.Services.TeamService TeamService
 @inject IndxCloudApi.Services.ActiveTeamState ActiveTeam
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject IJSRuntime JSRuntime
@@ -28,56 +27,7 @@
         <h1>Indx Cloud API @GetVersion()</h1>
         <p style="color: var(--lv5); margin-top: 4px;">Powered by Indx @_indxVersion</p>
     </div>
-    @if (ActiveTeam.HasTeam)
-    {
-        <div class="team-switcher">
-            <Button Variant="ghost" Size="micro" @onclick="ToggleTeamMenu">
-                <IconLeft><UserGroup Size="@context" Color="currentColor" /></IconLeft>
-                <ChildContent>@ActiveTeam.ActiveTeamName</ChildContent>
-                <IconRight><ChevronDown Size="@context" Color="currentColor" /></IconRight>
-            </Button>
-            @if (_teamMenuOpen)
-            {
-                <div class="team-backdrop" @onclick="CloseTeamMenu"></div>
-                <Surface Class="team-menu team-menu--right">
-                    @foreach (var t in ActiveTeam.Teams)
-                    {
-                        <Button Variant="ghost" Size="micro" @onclick="() => SelectTeam(t.Team.Id)" style="width:100%; justify-content:space-between;">
-                            <span>@t.Team.Name</span>
-                            @if (t.Team.Id == ActiveTeam.ActiveTeamId)
-                            {
-                                <Check Size="12" />
-                            }
-                        </Button>
-                    }
-                    <div class="team-menu-divider"></div>
-                    @if (_showNewTeamForm)
-                    {
-                        <div style="display:flex; gap:6px;">
-                            <input class="indx-text-input" style="font-size:13px; min-width:0; flex:1;" placeholder="Team name"
-                                   @bind="_newTeamName" @bind:event="oninput" @onkeydown="OnNewTeamKeyDown" />
-                            <Button Variant="primary" Size="micro" @onclick="CreateTeam" disabled="@string.IsNullOrWhiteSpace(_newTeamName)">Create</Button>
-                        </div>
-                        @if (!string.IsNullOrEmpty(_teamError))
-                        {
-                            <p style="color:var(--CSignal); font:var(--text-2xs); margin:2px 0 0;">@_teamError</p>
-                        }
-                    }
-                    else
-                    {
-                        <Button Variant="ghost" Size="micro" @onclick="ShowNewTeamForm" style="width:100%; justify-content:flex-start;">
-                            <IconLeft><Plus Size="@context" Color="currentColor" /></IconLeft>
-                            <ChildContent>New team</ChildContent>
-                        </Button>
-                    }
-                    <Button Variant="ghost" Size="micro" Href="Team" style="width:100%; justify-content:flex-start;">
-                        <IconLeft><Users Size="@context" Color="currentColor" /></IconLeft>
-                        <ChildContent>Manage team</ChildContent>
-                    </Button>
-                </Surface>
-            }
-        </div>
-    }
+    <TeamSwitcher />
 </div>
 
 <div class="indx-datasets-heading">
@@ -876,57 +826,6 @@ else
         _transferConfirmDataset = null;
         selectedDataset = null;
         await LoadDatasets(); // dataset now belongs to another team — drops off this view
-    }
-
-    private bool _teamMenuOpen;
-    private bool _showNewTeamForm;
-    private string _newTeamName = "";
-    private string? _teamError;
-
-    private void ToggleTeamMenu()
-    {
-        _teamMenuOpen = !_teamMenuOpen;
-        if (!_teamMenuOpen) { _showNewTeamForm = false; _teamError = null; }
-    }
-
-    private void CloseTeamMenu()
-    {
-        _teamMenuOpen = false;
-        _showNewTeamForm = false;
-        _teamError = null;
-    }
-
-    private void ShowNewTeamForm()
-    {
-        _showNewTeamForm = true;
-        _teamError = null;
-    }
-
-    private void SelectTeam(Guid id)
-    {
-        _teamMenuOpen = false;
-        ActiveTeam.Switch(id); // → HandleTeamChanged reloads the new team's datasets
-    }
-
-    private async Task OnNewTeamKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter") await CreateTeam();
-    }
-
-    private async Task CreateTeam()
-    {
-        if (string.IsNullOrWhiteSpace(_newTeamName) || string.IsNullOrEmpty(userId)) return;
-        _teamError = null;
-        try
-        {
-            var team = await TeamService.CreateTeamAsync(_newTeamName, userId);
-            _newTeamName = "";
-            _showNewTeamForm = false;
-            _teamMenuOpen = false;
-            await ActiveTeam.ReloadAsync();
-            ActiveTeam.Switch(team.Id); // → HandleTeamChanged reloads the new team's datasets
-        }
-        catch (TeamService.TeamException ex) { _teamError = ex.Message; }
     }
 
     public void Dispose() => ActiveTeam.OnChange -= HandleTeamChanged;
