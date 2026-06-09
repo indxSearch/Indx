@@ -344,6 +344,18 @@ a.btn-danger:hover {
 
 .team-switcher {
     position: relative;
+    display: flex;
+    align-items: center;
+}
+
+/* Trigger is a <button> (no href), so .nav a's height:30 doesn't reach it — match the siblings. */
+.team-switcher > .indx-btn {
+    height: 30px;
+}
+
+/* Account icon button: square like the bell (neutralise .nav a's side padding). */
+.nav a.nav-bell {
+    padding: 0;
 }
 
 .team-backdrop {

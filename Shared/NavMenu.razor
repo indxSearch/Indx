@@ -13,7 +13,7 @@
     </span>
 
     <div class="nav-items @(_menuOpen ? "open" : "")">
-        @if (ActiveTeam.HasTeam)
+        @if (ActiveTeam.HasTeam && OnDatasetsPage)
         {
             <div class="team-switcher">
                 <Button Variant="ghost" Size="micro" @onclick="ToggleTeamMenu">
@@ -61,7 +61,9 @@
         <AuthorizeView>
             <Authorized>
                 <NotificationPanel />
-                <Button Href="Account/Manage" Variant="@NavVariant("Account/Manage")" Size="micro" IconLeft="_iconUser">@context.User.Identity?.Name</Button>
+                <a href="Account/Manage" class="nav-bell" title="@context.User.Identity?.Name" aria-label="Account">
+                    <UserId Size="16" />
+                </a>
             </Authorized>
             <NotAuthorized>
                 <a href="Account/Register" class="btn btn-secondary btn-micro">Register</a>
@@ -159,6 +161,11 @@
             return ("Datasets", _iconHome);
         }
     }
+
+    // Team context only matters on the Datasets page — datasets are team-owned;
+    // API Key / License / Admin are not team-scoped, so the switcher is hidden there.
+    private bool OnDatasetsPage =>
+        string.IsNullOrEmpty(new Uri(NavigationManager.Uri).AbsolutePath.Trim('/'));
 
     private string NavVariant(string href, bool exact = false)
     {
