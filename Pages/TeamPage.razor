@@ -10,6 +10,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
+@inject InstanceSettingsService InstanceSettingsService
 @implements IDisposable
 
 <PageTitle>Team</PageTitle>
@@ -219,9 +220,12 @@ else
         {
             try
             {
+                var instanceName = InstanceSettingsService.Load().InstanceName;
                 await EmailSender.SendEmailAsync(added.Email,
-                    $"You've been added to team \"{ActiveTeam.ActiveTeamName}\"",
-                    $"<p>You have been added to the team <strong>{ActiveTeam.ActiveTeamName}</strong> as <strong>{_addRole}</strong> on Indx Cloud API.</p>");
+                    EmailTemplates.Subject(instanceName, $"You've been added to team \"{ActiveTeam.ActiveTeamName}\""),
+                    EmailTemplates.Notice(instanceName,
+                        $"Added to {ActiveTeam.ActiveTeamName}",
+                        $"You have been added to the team <strong>{ActiveTeam.ActiveTeamName}</strong> as <strong>{_addRole}</strong>."));
             }
             catch { /* email failure is non-fatal */ }
         }

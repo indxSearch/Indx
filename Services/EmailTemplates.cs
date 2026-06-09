@@ -55,14 +55,53 @@ public static class EmailTemplates
             "If you didn't create an account, you can safely ignore this email."
         );
 
+    /// <summary>
+    /// Branded informational email (same shell as the action emails). The call-to-action
+    /// button is optional — pass <paramref name="actionUrl"/>/<paramref name="actionLabel"/>
+    /// to include one, omit for a plain notice. <paramref name="bodyHtml"/> is inserted as-is.
+    /// </summary>
+    public static string Notice(
+        string instanceName,
+        string heading,
+        string bodyHtml,
+        string? actionUrl = null,
+        string? actionLabel = null,
+        string? disclaimer = null) =>
+        Build(
+            instanceName,
+            heading,
+            bodyHtml,
+            actionUrl,
+            actionLabel,
+            disclaimer ?? $"You're receiving this email because you have an account on {instanceName}."
+        );
+
     private static string Build(
         string instanceName,
         string heading,
         string body,
-        string actionUrl,
-        string actionLabel,
+        string? actionUrl,
+        string? actionLabel,
         string disclaimer)
     {
+        var actionBlock = (!string.IsNullOrEmpty(actionUrl) && !string.IsNullOrEmpty(actionLabel))
+            ? $@"<!-- Primary button: matches .btn-primary exactly -->
+                    <table cellpadding=""0"" cellspacing=""0"" style=""margin-bottom:28px;"">
+                      <tr>
+                        <td style=""background:#121215;border-radius:1px;"">
+                          <a href=""{actionUrl}""
+                             style=""display:inline-block;padding:0 15px;height:30px;line-height:30px;color:#FBFBFB;text-decoration:none;font-size:13px;font-weight:350;white-space:nowrap;"">{actionLabel}</a>
+                        </td>
+                      </tr>
+                    </table>
+
+                    <!-- Fallback link -->
+                    <p style=""margin:0;font-size:11px;font-weight:350;line-height:1.8;color:#757575;"">
+                      Or copy this link into your browser:<br>
+                      <a href=""{actionUrl}"" style=""color:#4A4A50;word-break:break-all;"">{actionUrl}</a>
+                    </p>"
+            : "";
+
         return $@"<!DOCTYPE html>
 <html>
 <head><meta charset=""utf-8""><meta name=""viewport"" content=""width=device-width,initial-scale=1""></head>
@@ -96,21 +135,7 @@ public static class EmailTemplates
                     <!-- Body: 13px, weight 350, line-height 1.8 — matches base text in app -->
                     <p style=""margin:0 0 28px;font-size:13px;font-weight:350;line-height:1.8;color:#4A4A50;"">{body}</p>
 
-                    <!-- Primary button: matches .btn-primary exactly -->
-                    <table cellpadding=""0"" cellspacing=""0"" style=""margin-bottom:28px;"">
-                      <tr>
-                        <td style=""background:#121215;border-radius:1px;"">
-                          <a href=""{actionUrl}""
-                             style=""display:inline-block;padding:0 15px;height:30px;line-height:30px;color:#FBFBFB;text-decoration:none;font-size:13px;font-weight:350;white-space:nowrap;"">{actionLabel}</a>
-                        </td>
-                      </tr>
-                    </table>
-
-                    <!-- Fallback link -->
-                    <p style=""margin:0;font-size:11px;font-weight:350;line-height:1.8;color:#757575;"">
-                      Or copy this link into your browser:<br>
-                      <a href=""{actionUrl}"" style=""color:#4A4A50;word-break:break-all;"">{actionUrl}</a>
-                    </p>
+                    {actionBlock}
 
                   </td>
                 </tr>

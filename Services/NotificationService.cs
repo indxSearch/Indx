@@ -10,6 +10,7 @@ namespace IndxCloudApi.Services
         ApplicationDbContext db,
         UserManager<ApplicationUser> userManager,
         IEmailSender emailSender,
+        InstanceSettingsService settings,
         ILogger<NotificationService> logger)
     {
         public async Task CreateAsync(
@@ -40,8 +41,11 @@ namespace IndxCloudApi.Services
             {
                 try
                 {
-                    await emailSender.SendEmailAsync(user.Email, title,
-                        $"<p>{body}</p>");
+                    var instanceName = settings.Load().InstanceName;
+                    await emailSender.SendEmailAsync(
+                        user.Email,
+                        EmailTemplates.Subject(instanceName, title),
+                        EmailTemplates.Notice(instanceName, title, body));
                 }
                 catch (Exception ex)
                 {
