@@ -1040,5 +1040,9 @@
         <member name="P:IndxCloudApi.Shared.TeamSwitcher.ShowManage">
             <summary>Include the "Manage team" link (hide it when already on /Team).</summary>
         </member>
+        <member name="P:IndxCloudApi.Shared.TeamSwitcher.Align">
+            <summary>Which edge the dropdown anchors to: "right" opens leftward (default,
+            for a switcher on the right); "left" opens rightward (for a switcher on the left).</summary>
+        </member>
     </members>
 </doc>

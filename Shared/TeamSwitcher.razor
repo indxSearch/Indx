@@ -17,7 +17,7 @@
         @if (_open)
         {
             <div class="team-backdrop" @onclick="Close"></div>
-            <Surface Class="team-menu team-menu--right">
+            <Surface Class="@(Align == "right" ? "team-menu team-menu--right" : "team-menu")">
                 @foreach (var t in ActiveTeam.Teams)
                 {
                     <Button Variant="ghost" Size="micro" @onclick="() => Select(t.Team.Id)" style="width:100%; justify-content:space-between;">
@@ -66,6 +66,10 @@
 
     /// <summary>Include the "Manage team" link (hide it when already on /Team).</summary>
     [Parameter] public bool ShowManage { get; set; } = true;
+
+    /// <summary>Which edge the dropdown anchors to: "right" opens leftward (default,
+    /// for a switcher on the right); "left" opens rightward (for a switcher on the left).</summary>
+    [Parameter] public string Align { get; set; } = "right";
 
     private string _userId = "";
     private bool _open;

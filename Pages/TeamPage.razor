@@ -24,7 +24,7 @@
 else
 {
     <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:24px 0 8px;">
-        <TeamSwitcher IconOnly="true" ShowManage="false" />
+        <TeamSwitcher IconOnly="true" ShowManage="false" Align="left" />
         <h2 style="margin:0;">@ActiveTeam.ActiveTeamName</h2>
         <Chip Color="var(--lv2)" TextColor="var(--lv6)">@ActiveTeam.ActiveRole</Chip>
     </div>
@@ -36,7 +36,7 @@ else
 
     @* ── Members ── *@
     <h3 style="margin-top:28px; margin-bottom:12px;">Members</h3>
-    <table style="width:100%; border-collapse:collapse; font-size:13px; max-width:640px;">
+    <table style="width:100%; border-collapse:collapse; font-size:13px;">
         <thead>
             <tr style="border-bottom:1px solid var(--lv3); color:var(--lv5);">
                 <th style="text-align:left; padding:6px 12px; font-weight:500;">Email</th>
@@ -52,7 +52,7 @@ else
                     <td style="padding:8px 12px;">
                         @if (_canAdmin && m.UserId != _userId)
                         {
-                            <SelectField Value="@m.Role" ValueChanged="@(v => OnChangeRole(m.UserId, v))" Options="_roleOptions" />
+                            <div style="width:130px;"><SelectField Value="@m.Role" ValueChanged="@(v => OnChangeRole(m.UserId, v))" Options="_roleOptions" /></div>
                         }
                         else
                         {
@@ -85,8 +85,8 @@ else
         else
         {
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <SelectField Placeholder="Select a user…" @bind-Value="_addUserId" Options="_userOptions" />
-                <SelectField @bind-Value="_addRole" Options="_addRoleOptions" />
+                <div style="width:240px;"><SelectField Placeholder="Select a user…" @bind-Value="_addUserId" Options="_userOptions" /></div>
+                <div style="width:130px;"><SelectField @bind-Value="_addRole" Options="_addRoleOptions" /></div>
                 <Button Variant="primary" Size="micro" disabled="@string.IsNullOrEmpty(_addUserId)" @onclick="OnAddMember">Add</Button>
             </div>
         }
