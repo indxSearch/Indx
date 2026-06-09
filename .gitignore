@@ -143,3 +143,11 @@ wwwroot/lib/
 
 # Indx speficig
 *.license
+
+# Secret/key material — never commit to the public repo.
+# (The root monorepo .gitignore covers these too, but it does NOT travel with the
+#  git-subtree split, so the rules must be repeated here.) jwt.key is the JWT
+#  token-signing secret auto-generated into IndxData/ on first run.
+*.key
+*.pfx
+*.pem
