@@ -1,6 +1,7 @@
 @page "/Account/License"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
 @using Indx.Api
 @using IndxCloudApi.Models
 @attribute [Authorize]
@@ -180,7 +181,8 @@ else if (licenseInfo != null)
             </div>
         }
 
-        @* ── LICENSE FILE MANAGEMENT ── *@
+        @* ── LICENSE FILE MANAGEMENT (admin only) ── *@
+        <AuthorizeView Roles="Admin">
         <div style="margin-top: 40px;">
             <h3>License Files</h3>
 
@@ -273,6 +275,7 @@ else if (licenseInfo != null)
                 }
             </div>
         </div>
+        </AuthorizeView>
     </div>
 }
 else
@@ -300,8 +303,17 @@ else
     private IBrowserFile? selectedFile;
     private bool isUploading;
 
+    [CascadingParameter]
+    private Task<AuthenticationState>? AuthState { get; set; }
+    private bool isAdmin;
+
     protected override async Task OnInitializedAsync()
     {
+        if (AuthState is not null)
+        {
+            var authState = await AuthState;
+            isAdmin = authState.User.IsInRole("Admin");
+        }
         autoFetch = Bootstrapper.GetStatus();
         await Task.WhenAll(LoadLicenseInfo(), LoadLicenseFiles());
     }
@@ -361,6 +373,13 @@ else
     {
         if (selectedFile == null) return;
 
+        if (!isAdmin)
+        {
+            fileOpError = "Only administrators can upload license files.";
+            Logger.LogWarning("Non-admin attempted to upload license file {Filename}", selectedFile.Name);
+            return;
+        }
+
         if (!selectedFile.Name.EndsWith(".license", StringComparison.OrdinalIgnoreCase))
         {
             fileOpError = "Only .license files are accepted.";
@@ -409,6 +428,13 @@ else
         if (deleteConfirmFile == null) return;
         var name = deleteConfirmFile;
         deleteConfirmFile = null;
+
+        if (!isAdmin)
+        {
+            fileOpError = "Only administrators can delete license files.";
+            Logger.LogWarning("Non-admin attempted to delete license file {Filename}", name);
+            return;
+        }
 
         try
         {
