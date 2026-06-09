@@ -27,7 +27,7 @@ namespace IndxCloudApi.Controllers
     [Route("api")]
     [ApiController]
     [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-    [EnableCors("AllowAllHeaders")]
+    [EnableCors("NewPolicy")]
     public class SearchController(TeamContextResolver resolver, TeamService teams) : Controller
     {
         private const string DataSetRoute = "teams/{teamName}/datasets/{dataSetName}";
