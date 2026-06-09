@@ -80,8 +80,8 @@ else
             // derived from the user's team role (Admin->owner, Editor->editor, Viewer->viewer) so
             // the existing permission checks in this view keep working unchanged.
             var ownerUserId = activeTeamId ?? "";
-            var currentRole = TeamRoles.CanAdmin(activeRole) ? "owner" : TeamRoles.CanWrite(activeRole) ? "editor" : "viewer";
-            var isEditor = currentRole == "owner" || currentRole == "editor";
+            var isAdmin = TeamRoles.CanAdmin(activeRole);
+            var isEditor = TeamRoles.CanWrite(activeRole);
             var status = datasetStatuses.ContainsKey(selectedDataset) ? datasetStatuses[selectedDataset] : null;
             var engineState = status?.SystemState ?? SystemState.Created;
             var isSaving = _savingDataset == datasetName;
@@ -161,7 +161,7 @@ else
                                 {
                                     <Button Variant="@(activeTab == "search" ? "primary" : "ghost")" Size="micro" IconLeft="_iconSearch" @onclick="@(() => _datasetTabs[selectedDataset] = "search")">Search preview</Button>
                                 }
-                                @if (currentRole == "owner")
+                                @if (isAdmin)
                                 {
                                     <Button Variant="@(activeTab == "options" ? "primary" : "ghost")" Size="micro" IconLeft="_iconSliders" @onclick="@(() => _datasetTabs[selectedDataset] = "options")">Options</Button>
                                 }
@@ -636,7 +636,6 @@ else
     private HashSet<string> expandedFieldConfig = new();
     private HashSet<string> _showUnusedFields = new();
     private HashSet<string> _showAdvancedFields = new();
-    private HashSet<string> _showTransferSection = new();
     private Dictionary<string, FieldProxy[]?> fieldConfigs = new();
     private Dictionary<string, FieldProxy[]> _editedFieldConfigs = new();
 
@@ -679,10 +678,6 @@ else
     // Dataset sub-tabs ("fields" | "search" | "options" | "sharing")
     private Dictionary<string, string> _datasetTabs = new();
 
-    // Transfer ownership state
-    private string? _transferEmailInput;
-    private string? _transferConfirmDataset;
-    private string? _transferError;
 
     // Field config import/export
     private Dictionary<string, string?> _importWarnings = new();
