@@ -65,9 +65,15 @@
                     }
                     else
                     {
-                        <Button Variant="ghost" Size="micro" @onclick="ShowNewTeamForm" style="width:100%; justify-content:flex-start;">New team</Button>
+                        <Button Variant="ghost" Size="micro" @onclick="ShowNewTeamForm" style="width:100%; justify-content:flex-start;">
+                            <IconLeft><Plus Size="@context" Color="currentColor" /></IconLeft>
+                            <ChildContent>New team</ChildContent>
+                        </Button>
                     }
-                    <Button Variant="ghost" Size="micro" Href="Team" style="width:100%; justify-content:flex-start;">Manage team</Button>
+                    <Button Variant="ghost" Size="micro" Href="Team" style="width:100%; justify-content:flex-start;">
+                        <IconLeft><UserGroup Size="@context" Color="currentColor" /></IconLeft>
+                        <ChildContent>Manage team</ChildContent>
+                    </Button>
                 </Surface>
             }
         </div>
