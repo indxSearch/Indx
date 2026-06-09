@@ -16,8 +16,10 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject IndxCloudApi.Services.TeamService TeamService
+@inject IndxCloudApi.Services.ActiveTeamState ActiveTeam
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject IJSRuntime JSRuntime
+@implements IDisposable
 
 <PageTitle>Indx Cloud API</PageTitle>
 
@@ -163,7 +165,6 @@ else
                                 {
                                     <Button Variant="@(activeTab == "options" ? "primary" : "ghost")" Size="micro" IconLeft="_iconSliders" @onclick="@(() => _datasetTabs[selectedDataset] = "options")">Options</Button>
                                 }
-                                <Button Variant="@(activeTab == "members" ? "primary" : "ghost")" Size="micro" IconLeft="_iconUser" @onclick="@(async () => { _datasetTabs[selectedDataset] = "members"; await LoadAccessGrants(datasetName, ownerUserId); })">Members</Button>
                             </nav>
                         }
 
@@ -590,102 +591,6 @@ else
                             </div>
                         }
 
-                        @* ════════════════════════════════════════
-                   Tab: Members (owner + grantees)
-                   ════════════════════════════════════════ *@
-                        @if (activeTab == "members")
-                        {
-                            <div style="margin-top:8px;">
-                                <h3 style="margin-bottom:16px;">Members</h3>
-
-                                @* Members table — owner row first, then grants *@
-                                <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:20px;">
-                                    <thead>
-                                        <tr style="border-bottom:1px solid var(--lv3);color:var(--lv5);">
-                                            <th style="text-align:left;padding:6px 12px;font-weight:500;">Email</th>
-                                            <th style="text-align:left;padding:6px 12px;font-weight:500;">Role</th>
-                                            <th style="padding:6px 12px;"></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @* Owner row *@
-                                        @if (_ownerEmail.TryGetValue(datasetName, out var ownerEmail))
-                                        {
-                                            <tr style="border-bottom:1px solid var(--lv2);">
-                                                <td style="padding:8px 12px;">@ownerEmail</td>
-                                                <td style="padding:8px 12px;"><Chip Color="var(--lv8)" TextColor="var(--lv0)">Owner</Chip></td>
-                                                <td></td>
-                                            </tr>
-                                        }
-                                        @* Grantee rows *@
-                                        @if (_accessGrants.TryGetValue(datasetName, out var grants))
-                                        {
-                                            @foreach (var (email, role) in grants)
-                                            {
-                                                <tr style="border-bottom:1px solid var(--lv2);">
-                                                    <td style="padding:8px 12px;">@email</td>
-                                                    <td style="padding:8px 12px;"><Chip Color="var(--lv2)" TextColor="var(--lv6)">@(char.ToUpper(role[0]) + role[1..])</Chip></td>
-                                                    <td style="padding:8px 12px;text-align:right;">
-                                                        @if (currentRole == "owner")
-                                                        {
-                                                            <Button Variant="ghost" Size="micro"
-                                                                    @onclick="async () => await RevokeShareAccess(datasetName, ownerUserId, email)">
-                                                                Revoke
-                                                            </Button>
-                                                        }
-                                                        else if (email == _currentUserEmail)
-                                                        {
-                                                            <Button Variant="ghost" Size="micro"
-                                                                    @onclick="async () => await LeaveDataset(datasetName, ownerUserId)">
-                                                                Leave
-                                                            </Button>
-                                                        }
-                                                    </td>
-                                                </tr>
-                                            }
-                                        }
-                                    </tbody>
-                                </table>
-
-                                @* Grant form — owner only *@
-                                @if (currentRole == "owner")
-                                {
-                                    @if (!_showGrantForm)
-                                    {
-                                        <Button Variant="secondary" Size="micro" IconLeft="_iconUserPlus"
-                                                @onclick="() => { _showGrantForm = true; _shareError = null; }">
-                                            Add a user
-                                        </Button>
-                                    }
-                                    else
-                                    {
-                                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:4px;">
-                                            <input class="indx-text-input" placeholder="Email address"
-                                                   @bind="_shareEmailInput" style="min-width:220px;" />
-                                            <select style="padding:6px 8px;border:1px solid var(--lv3);border-radius:var(--radius);background:var(--lv0);color:var(--lv8);font-size:13px;width:auto;"
-                                                    @bind="_shareRoleInput">
-                                                <option value="viewer">Viewer</option>
-                                                <option value="editor">Editor</option>
-                                            </select>
-                                            <Button Variant="primary" Size="micro"
-                                                    disabled="@string.IsNullOrWhiteSpace(_shareEmailInput)"
-                                                    @onclick="async () => { await GrantShareAccess(datasetName, ownerUserId); if (string.IsNullOrEmpty(_shareError)) _showGrantForm = false; }">
-                                                Grant access
-                                            </Button>
-                                            <Button Variant="ghost" Size="micro"
-                                                    @onclick="() => { _showGrantForm = false; _shareEmailInput = string.Empty; _shareError = null; }">
-                                                Cancel
-                                            </Button>
-                                        </div>
-                                        @if (!string.IsNullOrEmpty(_shareError))
-                                        {
-                                            <p style="color:var(--CSignal);font:var(--text-xs);margin-top:4px;">@_shareError</p>
-                                        }
-                                    }
-                                }
-                            </div>
-                        }
-
                     </Surface>
                 </div>
             </div>
@@ -774,15 +679,6 @@ else
     // Dataset sub-tabs ("fields" | "search" | "options" | "sharing")
     private Dictionary<string, string> _datasetTabs = new();
 
-    // Members panel state
-    private Dictionary<string, List<(string Email, string Role)>> _accessGrants = new();
-    private Dictionary<string, string> _ownerEmail = new();  // datasetName → owner email
-    private string? _currentUserEmail;
-    private string _shareEmailInput = "";
-    private string _shareRoleInput = "viewer";
-    private string? _shareError;
-    private bool _showGrantForm = false;
-
     // Transfer ownership state
     private string? _transferEmailInput;
     private string? _transferConfirmDataset;
@@ -822,35 +718,37 @@ else
             return;
         }
         userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        _currentUserEmail = user.FindFirst(ClaimTypes.Email)?.Value
-                            ?? user.FindFirst(ClaimTypes.Name)?.Value;
         if (string.IsNullOrEmpty(userId))
         {
             isLoading = false;
             return;
         }
-        _myTeams = await TeamService.GetTeamsForUserAsync(userId);
-        if (_myTeams.Count > 0)
-            SetActiveTeam(_myTeams[0]);
+        await ActiveTeam.EnsureInitializedAsync(userId);
+        ActiveTeam.OnChange += HandleTeamChanged;
+        SyncFromActiveTeam();
         await LoadDatasets();
         StartTransitionPollingIfNeeded();
     }
 
-    private void SetActiveTeam((Team Team, string Role) entry)
+    // Mirror the shared ActiveTeamState into the local fields the dashboard reads.
+    private void SyncFromActiveTeam()
     {
-        activeTeamId = entry.Team.Id.ToString();
-        activeTeamName = entry.Team.Name;
-        activeRole = entry.Role;
+        _myTeams = ActiveTeam.Teams.ToList();
+        activeTeamId = ActiveTeam.ActiveTeamId?.ToString();
+        activeTeamName = ActiveTeam.ActiveTeamName;
+        activeRole = ActiveTeam.ActiveRole;
     }
 
-    private async Task SwitchTeam(string teamId)
+    // Active team switched elsewhere (Team page / nav) — re-mirror and reload this team's datasets.
+    private async void HandleTeamChanged()
     {
-        var entry = _myTeams.FirstOrDefault(t => t.Team.Id.ToString() == teamId);
-        if (entry.Team == null) return;
-        SetActiveTeam(entry);
+        SyncFromActiveTeam();
         selectedDataset = null;
         await LoadDatasets();
+        await InvokeAsync(StateHasChanged);
     }
+
+    public void Dispose() => ActiveTeam.OnChange -= HandleTeamChanged;
 
     private void StartTransitionPollingIfNeeded()
     {
@@ -1386,83 +1284,6 @@ else
         _perfRunning.Remove(datasetName);
     }
 
-    // ── Members / sharing ───────────────────────────────────────────────────
-
-    // The "Members" tab now manages the membership of the team that owns the dataset — access to a
-    // dataset follows team membership. ownerKey is the active team id.
-    private async Task LoadAccessGrants(string datasetName, string ownerKey)
-    {
-        if (!Guid.TryParse(ownerKey, out var teamGuid)) return;
-
-        var members = await TeamService.GetMembersAsync(teamGuid);
-        var ids = members.Select(m => m.UserId).ToHashSet();
-        var userMap = await Task.Run(() =>
-            UserManager.Users.Where(u => ids.Contains(u.Id)).ToDictionary(u => u.Id, u => u.Email));
-
-        _accessGrants[datasetName] = members
-            .Select(m => (userMap.GetValueOrDefault(m.UserId) ?? m.UserId, m.Role))
-            .ToList();
-
-        // No single "owner" in the team model — show the owning team in that row instead.
-        _ownerEmail[datasetName] = activeTeamName != null ? $"Team: {activeTeamName}" : "Team";
-    }
-
-    private async Task GrantShareAccess(string datasetName, string ownerKey)
-    {
-        _shareError = null;
-        if (!Guid.TryParse(ownerKey, out var teamGuid)) { _shareError = "Invalid team."; return; }
-        var email = _shareEmailInput.Trim();
-        if (string.IsNullOrEmpty(email)) return;
-
-        var grantee = await UserManager.FindByEmailAsync(email);
-        if (grantee == null) { _shareError = "User not found."; return; }
-
-        // Map the form's viewer/editor selection onto the team roles.
-        var role = _shareRoleInput == "editor" ? TeamRoles.Editor : TeamRoles.Viewer;
-        try
-        {
-            await TeamService.AddMemberAsync(teamGuid, grantee.Id, role);
-        }
-        catch (TeamService.TeamException ex) { _shareError = ex.Message; return; }
-        _shareEmailInput = "";
-
-        try
-        {
-            await EmailSender.SendEmailAsync(
-                email,
-                $"You've been added to team \"{activeTeamName}\"",
-                $"<p>You have been added to the team <strong>{activeTeamName}</strong> as <strong>{role}</strong> on Indx Cloud API.</p>");
-        }
-        catch { /* email failure is non-fatal */ }
-
-        await LoadAccessGrants(datasetName, ownerKey);
-    }
-
-    private async Task RevokeShareAccess(string datasetName, string ownerKey, string granteeEmail)
-    {
-        if (!Guid.TryParse(ownerKey, out var teamGuid)) return;
-        var grantee = await UserManager.FindByEmailAsync(granteeEmail);
-        if (grantee == null) return;
-        try { await TeamService.RemoveMemberAsync(teamGuid, grantee.Id); }
-        catch (TeamService.TeamException) { /* e.g. last admin — ignore in this minimal UI */ }
-        await LoadAccessGrants(datasetName, ownerKey);
-    }
-
-    private async Task LeaveDataset(string datasetName, string ownerKey)
-    {
-        if (string.IsNullOrEmpty(userId) || !Guid.TryParse(ownerKey, out var teamGuid)) return;
-        try { await TeamService.RemoveMemberAsync(teamGuid, userId); }
-        catch (TeamService.TeamException) { /* last admin cannot leave */ }
-        _myTeams = await TeamService.GetTeamsForUserAsync(userId);
-        if (_myTeams.Count > 0)
-            SetActiveTeam(_myTeams[0]);
-        else
-        {
-            activeTeamId = null; activeTeamName = null; activeRole = null;
-        }
-        await LoadDatasets();
-    }
-
     // ── Ready state: collapsible field config + shadow-swap reindex ─────────
 
     private void ShowDeleteConfirm(string datasetName) => deleteConfirmDataset = datasetName;
@@ -1696,7 +1517,6 @@ else
     private RenderFragment<int> _iconSliders => size => @<SlidersHorizontal Size="size" />;
     private RenderFragment<int> _iconUser => size => @<User Size="size" />;
     private RenderFragment<int> _iconUserAlias => size => @<UserAlias Size="size" />;
-    private RenderFragment<int> _iconUserPlus => size => @<UserPlus Size="size" />;
 
     private static string BoolDisplay(bool? value) => value switch
     {
