@@ -579,13 +579,10 @@ else
                                     @if (_transferConfirmDataset != datasetName)
                                     {
                                         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                                            <select style="padding:6px 8px;border:1px solid var(--lv3);border-radius:var(--radius);background:var(--lv0);color:var(--lv8);font-size:13px;width:auto;" @bind="_transferTargetTeamId">
-                                                <option value="">Select a team…</option>
-                                                @foreach (var t in transferTargets)
-                                                {
-                                                    <option value="@t.Team.Id">@t.Team.Name</option>
-                                                }
-                                            </select>
+                                            <div style="width:240px;">
+                                                <SelectField Placeholder="Select a team…" @bind-Value="_transferTargetTeamId"
+                                                             Options="@transferTargets.Select(t => new SelectField.SelectOption(t.Team.Name, t.Team.Id.ToString())).ToList()" />
+                                            </div>
                                             <Button Variant="secondary" Size="micro" disabled="@string.IsNullOrEmpty(_transferTargetTeamId)" @onclick="() => { _transferError = null; _transferConfirmDataset = datasetName; }">Transfer</Button>
                                         </div>
                                     }
