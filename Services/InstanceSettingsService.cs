@@ -3,7 +3,7 @@ using Microsoft.Extensions.Options;
 
 namespace IndxCloudApi.Services;
 
-public class InstanceSettings
+internal class InstanceSettings
 {
     public RegistrationMode RegistrationMode { get; set; } = RegistrationMode.Open;
     public List<string> AllowedDomains { get; set; } = [];
@@ -13,7 +13,7 @@ public class InstanceSettings
     public string InstanceName { get; set; } = "Indx";
 }
 
-public class InstanceSettingsService
+internal class InstanceSettingsService
 {
     private static readonly string SettingsPath = "./IndxData/settings.json";
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };

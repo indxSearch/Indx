@@ -1,6 +1,6 @@
 namespace IndxCloudApi.Services;
 
-public static class EmailTemplates
+internal static class EmailTemplates
 {
     public static string Invite(string instanceName, string registerUrl) =>
         Build(

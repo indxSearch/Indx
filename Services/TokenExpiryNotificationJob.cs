@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 namespace IndxCloudApi.Services
 {
 #pragma warning disable 1591
-    public class TokenExpiryNotificationJob(
+    internal class TokenExpiryNotificationJob(
         IServiceScopeFactory scopeFactory,
         ILogger<TokenExpiryNotificationJob> logger) : BackgroundService
     {

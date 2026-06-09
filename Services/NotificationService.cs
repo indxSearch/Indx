@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 namespace IndxCloudApi.Services
 {
 #pragma warning disable 1591
-    public class NotificationService(
+    internal class NotificationService(
         ApplicationDbContext db,
         UserManager<ApplicationUser> userManager,
         IEmailSender emailSender,

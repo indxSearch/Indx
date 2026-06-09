@@ -230,7 +230,7 @@ public class Program
             options.TokenValidationParameters = new TokenValidationParameters
             {
                 ValidIssuer = builder.Configuration["Jwt:Issuer"],
-                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtkey)),
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtkey!)),
                 ValidateIssuer = true,
                 ValidateAudience = false,
                 ValidateLifetime = true,

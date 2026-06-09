@@ -1,6 +1,6 @@
 namespace IndxCloudApi.Services;
 
-public class RegistrationValidator
+internal class RegistrationValidator
 {
     private readonly InstanceSettingsService _settingsService;
     private readonly ILogger<RegistrationValidator> _logger;
@@ -96,7 +96,7 @@ public class RegistrationValidator
     }
 }
 
-public class RegistrationValidationResult
+internal class RegistrationValidationResult
 {
     public bool IsValid { get; init; }
     public string? ErrorMessage { get; init; }

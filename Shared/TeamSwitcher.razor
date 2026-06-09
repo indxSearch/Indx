@@ -116,7 +116,7 @@
 
     // Keep _newTeamName live on every keystroke so the Create button enables immediately
     // and Enter submits the current text (InputField's @bind-Value alone commits on blur).
-    private void OnNewTeamInput(ChangeEventArgs e) => _newTeamName = e.Value?.ToString();
+    private void OnNewTeamInput(ChangeEventArgs e) => _newTeamName = e.Value?.ToString() ?? "";
 
     private async Task OnNewTeamKeyDown(KeyboardEventArgs e)
     {
