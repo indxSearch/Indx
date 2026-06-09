@@ -563,8 +563,41 @@ else
                         @if (activeTab == "options")
                         {
                             <div style="margin-top:8px;">
-                                @* Dataset ownership is by team; moving a dataset between teams is an
-                                   Admin action available via the API (POST .../transfer). *@
+                                @{
+                                    var transferTargets = _myTeams
+                                        .Where(t => t.Team.Id.ToString() != activeTeamId && TeamRoles.CanAdmin(t.Role))
+                                        .ToList();
+                                }
+                                @if (transferTargets.Count > 0)
+                                {
+                                    <h3 style="margin-top:8px;margin-bottom:8px;">Transfer to another team</h3>
+                                    <p style="color:var(--lv5);font:var(--text-xs);margin-bottom:8px;">Move this dataset to another team you administer. The current team loses access.</p>
+                                    @if (_transferConfirmDataset != datasetName)
+                                    {
+                                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                            <select style="padding:6px 8px;border:1px solid var(--lv3);border-radius:var(--radius);background:var(--lv0);color:var(--lv8);font-size:13px;width:auto;" @bind="_transferTargetTeamId">
+                                                <option value="">Select a team…</option>
+                                                @foreach (var t in transferTargets)
+                                                {
+                                                    <option value="@t.Team.Id">@t.Team.Name</option>
+                                                }
+                                            </select>
+                                            <Button Variant="secondary" Size="micro" disabled="@string.IsNullOrEmpty(_transferTargetTeamId)" @onclick="() => { _transferError = null; _transferConfirmDataset = datasetName; }">Transfer</Button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                            <span style="color:var(--CSignal);font:var(--text-sm);">Move "@datasetName" to the selected team? This team loses access.</span>
+                                            <Button Variant="primary" Size="micro" @onclick="() => TransferDataset(datasetName)">Confirm transfer</Button>
+                                            <Button Variant="ghost" Size="micro" @onclick="() => _transferConfirmDataset = null">Cancel</Button>
+                                        </div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(_transferError))
+                                    {
+                                        <p style="color:var(--CSignal);font:var(--text-xs);margin-top:4px;">@_transferError</p>
+                                    }
+                                }
                                 @if (engineState == SystemState.Ready)
                                 {
                                     <h3 style="color:var(--CSignal);margin-top:24px;margin-bottom:8px;">Danger Zone</h3>
@@ -678,6 +711,11 @@ else
     // Dataset sub-tabs ("fields" | "search" | "options" | "sharing")
     private Dictionary<string, string> _datasetTabs = new();
 
+    // Transfer-to-team (Options tab, Admin only)
+    private string _transferTargetTeamId = "";
+    private string? _transferConfirmDataset;
+    private string? _transferError;
+
 
     // Field config import/export
     private Dictionary<string, string?> _importWarnings = new();
@@ -764,6 +802,26 @@ else
         expandedFieldConfig.Clear();
         _showUnusedFields.Clear();
         _showAdvancedFields.Clear();
+    }
+
+    private async Task TransferDataset(string datasetName)
+    {
+        _transferError = null;
+        if (string.IsNullOrEmpty(_transferTargetTeamId) || string.IsNullOrEmpty(activeTeamId)) return;
+        try
+        {
+            // TransferOwnership evicts the source engine (can be slow) — run off the circuit.
+            await Task.Run(() => IndxCloudInternalApi.Manager.TransferOwnership(datasetName, activeTeamId!, _transferTargetTeamId));
+        }
+        catch (Exception ex)
+        {
+            _transferError = $"Transfer failed: {ex.Message}";
+            return;
+        }
+        _transferTargetTeamId = "";
+        _transferConfirmDataset = null;
+        selectedDataset = null;
+        await LoadDatasets(); // dataset now belongs to another team — drops off this view
     }
 
     public void Dispose() => ActiveTeam.OnChange -= HandleTeamChanged;
