@@ -170,13 +170,20 @@ public class Program
         var jwtkey = builder.Configuration["Jwt:Key"];
         var defaultKey = "your-secret-key-minimum-32-characters-change-in-production";
         var jwtKeyFile = "./IndxData/jwt.key";
-        var keyMissingOrPlaceholder = string.IsNullOrEmpty(jwtkey) || jwtkey == defaultKey;
+        var isPlaceholder = jwtkey == defaultKey;
+        var keyMissingOrPlaceholder = string.IsNullOrEmpty(jwtkey) || isPlaceholder;
 
-        if (builder.Environment.IsProduction() && keyMissingOrPlaceholder)
+        // Reject the well-known placeholder sample value in Production: hitting this means
+        // someone copied the example config verbatim, which would leave the token-signing
+        // secret known to anyone with the source. A *missing* key is fine — we auto-generate
+        // and persist a strong one below, so a freshly downloaded IndxCloudApi deploys
+        // without friction (self-hosted customers don't have to configure anything).
+        if (builder.Environment.IsProduction() && isPlaceholder)
         {
             throw new InvalidOperationException(
-                "Jwt:Key is missing or set to the placeholder value in Production. " +
-                "Set Jwt:Key to a real secret (>= 32 chars) via Key Vault or environment variable.");
+                "Jwt:Key is set to the placeholder sample value in Production. Remove it so a " +
+                "secure key is auto-generated, or set Jwt:Key to a real secret (>= 32 chars) " +
+                "via Key Vault or an environment variable.");
         }
 
         if (keyMissingOrPlaceholder)
@@ -194,6 +201,16 @@ public class Program
                 jwtkey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
                 File.WriteAllText(jwtKeyFile, jwtkey);
                 Console.WriteLine("✓ JWT key auto-generated and saved to IndxData/jwt.key");
+            }
+
+            // An auto-generated key lives only on this instance's disk. Fine for a single
+            // node, but scale-out/multi-instance hosting needs a shared secret or tokens
+            // issued by one node fail validation on another.
+            if (builder.Environment.IsProduction())
+            {
+                Console.WriteLine(
+                    "⚠ Running on an auto-generated JWT key in Production. For multi-instance " +
+                    "deployments set Jwt:Key explicitly (Key Vault or environment variable).");
             }
         }
         else
