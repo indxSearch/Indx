@@ -97,7 +97,7 @@ else
     {
         <h3 style="margin-top:32px; margin-bottom:12px;">Team settings</h3>
         <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
-            <InputField @bind-Value="_renameInput" style="min-width:220px;" />
+            <div style="width:220px;"><InputField @bind-Value="_renameInput" /></div>
             <Button Variant="secondary" Size="micro" @onclick="OnRename">Rename</Button>
         </div>
         @if (!_confirmDelete)
@@ -121,7 +121,7 @@ else
     @* ── Create team (any user) ── *@
     <h3 style="margin-top:32px; margin-bottom:12px;">Create a team</h3>
     <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-        <InputField @bind-Value="_newTeamName" placeholder="New team name" style="min-width:220px;" />
+        <div style="width:220px;"><InputField @bind-Value="_newTeamName" placeholder="New team name" /></div>
         <Button Variant="secondary" Size="micro" disabled="@string.IsNullOrWhiteSpace(_newTeamName)" @onclick="OnCreateTeam">Create team</Button>
     </div>
 }
