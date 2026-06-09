@@ -1,7 +1,10 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
+@using System.Security.Claims
 @inject NavigationManager NavigationManager
 @inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
+@inject IndxCloudApi.Services.ActiveTeamState ActiveTeam
+@inject AuthenticationStateProvider AuthenticationStateProvider
 
 <nav class="nav">
     <span class="nav-current-page">
@@ -30,6 +33,26 @@
     <div class="nav-right">
         <AuthorizeView>
             <Authorized>
+                @if (ActiveTeam.HasTeam)
+                {
+                    <div style="display:flex; align-items:center; gap:6px; margin-right:4px;" title="Active team">
+                        @if (ActiveTeam.Teams.Count > 1)
+                        {
+                            <select style="padding:5px 8px;border:1px solid var(--lv3);border-radius:var(--radius);background:var(--lv0);color:var(--lv8);font-size:13px;"
+                                    value="@ActiveTeam.ActiveTeamId" @onchange="OnSwitchTeam">
+                                @foreach (var t in ActiveTeam.Teams)
+                                {
+                                    <option value="@t.Team.Id">@t.Team.Name</option>
+                                }
+                            </select>
+                        }
+                        else
+                        {
+                            <a href="Team" style="font-size:13px; color:var(--lv7); text-decoration:none;">@ActiveTeam.ActiveTeamName</a>
+                        }
+                        <Chip Color="var(--lv2)" TextColor="var(--lv6)">@ActiveTeam.ActiveRole</Chip>
+                    </div>
+                }
                 <NotificationPanel />
                 <Button Href="Account/Manage" Variant="@NavVariant("Account/Manage")" Size="micro" IconLeft="_iconUser">@context.User.Identity?.Name</Button>
             </Authorized>
@@ -77,6 +100,23 @@
         NavigationManager.LocationChanged += OnLocationChanged;
     }
 
+    protected override async Task OnInitializedAsync()
+    {
+        ActiveTeam.OnChange += OnTeamChanged;
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (!string.IsNullOrEmpty(userId))
+            await ActiveTeam.EnsureInitializedAsync(userId);
+    }
+
+    private void OnSwitchTeam(ChangeEventArgs e)
+    {
+        if (Guid.TryParse(e.Value?.ToString(), out var id))
+            ActiveTeam.Switch(id);
+    }
+
+    private async void OnTeamChanged() => await InvokeAsync(StateHasChanged);
+
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         _menuOpen = false;
@@ -86,6 +126,7 @@
     public void Dispose()
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
+        ActiveTeam.OnChange -= OnTeamChanged;
     }
 
     private void ToggleMenu() => _menuOpen = !_menuOpen;
