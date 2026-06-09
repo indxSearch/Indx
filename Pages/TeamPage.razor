@@ -52,7 +52,7 @@ else
                     <td style="padding:8px 12px;">
                         @if (_canAdmin && m.UserId != _userId)
                         {
-                            <div style="width:130px;"><SelectField Value="@m.Role" ValueChanged="@(v => OnChangeRole(m.UserId, v))" Options="_roleOptions" /></div>
+                            <div style="width:130px;"><SelectField Size="micro" Value="@m.Role" ValueChanged="@(v => OnChangeRole(m.UserId, v))" Options="_roleOptions" /></div>
                         }
                         else
                         {
@@ -85,8 +85,8 @@ else
         else
         {
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <div style="width:240px;"><SelectField Placeholder="Select a user…" @bind-Value="_addUserId" Options="_userOptions" /></div>
-                <div style="width:130px;"><SelectField @bind-Value="_addRole" Options="_addRoleOptions" /></div>
+                <div style="width:240px;"><SelectField Size="micro" Placeholder="Select a user…" @bind-Value="_addUserId" Options="_userOptions" /></div>
+                <div style="width:130px;"><SelectField Size="micro" @bind-Value="_addRole" Options="_addRoleOptions" /></div>
                 <Button Variant="primary" Size="micro" disabled="@string.IsNullOrEmpty(_addUserId)" @onclick="OnAddMember">Add</Button>
             </div>
         }
