@@ -39,36 +39,36 @@
             @if (_teamMenuOpen)
             {
                 <div class="team-backdrop" @onclick="CloseTeamMenu"></div>
-                <div class="team-menu team-menu--right">
+                <Surface Class="team-menu team-menu--right">
                     @foreach (var t in ActiveTeam.Teams)
                     {
-                        <button class="team-menu-item" @onclick="() => SelectTeam(t.Team.Id)">
+                        <Button Variant="ghost" Size="micro" @onclick="() => SelectTeam(t.Team.Id)" style="width:100%; justify-content:space-between;">
                             <span>@t.Team.Name</span>
                             @if (t.Team.Id == ActiveTeam.ActiveTeamId)
                             {
                                 <Check Size="12" />
                             }
-                        </button>
+                        </Button>
                     }
                     <div class="team-menu-divider"></div>
                     @if (_showNewTeamForm)
                     {
-                        <div style="display:flex; gap:6px; padding:2px 6px;">
+                        <div style="display:flex; gap:6px;">
                             <input class="indx-text-input" style="font-size:13px; min-width:0; flex:1;" placeholder="Team name"
                                    @bind="_newTeamName" @bind:event="oninput" @onkeydown="OnNewTeamKeyDown" />
                             <Button Variant="primary" Size="micro" @onclick="CreateTeam" disabled="@string.IsNullOrWhiteSpace(_newTeamName)">Create</Button>
                         </div>
                         @if (!string.IsNullOrEmpty(_teamError))
                         {
-                            <p style="color:var(--CSignal); font:var(--text-2xs); margin:2px 8px 0;">@_teamError</p>
+                            <p style="color:var(--CSignal); font:var(--text-2xs); margin:2px 0 0;">@_teamError</p>
                         }
                     }
                     else
                     {
-                        <button class="team-menu-item" @onclick="ShowNewTeamForm"><span>New team</span></button>
+                        <Button Variant="ghost" Size="micro" @onclick="ShowNewTeamForm" style="width:100%; justify-content:flex-start;">New team</Button>
                     }
-                    <a class="team-menu-link" href="Team">Manage team</a>
-                </div>
+                    <Button Variant="ghost" Size="micro" Href="Team" style="width:100%; justify-content:flex-start;">Manage team</Button>
+                </Surface>
             }
         </div>
     }
