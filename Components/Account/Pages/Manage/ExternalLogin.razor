@@ -12,8 +12,7 @@
 @inject IdentityRedirectManager RedirectManager
 @inject ILogger<ExternalLogin> Logger
 @inject RegistrationValidator RegistrationValidator
-@inject TeamService TeamService
-@inject InstanceSettingsService InstanceSettingsService
+@inject UserProvisioningService UserProvisioning
 
 <PageTitle>Processing login</PageTitle>
 
@@ -177,23 +176,10 @@
         var createResult = await UserManager.CreateAsync(user);
         if (createResult.Succeeded)
         {
-            // Add to default role
-            var isFirst = UserManager.Users.Count() == 1;
-            await UserManager.AddToRoleAsync(user, isFirst ? "Admin" : "Member");
-            Logger.LogInformation("Added user to default role");
-
-            // Every user needs a team that owns their datasets (mirrors Register.razor);
-            // OAuth has no team-name field, so fall back to the email prefix.
-            await TeamService.CreatePersonalTeamAsync(user, null);
-
-            // Consume the invite (mirrors Register.razor): an invited user who joins via
-            // OAuth must not leave a dangling "Pending" invite in the admin list.
-            var settings = InstanceSettingsService.Load();
-            if (settings.RegistrationMode == RegistrationMode.Invite)
-            {
-                settings.AllowedEmails.RemoveAll(e => e.Equals(email, StringComparison.OrdinalIgnoreCase));
-                InstanceSettingsService.Save(settings);
-            }
+            // Role, personal team, admin notification and invite consumption — shared with
+            // Register via UserProvisioningService so the flows can't drift. OAuth has no
+            // team-name field, so the team name falls back to the email prefix.
+            await UserProvisioning.ProvisionNewUserAsync(user, email);
 
             var addLoginResult = await UserManager.AddLoginAsync(user, externalLoginInfo);
             if (addLoginResult.Succeeded)

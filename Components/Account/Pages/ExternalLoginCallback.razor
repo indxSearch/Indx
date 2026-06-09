@@ -8,8 +8,7 @@
 @inject NavigationManager NavigationManager
 @inject ILogger<ExternalLoginCallback> Logger
 @inject RegistrationValidator RegistrationValidator
-@inject TeamService TeamService
-@inject InstanceSettingsService InstanceSettingsService
+@inject UserProvisioningService UserProvisioning
 
 <PageTitle>External login callback</PageTitle>
 
@@ -113,24 +112,10 @@
                 return;
             }
 
-            // Add to default role
-            var isFirst = UserManager.Users.Count() == 1;
-            await UserManager.AddToRoleAsync(user, isFirst ? "Admin" : "Member");
-
-            // Every user needs a team that owns their datasets (mirrors Register.razor) —
-            // without it an external-login user lands on an empty dashboard with no team
-            // context and can't create datasets. No team-name field here, so fall back to
-            // the email prefix.
-            await TeamService.CreatePersonalTeamAsync(user, null);
-
-            // Consume the invite (mirrors Register.razor): an invited user who joins via
-            // OAuth must not leave a dangling "Pending" invite in the admin list.
-            var settings = InstanceSettingsService.Load();
-            if (settings.RegistrationMode == RegistrationMode.Invite)
-            {
-                settings.AllowedEmails.RemoveAll(e => e.Equals(email, StringComparison.OrdinalIgnoreCase));
-                InstanceSettingsService.Save(settings);
-            }
+            // Role, personal team, admin notification and invite consumption — shared with
+            // Register via UserProvisioningService so the flows can't drift. OAuth has no
+            // team-name field, so the team name falls back to the email prefix.
+            await UserProvisioning.ProvisionNewUserAsync(user, email);
 
             Logger.LogInformation("Created new user from external login: {Email}", email);
         }

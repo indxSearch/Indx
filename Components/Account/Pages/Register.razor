@@ -22,8 +22,7 @@
 @inject IdentityRedirectManager RedirectManager
 @inject RegistrationValidator RegistrationValidator
 @inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
-@inject IndxCloudApi.Services.NotificationService NotificationService
-@inject IndxCloudApi.Services.TeamService TeamService
+@inject IndxCloudApi.Services.UserProvisioningService UserProvisioning
 
 
 <PageTitle>Register</PageTitle>
@@ -147,28 +146,10 @@ else
         }
 
         Logger.LogInformation("User created a new account with password.");
-        await UserManager.AddToRoleAsync(user, isFirstUser ? "Admin" : "Member");
 
-        // Every user gets a team that owns their datasets — created here so the dashboard has a
-        // team context immediately. The team Name is the only name a team has (no display name);
-        // blank falls back to the email prefix, sanitised and made globally unique.
-        await TeamService.CreatePersonalTeamAsync(user, Input.TeamName);
-
-        if (!isFirstUser)
-        {
-            await NotificationService.CreateForAdminsAsync(
-                IndxCloudApi.Data.NotificationType.UserRegistered,
-                $"New user registered: {Input.Email}",
-                $"{Input.Email} has created an account.");
-        }
-
-        // Consume invite if applicable
-        var settings = InstanceSettingsService.Load();
-        if (settings.RegistrationMode == RegistrationMode.Invite)
-        {
-            settings.AllowedEmails.RemoveAll(e => e.Equals(Input.Email, StringComparison.OrdinalIgnoreCase));
-            InstanceSettingsService.Save(settings);
-        }
+        // Role, personal team, admin notification and invite consumption — shared with the
+        // OAuth paths via UserProvisioningService so the registration flows can't drift.
+        await UserProvisioning.ProvisionNewUserAsync(user, Input.Email, Input.TeamName);
 
         var userId = await UserManager.GetUserIdAsync(user);
         var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
