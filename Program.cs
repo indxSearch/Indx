@@ -90,6 +90,7 @@ public class Program
         builder.Services.AddSingleton<InstanceSettingsService>();
         builder.Services.AddScoped<IndxCloudApi.Services.NotificationService>();
         builder.Services.AddScoped<IndxCloudApi.Services.TeamService>();
+        builder.Services.AddScoped<IndxCloudApi.Services.ActiveTeamState>();
         builder.Services.AddScoped<IndxCloudApi.Services.TeamContextResolver>();
         builder.Services.AddScoped<IndxCloudApi.Services.DataMigrationService>();
         builder.Services.AddHostedService<IndxCloudApi.Services.TokenExpiryNotificationJob>();

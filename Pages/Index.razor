@@ -54,7 +54,7 @@
 else
 {
 
-    @if ((datasets == null || datasets.Length == 0) && _sharedDatasets.Count == 0)
+    @if (datasets == null || datasets.Length == 0)
     {
         <div style="margin-top: 40px; max-width: 520px;">
             <p style="color: var(--lv5); margin-bottom: 20px;">A dataset holds your JSON documents and search index. Create one here to get started.</p>
@@ -73,7 +73,6 @@ else
 
         @if (selectedDataset != null)
         {
-            var isShared = _sharedDatasets.ContainsKey(selectedDataset);
             var datasetName = GetDatasetName(selectedDataset);
             // Owner key is the active team id; the legacy role strings (owner/editor/viewer) are
             // derived from the user's team role (Admin->owner, Editor->editor, Viewer->viewer) so
@@ -92,15 +91,6 @@ else
             <div class="indx-dataset-card">
                 <div class="indx-dataset-card-inner">
                     <Surface Transparent>
-
-                        @* ── Shared dataset banner ── *@
-                        @if (isShared)
-                        {
-                            <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
-                                <Chip Color="var(--lv2)" TextColor="var(--lv5)">Shared by @_sharedDatasets[selectedDataset].OwnerEmail</Chip>
-                                <Chip Color="var(--lv2)" TextColor="var(--lv5)">@(char.ToUpper(currentRole[0]) + currentRole[1..])</Chip>
-                            </div>
-                        }
 
                         @* ── Status table (always shown when status is available) ── *@
                         @if (status != null)
@@ -784,9 +774,6 @@ else
     // Dataset sub-tabs ("fields" | "search" | "options" | "sharing")
     private Dictionary<string, string> _datasetTabs = new();
 
-    // Shared datasets: keyed by synthetic tab key "shared:{ownerUserId}:{datasetName}"
-    private Dictionary<string, (string OwnerUserId, string OwnerEmail, string Role)> _sharedDatasets = new();
-
     // Members panel state
     private Dictionary<string, List<(string Email, string Role)>> _accessGrants = new();
     private Dictionary<string, string> _ownerEmail = new();  // datasetName → owner email
@@ -917,22 +904,11 @@ else
     }
 
     // ── Tab key helpers ──────────────────────────────────────────────────────
-    private static string MakeSharedKey(string ownerUserId, string datasetName) =>
-        $"shared:{ownerUserId}:{datasetName}";
+    // Tab keys are dataset names directly (team-owned; no synthetic "shared:" keys anymore).
+    private static string GetDatasetName(string tabKey) => tabKey;
 
-    private string GetDatasetName(string tabKey) =>
-        _sharedDatasets.ContainsKey(tabKey)
-            ? tabKey[(tabKey.IndexOf(':', 7) + 1)..] // after "shared:{ownerId}:"
-            : tabKey;
-
-    private IEnumerable<Tabs.TabItem> AllDatasetTabItems()
-    {
-        var items = (datasets ?? Array.Empty<string>())
-            .Select(d => new Tabs.TabItem(d, d));
-        var sharedItems = _sharedDatasets.Keys
-            .Select(k => new Tabs.TabItem($"{GetDatasetName(k)} ↗", k));
-        return items.Concat(sharedItems);
-    }
+    private IEnumerable<Tabs.TabItem> AllDatasetTabItems() =>
+        (datasets ?? Array.Empty<string>()).Select(d => new Tabs.TabItem(d, d));
 
     private async Task LoadDatasets()
     {
@@ -1004,11 +980,6 @@ else
         }
         try
         {
-            if (_sharedDatasets.Keys.Any(k => GetDatasetName(k) == name))
-            {
-                _createError = $"You already have access to a shared dataset named '{name}'. Choose a different name.";
-                return;
-            }
             var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, name, activeTeamId!);
             if (persistence.DataSetExists())
             {

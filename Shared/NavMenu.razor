@@ -13,6 +13,7 @@
         <Button Href="/" Variant="@NavVariant("/", exact: true)" Size="micro" IconLeft="_iconHome">Datasets</Button>
         <AuthorizeView>
             <Authorized>
+                <Button Href="Team" Variant="@NavVariant("Team")" Size="micro" IconLeft="_iconTeam">Team</Button>
                 <Button Href="Account/ApiKey" Variant="@NavVariant("Account/ApiKey")" Size="micro" IconLeft="_iconKey">API Key</Button>
                 <Button Href="Account/License" Variant="@NavVariant("Account/License")" Size="micro" IconLeft="_iconDoc">License</Button>
             </Authorized>
@@ -61,6 +62,7 @@
     private string _instanceName = "Indx";
 
     private RenderFragment<int> _iconHome  => size => @<Database Size="size" />;
+    private RenderFragment<int> _iconTeam  => size => @<UserGroup Size="size" />;
     private RenderFragment<int> _iconKey   => size => @<Key Size="size" />;
     private RenderFragment<int> _iconUser  => size => @<UserId Size="size" />;
     private RenderFragment<int> _iconDoc   => size => @<DocumentOrFile Size="size" />;
@@ -97,6 +99,7 @@
             if (path == "") return ("Datasets", _iconHome);
             if (path.StartsWith("account/apikey")) return ("API Key", _iconKey);
             if (path.StartsWith("account/license")) return ("License", _iconDoc);
+            if (path.StartsWith("team")) return ("Team", _iconTeam);
             if (path.StartsWith("account/manage")) return ("Account", _iconUser);
             if (path.StartsWith("swagger")) return ("Swagger", _iconApi);
             if (path.StartsWith("admin")) return ("Admin", _iconAdmin);

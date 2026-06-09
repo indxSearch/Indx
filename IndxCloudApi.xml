@@ -691,6 +691,32 @@
             initial schema and only applies migrations added after.
             </summary>
         </member>
+        <member name="T:IndxCloudApi.Services.ActiveTeamState">
+            <summary>
+            Per-circuit holder of the signed-in user's teams and the one currently-active team.
+            Shared by the nav switcher, the dashboard, and the Team page so "active team" is a single
+            session-wide value. Scoped: one instance per Blazor circuit.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.ActiveTeamState.#ctor(IndxCloudApi.Services.TeamService)">
+            <summary>
+            Per-circuit holder of the signed-in user's teams and the one currently-active team.
+            Shared by the nav switcher, the dashboard, and the Team page so "active team" is a single
+            session-wide value. Scoped: one instance per Blazor circuit.
+            </summary>
+        </member>
+        <member name="E:IndxCloudApi.Services.ActiveTeamState.OnChange">
+            <summary>Raised whenever the team list or the active team changes.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.ActiveTeamState.EnsureInitializedAsync(System.String)">
+            <summary>Load the user's teams once. Safe to call repeatedly; only re-loads for a new user.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.ActiveTeamState.ReloadAsync">
+            <summary>Re-read teams from the DB (after create/rename/delete or membership changes).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.ActiveTeamState.Switch(System.Guid)">
+            <summary>Switch the active team (must be one the user belongs to).</summary>
+        </member>
         <member name="T:IndxCloudApi.Services.AzureCommunicationEmailSender">
             <summary>
             Email sender using Azure Communication Services
