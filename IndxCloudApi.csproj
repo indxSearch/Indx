@@ -24,6 +24,12 @@
 		<None Include="LICENSE" Pack="true" PackagePath="" />
 	</ItemGroup>
 
+	<!-- Internal services (LicenseBootstrapper, NotificationService, …) are exercised
+	     by the test project, which needs access to them. -->
+	<ItemGroup>
+		<InternalsVisibleTo Include="TestIndxCloudApi" />
+	</ItemGroup>
+
 	<ItemGroup>
 		<Content Include="IndxData\*.license" CopyToPublishDirectory="PreserveNewest" />
 	</ItemGroup>
