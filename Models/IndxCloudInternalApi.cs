@@ -279,7 +279,10 @@ namespace IndxCloudApi.Models
             try
             {
                 var engine = ResolveEngine(dataSetName, teamId);
-                if (engine == null)
+                // An empty / not-yet-indexed dataset has no DocumentFields, so building the query
+                // (FromCloudQuery2Query) would NullReference. Return an empty result instead —
+                // "search works, just returns nothing" until documents are loaded and indexed.
+                if (engine == null || engine.DocumentFields == null)
                     return Result.MakeEmptyResult();
                 Query query = FromCloudQuery2Query(cloudQuery, engine);
                 return engine.Search(query);
