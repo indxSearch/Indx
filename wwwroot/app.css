@@ -383,6 +383,18 @@ a.btn-danger:hover {
     margin: 4px 0;
 }
 
+/* Keep the ghost-item hover one level above the Surface base so it stays visible
+   (lv2 base + lv2 ghost-hover would be invisible in light) — aligns with SelectField. */
+.team-menu .indx-btn-ghost:hover {
+    background: var(--lv3) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    .team-menu .indx-btn-ghost:hover {
+        background: var(--lv2) !important;
+    }
+}
+
 .nav-bell {
     display: flex;
     align-items: center;
