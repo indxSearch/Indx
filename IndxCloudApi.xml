@@ -759,6 +759,21 @@
              Users that already have a team (e.g. created via registration) are left as-is.
              </summary>
         </member>
+        <member name="M:IndxCloudApi.Services.EmailTemplates.Notice(System.String,System.String,System.String,System.String,System.String,System.String,System.Boolean)">
+            <summary>
+            Branded informational email (same shell as the action emails). The call-to-action
+            button is optional — pass <paramref name="actionUrl"/>/<paramref name="actionLabel"/>
+            to include one, omit for a plain notice. <paramref name="bodyHtml"/> is inserted as-is.
+            </summary>
+        </member>
+        <member name="P:IndxCloudApi.Services.InstanceSettings.LicenseDownloadUrl">
+            <summary>license.indx.co (or other) endpoint the license is auto-fetched from.
+            When set, overrides the Indx:LicenseDownloadUrl app setting.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Services.InstanceSettings.LicenseToken">
+            <summary>Bearer token for the license endpoint. When set, overrides the
+            Indx:LicenseToken app setting. Stored locally (settings.json) like other secrets.</summary>
+        </member>
         <member name="T:IndxCloudApi.Services.ILicenseBootstrapper">
             <summary>
             Service that ensures a local .license file is present at startup,
@@ -804,9 +819,15 @@
              (100k document limit) instead of taking the whole instance down.
              </summary>
         </member>
-        <member name="M:IndxCloudApi.Services.LicenseBootstrapper.#ctor(Microsoft.Extensions.Configuration.IConfiguration,System.Net.Http.IHttpClientFactory,Microsoft.Extensions.Logging.ILogger{IndxCloudApi.Services.LicenseBootstrapper})">
+        <member name="M:IndxCloudApi.Services.LicenseBootstrapper.#ctor(Microsoft.Extensions.Configuration.IConfiguration,System.Net.Http.IHttpClientFactory,IndxCloudApi.Services.InstanceSettingsService,Microsoft.Extensions.Logging.ILogger{IndxCloudApi.Services.LicenseBootstrapper})">
             <summary>
             Initializes a new instance of the <see cref="T:IndxCloudApi.Services.LicenseBootstrapper"/>.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.LicenseBootstrapper.ResolveSource">
+            <summary>
+            Resolves the effective download URL + token: instance settings (set via the admin
+            UI) take precedence over the Indx:LicenseDownloadUrl / Indx:LicenseToken app settings.
             </summary>
         </member>
         <member name="M:IndxCloudApi.Services.LicenseBootstrapper.EnsureLocalLicenseAsync(System.Threading.CancellationToken)">
@@ -939,6 +960,9 @@
         <member name="M:IndxCloudApi.Services.TeamService.GetAllAsync">
             <summary>All teams (admin view).</summary>
         </member>
+        <member name="M:IndxCloudApi.Services.TeamService.GetAllWithMemberCountsAsync">
+            <summary>All teams with their member counts, ordered by name (admin view).</summary>
+        </member>
         <member name="M:IndxCloudApi.Services.TeamService.CreateTeamAsync(System.String,System.String)">
             <summary>
             Creates a team with the given (raw) name — sanitised to a URL-safe, globally-unique
@@ -978,6 +1002,31 @@
             Lowercases, strips diacritics (æøå → ae/oe/aa style handled by best-effort folding),
             replaces runs of non [a-z0-9] with a single '-', and trims leading/trailing '-'.
             Returns "team" if nothing usable remains.
+            </summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.UserProvisioningService">
+            <summary>
+            Shared post-creation setup for a brand-new user, used by every registration path
+            (email/password registration and both OAuth flows) so they cannot drift apart —
+            past drift between these paths caused users to land with no team and left invites
+            dangling. Call once, immediately after <c>UserManager.CreateAsync</c> succeeds.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.UserProvisioningService.#ctor(Microsoft.AspNetCore.Identity.UserManager{IndxCloudApi.Data.ApplicationUser},IndxCloudApi.Services.TeamService,IndxCloudApi.Services.InstanceSettingsService,IndxCloudApi.Services.NotificationService,Microsoft.Extensions.Logging.ILogger{IndxCloudApi.Services.UserProvisioningService})">
+            <summary>
+            Shared post-creation setup for a brand-new user, used by every registration path
+            (email/password registration and both OAuth flows) so they cannot drift apart —
+            past drift between these paths caused users to land with no team and left invites
+            dangling. Call once, immediately after <c>UserManager.CreateAsync</c> succeeds.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.UserProvisioningService.ProvisionNewUserAsync(IndxCloudApi.Data.ApplicationUser,System.String,System.String)">
+            <summary>
+            Assigns the platform Identity role, creates the user's personal team, notifies
+            admins, and consumes a matching invite. The very first user on the instance
+            becomes "Admin" and triggers no notification (there are no other admins yet);
+            everyone else becomes "Member". <paramref name="requestedTeamName"/> is the
+            optional team name from the registration form (OAuth has none → email prefix).
             </summary>
         </member>
         <member name="T:IndxCloudApi.Swagger.ProxySchemaFilter">
@@ -1033,6 +1082,9 @@
             <param name="context"></param>
             <param name="encoding"></param>
             <returns></returns>
+        </member>
+        <member name="P:IndxCloudApi.Shared.AdminNav.Active">
+            <summary>Key of the active tab: Users | Teams | Datasets | Settings | EmailPreview.</summary>
         </member>
         <member name="P:IndxCloudApi.Shared.TeamSwitcher.IconOnly">
             <summary>Trigger shows only the team icon + caret, not the team name.</summary>
