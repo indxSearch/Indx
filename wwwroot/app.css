@@ -375,6 +375,12 @@ a.btn-danger:hover {
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
 }
 
+/* Right-aligned dropdown for a switcher sitting on the right side of the page. */
+.team-menu--right {
+    left: auto;
+    right: 0;
+}
+
 .team-menu-item {
     display: flex;
     align-items: center;

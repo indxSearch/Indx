@@ -23,43 +23,59 @@
 
 <PageTitle>Indx Cloud API</PageTitle>
 
-<h1>Indx Cloud API @GetVersion()</h1>
-<p style="color: var(--lv5); margin-top: 4px;">Powered by Indx @_indxVersion</p>
-
-<div class="indx-datasets-heading">
+<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
+    <div>
+        <h1>Indx Cloud API @GetVersion()</h1>
+        <p style="color: var(--lv5); margin-top: 4px;">Powered by Indx @_indxVersion</p>
+    </div>
     @if (ActiveTeam.HasTeam)
     {
-        <div style="display:flex; align-items:center; gap:8px;">
-            <div class="team-switcher">
-                <Button Variant="ghost" Size="micro" @onclick="ToggleTeamMenu">
-                    <IconLeft><UserGroup Size="@context" Color="currentColor" /></IconLeft>
-                    <ChildContent>@ActiveTeam.ActiveTeamName</ChildContent>
-                    <IconRight><ChevronDown Size="@context" Color="currentColor" /></IconRight>
-                </Button>
-                @if (_teamMenuOpen)
-                {
-                    <div class="team-backdrop" @onclick="CloseTeamMenu"></div>
-                    <div class="team-menu">
-                        @foreach (var t in ActiveTeam.Teams)
+        <div class="team-switcher">
+            <Button Variant="ghost" Size="micro" @onclick="ToggleTeamMenu">
+                <IconLeft><UserGroup Size="@context" Color="currentColor" /></IconLeft>
+                <ChildContent>@ActiveTeam.ActiveTeamName</ChildContent>
+                <IconRight><ChevronDown Size="@context" Color="currentColor" /></IconRight>
+            </Button>
+            @if (_teamMenuOpen)
+            {
+                <div class="team-backdrop" @onclick="CloseTeamMenu"></div>
+                <div class="team-menu team-menu--right">
+                    @foreach (var t in ActiveTeam.Teams)
+                    {
+                        <button class="team-menu-item" @onclick="() => SelectTeam(t.Team.Id)">
+                            <span>@t.Team.Name</span>
+                            @if (t.Team.Id == ActiveTeam.ActiveTeamId)
+                            {
+                                <Check Size="12" />
+                            }
+                        </button>
+                    }
+                    <div class="team-menu-divider"></div>
+                    @if (_showNewTeamForm)
+                    {
+                        <div style="display:flex; gap:6px; padding:2px 6px;">
+                            <input class="indx-text-input" style="font-size:13px; min-width:0; flex:1;" placeholder="Team name"
+                                   @bind="_newTeamName" @bind:event="oninput" @onkeydown="OnNewTeamKeyDown" />
+                            <Button Variant="primary" Size="micro" @onclick="CreateTeam" disabled="@string.IsNullOrWhiteSpace(_newTeamName)">Create</Button>
+                        </div>
+                        @if (!string.IsNullOrEmpty(_teamError))
                         {
-                            <button class="team-menu-item" @onclick="() => SelectTeam(t.Team.Id)">
-                                <span>@t.Team.Name</span>
-                                @if (t.Team.Id == ActiveTeam.ActiveTeamId)
-                                {
-                                    <Check Size="12" />
-                                }
-                            </button>
+                            <p style="color:var(--CSignal); font:var(--text-2xs); margin:2px 8px 0;">@_teamError</p>
                         }
-                    </div>
-                }
-            </div>
-            <Button Variant="secondary" Size="micro" Href="Team">Manage team</Button>
+                    }
+                    else
+                    {
+                        <button class="team-menu-item" @onclick="ShowNewTeamForm"><span>New team</span></button>
+                    }
+                    <a class="team-menu-link" href="Team">Manage team</a>
+                </div>
+            }
         </div>
     }
-    else
-    {
-        <h2>Datasets</h2>
-    }
+</div>
+
+<div class="indx-datasets-heading">
+    <h2>Datasets</h2>
     @if (!isLoading)
     {
         @if (_showNewDatasetForm)
@@ -857,13 +873,54 @@ else
     }
 
     private bool _teamMenuOpen;
-    private void ToggleTeamMenu() => _teamMenuOpen = !_teamMenuOpen;
-    private void CloseTeamMenu() => _teamMenuOpen = false;
+    private bool _showNewTeamForm;
+    private string _newTeamName = "";
+    private string? _teamError;
+
+    private void ToggleTeamMenu()
+    {
+        _teamMenuOpen = !_teamMenuOpen;
+        if (!_teamMenuOpen) { _showNewTeamForm = false; _teamError = null; }
+    }
+
+    private void CloseTeamMenu()
+    {
+        _teamMenuOpen = false;
+        _showNewTeamForm = false;
+        _teamError = null;
+    }
+
+    private void ShowNewTeamForm()
+    {
+        _showNewTeamForm = true;
+        _teamError = null;
+    }
 
     private void SelectTeam(Guid id)
     {
         _teamMenuOpen = false;
         ActiveTeam.Switch(id); // → HandleTeamChanged reloads the new team's datasets
+    }
+
+    private async Task OnNewTeamKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CreateTeam();
+    }
+
+    private async Task CreateTeam()
+    {
+        if (string.IsNullOrWhiteSpace(_newTeamName) || string.IsNullOrEmpty(userId)) return;
+        _teamError = null;
+        try
+        {
+            var team = await TeamService.CreateTeamAsync(_newTeamName, userId);
+            _newTeamName = "";
+            _showNewTeamForm = false;
+            _teamMenuOpen = false;
+            await ActiveTeam.ReloadAsync();
+            ActiveTeam.Switch(team.Id); // → HandleTeamChanged reloads the new team's datasets
+        }
+        catch (TeamService.TeamException ex) { _teamError = ex.Message; }
     }
 
     public void Dispose() => ActiveTeam.OnChange -= HandleTeamChanged;
