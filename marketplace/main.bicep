@@ -85,9 +85,6 @@ param microsoftClientId string = ''
 @secure()
 param microsoftClientSecret string = ''
 
-@description('Optional public URL (with SAS token) to the Indx .license file. Leave blank to run with the 100K-document free tier.')
-param licenseFileUrl string = ''
-
 // ---------- Variables ----------
 
 var uniqueSuffix = uniqueString(resourceGroup().id, appName)
@@ -297,9 +294,9 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     Authentication__Microsoft__ClientId: microsoftClientId
     Authentication__Microsoft__ClientSecret: empty(microsoftClientSecret) ? '' : '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=MicrosoftClientSecret)'
 
-    // License
+    // License — license post-deploy from the app's License page (token auto-fetch or upload),
+    // or drop a .license file at this path via the App Service Console.
     Indx__LicenseFile: '/home/data/indx.license'
-    Indx__LicenseDownloadUrl: licenseFileUrl
 
     // Application Insights
     APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString

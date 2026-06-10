@@ -100,7 +100,7 @@ App-side hardening (in `IndxCloudApi/Program.cs`) that must land before going li
 - [ ] Lock CORS to the deployed hostname in `Production`.
 - [ ] Add `app.MapHealthChecks("/health")`.
 - [ ] Wire `AddApplicationInsightsTelemetry()` from `APPLICATIONINSIGHTS_CONNECTION_STRING`.
-- [ ] Add startup logic to download `Indx:LicenseDownloadUrl` to `/home/data/indx.license` if the file is absent.
+- [x] Startup logic auto-fetches the license to `Indx:LicenseFile` from the Indx portal when a license token is configured (see `LicenseBootstrapper`).
 - [ ] Switch EF `EnsureCreated()` to `Database.Migrate()` so schema changes can ship to existing customers.
 
 Marketplace-side:

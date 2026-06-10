@@ -240,18 +240,7 @@
             "visible": true,
             "options": {
               "icon": "Info",
-              "text": "Without a license, the engine runs with a 100,000-document limit. Provide a SAS URL to your .license file or upload it to /home/data/indx.license post-deploy via the App Service Console."
-            }
-          },
-          {
-            "name": "licenseFileUrl",
-            "type": "Microsoft.Common.TextBox",
-            "label": "License file URL (optional)",
-            "toolTip": "HTTPS URL with SAS token pointing to your .license file. The app will download it on first start.",
-            "constraints": {
-              "required": false,
-              "regex": "^(https://.+|)$",
-              "validationMessage": "Must be an https:// URL or empty."
+              "text": "Without a license, the engine runs with a 100,000-document limit. After deployment, license the app from its License page: paste a token from license.indx.co to auto-fetch, or upload a .license file. You can also drop a .license file at /home/data/indx.license via the App Service Console."
             }
           },
           {
@@ -290,7 +279,6 @@
       "googleClientSecret": "[coalesce(steps('oauth').googleClientSecret, '')]",
       "microsoftClientId": "[coalesce(steps('oauth').microsoftClientId, '')]",
       "microsoftClientSecret": "[coalesce(steps('oauth').microsoftClientSecret, '')]",
-      "licenseFileUrl": "[coalesce(steps('licensing').licenseFileUrl, '')]",
       "jwtSigningKey": "[steps('licensing').jwtSigningKey]"
     }
   }

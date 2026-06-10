@@ -127,7 +127,7 @@
                     "visible": true,
                     "options": {
                       "icon": "Info",
-                      "text": "2. If you did not provide a license URL at deploy time, upload your .license file to /home/data/indx.license through the App Service > Development Tools > Console."
+                      "text": "2. License the app from its License page (paste a token from license.indx.co to auto-fetch, or upload a .license file). Alternatively, drop your .license file at /home/data/indx.license through the App Service > Development Tools > Console."
                     }
                   },
                   {
