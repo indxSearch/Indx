@@ -1,8 +1,12 @@
 {
   "RegistrationMode": 3,
   "AllowedDomains": [],
-  "AllowedEmails": [],
+  "AllowedEmails": [
+    "anders@indx.co"
+  ],
   "RequireEmailVerification": false,
   "AllowUserSelfDeletion": true,
-  "InstanceName": "Indx"
+  "InstanceName": "Indx",
+  "LicenseToken": null,
+  "Plan": null
 }

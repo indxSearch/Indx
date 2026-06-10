@@ -1050,6 +1050,14 @@
             Only specific email addresses added to the invite list can register
             </summary>
         </member>
+        <member name="F:IndxCloudApi.Services.RegistrationValidator.SingleUserPlanMessage">
+            <summary>Message shown when a single-user plan (Free) already has its one account.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Services.RegistrationValidator.SingleUserLimitReached">
+            <summary>True when the plan caps the instance at one user and that user already exists.
+            All account-creation paths (self-serve, OAuth, invite-driven) call
+            <see cref="M:IndxCloudApi.Services.RegistrationValidator.ValidateRegistrationAllowed"/> first, so this is the single enforcement point.</summary>
+        </member>
         <member name="T:IndxCloudApi.Services.TeamContext">
             <summary>
             Result of resolving a team-scoped request: the owning team and the requesting user's
@@ -1125,7 +1133,7 @@
         <member name="M:IndxCloudApi.Services.TeamService.GetAllWithMemberCountsAsync">
             <summary>All teams with their member counts, ordered by name (admin view).</summary>
         </member>
-        <member name="M:IndxCloudApi.Services.TeamService.CreateTeamAsync(System.String,System.String)">
+        <member name="M:IndxCloudApi.Services.TeamService.CreateTeamAsync(System.String,System.String,System.Boolean)">
             <summary>
             Creates a team with the given (raw) name — sanitised to a URL-safe, globally-unique
             slug — and makes <paramref name="ownerUserId"/> its first Admin. Both rows commit together.
