@@ -768,68 +768,81 @@
              Users that already have a team (e.g. created via registration) are left as-is.
              </summary>
         </member>
-        <member name="T:IndxCloudApi.Services.DeploymentMode">
-            <summary>How this instance is deployed. Selected at runtime via Indx:DeploymentMode so the same
-            source code / build artifact serves both audiences.</summary>
+        <member name="T:IndxCloudApi.Services.IndxEdition">
+            <summary>How this instance is deployed. Fixed at deploy time via Indx:Edition.</summary>
         </member>
-        <member name="F:IndxCloudApi.Services.DeploymentMode.SelfHost">
-            <summary>Open-source self-host: full features, licensing handled by the engine/license file.</summary>
+        <member name="F:IndxCloudApi.Services.IndxEdition.SelfHost">
+            <summary>Open-source self-host: every feature enabled, no tier gates.</summary>
         </member>
-        <member name="F:IndxCloudApi.Services.DeploymentMode.ManagedApp">
-            <summary>Azure Managed Application: licensing is irrelevant; subscription-tier guardrails apply.</summary>
+        <member name="F:IndxCloudApi.Services.IndxEdition.Managed">
+            <summary>Azure Managed Application: features gated by the purchased plan.</summary>
         </member>
-        <member name="T:IndxCloudApi.Services.PlanTier">
-            <summary>Subscription tier for a ManagedApp instance (one instance == one customer == one plan).
-            Ignored in SelfHost mode.</summary>
+        <member name="T:IndxCloudApi.Services.IndxPlan">
+            <summary>Subscription plan for a Managed instance. App-owned and mutable at runtime so a
+            customer can upgrade in place (no redeploy). Ignored in SelfHost.</summary>
         </member>
-        <member name="F:IndxCloudApi.Services.PlanTier.Free">
-            <summary>Free tier: capped teams/members.</summary>
+        <member name="T:IndxCloudApi.Services.EditionFeature">
+            <summary>Individually gateable capabilities, mapped to plans by the edition service.</summary>
         </member>
-        <member name="F:IndxCloudApi.Services.PlanTier.Pro">
-            <summary>Paid tier: unlimited (or configured) limits.</summary>
-        </member>
-        <member name="T:IndxCloudApi.Services.IDeploymentPolicy">
+        <member name="T:IndxCloudApi.Services.IEditionService">
             <summary>
-            Single source of truth for what the current deployment is allowed to do. The same source ships
-            two ways — open-source self-host and the Azure Managed Application — and every guardrail asks
-            this policy instead of hard-coding a limit, so the rules live in one auditable place. Resolved
-            once from configuration at startup (Indx:DeploymentMode / Indx:Plan / Indx:Limits:*).
+            Single source of truth for what this deployment is allowed to do. The same source ships two
+            ways — open-source self-host (everything on) and the Azure Managed Application (gated by the
+            purchased plan). Every feature gate asks this service via <see cref="M:IndxCloudApi.Services.IEditionService.IsEnabled(IndxCloudApi.Services.EditionFeature)"/> so the rules
+            live in one place. In Managed mode the plan is app-owned state (mutable at runtime) so a customer
+            can upgrade Free → Professional in place without redeploying.
             </summary>
         </member>
-        <member name="P:IndxCloudApi.Services.IDeploymentPolicy.Mode">
-            <summary>How this instance is deployed (self-host vs Azure Managed Application).</summary>
+        <member name="P:IndxCloudApi.Services.IEditionService.Edition">
+            <summary>How this instance is deployed (fixed at deploy time).</summary>
         </member>
-        <member name="P:IndxCloudApi.Services.IDeploymentPolicy.Plan">
-            <summary>The subscription tier. Only meaningful when <see cref="P:IndxCloudApi.Services.IDeploymentPolicy.Mode"/> is ManagedApp.</summary>
+        <member name="P:IndxCloudApi.Services.IEditionService.Plan">
+            <summary>The current subscription plan (Managed only; informational in SelfHost).</summary>
         </member>
-        <member name="P:IndxCloudApi.Services.IDeploymentPolicy.LicensingVisible">
-            <summary>Show the License page and run the license fetch/refresh. False in ManagedApp,
-            where the engine runs without per-instance licensing (the customer subscribes via Azure).</summary>
+        <member name="M:IndxCloudApi.Services.IEditionService.IsEnabled(IndxCloudApi.Services.EditionFeature)">
+            <summary>True if the given feature is available under the current edition/plan.</summary>
         </member>
-        <member name="P:IndxCloudApi.Services.IDeploymentPolicy.MaxTeams">
-            <summary>Max teams in the instance, or -1 for unlimited.</summary>
+        <member name="P:IndxCloudApi.Services.IEditionService.LicensingVisible">
+            <summary>Whether the License page and license fetch/refresh apply (SelfHost only).</summary>
         </member>
-        <member name="P:IndxCloudApi.Services.IDeploymentPolicy.MaxMembersPerTeam">
-            <summary>Max members per team including the owner, or -1 for unlimited.</summary>
+        <member name="M:IndxCloudApi.Services.IEditionService.ReadEdition(Microsoft.Extensions.Configuration.IConfiguration)">
+            <summary>Reads the deployment edition from configuration. Static so startup code can branch
+            before the DI container is built (which implementation to register, whether to run the
+            license job). Defaults to SelfHost so self-hosters need no configuration.</summary>
         </member>
-        <member name="M:IndxCloudApi.Services.IDeploymentPolicy.CanCreateTeam(System.Int32)">
-            <summary>True if another team may be created given the current instance team count.</summary>
+        <member name="T:IndxCloudApi.Services.SelfHostEditionService">
+            <summary>Self-host edition: everything enabled, no gates. See <see cref="T:IndxCloudApi.Services.IEditionService"/>.</summary>
         </member>
-        <member name="M:IndxCloudApi.Services.IDeploymentPolicy.CanAddMember(System.Int32)">
-            <summary>True if another member may be added given the team's current member count.</summary>
-        </member>
-        <member name="P:IndxCloudApi.Services.IDeploymentPolicy.UpgradeHint">
-            <summary>Friendly suffix appended to limit errors (e.g. an upgrade hint), or "".</summary>
-        </member>
-        <member name="T:IndxCloudApi.Services.DeploymentPolicy">
+        <member name="P:IndxCloudApi.Services.SelfHostEditionService.Edition">
             <inheritdoc />
         </member>
-        <member name="F:IndxCloudApi.Services.DeploymentPolicy.Unlimited">
-            <summary>Sentinel for "no limit".</summary>
+        <member name="P:IndxCloudApi.Services.SelfHostEditionService.Plan">
+            <inheritdoc />
         </member>
-        <member name="M:IndxCloudApi.Services.DeploymentPolicy.ReadMode(Microsoft.Extensions.Configuration.IConfiguration)">
-            <summary>Reads the deployment mode from configuration. Exposed so startup code can branch
-            before the DI container is built (e.g. to skip the license background job).</summary>
+        <member name="M:IndxCloudApi.Services.SelfHostEditionService.IsEnabled(IndxCloudApi.Services.EditionFeature)">
+            <inheritdoc />
+        </member>
+        <member name="P:IndxCloudApi.Services.SelfHostEditionService.LicensingVisible">
+            <inheritdoc />
+        </member>
+        <member name="T:IndxCloudApi.Services.ManagedEditionService">
+            <summary>
+            Managed (Azure) edition: features gated by the current plan. The plan is resolved per call from
+            app-owned state (<see cref="P:IndxCloudApi.Services.InstanceSettings.Plan"/>), falling back to the ARM-injected Indx:Plan
+            default, so an in-app upgrade takes effect immediately without a redeploy.
+            </summary>
+        </member>
+        <member name="P:IndxCloudApi.Services.ManagedEditionService.Edition">
+            <inheritdoc />
+        </member>
+        <member name="P:IndxCloudApi.Services.ManagedEditionService.Plan">
+            <inheritdoc />
+        </member>
+        <member name="P:IndxCloudApi.Services.ManagedEditionService.LicensingVisible">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Services.ManagedEditionService.IsEnabled(IndxCloudApi.Services.EditionFeature)">
+            <inheritdoc />
         </member>
         <member name="M:IndxCloudApi.Services.EmailTemplates.Notice(System.String,System.String,System.String,System.String,System.String,System.String,System.Boolean)">
             <summary>
@@ -842,6 +855,12 @@
             <summary>Bearer token for the Indx license portal. When set, overrides the
             Indx:LicenseToken app setting. Stored locally (settings.json) like other secrets.
             The portal URL itself is hardcoded (see LicenseBootstrapper.DefaultDownloadUrl).</summary>
+        </member>
+        <member name="P:IndxCloudApi.Services.InstanceSettings.Plan">
+            <summary>App-owned subscription plan for Managed (Azure) deployments. Null until an
+            in-app upgrade sets it, in which case ManagedEditionService falls back to the ARM-injected
+            Indx:Plan default. Persisting it here (not config) is what lets a customer upgrade Free →
+            Professional in place without redeploying. Ignored in SelfHost mode.</summary>
         </member>
         <member name="T:IndxCloudApi.Services.ILicenseBootstrapper">
             <summary>
@@ -1084,7 +1103,7 @@
             <see cref="P:IndxCloudApi.Data.Team.Name"/> is the only human-facing name; it is globally unique and URL-safe.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Services.TeamService.#ctor(IndxCloudApi.Data.ApplicationDbContext,IndxCloudApi.Services.IDeploymentPolicy)">
+        <member name="M:IndxCloudApi.Services.TeamService.#ctor(IndxCloudApi.Data.ApplicationDbContext,IndxCloudApi.Services.IEditionService)">
             <summary>
             Server-side team and membership management. Team CRUD is intentionally NOT exposed over
             HTTP — the Blazor pages (and registration) call this service directly. The team

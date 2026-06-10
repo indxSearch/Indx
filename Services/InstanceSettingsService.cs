@@ -16,6 +16,12 @@ internal class InstanceSettings
     /// Indx:LicenseToken app setting. Stored locally (settings.json) like other secrets.
     /// The portal URL itself is hardcoded (see LicenseBootstrapper.DefaultDownloadUrl).</summary>
     public string? LicenseToken { get; set; }
+
+    /// <summary>App-owned subscription plan for Managed (Azure) deployments. Null until an
+    /// in-app upgrade sets it, in which case ManagedEditionService falls back to the ARM-injected
+    /// Indx:Plan default. Persisting it here (not config) is what lets a customer upgrade Free →
+    /// Professional in place without redeploying. Ignored in SelfHost mode.</summary>
+    public IndxPlan? Plan { get; set; }
 }
 
 internal class InstanceSettingsService

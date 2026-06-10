@@ -84,12 +84,16 @@ public class Program
         // ============================================
         // REGISTRATION RESTRICTION CONFIGURATION
         // ============================================
-        // Deployment mode + tier policy: single source of truth for self-host vs Azure Managed
-        // Application behavior (licensing visibility, team/member guardrails, self-registration).
-        builder.Services.AddSingleton<Services.IDeploymentPolicy, Services.DeploymentPolicy>();
-        var deploymentMode = Services.DeploymentPolicy.ReadMode(builder.Configuration);
-        Console.WriteLine($"ℹ Deployment mode: {deploymentMode}"
-            + (deploymentMode == Services.DeploymentMode.ManagedApp
+        // Edition service: single source of truth for self-host vs Azure Managed Application
+        // behavior (feature gating, licensing visibility, team/member guardrails). SelfHost enables
+        // everything; Managed gates by the app-owned plan.
+        var edition = Services.IEditionService.ReadEdition(builder.Configuration);
+        if (edition == Services.IndxEdition.Managed)
+            builder.Services.AddSingleton<Services.IEditionService, Services.ManagedEditionService>();
+        else
+            builder.Services.AddSingleton<Services.IEditionService, Services.SelfHostEditionService>();
+        Console.WriteLine($"ℹ Edition: {edition}"
+            + (edition == Services.IndxEdition.Managed
                 ? $" (plan: {builder.Configuration["Indx:Plan"] ?? "Free"})"
                 : ""));
 
@@ -508,8 +512,8 @@ public class Program
         builder.Services.AddSingleton<Services.ILicenseBootstrapper, Services.LicenseBootstrapper>();
         // Daily background re-fetch so a long-running instance never lets its on-disk license
         // go stale. No-op until auto-fetch is configured. See LicenseRefreshJob. Skipped in
-        // ManagedApp mode, where licensing is irrelevant.
-        if (deploymentMode == Services.DeploymentMode.SelfHost)
+        // Managed mode, where licensing is irrelevant.
+        if (edition == Services.IndxEdition.SelfHost)
             builder.Services.AddHostedService<Services.LicenseRefreshJob>();
 
         // Application Insights: only activate when a connection string is configured.
@@ -687,8 +691,8 @@ public class Program
         int userCount = 0;
 
         // Bootstrap license from the Indx portal if a token is configured (no-op otherwise).
-        // Skipped in ManagedApp mode, where licensing is irrelevant.
-        if (deploymentMode == Services.DeploymentMode.SelfHost)
+        // Skipped in Managed mode, where licensing is irrelevant.
+        if (edition == Services.IndxEdition.SelfHost)
         {
             using var bootstrapScope = app.Services.CreateScope();
             var bootstrapper = bootstrapScope.ServiceProvider

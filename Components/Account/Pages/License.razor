@@ -8,13 +8,13 @@
 @inject ILogger<License> Logger
 @inject Services.ILicenseBootstrapper Bootstrapper
 @inject Services.InstanceSettingsService InstanceSettingsService
-@inject Services.IDeploymentPolicy DeploymentPolicy
+@inject Services.IEditionService Edition
 
 <PageTitle>License Information</PageTitle>
 
 <h2>Indx License Information</h2>
 
-@if (!DeploymentPolicy.LicensingVisible)
+@if (!Edition.LicensingVisible)
 {
     <div style="padding: 20px; border: 1px solid var(--CLightBlue); border-radius: var(--radius); background: rgba(107, 158, 255, 0.1); margin: 20px 0;">
         <h3>Managed by Indx</h3>
@@ -378,7 +378,7 @@ else
     protected override async Task OnInitializedAsync()
     {
         // Managed deployments don't surface licensing — skip the probe work entirely.
-        if (!DeploymentPolicy.LicensingVisible)
+        if (!Edition.LicensingVisible)
         {
             isLoading = false;
             return;

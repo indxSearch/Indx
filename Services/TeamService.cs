@@ -9,7 +9,7 @@ namespace IndxCloudApi.Services
     /// HTTP — the Blazor pages (and registration) call this service directly. The team
     /// <see cref="Team.Name"/> is the only human-facing name; it is globally unique and URL-safe.
     /// </summary>
-    public class TeamService(ApplicationDbContext db, IDeploymentPolicy policy)
+    public class TeamService(ApplicationDbContext db, IEditionService edition)
     {
         /// <summary>Thrown when an operation would violate a team invariant (name taken, last admin, etc.).</summary>
         public sealed class TeamException(string message) : Exception(message);
@@ -70,12 +70,12 @@ namespace IndxCloudApi.Services
         /// </summary>
         public async Task<Team> CreateTeamAsync(string rawName, string ownerUserId)
         {
-            // Tier guardrail: in ManagedApp/Free the instance is capped (e.g. one team). SelfHost
-            // is unlimited. The first user's personal team passes (count 0 < cap).
-            var teamCount = await db.Teams.CountAsync();
-            if (!policy.CanCreateTeam(teamCount))
+            // Tier guardrail: without MultipleUsers (Free plan) the instance gets a single team —
+            // the owner's personal team. The first team passes (none exist yet); further teams are
+            // blocked. SelfHost and paid plans enable the feature, so this never trips for them.
+            if (!edition.IsEnabled(EditionFeature.MultipleUsers) && await db.Teams.AnyAsync())
                 throw new TeamException(
-                    $"Your plan allows at most {policy.MaxTeams} team(s).{policy.UpgradeHint}");
+                    "Additional teams require the Professional plan. Upgrade to add more.");
 
             var name = await EnsureUniqueNameAsync(TeamSlug.Sanitize(rawName));
             var team = new Team { Id = Guid.NewGuid(), Name = name, CreatedAt = DateTime.UtcNow };
@@ -134,12 +134,12 @@ namespace IndxCloudApi.Services
             }
             else
             {
-                // Tier guardrail: in ManagedApp/Free a team is capped (e.g. owner only). The cap
-                // counts the owner, so adding a second member is blocked. SelfHost is unlimited.
-                var memberCount = await db.TeamMembers.CountAsync(m => m.TeamId == teamId);
-                if (!policy.CanAddMember(memberCount))
+                // Tier guardrail: without MultipleUsers (Free plan) a team is the owner only, so
+                // adding any further member is blocked. The owner is added directly in
+                // CreateTeamAsync, never here, so this gate only ever rejects additional members.
+                if (!edition.IsEnabled(EditionFeature.MultipleUsers))
                     throw new TeamException(
-                        $"Your plan allows at most {policy.MaxMembersPerTeam} member(s) per team.{policy.UpgradeHint}");
+                        "Adding team members requires the Professional plan. Upgrade to collaborate.");
 
                 db.TeamMembers.Add(new TeamMember
                 {
