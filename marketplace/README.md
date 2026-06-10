@@ -22,13 +22,19 @@ Local `dotnet run` is unaffected - none of these files are referenced by the pro
 - Diagnostic settings shipping App Service logs to the workspace
 - Role assignment: App Service identity -> Key Vault Secrets User
 
-## Licensing the deployment
+## Plans & capacity
 
-There is no license input at deploy time. Without a license the engine runs with a 100,000-document limit; license the deployment **post-deploy** in any of these ways:
+This package deploys as the **Managed edition** (`Indx__Edition=Managed`). Per-instance licensing is hidden — there are no `.license` files to manage — and features are gated by the purchased plan via `Indx__Plan` (fixed per marketplace plan, not a customer input):
 
-1. **Token auto-fetch (recommended)** — on the app's **License** page, paste a token from [license.indx.co](https://license.indx.co). The app fetches a fresh `.license` from the portal on save, then again on every startup and once a day. The portal URL is fixed (not configurable).
-2. **Manual upload** — download a `.license` file from [license.indx.co](https://license.indx.co) and upload it on the **License** page. It takes effect immediately for new datasets (restart to apply to already-running ones).
-3. **Console drop** — copy a `.license` file to `/home/data/indx.license` via App Service > Development Tools > Console (this is the `Indx:LicenseFile` path the engine reads).
+| Plan | Marketplace visibility | Tier |
+|------|------------------------|------|
+| Indx Cloud Search (Free) | Public, $0 | Single user / single team |
+| Indx Cloud Search (Professional) | Public, flat monthly | Teams, social SSO, backups, analytics |
+| Enterprise | Private plan (per-customer) | + Entra ID, HA, advanced analytics; custom terms (monthly/annual) |
+
+Plans differ by **features**, never by document/dataset capacity (there are no capacity caps). "Upgrading" means deploying the higher plan — there is no in-app plan switch.
+
+> **TODO (open):** confirm how the engine's built-in 100K-document limit is lifted for Managed deployments — either by shipping the managed package as a **source build** (no limit) or by bundling an Indx master `.license`. This is independent of the plan tiers above.
 
 ## Build and package
 

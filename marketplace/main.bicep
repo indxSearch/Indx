@@ -85,6 +85,14 @@ param microsoftClientId string = ''
 @secure()
 param microsoftClientSecret string = ''
 
+@description('Subscription tier this package represents. Set per marketplace plan (Free / Professional public plans, Enterprise private plan) — NOT a customer input, so it is not collected in createUiDefinition. The release pipeline builds one package per plan with the matching value.')
+@allowed([
+  'Free'
+  'Professional'
+  'Enterprise'
+])
+param plan string = 'Free'
+
 // ---------- Variables ----------
 
 var uniqueSuffix = uniqueString(resourceGroup().id, appName)
@@ -294,9 +302,10 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     Authentication__Microsoft__ClientId: microsoftClientId
     Authentication__Microsoft__ClientSecret: empty(microsoftClientSecret) ? '' : '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=MicrosoftClientSecret)'
 
-    // License — license post-deploy from the app's License page (token auto-fetch or upload),
-    // or drop a .license file at this path via the App Service Console.
-    Indx__LicenseFile: '/home/data/indx.license'
+    // Edition + plan. Managed = Azure Marketplace deployment: per-instance licensing is hidden,
+    // features are gated by the purchased plan (set above, fixed per marketplace plan).
+    Indx__Edition: 'Managed'
+    Indx__Plan: plan
 
     // Application Insights
     APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
