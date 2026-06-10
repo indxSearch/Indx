@@ -34,7 +34,16 @@ This package deploys as the **Managed edition** (`Indx__Edition=Managed`). Per-i
 
 Plans differ by **features**, never by document/dataset capacity (there are no capacity caps). "Upgrading" means deploying the higher plan — there is no in-app plan switch.
 
-> **TODO (open):** confirm how the engine's built-in 100K-document limit is lifted for Managed deployments — either by shipping the managed package as a **source build** (no limit) or by bundling an Indx master `.license`. This is independent of the plan tiers above.
+### Lifting the 100K document cap
+
+The engine enforces a 100,000-document limit unless a valid `.license` is present (independent of edition/plan). The Managed package lifts it by **bundling a no-expiry Indx master license**, and the mechanism needs **no env var or bicep change** — it rides the existing build pipeline:
+
+- The master license is generated once via the Eziriz `LicenseGenerator` (`LicensedTo = "Indx Managed"`, no expiry) and placed at `IndxData/indx-managed.license`.
+- `IndxCloudApi.csproj` already publishes it: `<Content Include="IndxData\*.license" CopyToPublishDirectory="PreserveNewest" />`.
+- The engine auto-detects `./IndxData/*.license` at startup → cap lifted. No `Indx:LicenseFile` setting required.
+- `*.license` is gitignored, so the file is **never committed** to the public repo. The Managed package build must have it present in `IndxData/` (developer machine, or CI pulling it from a secret); a clean public/self-host build has no license and runs at the 100K cap (self-hosters add their own free dev license from indx.co).
+
+Why this is safe to ship universally: payment is enforced by **Azure** (unpaid subscription → Microsoft suspends it → the app stops), and unlimited documents is already free for anyone via the indx.co developer license, so the bundled license has negligible leak value. Keep the app-binaries blob private/SAS regardless.
 
 ## Build and package
 
