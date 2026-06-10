@@ -12,12 +12,9 @@ internal class InstanceSettings
     public bool AllowUserSelfDeletion { get; set; } = true;
     public string InstanceName { get; set; } = "Indx";
 
-    /// <summary>license.indx.co (or other) endpoint the license is auto-fetched from.
-    /// When set, overrides the Indx:LicenseDownloadUrl app setting.</summary>
-    public string? LicenseDownloadUrl { get; set; }
-
-    /// <summary>Bearer token for the license endpoint. When set, overrides the
-    /// Indx:LicenseToken app setting. Stored locally (settings.json) like other secrets.</summary>
+    /// <summary>Bearer token for the Indx license portal. When set, overrides the
+    /// Indx:LicenseToken app setting. Stored locally (settings.json) like other secrets.
+    /// The portal URL itself is hardcoded (see LicenseBootstrapper.DefaultDownloadUrl).</summary>
     public string? LicenseToken { get; set; }
 }
 

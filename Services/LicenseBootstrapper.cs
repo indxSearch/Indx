@@ -5,18 +5,18 @@ namespace IndxCloudApi.Services
 {
     /// <summary>
     /// Service that ensures a local .license file is present at startup,
-    /// downloading it from a configured SAS URL when missing.
+    /// downloading it from the Indx portal (hardcoded URL) when a license token is configured.
     /// </summary>
     public interface ILicenseBootstrapper
     {
         /// <summary>
-        /// Ensures a local .license file from Indx:LicenseDownloadUrl at the path
-        /// resolved from Indx:LicenseFile. With Indx:LicenseToken set, sends it as a
-        /// bearer token and re-fetches a fresh license on every startup; without a
-        /// token, downloads only when the local file is missing. Failures are logged
-        /// but never thrown, and never delete an existing file. The returned
-        /// <see cref="LicenseFetchResult"/> describes the outcome so callers (e.g. the
-        /// admin UI) can surface why a fetch failed instead of silently swallowing it.
+        /// Ensures a local .license file at the path resolved from Indx:LicenseFile. The
+        /// download URL is hardcoded to the Indx portal; when Indx:LicenseToken (or the admin-UI
+        /// token) is set, it is sent as a bearer token and a fresh license is re-fetched on
+        /// startup and daily. With no token configured this is a no-op. Failures are logged but
+        /// never thrown, and never delete an existing file. The returned
+        /// <see cref="LicenseFetchResult"/> describes the outcome so callers (e.g. the admin UI)
+        /// can surface why a fetch failed instead of silently swallowing it.
         /// </summary>
         Task<LicenseFetchResult> EnsureLocalLicenseAsync(CancellationToken cancellationToken = default);
 
@@ -71,9 +71,9 @@ namespace IndxCloudApi.Services
     }
 
     /// <summary>
-    /// Downloads the .license file from Indx:LicenseDownloadUrl to a local path
-    /// when it isn't already present on disk. Used by Marketplace deployments
-    /// where the customer hands over a SAS URL via createUiDefinition.
+    /// Downloads the .license file from the Indx license portal to a local path using a
+    /// configured license token. Only Indx issues licenses, so the portal URL is hardcoded
+    /// (see <see cref="DefaultDownloadUrl"/>) and not configurable.
     ///
     /// Failures are logged but never thrown - the app starts in free-tier mode
     /// (100k document limit) instead of taking the whole instance down.
@@ -81,9 +81,8 @@ namespace IndxCloudApi.Services
     internal class LicenseBootstrapper : ILicenseBootstrapper
     {
         /// <summary>
-        /// The Indx license portal endpoint, used when a token is configured but no explicit
-        /// URL is set. The URL is effectively fixed, so customers normally only paste a token.
-        /// An explicit Indx:LicenseDownloadUrl / instance-settings URL still overrides this.
+        /// The Indx license portal endpoint. Hardcoded — only Indx issues licenses, so this is
+        /// not configurable; customers supply only a license token.
         /// </summary>
         public const string DefaultDownloadUrl = "https://license.indx.co/api/license/current";
 
@@ -108,25 +107,20 @@ namespace IndxCloudApi.Services
         }
 
         /// <summary>
-        /// Resolves the effective download URL + token: instance settings (set via the admin
-        /// UI) take precedence over the Indx:LicenseDownloadUrl / Indx:LicenseToken app settings.
+        /// Resolves the effective download URL + token. The URL is hardcoded to the Indx portal
+        /// (<see cref="DefaultDownloadUrl"/>) — only Indx issues licenses, so it is not
+        /// configurable. The token comes from instance settings (admin UI) or the
+        /// Indx:LicenseToken app setting. The URL is returned only when a token is present, so a
+        /// manual-license / no-licensing install never phones home.
         /// </summary>
         private (string? Url, string? Token) ResolveSource()
         {
             var settings = _settings.Load();
-            var url = !string.IsNullOrWhiteSpace(settings.LicenseDownloadUrl)
-                ? settings.LicenseDownloadUrl
-                : _configuration["Indx:LicenseDownloadUrl"];
             var token = !string.IsNullOrWhiteSpace(settings.LicenseToken)
                 ? settings.LicenseToken
                 : _configuration["Indx:LicenseToken"];
 
-            // The portal URL is predefined: when a token is configured but no explicit URL is
-            // set, fetch from the known endpoint so token-only setups just work. Without a token
-            // we leave the URL blank so a manual-license / no-licensing install never phones home.
-            if (string.IsNullOrWhiteSpace(url) && !string.IsNullOrWhiteSpace(token))
-                url = DefaultDownloadUrl;
-
+            var url = string.IsNullOrWhiteSpace(token) ? null : DefaultDownloadUrl;
             return (url, token);
         }
 
@@ -135,31 +129,18 @@ namespace IndxCloudApi.Services
         {
             var (url, token) = ResolveSource();
             var localPath = ResolveLocalPath();
+            // The URL is only non-null when a token is configured, so a blank URL means
+            // auto-fetch is simply not set up (no token) — nothing to do.
             if (string.IsNullOrWhiteSpace(url))
             {
                 return new LicenseFetchResult(
                     LicenseFetchOutcome.NotConfigured,
-                    "No license download URL is configured.",
+                    "No license token is configured.",
                     LocalPath: localPath);
             }
 
-            // When a portal token is configured we authenticate with it and re-fetch a
-            // fresh license on EVERY startup (rolling 90-day Pro / 365-day Free files).
-            // Without a token we keep the legacy behaviour: download only when missing
-            // (e.g. a one-off SAS URL).
-            var hasToken = !string.IsNullOrWhiteSpace(token);
-
-            if (!hasToken && File.Exists(localPath))
-            {
-                _logger.LogInformation(
-                    "License file already present at {Path}; skipping download",
-                    localPath);
-                return new LicenseFetchResult(
-                    LicenseFetchOutcome.SkippedExisting,
-                    $"License file already present at {localPath}; left unchanged (no token configured).",
-                    LocalPath: localPath);
-            }
-
+            // A token is configured: authenticate with it and re-fetch a fresh license (the
+            // portal serves rolling 90-day Pro / 365-day Free files) on startup and daily.
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
@@ -168,11 +149,8 @@ namespace IndxCloudApi.Services
                 client.Timeout = TimeSpan.FromSeconds(30);
 
                 using var request = new HttpRequestMessage(HttpMethod.Get, url);
-                if (hasToken)
-                {
-                    request.Headers.Authorization =
-                        new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
-                }
+                request.Headers.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
 
                 _logger.LogInformation("Fetching license file from {Url} to {Path}", url, localPath);
                 using var response = await client.SendAsync(request, cancellationToken);

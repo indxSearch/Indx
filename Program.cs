@@ -484,8 +484,8 @@ public class Program
         // Health checks for App Service / Container probes and the managed-app dashboard.
         builder.Services.AddHealthChecks();
 
-        // License bootstrapper: downloads the .license file from a SAS URL on first
-        // start when the local file is absent. No-op when Indx:LicenseDownloadUrl is unset.
+        // License bootstrapper: downloads the .license file from the Indx portal (hardcoded URL)
+        // using a configured license token. No-op when no token is configured.
         builder.Services.AddHttpClient();
         // The license endpoint may sit behind a CDN/proxy that gzip/brotli-compresses the
         // response. The license file is encrypted binary, so without automatic decompression
@@ -675,7 +675,7 @@ public class Program
         int datasetCount = 0;
         int userCount = 0;
 
-        // Bootstrap license from SAS URL if needed (no-op when Indx:LicenseDownloadUrl is unset).
+        // Bootstrap license from the Indx portal if a token is configured (no-op otherwise).
         using (var bootstrapScope = app.Services.CreateScope())
         {
             var bootstrapper = bootstrapScope.ServiceProvider

@@ -295,28 +295,15 @@ else if (licenseInfo != null)
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 12px; max-width: 520px;">
 
-                    @* URL is effectively fixed to the portal, so it's edited behind a button. *@
+                    @* URL is hardcoded to the Indx portal — only Indx issues licenses. *@
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span style="color: var(--lv5); font-size: 13px; min-width: 48px;">URL</span>
-                        @if (_editingUrl)
-                        {
-                            <InputField @bind-Value="_licenseUrl" placeholder="https://license.indx.co/…"
-                                        style="flex: 1;" />
-                            <Button Variant="primary" Size="micro" @onclick="SaveUrl">Save</Button>
-                            <Button Variant="ghost" Size="micro" @onclick="CancelEditUrl">Cancel</Button>
-                        }
-                        else
-                        {
-                            <span style="flex: 1; font-family: monospace; font-size: 13px; color: var(--lv6); overflow-wrap: anywhere;">
-                                @(string.IsNullOrWhiteSpace(autoFetch?.Url)
-                                    ? Services.LicenseBootstrapper.DefaultDownloadUrl
-                                    : autoFetch!.Url)
-                            </span>
-                            <Button Variant="ghost" Size="micro" @onclick="BeginEditUrl">Edit</Button>
-                        }
+                        <span style="flex: 1; font-family: monospace; font-size: 13px; color: var(--lv6); overflow-wrap: anywhere;">
+                            @Services.LicenseBootstrapper.DefaultDownloadUrl
+                        </span>
                     </div>
 
-                    @* Token is the per-deployment secret and stays directly editable. *@
+                    @* Token is the per-deployment secret. *@
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span style="color: var(--lv5); font-size: 13px; min-width: 48px;">Token</span>
                         <InputField @bind-Value="_licenseTokenInput" type="password" style="flex: 1;"
@@ -371,9 +358,7 @@ else
     private bool isUploading;
 
     // Auto-fetch editor state.
-    private string _licenseUrl = "";
     private string _licenseTokenInput = "";
-    private bool _editingUrl;
     private string? _fetchMessage;
     private string? _fetchError;
     private bool _isFetching;
@@ -390,7 +375,6 @@ else
             isAdmin = authState.User.IsInRole("Admin");
         }
         autoFetch = Bootstrapper.GetStatus();
-        _licenseUrl = autoFetch?.Url ?? "";
         await Task.WhenAll(LoadLicenseInfo(), LoadLicenseFiles());
     }
 
@@ -447,39 +431,6 @@ else
         selectedFile = e.File;
         fileOpMessage = null;
         fileOpError = null;
-    }
-
-    private void BeginEditUrl()
-    {
-        _fetchMessage = null; _fetchError = null;
-        _licenseUrl = string.IsNullOrWhiteSpace(autoFetch?.Url)
-            ? Services.LicenseBootstrapper.DefaultDownloadUrl
-            : autoFetch!.Url;
-        _editingUrl = true;
-    }
-
-    private void CancelEditUrl()
-    {
-        _licenseUrl = autoFetch?.Url ?? "";
-        _editingUrl = false;
-    }
-
-    private void SaveUrl()
-    {
-        _fetchMessage = null; _fetchError = null;
-        if (!isAdmin)
-        {
-            _fetchError = "Only administrators can change the license source.";
-            return;
-        }
-
-        var settings = InstanceSettingsService.Load();
-        settings.LicenseDownloadUrl = string.IsNullOrWhiteSpace(_licenseUrl) ? null : _licenseUrl.Trim();
-        InstanceSettingsService.Save(settings);
-
-        autoFetch = Bootstrapper.GetStatus();
-        _editingUrl = false;
-        _fetchMessage = "URL saved.";
     }
 
     private void SaveToken()
