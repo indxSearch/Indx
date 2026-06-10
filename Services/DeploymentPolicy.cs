@@ -34,11 +34,9 @@ public interface IDeploymentPolicy
     /// <summary>The subscription tier. Only meaningful when <see cref="Mode"/> is ManagedApp.</summary>
     PlanTier Plan { get; }
 
-    /// <summary>Show the License page and run the license fetch/refresh. False in ManagedApp.</summary>
+    /// <summary>Show the License page and run the license fetch/refresh. False in ManagedApp,
+    /// where the engine runs without per-instance licensing (the customer subscribes via Azure).</summary>
     bool LicensingVisible { get; }
-
-    /// <summary>Allow self-service account registration. False in ManagedApp (admin-provisioned).</summary>
-    bool AllowSelfRegistration { get; }
 
     /// <summary>Max teams in the instance, or -1 for unlimited.</summary>
     int MaxTeams { get; }
@@ -66,7 +64,6 @@ public sealed class DeploymentPolicy : IDeploymentPolicy
     public DeploymentMode Mode { get; }
     public PlanTier Plan { get; }
     public bool LicensingVisible { get; }
-    public bool AllowSelfRegistration { get; }
     public int MaxTeams { get; }
     public int MaxMembersPerTeam { get; }
     public string UpgradeHint { get; }
@@ -81,7 +78,6 @@ public sealed class DeploymentPolicy : IDeploymentPolicy
             // Open-source self-host: the engine + license file govern capacity; the app imposes
             // no team/member limits and exposes the License page.
             LicensingVisible = true;
-            AllowSelfRegistration = ReadBool(configuration, "Indx:AllowSelfRegistration", true);
             MaxTeams = Unlimited;
             MaxMembersPerTeam = Unlimited;
             UpgradeHint = "";
@@ -92,7 +88,6 @@ public sealed class DeploymentPolicy : IDeploymentPolicy
             // Limits default by tier but can be overridden via Indx:Limits:* config.
             var free = Plan == PlanTier.Free;
             LicensingVisible = false;
-            AllowSelfRegistration = ReadBool(configuration, "Indx:AllowSelfRegistration", false);
             MaxTeams = ReadLimit(configuration, "Indx:Limits:MaxTeams", free ? 1 : Unlimited);
             MaxMembersPerTeam = ReadLimit(configuration, "Indx:Limits:MaxMembersPerTeam", free ? 1 : Unlimited);
             UpgradeHint = free ? " Upgrade to Pro to add more." : "";
@@ -116,8 +111,5 @@ public sealed class DeploymentPolicy : IDeploymentPolicy
 
     private static int ReadLimit(IConfiguration configuration, string key, int fallback) =>
         int.TryParse(configuration[key], out var v) ? v : fallback;
-
-    private static bool ReadBool(IConfiguration configuration, string key, bool fallback) =>
-        bool.TryParse(configuration[key], out var v) ? v : fallback;
 }
 #pragma warning restore 1591

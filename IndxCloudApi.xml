@@ -803,10 +803,8 @@
             <summary>The subscription tier. Only meaningful when <see cref="P:IndxCloudApi.Services.IDeploymentPolicy.Mode"/> is ManagedApp.</summary>
         </member>
         <member name="P:IndxCloudApi.Services.IDeploymentPolicy.LicensingVisible">
-            <summary>Show the License page and run the license fetch/refresh. False in ManagedApp.</summary>
-        </member>
-        <member name="P:IndxCloudApi.Services.IDeploymentPolicy.AllowSelfRegistration">
-            <summary>Allow self-service account registration. False in ManagedApp (admin-provisioned).</summary>
+            <summary>Show the License page and run the license fetch/refresh. False in ManagedApp,
+            where the engine runs without per-instance licensing (the customer subscribes via Azure).</summary>
         </member>
         <member name="P:IndxCloudApi.Services.IDeploymentPolicy.MaxTeams">
             <summary>Max teams in the instance, or -1 for unlimited.</summary>
@@ -1032,9 +1030,6 @@
             <summary>
             Only specific email addresses added to the invite list can register
             </summary>
-        </member>
-        <member name="F:IndxCloudApi.Services.RegistrationValidator.SelfRegistrationDisabledMessage">
-            <summary>Message shown when the deployment forbids self-service registration entirely.</summary>
         </member>
         <member name="T:IndxCloudApi.Services.TeamContext">
             <summary>
