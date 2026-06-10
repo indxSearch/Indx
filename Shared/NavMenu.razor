@@ -2,6 +2,7 @@
 @implements IDisposable
 @inject NavigationManager NavigationManager
 @inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
+@inject IndxCloudApi.Services.IDeploymentPolicy DeploymentPolicy
 
 <nav class="nav">
     <span class="nav-current-page">
@@ -14,7 +15,10 @@
         <AuthorizeView>
             <Authorized>
                 <Button Href="Account/ApiKey" Variant="@NavVariant("Account/ApiKey")" Size="micro" IconLeft="_iconKey">API Key</Button>
-                <Button Href="Account/License" Variant="@NavVariant("Account/License")" Size="micro" IconLeft="_iconDoc">License</Button>
+                @if (DeploymentPolicy.LicensingVisible)
+                {
+                    <Button Href="Account/License" Variant="@NavVariant("Account/License")" Size="micro" IconLeft="_iconDoc">License</Button>
+                }
             </Authorized>
         </AuthorizeView>
         <AuthorizeView Roles="Admin">

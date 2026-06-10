@@ -768,6 +768,71 @@
              Users that already have a team (e.g. created via registration) are left as-is.
              </summary>
         </member>
+        <member name="T:IndxCloudApi.Services.DeploymentMode">
+            <summary>How this instance is deployed. Selected at runtime via Indx:DeploymentMode so the same
+            source code / build artifact serves both audiences.</summary>
+        </member>
+        <member name="F:IndxCloudApi.Services.DeploymentMode.SelfHost">
+            <summary>Open-source self-host: full features, licensing handled by the engine/license file.</summary>
+        </member>
+        <member name="F:IndxCloudApi.Services.DeploymentMode.ManagedApp">
+            <summary>Azure Managed Application: licensing is irrelevant; subscription-tier guardrails apply.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.PlanTier">
+            <summary>Subscription tier for a ManagedApp instance (one instance == one customer == one plan).
+            Ignored in SelfHost mode.</summary>
+        </member>
+        <member name="F:IndxCloudApi.Services.PlanTier.Free">
+            <summary>Free tier: capped teams/members.</summary>
+        </member>
+        <member name="F:IndxCloudApi.Services.PlanTier.Pro">
+            <summary>Paid tier: unlimited (or configured) limits.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.IDeploymentPolicy">
+            <summary>
+            Single source of truth for what the current deployment is allowed to do. The same source ships
+            two ways — open-source self-host and the Azure Managed Application — and every guardrail asks
+            this policy instead of hard-coding a limit, so the rules live in one auditable place. Resolved
+            once from configuration at startup (Indx:DeploymentMode / Indx:Plan / Indx:Limits:*).
+            </summary>
+        </member>
+        <member name="P:IndxCloudApi.Services.IDeploymentPolicy.Mode">
+            <summary>How this instance is deployed (self-host vs Azure Managed Application).</summary>
+        </member>
+        <member name="P:IndxCloudApi.Services.IDeploymentPolicy.Plan">
+            <summary>The subscription tier. Only meaningful when <see cref="P:IndxCloudApi.Services.IDeploymentPolicy.Mode"/> is ManagedApp.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Services.IDeploymentPolicy.LicensingVisible">
+            <summary>Show the License page and run the license fetch/refresh. False in ManagedApp.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Services.IDeploymentPolicy.AllowSelfRegistration">
+            <summary>Allow self-service account registration. False in ManagedApp (admin-provisioned).</summary>
+        </member>
+        <member name="P:IndxCloudApi.Services.IDeploymentPolicy.MaxTeams">
+            <summary>Max teams in the instance, or -1 for unlimited.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Services.IDeploymentPolicy.MaxMembersPerTeam">
+            <summary>Max members per team including the owner, or -1 for unlimited.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.IDeploymentPolicy.CanCreateTeam(System.Int32)">
+            <summary>True if another team may be created given the current instance team count.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.IDeploymentPolicy.CanAddMember(System.Int32)">
+            <summary>True if another member may be added given the team's current member count.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Services.IDeploymentPolicy.UpgradeHint">
+            <summary>Friendly suffix appended to limit errors (e.g. an upgrade hint), or "".</summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.DeploymentPolicy">
+            <inheritdoc />
+        </member>
+        <member name="F:IndxCloudApi.Services.DeploymentPolicy.Unlimited">
+            <summary>Sentinel for "no limit".</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.DeploymentPolicy.ReadMode(Microsoft.Extensions.Configuration.IConfiguration)">
+            <summary>Reads the deployment mode from configuration. Exposed so startup code can branch
+            before the DI container is built (e.g. to skip the license background job).</summary>
+        </member>
         <member name="M:IndxCloudApi.Services.EmailTemplates.Notice(System.String,System.String,System.String,System.String,System.String,System.String,System.Boolean)">
             <summary>
             Branded informational email (same shell as the action emails). The call-to-action
@@ -968,6 +1033,9 @@
             Only specific email addresses added to the invite list can register
             </summary>
         </member>
+        <member name="F:IndxCloudApi.Services.RegistrationValidator.SelfRegistrationDisabledMessage">
+            <summary>Message shown when the deployment forbids self-service registration entirely.</summary>
+        </member>
         <member name="T:IndxCloudApi.Services.TeamContext">
             <summary>
             Result of resolving a team-scoped request: the owning team and the requesting user's
@@ -1021,7 +1089,7 @@
             <see cref="P:IndxCloudApi.Data.Team.Name"/> is the only human-facing name; it is globally unique and URL-safe.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Services.TeamService.#ctor(IndxCloudApi.Data.ApplicationDbContext)">
+        <member name="M:IndxCloudApi.Services.TeamService.#ctor(IndxCloudApi.Data.ApplicationDbContext,IndxCloudApi.Services.IDeploymentPolicy)">
             <summary>
             Server-side team and membership management. Team CRUD is intentionally NOT exposed over
             HTTP — the Blazor pages (and registration) call this service directly. The team

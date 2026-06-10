@@ -3,18 +3,28 @@ namespace IndxCloudApi.Services;
 internal class RegistrationValidator
 {
     private readonly InstanceSettingsService _settingsService;
+    private readonly IDeploymentPolicy _policy;
     private readonly ILogger<RegistrationValidator> _logger;
 
     public RegistrationValidator(
         InstanceSettingsService settingsService,
+        IDeploymentPolicy policy,
         ILogger<RegistrationValidator> logger)
     {
         _settingsService = settingsService;
+        _policy = policy;
         _logger = logger;
     }
 
+    /// <summary>Message shown when the deployment forbids self-service registration entirely.</summary>
+    private const string SelfRegistrationDisabledMessage =
+        "Self-service registration is disabled for this deployment. Please contact your administrator for access.";
+
     public RegistrationValidationResult ValidateRegistrationAllowed()
     {
+        if (!_policy.AllowSelfRegistration)
+            return RegistrationValidationResult.Failure(SelfRegistrationDisabledMessage);
+
         var settings = _settingsService.Load();
 
         if (settings.RegistrationMode == RegistrationMode.Closed)
@@ -29,6 +39,9 @@ internal class RegistrationValidator
 
     public RegistrationValidationResult ValidateEmail(string email)
     {
+        if (!_policy.AllowSelfRegistration)
+            return RegistrationValidationResult.Failure(SelfRegistrationDisabledMessage);
+
         if (string.IsNullOrWhiteSpace(email))
             return RegistrationValidationResult.Failure("Email is required.");
 
@@ -78,6 +91,9 @@ internal class RegistrationValidator
 
     public string GetRegistrationInfoMessage()
     {
+        if (!_policy.AllowSelfRegistration)
+            return SelfRegistrationDisabledMessage;
+
         var settings = _settingsService.Load();
         return settings.RegistrationMode switch
         {

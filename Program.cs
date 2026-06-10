@@ -84,6 +84,15 @@ public class Program
         // ============================================
         // REGISTRATION RESTRICTION CONFIGURATION
         // ============================================
+        // Deployment mode + tier policy: single source of truth for self-host vs Azure Managed
+        // Application behavior (licensing visibility, team/member guardrails, self-registration).
+        builder.Services.AddSingleton<Services.IDeploymentPolicy, Services.DeploymentPolicy>();
+        var deploymentMode = Services.DeploymentPolicy.ReadMode(builder.Configuration);
+        Console.WriteLine($"ℹ Deployment mode: {deploymentMode}"
+            + (deploymentMode == Services.DeploymentMode.ManagedApp
+                ? $" (plan: {builder.Configuration["Indx:Plan"] ?? "Free"})"
+                : ""));
+
         builder.Services.Configure<RegistrationOptions>(
             builder.Configuration.GetSection("Registration"));
         builder.Services.AddScoped<RegistrationValidator>();
@@ -498,8 +507,10 @@ public class Program
             });
         builder.Services.AddSingleton<Services.ILicenseBootstrapper, Services.LicenseBootstrapper>();
         // Daily background re-fetch so a long-running instance never lets its on-disk license
-        // go stale. No-op until auto-fetch is configured. See LicenseRefreshJob.
-        builder.Services.AddHostedService<Services.LicenseRefreshJob>();
+        // go stale. No-op until auto-fetch is configured. See LicenseRefreshJob. Skipped in
+        // ManagedApp mode, where licensing is irrelevant.
+        if (deploymentMode == Services.DeploymentMode.SelfHost)
+            builder.Services.AddHostedService<Services.LicenseRefreshJob>();
 
         // Application Insights: only activate when a connection string is configured.
         // The Bicep template provisions an AI resource and injects the connection string
@@ -676,8 +687,10 @@ public class Program
         int userCount = 0;
 
         // Bootstrap license from the Indx portal if a token is configured (no-op otherwise).
-        using (var bootstrapScope = app.Services.CreateScope())
+        // Skipped in ManagedApp mode, where licensing is irrelevant.
+        if (deploymentMode == Services.DeploymentMode.SelfHost)
         {
+            using var bootstrapScope = app.Services.CreateScope();
             var bootstrapper = bootstrapScope.ServiceProvider
                 .GetRequiredService<Services.ILicenseBootstrapper>();
             var fetch = bootstrapper.EnsureLocalLicenseAsync().GetAwaiter().GetResult();

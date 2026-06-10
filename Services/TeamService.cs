@@ -9,7 +9,7 @@ namespace IndxCloudApi.Services
     /// HTTP — the Blazor pages (and registration) call this service directly. The team
     /// <see cref="Team.Name"/> is the only human-facing name; it is globally unique and URL-safe.
     /// </summary>
-    public class TeamService(ApplicationDbContext db)
+    public class TeamService(ApplicationDbContext db, IDeploymentPolicy policy)
     {
         /// <summary>Thrown when an operation would violate a team invariant (name taken, last admin, etc.).</summary>
         public sealed class TeamException(string message) : Exception(message);
@@ -70,6 +70,13 @@ namespace IndxCloudApi.Services
         /// </summary>
         public async Task<Team> CreateTeamAsync(string rawName, string ownerUserId)
         {
+            // Tier guardrail: in ManagedApp/Free the instance is capped (e.g. one team). SelfHost
+            // is unlimited. The first user's personal team passes (count 0 < cap).
+            var teamCount = await db.Teams.CountAsync();
+            if (!policy.CanCreateTeam(teamCount))
+                throw new TeamException(
+                    $"Your plan allows at most {policy.MaxTeams} team(s).{policy.UpgradeHint}");
+
             var name = await EnsureUniqueNameAsync(TeamSlug.Sanitize(rawName));
             var team = new Team { Id = Guid.NewGuid(), Name = name, CreatedAt = DateTime.UtcNow };
             db.Teams.Add(team);
@@ -123,10 +130,17 @@ namespace IndxCloudApi.Services
             var existing = await db.TeamMembers.FirstOrDefaultAsync(m => m.TeamId == teamId && m.UserId == userId);
             if (existing != null)
             {
-                existing.Role = role; // idempotent add doubles as role change
+                existing.Role = role; // idempotent add doubles as role change — no limit check
             }
             else
             {
+                // Tier guardrail: in ManagedApp/Free a team is capped (e.g. owner only). The cap
+                // counts the owner, so adding a second member is blocked. SelfHost is unlimited.
+                var memberCount = await db.TeamMembers.CountAsync(m => m.TeamId == teamId);
+                if (!policy.CanAddMember(memberCount))
+                    throw new TeamException(
+                        $"Your plan allows at most {policy.MaxMembersPerTeam} member(s) per team.{policy.UpgradeHint}");
+
                 db.TeamMembers.Add(new TeamMember
                 {
                     TeamId = teamId, UserId = userId, Role = role, CreatedAt = DateTime.UtcNow,
