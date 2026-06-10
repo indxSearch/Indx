@@ -68,12 +68,15 @@ namespace IndxCloudApi.Services
         /// Creates a team with the given (raw) name — sanitised to a URL-safe, globally-unique
         /// slug — and makes <paramref name="ownerUserId"/> its first Admin. Both rows commit together.
         /// </summary>
-        public async Task<Team> CreateTeamAsync(string rawName, string ownerUserId)
+        public async Task<Team> CreateTeamAsync(string rawName, string ownerUserId, bool enforcePlanLimit = true)
         {
-            // Tier guardrail: without MultipleUsers (Free plan) the instance gets a single team —
-            // the owner's personal team. The first team passes (none exist yet); further teams are
-            // blocked. SelfHost and paid plans enable the feature, so this never trips for them.
-            if (!edition.IsEnabled(EditionFeature.MultipleUsers) && await db.Teams.AnyAsync())
+            // Tier guardrail applies only to user-initiated team creation. Internal provisioning
+            // (a new user's personal team via CreatePersonalTeamAsync) and the startup migration
+            // pass enforcePlanLimit: false, so the app never blocks its own bootstrap — the Free
+            // single-team limit is about *additional* teams a user tries to create.
+            if (enforcePlanLimit
+                && !edition.IsEnabled(EditionFeature.MultipleUsers)
+                && await db.Teams.AnyAsync())
                 throw new TeamException(
                     "Additional teams require the Professional plan. Upgrade to add more.");
 
@@ -97,7 +100,9 @@ namespace IndxCloudApi.Services
             var basis = !string.IsNullOrWhiteSpace(requestedName)
                 ? requestedName
                 : (user.Email ?? user.UserName ?? "team").Split('@')[0];
-            return CreateTeamAsync(basis, user.Id);
+            // Personal team is part of provisioning, not a user-initiated "create another team",
+            // so it is exempt from the plan limit (every user gets their own team).
+            return CreateTeamAsync(basis, user.Id, enforcePlanLimit: false);
         }
 
         /// <summary>Renames a team. Surrogate Id is the key, so no references need rewriting.</summary>
