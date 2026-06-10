@@ -294,15 +294,39 @@ else if (licenseInfo != null)
             <div style="margin-top: 32px;">
                 <h4 style="margin-bottom: 4px;">Auto-fetch from license server</h4>
                 <p style="color: var(--lv5); font-size: 13px; margin-bottom: 12px;">
-                    With a URL and token set, a fresh license is fetched automatically on every startup.
+                    A fresh license is fetched automatically on startup and once a day.
                     Use <strong>Fetch now</strong> to pull one immediately.
                 </p>
-                <div style="display: flex; flex-direction: column; gap: 8px; max-width: 520px;">
-                    <InputField @bind-Value="_licenseUrl" placeholder="https://license.indx.co/…" />
-                    <InputField @bind-Value="_licenseTokenInput" type="password"
-                                placeholder="@(autoFetch?.TokenConfigured == true ? "Token set — leave blank to keep" : "Paste license token")" />
+                <div style="display: flex; flex-direction: column; gap: 12px; max-width: 520px;">
+
+                    @* URL is effectively fixed to the portal, so it's edited behind a button. *@
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: var(--lv5); font-size: 13px; min-width: 48px;">URL</span>
+                        @if (_editingUrl)
+                        {
+                            <InputField @bind-Value="_licenseUrl" placeholder="https://license.indx.co/…"
+                                        style="flex: 1;" />
+                            <Button Variant="primary" Size="micro" @onclick="SaveUrl">Save</Button>
+                            <Button Variant="ghost" Size="micro" @onclick="CancelEditUrl">Cancel</Button>
+                        }
+                        else
+                        {
+                            <span style="flex: 1; font-family: monospace; font-size: 13px; color: var(--lv6); overflow-wrap: anywhere;">
+                                @(string.IsNullOrWhiteSpace(autoFetch?.Url) ? "Not set" : autoFetch!.Url)
+                            </span>
+                            <Button Variant="ghost" Size="micro" @onclick="BeginEditUrl">Edit</Button>
+                        }
+                    </div>
+
+                    @* Token is the per-deployment secret and stays directly editable. *@
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: var(--lv5); font-size: 13px; min-width: 48px;">Token</span>
+                        <InputField @bind-Value="_licenseTokenInput" type="password" style="flex: 1;"
+                                    placeholder="@(autoFetch?.TokenConfigured == true ? "Token set — leave blank to keep" : "Paste license token")" />
+                        <Button Variant="primary" Size="micro" @onclick="SaveToken" Disabled="@_isFetching">Save</Button>
+                    </div>
+
                     <div style="display: flex; gap: 8px; align-items: center;">
-                        <Button Variant="primary" Size="micro" @onclick="SaveAutoFetch" Disabled="@_isFetching">Save</Button>
                         <Button Variant="secondary" Size="micro" @onclick="FetchNow"
                                 Disabled="@(_isFetching || autoFetch?.UrlConfigured != true)">
                             @(_isFetching ? "Fetching…" : "Fetch now")
@@ -351,6 +375,7 @@ else
     // Auto-fetch editor state.
     private string _licenseUrl = "";
     private string _licenseTokenInput = "";
+    private bool _editingUrl;
     private string? _fetchMessage;
     private string? _fetchError;
     private bool _isFetching;
@@ -426,7 +451,20 @@ else
         fileOpError = null;
     }
 
-    private void SaveAutoFetch()
+    private void BeginEditUrl()
+    {
+        _fetchMessage = null; _fetchError = null;
+        _licenseUrl = autoFetch?.Url ?? "";
+        _editingUrl = true;
+    }
+
+    private void CancelEditUrl()
+    {
+        _licenseUrl = autoFetch?.Url ?? "";
+        _editingUrl = false;
+    }
+
+    private void SaveUrl()
     {
         _fetchMessage = null; _fetchError = null;
         if (!isAdmin)
@@ -437,14 +475,34 @@ else
 
         var settings = InstanceSettingsService.Load();
         settings.LicenseDownloadUrl = string.IsNullOrWhiteSpace(_licenseUrl) ? null : _licenseUrl.Trim();
-        // Only overwrite the token when a new one is entered; a blank field keeps the existing one.
-        if (!string.IsNullOrWhiteSpace(_licenseTokenInput))
-            settings.LicenseToken = _licenseTokenInput.Trim();
+        InstanceSettingsService.Save(settings);
+
+        autoFetch = Bootstrapper.GetStatus();
+        _editingUrl = false;
+        _fetchMessage = "URL saved.";
+    }
+
+    private void SaveToken()
+    {
+        _fetchMessage = null; _fetchError = null;
+        if (!isAdmin)
+        {
+            _fetchError = "Only administrators can change the license source.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_licenseTokenInput))
+        {
+            _fetchError = "Enter a token to save.";
+            return;
+        }
+
+        var settings = InstanceSettingsService.Load();
+        settings.LicenseToken = _licenseTokenInput.Trim();
         InstanceSettingsService.Save(settings);
 
         _licenseTokenInput = "";
         autoFetch = Bootstrapper.GetStatus();
-        _fetchMessage = "Saved.";
+        _fetchMessage = "Token saved.";
     }
 
     private async Task FetchNow()
