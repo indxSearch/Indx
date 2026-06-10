@@ -488,6 +488,9 @@ public class Program
         // start when the local file is absent. No-op when Indx:LicenseDownloadUrl is unset.
         builder.Services.AddHttpClient();
         builder.Services.AddSingleton<Services.ILicenseBootstrapper, Services.LicenseBootstrapper>();
+        // Daily background re-fetch so a long-running instance never lets its on-disk license
+        // go stale. No-op until auto-fetch is configured. See LicenseRefreshJob.
+        builder.Services.AddHostedService<Services.LicenseRefreshJob>();
 
         // Application Insights: only activate when a connection string is configured.
         // The Bicep template provisions an AI resource and injects the connection string

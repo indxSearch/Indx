@@ -882,6 +882,34 @@
         <member name="M:IndxCloudApi.Services.LicenseBootstrapper.GetStatus">
             <inheritdoc />
         </member>
+        <member name="T:IndxCloudApi.Services.LicenseRefreshJob">
+             <summary>
+             Periodically re-fetches the license file from the configured portal so a long-running
+             instance never lets its on-disk license go stale. Pro licenses are meant to refresh
+             monthly even though the file is valid for ~90 days; a daily fetch keeps the file fresh
+             with a large retry margin if the portal is briefly unreachable.
+            
+             This keeps the file on disk valid — it does not live-relicense already-running engines
+             (those validate once at construction), but it guarantees newly-created datasets and every
+             restart pick up a valid license. It is a no-op until auto-fetch is configured: with no URL
+             the bootstrapper returns <see cref="F:IndxCloudApi.Services.LicenseFetchOutcome.NotConfigured"/> and without a token
+             it only downloads when the file is missing.
+             </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.LicenseRefreshJob.#ctor(IndxCloudApi.Services.ILicenseBootstrapper,Microsoft.Extensions.Logging.ILogger{IndxCloudApi.Services.LicenseRefreshJob})">
+             <summary>
+             Periodically re-fetches the license file from the configured portal so a long-running
+             instance never lets its on-disk license go stale. Pro licenses are meant to refresh
+             monthly even though the file is valid for ~90 days; a daily fetch keeps the file fresh
+             with a large retry margin if the portal is briefly unreachable.
+            
+             This keeps the file on disk valid — it does not live-relicense already-running engines
+             (those validate once at construction), but it guarantees newly-created datasets and every
+             restart pick up a valid license. It is a no-op until auto-fetch is configured: with no URL
+             the bootstrapper returns <see cref="F:IndxCloudApi.Services.LicenseFetchOutcome.NotConfigured"/> and without a token
+             it only downloads when the file is missing.
+             </summary>
+        </member>
         <member name="M:IndxCloudApi.Services.NotificationService.CreateForAdminsAsync(IndxCloudApi.Data.NotificationType,System.String,System.String,System.String)">
             <summary>Creates a notification for every user in the Admin role.</summary>
         </member>
