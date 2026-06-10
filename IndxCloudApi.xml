@@ -860,6 +860,13 @@
              (100k document limit) instead of taking the whole instance down.
              </summary>
         </member>
+        <member name="F:IndxCloudApi.Services.LicenseBootstrapper.DefaultDownloadUrl">
+            <summary>
+            The Indx license portal endpoint, used when a token is configured but no explicit
+            URL is set. The URL is effectively fixed, so customers normally only paste a token.
+            An explicit Indx:LicenseDownloadUrl / instance-settings URL still overrides this.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Services.LicenseBootstrapper.#ctor(Microsoft.Extensions.Configuration.IConfiguration,System.Net.Http.IHttpClientFactory,IndxCloudApi.Services.InstanceSettingsService,Microsoft.Extensions.Logging.ILogger{IndxCloudApi.Services.LicenseBootstrapper})">
             <summary>
             Initializes a new instance of the <see cref="T:IndxCloudApi.Services.LicenseBootstrapper"/>.

@@ -130,21 +130,17 @@ else if (licenseInfo != null)
                         <tr style="border-bottom: 1px solid var(--lv2);">
                             <td style="padding: 12px 0; font-weight: bold;">Auto-fetch:</td>
                             <td style="padding: 12px 0;">
-                                @if (autoFetch is null || !autoFetch.UrlConfigured)
+                                @if (autoFetch is null || !autoFetch.TokenConfigured)
                                 {
                                     <span style="color: var(--lv5);">Not configured</span>
                                     <span style="color: var(--lv5); margin-left: 8px; font-size: 12px;">
-                                        (set <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">Indx:LicenseDownloadUrl</code> + <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">Indx:LicenseToken</code>)
+                                        (paste a license token below — the portal URL is predefined)
                                     </span>
-                                }
-                                else if (!autoFetch.TokenConfigured)
-                                {
-                                    <span style="color: var(--CSignal);">⚠ URL set — token missing</span>
                                 }
                                 else
                                 {
                                     <span style="color: var(--CTeal);">✓ Configured</span>
-                                    <span style="color: var(--lv5); margin-left: 8px; font-size: 12px;">token set · re-fetched on every startup</span>
+                                    <span style="color: var(--lv5); margin-left: 8px; font-size: 12px;">token set · re-fetched on startup and daily</span>
                                     @if (autoFetch.FileExists)
                                     {
                                         <span style="color: var(--lv5); margin-left: 8px; font-size: 12px;">
@@ -312,7 +308,9 @@ else if (licenseInfo != null)
                         else
                         {
                             <span style="flex: 1; font-family: monospace; font-size: 13px; color: var(--lv6); overflow-wrap: anywhere;">
-                                @(string.IsNullOrWhiteSpace(autoFetch?.Url) ? "Not set" : autoFetch!.Url)
+                                @(string.IsNullOrWhiteSpace(autoFetch?.Url)
+                                    ? Services.LicenseBootstrapper.DefaultDownloadUrl
+                                    : autoFetch!.Url)
                             </span>
                             <Button Variant="ghost" Size="micro" @onclick="BeginEditUrl">Edit</Button>
                         }
@@ -454,7 +452,9 @@ else
     private void BeginEditUrl()
     {
         _fetchMessage = null; _fetchError = null;
-        _licenseUrl = autoFetch?.Url ?? "";
+        _licenseUrl = string.IsNullOrWhiteSpace(autoFetch?.Url)
+            ? Services.LicenseBootstrapper.DefaultDownloadUrl
+            : autoFetch!.Url;
         _editingUrl = true;
     }
 

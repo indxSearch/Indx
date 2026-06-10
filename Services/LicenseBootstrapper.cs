@@ -80,6 +80,13 @@ namespace IndxCloudApi.Services
     /// </summary>
     internal class LicenseBootstrapper : ILicenseBootstrapper
     {
+        /// <summary>
+        /// The Indx license portal endpoint, used when a token is configured but no explicit
+        /// URL is set. The URL is effectively fixed, so customers normally only paste a token.
+        /// An explicit Indx:LicenseDownloadUrl / instance-settings URL still overrides this.
+        /// </summary>
+        public const string DefaultDownloadUrl = "https://license.indx.co/api/license/current";
+
         private readonly IConfiguration _configuration;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly InstanceSettingsService _settings;
@@ -113,6 +120,13 @@ namespace IndxCloudApi.Services
             var token = !string.IsNullOrWhiteSpace(settings.LicenseToken)
                 ? settings.LicenseToken
                 : _configuration["Indx:LicenseToken"];
+
+            // The portal URL is predefined: when a token is configured but no explicit URL is
+            // set, fetch from the known endpoint so token-only setups just work. Without a token
+            // we leave the URL blank so a manual-license / no-licensing install never phones home.
+            if (string.IsNullOrWhiteSpace(url) && !string.IsNullOrWhiteSpace(token))
+                url = DefaultDownloadUrl;
+
             return (url, token);
         }
 
