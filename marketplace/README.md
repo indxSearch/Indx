@@ -9,7 +9,7 @@ Local `dotnet run` is unaffected - none of these files are referenced by the pro
 | File | Purpose |
 |------|---------|
 | `main.bicep` | Resource template. Compiled to `mainTemplate.json` for the Marketplace package. |
-| `createUiDefinition.json` | Customer-facing deployment wizard. Collects admin email, OAuth keys, license URL, etc. |
+| `createUiDefinition.json` | Customer-facing deployment wizard. Collects admin email, OAuth keys, JWT signing key, etc. |
 | `viewDefinition.json` | Post-deploy customer dashboard shown inside the managed resource group. |
 
 ## What gets provisioned per customer
@@ -21,6 +21,14 @@ Local `dotnet run` is unaffected - none of these files are referenced by the pro
 - Application Insights (workspace-based) + Log Analytics workspace
 - Diagnostic settings shipping App Service logs to the workspace
 - Role assignment: App Service identity -> Key Vault Secrets User
+
+## Licensing the deployment
+
+There is no license input at deploy time. Without a license the engine runs with a 100,000-document limit; license the deployment **post-deploy** in any of these ways:
+
+1. **Token auto-fetch (recommended)** — on the app's **License** page, paste a token from [license.indx.co](https://license.indx.co). The app fetches a fresh `.license` from the portal on save, then again on every startup and once a day. The portal URL is fixed (not configurable).
+2. **Manual upload** — download a `.license` file from [license.indx.co](https://license.indx.co) and upload it on the **License** page. It takes effect immediately for new datasets (restart to apply to already-running ones).
+3. **Console drop** — copy a `.license` file to `/home/data/indx.license` via App Service > Development Tools > Console (this is the `Indx:LicenseFile` path the engine reads).
 
 ## Build and package
 
