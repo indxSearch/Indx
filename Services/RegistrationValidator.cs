@@ -1,20 +1,45 @@
+using IndxCloudApi.Data;
+using Microsoft.AspNetCore.Identity;
+
 namespace IndxCloudApi.Services;
 
 internal class RegistrationValidator
 {
     private readonly InstanceSettingsService _settingsService;
+    private readonly IEditionService _edition;
+    private readonly UserManager<ApplicationUser> _userManager;
     private readonly ILogger<RegistrationValidator> _logger;
 
     public RegistrationValidator(
         InstanceSettingsService settingsService,
+        IEditionService edition,
+        UserManager<ApplicationUser> userManager,
         ILogger<RegistrationValidator> logger)
     {
         _settingsService = settingsService;
+        _edition = edition;
+        _userManager = userManager;
         _logger = logger;
     }
 
+    /// <summary>Message shown when a single-user plan (Free) already has its one account.</summary>
+    private const string SingleUserPlanMessage =
+        "This plan supports a single user. Upgrade to the Professional plan to add team members.";
+
+    /// <summary>True when the plan caps the instance at one user and that user already exists.
+    /// All account-creation paths (self-serve, OAuth, invite-driven) call
+    /// <see cref="ValidateRegistrationAllowed"/> first, so this is the single enforcement point.</summary>
+    private bool SingleUserLimitReached =>
+        !_edition.IsEnabled(EditionFeature.MultipleUsers) && _userManager.Users.Any();
+
     public RegistrationValidationResult ValidateRegistrationAllowed()
     {
+        if (SingleUserLimitReached)
+        {
+            _logger.LogWarning("Registration blocked - single-user plan already has an account");
+            return RegistrationValidationResult.Failure(SingleUserPlanMessage);
+        }
+
         var settings = _settingsService.Load();
 
         if (settings.RegistrationMode == RegistrationMode.Closed)
@@ -29,6 +54,9 @@ internal class RegistrationValidator
 
     public RegistrationValidationResult ValidateEmail(string email)
     {
+        if (SingleUserLimitReached)
+            return RegistrationValidationResult.Failure(SingleUserPlanMessage);
+
         if (string.IsNullOrWhiteSpace(email))
             return RegistrationValidationResult.Failure("Email is required.");
 
@@ -78,6 +106,9 @@ internal class RegistrationValidator
 
     public string GetRegistrationInfoMessage()
     {
+        if (SingleUserLimitReached)
+            return SingleUserPlanMessage;
+
         var settings = _settingsService.Load();
         return settings.RegistrationMode switch
         {

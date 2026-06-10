@@ -11,6 +11,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject InstanceSettingsService InstanceSettingsService
+@inject IEditionService Edition
 @implements IDisposable
 
 <PageTitle>Team</PageTitle>
@@ -178,7 +179,9 @@ else
         if (!ActiveTeam.HasTeam) { _members.Clear(); _addableUsers.Clear(); return; }
 
         _canAdmin = TeamRoles.CanAdmin(ActiveTeam.ActiveRole);
-        _canAddMembers = TeamRoles.CanWrite(ActiveTeam.ActiveRole); // Editor and above
+        // Editor and above — and only when the plan allows more than one user.
+        _canAddMembers = TeamRoles.CanWrite(ActiveTeam.ActiveRole)
+            && Edition.IsEnabled(EditionFeature.MultipleUsers);
         _renameInput = ActiveTeam.ActiveTeamName ?? "";
         _confirmDelete = false;
 

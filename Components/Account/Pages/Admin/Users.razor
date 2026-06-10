@@ -10,6 +10,7 @@
 @inject IndxCloudApi.Services.InstanceSettingsService SettingsService
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject NavigationManager NavigationManager
+@inject IndxCloudApi.Services.IEditionService Edition
 
 <PageTitle>Admin — Users</PageTitle>
 
@@ -105,7 +106,15 @@ else
     </table>
 }
 
-@if (_isInviteMode)
+@if (!Edition.IsEnabled(IndxCloudApi.Services.EditionFeature.MultipleUsers))
+{
+    <div style="margin-top: 48px;">
+        <p style="color: var(--lv5); font: var(--text-xs);">
+            This plan supports a single user. Upgrade to the Professional plan to invite teammates.
+        </p>
+    </div>
+}
+else if (_isInviteMode)
 {
     <div style="margin-top: 48px;">
         <h3 style="margin-bottom: 4px;">Pending invites</h3>
