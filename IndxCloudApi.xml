@@ -555,6 +555,15 @@
             then warms up the engine under the new owning team.
             </summary>
         </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.AnyRunningInstanceLicensed">
+            <summary>
+            True when at least one live dataset engine is still running under a valid license.
+            Running engines validate their license once at construction and keep that state for
+            their lifetime, so this can be true even after every .license file has been removed
+            from disk — the UI uses it to warn that a restart would drop those engines to the
+            free-tier document limit.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ResolveEngine(System.String,System.String)">
             <summary>
             Returns the engine for a team-owned dataset, or null if the dataset doesn't exist.
@@ -786,7 +795,9 @@
             resolved from Indx:LicenseFile. With Indx:LicenseToken set, sends it as a
             bearer token and re-fetches a fresh license on every startup; without a
             token, downloads only when the local file is missing. Failures are logged
-            but never thrown, and never delete an existing file.
+            but never thrown, and never delete an existing file. The returned
+            <see cref="T:IndxCloudApi.Services.LicenseFetchResult"/> describes the outcome so callers (e.g. the
+            admin UI) can surface why a fetch failed instead of silently swallowing it.
             </summary>
         </member>
         <member name="M:IndxCloudApi.Services.ILicenseBootstrapper.GetStatus">
@@ -808,6 +819,36 @@
             Snapshot of the license auto-fetch state for diagnostics / UI. Never carries
             the token value itself — only whether one is configured.
             </summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.LicenseFetchOutcome">
+            <summary>Outcome of an <see cref="M:IndxCloudApi.Services.ILicenseBootstrapper.EnsureLocalLicenseAsync(System.Threading.CancellationToken)"/> call.</summary>
+        </member>
+        <member name="F:IndxCloudApi.Services.LicenseFetchOutcome.NotConfigured">
+            <summary>No download URL is configured — nothing was attempted.</summary>
+        </member>
+        <member name="F:IndxCloudApi.Services.LicenseFetchOutcome.SkippedExisting">
+            <summary>A file was already present and no token is set, so the download was skipped.</summary>
+        </member>
+        <member name="F:IndxCloudApi.Services.LicenseFetchOutcome.Fetched">
+            <summary>A fresh license file was downloaded and written to disk.</summary>
+        </member>
+        <member name="F:IndxCloudApi.Services.LicenseFetchOutcome.Failed">
+            <summary>The fetch was attempted but failed; any existing file is left untouched.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.LicenseFetchResult">
+            <summary>
+            Result of a license fetch attempt, carrying a human-readable message suitable
+            for the admin UI. Never includes the token value.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.LicenseFetchResult.#ctor(IndxCloudApi.Services.LicenseFetchOutcome,System.String,System.Nullable{System.Int32},System.Int64,System.String)">
+            <summary>
+            Result of a license fetch attempt, carrying a human-readable message suitable
+            for the admin UI. Never includes the token value.
+            </summary>
+        </member>
+        <member name="P:IndxCloudApi.Services.LicenseFetchResult.Succeeded">
+            <summary>True when the license on disk is in the expected state (freshly fetched or already present).</summary>
         </member>
         <member name="T:IndxCloudApi.Services.LicenseBootstrapper">
              <summary>
@@ -832,6 +873,11 @@
         </member>
         <member name="M:IndxCloudApi.Services.LicenseBootstrapper.EnsureLocalLicenseAsync(System.Threading.CancellationToken)">
             <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Services.LicenseBootstrapper.ReadShortBodyAsync(System.Net.Http.HttpResponseMessage,System.Threading.CancellationToken)">
+            <summary>
+            Reads up to ~300 chars of a (failed) response body for diagnostics. Never throws.
+            </summary>
         </member>
         <member name="M:IndxCloudApi.Services.LicenseBootstrapper.GetStatus">
             <inheritdoc />

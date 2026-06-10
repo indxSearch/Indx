@@ -668,7 +668,11 @@ public class Program
         {
             var bootstrapper = bootstrapScope.ServiceProvider
                 .GetRequiredService<Services.ILicenseBootstrapper>();
-            bootstrapper.EnsureLocalLicenseAsync().GetAwaiter().GetResult();
+            var fetch = bootstrapper.EnsureLocalLicenseAsync().GetAwaiter().GetResult();
+            if (fetch.Outcome == Services.LicenseFetchOutcome.Failed)
+                Console.WriteLine($"⚠ License auto-fetch failed: {fetch.Message}");
+            else if (fetch.Outcome == Services.LicenseFetchOutcome.Fetched)
+                Console.WriteLine($"✓ {fetch.Message}");
         }
 
         // Migrate per-user dataset ownership to team ownership BEFORE warming up engines, so the

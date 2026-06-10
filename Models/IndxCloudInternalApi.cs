@@ -535,6 +535,26 @@ namespace IndxCloudApi.Models
             }
         }
 
+        /// <summary>
+        /// True when at least one live dataset engine is still running under a valid license.
+        /// Running engines validate their license once at construction and keep that state for
+        /// their lifetime, so this can be true even after every .license file has been removed
+        /// from disk — the UI uses it to warn that a restart would drop those engines to the
+        /// free-tier document limit.
+        /// </summary>
+        internal bool AnyRunningInstanceLicensed()
+        {
+            lock (_dictionaryLock)
+            {
+                foreach (var instance in _instances.Values)
+                {
+                    if (instance?.theInstance?.Status?.LicenseInfo?.Licensed == true)
+                        return true;
+                }
+            }
+            return false;
+        }
+
         internal IReadOnlyList<LicenseFileInfo> GetLicenseFiles()
         {
             var dataDir = "./IndxData";
