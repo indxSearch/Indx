@@ -195,6 +195,13 @@ namespace IndxCloudApi.Services
                         LicenseFetchOutcome.Failed, msg, HttpStatus: status, LocalPath: localPath);
                 }
 
+                var contentType = response.Content.Headers.ContentType?.MediaType;
+                var contentEncoding = string.Join(", ", response.Content.Headers.ContentEncoding);
+                _logger.LogInformation(
+                    "License response: Content-Type={ContentType} Content-Encoding={ContentEncoding}",
+                    contentType ?? "(none)",
+                    string.IsNullOrEmpty(contentEncoding) ? "(none)" : contentEncoding);
+
                 var bytes = await response.Content.ReadAsByteArrayAsync(cancellationToken);
 
                 // Don't clobber a good local file with an empty/failed body.
@@ -202,6 +209,21 @@ namespace IndxCloudApi.Services
                 {
                     const string msg = "License server returned an empty response; keeping any existing file.";
                     _logger.LogWarning(msg);
+                    return new LicenseFetchResult(
+                        LicenseFetchOutcome.Failed, msg, HttpStatus: (int)response.StatusCode, LocalPath: localPath);
+                }
+
+                // A license file is encrypted binary served as octet-stream. If the body is HTML or
+                // JSON, the URL is pointing at the wrong place (e.g. a login page or /api/license/info)
+                // and writing it would replace a working license with garbage. Reject it instead.
+                if (contentType is "text/html" or "application/json"
+                    || (contentType is not null && contentType.StartsWith("text/", StringComparison.OrdinalIgnoreCase)))
+                {
+                    var body = await ReadShortBodyAsync(response, cancellationToken);
+                    var msg = $"License server returned {contentType}, not a license file — "
+                            + "check the URL points at the license download endpoint (…/api/license/current)."
+                            + (string.IsNullOrEmpty(body) ? "" : $" Response: {body}");
+                    _logger.LogWarning("License fetch rejected: {Message}", msg);
                     return new LicenseFetchResult(
                         LicenseFetchOutcome.Failed, msg, HttpStatus: (int)response.StatusCode, LocalPath: localPath);
                 }

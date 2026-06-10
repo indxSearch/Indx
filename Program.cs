@@ -487,6 +487,15 @@ public class Program
         // License bootstrapper: downloads the .license file from a SAS URL on first
         // start when the local file is absent. No-op when Indx:LicenseDownloadUrl is unset.
         builder.Services.AddHttpClient();
+        // The license endpoint may sit behind a CDN/proxy that gzip/brotli-compresses the
+        // response. The license file is encrypted binary, so without automatic decompression
+        // we'd write the still-compressed bytes and the file would fail validation (a browser
+        // download decodes transparently, which is why uploading the downloaded file works).
+        builder.Services.AddHttpClient(nameof(Services.LicenseBootstrapper))
+            .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler
+            {
+                AutomaticDecompression = System.Net.DecompressionMethods.All
+            });
         builder.Services.AddSingleton<Services.ILicenseBootstrapper, Services.LicenseBootstrapper>();
         // Daily background re-fetch so a long-running instance never lets its on-disk license
         // go stale. No-op until auto-fetch is configured. See LicenseRefreshJob.
