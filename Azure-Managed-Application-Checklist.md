@@ -155,7 +155,7 @@ The Bicep template provisions the App Service but the application binary must co
 - [ ] Test full deployment from the Marketplace sandbox (Partner Center → Preview audience)
 - [ ] Verify the customer experience end-to-end: deploy → login → create index → search
 - [ ] Test all registration modes: Open, EmailDomain, Closed
-- [ ] Test license bootstrap via SAS URL (`Indx:LicenseDownloadUrl`)
+- [ ] Test license bootstrap via portal token (`Indx:LicenseToken`; the download URL is hardcoded, legacy `Indx:LicenseDownloadUrl` is no longer read)
 - [ ] Confirm health check returns 200 after deployment (App Service probe)
 - [ ] Confirm Application Insights receives telemetry after deployment
 

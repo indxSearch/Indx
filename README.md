@@ -126,11 +126,12 @@ Indx__LicenseFile = /path/to/your.license
 Instead of placing the file manually, IndxCloudApi can pull its license straight from the Indx License Portal ([license.indx.co](https://license.indx.co)) on startup. On your portal license page, create a license token, then configure:
 
 ```
-Indx__LicenseDownloadUrl = https://license.indx.co/api/license/current
-Indx__LicenseToken       = <token from your portal license page>
+Indx__LicenseToken = <token from your portal license page>
 ```
 
-With a token set, a **fresh license is fetched on every startup** (the portal rolls Pro/Free expiry forward) and written to `Indx:LicenseFile` (default `./IndxData/indx.license`). Without a token, the URL is fetched only when no local file exists yet (e.g. a one-off SAS URL). Fetch failures are logged but never fatal — the server keeps any existing file, or falls back to free-tier mode. Set these via environment variables or Key Vault, not in `appsettings.json`.
+The download endpoint is **hardcoded** to the Indx portal (`https://license.indx.co/api/license/current`) — only Indx issues licenses, so it is not configurable. Auto-fetch is **token-gated**: with a token set, a **fresh license is fetched on every startup** (the portal rolls Pro/Free expiry forward) and written to `Indx:LicenseFile` (default `./IndxData/indx.license`). **Without a token, auto-fetch is a no-op** — the server never reaches out and relies on a manually placed file or free-tier mode. Fetch failures are logged but never fatal — the server keeps any existing file, or falls back to free-tier mode. Set the token via environment variable or Key Vault, not in `appsettings.json`.
+
+> **Legacy:** the old `Indx__LicenseDownloadUrl` setting is no longer read — the URL is hardcoded and fetching is driven solely by `Indx__LicenseToken`. Remove it from any existing configuration.
 
 ## Deployment
 
