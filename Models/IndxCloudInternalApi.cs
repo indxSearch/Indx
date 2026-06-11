@@ -612,51 +612,101 @@ namespace IndxCloudApi.Models
         #region Private Methods
         private void InitializeSystem()
         {
-            _logger.Log(LogLevel.Information, $"{nameof(IndxCloudInternalApi)}.{nameof(InitializeSystem)} starting up");
+            const string tag = nameof(IndxCloudInternalApi) + "." + nameof(InitializeSystem);
+            _logger.Log(LogLevel.Information, $"{tag} starting up");
             if (string.IsNullOrEmpty(SearchDbConnectionString))
             {
-                _logger.LogError($"{nameof(IndxCloudInternalApi)}.{nameof(InitializeSystem)} SearchDbConnectionString is null or empty");
+                _logger.LogError($"{tag} SearchDbConnectionString is null or empty");
                 throw new InvalidOperationException("SearchDbConnectionString is null or empty");
             }
+
+            // Tracks the dataset currently being warmed up so the catch block can report which
+            // dataset failed (e.g. when an OutOfMemoryException is thrown mid-load).
+            string currentTeamId = "";
+            string currentDataSet = "";
             try
             {
                 var sqLiteManager = new SqLiteManager(SearchDbConnectionString);
                 if (!sqLiteManager.DatabaseExists())
                 {
-                    _logger.LogInformation($"{nameof(IndxCloudInternalApi)}.{nameof(InitializeSystem)} no database found at {SearchDbConnectionString}");
+                    _logger.LogInformation($"{tag} no database found at {SearchDbConnectionString}");
                     return;
                 }
                 // Owner keys in the storage layer are team ids. Warm up every dataset under each.
                 var owners = sqLiteManager.GetUsers();
-                foreach (var teamId in owners)
+                var work = owners
+                    .SelectMany(teamId => sqLiteManager.GetUserDataSets(teamId)
+                        .Select(dataSet => (teamId, dataSet)))
+                    .ToList();
+                var teamCount = owners.Count;
+                var total = work.Count;
+                _logger.LogInformation($"{tag} warming up {total} dataset(s) across {teamCount} team(s), workingSet {WorkingSetMb()} MB");
+
+                var overallSw = System.Diagnostics.Stopwatch.StartNew();
+                int i = 0, loaded = 0, skipped = 0;
+                foreach (var (teamId, dataSet) in work)
                 {
-                    var dataSets = sqLiteManager.GetUserDataSets(teamId);
-                    foreach (var dataSet in dataSets)
+                    i++;
+                    currentTeamId = teamId;
+                    currentDataSet = dataSet;
+
+                    var instance = FindInstance(dataSet, teamId);
+                    if (instance == null)
                     {
-                        var instance = FindInstance(dataSet, teamId);
-                        if (instance == null)
-                            continue;
-                        var monitor = new ProcessMonitor();
-                        if (instance.Persistence == null)
-                        {
-                            _logger.LogWarning($"{nameof(IndxCloudInternalApi)}.{nameof(InitializeSystem)} instance.Persistence is null for team {teamId} dataset {dataSet}");
-                            continue;
-                        }
-                        if (instance.Persistence.NumberOfJsonRecords() == 0)
-                            continue;
-                        instance.LoadFromDatabaseSync(monitor);
-                        monitor.WaitForCompletion();
-                        monitor = new ProcessMonitor();
-                        instance.Index(monitor: monitor);
-                        monitor.WaitForCompletion();
+                        _logger.LogWarning($"{tag} [{i}/{total}] no engine instance for team {teamId} dataset '{dataSet}', skipping");
+                        skipped++;
+                        continue;
                     }
+                    if (instance.Persistence == null)
+                    {
+                        _logger.LogWarning($"{tag} [{i}/{total}] instance.Persistence is null for team {teamId} dataset '{dataSet}', skipping");
+                        skipped++;
+                        continue;
+                    }
+                    var records = instance.Persistence.NumberOfJsonRecords();
+                    if (records == 0)
+                    {
+                        _logger.LogInformation($"{tag} [{i}/{total}] skipping '{dataSet}' team {teamId}: 0 records");
+                        skipped++;
+                        continue;
+                    }
+
+                    var beforeMb = WorkingSetMb();
+                    _logger.LogInformation($"{tag} [{i}/{total}] loading '{dataSet}' team {teamId}: {records} records, workingSet {beforeMb} MB");
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+
+                    var monitor = new ProcessMonitor();
+                    instance.LoadFromDatabaseSync(monitor);
+                    monitor.WaitForCompletion();
+                    monitor = new ProcessMonitor();
+                    instance.Index(monitor: monitor);
+                    monitor.WaitForCompletion();
+
+                    sw.Stop();
+                    var afterMb = WorkingSetMb();
+                    loaded++;
+                    _logger.LogInformation($"{tag} [{i}/{total}] loaded '{dataSet}' in {sw.ElapsedMilliseconds} ms, workingSet now {afterMb} MB (delta {afterMb - beforeMb} MB)");
                 }
+
+                overallSw.Stop();
+                _logger.LogInformation($"{tag} completed: {loaded} loaded, {skipped} empty/skipped, {overallSw.ElapsedMilliseconds} ms, workingSet {WorkingSetMb()} MB");
             }
             catch (Exception ex)
             {
-                _logger.LogError($"{nameof(IndxCloudInternalApi)}.{nameof(InitializeSystem)} {ex.ToString()}");
+                _logger.LogError($"{tag} failed while processing dataset '{currentDataSet}' team {currentTeamId}: {ex}");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// Current process working set in whole megabytes. Reflects total resident memory,
+        /// including the unmanaged native allocations made by the search engine (which managed
+        /// GC counters do not see), so it is the right gauge for startup memory pressure.
+        /// </summary>
+        private static long WorkingSetMb()
+        {
+            using var proc = System.Diagnostics.Process.GetCurrentProcess();
+            return proc.WorkingSet64 / (1024 * 1024);
         }
 
         private static Query FromCloudQuery2Query(CloudQuery cloudQuery, ICloudSearchEngine engine)

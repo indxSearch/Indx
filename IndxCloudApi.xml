@@ -564,6 +564,13 @@
             free-tier document limit.
             </summary>
         </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.WorkingSetMb">
+            <summary>
+            Current process working set in whole megabytes. Reflects total resident memory,
+            including the unmanaged native allocations made by the search engine (which managed
+            GC counters do not see), so it is the right gauge for startup memory pressure.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ResolveEngine(System.String,System.String)">
             <summary>
             Returns the engine for a team-owned dataset, or null if the dataset doesn't exist.
