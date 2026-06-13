@@ -482,7 +482,9 @@ namespace IndxCloudApi.Controllers
                 return BadRequest("invalid dataSetName");
             return RunHeavy(dataSetName, ctx.OwnerKey, "InsertJsonRecords", engine =>
             {
-                engine.InsertJsonRecords(jsonRecords, null, out _);
+                var result = engine.InsertJsonRecords(jsonRecords, null, out string error2);
+                if (!result)
+                    return BadRequest(error2);
                 return Ok();
             });
         }
