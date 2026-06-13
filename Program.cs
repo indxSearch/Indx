@@ -183,48 +183,61 @@ public class Program
         // JWT Authentication for API
         var jwtkey = builder.Configuration["Jwt:Key"];
         var defaultKey = "your-secret-key-minimum-32-characters-change-in-production";
-        var jwtKeyFile = "./IndxData/jwt.key";
+        // Anchor the key file to the content root, NOT the process CWD. IndxCloudApi is launched
+        // many ways (various VS profiles, `dotnet run`, the published app) whose working directories
+        // differ; a CWD-relative path silently resolves to the wrong place and the key isn't found.
+        var jwtKeyFile = Path.Combine(builder.Environment.ContentRootPath, "IndxData", "jwt.key");
         var isPlaceholder = jwtkey == defaultKey;
         var keyMissingOrPlaceholder = string.IsNullOrEmpty(jwtkey) || isPlaceholder;
 
         // Reject the well-known placeholder sample value in Production: hitting this means
         // someone copied the example config verbatim, which would leave the token-signing
-        // secret known to anyone with the source. A *missing* key is fine — we auto-generate
-        // and persist a strong one below, so a freshly downloaded IndxCloudApi deploys
-        // without friction (self-hosted customers don't have to configure anything).
+        // secret known to anyone with the source. In the Azure Marketplace managed app the key is
+        // supplied from Key Vault as the Jwt__Key app setting (see marketplace/main.bicep), so
+        // Production normally takes the "custom key" branch below and never touches the file.
         if (builder.Environment.IsProduction() && isPlaceholder)
         {
             throw new InvalidOperationException(
-                "Jwt:Key is set to the placeholder sample value in Production. Remove it so a " +
-                "secure key is auto-generated, or set Jwt:Key to a real secret (>= 32 chars) " +
-                "via Key Vault or an environment variable.");
+                "Jwt:Key is set to the placeholder sample value in Production. Set Jwt:Key to a real " +
+                "secret (>= 32 chars) via Key Vault or an environment variable, or remove it to use " +
+                "the persisted IndxData/jwt.key.");
         }
 
         if (keyMissingOrPlaceholder)
         {
-            // Try to load a previously auto-generated key
             if (File.Exists(jwtKeyFile))
             {
+                // Reuse the persisted key so previously-issued tokens keep validating.
                 jwtkey = File.ReadAllText(jwtKeyFile).Trim();
                 Console.WriteLine("✓ JWT key loaded from IndxData/jwt.key");
+
+                // A local key file is fine for a single node, but scale-out/multi-instance hosting
+                // needs a shared secret or tokens issued by one node fail validation on another.
+                if (builder.Environment.IsProduction())
+                {
+                    Console.WriteLine(
+                        "⚠ Running on the local IndxData/jwt.key in Production. For multi-instance " +
+                        "deployments set Jwt:Key explicitly (Key Vault or environment variable).");
+                }
+            }
+            else if (builder.Environment.IsProduction())
+            {
+                // No configured key and no persisted file. We deliberately do NOT generate one in
+                // Production — a fresh key silently invalidates every previously-issued token, and a
+                // proper deployment (the Marketplace managed app) supplies Jwt:Key from Key Vault.
+                // Fail loudly so the misconfiguration is obvious instead of subtly breaking auth.
+                throw new InvalidOperationException(
+                    $"No JWT signing key: Jwt:Key is not configured and no persisted key exists at " +
+                    $"'{jwtKeyFile}'. Set Jwt:Key (Key Vault or environment variable) for production.");
             }
             else
             {
-                // Generate and persist a new key on first run
-                Directory.CreateDirectory("./IndxData");
+                // Development convenience: generate and persist a key on first run so the app starts
+                // regardless of how it was launched. Dev tokens are throwaway, so regenerating is fine.
+                Directory.CreateDirectory(Path.GetDirectoryName(jwtKeyFile)!);
                 jwtkey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
                 File.WriteAllText(jwtKeyFile, jwtkey);
-                Console.WriteLine("✓ JWT key auto-generated and saved to IndxData/jwt.key");
-            }
-
-            // An auto-generated key lives only on this instance's disk. Fine for a single
-            // node, but scale-out/multi-instance hosting needs a shared secret or tokens
-            // issued by one node fail validation on another.
-            if (builder.Environment.IsProduction())
-            {
-                Console.WriteLine(
-                    "⚠ Running on an auto-generated JWT key in Production. For multi-instance " +
-                    "deployments set Jwt:Key explicitly (Key Vault or environment variable).");
+                Console.WriteLine("✓ JWT key auto-generated and saved to IndxData/jwt.key (Development)");
             }
         }
         else
