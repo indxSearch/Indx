@@ -1,10 +1,13 @@
 @page "/Admin/Teams"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
 @using IndxCloudApi.Data
 @using IndxCloudApi.Models
+@using IndxCloudApi.Services
 @attribute [Authorize(Roles = "Admin")]
 @inject IndxCloudApi.Services.TeamService TeamService
+@inject UserManager<ApplicationUser> UserManager
 
 <PageTitle>Admin — Teams</PageTitle>
 
@@ -15,7 +18,7 @@
 <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 40px;">
     <div>
         <h2 style="margin-bottom: 4px;">Teams</h2>
-        <p style="color: var(--lv5);">All teams created on this instance.</p>
+        <p style="color: var(--lv5);">All teams created on this instance. <strong>Admins</strong> own and manage their team; Editors and Viewers are members.</p>
     </div>
     <Button Variant="ghost" Size="micro" IconLeft="_iconRefresh" style="margin-left: auto;" @onclick="Load">Refresh</Button>
 </div>
@@ -30,33 +33,51 @@ else if (_rows.Count == 0)
 }
 else
 {
-    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
-        <thead>
-            <tr style="border-bottom: 1px solid var(--lv3); color: var(--lv5);">
-                <th style="text-align: left; padding: 8px 12px; font-weight: 500;">Team</th>
-                <th style="text-align: right; padding: 8px 12px; font-weight: 500;">Members</th>
-                <th style="text-align: right; padding: 8px 12px; font-weight: 500;">Datasets</th>
-                <th style="text-align: left; padding: 8px 12px; font-weight: 500;">Created</th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var row in _rows)
-            {
-                <tr style="border-bottom: 1px solid var(--lv2);">
-                    <td style="padding: 10px 12px; color: var(--lv6); font-family: monospace;">@row.Name</td>
-                    <td style="padding: 10px 12px; text-align: right; color: var(--lv5); font-variant-numeric: tabular-nums;">@row.MemberCount</td>
-                    <td style="padding: 10px 12px; text-align: right; color: var(--lv5); font-variant-numeric: tabular-nums;">@row.DatasetCount</td>
-                    <td style="padding: 10px 12px; color: var(--lv5);">@row.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</td>
-                </tr>
-            }
-        </tbody>
-    </table>
+    @foreach (var row in _rows)
+    {
+        <div style="border: 1px solid var(--lv3); border-radius: var(--radius); background: var(--lv0); margin-bottom: 12px;">
+            <div style="display: flex; align-items: center; gap: 16px; padding: 12px 16px; border-bottom: 1px solid var(--lv2);">
+                <span style="font-family: monospace; color: var(--lv6); font-weight: 500;">@row.Name</span>
+                <span style="color: var(--lv5); font-size: 12px;">
+                    @row.Members.Count member@(row.Members.Count == 1 ? "" : "s") · @row.DatasetCount dataset@(row.DatasetCount == 1 ? "" : "s")
+                </span>
+                <span style="margin-left: auto; color: var(--lv5); font-size: 12px;">created @row.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</span>
+            </div>
+
+            <div style="padding: 4px 16px 8px;">
+                @if (row.Members.Count == 0)
+                {
+                    <p style="color: var(--lv4); font-size: 13px; padding: 8px 0;">No members.</p>
+                }
+                else
+                {
+                    @foreach (var m in row.Members)
+                    {
+                        <div style="display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--lv1);">
+                            <span style="min-width: 96px;">
+                                @if (m.Role == TeamRoles.Admin)
+                                {
+                                    <Chip Color="var(--CTeal)" TextColor="#080809">Owner · Admin</Chip>
+                                }
+                                else
+                                {
+                                    <Chip Color="var(--lv2)" TextColor="var(--lv5)">@m.Role</Chip>
+                                }
+                            </span>
+                            <span style="color: var(--lv6); font-size: 13px;">@m.Email</span>
+                        </div>
+                    }
+                }
+            </div>
+        </div>
+    }
 }
 
 @code {
     private RenderFragment<int> _iconRefresh => size => @<Refresh Size="size" />;
 
-    private record TeamRow(string Name, int MemberCount, int DatasetCount, DateTime CreatedAt);
+    private record MemberInfo(string Email, string Role);
+    private record TeamRow(string Name, int DatasetCount, DateTime CreatedAt, List<MemberInfo> Members);
 
     private List<TeamRow>? _rows;
 
@@ -69,11 +90,36 @@ else
             .GroupBy(d => d.TeamId)
             .ToDictionary(g => g.Key, g => g.Count());
 
-        var teams = await TeamService.GetAllWithMemberCountsAsync();
-        _rows = [.. teams.Select(t => new TeamRow(
-            t.Team.Name,
-            t.MemberCount,
-            datasetCounts.GetValueOrDefault(t.Team.Id.ToString()),
-            t.Team.CreatedAt))];
+        // Resolve member user ids to emails in one pass.
+        var emailById = UserManager.Users.ToList()
+            .ToDictionary(u => u.Id, u => u.Email ?? u.UserName ?? u.Id);
+
+        var membersByTeam = (await TeamService.GetAllMembersAsync())
+            .GroupBy(m => m.TeamId)
+            .ToDictionary(g => g.Key, g => g.ToList());
+
+        var teams = await TeamService.GetAllAsync();
+        _rows = [.. teams.Select(t =>
+        {
+            var members = (membersByTeam.GetValueOrDefault(t.Id) ?? [])
+                .Select(m => new MemberInfo(emailById.GetValueOrDefault(m.UserId, m.UserId), m.Role))
+                .OrderBy(m => RoleRank(m.Role))
+                .ThenBy(m => m.Email, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            return new TeamRow(
+                t.Name,
+                datasetCounts.GetValueOrDefault(t.Id.ToString()),
+                t.CreatedAt,
+                members);
+        })];
     }
+
+    // Admins (owners) first, then Editors, then Viewers.
+    private static int RoleRank(string role) => role switch
+    {
+        TeamRoles.Admin => 0,
+        TeamRoles.Editor => 1,
+        TeamRoles.Viewer => 2,
+        _ => 3
+    };
 }

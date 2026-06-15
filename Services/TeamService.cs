@@ -47,6 +47,10 @@ namespace IndxCloudApi.Services
         public Task<List<TeamMember>> GetMembersAsync(Guid teamId) =>
             db.TeamMembers.Where(m => m.TeamId == teamId).ToListAsync();
 
+        /// <summary>Every membership row across all teams, for the admin overview.</summary>
+        public Task<List<TeamMember>> GetAllMembersAsync() =>
+            db.TeamMembers.ToListAsync();
+
         /// <summary>All teams (admin view).</summary>
         public Task<List<Team>> GetAllAsync() =>
             db.Teams.OrderBy(t => t.Name).ToListAsync();
