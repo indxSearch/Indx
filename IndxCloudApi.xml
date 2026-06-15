@@ -1134,6 +1134,9 @@
         <member name="M:IndxCloudApi.Services.TeamService.GetTeamsForUserAsync(System.String)">
             <summary>All teams the user belongs to, with the user's role on each.</summary>
         </member>
+        <member name="M:IndxCloudApi.Services.TeamService.GetAllMembersAsync">
+            <summary>Every membership row across all teams, for the admin overview.</summary>
+        </member>
         <member name="M:IndxCloudApi.Services.TeamService.GetAllAsync">
             <summary>All teams (admin view).</summary>
         </member>
