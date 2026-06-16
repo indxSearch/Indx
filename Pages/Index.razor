@@ -86,6 +86,10 @@ else
             var isLoadIndexing = _loadIndexingDataset == datasetName;
             var isAnalyzed = _bufferedFiles.ContainsKey(datasetName);
             var activeTab = _datasetTabs.GetValueOrDefault(selectedDataset, "fields");
+            // A Created engine with records persisted on disk is hibernated (manual datasets stay
+            // this way until woken; timed/pinned wake themselves on access), not an empty dataset.
+            var recordCount = _keepAlive.GetValueOrDefault(datasetName)?.RecordCount ?? 0;
+            var isHibernated = engineState == SystemState.Created && recordCount > 0;
 
             <div class="indx-dataset-card">
                 <div class="indx-dataset-card-inner">
@@ -100,7 +104,14 @@ else
                                         <tr>
                                             <td>System State</td>
                                             <td style="display:flex; gap:6px; align-items:center;">
-                                                <Chip Color="@StateChipColor(engineState)" TextColor="@StateChipTextColor(engineState)">@status.SystemState</Chip>
+                                                @if (isHibernated)
+                                                {
+                                                    <Chip Color="var(--CLightBlue)" TextColor="#080809">💤 Hibernated</Chip>
+                                                }
+                                                else
+                                                {
+                                                    <Chip Color="@StateChipColor(engineState)" TextColor="@StateChipTextColor(engineState)">@status.SystemState</Chip>
+                                                }
                                                 @if (isSaving && engineState == SystemState.Ready)
                                                 {
                                                     <Chip Color="var(--lv8)" TextColor="var(--lv0)">Shadow indexing</Chip>
@@ -180,31 +191,47 @@ else
                                 </div>
                             }
 
-                            @* ── Not yet uploaded ── *@
+                            @* ── Hibernated (data on disk, engine not loaded) or empty (needs upload) ── *@
                             @if (engineState == SystemState.Created && !isAnalyzed && !isUploading && !isLoadIndexing && isEditor)
                             {
-                                <p style="color:var(--lv5);margin-top:16px;">Upload a JSON file to configure and index this dataset.</p>
-                                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
-                                    <InputFile OnChange="@(e => OnFileSelected(datasetName, e))" accept=".json" style="display:none" id="@($"fileinput-{datasetName}")" />
-                                    <label for="@($"fileinput-{datasetName}")" class="indx-upload-label">
-                                        <Json Size="14" />
+                                @if (isHibernated)
+                                {
+                                    <p style="color:var(--lv5);margin-top:16px;max-width:560px;">
+                                        This dataset is <strong>hibernated</strong> — @recordCount.ToString("N0") document@(recordCount == 1 ? "" : "s") @(recordCount == 1 ? "is" : "are") stored on disk but not loaded into memory. Wake it to search and edit.
+                                    </p>
+                                    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                                        <Button Variant="primary" Size="micro" @onclick="() => StartWake(datasetName)">Wake / load</Button>
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(_uploadError) && _uploadErrorDataset == datasetName)
+                                    {
+                                        <p style="color:var(--CSignal);margin-top:4px;">@_uploadError</p>
+                                    }
+                                }
+                                else
+                                {
+                                    <p style="color:var(--lv5);margin-top:16px;">Upload a JSON file to configure and index this dataset.</p>
+                                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px;">
+                                        <InputFile OnChange="@(e => OnFileSelected(datasetName, e))" accept=".json" style="display:none" id="@($"fileinput-{datasetName}")" />
+                                        <label for="@($"fileinput-{datasetName}")" class="indx-upload-label">
+                                            <Json Size="14" />
+                                            @if (_selectedFile != null && _selectedFileDataset == datasetName)
+                                            {
+                                                <span>@_selectedFile.Name (@FormatBytes(_selectedFile.Size))</span>
+                                            }
+                                            else
+                                            {
+                                                <span>Choose JSON file…</span>
+                                            }
+                                        </label>
                                         @if (_selectedFile != null && _selectedFileDataset == datasetName)
                                         {
-                                            <span>@_selectedFile.Name (@FormatBytes(_selectedFile.Size))</span>
+                                            <Button Variant="primary" Size="micro" @onclick="() => StartUpload(datasetName)">Upload</Button>
                                         }
-                                        else
-                                        {
-                                            <span>Choose JSON file…</span>
-                                        }
-                                    </label>
-                                    @if (_selectedFile != null && _selectedFileDataset == datasetName)
+                                    </div>
+                                    @if (!string.IsNullOrEmpty(_uploadError) && _uploadErrorDataset == datasetName)
                                     {
-                                        <Button Variant="primary" Size="micro" @onclick="() => StartUpload(datasetName)">Upload</Button>
+                                        <p style="color:var(--CSignal);margin-top:4px;">@_uploadError</p>
                                     }
-                                </div>
-                                @if (!string.IsNullOrEmpty(_uploadError) && _uploadErrorDataset == datasetName)
-                                {
-                                    <p style="color:var(--CSignal);margin-top:4px;">@_uploadError</p>
                                 }
                                 <div style="margin-top:16px;">
                                     @if (deleteConfirmDataset == datasetName)
@@ -1252,6 +1279,94 @@ else
                 Console.WriteLine($"Index failed: {indexMonitor.ErrorMessage}");
 
             // Refresh field config
+            var freshEngine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, activeTeamId!);
+            var freshFields = freshEngine?.GetFieldConfiguration();
+            if (freshFields != null)
+            {
+                fieldConfigs[datasetName] = freshFields;
+                _editedFieldConfigs[datasetName] = freshFields.Select(DeepCopy).ToArray();
+            }
+        }
+        catch (ObjectDisposedException) { }
+        finally
+        {
+            pollCts.Cancel();
+            pollCts.Dispose();
+            _loadIndexingDataset = null;
+            _loadProgress = 0;
+            _indexProgress = 0;
+            _isIndexingPhase = false;
+            try
+            {
+                await InvokeAsync(async () =>
+                {
+                    await LoadDatasets();
+                    StateHasChanged();
+                });
+            }
+            catch (ObjectDisposedException) { }
+        }
+    }
+
+    // ── Wake a hibernated dataset (load + index from the store, no upload) ───────
+
+    private void StartWake(string datasetName)
+    {
+        _uploadError = null;
+        _uploadErrorDataset = null;
+        _loadIndexingDataset = datasetName;   // reuses the Load/Index progress bars
+        _loadProgress = 0;
+        _indexProgress = 0;
+        _isIndexingPhase = false;
+        _ = RunWakeAsync(datasetName);
+    }
+
+    private async Task RunWakeAsync(string datasetName)
+    {
+        var pollCts = new CancellationTokenSource();
+        try
+        {
+            // Phase 1: rehydrate documents from the SQLite store (data is already persisted).
+            var loadMonitor = new ProcessMonitor();
+            var pollTask = PollProgressAsync(loadMonitor, v => _loadProgress = v, pollCts.Token);
+            await Task.Run(() =>
+            {
+                IndxCloudInternalApi.Manager.LoadFromDatabase(datasetName, activeTeamId!, loadMonitor);
+                loadMonitor.WaitForCompletion();
+            });
+            pollCts.Cancel();
+            try { await pollTask; } catch { }
+            _loadProgress = loadMonitor.ProgressPercent;
+            await InvokeAsync(StateHasChanged);
+
+            if (!loadMonitor.Succeeded)
+            {
+                _uploadError = $"Wake failed: {loadMonitor.ErrorMessage ?? "could not load from store"}";
+                _uploadErrorDataset = datasetName;
+                return;
+            }
+
+            // Phase 2: rebuild the inverted index.
+            _loadProgress = 100;
+            _indexProgress = 0;
+            _isIndexingPhase = true;
+            await InvokeAsync(StateHasChanged);
+
+            var indexMonitor = new ProcessMonitor();
+            pollCts = new CancellationTokenSource();
+            pollTask = PollProgressAsync(indexMonitor, v => _indexProgress = v, pollCts.Token);
+            await Task.Run(() =>
+            {
+                var eng = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, activeTeamId!);
+                eng?.Index(monitor: indexMonitor);
+                indexMonitor.WaitForCompletion();
+            });
+            pollCts.Cancel();
+            try { await pollTask; } catch { }
+            _indexProgress = indexMonitor.ProgressPercent;
+            await InvokeAsync(StateHasChanged);
+
+            // Refresh field config so the Ready view renders correctly.
             var freshEngine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, activeTeamId!);
             var freshFields = freshEngine?.GetFieldConfiguration();
             if (freshFields != null)

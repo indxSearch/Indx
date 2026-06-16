@@ -400,8 +400,8 @@ namespace IndxCloudApi.Models
             lock (_dictionaryLock)
                 _instances.TryGetValue(MakeKey(dataSetName, teamId), out inst);
 
-            int hrs = inst?.KeepAliveTimeHrs
-                ?? new SqLiteManager(SearchDbConnectionString).ReadKeepAliveHrs(dataSetName, teamId);
+            var db = new SqLiteManager(SearchDbConnectionString);
+            int hrs = inst?.KeepAliveTimeHrs ?? db.ReadKeepAliveHrs(dataSetName, teamId);
 
             bool loaded = inst?.theInstance?.Status.SystemState == SystemState.Ready;
             DateTimeOffset? lastUsed = inst != null ? inst.LastUsedUtc : null;
@@ -412,7 +412,11 @@ namespace IndxCloudApi.Models
                 var rem = TimeSpan.FromHours(hrs) - (TimeProvider.GetUtcNow() - inst.LastUsedUtc);
                 remaining = rem > TimeSpan.Zero ? rem : TimeSpan.Zero;
             }
-            return new KeepAliveInfo(hrs, loaded, lastUsed, remaining);
+
+            // On-disk record count — non-zero on a Created dataset means it's hibernated (data
+            // persisted, engine not loaded) rather than empty. The website uses this to offer a wake.
+            int recordCount = db.NumberOfJsonRecordsInDataSet(dataSetName, teamId);
+            return new KeepAliveInfo(hrs, loaded, lastUsed, remaining, recordCount);
         }
 
         /// <summary>
@@ -946,7 +950,7 @@ namespace IndxCloudApi.Models
         /// the setting and the countdown. <paramref name="Remaining"/> is null when not loaded or for
         /// the non-counting policies (0 / int.MaxValue).
         /// </summary>
-        internal sealed record KeepAliveInfo(int KeepAliveTimeHrs, bool Loaded, DateTimeOffset? LastUsedUtc, TimeSpan? Remaining);
+        internal sealed record KeepAliveInfo(int KeepAliveTimeHrs, bool Loaded, DateTimeOffset? LastUsedUtc, TimeSpan? Remaining, int RecordCount);
 
         private sealed class SearchEngineInstance
         {

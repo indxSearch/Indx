@@ -628,7 +628,7 @@
             the non-counting policies (0 / int.MaxValue).
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.KeepAliveInfo.#ctor(System.Int32,System.Boolean,System.Nullable{System.DateTimeOffset},System.Nullable{System.TimeSpan})">
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.KeepAliveInfo.#ctor(System.Int32,System.Boolean,System.Nullable{System.DateTimeOffset},System.Nullable{System.TimeSpan},System.Int32)">
             <summary>
             Snapshot of a dataset's keep-alive policy and live runtime state, for the website to show
             the setting and the countdown. <paramref name="Remaining"/> is null when not loaded or for
