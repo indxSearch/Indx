@@ -1327,11 +1327,15 @@ else
         try
         {
             // Phase 1: rehydrate documents from the SQLite store (data is already persisted).
+            // Call LoadFromDatabaseSync directly — the same path the startup warmup / lazy-reload
+            // use. It loads the document fields itself, reports progress, and finishes the monitor.
             var loadMonitor = new ProcessMonitor();
             var pollTask = PollProgressAsync(loadMonitor, v => _loadProgress = v, pollCts.Token);
             await Task.Run(() =>
             {
-                IndxCloudInternalApi.Manager.LoadFromDatabase(datasetName, activeTeamId!, loadMonitor);
+                var eng = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, activeTeamId!);
+                if (eng == null) { loadMonitor.MarkFinished(); return; }
+                eng.LoadFromDatabaseSync(loadMonitor);
                 loadMonitor.WaitForCompletion();
             });
             pollCts.Cancel();
