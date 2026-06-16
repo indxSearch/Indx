@@ -776,35 +776,8 @@ a.btn-danger:hover {
     border-color: var(--lv4);
 }
 
-/* Input */
-.indx-input {
-    font: var(--text-xs);
-    padding: 10px;
-    height: 30px;
-    border: 1px solid var(--lv3);
-    border-radius: var(--radius);
-    background: transparent;
-    color: var(--lv7);
-    box-sizing: border-box;
-    width: 100%;
-}
-.indx-input:not(:disabled):hover { border-color: var(--lv5); }
-.indx-input:not(:disabled):active { border-color: var(--lv5); }
-.indx-input:focus { outline: none; border-color: var(--lv5); }
-.indx-input::placeholder { color: var(--lv5); }
-.indx-input:disabled { opacity: 0.6; cursor: not-allowed; }
-.indx-input::selection { background: var(--lv3); }
-.indx-input[type="number"]::-webkit-inner-spin-button,
-.indx-input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.indx-input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
-.indx-input-error { border-color: var(--CSignal); }
-.indx-input-error:focus { border-color: var(--CSignal); }
-.indx-input-error-text { font: var(--text-2xs); color: var(--CSignal); }
-.indx-input-border-bottom { padding: 0; border: none; border-bottom: 1px solid var(--lv3); border-radius: 0; }
-.indx-input-border-bottom:not(:disabled):hover { border-bottom-color: var(--lv5); }
-.indx-input-border-bottom:not(:disabled):active { border-bottom-color: var(--lv5); }
-.indx-input-border-bottom:focus { outline: none; border-bottom-color: var(--lv5); }
-.indx-input-border-bottom.indx-input-error { border-bottom-color: var(--CSignal); }
-.indx-input-border-bottom.indx-input-error:focus { border-bottom-color: var(--CSignal); }
+/* Input (.indx-input) styling now lives in the library global stylesheet:
+   Indx.Systm.Blazor/wwwroot/indx-systm.css — shared by the InputField
+   component and raw <input class="indx-input"> usages. */
 
 /* Chip styling now lives with the component: Indx.Systm.Blazor/Chip.razor.css */
