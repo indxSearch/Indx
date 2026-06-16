@@ -626,7 +626,7 @@ else
                                     @if (ka?.KeepAliveTimeHrs == 0)
                                     {
                                         <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
-                                            <Button Variant="secondary" Size="micro" @onclick="() => HibernateDataset(datasetName)" disabled="@_hibernating">
+                                            <Button Variant="secondary" Size="micro" IconLeft="_iconHibernate" @onclick="() => HibernateDataset(datasetName)" disabled="@_hibernating">
                                                 @(_hibernating ? "Hibernating…" : "Hibernate now")
                                             </Button>
                                             <span style="color:var(--lv4);font:var(--text-xs);">Unloads from memory; data stays on disk. Wake it from the Field configuration tab.</span>
