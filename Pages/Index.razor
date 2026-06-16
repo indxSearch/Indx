@@ -106,15 +106,15 @@ else
                                             <td style="display:flex; gap:6px; align-items:center;">
                                                 @if (isHibernated)
                                                 {
-                                                    <Chip Color="var(--CLightBlue)" TextColor="#080809">💤 Hibernated</Chip>
+                                                    <Chip Size="large" Color="var(--CLightBlue)" TextColor="#080809">💤 Hibernated</Chip>
                                                 }
                                                 else
                                                 {
-                                                    <Chip Color="@StateChipColor(engineState)" TextColor="@StateChipTextColor(engineState)" Icon="@StateChipIcon(engineState)">@status.SystemState</Chip>
+                                                    <Chip Size="large" Color="@StateChipColor(engineState)" TextColor="@StateChipTextColor(engineState)" Icon="@StateChipIcon(engineState)">@status.SystemState</Chip>
                                                 }
                                                 @if (isSaving && engineState == SystemState.Ready)
                                                 {
-                                                    <Chip Color="var(--lv8)" TextColor="var(--lv0)">Shadow indexing</Chip>
+                                                    <Chip Size="large" Color="var(--lv8)" TextColor="var(--lv0)">Shadow indexing</Chip>
                                                 }
                                             </td>
                                         </tr>
