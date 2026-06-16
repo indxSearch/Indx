@@ -160,9 +160,9 @@ else
                         }
 
 
-                        @* ── Dataset tab nav (also shown when hibernated, so you can move between
-                              Field config / Options and reach the Wake up action) ── *@
-                        @if (engineState == SystemState.Ready || isHibernated || (isAnalyzed && !isLoadIndexing && isEditor))
+                        @* ── Dataset tab nav (hidden when hibernated: that view is just Wake up /
+                              Delete, no tabs — the user lands here directly after Hibernate now) ── *@
+                        @if (engineState == SystemState.Ready || (isAnalyzed && !isLoadIndexing && isEditor))
                         {
                             <nav class="indx-dataset-nav">
                                 <Button Variant="@(activeTab == "fields" ? "primary" : "ghost")" Size="micro" IconLeft="_iconFields" @onclick="@(() => _datasetTabs[selectedDataset] = "fields")">Field configuration</Button>
