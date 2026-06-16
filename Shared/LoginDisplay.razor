@@ -2,10 +2,10 @@
 
 <AuthorizeView>
     <Authorized>
-        <a href="Account/Manage" class="btn btn-ghost btn-micro">@context.User.Identity?.Name</a>
+        <Button Href="Account/Manage" Variant="ghost" Size="micro">@context.User.Identity?.Name</Button>
     </Authorized>
     <NotAuthorized>
-        <a href="Account/Register" class="btn btn-secondary btn-micro">Register</a>
-        <a href="Account/Login" class="btn btn-secondary btn-micro">Log in</a>
+        <Button Href="Account/Register" Variant="secondary" Size="micro">Register</Button>
+        <Button Href="Account/Login" Variant="secondary" Size="micro">Log in</Button>
     </NotAuthorized>
 </AuthorizeView>
