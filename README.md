@@ -181,11 +181,29 @@ Full API reference available at `/swagger`.
 Two SQLite files in `./IndxData/`:
 
 - `identity.db` — user accounts, roles, and authentication (ASP.NET Core Identity)
-- `indx.db` — application config, API keys, notifications
+- `indx.db` — application config, API keys, notifications, **and each dataset's persisted document store** (the JSON records, field configuration, and keep-alive policy)
 
 Migrations run automatically on startup. No manual migration steps needed.
 
-> Indx search indexes are held in memory — `indx.db` stores configuration and metadata only, not search data.
+> The **inverted search index is held in memory** and rebuilt on load; `indx.db` persists the documents and configuration, so a dataset can be unloaded to free memory and reloaded — re-indexed from the store — without re-uploading data.
+
+## Dataset lifecycle: keep-alive & hibernation
+
+Because the documents live in `indx.db` while only the index is in memory, datasets can be loaded and unloaded on demand to manage RAM. Each dataset has a **keep-alive policy** (`KeepAliveTimeHrs`), set per dataset on the **Datasets** page (a dataset's *Options* tab) or, across all teams, on **Admin → Datasets**:
+
+| Policy | Behaviour |
+|--------|-----------|
+| **Pinned** (default) | Loaded at startup, never evicted. |
+| **Timed** (N hours) | Loaded at startup; evicted from memory after N hours idle, then **reloaded automatically on the next request**. |
+| **Off** (client-managed) | Not loaded at startup and never auto-loaded — you load/wake it explicitly. Never auto-evicted. |
+
+A background sweeper frees idle *Timed* datasets; the next access transparently reloads and re-indexes from `indx.db`. **Pinned** and **Off** datasets are never auto-evicted.
+
+**Manual hibernation.** From a dataset's *Options* tab you can **Hibernate now** an *Off* dataset to free its memory immediately (the data stays on disk). A hibernated dataset shows a **💤 Hibernated** state with a **Wake up** action that reloads it.
+
+> This is a *deep* hibernate — the in-memory engine is disposed and rebuilt from `indx.db` on wake — which is the right model when storage is the source of truth. It is distinct from the core library's lighter `Hibernate`/`WakeUp` (which keeps documents resident in RAM and only drops the index).
+
+Over the HTTP API, the per-dataset `Hibernate`, `WakeUp`, and `LoadFromDatabase` operations control loading — see the [API reference](https://v5.docs.indx.co).
 
 ## Local Development
 
