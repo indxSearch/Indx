@@ -300,7 +300,7 @@ else
                                                         <th><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
                                                         <th><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
                                                         <th><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
-                                                        <th><span class="indx-th-tip" data-tooltip="High-resolution indexing: also indexes the field with delimiters removed, so a run-together or split query still matches across them.">HighResolution</span></th>
+                                                        <th><span class="indx-th-tip" data-tooltip="Sharper matching for run-together or split-word queries. Coverage already matches these; high resolution improves precision — recommended only for key fields such as titles.">HighResolution</span></th>
                                                     }
                                                     <th><span class="indx-th-tip" data-tooltip="Relevance weight for this field (recommended range 0.5–3.0). Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0.">Weight</span></th>
                                                     @if (_showAdvancedFields.Contains(datasetName))
@@ -444,7 +444,7 @@ else
                                                             <th><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
                                                             <th><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
                                                             <th><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
-                                                            <th><span class="indx-th-tip" data-tooltip="High-resolution indexing: also indexes the field with delimiters removed, so a run-together or split query still matches across them.">HighResolution</span></th>
+                                                            <th><span class="indx-th-tip" data-tooltip="Sharper matching for run-together or split-word queries. Coverage already matches these; high resolution improves precision — recommended only for key fields such as titles.">HighResolution</span></th>
                                                         }
                                                         <th><span class="indx-th-tip" data-tooltip="Relevance weight for this field (recommended range 0.5–3.0). Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0.">Weight</span></th>
                                                         @if (_showAdvancedFields.Contains(datasetName))
