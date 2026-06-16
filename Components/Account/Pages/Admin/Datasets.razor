@@ -132,6 +132,7 @@ else
     private RenderFragment<int> _iconTrolley => size => @<Trolley Size="size" />;
     private RenderFragment<int> _iconHourGlass => size => @<HourGlass Size="size" />;
     private RenderFragment<int> _iconWarning => size => @<Warning Size="size" />;
+    private RenderFragment<int> _iconEmpty => size => @<Empty Size="size" />;
 
     private RenderFragment<int>? StateChipIcon(SystemState state) => state switch
     {
@@ -139,6 +140,7 @@ else
         SystemState.Loading => _iconTrolley,
         SystemState.Indexing => _iconHourGlass,
         SystemState.Error => _iconWarning,
+        SystemState.Created => _iconEmpty,
         _ => null,
     };
 
