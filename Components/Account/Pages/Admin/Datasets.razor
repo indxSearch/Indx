@@ -84,11 +84,15 @@ else
                         @if (_editKey == row.Key)
                         {
                             <div style="display: flex; align-items: center; gap: 6px;">
-                                <div style="width: 110px;">
-                                    <InputField @bind-Value="_editValue" placeholder="hours" />
+                                <div style="width: 190px;">
+                                    <SelectField @bind-Value="_editMode" Options="_keepAliveModes" />
                                 </div>
-                                <Tooltip Content="∞ — autoload, never dispose"><Button Variant="ghost" Size="micro" @onclick='() => _editValue = "∞"'>∞</Button></Tooltip>
-                                <Tooltip Content="0 — no autoload, client-managed"><Button Variant="ghost" Size="micro" @onclick='() => _editValue = "0"'>Off</Button></Tooltip>
+                                @if (_editMode == "timed")
+                                {
+                                    <div style="width: 72px;">
+                                        <InputField @bind-Value="_editHours" placeholder="hours" />
+                                    </div>
+                                }
                                 <Button Variant="primary" Size="micro" @onclick="() => SaveKeepAlive(row.DataSetName, row.TeamId)">Save</Button>
                                 <Button Variant="ghost" Size="micro" @onclick="() => _editKey = null">Cancel</Button>
                             </div>
@@ -164,7 +168,15 @@ else
     private string? _errorMessage;
     private string? _deleteConfirmKey;
     private string? _editKey;
-    private string _editValue = "";
+    private string _editMode = "max";   // "max" (∞ pinned) | "0" (manual) | "timed"
+    private string _editHours = "24";
+
+    private static readonly IEnumerable<SelectField.SelectOption> _keepAliveModes =
+    [
+        new("∞ Pinned — always loaded", "max"),
+        new("Off — client-managed", "0"),
+        new("Timed — idle eviction", "timed"),
+    ];
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -192,11 +204,11 @@ else
     {
         _message = null; _errorMessage = null;
         _editKey = row.Key;
-        _editValue = row.KeepAliveTimeHrs switch
+        (_editMode, _editHours) = row.KeepAliveTimeHrs switch
         {
-            int.MaxValue => "∞",
-            0 => "0",
-            _ => row.KeepAliveTimeHrs.ToString(),
+            int.MaxValue => ("max", "24"),
+            0 => ("0", "24"),
+            var h => ("timed", h.ToString()),
         };
     }
 
@@ -204,14 +216,18 @@ else
     {
         _message = null; _errorMessage = null;
 
-        var raw = (_editValue ?? "").Trim();
         int hrs;
-        if (raw is "∞" or "inf" or "max" || string.Equals(raw, "pinned", StringComparison.OrdinalIgnoreCase))
-            hrs = int.MaxValue;
-        else if (!int.TryParse(raw, out hrs) || hrs < 0)
+        switch (_editMode)
         {
-            _errorMessage = $"\"{raw}\" is not a valid keep-alive value. Use a whole number of hours, 0 (manual), or ∞ (pinned).";
-            return;
+            case "max": hrs = int.MaxValue; break;
+            case "0": hrs = 0; break;
+            default:
+                if (!int.TryParse((_editHours ?? "").Trim(), out hrs) || hrs < 1)
+                {
+                    _errorMessage = $"\"{_editHours}\" is not a valid number of hours — enter a whole number of 1 or more.";
+                    return;
+                }
+                break;
         }
 
         var ok = IndxCloudInternalApi.Manager.SetKeepAliveHrs(dataSetName, teamId, hrs);
