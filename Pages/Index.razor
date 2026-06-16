@@ -22,16 +22,9 @@
 
 <PageTitle>Indx Cloud API</PageTitle>
 
-<div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px;">
-    <div>
-        <h1>Indx Cloud API @GetVersion()</h1>
-        <p style="color: var(--lv5); margin-top: 4px;">Powered by Indx @_indxVersion</p>
-    </div>
-    <TeamSwitcher />
-</div>
-
 <div class="indx-datasets-heading">
     <h2>Datasets</h2>
+    <TeamSwitcher />
     @if (!isLoading)
     {
         @if (_showNewDatasetForm)
@@ -633,9 +626,6 @@ else
 }
 
 @code {
-    private static readonly string _indxVersion =
-        Assembly.GetAssembly(typeof(SearchEngine))?.GetName().Version?.ToString(3) ?? "";
-
     private string[]? datasets;
     private static string StateChipColor(SystemState state) => state switch
     {
@@ -730,17 +720,6 @@ else
     private HashSet<string> _perfRunning = new();
 
     private record PerfTestResult(int Iterations, double TotalMs, double AvgMs, double MinMs, double MaxMs);
-
-    private string GetVersion()
-    {
-        var version = Assembly.GetExecutingAssembly()
-            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?
-            .InformationalVersion ?? "";
-        var plusIndex = version.IndexOf('+');
-        if (plusIndex > 0)
-            version = version.Substring(0, plusIndex);
-        return version;
-    }
 
     protected override async Task OnInitializedAsync()
     {

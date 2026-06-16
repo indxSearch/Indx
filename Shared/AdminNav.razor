@@ -1,4 +1,10 @@
-@* Shared admin section tab bar. Pass the active tab's key via Active. *@
+@using System.Reflection
+@using Indx.Api
+@* Shared admin section header + tab bar. Pass the active tab's key via Active. *@
+<div style="margin-bottom: 24px;">
+    <h1>Indx Cloud API @_apiVersion</h1>
+    <p style="color: var(--lv5); margin-top: 4px;">Powered by Indx @_indxVersion</p>
+</div>
 <div style="display: flex; gap: 8px; margin-bottom: 40px; border-bottom: 1px solid var(--lv2); padding-bottom: 0;">
     @foreach (var tab in _tabs)
     {
@@ -11,6 +17,20 @@
 @code {
     /// <summary>Key of the active tab: Users | Teams | Datasets | Settings | EmailPreview.</summary>
     [Parameter] public string Active { get; set; } = "";
+
+    // Version banner (moved here from the Datasets page so it heads the admin area).
+    private static readonly string _indxVersion =
+        Assembly.GetAssembly(typeof(SearchEngine))?.GetName().Version?.ToString(3) ?? "";
+
+    private static readonly string _apiVersion = GetApiVersion();
+
+    private static string GetApiVersion()
+    {
+        var version = Assembly.GetExecutingAssembly()
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion ?? "";
+        var plusIndex = version.IndexOf('+');
+        return plusIndex > 0 ? version[..plusIndex] : version;
+    }
 
     private static readonly (string Key, string Label, string Href)[] _tabs =
     [
