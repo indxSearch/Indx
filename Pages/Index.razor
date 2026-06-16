@@ -300,6 +300,7 @@ else
                                                         <th><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
                                                         <th><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
                                                         <th><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
+                                                        <th><span class="indx-th-tip" data-tooltip="High-resolution indexing: also indexes the field with delimiters removed, so a run-together or split query still matches across them.">HighResolution</span></th>
                                                     }
                                                     <th><span class="indx-th-tip" data-tooltip="Relevance weight for this field (recommended range 0.5–3.0). Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0.">Weight</span></th>
                                                     @if (_showAdvancedFields.Contains(datasetName))
@@ -331,6 +332,7 @@ else
                                                             <td class="indx-table-check"><Checkbox Checked="@(field.WordIndexing == true)" CheckedChanged="@(v => { field.WordIndexing = v; })" /></td>
                                                             <td class="indx-table-check"><Checkbox Checked="@(field.Embeddable == true)" CheckedChanged="@(v => { field.Embeddable = v; })" /></td>
                                                             <td class="indx-table-check"><Checkbox Checked="@(field.PreloadFilters == true)" CheckedChanged="@(v => { field.PreloadFilters = v; })" /></td>
+                                                            <td class="indx-table-check"><Checkbox Checked="@(field.HighResolution == true)" CheckedChanged="@(v => { field.HighResolution = v; })" /></td>
                                                         }
                                                         <td>
                                                             <input class="indx-num-input" type="number" step="0.1" min="0"
@@ -442,6 +444,7 @@ else
                                                             <th><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
                                                             <th><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
                                                             <th><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
+                                                            <th><span class="indx-th-tip" data-tooltip="High-resolution indexing: also indexes the field with delimiters removed, so a run-together or split query still matches across them.">HighResolution</span></th>
                                                         }
                                                         <th><span class="indx-th-tip" data-tooltip="Relevance weight for this field (recommended range 0.5–3.0). Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0.">Weight</span></th>
                                                         @if (_showAdvancedFields.Contains(datasetName))
@@ -473,6 +476,7 @@ else
                                                                 <td class="indx-table-check"><Checkbox Checked="@(field.WordIndexing == true)" CheckedChanged="@(v => { field.WordIndexing = v; })" Disabled="@(!isEditor)" /></td>
                                                                 <td class="indx-table-check"><Checkbox Checked="@(field.Embeddable == true)" CheckedChanged="@(v => { field.Embeddable = v; })" Disabled="@(!isEditor)" /></td>
                                                                 <td class="indx-table-check"><Checkbox Checked="@(field.PreloadFilters == true)" CheckedChanged="@(v => { field.PreloadFilters = v; })" Disabled="@(!isEditor)" /></td>
+                                                                <td class="indx-table-check"><Checkbox Checked="@(field.HighResolution == true)" CheckedChanged="@(v => { field.HighResolution = v; })" Disabled="@(!isEditor)" /></td>
                                                             }
                                                             <td>
                                                                 <input class="indx-num-input" type="number" step="0.1" min="0" disabled="@(!isEditor)"
@@ -1506,6 +1510,7 @@ else
                     existing.WordIndexing = imp.WordIndexing;
                     existing.Embeddable = imp.Embeddable;
                     existing.PreloadFilters = imp.PreloadFilters;
+                    existing.HighResolution = imp.HighResolution;
                     existing.Weight = imp.Weight;
                     existing.BM25b = imp.BM25b;
                     existing.BM25k1 = imp.BM25k1;
@@ -1695,6 +1700,7 @@ else
             if ((o.WordIndexing ?? false) != (e.WordIndexing ?? false)) return true;
             if ((o.Embeddable ?? false) != (e.Embeddable ?? false)) return true;
             if ((o.PreloadFilters ?? false) != (e.PreloadFilters ?? false)) return true;
+            if ((o.HighResolution ?? false) != (e.HighResolution ?? false)) return true;
             if (o.Weight != e.Weight) return true;
             if (o.BM25b != e.BM25b) return true;
             if (o.BM25k1 != e.BM25k1) return true;
@@ -1803,6 +1809,7 @@ else
         WordIndexing = f.WordIndexing ?? false,
         Embeddable = f.Embeddable ?? false,
         PreloadFilters = f.PreloadFilters ?? false,
+        HighResolution = f.HighResolution ?? false,
         Weight = f.Weight,
         BM25b = f.BM25b,
         BM25k1 = f.BM25k1
@@ -1811,7 +1818,7 @@ else
     private static bool IsUnused(FieldProxy f) =>
         f.Searchable != true && f.Filterable != true && f.Facetable != true &&
         f.Sortable != true && f.WordIndexing != true && f.Embeddable != true &&
-        f.PreloadFilters != true;
+        f.PreloadFilters != true && f.HighResolution != true;
 
     private static float? ParseFloat(string? s)
     {
