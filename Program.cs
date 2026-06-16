@@ -221,24 +221,27 @@ public class Program
                         "deployments set Jwt:Key explicitly (Key Vault or environment variable).");
                 }
             }
-            else if (builder.Environment.IsProduction())
-            {
-                // No configured key and no persisted file. We deliberately do NOT generate one in
-                // Production — a fresh key silently invalidates every previously-issued token, and a
-                // proper deployment (the Marketplace managed app) supplies Jwt:Key from Key Vault.
-                // Fail loudly so the misconfiguration is obvious instead of subtly breaking auth.
-                throw new InvalidOperationException(
-                    $"No JWT signing key: Jwt:Key is not configured and no persisted key exists at " +
-                    $"'{jwtKeyFile}'. Set Jwt:Key (Key Vault or environment variable) for production.");
-            }
             else
             {
-                // Development convenience: generate and persist a key on first run so the app starts
-                // regardless of how it was launched. Dev tokens are throwaway, so regenerating is fine.
+                // No configured key and no persisted file: generate and persist a strong one so a
+                // freshly downloaded / clean-deployed IndxCloudApi starts with zero configuration
+                // (self-hosted customers don't have to set anything). The Marketplace managed app
+                // supplies Jwt:Key from Key Vault and so never reaches here.
                 Directory.CreateDirectory(Path.GetDirectoryName(jwtKeyFile)!);
                 jwtkey = Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(48));
                 File.WriteAllText(jwtKeyFile, jwtkey);
-                Console.WriteLine("✓ JWT key auto-generated and saved to IndxData/jwt.key (Development)");
+                Console.WriteLine("✓ JWT key auto-generated and saved to IndxData/jwt.key");
+
+                // An auto-generated key lives only on this instance's disk. Fine for a single node,
+                // but scale-out/multi-instance hosting needs a shared secret, or tokens issued by one
+                // node fail validation on another. It also rotates if IndxData isn't persisted,
+                // invalidating previously-issued tokens — set Jwt:Key explicitly to pin it.
+                if (builder.Environment.IsProduction())
+                {
+                    Console.WriteLine(
+                        "⚠ Running on an auto-generated JWT key in Production. For multi-instance " +
+                        "deployments set Jwt:Key explicitly (Key Vault or environment variable).");
+                }
             }
         }
         else
