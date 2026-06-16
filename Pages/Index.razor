@@ -200,7 +200,7 @@ else
                                         This dataset is <strong>hibernated</strong> — @recordCount.ToString("N0") document@(recordCount == 1 ? "" : "s") @(recordCount == 1 ? "is" : "are") stored on disk but not loaded into memory. Wake it to search and edit.
                                     </p>
                                     <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
-                                        <Button Variant="primary" Size="micro" @onclick="() => StartWake(datasetName)">Wake / load</Button>
+                                        <Button Variant="primary" Size="micro" IconLeft="_iconEye" @onclick="() => StartWake(datasetName)">Wake up</Button>
                                     </div>
                                     @if (!string.IsNullOrEmpty(_uploadError) && _uploadErrorDataset == datasetName)
                                     {
@@ -1844,6 +1844,7 @@ else
     private RenderFragment<int> _iconDynamicJson => size => @<DynamicJsonField Size="size" />;
     private RenderFragment<int> _iconSearch => size => @<Search Size="size" />;
     private RenderFragment<int> _iconSliders => size => @<SlidersHorizontal Size="size" />;
+    private RenderFragment<int> _iconEye => size => @<Eye Size="size" />;
     private RenderFragment<int> _iconUser => size => @<User Size="size" />;
     private RenderFragment<int> _iconUserAlias => size => @<UserAlias Size="size" />;
 
