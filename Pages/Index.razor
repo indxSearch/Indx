@@ -619,6 +619,25 @@ else
                                     <p style="color:var(--CSignal);font:var(--text-xs);margin-top:4px;">@_keepAliveError</p>
                                 }
 
+                                @* Manual hibernate — frees memory now. Only durable for Off (client-managed)
+                                   datasets; timed/pinned would auto-reload on the next access. *@
+                                @if (engineState == SystemState.Ready)
+                                {
+                                    @if (ka?.KeepAliveTimeHrs == 0)
+                                    {
+                                        <div style="display:flex;align-items:center;gap:8px;margin-top:10px;">
+                                            <Button Variant="secondary" Size="micro" @onclick="() => HibernateDataset(datasetName)" disabled="@_hibernating">
+                                                @(_hibernating ? "Hibernating…" : "Hibernate now")
+                                            </Button>
+                                            <span style="color:var(--lv4);font:var(--text-xs);">Unloads from memory; data stays on disk. Wake it from the Field configuration tab.</span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <p style="color:var(--lv4);font:var(--text-xs);margin-top:10px;">Set keep-alive to <strong>Off</strong> to hibernate this dataset manually.</p>
+                                    }
+                                }
+
                                 @{
                                     var transferTargets = _myTeams
                                         .Where(t => t.Team.Id.ToString() != activeTeamId && TeamRoles.CanAdmin(t.Role))
@@ -772,6 +791,7 @@ else
     private string _keepAliveEditMode = "max";   // "max" (∞ pinned) | "0" (manual) | "timed"
     private string _keepAliveEditHours = "24";
     private string? _keepAliveError;
+    private bool _hibernating;
     private static readonly IEnumerable<SelectField.SelectOption> _keepAliveModes =
     [
         new("∞ Pinned — always loaded", "max"),
@@ -1305,6 +1325,28 @@ else
                 });
             }
             catch (ObjectDisposedException) { }
+        }
+    }
+
+    // ── Hibernate (Options tab): free the in-memory engine; data stays in the store ──
+
+    private async Task HibernateDataset(string datasetName)
+    {
+        if (string.IsNullOrEmpty(activeTeamId)) return;
+        _hibernating = true;
+        StateHasChanged();
+        try
+        {
+            // Dispose can take a moment (engine teardown / native pool free); run it off the circuit.
+            await Task.Run(() => IndxCloudInternalApi.Manager.DisposeDataSetInstance(datasetName, activeTeamId));
+            // For manual (Off) datasets the GetState in LoadDatasets won't auto-reload, so it
+            // correctly comes back hibernated (Created + records on disk).
+            await LoadDatasets();
+        }
+        finally
+        {
+            _hibernating = false;
+            StateHasChanged();
         }
     }
 
