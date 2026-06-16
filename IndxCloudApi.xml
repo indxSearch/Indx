@@ -550,6 +550,32 @@
             This should be called before deleting a dataset from the database.
             </summary>
         </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.SetKeepAliveHrs(System.String,System.String,System.Int32)">
+            <summary>
+            Sets a dataset's keep-alive policy (hours): <see cref="F:System.Int32.MaxValue"/> = autoload + never
+            dispose, <c>0</c> = no autoload (client-managed), other = idle-eviction countdown. Persists
+            to the store and updates the live instance's cached value if loaded. Does not load or
+            dispose anything itself. Intended for the website (admin UI), not the public REST API.
+            </summary>
+            <returns><c>true</c> if the dataset existed and was updated.</returns>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetKeepAliveInfo(System.String,System.String)">
+            <summary>
+            Reads a dataset's keep-alive policy plus live runtime state: whether it's loaded, when it
+            was last used, and how long until idle-eviction. <see cref="P:IndxCloudApi.Models.IndxCloudInternalApi.KeepAliveInfo.Remaining"/> is
+            null for unloaded datasets and for the non-counting policies (0 and <see cref="F:System.Int32.MaxValue"/>).
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.SweepIdleInstances">
+            <summary>
+            Disposes loaded instances whose idle time has passed their keep-alive countdown. Policies
+            0 (client-managed) and <see cref="F:System.Int32.MaxValue"/> (pinned) are never evicted. Called on an
+            interval by <c>DatasetIdleSweeper</c>; also callable directly in tests after advancing the
+            clock. The brief window between selecting a victim and disposing it can race a fresh
+            request, but the threshold is hours, so it's negligible.
+            </summary>
+            <returns>The number of instances disposed.</returns>
+        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetAllDataSets">
             <summary>
             Returns all datasets across all teams, each with the owning team id.
@@ -593,6 +619,20 @@
             <summary>
             Returns the engine for a team-owned dataset, or null if the dataset doesn't exist.
             Authorization is the controller's responsibility (team membership) — this only resolves.
+            </summary>
+        </member>
+        <member name="T:IndxCloudApi.Models.IndxCloudInternalApi.KeepAliveInfo">
+            <summary>
+            Snapshot of a dataset's keep-alive policy and live runtime state, for the website to show
+            the setting and the countdown. <paramref name="Remaining"/> is null when not loaded or for
+            the non-counting policies (0 / int.MaxValue).
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.KeepAliveInfo.#ctor(System.Int32,System.Boolean,System.Nullable{System.DateTimeOffset},System.Nullable{System.TimeSpan})">
+            <summary>
+            Snapshot of a dataset's keep-alive policy and live runtime state, for the website to show
+            the setting and the countdown. <paramref name="Remaining"/> is null when not loaded or for
+            the non-counting policies (0 / int.MaxValue).
             </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunMutationOnShadow``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})">
@@ -792,6 +832,26 @@
              is a team id, which never matches a known user id, so a second run finds nothing to move.
              Users that already have a team (e.g. created via registration) are left as-is.
              </summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.DatasetIdleSweeper">
+            <summary>
+            Periodically disposes loaded search-engine instances whose idle time has passed their
+            per-dataset <c>KeepAliveTimeHrs</c> countdown. Datasets pinned with <see cref="F:System.Int32.MaxValue"/>
+            or opted out with <c>0</c> are never touched. The actual eviction logic lives in
+            <see cref="M:IndxCloudApi.Models.IndxCloudInternalApi.SweepIdleInstances"/>; this service just calls it on an
+            interval (configurable via <c>DatasetSweep:IntervalMinutes</c>, default 5). An evicted dataset
+            is transparently re-loaded on its next request (see <see cref="M:IndxCloudApi.Models.IndxCloudInternalApi.ResolveEngine(System.String,System.String)"/>).
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.DatasetIdleSweeper.#ctor(Microsoft.Extensions.Configuration.IConfiguration,Microsoft.Extensions.Logging.ILogger{IndxCloudApi.Services.DatasetIdleSweeper})">
+            <summary>
+            Periodically disposes loaded search-engine instances whose idle time has passed their
+            per-dataset <c>KeepAliveTimeHrs</c> countdown. Datasets pinned with <see cref="F:System.Int32.MaxValue"/>
+            or opted out with <c>0</c> are never touched. The actual eviction logic lives in
+            <see cref="M:IndxCloudApi.Models.IndxCloudInternalApi.SweepIdleInstances"/>; this service just calls it on an
+            interval (configurable via <c>DatasetSweep:IntervalMinutes</c>, default 5). An evicted dataset
+            is transparently re-loaded on its next request (see <see cref="M:IndxCloudApi.Models.IndxCloudInternalApi.ResolveEngine(System.String,System.String)"/>).
+            </summary>
         </member>
         <member name="T:IndxCloudApi.Services.IndxEdition">
             <summary>How this instance is deployed. Fixed at deploy time via Indx:Edition.</summary>

@@ -54,6 +54,7 @@ else
                 <th style="text-align: left; padding: 8px 12px; font-weight: 500;">State</th>
                 <th style="text-align: right; padding: 8px 12px; font-weight: 500;">Documents</th>
                 <th style="text-align: left; padding: 8px 12px; font-weight: 500;">Last indexed</th>
+                <th style="text-align: left; padding: 8px 12px; font-weight: 500;">Keep-alive</th>
                 <th style="padding: 8px 12px;"></th>
             </tr>
         </thead>
@@ -78,6 +79,32 @@ else
                     </td>
                     <td style="padding: 10px 12px; color: var(--lv5);">
                         @(row.LastIndexed is { } t && t > DateTime.MinValue ? t.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "—")
+                    </td>
+                    <td style="padding: 10px 12px; color: var(--lv5);">
+                        @if (_editKey == row.Key)
+                        {
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <div style="width: 190px;">
+                                    <SelectField @bind-Value="_editMode" Options="_keepAliveModes" />
+                                </div>
+                                @if (_editMode == "timed")
+                                {
+                                    <div style="width: 72px;">
+                                        <InputField @bind-Value="_editHours" placeholder="hours" />
+                                    </div>
+                                }
+                                <Button Variant="primary" Size="micro" @onclick="() => SaveKeepAlive(row.DataSetName, row.TeamId)">Save</Button>
+                                <Button Variant="ghost" Size="micro" @onclick="() => _editKey = null">Cancel</Button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-variant-numeric: tabular-nums;">@KeepAliveLabel(row.KeepAliveTimeHrs)</span>
+                                <span style="color: var(--lv4); font-size: 12px;">@RemainingLabel(row)</span>
+                                <Button Variant="ghost" Size="micro" @onclick="() => BeginEdit(row)">Edit</Button>
+                            </div>
+                        }
                     </td>
                     <td style="padding: 10px 12px; text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
                         @if (_deleteConfirmKey == row.Key)
@@ -104,9 +131,28 @@ else
 
     private record DatasetRow(
         string DataSetName, string TeamId, string? TeamName,
-        SystemState? State, int DocumentCount, DateTime? LastIndexed)
+        SystemState? State, int DocumentCount, DateTime? LastIndexed,
+        int KeepAliveTimeHrs, bool Loaded, TimeSpan? Remaining)
     {
         public string Key => $"{TeamId}/{DataSetName}";
+    }
+
+    private static string KeepAliveLabel(int hrs) => hrs switch
+    {
+        int.MaxValue => "∞ pinned",
+        0 => "Off (manual)",
+        _ => $"{hrs} h",
+    };
+
+    private static string RemainingLabel(DatasetRow row)
+    {
+        if (row.KeepAliveTimeHrs is int.MaxValue or 0)
+            return "";
+        if (!row.Loaded)
+            return "(not loaded)";
+        if (row.Remaining is { } rem)
+            return rem.TotalHours >= 1 ? $"~{(int)rem.TotalHours}h {rem.Minutes}m left" : $"~{rem.Minutes}m left";
+        return "";
     }
 
     private static string StateColor(SystemState state) => state switch
@@ -121,6 +167,16 @@ else
     private string? _message;
     private string? _errorMessage;
     private string? _deleteConfirmKey;
+    private string? _editKey;
+    private string _editMode = "max";   // "max" (∞ pinned) | "0" (manual) | "timed"
+    private string _editHours = "24";
+
+    private static readonly IEnumerable<SelectField.SelectOption> _keepAliveModes =
+    [
+        new("∞ Pinned — always loaded", "max"),
+        new("Off — client-managed", "0"),
+        new("Timed — idle eviction", "timed"),
+    ];
 
     protected override async Task OnInitializedAsync() => await Load();
 
@@ -135,11 +191,57 @@ else
         {
             // In-memory status of the warmed engine (null if not currently instantiated).
             var status = IndxCloudInternalApi.Manager.GetState(r.DataSetName, r.TeamId);
+            var ka = IndxCloudInternalApi.Manager.GetKeepAliveInfo(r.DataSetName, r.TeamId);
             return new DatasetRow(
                 r.DataSetName, r.TeamId, teamMap.GetValueOrDefault(r.TeamId),
-                status?.SystemState, status?.DocumentCount ?? 0, status?.TimeOfLastIndexBuild);
+                status?.SystemState, status?.DocumentCount ?? 0, status?.TimeOfLastIndexBuild,
+                ka.KeepAliveTimeHrs, ka.Loaded, ka.Remaining);
         });
         _rows = [.. rows.OrderBy(r => r.TeamName ?? r.TeamId).ThenBy(r => r.DataSetName)];
+    }
+
+    private void BeginEdit(DatasetRow row)
+    {
+        _message = null; _errorMessage = null;
+        _editKey = row.Key;
+        (_editMode, _editHours) = row.KeepAliveTimeHrs switch
+        {
+            int.MaxValue => ("max", "24"),
+            0 => ("0", "24"),
+            var h => ("timed", h.ToString()),
+        };
+    }
+
+    private async Task SaveKeepAlive(string dataSetName, string teamId)
+    {
+        _message = null; _errorMessage = null;
+
+        int hrs;
+        switch (_editMode)
+        {
+            case "max": hrs = int.MaxValue; break;
+            case "0": hrs = 0; break;
+            default:
+                if (!int.TryParse((_editHours ?? "").Trim(), out hrs) || hrs < 1)
+                {
+                    _errorMessage = $"\"{_editHours}\" is not a valid number of hours — enter a whole number of 1 or more.";
+                    return;
+                }
+                break;
+        }
+
+        var ok = IndxCloudInternalApi.Manager.SetKeepAliveHrs(dataSetName, teamId, hrs);
+        if (ok)
+        {
+            Logger.LogInformation("Admin set KeepAliveTimeHrs={Hrs} for dataset {DataSetName} team {TeamId}", hrs, dataSetName, teamId);
+            _message = $"Keep-alive for \"{dataSetName}\" set to {KeepAliveLabel(hrs)}.";
+            _editKey = null;
+            await Load();
+        }
+        else
+        {
+            _errorMessage = $"Could not update keep-alive for \"{dataSetName}\".";
+        }
     }
 
     private async Task DeleteDataset(string dataSetName, string teamId)

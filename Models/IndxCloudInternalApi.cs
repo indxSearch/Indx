@@ -86,6 +86,9 @@ namespace IndxCloudApi.Models
         }
         internal static string SearchDbConnectionString { get; private set; } = "";
         internal static string LicensePath { get; private set; } = "";
+        // Clock for keep-alive last-used stamping and idle-eviction. Overridable so tests can advance
+        // time (FakeTimeProvider) without real waits. Defaults to the system clock.
+        internal static TimeProvider TimeProvider { get; set; } = TimeProvider.System;
 
         private static string GetLicensePath()
         {
@@ -367,6 +370,86 @@ namespace IndxCloudApi.Models
         }
 
         /// <summary>
+        /// Sets a dataset's keep-alive policy (hours): <see cref="int.MaxValue"/> = autoload + never
+        /// dispose, <c>0</c> = no autoload (client-managed), other = idle-eviction countdown. Persists
+        /// to the store and updates the live instance's cached value if loaded. Does not load or
+        /// dispose anything itself. Intended for the website (admin UI), not the public REST API.
+        /// </summary>
+        /// <returns><c>true</c> if the dataset existed and was updated.</returns>
+        internal bool SetKeepAliveHrs(string dataSetName, string teamId, int keepAliveHrs)
+        {
+            var db = new SqLiteManager(SearchDbConnectionString);
+            bool updated = db.UpdateKeepAliveHrs(dataSetName, teamId, keepAliveHrs);
+            if (updated)
+            {
+                lock (_dictionaryLock)
+                    if (_instances.TryGetValue(MakeKey(dataSetName, teamId), out var inst))
+                        inst.KeepAliveTimeHrs = keepAliveHrs;
+            }
+            return updated;
+        }
+
+        /// <summary>
+        /// Reads a dataset's keep-alive policy plus live runtime state: whether it's loaded, when it
+        /// was last used, and how long until idle-eviction. <see cref="KeepAliveInfo.Remaining"/> is
+        /// null for unloaded datasets and for the non-counting policies (0 and <see cref="int.MaxValue"/>).
+        /// </summary>
+        internal KeepAliveInfo GetKeepAliveInfo(string dataSetName, string teamId)
+        {
+            SearchEngineInstance? inst;
+            lock (_dictionaryLock)
+                _instances.TryGetValue(MakeKey(dataSetName, teamId), out inst);
+
+            int hrs = inst?.KeepAliveTimeHrs
+                ?? new SqLiteManager(SearchDbConnectionString).ReadKeepAliveHrs(dataSetName, teamId);
+
+            bool loaded = inst?.theInstance?.Status.SystemState == SystemState.Ready;
+            DateTimeOffset? lastUsed = inst != null ? inst.LastUsedUtc : null;
+
+            TimeSpan? remaining = null;
+            if (loaded && inst != null && hrs != 0 && hrs != int.MaxValue)
+            {
+                var rem = TimeSpan.FromHours(hrs) - (TimeProvider.GetUtcNow() - inst.LastUsedUtc);
+                remaining = rem > TimeSpan.Zero ? rem : TimeSpan.Zero;
+            }
+            return new KeepAliveInfo(hrs, loaded, lastUsed, remaining);
+        }
+
+        /// <summary>
+        /// Disposes loaded instances whose idle time has passed their keep-alive countdown. Policies
+        /// 0 (client-managed) and <see cref="int.MaxValue"/> (pinned) are never evicted. Called on an
+        /// interval by <c>DatasetIdleSweeper</c>; also callable directly in tests after advancing the
+        /// clock. The brief window between selecting a victim and disposing it can race a fresh
+        /// request, but the threshold is hours, so it's negligible.
+        /// </summary>
+        /// <returns>The number of instances disposed.</returns>
+        internal int SweepIdleInstances()
+        {
+            var now = TimeProvider.GetUtcNow();
+            List<(string ds, string team)> toEvict = new();
+            lock (_dictionaryLock)
+            {
+                foreach (var inst in _instances.Values)
+                {
+                    int hrs = inst.KeepAliveTimeHrs;
+                    if (hrs == 0 || hrs == int.MaxValue)
+                        continue;
+                    if (inst.theInstance?.Status.SystemState != SystemState.Ready)
+                        continue;
+                    if (now - inst.LastUsedUtc > TimeSpan.FromHours(hrs))
+                        toEvict.Add((inst.DataSetName, inst.TeamId));
+                }
+            }
+
+            foreach (var (ds, team) in toEvict)
+            {
+                _logger.LogInformation(MakeLogPrefix(team, ds) + "idle-evicting (keep-alive countdown elapsed)");
+                DisposeDataSetInstance(ds, team);
+            }
+            return toEvict.Count;
+        }
+
+        /// <summary>
         /// Returns all datasets across all teams, each with the owning team id.
         /// </summary>
         internal List<(string DataSetName, string TeamId)> GetAllDataSets()
@@ -632,6 +715,9 @@ namespace IndxCloudApi.Models
                     _logger.LogInformation($"{tag} no database found at {SearchDbConnectionString}");
                     return;
                 }
+                // Add the KeepAliveTimeHrs column to databases that predate it (existing rows backfill
+                // to int.MaxValue = warm-at-startup, never disposed). No-op once present.
+                sqLiteManager.EnsureKeepAliveColumn();
                 // Owner keys in the storage layer are team ids. Warm up every dataset under each.
                 var owners = sqLiteManager.GetUsers();
                 var work = owners
@@ -660,6 +746,15 @@ namespace IndxCloudApi.Models
                     if (instance.Persistence == null)
                     {
                         _logger.LogWarning($"{tag} [{i}/{total}] instance.Persistence is null for team {teamId} dataset '{dataSet}', skipping");
+                        skipped++;
+                        continue;
+                    }
+                    // KeepAliveTimeHrs == 0 means "do not autoload at startup" — the client manages
+                    // loading itself. The engine shell stays registered (stamped via FindInstance) but
+                    // unloaded. Any other value (incl. int.MaxValue and N-hour) is warmed here.
+                    if (instance.Persistence.ReadKeepAliveHrs() == 0)
+                    {
+                        _logger.LogInformation($"{tag} [{i}/{total}] skipping '{dataSet}' team {teamId}: KeepAliveTimeHrs=0 (client-managed)");
                         skipped++;
                         continue;
                     }
@@ -747,7 +842,44 @@ namespace IndxCloudApi.Models
         /// </summary>
         internal ICloudSearchEngine? ResolveEngine(string dataSetName, string teamId)
         {
-            return FindInstance(dataSetName, teamId);
+            var instance = GetOrCreateInstance(dataSetName, teamId);
+            var engine = instance?.theInstance;
+            if (instance == null || engine == null)
+                return null;
+
+            // Mark used so the idle sweeper sees activity (resets the keep-alive countdown).
+            instance.Touch(TimeProvider.GetUtcNow());
+
+            // Transparent auto-load for an evicted / not-yet-loaded dataset, EXCEPT when KeepAlive == 0
+            // (those are client-managed: the client loads explicitly, the server never auto-loads).
+            // Gate on Created + records-in-store: that combination only happens for a fresh shell whose
+            // data is already persisted (restart or post-eviction) — never mid explicit client load
+            // (which is Loading/Indexing) and never for a brand-new dataset (0 persisted records).
+            if (instance.KeepAliveTimeHrs != 0
+                && engine.Status.SystemState == SystemState.Created
+                && engine.Persistence != null
+                && engine.Persistence.NumberOfJsonRecords() > 0)
+            {
+                lock (instance.DbLock)
+                {
+                    if (engine.Status.SystemState == SystemState.Created)
+                    {
+                        var loadMonitor = new ProcessMonitor();
+                        engine.LoadFromDatabaseSync(loadMonitor);
+                        loadMonitor.WaitForCompletion();
+
+                        var indexMonitor = new ProcessMonitor();
+                        engine.Index(monitor: indexMonitor);
+                        indexMonitor.WaitForCompletion();
+
+                        _logger.LogInformation(MakeLogPrefix(teamId, dataSetName)
+                            + $"auto-loaded on demand (KeepAliveTimeHrs={instance.KeepAliveTimeHrs})");
+                    }
+                }
+                instance.Touch(TimeProvider.GetUtcNow());
+            }
+
+            return engine;
         }
 
         private static string MakeKey(string dataSetName, string teamId)
@@ -762,12 +894,20 @@ namespace IndxCloudApi.Models
 
         private ICloudSearchEngine? FindInstance(string dataSetName, string teamId)
         {
+            return GetOrCreateInstance(dataSetName, teamId)?.theInstance;
+        }
+
+        // Returns the instance wrapper (engine + keep-alive bookkeeping), creating an unloaded engine
+        // shell on first touch. The actual data load happens at startup (InitializeSystem) or lazily
+        // (ResolveEngine) — not here. Returns null if the dataset doesn't exist in the store.
+        private SearchEngineInstance? GetOrCreateInstance(string dataSetName, string teamId)
+        {
             string key = MakeKey(dataSetName, teamId);
 
             lock (_dictionaryLock)
             {
-                if (_instances.TryGetValue(key, out var instance))
-                    return instance?.theInstance;
+                if (_instances.TryGetValue(key, out var existing))
+                    return existing;
 
                 var persistence = new Persistence(SearchDbConnectionString, dataSetName, teamId);
                 var configuration = persistence.ReadDataSetConfiguration();
@@ -784,8 +924,16 @@ namespace IndxCloudApi.Models
                     Persistence = persistence
                 };
 
-                _instances.Add(key, new SearchEngineInstance { theInstance = matcher });
-                return matcher;
+                var instance = new SearchEngineInstance
+                {
+                    theInstance = matcher,
+                    DataSetName = dataSetName,
+                    TeamId = teamId,
+                    KeepAliveTimeHrs = persistence.ReadKeepAliveHrs()
+                };
+                instance.Touch(TimeProvider.GetUtcNow());
+                _instances.Add(key, instance);
+                return instance;
             }
         }
         #endregion Private Methods
@@ -793,12 +941,36 @@ namespace IndxCloudApi.Models
         #region Private Classes
         internal record LicenseFileInfo(string Filename, bool IsActive);
 
+        /// <summary>
+        /// Snapshot of a dataset's keep-alive policy and live runtime state, for the website to show
+        /// the setting and the countdown. <paramref name="Remaining"/> is null when not loaded or for
+        /// the non-counting policies (0 / int.MaxValue).
+        /// </summary>
+        internal sealed record KeepAliveInfo(int KeepAliveTimeHrs, bool Loaded, DateTimeOffset? LastUsedUtc, TimeSpan? Remaining);
+
         private sealed class SearchEngineInstance
         {
             #region Internal Fields
+            // Serializes lazy auto-load (ResolveEngine) for this one dataset so two concurrent cold
+            // requests don't both LoadFromDatabaseSync + Index the same engine.
             internal readonly object DbLock = new();
             internal ICloudSearchEngine? theInstance;
+            // Identity, kept so the idle sweeper can call DisposeDataSetInstance (the dictionary key
+            // teamId+dataSetName is a non-reversible concatenation).
+            internal string DataSetName = string.Empty;
+            internal string TeamId = string.Empty;
+            // Persisted keep-alive policy (hours), cached in memory: int.MaxValue = autoload + never
+            // dispose, 0 = no autoload (client-managed), other = idle-eviction countdown.
+            internal int KeepAliveTimeHrs = int.MaxValue;
+            // Wall-clock of the last resolve (search/status/fields/...). In-memory only — the idle
+            // sweeper compares (now - LastUsed) against KeepAliveTimeHrs. Written/read atomically.
+            private long _lastUsedUtcTicks;
             #endregion Internal Fields
+
+            #region Internal Methods
+            internal void Touch(DateTimeOffset now) => Volatile.Write(ref _lastUsedUtcTicks, now.UtcTicks);
+            internal DateTimeOffset LastUsedUtc => new(Volatile.Read(ref _lastUsedUtcTicks), TimeSpan.Zero);
+            #endregion Internal Methods
         }
         #endregion Private Classes
     }
