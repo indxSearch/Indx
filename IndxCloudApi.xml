@@ -356,7 +356,13 @@
             </summary>
         </member>
         <member name="P:IndxCloudApi.Data.ApplicationUser.EmailNotificationsEnabled">
-            <summary>When false, no notification emails are sent to this user.</summary>
+            <summary>When false, no notification emails are sent to this user. Legacy global flag;
+            now the per-type default for the email channel when no explicit preference is set.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Data.ApplicationUser.NotificationPreferences">
+            <summary>JSON map of per-notification-type channel preferences
+            (see <see cref="T:IndxCloudApi.Services.NotificationPreferences"/>). Absent entries fall back to
+            defaults: in-app on; email per <see cref="P:IndxCloudApi.Data.ApplicationUser.EmailNotificationsEnabled"/>.</summary>
         </member>
         <member name="T:IndxCloudApi.Data.Migrations.InitialCreate">
             <inheritdoc />
@@ -404,6 +410,18 @@
             <inheritdoc />
         </member>
         <member name="M:IndxCloudApi.Data.Migrations.AddTeams.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="T:IndxCloudApi.Data.Migrations.AddNotificationPreferences">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.AddNotificationPreferences.Up(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.AddNotificationPreferences.Down(Microsoft.EntityFrameworkCore.Migrations.MigrationBuilder)">
+            <inheritdoc />
+        </member>
+        <member name="M:IndxCloudApi.Data.Migrations.AddNotificationPreferences.BuildTargetModel(Microsoft.EntityFrameworkCore.ModelBuilder)">
             <inheritdoc />
         </member>
         <member name="P:IndxCloudApi.Data.Notification.Metadata">
@@ -1004,6 +1022,40 @@
              the bootstrapper returns <see cref="F:IndxCloudApi.Services.LicenseFetchOutcome.NotConfigured"/> and without a token
              it only downloads when the file is missing.
              </summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.NotificationChannelPref">
+            <summary>Per-channel preference for one notification type. Null = use the default.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.NotificationTypeInfo">
+            <summary>Display metadata for a notification type shown in the preferences UI.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.NotificationTypeInfo.#ctor(IndxCloudApi.Data.NotificationType,System.String,System.String,System.Boolean)">
+            <summary>Display metadata for a notification type shown in the preferences UI.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.NotificationPreferences">
+             <summary>
+             Per-user notification channel preferences, keyed by <see cref="T:IndxCloudApi.Data.NotificationType"/> and
+             serialized to <see cref="P:IndxCloudApi.Data.ApplicationUser.NotificationPreferences"/> (JSON). Personal only —
+             each user controls their own channels; the events that fire are fixed in code.
+            
+             Missing entries fall back to defaults: in-app ON; email per the user's legacy
+             <see cref="P:IndxCloudApi.Data.ApplicationUser.EmailNotificationsEnabled"/> flag (default ON), so existing users
+             keep their prior behaviour until they set an explicit per-type preference.
+             </summary>
+        </member>
+        <member name="F:IndxCloudApi.Services.NotificationPreferences.Catalog">
+            <summary>Notification types surfaced in the preferences UI — only those that actually fire
+            today. <see cref="P:IndxCloudApi.Services.NotificationTypeInfo.AdminOnly"/> types are targeted at the Admin role and
+            hidden from regular users (who never receive them).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.NotificationPreferences.InAppEnabled(IndxCloudApi.Data.ApplicationUser,IndxCloudApi.Data.NotificationType)">
+            <summary>Effective in-app setting for a type (default: on).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.NotificationPreferences.EmailEnabled(IndxCloudApi.Data.ApplicationUser,IndxCloudApi.Data.NotificationType)">
+            <summary>Effective email setting for a type (default: the legacy global flag).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.NotificationPreferences.DisabledInApp(IndxCloudApi.Data.ApplicationUser)">
+            <summary>Types the user has switched OFF for in-app display (used to filter their feed).</summary>
         </member>
         <member name="M:IndxCloudApi.Services.NotificationService.CreateForAdminsAsync(IndxCloudApi.Data.NotificationType,System.String,System.String,System.String)">
             <summary>Creates a notification for every user in the Admin role.</summary>

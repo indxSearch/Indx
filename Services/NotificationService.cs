@@ -33,11 +33,14 @@ namespace IndxCloudApi.Services
                 CreatedAt = DateTime.UtcNow,
             };
 
+            // Always store the row (preserves the background-job de-dup via ExistsAsync and the
+            // user's history) even when in-app is off for this type — the feed queries filter it
+            // out for display. Email is sent only when the user's per-type preference allows it.
             db.Notifications.Add(notification);
             await db.SaveChangesAsync();
 
             var user = await userManager.FindByIdAsync(userId);
-            if (user is { Email: not null, EmailNotificationsEnabled: true })
+            if (user is { Email: not null } && NotificationPreferences.EmailEnabled(user, type))
             {
                 try
                 {
@@ -66,21 +69,39 @@ namespace IndxCloudApi.Services
                 await CreateAsync(admin.Id, type, title, body, metadata);
         }
 
+        // Types the user has switched off for in-app display are hidden from their feed (the rows
+        // still exist for de-dup/history). Empty list => no filtering.
+        private async Task<List<NotificationType>> HiddenTypesAsync(string userId)
+        {
+            var user = await userManager.FindByIdAsync(userId);
+            return user is null ? [] : NotificationPreferences.DisabledInApp(user);
+        }
+
         public async Task<List<Notification>> GetRecentAsync(string userId, int count = 10)
-            => await db.Notifications
-                .Where(n => n.UserId == userId)
+        {
+            var hidden = await HiddenTypesAsync(userId);
+            return await db.Notifications
+                .Where(n => n.UserId == userId && !hidden.Contains(n.Type))
                 .OrderByDescending(n => n.CreatedAt)
                 .Take(count)
                 .ToListAsync();
+        }
 
         public async Task<List<Notification>> GetAllAsync(string userId)
-            => await db.Notifications
-                .Where(n => n.UserId == userId)
+        {
+            var hidden = await HiddenTypesAsync(userId);
+            return await db.Notifications
+                .Where(n => n.UserId == userId && !hidden.Contains(n.Type))
                 .OrderByDescending(n => n.CreatedAt)
                 .ToListAsync();
+        }
 
         public async Task<int> GetUnreadCountAsync(string userId)
-            => await db.Notifications.CountAsync(n => n.UserId == userId && !n.IsRead);
+        {
+            var hidden = await HiddenTypesAsync(userId);
+            return await db.Notifications
+                .CountAsync(n => n.UserId == userId && !n.IsRead && !hidden.Contains(n.Type));
+        }
 
         public async Task MarkReadAsync(int id, string userId)
         {

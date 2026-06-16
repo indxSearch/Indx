@@ -8,6 +8,7 @@
 @using System.Text
 @using System.Text.Encodings.Web
 @using IndxCloudApi.Data
+@using IndxCloudApi.Services
 @attribute [Authorize]
 @inject UserManager<ApplicationUser> UserManager
 @inject SignInManager<ApplicationUser> SignInManager
@@ -73,14 +74,41 @@
         </div>
 
         <div style="margin-top: 28px;">
-            <h3 style="margin-bottom: 12px;">Notifications</h3>
-            <ToggleSwitch Checked="@(user.EmailNotificationsEnabled)" CheckedChanged="SaveEmailPref" Label="Send notification emails" />
-            <p style="font:var(--text-xs); color:var(--lv4); margin:6px 0 0;">
-                In-app notifications are always delivered. This controls whether emails are also sent.
+            <h3 style="margin-bottom: 4px;">Notifications</h3>
+            <p style="font:var(--text-xs); color:var(--lv4); margin:0 0 16px;">
+                Choose how you're notified for each event. <strong>In-app</strong> shows in the bell menu; <strong>Email</strong> sends a message.
             </p>
+
+            <table style="border-collapse: collapse; font-size: 13px;">
+                <thead>
+                    <tr style="color: var(--lv5);">
+                        <th style="padding: 6px 32px 6px 0;"></th>
+                        <th style="text-align:center; padding: 6px 16px; font-weight:500;">In-app</th>
+                        <th style="text-align:center; padding: 6px 16px; font-weight:500;">Email</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var info in _visibleNotificationTypes)
+                    {
+                        var state = _notificationPrefs[info.Type];
+                        <tr style="border-top: 1px solid var(--lv2);">
+                            <td style="padding: 12px 32px 12px 0;">
+                                <div style="color: var(--lv7);">@info.Label</div>
+                                <div style="font:var(--text-xs); color: var(--lv4);">@info.Description</div>
+                            </td>
+                            <td style="text-align:center; padding: 12px 16px;">
+                                <ToggleSwitch Checked="@state.InApp" CheckedChanged="@(v => SaveNotificationPref(info.Type, inApp: v))" />
+                            </td>
+                            <td style="text-align:center; padding: 12px 16px;">
+                                <ToggleSwitch Checked="@state.Email" CheckedChanged="@(v => SaveNotificationPref(info.Type, email: v))" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
             @if (!string.IsNullOrEmpty(_emailPrefMessage))
             {
-                <p style="font:var(--text-xs); color:var(--CTeal); margin:6px 0 0;">@_emailPrefMessage</p>
+                <p style="font:var(--text-xs); color:var(--CTeal); margin:10px 0 0;">@_emailPrefMessage</p>
             }
         </div>
     </div>
@@ -138,16 +166,37 @@ else
     private string? emailResendError = null;
     private string? _emailPrefMessage;
 
+    // Per-type notification channel state shown in the matrix.
+    private sealed class ChannelState { public bool InApp; public bool Email; }
+    private List<NotificationTypeInfo> _visibleNotificationTypes = new();
+    private Dictionary<NotificationType, ChannelState> _notificationPrefs = new();
+
     private bool CanDeleteAccount => user != null && confirmEmail.Trim().ToLower() == user.Email?.ToLower();
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         var userName = authState.User.Identity?.Name;
+        var isAdmin = authState.User.IsInRole("Admin");
 
         if (userName != null)
         {
             user = await UserManager.FindByNameAsync(userName);
+        }
+
+        if (user != null)
+        {
+            // Admin-only event types are hidden from regular users (they never receive them).
+            _visibleNotificationTypes = NotificationPreferences.Catalog
+                .Where(i => !i.AdminOnly || isAdmin)
+                .ToList();
+            _notificationPrefs = _visibleNotificationTypes.ToDictionary(
+                i => i.Type,
+                i => new ChannelState
+                {
+                    InApp = NotificationPreferences.InAppEnabled(user, i.Type),
+                    Email = NotificationPreferences.EmailEnabled(user, i.Type),
+                });
         }
     }
 
@@ -202,12 +251,21 @@ else
         confirmEmail = "";
     }
 
-    private async Task SaveEmailPref(bool enabled)
+    private async Task SaveNotificationPref(NotificationType type, bool? inApp = null, bool? email = null)
     {
-        if (user == null) return;
-        user.EmailNotificationsEnabled = enabled;
+        if (user == null || !_notificationPrefs.TryGetValue(type, out var state)) return;
+        if (inApp.HasValue) state.InApp = inApp.Value;
+        if (email.HasValue) state.Email = email.Value;
+
+        // Persist every visible type as an explicit preference.
+        var map = _notificationPrefs.ToDictionary(
+            kv => kv.Key,
+            kv => new NotificationChannelPref { InApp = kv.Value.InApp, Email = kv.Value.Email });
+        user.NotificationPreferences = NotificationPreferences.Serialize(map);
         await UserManager.UpdateAsync(user);
-        _emailPrefMessage = enabled ? "Email notifications enabled." : "Email notifications disabled.";
+
+        _emailPrefMessage = "Notification preferences saved.";
+        StateHasChanged();
         await Task.Delay(2000);
         _emailPrefMessage = null;
         StateHasChanged();

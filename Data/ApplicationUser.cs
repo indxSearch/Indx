@@ -16,7 +16,13 @@ namespace IndxCloudApi.Data
         /// </summary>
         public bool MustChangePassword { get; set; }
 
-        /// <summary>When false, no notification emails are sent to this user.</summary>
+        /// <summary>When false, no notification emails are sent to this user. Legacy global flag;
+        /// now the per-type default for the email channel when no explicit preference is set.</summary>
         public bool EmailNotificationsEnabled { get; set; } = true;
+
+        /// <summary>JSON map of per-notification-type channel preferences
+        /// (see <see cref="Services.NotificationPreferences"/>). Absent entries fall back to
+        /// defaults: in-app on; email per <see cref="EmailNotificationsEnabled"/>.</summary>
+        public string? NotificationPreferences { get; set; }
     }
 }
