@@ -561,9 +561,10 @@
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetKeepAliveInfo(System.String,System.String)">
             <summary>
-            Reads a dataset's keep-alive policy plus live runtime state: whether it's loaded, when it
-            was last used, and how long until idle-eviction. <see cref="P:IndxCloudApi.Models.IndxCloudInternalApi.KeepAliveInfo.Remaining"/> is
-            null for unloaded datasets and for the non-counting policies (0 and <see cref="F:System.Int32.MaxValue"/>).
+            Reads a dataset's keep-alive policy plus live runtime state: whether its engine is Ready
+            (fully loaded and indexed), whether a stale disposed instance lingers, when it was last
+            used, and how long until idle-eviction. <see cref="P:IndxCloudApi.Models.IndxCloudInternalApi.KeepAliveInfo.Remaining"/> is null for
+            non-Ready datasets and for the non-counting policies (0 and <see cref="F:System.Int32.MaxValue"/>).
             </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.SweepIdleInstances">
@@ -624,15 +625,29 @@
         <member name="T:IndxCloudApi.Models.IndxCloudInternalApi.KeepAliveInfo">
             <summary>
             Snapshot of a dataset's keep-alive policy and live runtime state, for the website to show
-            the setting and the countdown. <paramref name="Remaining"/> is null when not loaded or for
-            the non-counting policies (0 / int.MaxValue).
+            the setting and the countdown.
+            <para><paramref name="Ready"/> is true only when a live, non-disposed engine has reached
+            <see cref="F:Indx.Api.SystemState.Ready"/> (fully loaded and indexed) — i.e. it can serve queries.</para>
+            <para><paramref name="Disposed"/> is true when the engine reference still exists but has
+            already been disposed (a stale instance). In the normal eviction/delete path the instance is
+            removed from the registry before it is disposed, so this is rarely observed; it exists as a
+            guard so a disposed engine is never reported as <paramref name="Ready"/>.</para>
+            <para><paramref name="Remaining"/> is null when not Ready or for the non-counting policies
+            (0 / int.MaxValue).</para>
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.KeepAliveInfo.#ctor(System.Int32,System.Boolean,System.Nullable{System.DateTimeOffset},System.Nullable{System.TimeSpan},System.Int32)">
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.KeepAliveInfo.#ctor(System.Int32,System.Boolean,System.Nullable{System.DateTimeOffset},System.Nullable{System.TimeSpan},System.Int32,System.Boolean)">
             <summary>
             Snapshot of a dataset's keep-alive policy and live runtime state, for the website to show
-            the setting and the countdown. <paramref name="Remaining"/> is null when not loaded or for
-            the non-counting policies (0 / int.MaxValue).
+            the setting and the countdown.
+            <para><paramref name="Ready"/> is true only when a live, non-disposed engine has reached
+            <see cref="F:Indx.Api.SystemState.Ready"/> (fully loaded and indexed) — i.e. it can serve queries.</para>
+            <para><paramref name="Disposed"/> is true when the engine reference still exists but has
+            already been disposed (a stale instance). In the normal eviction/delete path the instance is
+            removed from the registry before it is disposed, so this is rarely observed; it exists as a
+            guard so a disposed engine is never reported as <paramref name="Ready"/>.</para>
+            <para><paramref name="Remaining"/> is null when not Ready or for the non-counting policies
+            (0 / int.MaxValue).</para>
             </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunMutationOnShadow``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})">

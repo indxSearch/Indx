@@ -390,9 +390,10 @@ namespace IndxCloudApi.Models
         }
 
         /// <summary>
-        /// Reads a dataset's keep-alive policy plus live runtime state: whether it's loaded, when it
-        /// was last used, and how long until idle-eviction. <see cref="KeepAliveInfo.Remaining"/> is
-        /// null for unloaded datasets and for the non-counting policies (0 and <see cref="int.MaxValue"/>).
+        /// Reads a dataset's keep-alive policy plus live runtime state: whether its engine is Ready
+        /// (fully loaded and indexed), whether a stale disposed instance lingers, when it was last
+        /// used, and how long until idle-eviction. <see cref="KeepAliveInfo.Remaining"/> is null for
+        /// non-Ready datasets and for the non-counting policies (0 and <see cref="int.MaxValue"/>).
         /// </summary>
         internal KeepAliveInfo GetKeepAliveInfo(string dataSetName, string teamId)
         {
@@ -403,11 +404,15 @@ namespace IndxCloudApi.Models
             var db = new SqLiteManager(SearchDbConnectionString);
             int hrs = inst?.KeepAliveTimeHrs ?? db.ReadKeepAliveHrs(dataSetName, teamId);
 
-            bool loaded = inst?.theInstance?.Status.SystemState == SystemState.Ready;
+            var engine = inst?.theInstance;
+            // A disposed engine can briefly remain referenced; check IsDisposed first so we never read
+            // Status off it (would throw ObjectDisposedException) nor report its stale state as Ready.
+            bool disposed = engine?.IsDisposed == true;
+            bool ready = !disposed && engine?.Status.SystemState == SystemState.Ready;
             DateTimeOffset? lastUsed = inst != null ? inst.LastUsedUtc : null;
 
             TimeSpan? remaining = null;
-            if (loaded && inst != null && hrs != 0 && hrs != int.MaxValue)
+            if (ready && inst != null && hrs != 0 && hrs != int.MaxValue)
             {
                 var rem = TimeSpan.FromHours(hrs) - (TimeProvider.GetUtcNow() - inst.LastUsedUtc);
                 remaining = rem > TimeSpan.Zero ? rem : TimeSpan.Zero;
@@ -416,7 +421,7 @@ namespace IndxCloudApi.Models
             // On-disk record count — non-zero on a Created dataset means it's hibernated (data
             // persisted, engine not loaded) rather than empty. The website uses this to offer a wake.
             int recordCount = db.NumberOfJsonRecordsInDataSet(dataSetName, teamId);
-            return new KeepAliveInfo(hrs, loaded, lastUsed, remaining, recordCount);
+            return new KeepAliveInfo(hrs, ready, lastUsed, remaining, recordCount, disposed);
         }
 
         /// <summary>
@@ -947,10 +952,17 @@ namespace IndxCloudApi.Models
 
         /// <summary>
         /// Snapshot of a dataset's keep-alive policy and live runtime state, for the website to show
-        /// the setting and the countdown. <paramref name="Remaining"/> is null when not loaded or for
-        /// the non-counting policies (0 / int.MaxValue).
+        /// the setting and the countdown.
+        /// <para><paramref name="Ready"/> is true only when a live, non-disposed engine has reached
+        /// <see cref="SystemState.Ready"/> (fully loaded and indexed) — i.e. it can serve queries.</para>
+        /// <para><paramref name="Disposed"/> is true when the engine reference still exists but has
+        /// already been disposed (a stale instance). In the normal eviction/delete path the instance is
+        /// removed from the registry before it is disposed, so this is rarely observed; it exists as a
+        /// guard so a disposed engine is never reported as <paramref name="Ready"/>.</para>
+        /// <para><paramref name="Remaining"/> is null when not Ready or for the non-counting policies
+        /// (0 / int.MaxValue).</para>
         /// </summary>
-        internal sealed record KeepAliveInfo(int KeepAliveTimeHrs, bool Loaded, DateTimeOffset? LastUsedUtc, TimeSpan? Remaining, int RecordCount);
+        internal sealed record KeepAliveInfo(int KeepAliveTimeHrs, bool Ready, DateTimeOffset? LastUsedUtc, TimeSpan? Remaining, int RecordCount, bool Disposed);
 
         private sealed class SearchEngineInstance
         {

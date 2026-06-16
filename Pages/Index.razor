@@ -896,7 +896,7 @@ else
     private static string RemainingLabel(IndxCloudInternalApi.KeepAliveInfo? ka)
     {
         if (ka is null || ka.KeepAliveTimeHrs is int.MaxValue or 0) return "";
-        if (!ka.Loaded) return "(not loaded)";
+        if (!ka.Ready) return "(not loaded)";
         if (ka.Remaining is { } rem)
             return rem.TotalHours >= 1 ? $"~{(int)rem.TotalHours}h {rem.Minutes}m left" : $"~{rem.Minutes}m left";
         return "";

@@ -210,7 +210,7 @@ else
             return new DatasetRow(
                 r.DataSetName, r.TeamId, teamMap.GetValueOrDefault(r.TeamId),
                 status?.SystemState, status?.DocumentCount ?? 0, status?.TimeOfLastIndexBuild,
-                ka.KeepAliveTimeHrs, ka.Loaded, ka.Remaining);
+                ka.KeepAliveTimeHrs, ka.Ready, ka.Remaining);
         });
         _rows = [.. rows.OrderBy(r => r.TeamName ?? r.TeamId).ThenBy(r => r.DataSetName)];
     }
