@@ -244,8 +244,7 @@ else if (licenseInfo != null)
                                     }
                                 </td>
                                 <td style="padding: 10px 12px; text-align: right;">
-                                    <button class="btn-secondary" style="font-size: 12px; padding: 4px 10px; color: var(--CSignal);"
-                                            @onclick="() => ConfirmDelete(f.Filename)">Delete</button>
+                                    <Button Variant="ghost" Size="micro" @onclick="() => ConfirmDelete(f.Filename)">Delete</Button>
                                 </td>
                             </tr>
                             @if (deleteConfirmFile == f.Filename)
@@ -254,10 +253,8 @@ else if (licenseInfo != null)
                                     <td colspan="3" style="padding: 12px; background: rgba(255,178,41,0.06); border-bottom: 1px solid var(--lv2);">
                                         <div style="display: flex; align-items: center; gap: 16px;">
                                             <span style="font-size: 13px;">Delete <strong>@f.Filename</strong>? This cannot be undone.</span>
-                                            <button class="btn-secondary" style="font-size: 12px; padding: 4px 10px; color: var(--CSignal);"
-                                                    @onclick="ExecuteDelete">Yes, delete</button>
-                                            <button class="btn-secondary" style="font-size: 12px; padding: 4px 10px;"
-                                                    @onclick="() => deleteConfirmFile = null">Cancel</button>
+                                            <Button Variant="danger" Size="micro" @onclick="ExecuteDelete">Yes, delete</Button>
+                                            <Button Variant="secondary" Size="micro" @onclick="() => deleteConfirmFile = null">Cancel</Button>
                                         </div>
                                     </td>
                                 </tr>

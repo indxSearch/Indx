@@ -38,7 +38,7 @@
         <div style="display:flex; gap:10px; margin-top:12px;">
             <textarea style="flex:1; padding:10px; border:1px solid var(--lv3); border-radius:var(--radius); background:var(--lv0); color:var(--lv8); font-family:monospace; font-size:11px;"
                       rows="5" readonly>@newlyCreatedToken</textarea>
-            <button class="btn-secondary" @onclick="CopyNewToken">Copy</button>
+            <Button Variant="secondary" Size="micro" @onclick="CopyNewToken">Copy</Button>
         </div>
         @if (!string.IsNullOrEmpty(copyMessage))
         {
@@ -90,8 +90,7 @@
                     <td style="padding:10px 12px; text-align:right;">
                         @if (!key.IsRevoked && !expired)
                         {
-                            <button class="btn-secondary" style="font-size:12px; padding:4px 10px;"
-                                    @onclick="() => ConfirmRevoke(key.Id)">Revoke</button>
+                            <Button Variant="ghost" Size="micro" @onclick="() => ConfirmRevoke(key.Id)">Revoke</Button>
                         }
                     </td>
                 </tr>
@@ -109,15 +108,15 @@ else if (newlyCreatedToken == null)
 {
     <div style="padding:16px; border:1px solid var(--CWarning); border-radius:var(--radius); background:rgba(255,178,41,0.08); margin-bottom:24px; display:flex; align-items:center; gap:16px;">
         <span>Revoke this key? Any requests using it will immediately fail.</span>
-        <button class="btn-secondary" style="color:var(--CSignal)" @onclick="ExecuteRevoke">Yes, revoke</button>
-        <button class="btn-secondary" @onclick="() => revokeConfirmId = null">Cancel</button>
+        <Button Variant="danger" Size="micro" @onclick="ExecuteRevoke">Yes, revoke</Button>
+        <Button Variant="secondary" Size="micro" @onclick="() => revokeConfirmId = null">Cancel</Button>
     </div>
 }
 
 @* ── CREATE FORM ── *@
 @if (!showCreateForm)
 {
-    <button class="btn-primary" @onclick="() => showCreateForm = true">New API key</button>
+    <Button Variant="primary" Size="micro" @onclick="() => showCreateForm = true">New API key</Button>
 }
 else
 {
@@ -137,10 +136,10 @@ else
         </div>
 
         <div style="display:flex; gap:10px;">
-            <button class="btn-primary" @onclick="CreateKey" disabled="@isCreating">
+            <Button Variant="primary" Size="micro" @onclick="CreateKey" Disabled="@isCreating">
                 @(isCreating ? "Creating…" : "Create")
-            </button>
-            <button class="btn-secondary" @onclick='() => { showCreateForm = false; newKeyName = ""; }'>Cancel</button>
+            </Button>
+            <Button Variant="secondary" Size="micro" @onclick='() => { showCreateForm = false; newKeyName = ""; }'>Cancel</Button>
         </div>
     </div>
 }
@@ -169,7 +168,7 @@ else
         <pre style="padding:15px; background:var(--lv1); border:1px solid var(--lv3); border-radius:var(--radius); overflow-x:auto; font-family:monospace; font-size:11px; margin:10px 0;"><code>headers = { 'Authorization': f'Bearer @newlyCreatedToken' }</code></pre>
 
         <div style="margin-top:24px;">
-            <a href="/swagger" class="btn btn-secondary">View API docs</a>
+            <Button Href="/swagger" Variant="secondary" Size="micro">View API docs</Button>
         </div>
     </div>
 }
