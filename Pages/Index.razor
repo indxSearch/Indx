@@ -560,6 +560,38 @@ else
                         @if (activeTab == "options")
                         {
                             <div style="margin-top:8px;">
+
+                                @* ── Keep-alive (team admins manage their dataset's memory lifecycle) ── *@
+                                <h3 style="margin-top:8px;margin-bottom:6px;">Keep-alive</h3>
+                                <p style="color:var(--lv5);font:var(--text-xs);margin-bottom:8px;max-width:560px;">
+                                    Controls how long this dataset stays loaded in memory. <strong>Pinned</strong> keeps it always loaded; <strong>Off</strong> lets the client load it on demand; <strong>Timed</strong> unloads it after inactivity and reloads it automatically on next use.
+                                </p>
+                                @{ var ka = _keepAlive.GetValueOrDefault(datasetName); }
+                                @if (_editingKeepAliveFor == datasetName)
+                                {
+                                    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                                        <div style="width:220px;"><SelectField @bind-Value="_keepAliveEditMode" Options="_keepAliveModes" /></div>
+                                        @if (_keepAliveEditMode == "timed")
+                                        {
+                                            <div style="width:80px;"><InputField @bind-Value="_keepAliveEditHours" placeholder="hours" /></div>
+                                        }
+                                        <Button Variant="primary" Size="micro" @onclick="() => SaveKeepAlive(datasetName)">Save</Button>
+                                        <Button Variant="ghost" Size="micro" @onclick="() => _editingKeepAliveFor = null">Cancel</Button>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div style="display:flex;align-items:center;gap:8px;">
+                                        <span style="font-variant-numeric:tabular-nums;">@KeepAliveLabel(ka?.KeepAliveTimeHrs ?? int.MaxValue)</span>
+                                        <span style="color:var(--lv4);font-size:12px;">@RemainingLabel(ka)</span>
+                                        <Button Variant="ghost" Size="micro" @onclick="() => BeginEditKeepAlive(datasetName, ka)">Edit</Button>
+                                    </div>
+                                }
+                                @if (!string.IsNullOrEmpty(_keepAliveError) && _editingKeepAliveFor == datasetName)
+                                {
+                                    <p style="color:var(--CSignal);font:var(--text-xs);margin-top:4px;">@_keepAliveError</p>
+                                }
+
                                 @{
                                     var transferTargets = _myTeams
                                         .Where(t => t.Team.Id.ToString() != activeTeamId && TeamRoles.CanAdmin(t.Role))
@@ -707,6 +739,19 @@ else
     private string? _transferConfirmDataset;
     private string? _transferError;
 
+    // Keep-alive (Options tab, team admins manage their dataset's memory lifecycle)
+    private Dictionary<string, IndxCloudInternalApi.KeepAliveInfo> _keepAlive = new();
+    private string? _editingKeepAliveFor;
+    private string _keepAliveEditMode = "max";   // "max" (∞ pinned) | "0" (manual) | "timed"
+    private string _keepAliveEditHours = "24";
+    private string? _keepAliveError;
+    private static readonly IEnumerable<SelectField.SelectOption> _keepAliveModes =
+    [
+        new("∞ Pinned — always loaded", "max"),
+        new("Off — client-managed", "0"),
+        new("Timed — idle eviction", "timed"),
+    ];
+
 
     // Field config import/export
     private Dictionary<string, string?> _importWarnings = new();
@@ -782,6 +827,71 @@ else
         expandedFieldConfig.Clear();
         _showUnusedFields.Clear();
         _showAdvancedFields.Clear();
+        _keepAlive.Clear();
+        _editingKeepAliveFor = null;
+        _keepAliveError = null;
+    }
+
+    // ── Keep-alive (Options tab) ────────────────────────────────────────────
+
+    private static string KeepAliveLabel(int hrs) => hrs switch
+    {
+        int.MaxValue => "∞ pinned",
+        0 => "Off (manual)",
+        _ => $"{hrs} h",
+    };
+
+    private static string RemainingLabel(IndxCloudInternalApi.KeepAliveInfo? ka)
+    {
+        if (ka is null || ka.KeepAliveTimeHrs is int.MaxValue or 0) return "";
+        if (!ka.Loaded) return "(not loaded)";
+        if (ka.Remaining is { } rem)
+            return rem.TotalHours >= 1 ? $"~{(int)rem.TotalHours}h {rem.Minutes}m left" : $"~{rem.Minutes}m left";
+        return "";
+    }
+
+    private void BeginEditKeepAlive(string datasetName, IndxCloudInternalApi.KeepAliveInfo? ka)
+    {
+        _keepAliveError = null;
+        (_keepAliveEditMode, _keepAliveEditHours) = (ka?.KeepAliveTimeHrs ?? int.MaxValue) switch
+        {
+            int.MaxValue => ("max", "24"),
+            0 => ("0", "24"),
+            var h => ("timed", h.ToString()),
+        };
+        _editingKeepAliveFor = datasetName;
+    }
+
+    private void SaveKeepAlive(string datasetName)
+    {
+        _keepAliveError = null;
+        if (string.IsNullOrEmpty(activeTeamId)) return;
+
+        int hrs;
+        switch (_keepAliveEditMode)
+        {
+            case "max": hrs = int.MaxValue; break;
+            case "0": hrs = 0; break;
+            default:
+                if (!int.TryParse((_keepAliveEditHours ?? "").Trim(), out hrs) || hrs < 1)
+                {
+                    _keepAliveError = $"\"{_keepAliveEditHours}\" is not a valid number of hours — enter a whole number of 1 or more.";
+                    return;
+                }
+                break;
+        }
+
+        // Team-scoped: SetKeepAliveHrs only affects this team's dataset; the Options tab is
+        // already gated to team Admins (isAdmin = TeamRoles.CanAdmin).
+        if (IndxCloudInternalApi.Manager.SetKeepAliveHrs(datasetName, activeTeamId, hrs))
+        {
+            _editingKeepAliveFor = null;
+            _keepAlive[datasetName] = IndxCloudInternalApi.Manager.GetKeepAliveInfo(datasetName, activeTeamId);
+        }
+        else
+        {
+            _keepAliveError = $"Could not update keep-alive for \"{datasetName}\".";
+        }
     }
 
     private async Task TransferDataset(string datasetName)
@@ -877,6 +987,7 @@ else
             datasets = IndxCloudInternalApi.Manager.GetTeamDataSets(activeTeamId).ToArray();
 
             datasetStatuses.Clear();
+            _keepAlive.Clear();
             // Load status for the active team's datasets
             if (datasets != null)
             {
@@ -884,6 +995,7 @@ else
                 {
                     try
                     {
+                        _keepAlive[datasetName] = IndxCloudInternalApi.Manager.GetKeepAliveInfo(datasetName, activeTeamId);
                         var status = IndxCloudInternalApi.Manager.GetState(datasetName, activeTeamId);
                         if (status != null)
                         {
