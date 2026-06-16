@@ -160,8 +160,9 @@ else
                         }
 
 
-                        @* ── Dataset tab nav ── *@
-                        @if (engineState == SystemState.Ready || (isAnalyzed && !isLoadIndexing && isEditor))
+                        @* ── Dataset tab nav (also shown when hibernated, so you can move between
+                              Field config / Options and reach the Wake up action) ── *@
+                        @if (engineState == SystemState.Ready || isHibernated || (isAnalyzed && !isLoadIndexing && isEditor))
                         {
                             <nav class="indx-dataset-nav">
                                 <Button Variant="@(activeTab == "fields" ? "primary" : "ghost")" Size="micro" IconLeft="_iconFields" @onclick="@(() => _datasetTabs[selectedDataset] = "fields")">Field configuration</Button>
@@ -1339,6 +1340,10 @@ else
         {
             // Dispose can take a moment (engine teardown / native pool free); run it off the circuit.
             await Task.Run(() => IndxCloudInternalApi.Manager.DisposeDataSetInstance(datasetName, activeTeamId));
+            // A hibernated dataset isn't Ready, so the tab nav (Field config / Search / Options)
+            // disappears. Land on the field-config view, where the "Hibernated → Wake up" UI lives,
+            // so the user isn't stranded on the now-navless Options tab.
+            _datasetTabs[datasetName] = "fields";
             // For manual (Off) datasets the GetState in LoadDatasets won't auto-reload, so it
             // correctly comes back hibernated (Created + records on disk).
             await LoadDatasets();
