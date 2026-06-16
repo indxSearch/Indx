@@ -59,6 +59,9 @@
     color: var(--lv4);
     white-space: nowrap;
     font-weight: var(--med);
+    /* Fixed label-column width so the value/chip column starts at the same place whether the
+       table has one row (Created/Hibernated) or many (Ready) — keeps the state chip aligned. */
+    min-width: 150px;
 }
 
 .indx-field-config-import {
