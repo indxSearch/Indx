@@ -56,6 +56,23 @@ else if (licenseInfo != null)
                 <p>Your license has expired. Please contact <a href="https://indx.co" target="_blank">indx.co</a> to renew.</p>
             </div>
         }
+        else if (autoFetch?.TokenConfigured == true)
+        {
+            @* Running without a license, but a token is configured — so a license will be
+               fetched automatically and become effective the next time a dataset is loaded or
+               indexed (engines read the license file at construction). Reassure rather than
+               nag to place a file. *@
+            <div style="padding: 20px; border: 1px solid var(--CLightBlue); border-radius: var(--radius); background: rgba(107, 158, 255, 0.1); margin: 20px 0;">
+                <h3>ℹ Running Without License — token configured</h3>
+                <p>You are currently running with the default 100,000 document limit, but a license token is set.</p>
+                <p style="margin-top: 10px;">
+                    A fresh license is fetched automatically (on startup and once a day) and becomes
+                    effective the <strong>next time each dataset is loaded or indexed</strong>. Use
+                    <strong>Fetch now</strong> below to pull it immediately, then reload or re-index
+                    your datasets to apply it.
+                </p>
+            </div>
+        }
         else
         {
             <div style="padding: 20px; border: 1px solid var(--CLightBlue); border-radius: var(--radius); background: rgba(107, 158, 255, 0.1); margin: 20px 0;">
@@ -65,7 +82,8 @@ else if (licenseInfo != null)
                     <strong>To remove this limit:</strong><br />
                     1. Register at <a href="https://indx.co" target="_blank" style="color: var(--CLightBlue);">indx.co</a><br />
                     2. Request your free extended license<br />
-                    3. Place the license file in <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">./IndxData/</code> directory
+                    3. Place the license file in <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">./IndxData/</code> directory,
+                    or paste a license token under <strong>License Files → Auto-fetch</strong> below
                 </p>
             </div>
         }
@@ -74,13 +92,27 @@ else if (licenseInfo != null)
         {
             <div style="padding: 16px 20px; border: 1px solid var(--CWarning); border-radius: var(--radius); background: rgba(255,178,41,0.1); margin: 20px 0;">
                 <h3 style="margin: 0 0 6px 0;">⚠ No license file on disk</h3>
-                <p style="margin: 0;">
-                    Existing datasets are still running with the license they loaded at startup, so search keeps working —
-                    but there is no <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">.license</code>
-                    file in <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">./IndxData/</code> anymore.
-                    On the next restart these datasets will drop to the 100,000-document limit. Upload a license file or
-                    configure auto-fetch below to keep them licensed.
-                </p>
+                @if (autoFetch?.TokenConfigured == true)
+                {
+                    <p style="margin: 0;">
+                        Existing datasets are still running with the license they loaded at startup, so search keeps working —
+                        but there is no <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">.license</code>
+                        file in <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">./IndxData/</code> right now.
+                        A license token is configured, so a fresh license is fetched automatically (on startup and daily) and
+                        re-applied the <strong>next time each dataset is loaded or indexed</strong>. Use <strong>Fetch now</strong>
+                        below to restore the file immediately.
+                    </p>
+                }
+                else
+                {
+                    <p style="margin: 0;">
+                        Existing datasets are still running with the license they loaded at startup, so search keeps working —
+                        but there is no <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">.license</code>
+                        file in <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">./IndxData/</code> anymore.
+                        On the next restart these datasets will drop to the 100,000-document limit. Upload a license file or
+                        configure auto-fetch below to keep them licensed.
+                    </p>
+                }
             </div>
         }
 
@@ -300,21 +332,46 @@ else if (licenseInfo != null)
                 </p>
                 <div style="display: flex; flex-direction: column; gap: 12px; max-width: 520px;">
 
-                    @* URL is hardcoded to the Indx portal — only Indx issues licenses. *@
+                    @* The fetch endpoint is hardcoded (only Indx issues licenses); show just the
+                       friendly portal host rather than the raw …/api/license/current endpoint. *@
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="color: var(--lv5); font-size: 13px; min-width: 48px;">URL</span>
-                        <span style="flex: 1; font-family: monospace; font-size: 13px; color: var(--lv6); overflow-wrap: anywhere;">
-                            @Services.LicenseBootstrapper.DefaultDownloadUrl
-                        </span>
+                        <span style="color: var(--lv5); font-size: 13px; min-width: 48px;">Portal</span>
+                        <a href="@PortalUrl" target="_blank" rel="noopener noreferrer"
+                           style="flex: 1; font-size: 13px; color: var(--CLightBlue); text-decoration: none; overflow-wrap: anywhere;">
+                            @PortalHost
+                        </a>
                     </div>
 
-                    @* Token is the per-deployment secret. *@
+                    @* Token is the per-deployment secret. Once set it is "locked in" — we hide the
+                       input and show edit/remove, so the deployment reads as actively licence-fetching. *@
                     <div style="display: flex; align-items: center; gap: 8px;">
                         <span style="color: var(--lv5); font-size: 13px; min-width: 48px;">Token</span>
-                        <InputField @bind-Value="_licenseTokenInput" type="password" style="flex: 1;"
-                                    placeholder="@(autoFetch?.TokenConfigured == true ? "Token set — leave blank to keep" : "Paste license token")" />
-                        <Button Variant="primary" Size="micro" @onclick="SaveToken" Disabled="@_isFetching">Save</Button>
+                        @if (autoFetch?.TokenConfigured == true && !_editingToken)
+                        {
+                            <span style="flex: 1; color: var(--CTeal); font-size: 13px;">✓ Token set — fetching enabled</span>
+                            <Button Variant="secondary" Size="micro" @onclick="BeginEditToken" Disabled="@_isFetching">Edit</Button>
+                            <Button Variant="ghost" Size="micro" @onclick="() => { _removeTokenConfirm = true; _fetchMessage = null; _fetchError = null; }" Disabled="@_isFetching">Remove</Button>
+                        }
+                        else
+                        {
+                            <InputField @bind-Value="_licenseTokenInput" type="password" style="flex: 1;"
+                                        placeholder="@(autoFetch?.TokenConfigured == true ? "Enter new token" : "Paste license token")" />
+                            <Button Variant="primary" Size="micro" @onclick="SaveToken" Disabled="@_isFetching">Save</Button>
+                            @if (_editingToken)
+                            {
+                                <Button Variant="ghost" Size="micro" @onclick="CancelEditToken" Disabled="@_isFetching">Cancel</Button>
+                            }
+                        }
                     </div>
+
+                    @if (_removeTokenConfirm)
+                    {
+                        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: rgba(255,178,41,0.06); border: 1px solid var(--CWarning); border-radius: var(--radius);">
+                            <span style="font-size: 13px;">Remove the license token? Auto-fetch stops; any license file already on disk is kept.</span>
+                            <Button Variant="danger" Size="micro" @onclick="RemoveToken" Disabled="@_isFetching">Remove token</Button>
+                            <Button Variant="secondary" Size="micro" @onclick="() => _removeTokenConfirm = false">Cancel</Button>
+                        </div>
+                    }
 
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <Button Variant="secondary" Size="micro" @onclick="FetchNow"
@@ -322,6 +379,10 @@ else if (licenseInfo != null)
                             @(_isFetching ? "Fetching…" : "Fetch now")
                         </Button>
                     </div>
+                    @if (_isFetching)
+                    {
+                        <p style="color: var(--lv5); font-size: 12px; margin: 0;">Validating license…</p>
+                    }
                     @if (!string.IsNullOrEmpty(_fetchMessage))
                     {
                         <p style="color: var(--CTeal); font-size: 12px; margin: 0;">@_fetchMessage</p>
@@ -362,11 +423,19 @@ else
     private IBrowserFile? selectedFile;
     private bool isUploading;
 
+    // Friendly portal host derived from the hardcoded fetch endpoint, so the UI shows
+    // "license.indx.co" instead of the raw …/api/license/current and stays in sync if it changes.
+    private static readonly Uri PortalUri = new(Services.LicenseBootstrapper.DefaultDownloadUrl);
+    private static string PortalHost => PortalUri.Host;
+    private static string PortalUrl => $"{PortalUri.Scheme}://{PortalUri.Host}";
+
     // Auto-fetch editor state.
     private string _licenseTokenInput = "";
     private string? _fetchMessage;
     private string? _fetchError;
     private bool _isFetching;
+    private bool _editingToken;        // true while replacing an existing token (input shown)
+    private bool _removeTokenConfirm;  // true while confirming token removal
 
     [CascadingParameter]
     private Task<AuthenticationState>? AuthState { get; set; }
@@ -445,7 +514,7 @@ else
         fileOpError = null;
     }
 
-    private void SaveToken()
+    private async Task SaveToken()
     {
         _fetchMessage = null; _fetchError = null;
         if (!isAdmin)
@@ -464,8 +533,72 @@ else
         InstanceSettingsService.Save(settings);
 
         _licenseTokenInput = "";
+        _editingToken = false;
+        _removeTokenConfirm = false;
         autoFetch = Bootstrapper.GetStatus();
-        _fetchMessage = "Token saved.";
+
+        // Immediately fetch with the new token so the license validates on the spot, instead of
+        // making the admin click "Fetch now" or wait for the next startup/daily refresh.
+        _isFetching = true;
+        StateHasChanged();
+        try
+        {
+            var result = await Bootstrapper.EnsureLocalLicenseAsync();
+            await Task.WhenAll(LoadLicenseFiles(), LoadLicenseInfo());
+            autoFetch = Bootstrapper.GetStatus();
+            if (result.Succeeded)
+                _fetchMessage = $"Token saved and license fetched. {result.Message}";
+            else
+                _fetchError = $"Token saved, but the license could not be fetched: {result.Message}";
+        }
+        catch (Exception ex)
+        {
+            _fetchError = $"Token saved, but the license fetch failed: {ex.Message}";
+            Logger.LogError(ex, "License fetch immediately after saving token failed");
+        }
+        finally
+        {
+            _isFetching = false;
+        }
+    }
+
+    private void BeginEditToken()
+    {
+        _fetchMessage = null; _fetchError = null;
+        _removeTokenConfirm = false;
+        _licenseTokenInput = "";
+        _editingToken = true;
+    }
+
+    private void CancelEditToken()
+    {
+        _editingToken = false;
+        _licenseTokenInput = "";
+        _fetchError = null;
+    }
+
+    private void RemoveToken()
+    {
+        _fetchMessage = null; _fetchError = null;
+        _removeTokenConfirm = false;
+        if (!isAdmin)
+        {
+            _fetchError = "Only administrators can change the license source.";
+            return;
+        }
+
+        var settings = InstanceSettingsService.Load();
+        settings.LicenseToken = null;
+        InstanceSettingsService.Save(settings);
+
+        _licenseTokenInput = "";
+        _editingToken = false;
+        autoFetch = Bootstrapper.GetStatus();
+        // A token may still come from the Indx:LicenseToken app setting (env/config), which the UI
+        // cannot clear — say so instead of implying auto-fetch is fully off.
+        _fetchMessage = autoFetch?.TokenConfigured == true
+            ? "Saved token removed. A token is still set via configuration (Indx:LicenseToken), so auto-fetch stays on."
+            : "Token removed. Auto-fetch is now off.";
     }
 
     private async Task FetchNow()
