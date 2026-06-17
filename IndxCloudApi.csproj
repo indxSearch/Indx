@@ -70,6 +70,11 @@
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
 		<PackageReference Include="Swashbuckle.AspNetCore.Swagger" Version="9.0.6" />
 		<PackageReference Include="System.ServiceModel.Syndication" Version="10.0.3" />
+		<!-- Pin MessagePack to 3.1.7 to remediate CVE-2026-48109 / GHSA-hv8m-jj95-wg3x (High: LZ4
+		     decompression out-of-bounds read). HNSW transitively resolves the vulnerable 3.1.0
+		     (directly in LocalDll mode, via the Indx engine otherwise); this higher reference wins
+		     in every IndxReferenceMode. Patch-level bump within 3.1.x, so HNSW keeps working. -->
+		<PackageReference Include="MessagePack" Version="3.1.7" />
 	</ItemGroup>
 
 	<ItemGroup>
