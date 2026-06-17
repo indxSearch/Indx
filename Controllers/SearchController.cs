@@ -28,6 +28,10 @@ namespace IndxCloudApi.Controllers
     [ApiController]
     [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     [EnableCors("NewPolicy")]
+    // Calling a dataset operation in a state it cannot serve (e.g. Search before Ready) returns
+    // 409 Conflict with a ProblemDetails body (currentState, allowedStates, retryable + Retry-After
+    // header when retryable). Declared here so it appears in the OpenAPI spec for every endpoint.
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public class SearchController(TeamContextResolver resolver, TeamService teams) : Controller
     {
         private const string DataSetRoute = "teams/{teamName}/datasets/{dataSetName}";
