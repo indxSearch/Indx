@@ -102,6 +102,8 @@ namespace IndxCloudApi.Controllers
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("CombineFilters, non existing dataset name");
+            if (RequireState(matcher, "CombineFilters", SystemState.Ready) is { } stateError)
+                return stateError;
             var fa = matcher.GetFilterFromKey(combineFilters.A.HashString);
             var fb = matcher.GetFilterFromKey(combineFilters.B.HashString);
             matcher.LoadFilters(new Filter[] { fa, fb });
@@ -127,6 +129,8 @@ namespace IndxCloudApi.Controllers
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("CreateBoost non existing dataset name");
+            if (RequireState(matcher, "CreateBoost", SystemState.Ready) is { } stateError)
+                return stateError;
             var filter = matcher.GetFilterFromKey(boost.FilterProxy.HashString);
             if (filter == null)
                 return BadRequest("invalid filter arguments");
@@ -174,6 +178,8 @@ namespace IndxCloudApi.Controllers
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("CreateRangeFilter non existing dataset name");
+            if (RequireState(matcher, "CreateRangeFilter", SystemState.Ready) is { } stateError)
+                return stateError;
             var filter = matcher.CreateRangeFilter(rangeFilter.FieldName, rangeFilter.LowerLimit, rangeFilter.UpperLimit);
             if (filter == null)
                 return BadRequest("invalid filter arguments");
@@ -194,6 +200,8 @@ namespace IndxCloudApi.Controllers
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("CreateRangeFilter non existing dataset name");
+            if (RequireState(matcher, "CreateValueFilter", SystemState.Ready) is { } stateError)
+                return stateError;
             var filter = matcher.CreateValueFilter(valueFilter.FieldName, valueFilter.Value);
             if (filter == null)
                 return BadRequest("invalid filter arguments, filter value must have tostring implementation");
@@ -228,6 +236,8 @@ namespace IndxCloudApi.Controllers
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("DeleteDocument non existing dataset name");
+            if (RequireState(matcher, "DeleteJsonRecord", SystemState.Ready) is { } stateError)
+                return stateError;
             var result = matcher.DeleteJsonRecord(documentKey);
             if (!result)
                 return BadRequest("DeleteDocument document not found");
@@ -253,7 +263,7 @@ namespace IndxCloudApi.Controllers
                         return BadRequest($"DeleteJsonRecords document not found: {documentKey}");
                 }
                 return Ok();
-            });
+            }, SystemState.Ready);
         }
 
         /// <summary>
@@ -300,8 +310,8 @@ namespace IndxCloudApi.Controllers
             ICloudSearchEngine? engine = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (engine == null)
                 return BadRequest("GetJson non existing dataset name");
-            if (engine.Status.SystemState == SystemState.Created || engine.Status.SystemState == SystemState.Loading)
-                return BadRequest("GetJson invalid status, no data loaded or loading in progress");
+            if (RequireState(engine, "GetJson", SystemState.Loaded, SystemState.Indexing, SystemState.Ready) is { } stateError)
+                return stateError;
             var jsonStrings = new string[keys.Length];
             for (int i = 0; i < jsonStrings.Length; i++)
                 jsonStrings[i] = engine.GetJsonDataOfKey(keys[i]);
@@ -418,6 +428,11 @@ namespace IndxCloudApi.Controllers
             if (matcher == null)
                 return BadRequest("IndexDataSet non existing dataset name");
 
+            // First-time indexing needs Loaded; a Ready dataset is re-indexed via shadow-swap.
+            // Created / Loading / Indexing / Hibernated / Error are not indexable here → 409.
+            if (RequireState(matcher, "IndexDataSet", SystemState.Loaded, SystemState.Ready) is { } stateError)
+                return stateError;
+
             if (matcher.Status.SystemState == SystemState.Ready)
             {
                 // Re-index without blocking searches: build shadow (which loads + indexes
@@ -434,15 +449,7 @@ namespace IndxCloudApi.Controllers
             }
             else if (!IndxCloudInternalApi.Manager.DoIndex(dataSetName, ctx.OwnerKey))
             {
-                // Pre-Ready: first-time indexing path (Loaded -> Indexing -> Ready).
-                var status1 = IndxCloudInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
-                if (status1 == null)
-                    return BadRequest("IndexDataSet failed, DoIndex returned false");
-                if (status1.SystemState == SystemState.Created)
-                {
-                    status1.ErrorMessage = "IndexDataSet failed, due to invalidstate, check Load operation completion status";
-                    return StatusCode(StatusCodes.Status409Conflict, status1);
-                }
+                return BadRequest("IndexDataSet failed, DoIndex returned false");
             }
 
             var status = IndxCloudInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
@@ -464,6 +471,8 @@ namespace IndxCloudApi.Controllers
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("InsertJsonRecord non existing dataset name");
+            if (RequireState(matcher, "InsertJsonRecord", SystemState.Created, SystemState.Loaded, SystemState.Ready) is { } stateError)
+                return stateError;
             var result = matcher.InsertJsonRecord(jsonData, out string error2);
             if (!result)
                 return BadRequest(error2);
@@ -486,7 +495,7 @@ namespace IndxCloudApi.Controllers
                 if (!result)
                     return BadRequest(error2);
                 return Ok();
-            });
+            }, SystemState.Created, SystemState.Loaded, SystemState.Ready);
         }
 
         /// <summary>
@@ -568,6 +577,11 @@ namespace IndxCloudApi.Controllers
             if (ctx == null) return error!;
             if (query == null)
                 return BadRequest("Search query body is required");
+            var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return BadRequest("Search non existing dataset name");
+            if (RequireState(matcher, "Search", SystemState.Ready) is { } stateError)
+                return stateError;
             Indx.Api.Result res = IndxCloudInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey);
             return res;
         }
@@ -684,7 +698,7 @@ namespace IndxCloudApi.Controllers
                         return BadRequest(error2);
                 }
                 return Ok();
-            });
+            }, SystemState.Ready);
         }
 
         /// <summary>
@@ -700,6 +714,8 @@ namespace IndxCloudApi.Controllers
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("UpdateJsonRecord non existing dataset name");
+            if (RequireState(matcher, "UpdateJsonRecord", SystemState.Ready) is { } stateError)
+                return stateError;
             var result = matcher.UpdateJsonRecord(jsonData, out string error2);
             if (!result)
                 return BadRequest(error2);
@@ -719,6 +735,8 @@ namespace IndxCloudApi.Controllers
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("UpdateField non existing dataset name");
+            if (RequireState(matcher, "UpdateField", SystemState.Loaded, SystemState.Ready) is { } stateError)
+                return stateError;
             var result = matcher.UpdateField(documentKey, update.FieldName, UnwrapJsonElement(update.Value)!, out string error2);
             if (!result)
                 return BadRequest(error2);
@@ -743,7 +761,7 @@ namespace IndxCloudApi.Controllers
                 engine.LoadFilters(new[] { filter });
                 engine.DeleteRecordsInFilter(filter);
                 return Ok();
-            });
+            }, SystemState.Ready);
         }
 
         /// <summary>
@@ -765,7 +783,7 @@ namespace IndxCloudApi.Controllers
                 if (count == 0 && !string.IsNullOrEmpty(error2))
                     return BadRequest(error2);
                 return Ok(count);
-            });
+            }, SystemState.Ready);
         }
 
         /// <summary>
@@ -820,6 +838,8 @@ namespace IndxCloudApi.Controllers
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("LoadAllFilters non existing dataset name");
+            if (RequireState(matcher, "LoadAllFilters", SystemState.Loaded, SystemState.Indexing, SystemState.Ready) is { } stateError)
+                return stateError;
             matcher.LoadAllFilters();
             return Ok();
         }
@@ -853,6 +873,8 @@ namespace IndxCloudApi.Controllers
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("Hibernate non existing dataset name");
+            if (RequireState(matcher, "Hibernate", SystemState.Ready) is { } stateError)
+                return stateError;
             var result = matcher.Hibernate(out string errorMessage);
             if (!result)
                 return BadRequest(errorMessage);
@@ -872,6 +894,8 @@ namespace IndxCloudApi.Controllers
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return BadRequest("WakeUp non existing dataset name");
+            if (RequireState(matcher, "WakeUp", SystemState.Hibernated) is { } stateError)
+                return stateError;
             var result = matcher.WakeUp();
             if (!result)
                 return BadRequest("WakeUp failed");
@@ -889,6 +913,9 @@ namespace IndxCloudApi.Controllers
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
+            // No lifecycle-state guard: SetEmbeddableFields is idempotent and may legitimately be
+            // re-sent on an already-Ready dataset (it operates on DocumentFields, which the manager
+            // null-checks). Adding a Created-only guard would wrongly reject that idempotent re-send.
             if (!IndxCloudInternalApi.Manager.SetEmbeddableFields(fields, dataSetName, ctx.OwnerKey))
                 return BadRequest("SetEmbeddableFields failed — dataset not found or unknown field name");
             return Ok();
@@ -907,6 +934,11 @@ namespace IndxCloudApi.Controllers
                 return BadRequest("Vector must be a non-empty float array");
             if (string.IsNullOrEmpty(query.FieldName))
                 return BadRequest("FieldName is required");
+            var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return BadRequest("VectorSearch non existing dataset name");
+            if (RequireState(matcher, "VectorSearch", SystemState.Ready) is { } stateError)
+                return stateError;
             return IndxCloudInternalApi.Manager.VectorSearch(query, dataSetName, ctx.OwnerKey);
         }
 
@@ -923,6 +955,11 @@ namespace IndxCloudApi.Controllers
                 return BadRequest("Vector must be a non-empty float array");
             if (string.IsNullOrEmpty(query.EmbeddingField))
                 return BadRequest("EmbeddingField is required");
+            var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return BadRequest("HybridSearch non existing dataset name");
+            if (RequireState(matcher, "HybridSearch", SystemState.Ready) is { } stateError)
+                return stateError;
             return IndxCloudInternalApi.Manager.HybridSearch(query, dataSetName, ctx.OwnerKey);
         }
 
@@ -958,8 +995,14 @@ namespace IndxCloudApi.Controllers
             string dataSetName,
             string teamId,
             string operationName,
-            Func<ICloudSearchEngine, ActionResult> mutation)
+            Func<ICloudSearchEngine, ActionResult> mutation,
+            params SystemState[] allowed)
         {
+            var engine = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, teamId);
+            if (engine == null)
+                return BadRequest($"{operationName} non existing dataset name");
+            if (allowed.Length > 0 && RequireState(engine, operationName, allowed) is { } stateError)
+                return stateError;
             try
             {
                 return IndxCloudInternalApi.Manager.RunHeavyOnShadowIfReady(dataSetName, teamId, mutation);
@@ -973,6 +1016,50 @@ namespace IndxCloudApi.Controllers
                 return StatusCode(StatusCodes.Status409Conflict, ex.Message);
             }
         }
+
+        /// <summary>
+        /// Lifecycle-state guard. Returns <c>null</c> when <paramref name="engine"/> is in one of the
+        /// <paramref name="allowed"/> states, otherwise a 409 ProblemDetails describing the current
+        /// state and how to proceed. Call AFTER the null-resolve check and BEFORE using the engine, so
+        /// non-existing datasets stay 400 and only a genuine wrong lifecycle state becomes 409.
+        /// </summary>
+        private ActionResult? RequireState(ICloudSearchEngine engine, string operation, params SystemState[] allowed)
+        {
+            var status = engine.Status;
+            if (allowed.Contains(status.SystemState))
+                return null;
+
+            var state = status.SystemState;
+            bool retryable = state is SystemState.Loading or SystemState.Indexing;
+            var problem = new ProblemDetails
+            {
+                Status = StatusCodes.Status409Conflict,
+                Title = "Dataset not in a valid state for this operation",
+                Detail = $"{operation} requires the dataset to be {string.Join("/", allowed)}; " +
+                         $"it is currently {state}. {StateGuidance(state, status)}"
+            };
+            problem.Extensions["operation"] = operation;
+            problem.Extensions["currentState"] = state.ToString();
+            problem.Extensions["allowedStates"] = allowed.Select(s => s.ToString()).ToArray();
+            problem.Extensions["retryable"] = retryable;
+            if (state == SystemState.Error && !string.IsNullOrEmpty(status.ErrorMessage))
+                problem.Extensions["errorMessage"] = status.ErrorMessage;
+            if (retryable)
+                Response.Headers["Retry-After"] = "2";
+            return Conflict(problem);
+        }
+
+        /// <summary>Per-state, operation-independent guidance shown in the 409 body.</summary>
+        private static string StateGuidance(SystemState state, SystemStatus status) => state switch
+        {
+            SystemState.Created => "The dataset is created but not loaded. Call Load (LoadStream/LoadString/LoadFromDatabase) and then IndexDataSet.",
+            SystemState.Loading => "Loading is in progress — retry once the dataset reaches Ready.",
+            SystemState.Loaded => "The dataset is loaded but not indexed. Call IndexDataSet.",
+            SystemState.Indexing => "Indexing is in progress — retry once the dataset reaches Ready.",
+            SystemState.Hibernated => "The dataset is hibernated. Call WakeUp.",
+            SystemState.Error => $"The dataset is in an error state: {status.ErrorMessage}",
+            _ => ""
+        };
 
         /// <summary>Shared body for the legacy Set*Fields helpers — resolve, validate, mutate each field.</summary>
         private IActionResult SetFieldFlag(string teamName, string dataSetName, IEnumerable<string> fieldNames, Action<Indx.Api.Field, string> apply)

@@ -315,12 +315,23 @@
             returns null.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.RunHeavy(System.String,System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,Microsoft.AspNetCore.Mvc.ActionResult})">
+        <member name="M:IndxCloudApi.Controllers.SearchController.RunHeavy(System.String,System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,Microsoft.AspNetCore.Mvc.ActionResult},Indx.Api.SystemState[])">
             <summary>
             Runs a heavy mutation against the team's dataset, using the shadow-swap path when the
             engine is Ready so live searches are not blocked. Maps not-found to 400 and a concurrent
             shadow build to 409.
             </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.RequireState(Indx.Api.ICloudSearchEngine,System.String,Indx.Api.SystemState[])">
+            <summary>
+            Lifecycle-state guard. Returns <c>null</c> when <paramref name="engine"/> is in one of the
+            <paramref name="allowed"/> states, otherwise a 409 ProblemDetails describing the current
+            state and how to proceed. Call AFTER the null-resolve check and BEFORE using the engine, so
+            non-existing datasets stay 400 and only a genuine wrong lifecycle state becomes 409.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.StateGuidance(Indx.Api.SystemState,Indx.Api.SystemStatus)">
+            <summary>Per-state, operation-independent guidance shown in the 409 body.</summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.SetFieldFlag(System.String,System.String,System.Collections.Generic.IEnumerable{System.String},System.Action{Indx.Api.Field,System.String})">
             <summary>Shared body for the legacy Set*Fields helpers — resolve, validate, mutate each field.</summary>
