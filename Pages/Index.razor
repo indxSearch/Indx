@@ -17,6 +17,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
 @inject IndxCloudApi.Services.BoostRuleStore BoostStore
+@inject IndxCloudApi.Services.DatasetMetadataStore DatasetMeta
 @inject IndxCloudApi.Services.ActiveTeamState ActiveTeam
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject IJSRuntime JSRuntime
@@ -609,6 +610,27 @@ else
                         {
                             <div style="margin-top:8px;">
 
+                                @* ── Description (domain context for AI agents over MCP) ── *@
+                                @if (isEditor)
+                                {
+                                    EnsureDescriptionLoaded(datasetName, ownerUserId);
+                                    <h3 style="margin-top:8px;margin-bottom:6px;">Description</h3>
+                                    <p style="color:var(--lv5);font:var(--text-xs);margin-bottom:8px;max-width:560px;">
+                                        Domain context shown to AI agents that use this dataset over MCP (<code>describe_dataset</code>) — e.g. what the records are and what key fields mean.
+                                    </p>
+                                    <div style="max-width:560px;">
+                                        <Textarea @bind-Value="_descEdit[datasetName]" Rows="3" placeholder="What is this dataset? Any field caveats an agent should know?" />
+                                    </div>
+                                    @if (DescriptionDirty(datasetName))
+                                    {
+                                        <div style="display:flex;gap:8px;margin-top:8px;">
+                                            <Button Variant="primary" Size="micro" IconLeft="_iconSave" @onclick="() => SaveDescription(datasetName, ownerUserId)">Save description</Button>
+                                            <Button Variant="ghost" Size="micro" @onclick="() => CancelDescription(datasetName)">Cancel</Button>
+                                        </div>
+                                    }
+                                    <div style="height:18px;"></div>
+                                }
+
                                 @* ── Keep-alive (team admins manage their dataset's memory lifecycle) ── *@
                                 <h3 style="margin-top:8px;margin-bottom:6px;">Keep-alive</h3>
                                 <p style="color:var(--lv5);font:var(--text-xs);margin-bottom:8px;max-width:560px;">
@@ -1014,6 +1036,8 @@ else
         _editedBoostRules.Clear();
         _savedBoostJson.Clear();
         _ruleTimeLimited.Clear();
+        _descEdit.Clear();
+        _descSaved.Clear();
         _searchableTouched.Clear();
         _searchTexts.Clear();
         _searchResults.Clear();
@@ -2081,6 +2105,34 @@ else
         new("Medium", "Med") { Icon = _iconWeightMedium },
         new("High", "High") { Icon = _iconWeightHigh },
     ];
+
+    // ── Dataset description (MCP describe_dataset context) ──
+    private readonly Dictionary<string, string> _descEdit = new();
+    private readonly Dictionary<string, string> _descSaved = new();
+
+    private void EnsureDescriptionLoaded(string datasetName, string teamId)
+    {
+        if (_descEdit.ContainsKey(datasetName)) return;
+        var d = DatasetMeta.Load(teamId, datasetName);
+        _descEdit[datasetName] = d;
+        _descSaved[datasetName] = d;
+    }
+
+    private bool DescriptionDirty(string datasetName) =>
+        _descEdit.TryGetValue(datasetName, out var e)
+        && (!_descSaved.TryGetValue(datasetName, out var s) || e != s);
+
+    private async Task SaveDescription(string datasetName, string teamId)
+    {
+        var text = _descEdit.GetValueOrDefault(datasetName) ?? "";
+        await Task.Run(() => DatasetMeta.Save(teamId, datasetName, text));
+        _descSaved[datasetName] = text;
+    }
+
+    private void CancelDescription(string datasetName)
+    {
+        if (_descSaved.TryGetValue(datasetName, out var s)) _descEdit[datasetName] = s;
+    }
 
     // Rules with no schedule are "always active". The Time-limit checkbox reveals the date pickers;
     // a rule is considered time-limited if the box was ticked or it already carries a date.

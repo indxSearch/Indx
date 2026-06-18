@@ -1,0 +1,284 @@
+using System.ComponentModel;
+using System.Globalization;
+using Description = System.ComponentModel.DescriptionAttribute;
+using System.Security.Claims;
+using System.Text.Json.Nodes;
+using Indx.Api;
+using Indx.CloudApi;
+using IndxCloudApi.Models;
+using IndxCloudApi.Services;
+using ModelContextProtocol.Server;
+
+namespace IndxCloudApi.Mcp
+{
+    /// <summary>
+    /// Read-only MCP tools over the Indx search engine. Each call is authenticated by the bearer
+    /// token (an API key) on the /mcp request; access is scoped to the caller's teams. Searches run
+    /// in-process through <see cref="IndxCloudInternalApi.Manager"/>, so the dataset's saved boost
+    /// rules apply automatically, and hibernated datasets auto-wake (ResolveEngine).
+    /// </summary>
+    [McpServerToolType]
+    public sealed class IndxMcpTools(
+        IHttpContextAccessor http,
+        TeamService teams,
+        DatasetMetadataStore metadata)
+    {
+        // Default match semantics for agents: precise near-exact only (Coverage on, pattern
+        // matches off). A query with no near-exact hit returns nothing rather than fuzzy noise.
+        private const int DefaultLimit = 10;
+        private const int MaxResponseBytes = 80_000; // size guardrail for the context window
+        private const int MaxFacetValues = 25;
+
+        // ── Tools ─────────────────────────────────────────────────────────────
+
+        [McpServerTool(Name = "list_datasets", UseStructuredContent = false, ReadOnly = true)]
+        [Description("List the search datasets the caller can access, with team, role, document count and state.")]
+        public async Task<McpDatasetSummary[]> ListDatasets()
+        {
+            var userId = RequireUserId();
+            var result = new List<McpDatasetSummary>();
+            foreach (var (team, role) in await teams.GetTeamsForUserAsync(userId))
+            {
+                var ownerKey = team.Id.ToString();
+                foreach (var ds in IndxCloudInternalApi.Manager.GetTeamDataSets(ownerKey))
+                {
+                    var ka = IndxCloudInternalApi.Manager.GetKeepAliveInfo(ds, ownerKey);
+                    result.Add(new McpDatasetSummary
+                    {
+                        Team = team.Name,
+                        Dataset = ds,
+                        Role = role,
+                        DocumentCount = ka.RecordCount,
+                        State = ka.Ready ? "Ready" : "Asleep",
+                    });
+                }
+            }
+            return result.ToArray();
+        }
+
+        [McpServerTool(Name = "describe_dataset", UseStructuredContent = false, ReadOnly = true)]
+        [Description("Describe a dataset's queryable surface: configured fields (with capabilities), value hints " +
+                     "(distinct values for facetable fields, numeric ranges), an owner description, and a sample document. " +
+                     "Call this before search to know which fields you can search/filter/sort on and what values are valid.")]
+        public async Task<McpDatasetSchema> DescribeDataset(
+            [Description("Team name that owns the dataset.")] string team,
+            [Description("Dataset name.")] string dataset)
+        {
+            var ownerKey = await ResolveOwnerKey(team);
+            var engine = ResolveEngine(dataset, ownerKey);
+
+            var ka = IndxCloudInternalApi.Manager.GetKeepAliveInfo(dataset, ownerKey);
+            var schema = new McpDatasetSchema
+            {
+                Team = team,
+                Dataset = dataset,
+                Description = NullIfEmpty(metadata.Load(ownerKey, dataset)),
+                DocumentCount = ka.RecordCount,
+                State = engine.Status.SystemState.ToString(),
+            };
+
+            var fieldCfg = engine.GetFieldConfiguration();
+            // Configured fields only (those with at least one role) — the queryable surface.
+            var configured = fieldCfg
+                .Where(f => (f.Searchable ?? false) || (f.Filterable ?? false) || (f.Facetable ?? false) || (f.Sortable ?? false))
+                .ToList();
+
+            // One match-all faceted search → facet value hints for all facetable fields + a sample doc.
+            var facetable = configured.Where(f => f.Facetable == true).Select(f => f.FieldName).ToHashSet();
+            Result? probe = TryMatchAll(dataset, ownerKey, fieldCfg, withFacets: facetable.Count > 0);
+
+            foreach (var f in configured)
+            {
+                var info = new McpFieldInfo
+                {
+                    Name = f.FieldName,
+                    Type = (f.FieldType ?? "String").ToLowerInvariant(),
+                    Searchable = f.Searchable ?? false,
+                    Filterable = f.Filterable ?? false,
+                    Facetable = f.Facetable ?? false,
+                    Sortable = f.Sortable ?? false,
+                };
+
+                if (f.Facetable == true && probe?.Facets != null
+                    && probe.Facets.TryGetValue(f.FieldName, out var facetVals) && facetVals.Length > 0)
+                {
+                    var labels = facetVals.Take(MaxFacetValues).Select(v => v.Key).ToArray();
+                    info.Values = labels.Select(l => Coerce(l, info.Type)).ToArray();
+                    if (info.Type == "number")
+                    {
+                        var nums = labels
+                            .Select(l => double.TryParse(l, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : (double?)null)
+                            .Where(d => d.HasValue).Select(d => d!.Value).ToList();
+                        if (nums.Count > 0) info.Range = new McpRange { Min = nums.Min(), Max = nums.Max() };
+                    }
+                }
+                schema.Fields.Add(info);
+            }
+
+            // Sample document from the probe (first record).
+            if (probe is { Records.Length: > 0 })
+                schema.Sample = ParseJson(engine.GetJsonDataOfKey(probe.Records[0].DocumentKey));
+
+            return schema;
+        }
+
+        [McpServerTool(Name = "search", UseStructuredContent = false, ReadOnly = true)]
+        [Description("Search a dataset and return ranked documents with relevance scores. Matching is precise by " +
+                     "default (near-exact only, incl. typo tolerance) — an empty result means nothing matches well, " +
+                     "which is a trustworthy 'not found' (don't retry with looser wording unless you set broaden=true). " +
+                     "Saved boost rules are applied. Use filters for structured constraints on filterable fields " +
+                     "(get valid fields/values from describe_dataset).")]
+        public async Task<McpSearchResult> Search(
+            [Description("Team name that owns the dataset.")] string team,
+            [Description("Dataset name.")] string dataset,
+            [Description("Free-text query. Matches searchable fields.")] string query,
+            [Description("Structured constraints (AND-combined). Each: {field, value} for exact match, or {field, min, max} for a numeric range. Fields must be filterable.")] McpFilter[]? filters = null,
+            [Description("Max documents to return (default 10).")] int limit = DefaultLimit,
+            [Description("If set, return only these top-level fields from each document.")] string[]? fields = null,
+            [Description("Set true to include broad fuzzy/pattern matches (lower precision). Default false = near-exact only.")] bool broaden = false,
+            [Description("Set true to also return facet counts (for facetable fields) to refine the next query.")] bool facets = false)
+        {
+            var ownerKey = await ResolveOwnerKey(team);
+            var engine = ResolveEngine(dataset, ownerKey);
+
+            var cloudQuery = new CloudQuery
+            {
+                Text = query ?? "",
+                MaxNumberOfRecordsToReturn = Math.Clamp(limit, 1, 100),
+                EnableCoverage = true,
+                CoverageSetup = new CoverageSetup { IncludePatternMatches = broaden },
+                EnableBoost = true,
+                EnableFacets = facets,
+            };
+
+            if (filters is { Length: > 0 })
+            {
+                Filter? combined = null;
+                foreach (var c in filters)
+                {
+                    var built = FilterConditionBuilder.Build(engine, c.Field, c.Value, c.Min, c.Max);
+                    if (built == null)
+                        throw new McpToolException($"Filter field '{c.Field}' is not filterable, or the condition is empty.");
+                    combined = combined == null ? built : combined & built;
+                }
+                if (combined != null)
+                    cloudQuery.Filter = new FilterProxy(combined.SerializedKey);
+            }
+
+            var res = IndxCloudInternalApi.Manager.Search(cloudQuery, dataset, ownerKey);
+            return ShapeResult(engine, res, fields);
+        }
+
+        [McpServerTool(Name = "get_document", UseStructuredContent = false, ReadOnly = true)]
+        [Description("Fetch the full JSON document for a specific document key in a dataset.")]
+        public async Task<JsonNode?> GetDocument(
+            [Description("Team name that owns the dataset.")] string team,
+            [Description("Dataset name.")] string dataset,
+            [Description("Document key (from a search hit).")] long key)
+        {
+            var ownerKey = await ResolveOwnerKey(team);
+            var engine = ResolveEngine(dataset, ownerKey);
+            return ParseJson(engine.GetJsonDataOfKey(key));
+        }
+
+        // ── Helpers ───────────────────────────────────────────────────────────
+
+        private string RequireUserId() =>
+            http.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? throw new McpToolException("Not authenticated.");
+
+        private async Task<string> ResolveOwnerKey(string team)
+        {
+            var userId = RequireUserId();
+            var match = (await teams.GetTeamsForUserAsync(userId))
+                .FirstOrDefault(t => string.Equals(t.Team.Name, team, StringComparison.OrdinalIgnoreCase));
+            if (match.Team == null)
+                throw new McpToolException($"Team '{team}' not found or not accessible.");
+            return match.Team.Id.ToString();
+        }
+
+        private static ICloudSearchEngine ResolveEngine(string dataset, string ownerKey)
+        {
+            var engine = IndxCloudInternalApi.Manager.ResolveEngine(dataset, ownerKey); // auto-wakes if hibernated
+            if (engine == null)
+                throw new McpToolException($"Dataset '{dataset}' not found.");
+            if (engine.Status.SystemState != SystemState.Ready)
+                throw new McpToolException($"Dataset '{dataset}' is not ready (state: {engine.Status.SystemState}).");
+            return engine;
+        }
+
+        /// <summary>Match-all via an empty query sorted by any sortable field (empty text alone returns nothing).</summary>
+        private static Result? TryMatchAll(string dataset, string ownerKey, FieldProxy[] fieldCfg, bool withFacets)
+        {
+            var sortable = fieldCfg.FirstOrDefault(f => f.Sortable == true)?.FieldName;
+            if (sortable == null) return null; // no sortable field → can't enumerate; skip hints/sample
+            var q = new CloudQuery
+            {
+                Text = "",
+                MaxNumberOfRecordsToReturn = 1,
+                SortBy = sortable,
+                SortAscending = true,
+                EnableFacets = withFacets,
+                EnableCoverage = true,
+            };
+            return IndxCloudInternalApi.Manager.Search(q, dataset, ownerKey);
+        }
+
+        private static McpSearchResult ShapeResult(ICloudSearchEngine engine, Result res, string[]? fields)
+        {
+            var outp = new McpSearchResult();
+            int bytes = 0;
+            foreach (var rec in res.Records)
+            {
+                var doc = ParseJson(engine.GetJsonDataOfKey(rec.DocumentKey));
+                if (doc != null && fields is { Length: > 0 }) doc = Project(doc, fields);
+                int sz = doc?.ToJsonString().Length ?? 0;
+                if (bytes + sz > MaxResponseBytes && outp.Hits.Count > 0)
+                {
+                    outp.Truncated = true;
+                    outp.Note = $"Truncated to {outp.Hits.Count} hits to fit the response size limit.";
+                    break;
+                }
+                bytes += sz;
+                outp.Hits.Add(new McpSearchHit { Key = rec.DocumentKey, Score = rec.Score, Document = doc });
+            }
+            outp.Count = outp.Hits.Count;
+
+            if (res.Facets != null)
+            {
+                outp.Facets = res.Facets.ToDictionary(
+                    kv => kv.Key,
+                    kv => kv.Value.ToDictionary(p => p.Key, p => p.Value));
+            }
+            return outp;
+        }
+
+        private static JsonNode? Project(JsonNode doc, string[] fields)
+        {
+            if (doc is not JsonObject obj) return doc;
+            var keep = new JsonObject();
+            foreach (var f in fields)
+                if (obj.TryGetPropertyValue(f, out var v))
+                    keep[f] = v?.DeepClone();
+            return keep;
+        }
+
+        private static JsonNode? ParseJson(string? json)
+        {
+            if (string.IsNullOrEmpty(json)) return null;
+            try { return JsonNode.Parse(json); } catch { return null; }
+        }
+
+        private static object Coerce(string label, string type) => type switch
+        {
+            "number" => double.TryParse(label, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : label,
+            "boolean" => bool.TryParse(label, out var b) ? b : label,
+            _ => label,
+        };
+
+        private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
+    }
+
+    /// <summary>An error surfaced to the MCP client as a tool failure with a clean message.</summary>
+    public sealed class McpToolException(string message) : Exception(message);
+}

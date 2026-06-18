@@ -182,13 +182,7 @@ namespace IndxCloudApi.Services
             return result;
         }
 
-        private static Filter? BuildConditionFilter(ISearchEngine engine, BoostCondition cond)
-        {
-            if (cond.IsRange)
-                return engine.CreateRangeFilter(cond.Field, cond.Min ?? double.MinValue, cond.Max ?? double.MaxValue);
-            if (!string.IsNullOrEmpty(cond.Value))
-                return engine.CreateValueFilter(cond.Field, cond.Value, isCaseSensitive: false);
-            return null;
-        }
+        private static Filter? BuildConditionFilter(ISearchEngine engine, BoostCondition cond) =>
+            FilterConditionBuilder.Build(engine, cond.Field, cond.Value, cond.Min, cond.Max);
     }
 }

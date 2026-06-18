@@ -102,6 +102,12 @@ public class Program
         builder.Services.AddScoped<RegistrationValidator>();
         builder.Services.AddSingleton<InstanceSettingsService>();
         builder.Services.AddSingleton<IndxCloudApi.Services.BoostRuleStore>();
+        builder.Services.AddSingleton<IndxCloudApi.Services.DatasetMetadataStore>();
+
+        // MCP server: read-only retrieval tools over /mcp (Streamable HTTP), behind JWT auth.
+        builder.Services.AddHttpContextAccessor();
+        builder.Services.AddMcpServer().WithHttpTransport().WithTools<IndxCloudApi.Mcp.IndxMcpTools>();
+
         builder.Services.AddScoped<IndxCloudApi.Services.NotificationService>();
         builder.Services.AddScoped<IndxCloudApi.Services.TeamService>();
         builder.Services.AddScoped<IndxCloudApi.Services.UserProvisioningService>();
@@ -601,7 +607,10 @@ public class Program
             app.UseHsts();
         }
 
-        app.UseHttpsRedirection();
+        // Skip HTTPS redirection under the in-memory test server (no HTTPS port) — it otherwise
+        // 307-redirects the MCP SSE stream and breaks the transport.
+        if (!app.Environment.IsEnvironment("Testing"))
+            app.UseHttpsRedirection();
         app.UseStaticFiles();
         app.UseRouting();
 
@@ -664,6 +673,15 @@ public class Program
 
         // Map API Controllers
         app.MapControllers();
+
+        // MCP endpoint (Streamable HTTP). Requires a valid bearer token (API key) on the JWT
+        // scheme specifically — so an unauthenticated call gets a 401 (what MCP clients expect),
+        // not a 302 redirect to the cookie login. Tools scope access to the caller's teams.
+        app.MapMcp("/mcp").RequireAuthorization(
+            new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder(
+                    Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme)
+                .RequireAuthenticatedUser()
+                .Build());
 
         // Health endpoint - anonymous, used by App Service health probes.
         app.MapHealthChecks("/health").AllowAnonymous();
@@ -755,6 +773,7 @@ public class Program
             // saturation ceiling) into the search path.
             var boostStore = app.Services.GetRequiredService<IndxCloudApi.Services.BoostRuleStore>();
             boostStore.EnsureTable();
+            app.Services.GetRequiredService<IndxCloudApi.Services.DatasetMetadataStore>().EnsureTable();
             var boostCeiling = builder.Configuration.GetValue<int?>("Indx:BoostSaturationCeiling") ?? 6;
             IndxCloudInternalApi.Manager.AttachBoostStore(boostStore, boostCeiling);
 

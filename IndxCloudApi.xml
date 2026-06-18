@@ -478,6 +478,61 @@
         <member name="P:IndxCloudApi.Data.TeamMember.Role">
             <summary>"Admin" | "Editor" | "Viewer" — role on every dataset owned by the team.</summary>
         </member>
+        <member name="T:IndxCloudApi.Mcp.IndxMcpTools">
+            <summary>
+            Read-only MCP tools over the Indx search engine. Each call is authenticated by the bearer
+            token (an API key) on the /mcp request; access is scoped to the caller's teams. Searches run
+            in-process through <see cref="P:IndxCloudApi.Models.IndxCloudInternalApi.Manager"/>, so the dataset's saved boost
+            rules apply automatically, and hibernated datasets auto-wake (ResolveEngine).
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Mcp.IndxMcpTools.#ctor(Microsoft.AspNetCore.Http.IHttpContextAccessor,IndxCloudApi.Services.TeamService,IndxCloudApi.Services.DatasetMetadataStore)">
+            <summary>
+            Read-only MCP tools over the Indx search engine. Each call is authenticated by the bearer
+            token (an API key) on the /mcp request; access is scoped to the caller's teams. Searches run
+            in-process through <see cref="P:IndxCloudApi.Models.IndxCloudInternalApi.Manager"/>, so the dataset's saved boost
+            rules apply automatically, and hibernated datasets auto-wake (ResolveEngine).
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Mcp.IndxMcpTools.TryMatchAll(System.String,System.String,Indx.Api.FieldProxy[],System.Boolean)">
+            <summary>Match-all via an empty query sorted by any sortable field (empty text alone returns nothing).</summary>
+        </member>
+        <member name="T:IndxCloudApi.Mcp.McpToolException">
+            <summary>An error surfaced to the MCP client as a tool failure with a clean message.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Mcp.McpToolException.#ctor(System.String)">
+            <summary>An error surfaced to the MCP client as a tool failure with a clean message.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Mcp.McpFilter">
+            <summary>One declarative search condition: exact <see cref="P:IndxCloudApi.Mcp.McpFilter.Value"/> OR numeric <see cref="P:IndxCloudApi.Mcp.McpFilter.Min"/>/<see cref="P:IndxCloudApi.Mcp.McpFilter.Max"/> range.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Mcp.McpDatasetSummary">
+            <summary>A dataset the caller can reach, with light status.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Mcp.McpRange">
+            <summary>Inclusive numeric bounds for a numeric field.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Mcp.McpFieldInfo">
+            <summary>A configured (queryable) field plus value hints for building precise filters.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Mcp.McpFieldInfo.Values">
+            <summary>Distinct values present (facetable fields), so the agent filters with real values, not guesses.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Mcp.McpFieldInfo.Range">
+            <summary>Observed numeric bounds (numeric facetable fields).</summary>
+        </member>
+        <member name="T:IndxCloudApi.Mcp.McpDatasetSchema">
+            <summary>The queryable surface of a dataset, for an agent to build effective queries.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Mcp.McpDatasetSchema.Sample">
+            <summary>One full document, so the agent sees the real record shape (incl. non-queryable fields).</summary>
+        </member>
+        <member name="T:IndxCloudApi.Mcp.McpSearchHit">
+            <summary>One ranked hit: full document + relevance score.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Mcp.McpSearchResult">
+            <summary>Search response: ranked hits, optional facets, truncation note.</summary>
+        </member>
         <member name="T:IndxCloudApi.Models.BoostJoin">
             <summary>How the conditions of a single boost rule are joined.</summary>
         </member>
@@ -993,6 +1048,34 @@
             is transparently re-loaded on its next request (see <see cref="M:IndxCloudApi.Models.IndxCloudInternalApi.ResolveEngine(System.String,System.String)"/>).
             </summary>
         </member>
+        <member name="T:IndxCloudApi.Services.DatasetMetadataStore">
+            <summary>
+            Cloud-owned per-dataset metadata (currently an owner-authored description used by the MCP
+            <c>describe_dataset</c> tool to give agents domain context). Stored in its own table in
+            indx.db — same pattern as <see cref="T:IndxCloudApi.Services.BoostRuleStore"/>, so the lib (SqLiteManager) is untouched.
+            Keyed by (TeamId, DatasetName); cached in memory; writes invalidate the cache.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.DatasetMetadataStore.#ctor(Microsoft.Extensions.Logging.ILogger{IndxCloudApi.Services.DatasetMetadataStore})">
+            <summary>
+            Cloud-owned per-dataset metadata (currently an owner-authored description used by the MCP
+            <c>describe_dataset</c> tool to give agents domain context). Stored in its own table in
+            indx.db — same pattern as <see cref="T:IndxCloudApi.Services.BoostRuleStore"/>, so the lib (SqLiteManager) is untouched.
+            Keyed by (TeamId, DatasetName); cached in memory; writes invalidate the cache.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.DatasetMetadataStore.EnsureTable">
+            <summary>Creates the metadata table if the search DB already exists. Idempotent; call once at startup.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.DatasetMetadataStore.Load(System.String,System.String)">
+            <summary>The dataset's description, or empty string if none. Cached after first read.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.DatasetMetadataStore.Save(System.String,System.String,System.String)">
+            <summary>Sets the dataset description and invalidates the cache.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.DatasetMetadataStore.Delete(System.String,System.String)">
+            <summary>Removes a dataset's description (on dataset delete) and invalidates the cache.</summary>
+        </member>
         <member name="T:IndxCloudApi.Services.IndxEdition">
             <summary>How this instance is deployed. Fixed at deploy time via Indx:Edition.</summary>
         </member>
@@ -1074,6 +1157,19 @@
             Branded informational email (same shell as the action emails). The call-to-action
             button is optional — pass <paramref name="actionUrl"/>/<paramref name="actionLabel"/>
             to include one, omit for a plain notice. <paramref name="bodyHtml"/> is inserted as-is.
+            </summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.FilterConditionBuilder">
+            <summary>
+            Builds a single engine <see cref="T:Indx.Api.Filter"/> from a declarative condition (exact value OR
+            numeric range). Shared by the boost-rules engine and the MCP search tool so both express
+            filters the same way. Returns null when the field isn't filterable / the condition is empty.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.FilterConditionBuilder.Build(Indx.Api.ISearchEngine,System.String,System.String,System.Nullable{System.Double},System.Nullable{System.Double})">
+            <summary>
+            Range form when <paramref name="min"/> or <paramref name="max"/> is set; otherwise an
+            exact value match. An open bound uses double.MinValue / double.MaxValue.
             </summary>
         </member>
         <member name="P:IndxCloudApi.Services.InstanceSettings.SetupComplete">
