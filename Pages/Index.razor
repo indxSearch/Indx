@@ -758,7 +758,7 @@ else
                                                     {
                                                         var cond = bRule.Conditions[ci];
                                                         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-                                                            <div style="width:190px;"><SelectField Size="micro" Options="bFieldOpts" Value="@cond.Field" ValueChanged="@(v => OnConditionFieldChanged(selectedDataset, cond, v))" /></div>
+                                                            <div style="width:190px;"><SelectField Size="micro" Options="FieldOptionsForCondition(selectedDataset, cond.Field)" Value="@cond.Field" ValueChanged="@(v => OnConditionFieldChanged(selectedDataset, cond, v))" /></div>
                                                             @if (IsNumericField(selectedDataset, cond.Field))
                                                             {
                                                                 <span style="color:var(--lv5); font:var(--text-xs);">between</span>
@@ -2021,6 +2021,19 @@ else
 
     private List<SelectField.SelectOption> FieldOptions(string datasetName) =>
         FilterableFieldNames(datasetName).Select(n => new SelectField.SelectOption(n, n)).ToList();
+
+    /// <summary>
+    /// Field options for one condition's picker. If the condition references a field that is no
+    /// longer filterable (or gone), keep it in the list — labelled "(unavailable)" — so its stored
+    /// name still shows instead of a blank dropdown.
+    /// </summary>
+    private List<SelectField.SelectOption> FieldOptionsForCondition(string datasetName, string? currentField)
+    {
+        var opts = FieldOptions(datasetName);
+        if (!string.IsNullOrEmpty(currentField) && !opts.Any(o => o.Value == currentField))
+            opts.Add(new SelectField.SelectOption($"{currentField} (unavailable)", currentField));
+        return opts;
+    }
 
     private bool IsNumericField(string datasetName, string field) =>
         _editedFieldConfigs.TryGetValue(datasetName, out var f) && f != null

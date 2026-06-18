@@ -814,6 +814,13 @@
         <member name="M:IndxCloudApi.Pages.Index.PreviewHit.#ctor(System.Text.Json.JsonElement,System.UInt16)">
             <summary>One search-preview row: the document and its relevance score.</summary>
         </member>
+        <member name="M:IndxCloudApi.Pages.Index.FieldOptionsForCondition(System.String,System.String)">
+            <summary>
+            Field options for one condition's picker. If the condition references a field that is no
+            longer filterable (or gone), keep it in the list — labelled "(unavailable)" — so its stored
+            name still shows instead of a blank dropdown.
+            </summary>
+        </member>
         <member name="T:IndxCloudApi.Program">
             <summary>
             Main application entry point for Indx Cloud API
