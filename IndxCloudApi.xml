@@ -51,7 +51,7 @@
             every request, so removing a user from a team takes effect immediately.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.#ctor(IndxCloudApi.Services.TeamContextResolver,IndxCloudApi.Services.TeamService)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.#ctor(IndxCloudApi.Services.TeamContextResolver,IndxCloudApi.Services.TeamService,IndxCloudApi.Services.BoostRuleStore)">
             <summary>
             API endpoints for managing, analyzing, indexing, and searching JSON datasets. Datasets are
             owned by a <b>team</b>: every dataset endpoint is scoped under
@@ -80,6 +80,22 @@
             <summary>
             CreateBoost will create a Boost setup which may be passed to any search.
             </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetBoostRules(System.String,System.String)">
+            <summary>
+            Returns the dataset's persisted boost rules (server-side ranking rules applied when a
+            search sets enableBoost). Config, not state-gated — available even when not Ready.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetBoostRules(System.String,System.String,IndxCloudApi.Models.BoostRule[])">
+            <summary>
+            Replaces the dataset's boost rules (whole list). Each rule needs a name, at least one
+            condition, and every condition must reference a Filterable field and be either a value
+            match or a numeric range (not both).
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteBoostRules(System.String,System.String)">
+            <summary>Clears all boost rules for the dataset.</summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.CreateOrOpen(System.String,System.String)">
             <summary>
@@ -462,6 +478,48 @@
         <member name="P:IndxCloudApi.Data.TeamMember.Role">
             <summary>"Admin" | "Editor" | "Viewer" — role on every dataset owned by the team.</summary>
         </member>
+        <member name="T:IndxCloudApi.Models.BoostJoin">
+            <summary>How the conditions of a single boost rule are joined.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Models.BoostCondition">
+            <summary>
+            One condition of a boost rule: a filterable field matched either by an exact
+            <see cref="P:IndxCloudApi.Models.BoostCondition.Value"/> (string/keyword fields) or by a numeric <see cref="P:IndxCloudApi.Models.BoostCondition.Min"/>/<see cref="P:IndxCloudApi.Models.BoostCondition.Max"/>
+            range. Exactly one of the two forms is used: if <see cref="P:IndxCloudApi.Models.BoostCondition.Min"/> or <see cref="P:IndxCloudApi.Models.BoostCondition.Max"/> is set
+            it's a range, otherwise <see cref="P:IndxCloudApi.Models.BoostCondition.Value"/> is an exact match.
+            </summary>
+        </member>
+        <member name="P:IndxCloudApi.Models.BoostCondition.Value">
+            <summary>Exact value match (value form). Ignored when Min/Max are set.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Models.BoostCondition.Min">
+            <summary>Inclusive lower bound (range form). Null = open lower bound.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Models.BoostCondition.Max">
+            <summary>Inclusive upper bound (range form). Null = open upper bound.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Models.BoostRule">
+            <summary>
+            A persisted, per-dataset ranking rule: when a search has <c>enableBoost</c> on, documents
+            matching this rule's combined condition get their score lifted by <see cref="P:IndxCloudApi.Models.BoostRule.Strength"/>.
+            Rules are managed in the UI and applied server-side; see <c>BoostRuleStore</c>.
+            </summary>
+        </member>
+        <member name="P:IndxCloudApi.Models.BoostRule.Join">
+            <summary>Operator joining all of this rule's conditions (one operator per rule, v1).</summary>
+        </member>
+        <member name="P:IndxCloudApi.Models.BoostRule.Strength">
+            <summary>Boost magnitude. Reuses the engine enum (Low=1, Med=2, High=3).</summary>
+        </member>
+        <member name="P:IndxCloudApi.Models.BoostRule.ActiveFrom">
+            <summary>Inclusive first day the rule is active (UTC date). Null = no lower bound.</summary>
+        </member>
+        <member name="P:IndxCloudApi.Models.BoostRule.ActiveUntil">
+            <summary>Inclusive last day the rule is active (UTC date). Null = no upper bound.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.BoostRule.IsActiveOn(System.DateOnly)">
+            <summary>True when the rule is enabled and <paramref name="today"/> is within its window.</summary>
+        </member>
         <member name="T:IndxCloudApi.Models.ChangePasswordRequest">
             <summary>
             Body of POST /api/changePassword. Used to rotate the seeded admin's
@@ -627,6 +685,9 @@
             GC counters do not see), so it is the right gauge for startup memory pressure.
             </summary>
         </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.AttachBoostStore(IndxCloudApi.Services.BoostRuleStore,System.Int32)">
+            <summary>Attaches the boost-rule store + saturation ceiling to the search path (startup-only).</summary>
+        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ResolveEngine(System.String,System.String)">
             <summary>
             Returns the engine for a team-owned dataset, or null if the dataset doesn't exist.
@@ -747,6 +808,12 @@
         <member name="M:IndxCloudApi.Models.ShadowBusyException.#ctor(System.String)">
             <summary>Creates the exception with a message naming the affected dataset.</summary>
         </member>
+        <member name="T:IndxCloudApi.Pages.Index.PreviewHit">
+            <summary>One search-preview row: the document and its relevance score.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Pages.Index.PreviewHit.#ctor(System.Text.Json.JsonElement,System.UInt16)">
+            <summary>One search-preview row: the document and its relevance score.</summary>
+        </member>
         <member name="T:IndxCloudApi.Program">
             <summary>
             Main application entry point for Indx Cloud API
@@ -813,6 +880,46 @@
             <param name="email">Recipient email address</param>
             <param name="subject">Email subject</param>
             <param name="htmlMessage">Email body (HTML format)</param>
+        </member>
+        <member name="T:IndxCloudApi.Services.BoostRuleStore">
+            <summary>
+            Cloud-owned persistence + apply for per-dataset boost rules. Stores the rule list as JSON
+            in its own table (<c>DatasetBoostRules</c>) inside the search database (indx.db) — the same
+            file the engine uses, but a table this layer owns, so the lib (SqLiteManager) is untouched.
+            Keyed by (TeamId, DatasetName), mirroring the engine's DataSet table. Reads are cached in
+            memory; writes invalidate the cache so the next search reloads.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.BoostRuleStore.#ctor(Microsoft.Extensions.Logging.ILogger{IndxCloudApi.Services.BoostRuleStore})">
+            <summary>
+            Cloud-owned persistence + apply for per-dataset boost rules. Stores the rule list as JSON
+            in its own table (<c>DatasetBoostRules</c>) inside the search database (indx.db) — the same
+            file the engine uses, but a table this layer owns, so the lib (SqLiteManager) is untouched.
+            Keyed by (TeamId, DatasetName), mirroring the engine's DataSet table. Reads are cached in
+            memory; writes invalidate the cache so the next search reloads.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.BoostRuleStore.EnsureTable">
+            <summary>Creates the boost-rule table if the search DB already exists. Idempotent; call once at startup.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.BoostRuleStore.Load(System.String,System.String)">
+            <summary>The dataset's boost rules (empty if none). Cached after first read.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.BoostRuleStore.Save(System.String,System.String,System.Collections.Generic.IReadOnlyList{IndxCloudApi.Models.BoostRule})">
+            <summary>Replaces the whole rule list for a dataset and invalidates the cache.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.BoostRuleStore.Delete(System.String,System.String)">
+            <summary>Removes all boost rules for a dataset (e.g. on dataset delete) and invalidates the cache.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.BoostRuleStore.Transfer(System.String,System.String,System.String)">
+            <summary>Moves a dataset's rules to a new owning team (on dataset transfer).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.BoostRuleStore.BuildActiveBoosts(Indx.Api.ISearchEngine,System.String,System.String,System.DateOnly)">
+            <summary>
+            Materializes the dataset's currently-active rules (enabled and within their schedule on
+            <paramref name="today"/>) into engine <see cref="T:Indx.Api.Boost"/> objects. A condition that can't
+            be built (e.g. its field is no longer filterable) drops the whole rule (fail-safe).
+            </summary>
         </member>
         <member name="T:IndxCloudApi.Services.ConsoleEmailSender">
             <summary>

@@ -32,7 +32,7 @@ namespace IndxCloudApi.Controllers
     // 409 Conflict with a ProblemDetails body (currentState, allowedStates, retryable + Retry-After
     // header when retryable). Declared here so it appears in the OpenAPI spec for every endpoint.
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-    public class SearchController(TeamContextResolver resolver, TeamService teams) : Controller
+    public class SearchController(TeamContextResolver resolver, TeamService teams, BoostRuleStore boostStore) : Controller
     {
         private const string DataSetRoute = "teams/{teamName}/datasets/{dataSetName}";
 
@@ -140,6 +140,71 @@ namespace IndxCloudApi.Controllers
                 return BadRequest("invalid filter arguments");
             matcher.CreateBoost(filter, boost.BoostStrength);
             return Ok(boost);
+        }
+
+        /// <summary>
+        /// Returns the dataset's persisted boost rules (server-side ranking rules applied when a
+        /// search sets enableBoost). Config, not state-gated — available even when not Ready.
+        /// </summary>
+        [HttpGet(DataSetRoute + "/boosts")]
+        public ActionResult<BoostRule[]> GetBoostRules(string teamName, string dataSetName)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return BadRequest("invalid dataSetName");
+            return boostStore.Load(ctx.OwnerKey, dataSetName).ToArray();
+        }
+
+        /// <summary>
+        /// Replaces the dataset's boost rules (whole list). Each rule needs a name, at least one
+        /// condition, and every condition must reference a Filterable field and be either a value
+        /// match or a numeric range (not both).
+        /// </summary>
+        [HttpPut(DataSetRoute + "/boosts")]
+        public IActionResult SetBoostRules(string teamName, string dataSetName, [FromBody] BoostRule[] rules)
+        {
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return BadRequest("invalid dataSetName");
+            if (rules == null)
+                return BadRequest("rules body is required");
+
+            // Best-effort field validation when the engine is loaded; never hard-fail on a
+            // hibernated dataset (apply-time skips unbuildable conditions anyway).
+            var fields = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey)?.DocumentFields;
+            foreach (var rule in rules)
+            {
+                if (string.IsNullOrWhiteSpace(rule.Name))
+                    return BadRequest("each rule needs a name");
+                if (rule.Conditions == null || rule.Conditions.Count == 0)
+                    return BadRequest($"rule '{rule.Name}' needs at least one condition");
+                foreach (var c in rule.Conditions)
+                {
+                    var hasValue = !string.IsNullOrEmpty(c.Value);
+                    var hasRange = c.Min.HasValue || c.Max.HasValue;
+                    if (hasValue == hasRange)
+                        return BadRequest($"condition on '{c.Field}' must be either a value or a range");
+                    if (fields != null && fields.GetField(c.Field) is not { Filterable: true })
+                        return BadRequest($"field '{c.Field}' is not filterable");
+                }
+            }
+
+            boostStore.Save(ctx.OwnerKey, dataSetName, rules);
+            return Ok();
+        }
+
+        /// <summary>Clears all boost rules for the dataset.</summary>
+        [HttpDelete(DataSetRoute + "/boosts")]
+        public IActionResult DeleteBoostRules(string teamName, string dataSetName)
+        {
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return BadRequest("invalid dataSetName");
+            boostStore.Delete(ctx.OwnerKey, dataSetName);
+            return NoContent();
         }
 
         /// <summary>

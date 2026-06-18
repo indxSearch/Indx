@@ -287,7 +287,7 @@ namespace IndxCloudApi.Models
                 // "search works, just returns nothing" until documents are loaded and indexed.
                 if (engine == null || engine.DocumentFields == null)
                     return Result.MakeEmptyResult();
-                Query query = FromCloudQuery2Query(cloudQuery, engine);
+                Query query = FromCloudQuery2Query(cloudQuery, engine, teamId, dataSetName);
                 return engine.Search(query);
             }
             catch (System.Exception ex)
@@ -490,6 +490,7 @@ namespace IndxCloudApi.Models
 
             DisposeDataSetInstance(dataSetName, teamId);
             persistence.DeleteDataSet();
+            _boostStore?.Delete(teamId, dataSetName);
             return true;
         }
 
@@ -551,7 +552,7 @@ namespace IndxCloudApi.Models
                     EnableCoverage = false,
                     RemoveDuplicates = true
                 };
-                Query textQuery = FromCloudQuery2Query(cloudQuery, engine);
+                Query textQuery = FromCloudQuery2Query(cloudQuery, engine, teamId, dataSetName);
                 var textResult = engine.Search(textQuery);
 
                 // Embedding search — also fetch a larger pool
@@ -584,6 +585,7 @@ namespace IndxCloudApi.Models
             DisposeDataSetInstance(dataSetName, currentTeamId);
             var db = new SqLiteManager(SearchDbConnectionString);
             db.TransferOwnership(dataSetName, currentTeamId, newTeamId);
+            _boostStore?.Transfer(currentTeamId, newTeamId, dataSetName);
 
             // Warm up the engine for the new owning team, same as InitializeSystem does on startup.
             var instance = FindInstance(dataSetName, newTeamId);
@@ -813,7 +815,18 @@ namespace IndxCloudApi.Models
             return proc.WorkingSet64 / (1024 * 1024);
         }
 
-        private static Query FromCloudQuery2Query(CloudQuery cloudQuery, ICloudSearchEngine engine)
+        // Per-dataset boost rules (cloud-owned). Wired in once at startup; null until then.
+        private Services.BoostRuleStore? _boostStore;
+        private int _boostCeiling = 6;
+
+        /// <summary>Attaches the boost-rule store + saturation ceiling to the search path (startup-only).</summary>
+        internal void AttachBoostStore(Services.BoostRuleStore store, int saturationCeiling)
+        {
+            _boostStore = store;
+            _boostCeiling = saturationCeiling;
+        }
+
+        private Query FromCloudQuery2Query(CloudQuery cloudQuery, ICloudSearchEngine engine, string teamId, string dataSetName)
         {
             Query query = new Query(cloudQuery.Text, cloudQuery.MaxNumberOfRecordsToReturn)
             {
@@ -832,16 +845,36 @@ namespace IndxCloudApi.Models
                 query.FieldBoosts = cloudQuery.FieldBoosts;
             if (cloudQuery.Filter != null)
                 query.Filter = engine.GetFilterFromKey(cloudQuery.Filter.HashString);
+
+            // Client-supplied boosts (kept verbatim for backward compat) merged with the dataset's
+            // stored, currently-active boost rules. Rules only apply when the query opts in via
+            // EnableBoost — same flag the client already uses.
+            var merged = new List<Boost>();
             if (cloudQuery.Boosts != null)
+                foreach (var b in cloudQuery.Boosts)
+                    merged.Add(engine.CreateBoost(engine.GetFilterFromKey(b.FilterProxy.HashString), b.BoostStrength));
+
+            if (cloudQuery.EnableBoost && _boostStore != null)
             {
-                Boost[] boosts = new Boost[cloudQuery.Boosts.Length];
-                for (int i = 0; i < cloudQuery.Boosts.Length; i++)
+                var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                var ruleBoosts = _boostStore.BuildActiveBoosts(engine, teamId, dataSetName, today)
+                                            .OrderByDescending(b => (int)b.BoostStrength);
+                // Saturation cap: keep client boosts, then add rule boosts greedily while the total
+                // summed strength stays within the ceiling. Additive boosts subtract MaxBoost*257
+                // flatly, so an unbounded sum underflows the 16-bit score and flattens ranking.
+                // Ceiling <= 0 disables the cap.
+                var sum = merged.Sum(b => (int)b.BoostStrength);
+                foreach (var rb in ruleBoosts)
                 {
-                    var f = engine.GetFilterFromKey(cloudQuery.Boosts[i].FilterProxy.HashString);
-                    boosts[i] = engine.CreateBoost(f, cloudQuery.Boosts[i].BoostStrength);
+                    if (_boostCeiling > 0 && sum + (int)rb.BoostStrength > _boostCeiling) continue;
+                    merged.Add(rb);
+                    sum += (int)rb.BoostStrength;
                 }
-                query.Boosts = boosts;
             }
+
+            if (merged.Count > 0)
+                query.Boosts = merged.ToArray();
+
             return query;
         }
 

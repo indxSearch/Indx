@@ -16,6 +16,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject UserManager<ApplicationUser> UserManager
 @inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
+@inject IndxCloudApi.Services.BoostRuleStore BoostStore
 @inject IndxCloudApi.Services.ActiveTeamState ActiveTeam
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject IJSRuntime JSRuntime
@@ -177,6 +178,10 @@ else
                                 @if (engineState == SystemState.Ready)
                                 {
                                     <Button Variant="@(activeTab == "search" ? "primary" : "ghost")" Size="micro" IconLeft="_iconSearch" @onclick="@(() => _datasetTabs[selectedDataset] = "search")">Search preview</Button>
+                                }
+                                @if (engineState == SystemState.Ready && isEditor)
+                                {
+                                    <Button Variant="@(activeTab == "boosts" ? "primary" : "ghost")" Size="micro" IconLeft="_iconBoost" @onclick="@(() => { _datasetTabs[selectedDataset] = "boosts"; EnsureBoostRulesLoaded(selectedDataset, ownerUserId); })">Boost rules</Button>
                                 }
                                 @if (isAdmin)
                                 {
@@ -563,13 +568,16 @@ else
                                         else if (results.Count > 0)
                                         {
                                             <div class="indx-search-results">
-                                                @foreach (var doc in results)
+                                                @foreach (var hit in results)
                                                 {
-                                                    <div class="indx-search-result-item">
-                                                        @foreach (var prop in GetDisplayFields(datasetName, doc))
-                                                        {
-                                                            <span class="indx-search-result-field"><span class="indx-search-result-key">@prop.Name</span> @prop.Value</span>
-                                                        }
+                                                    <div class="indx-search-result-item" style="display:flex; align-items:baseline; gap:12px;">
+                                                        <span style="flex:1; min-width:0; display:flex; flex-wrap:wrap; gap:8px;">
+                                                            @foreach (var prop in GetDisplayFields(datasetName, hit.Doc))
+                                                            {
+                                                                <span class="indx-search-result-field"><span class="indx-search-result-key">@prop.Name</span> @prop.Value</span>
+                                                            }
+                                                        </span>
+                                                        <span class="indx-search-result-score" title="Relevance score" style="flex:none; font-variant-numeric:tabular-nums; color:var(--lv4); font:var(--text-xs); white-space:nowrap;">@hit.Score</span>
                                                     </div>
                                                 }
                                             </div>
@@ -709,6 +717,122 @@ else
                             </div>
                         }
 
+                        @* ════════════════════════════════════════
+                           Tab: Boost rules (editor+)
+                           ════════════════════════════════════════ *@
+                        @if (activeTab == "boosts")
+                        {
+                            <div style="margin-top: 16px;">
+                                <p style="color: var(--lv5); font: var(--text-sm); margin-bottom: 12px;">
+                                    Ranking rules that lift matching documents when a search runs with <code>enableBoost</code>. Conditions use filterable fields; rules stack.
+                                </p>
+
+                                @{ var bFieldOpts = FieldOptions(selectedDataset); }
+                                @{ var bRules = _editedBoostRules.GetValueOrDefault(selectedDataset) ?? new(); }
+
+                                @if (bFieldOpts.Count == 0)
+                                {
+                                    <p style="color: var(--CWarning); font: var(--text-sm);">No filterable fields on this dataset — mark a field <strong>Filterable</strong> in Field configuration to build boost rules.</p>
+                                }
+                                else
+                                {
+                                    @if (bRules.Count == 0)
+                                    {
+                                        <p style="color: var(--lv4); font: var(--text-sm); margin: 8px 0 12px;">No boost rules yet.</p>
+                                    }
+
+                                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                                        @foreach (var bRule in bRules)
+                                        {
+                                            <div style="border: 1px solid var(--lv2); border-radius: var(--radius); padding: 16px; background: var(--lv1);">
+                                                <div style="display:flex; align-items:center; gap:10px; margin-bottom:12px;">
+                                                    <ToggleSwitch @bind-Checked="bRule.Enabled" />
+                                                    <div style="flex:1;"><InputField placeholder="Rule name" @bind-Value="bRule.Name" /></div>
+                                                    <span style="color:var(--lv5); font:var(--text-xs); white-space:nowrap;">Strength:</span>
+                                                    <div style="width:130px;"><SelectField Size="micro" Options="StrengthOptions" Value="@bRule.Strength.ToString()" ValueChanged="@(v => bRule.Strength = ParseStrength(v))" /></div>
+                                                    <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="@(() => bRules.Remove(bRule))" />
+                                                </div>
+
+                                                <div style="display:flex; flex-direction:column; gap:8px; padding-left:10px; border-left:2px solid var(--lv2);">
+                                                    @for (int ci = 0; ci < bRule.Conditions.Count; ci++)
+                                                    {
+                                                        var cond = bRule.Conditions[ci];
+                                                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                                            <div style="width:190px;"><SelectField Size="micro" Options="bFieldOpts" Value="@cond.Field" ValueChanged="@(v => OnConditionFieldChanged(selectedDataset, cond, v))" /></div>
+                                                            @if (IsNumericField(selectedDataset, cond.Field))
+                                                            {
+                                                                <span style="color:var(--lv5); font:var(--text-xs);">between</span>
+                                                                <div style="width:90px;"><InputField placeholder="min" @bind-Value="cond.MinText" /></div>
+                                                                <span style="color:var(--lv5); font:var(--text-xs);">and</span>
+                                                                <div style="width:90px;"><InputField placeholder="max" @bind-Value="cond.MaxText" /></div>
+                                                            }
+                                                            else if (IsBooleanField(selectedDataset, cond.Field))
+                                                            {
+                                                                <span style="color:var(--lv5); font:var(--text-xs);">is</span>
+                                                                <ToggleSwitch Label="@(cond.Value == "true" ? "true" : "false")" Checked="@(cond.Value == "true")" CheckedChanged="@(v => cond.Value = v ? "true" : "false")" />
+                                                            }
+                                                            else
+                                                            {
+                                                                <span style="color:var(--lv5); font:var(--text-xs);">equals</span>
+                                                                <div style="flex:1; min-width:160px;"><InputField placeholder="value" @bind-Value="cond.Value" /></div>
+                                                            }
+                                                            @if (bRule.Conditions.Count > 1)
+                                                            {
+                                                                <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="@(() => bRule.Conditions.Remove(cond))" />
+                                                            }
+                                                        </div>
+                                                        @if (ci < bRule.Conditions.Count - 1)
+                                                        {
+                                                            <div style="width:130px;"><SelectField Size="micro" Options="_joinOptions" Value="@bRule.Join.ToString()" ValueChanged="@(v => bRule.Join = ParseJoin(v))" /></div>
+                                                        }
+                                                    }
+                                                    <div><Button Variant="ghost" Size="micro" IconLeft="_iconPanelAdd" @onclick="@(() => bRule.Conditions.Add(NewCondition(selectedDataset, bFieldOpts[0].Value)))">Add condition</Button></div>
+                                                </div>
+
+                                                <div style="margin-top:12px;">
+                                                    <Checkbox Label="Time limit" Checked="@IsTimeLimited(bRule)" CheckedChanged="@(v => SetTimeLimited(bRule, v))" />
+                                                    @if (IsTimeLimited(bRule))
+                                                    {
+                                                        <div style="display:flex; gap:20px; margin-top:8px;">
+                                                            <div><span style="color:var(--lv5); font:var(--text-xs); display:block; margin-bottom:2px;">Active from</span><DatePicker @bind-Value="bRule.ActiveFrom" /></div>
+                                                            <div><span style="color:var(--lv5); font:var(--text-xs); display:block; margin-bottom:2px;">Active until</span><DatePicker @bind-Value="bRule.ActiveUntil" /></div>
+                                                        </div>
+                                                    }
+                                                    else
+                                                    {
+                                                        <span style="color:var(--lv4); font:var(--text-xs); display:block; margin-top:4px;">Always active</span>
+                                                    }
+                                                </div>
+
+                                                @{ var badFields = bRule.Conditions.Where(c => !string.IsNullOrEmpty(c.Field) && !FilterableFieldNames(selectedDataset).Contains(c.Field)).Select(c => c.Field).Distinct().ToList(); }
+                                                @if (badFields.Count > 0)
+                                                {
+                                                    <p style="color:var(--CWarning); font:var(--text-xs); margin-top:8px; margin-bottom:0;">References non-filterable field(s): @string.Join(", ", badFields). This rule won't apply until fixed.</p>
+                                                }
+                                            </div>
+                                        }
+                                    </div>
+
+                                    <div style="margin-top:14px;">
+                                        <Button Variant="secondary" Size="micro" IconLeft="_iconPanelAdd" @onclick="@(() => AddBoostRule(selectedDataset))">Add boost rule</Button>
+                                    </div>
+
+                                    @if (!string.IsNullOrEmpty(_boostError))
+                                    {
+                                        <p style="color:var(--CSignal); font:var(--text-sm); margin-top:10px;">@_boostError</p>
+                                    }
+
+                                    @if (BoostRulesDirty(selectedDataset))
+                                    {
+                                        <div style="display:flex; gap:8px; margin-top:16px;">
+                                            <Button Variant="primary" Size="micro" IconLeft="_iconSave" @onclick="@(() => SaveBoostRules(selectedDataset, ownerUserId))">Save boost rules</Button>
+                                            <Button Variant="secondary" Size="micro" @onclick="@(() => CancelBoostRules(selectedDataset))">Cancel</Button>
+                                        </div>
+                                    }
+                                }
+                            </div>
+                        }
+
                     </Surface>
                 </div>
             </div>
@@ -818,7 +942,10 @@ else
 
     // Quick search
     private Dictionary<string, string> _searchTexts = new();
-    private Dictionary<string, List<JsonElement>?> _searchResults = new();
+    private Dictionary<string, List<PreviewHit>?> _searchResults = new();
+
+    /// <summary>One search-preview row: the document and its relevance score.</summary>
+    private record PreviewHit(JsonElement Doc, ushort Score);
 
     // Perf test
     private Dictionary<string, PerfTestResult?> _perfResults = new();
@@ -884,6 +1011,9 @@ else
         _bufferedFiles.Clear();
         fieldConfigs.Clear();
         _editedFieldConfigs.Clear();
+        _editedBoostRules.Clear();
+        _savedBoostJson.Clear();
+        _ruleTimeLimited.Clear();
         _searchableTouched.Clear();
         _searchTexts.Clear();
         _searchResults.Clear();
@@ -1592,19 +1722,21 @@ else
         }
         var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, ownerUserId);
         if (engine == null) return;
-        var query = new global::Indx.CloudApi.CloudQuery { Text = text, MaxNumberOfRecordsToReturn = 8 };
+        // EnableBoost so the preview reflects this dataset's saved boost rules (applied
+        // server-side in FromCloudQuery2Query), matching what real searches return.
+        var query = new global::Indx.CloudApi.CloudQuery { Text = text, MaxNumberOfRecordsToReturn = 8, EnableBoost = true };
         var result = IndxCloudInternalApi.Manager.Search(query, datasetName, ownerUserId);
-        var docs = new List<JsonElement>();
+        var hits = new List<PreviewHit>();
         foreach (var record in result.Records)
         {
             var json = engine.GetJsonDataOfKey(record.DocumentKey);
             if (!string.IsNullOrEmpty(json))
             {
-                try { docs.Add(JsonDocument.Parse(json).RootElement.Clone()); }
+                try { hits.Add(new PreviewHit(JsonDocument.Parse(json).RootElement.Clone(), record.Score)); }
                 catch { }
             }
         }
-        _searchResults[datasetName] = docs;
+        _searchResults[datasetName] = hits;
     }
 
     private async Task RunPerfTest(string datasetName, string ownerUserId, string text)
@@ -1860,11 +1992,140 @@ else
         return $"{bytes} B";
     }
 
+    // ── Boost rules (per-dataset ranking rules) ──────────────────────────────
+    private Dictionary<string, List<BoostRule>> _editedBoostRules = new();
+    private Dictionary<string, string> _savedBoostJson = new();
+    private string? _boostError;
+
+    private static readonly System.Text.Json.JsonSerializerOptions _boostJsonOpts = new()
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+    };
+
+    private static readonly IEnumerable<SelectField.SelectOption> _joinOptions =
+        [new("AND", "And"), new("OR", "Or")];
+
+    private void EnsureBoostRulesLoaded(string datasetName, string teamId)
+    {
+        if (_editedBoostRules.ContainsKey(datasetName)) return;
+        var rules = BoostStore.Load(teamId, datasetName);
+        var json = System.Text.Json.JsonSerializer.Serialize(rules, _boostJsonOpts);
+        _editedBoostRules[datasetName] = System.Text.Json.JsonSerializer.Deserialize<List<BoostRule>>(json, _boostJsonOpts) ?? new();
+        _savedBoostJson[datasetName] = json;
+    }
+
+    private List<string> FilterableFieldNames(string datasetName) =>
+        _editedFieldConfigs.TryGetValue(datasetName, out var f) && f != null
+            ? f.Where(x => x.Filterable == true).Select(x => x.FieldName).ToList()
+            : new();
+
+    private List<SelectField.SelectOption> FieldOptions(string datasetName) =>
+        FilterableFieldNames(datasetName).Select(n => new SelectField.SelectOption(n, n)).ToList();
+
+    private bool IsNumericField(string datasetName, string field) =>
+        _editedFieldConfigs.TryGetValue(datasetName, out var f) && f != null
+        && f.FirstOrDefault(x => x.FieldName == field)?.FieldType == "Number";
+
+    private bool IsBooleanField(string datasetName, string field) =>
+        _editedFieldConfigs.TryGetValue(datasetName, out var f) && f != null
+        && f.FirstOrDefault(x => x.FieldName == field)?.FieldType == "Boolean";
+
+    private BoostCondition NewCondition(string datasetName, string field)
+    {
+        var c = new BoostCondition { Field = field };
+        if (IsBooleanField(datasetName, field)) c.Value = "false";
+        else if (!IsNumericField(datasetName, field)) c.Value = "";
+        return c;
+    }
+
+    private void OnConditionFieldChanged(string datasetName, BoostCondition cond, string? newField)
+    {
+        cond.Field = newField ?? "";
+        if (IsNumericField(datasetName, cond.Field)) { cond.Value = null; }
+        else if (IsBooleanField(datasetName, cond.Field))
+        {
+            cond.Min = null; cond.Max = null;
+            if (cond.Value != "true" && cond.Value != "false") cond.Value = "false";
+        }
+        else { cond.Min = null; cond.Max = null; cond.Value ??= ""; }
+    }
+
+    private void AddBoostRule(string datasetName)
+    {
+        _boostError = null;
+        var first = FilterableFieldNames(datasetName).FirstOrDefault() ?? "";
+        if (!_editedBoostRules.ContainsKey(datasetName)) _editedBoostRules[datasetName] = new();
+        _editedBoostRules[datasetName].Add(new BoostRule { Name = "New rule", Conditions = new() { NewCondition(datasetName, first) } });
+    }
+
+    private static BoostStrength ParseStrength(string? v) => Enum.TryParse<BoostStrength>(v, out var s) ? s : BoostStrength.Med;
+    private static BoostJoin ParseJoin(string? v) => Enum.TryParse<BoostJoin>(v, out var j) ? j : BoostJoin.And;
+
+    // Strength options carry the weight icons. Instance (not static) because the icon fragments are.
+    private IEnumerable<SelectField.SelectOption> StrengthOptions =>
+    [
+        new("Low", "Low") { Icon = _iconWeightLow },
+        new("Medium", "Med") { Icon = _iconWeightMedium },
+        new("High", "High") { Icon = _iconWeightHigh },
+    ];
+
+    // Rules with no schedule are "always active". The Time-limit checkbox reveals the date pickers;
+    // a rule is considered time-limited if the box was ticked or it already carries a date.
+    private readonly HashSet<BoostRule> _ruleTimeLimited = new();
+    private bool IsTimeLimited(BoostRule rule) =>
+        _ruleTimeLimited.Contains(rule) || rule.ActiveFrom.HasValue || rule.ActiveUntil.HasValue;
+    private void SetTimeLimited(BoostRule rule, bool on)
+    {
+        if (on) _ruleTimeLimited.Add(rule);
+        else { _ruleTimeLimited.Remove(rule); rule.ActiveFrom = null; rule.ActiveUntil = null; }
+    }
+
+    private bool BoostRulesDirty(string datasetName)
+    {
+        if (!_editedBoostRules.TryGetValue(datasetName, out var edited)) return false;
+        var current = System.Text.Json.JsonSerializer.Serialize(edited, _boostJsonOpts);
+        return !_savedBoostJson.TryGetValue(datasetName, out var saved) || current != saved;
+    }
+
+    private async Task SaveBoostRules(string datasetName, string teamId)
+    {
+        _boostError = null;
+        var rules = _editedBoostRules.GetValueOrDefault(datasetName) ?? new();
+        foreach (var r in rules)
+        {
+            if (string.IsNullOrWhiteSpace(r.Name)) { _boostError = "Every rule needs a name."; return; }
+            if (r.Conditions.Count == 0) { _boostError = $"Rule \"{r.Name}\" needs at least one condition."; return; }
+            foreach (var c in r.Conditions)
+            {
+                if (string.IsNullOrWhiteSpace(c.Field)) { _boostError = $"Rule \"{r.Name}\" has a condition with no field."; return; }
+                if (IsNumericField(datasetName, c.Field))
+                {
+                    if (c.Min == null && c.Max == null) { _boostError = $"Rule \"{r.Name}\": set a min or max for {c.Field}."; return; }
+                }
+                else if (string.IsNullOrWhiteSpace(c.Value)) { _boostError = $"Rule \"{r.Name}\": enter a value for {c.Field}."; return; }
+            }
+        }
+        await Task.Run(() => BoostStore.Save(teamId, datasetName, rules));
+        _savedBoostJson[datasetName] = System.Text.Json.JsonSerializer.Serialize(rules, _boostJsonOpts);
+    }
+
+    private void CancelBoostRules(string datasetName)
+    {
+        _boostError = null;
+        if (_savedBoostJson.TryGetValue(datasetName, out var json))
+            _editedBoostRules[datasetName] = System.Text.Json.JsonSerializer.Deserialize<List<BoostRule>>(json, _boostJsonOpts) ?? new();
+    }
+
     private RenderFragment<int> _iconAgent => size => @<AiAgent Size="size" />;
     private RenderFragment<int> _iconPanelAdd => size => @<PanelAdd Size="size" />;
     private RenderFragment<int> _iconFields => size => @<Field Size="size" />;
     private RenderFragment<int> _iconDelete => size => @<Stop Size="size" />;
     private RenderFragment<int> _iconZap => size => @<Zap Size="size" />;
+    private RenderFragment<int> _iconBoost => size => @<Boost Size="size" />;
+    private RenderFragment<int> _iconSave => size => @<Save Size="size" />;
+    private RenderFragment<int> _iconWeightLow => size => @<WeightLow Size="size" />;
+    private RenderFragment<int> _iconWeightMedium => size => @<WeightMedium Size="size" />;
+    private RenderFragment<int> _iconWeightHigh => size => @<WeightHigh Size="size" />;
     private RenderFragment<int> _iconSpeedometer => size => @<Speedometer Size="size" />;
     private RenderFragment<int> _iconDownload => size => @<Download Size="size" />;
     private RenderFragment<int> _iconDynamicJson => size => @<DynamicJsonField Size="size" />;

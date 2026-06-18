@@ -101,6 +101,7 @@ public class Program
             builder.Configuration.GetSection("Registration"));
         builder.Services.AddScoped<RegistrationValidator>();
         builder.Services.AddSingleton<InstanceSettingsService>();
+        builder.Services.AddSingleton<IndxCloudApi.Services.BoostRuleStore>();
         builder.Services.AddScoped<IndxCloudApi.Services.NotificationService>();
         builder.Services.AddScoped<IndxCloudApi.Services.TeamService>();
         builder.Services.AddScoped<IndxCloudApi.Services.UserProvisioningService>();
@@ -749,6 +750,13 @@ public class Program
             var accessTableManager = new Indx.Storage.SqLiteManager(searchConnectionString);
             if (accessTableManager.DatabaseExists())
                 accessTableManager.EnsureDataSetAccessTableExists();
+
+            // Per-dataset boost rules: ensure the cloud-owned table and wire the store (+ the
+            // saturation ceiling) into the search path.
+            var boostStore = app.Services.GetRequiredService<IndxCloudApi.Services.BoostRuleStore>();
+            boostStore.EnsureTable();
+            var boostCeiling = builder.Configuration.GetValue<int?>("Indx:BoostSaturationCeiling") ?? 6;
+            IndxCloudInternalApi.Manager.AttachBoostStore(boostStore, boostCeiling);
 
             // Detect license file for summary
             if (!string.IsNullOrWhiteSpace(licensePath) && File.Exists(licensePath))
