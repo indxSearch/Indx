@@ -1,6 +1,4 @@
-using System.ComponentModel;
 using System.Globalization;
-using Description = System.ComponentModel.DescriptionAttribute;
 using System.Security.Claims;
 using System.Text.Json.Nodes;
 using Indx.Api;
@@ -32,7 +30,7 @@ namespace IndxCloudApi.Mcp
         // ── Tools ─────────────────────────────────────────────────────────────
 
         [McpServerTool(Name = "list_datasets", UseStructuredContent = false, ReadOnly = true)]
-        [Description("List the search datasets the caller can access, with team, role, document count and state.")]
+        [System.ComponentModel.Description("List the search datasets the caller can access, with team, role, document count and state.")]
         public async Task<McpDatasetSummary[]> ListDatasets()
         {
             var userId = RequireUserId();
@@ -57,12 +55,12 @@ namespace IndxCloudApi.Mcp
         }
 
         [McpServerTool(Name = "describe_dataset", UseStructuredContent = false, ReadOnly = true)]
-        [Description("Describe a dataset's queryable surface: configured fields (with capabilities), value hints " +
+        [System.ComponentModel.Description("Describe a dataset's queryable surface: configured fields (with capabilities), value hints " +
                      "(distinct values for facetable fields, numeric ranges), an owner description, and a sample document. " +
                      "Call this before search to know which fields you can search/filter/sort on and what values are valid.")]
         public async Task<McpDatasetSchema> DescribeDataset(
-            [Description("Team name that owns the dataset.")] string team,
-            [Description("Dataset name.")] string dataset)
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset)
         {
             var ownerKey = await ResolveOwnerKey(team);
             var engine = ResolveEngine(dataset, ownerKey);
@@ -123,20 +121,20 @@ namespace IndxCloudApi.Mcp
         }
 
         [McpServerTool(Name = "search", UseStructuredContent = false, ReadOnly = true)]
-        [Description("Search a dataset and return ranked documents with relevance scores. Matching is precise by " +
+        [System.ComponentModel.Description("Search a dataset and return ranked documents with relevance scores. Matching is precise by " +
                      "default (near-exact only, incl. typo tolerance) — an empty result means nothing matches well, " +
                      "which is a trustworthy 'not found' (don't retry with looser wording unless you set broaden=true). " +
                      "Saved boost rules are applied. Use filters for structured constraints on filterable fields " +
                      "(get valid fields/values from describe_dataset).")]
         public async Task<McpSearchResult> Search(
-            [Description("Team name that owns the dataset.")] string team,
-            [Description("Dataset name.")] string dataset,
-            [Description("Free-text query. Matches searchable fields.")] string query,
-            [Description("Structured constraints (AND-combined). Each: {field, value} for exact match, or {field, min, max} for a numeric range. Fields must be filterable.")] McpFilter[]? filters = null,
-            [Description("Max documents to return (default 10).")] int limit = DefaultLimit,
-            [Description("If set, return only these top-level fields from each document.")] string[]? fields = null,
-            [Description("Set true to include broad fuzzy/pattern matches (lower precision). Default false = near-exact only.")] bool broaden = false,
-            [Description("Set true to also return facet counts (for facetable fields) to refine the next query.")] bool facets = false)
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset,
+            [System.ComponentModel.Description("Free-text query. Matches searchable fields.")] string query,
+            [System.ComponentModel.Description("Structured constraints (AND-combined). Each: {field, value} for exact match, or {field, min, max} for a numeric range. Fields must be filterable.")] McpFilter[]? filters = null,
+            [System.ComponentModel.Description("Max documents to return (default 10).")] int limit = DefaultLimit,
+            [System.ComponentModel.Description("If set, return only these top-level fields from each document.")] string[]? fields = null,
+            [System.ComponentModel.Description("Set true to include broad fuzzy/pattern matches (lower precision). Default false = near-exact only.")] bool broaden = false,
+            [System.ComponentModel.Description("Set true to also return facet counts (for facetable fields) to refine the next query.")] bool facets = false)
         {
             var ownerKey = await ResolveOwnerKey(team);
             var engine = ResolveEngine(dataset, ownerKey);
@@ -170,11 +168,11 @@ namespace IndxCloudApi.Mcp
         }
 
         [McpServerTool(Name = "get_document", UseStructuredContent = false, ReadOnly = true)]
-        [Description("Fetch the full JSON document for a specific document key in a dataset.")]
+        [System.ComponentModel.Description("Fetch the full JSON document for a specific document key in a dataset.")]
         public async Task<JsonNode?> GetDocument(
-            [Description("Team name that owns the dataset.")] string team,
-            [Description("Dataset name.")] string dataset,
-            [Description("Document key (from a search hit).")] long key)
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset,
+            [System.ComponentModel.Description("Document key (from a search hit).")] long key)
         {
             var ownerKey = await ResolveOwnerKey(team);
             var engine = ResolveEngine(dataset, ownerKey);
