@@ -18,6 +18,7 @@
 @inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
 @inject IndxCloudApi.Services.BoostRuleStore BoostStore
 @inject IndxCloudApi.Services.DatasetMetadataStore DatasetMeta
+@inject IndxCloudApi.Services.IEditionService Edition
 @inject IndxCloudApi.Services.ActiveTeamState ActiveTeam
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject IJSRuntime JSRuntime
@@ -811,20 +812,23 @@ else
                                                     <div><Button Variant="ghost" Size="micro" IconLeft="_iconPanelAdd" @onclick="@(() => bRule.Conditions.Add(NewCondition(selectedDataset, bFieldOpts[0].Value)))">Add condition</Button></div>
                                                 </div>
 
-                                                <div style="margin-top:12px;">
-                                                    <Checkbox Label="Time limit" Checked="@IsTimeLimited(bRule)" CheckedChanged="@(v => SetTimeLimited(bRule, v))" />
-                                                    @if (IsTimeLimited(bRule))
-                                                    {
-                                                        <div style="display:flex; gap:20px; margin-top:8px;">
-                                                            <div><span style="color:var(--lv5); font:var(--text-xs); display:block; margin-bottom:2px;">Active from</span><DatePicker @bind-Value="bRule.ActiveFrom" /></div>
-                                                            <div><span style="color:var(--lv5); font:var(--text-xs); display:block; margin-bottom:2px;">Active until</span><DatePicker @bind-Value="bRule.ActiveUntil" /></div>
-                                                        </div>
-                                                    }
-                                                    else
-                                                    {
-                                                        <span style="color:var(--lv4); font:var(--text-xs); display:block; margin-top:4px;">Always active</span>
-                                                    }
-                                                </div>
+                                                @if (Edition.IsEnabled(IndxCloudApi.Services.EditionFeature.BoostRuleScheduling))
+                                                {
+                                                    <div style="margin-top:12px;">
+                                                        <Checkbox Label="Time limit" Checked="@IsTimeLimited(bRule)" CheckedChanged="@(v => SetTimeLimited(bRule, v))" />
+                                                        @if (IsTimeLimited(bRule))
+                                                        {
+                                                            <div style="display:flex; gap:20px; margin-top:8px;">
+                                                                <div><span style="color:var(--lv5); font:var(--text-xs); display:block; margin-bottom:2px;">Active from</span><DatePicker @bind-Value="bRule.ActiveFrom" /></div>
+                                                                <div><span style="color:var(--lv5); font:var(--text-xs); display:block; margin-bottom:2px;">Active until</span><DatePicker @bind-Value="bRule.ActiveUntil" /></div>
+                                                            </div>
+                                                        }
+                                                        else
+                                                        {
+                                                            <span style="color:var(--lv4); font:var(--text-xs); display:block; margin-top:4px;">Always active</span>
+                                                        }
+                                                    </div>
+                                                }
 
                                                 @{ var badFields = bRule.Conditions.Where(c => !string.IsNullOrEmpty(c.Field) && !FilterableFieldNames(selectedDataset).Contains(c.Field)).Select(c => c.Field).Distinct().ToList(); }
                                                 @if (badFields.Count > 0)

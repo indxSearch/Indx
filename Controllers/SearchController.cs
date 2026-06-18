@@ -32,7 +32,7 @@ namespace IndxCloudApi.Controllers
     // 409 Conflict with a ProblemDetails body (currentState, allowedStates, retryable + Retry-After
     // header when retryable). Declared here so it appears in the OpenAPI spec for every endpoint.
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
-    public class SearchController(TeamContextResolver resolver, TeamService teams, BoostRuleStore boostStore) : Controller
+    public class SearchController(TeamContextResolver resolver, TeamService teams, BoostRuleStore boostStore, IEditionService edition) : Controller
     {
         private const string DataSetRoute = "teams/{teamName}/datasets/{dataSetName}";
 
@@ -190,6 +190,12 @@ namespace IndxCloudApi.Controllers
                         return BadRequest($"field '{c.Field}' is not filterable");
                 }
             }
+
+            // Boost-rule scheduling is a gated feature (Free Managed can't schedule). Strip any
+            // schedule window when it's disabled — defensive (the UI hides the control) and
+            // self-healing on a plan downgrade.
+            if (!edition.IsEnabled(EditionFeature.BoostRuleScheduling))
+                foreach (var rule in rules) { rule.ActiveFrom = null; rule.ActiveUntil = null; }
 
             boostStore.Save(ctx.OwnerKey, dataSetName, rules);
             return Ok();

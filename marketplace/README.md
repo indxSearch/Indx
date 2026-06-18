@@ -26,13 +26,15 @@ Local `dotnet run` is unaffected - none of these files are referenced by the pro
 
 This package deploys as the **Managed edition** (`Indx__Edition=Managed`). Per-instance licensing is hidden — there are no `.license` files to manage — and features are gated by the purchased plan via `Indx__Plan` (fixed per marketplace plan, not a customer input):
 
-| Plan | Marketplace visibility | Tier |
-|------|------------------------|------|
-| Indx Cloud Search (Free) | Public, $0 | Single user / single team |
-| Indx Cloud Search (Professional) | Public, flat monthly | Teams, social SSO, backups, analytics |
-| Enterprise | Private plan (per-customer) | + Entra ID, HA, advanced analytics; custom terms (monthly/annual) |
+| Plan | Marketplace visibility | What it includes |
+|------|------------------------|------------------|
+| Indx Cloud Search (Free) | Public, $0 | Single team, single user; boost rules **without** a schedule window |
+| Indx Cloud Search (Professional) | Public, flat monthly | Multiple teams & users; **scheduled** boost rules |
+| Enterprise | Private plan (per-customer) | Same features as Professional, with custom terms / SLA (monthly or annual) |
 
-Plans differ by **features**, never by document/dataset capacity (there are no capacity caps). "Upgrading" means deploying the higher plan — there is no in-app plan switch.
+The enforceable differences today are exactly two: **multiple teams/users** and **boost-rule scheduling** (the `ActiveFrom`/`ActiveUntil` window). Everything else — search, indexing, filters, facets, boosts, MCP, social (Google/Microsoft) login — is the same on every plan. Add tiers here only when a feature is actually built and gated via `EditionFeature`.
+
+Plans differ by **features**, never by document/dataset capacity (there are no capacity caps; data durability/backups are handled by Azure storage, not gated). "Upgrading" means deploying the higher plan — there is no in-app plan switch.
 
 ### Lifting the 100K document cap
 

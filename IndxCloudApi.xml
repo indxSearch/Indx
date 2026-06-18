@@ -51,7 +51,7 @@
             every request, so removing a user from a team takes effect immediately.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.#ctor(IndxCloudApi.Services.TeamContextResolver,IndxCloudApi.Services.TeamService,IndxCloudApi.Services.BoostRuleStore)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.#ctor(IndxCloudApi.Services.TeamContextResolver,IndxCloudApi.Services.TeamService,IndxCloudApi.Services.BoostRuleStore,IndxCloudApi.Services.IEditionService)">
             <summary>
             API endpoints for managing, analyzing, indexing, and searching JSON datasets. Datasets are
             owned by a <b>team</b>: every dataset endpoint is scoped under
@@ -1090,7 +1090,15 @@
             customer can upgrade in place (no redeploy). Ignored in SelfHost.</summary>
         </member>
         <member name="T:IndxCloudApi.Services.EditionFeature">
-            <summary>Individually gateable capabilities, mapped to plans by the edition service.</summary>
+            <summary>Individually gateable capabilities, mapped to plans by the edition service. Kept to
+            what is actually enforced today — add members as real gated features ship.</summary>
+        </member>
+        <member name="F:IndxCloudApi.Services.EditionFeature.MultipleUsers">
+            <summary>More than one team and more than one user. Free Managed = a single team, single user.</summary>
+        </member>
+        <member name="F:IndxCloudApi.Services.EditionFeature.BoostRuleScheduling">
+            <summary>Time-planning on boost rules (ActiveFrom/ActiveUntil schedule window). Free Managed
+            can create boost rules but not schedule them.</summary>
         </member>
         <member name="T:IndxCloudApi.Services.IEditionService">
             <summary>

@@ -19,18 +19,16 @@ public enum IndxPlan
     Enterprise
 }
 
-/// <summary>Individually gateable capabilities, mapped to plans by the edition service.</summary>
+/// <summary>Individually gateable capabilities, mapped to plans by the edition service. Kept to
+/// what is actually enforced today — add members as real gated features ship.</summary>
 public enum EditionFeature
 {
+    /// <summary>More than one team and more than one user. Free Managed = a single team, single user.</summary>
     MultipleUsers,
-    DatasetSharing,
-    RegistrationModes,
-    SocialSSO,
-    EntraIdSSO,
-    AutomatedBackups,
-    HighAvailability,
-    BasicAnalytics,
-    AdvancedAnalytics
+
+    /// <summary>Time-planning on boost rules (ActiveFrom/ActiveUntil schedule window). Free Managed
+    /// can create boost rules but not schedule them.</summary>
+    BoostRuleScheduling
 }
 #pragma warning restore 1591
 
@@ -114,16 +112,12 @@ internal sealed class ManagedEditionService : IEditionService
         _ => false
     };
 
-    // Professional unlocks team collaboration, all registration modes, social SSO, backups and
-    // basic analytics. Entra ID, high availability and advanced analytics stay Enterprise-only.
+    // Professional (and Enterprise) unlock team collaboration and boost-rule scheduling. Free gets
+    // a single team / single user and unscheduled boost rules.
     private static readonly HashSet<EditionFeature> ProfessionalFeatures =
     [
         EditionFeature.MultipleUsers,
-        EditionFeature.DatasetSharing,
-        EditionFeature.RegistrationModes,
-        EditionFeature.SocialSSO,
-        EditionFeature.AutomatedBackups,
-        EditionFeature.BasicAnalytics,
+        EditionFeature.BoostRuleScheduling,
     ];
 
     private static IndxPlan? ParsePlan(string? value) =>
