@@ -12,6 +12,11 @@ internal class InstanceSettings
     public bool AllowUserSelfDeletion { get; set; } = true;
     public string InstanceName { get; set; } = "Indx";
 
+    /// <summary>True once the first-run onboarding (admin account + team + instance settings)
+    /// has completed. Until then, the app routes visitors into the setup flow. Gated on this
+    /// flag rather than "are there users?" because OAuth creates the admin mid-flow.</summary>
+    public bool SetupComplete { get; set; } = false;
+
     /// <summary>Bearer token for the Indx license portal. When set, overrides the
     /// Indx:LicenseToken app setting. Stored locally (settings.json) like other secrets.
     /// The portal URL itself is hardcoded (see LicenseBootstrapper.DefaultDownloadUrl).</summary>

@@ -93,6 +93,16 @@ else
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
 
+    protected override void OnInitialized()
+    {
+        // First run: the very first account is the administrator and is created through the
+        // dedicated setup flow (account + team + instance), not this bare form.
+        if (!InstanceSettingsService.Load().SetupComplete)
+        {
+            RedirectManager.RedirectTo("Account/Setup");
+        }
+    }
+
     private string? Message
     {
         get

@@ -1,0 +1,88 @@
+@page "/Account/Welcome"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@using Indx.Systm.Blazor.Icons
+@attribute [Authorize(Roles = "Admin")]
+
+<PageTitle>Welcome</PageTitle>
+
+<div style="max-width: 720px;">
+    <h2 style="margin-bottom: 4px;">You're all set</h2>
+    <p style="color: var(--lv5); margin-bottom: 32px;">
+        Your instance is ready and you're signed in as the administrator. Here's how to get going.
+    </p>
+
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+        <a href="/" class="welcome-card">
+            <span class="welcome-icon"><Database Size="20" /></span>
+            <span class="welcome-text">
+                <span class="welcome-title">Create your first dataset</span>
+                <span class="welcome-desc">Upload JSON, configure fields, and index it for search.</span>
+            </span>
+            <span class="welcome-arrow"><ArrowRight Size="16" /></span>
+        </a>
+
+        <a href="/Account/ApiKey" class="welcome-card">
+            <span class="welcome-icon"><Key Size="20" /></span>
+            <span class="welcome-text">
+                <span class="welcome-title">Generate an API key</span>
+                <span class="welcome-desc">Create a bearer token to call the HTTP API from your app.</span>
+            </span>
+            <span class="welcome-arrow"><ArrowRight Size="16" /></span>
+        </a>
+
+        <a href="/Admin/Users" class="welcome-card">
+            <span class="welcome-icon"><UserPlus Size="20" /></span>
+            <span class="welcome-text">
+                <span class="welcome-title">Manage your team</span>
+                <span class="welcome-desc">Add members and manage roles for your teams.</span>
+            </span>
+            <span class="welcome-arrow"><ArrowRight Size="16" /></span>
+        </a>
+    </div>
+
+</div>
+
+<style>
+    .welcome-card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 18px 20px;
+        border-radius: var(--radius);
+        background: var(--lv2);
+        text-decoration: none;
+        color: inherit;
+    }
+    .welcome-card:hover {
+        background: var(--lv3);
+        text-decoration: none;
+    }
+    .welcome-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        flex-shrink: 0;
+        color: var(--lv6);
+    }
+    .welcome-text {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        flex: 1;
+    }
+    .welcome-title {
+        font: var(--text-base);
+        font-weight: var(--med);
+        color: var(--lv7);
+    }
+    .welcome-desc {
+        font: var(--text-sm);
+        color: var(--lv5);
+    }
+    .welcome-arrow {
+        color: var(--lv4);
+        flex-shrink: 0;
+    }
+</style>

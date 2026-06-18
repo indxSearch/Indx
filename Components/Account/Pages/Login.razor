@@ -119,6 +119,16 @@ else if (externalLogins.Count > 0)
 
     protected override async Task OnInitializedAsync()
     {
+        var isGet = HttpMethods.IsGet(HttpContext.Request.Method);
+
+        // First run: the instance isn't set up yet → route the first visitor into the setup flow
+        // (the setup page itself sends an already-signed-in admin on to the configuration step).
+        if (isGet && !InstanceSettingsService.Load().SetupComplete)
+        {
+            NavigationManager.NavigateTo("/Account/Setup", forceLoad: true);
+            return;
+        }
+
         // Set error message from query parameter if present
         if (!string.IsNullOrEmpty(Error))
         {

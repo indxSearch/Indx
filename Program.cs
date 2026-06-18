@@ -987,6 +987,19 @@ public class Program
             }
         }
 
+        // First-run onboarding completion flag. An instance that already has users (upgraded
+        // from before the flag existed) — or a managed deploy that seeds its own admin via
+        // Identity:AdminEmail — is already set up and must skip the first-run setup wizard.
+        var settingsService = services.GetRequiredService<InstanceSettingsService>();
+        var instanceSettings = settingsService.Load();
+        if (!instanceSettings.SetupComplete &&
+            (userManager.Users.Any() || !string.IsNullOrWhiteSpace(configuration["Identity:AdminEmail"])))
+        {
+            instanceSettings.SetupComplete = true;
+            settingsService.Save(instanceSettings);
+            logger.LogInformation("Marked instance SetupComplete=true (existing users or seeded admin).");
+        }
+
         // Only seed an admin user when Identity:AdminEmail is explicitly configured
         // (e.g. Azure Managed App deployment via ARM template). In dev/self-hosted
         // deployments the first registered user is promoted to Admin automatically.

@@ -1,0 +1,171 @@
+@page "/Account/Setup"
+@layout UnauthenticatedLayout
+@using System.ComponentModel.DataAnnotations
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Components.Web
+@using Indx.Systm.Blazor.Icons
+@using IndxCloudApi.Data
+@using IndxCloudApi.Services
+@inject UserManager<ApplicationUser> UserManager
+@inject IUserStore<ApplicationUser> UserStore
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager NavigationManager
+@inject IdentityRedirectManager RedirectManager
+@inject UserProvisioningService UserProvisioning
+@inject InstanceSettingsService InstanceSettingsService
+@inject ILogger<Setup> Logger
+
+<PageTitle>Set up your instance</PageTitle>
+
+<h3 style="margin-bottom: 4px;">Set up your instance</h3>
+<p style="color: var(--lv5); font: var(--text-sm); margin-bottom: 24px;">
+    You're the first user, so this account becomes the <strong>administrator</strong>. Create it below —
+    next you'll name your team and instance.
+</p>
+
+@if (!string.IsNullOrEmpty(errorMessage))
+{
+    <div style="padding: 14px 18px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255,66,56,0.1); margin: 16px 0; font: var(--text-sm);">
+        @errorMessage
+    </div>
+}
+
+@if (externalLogins is { Count: > 0 })
+{
+    <div style="display: grid; gap: 10px;">
+        @foreach (var provider in externalLogins)
+        {
+            <form action="Account/PerformExternalLogin" method="post" data-enhance="false">
+                <AntiforgeryToken />
+                <input type="hidden" name="provider" value="@provider.Name" />
+                <input type="hidden" name="returnUrl" value="/Account/Setup/Configure" />
+                @if (provider.Name == "Google")
+                {
+                    <Button Type="submit" Variant="primary">
+                        <IconLeft><Google Size="@context" Color="currentColor" /></IconLeft>
+                        <ChildContent>Continue with Google</ChildContent>
+                    </Button>
+                }
+                else if (provider.Name == "Microsoft")
+                {
+                    <Button Type="submit" Variant="primary">
+                        <IconLeft><MicrosoftLogo Size="@context" Color="currentColor" /></IconLeft>
+                        <ChildContent>Continue with Microsoft</ChildContent>
+                    </Button>
+                }
+                else
+                {
+                    <Button Type="submit" Variant="primary">Continue with @provider.DisplayName</Button>
+                }
+            </form>
+        }
+    </div>
+
+    <div style="margin: 24px 0 16px; font: var(--text-sm); color: var(--lv5);">Or create an account with email</div>
+}
+
+<EditForm Model="Input" method="post" OnValidSubmit="CreateAdmin" FormName="setup-account">
+    <DataAnnotationsValidator />
+    <ValidationSummary style="color: var(--CSignal);" role="alert" />
+
+    <div style="margin-bottom: 10px;">
+        <InputField @bind-Value="Input.Email" type="email" autocomplete="username" placeholder="Email" id="email" />
+        <ValidationMessage For="() => Input.Email" />
+    </div>
+    <div style="margin-bottom: 10px;">
+        <InputField type="password" @bind-Value="Input.Password" autocomplete="new-password" placeholder="Password" id="password" />
+        <ValidationMessage For="() => Input.Password" />
+    </div>
+    <div style="margin-bottom: 10px;">
+        <InputField type="password" @bind-Value="Input.ConfirmPassword" autocomplete="new-password" placeholder="Confirm password" id="confirm-password" />
+        <ValidationMessage For="() => Input.ConfirmPassword" />
+    </div>
+    <p style="font: var(--text-xs); color: var(--lv5); margin-bottom: 20px;">
+        At least 6 characters, with one uppercase letter, one digit and one non-alphanumeric character.
+    </p>
+
+    <Button Type="submit" Variant="secondary">Create admin account</Button>
+</EditForm>
+
+@code {
+    private string? errorMessage;
+    private IList<AuthenticationScheme>? externalLogins;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = InstanceSettingsService.Load();
+
+        // Already set up → this page is meaningless.
+        if (settings.SetupComplete)
+        {
+            RedirectManager.RedirectTo("Account/Login");
+            return;
+        }
+
+        // Account already created (e.g. came back here after the OAuth round-trip) but the
+        // instance isn't configured yet → continue to the team/instance step.
+        if (HttpContext.User.Identity?.IsAuthenticated == true)
+        {
+            RedirectManager.RedirectTo("Account/Setup/Configure");
+            return;
+        }
+
+        // A half-finished setup (admin created the account but abandoned configuration): the
+        // existing admin should sign in to finish, not a stranger creating a second account.
+        if (UserManager.Users.Any())
+        {
+            RedirectManager.RedirectTo("Account/Login");
+            return;
+        }
+
+        externalLogins = (await SignInManager.GetExternalAuthenticationSchemesAsync()).ToList();
+    }
+
+    private async Task CreateAdmin(EditContext editContext)
+    {
+        var user = Activator.CreateInstance<ApplicationUser>();
+        await UserStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
+        await ((IUserEmailStore<ApplicationUser>)UserStore).SetEmailAsync(user, Input.Email, CancellationToken.None);
+        // The administrator owns the instance and email may not be configured on a self-host,
+        // so confirm their address up front — never lock the owner out behind verification.
+        user.EmailConfirmed = true;
+
+        var result = await UserManager.CreateAsync(user, Input.Password);
+        if (!result.Succeeded)
+        {
+            errorMessage = string.Join(" ", result.Errors.Select(e => e.Description));
+            return;
+        }
+
+        // First user → Admin role + a personal team (renamed in the next step).
+        await UserProvisioning.ProvisionNewUserAsync(user, Input.Email);
+        Logger.LogInformation("First-run admin account created for {Email}.", Input.Email);
+
+        // Sign-in works here (static POST), then continue to team/instance configuration.
+        await SignInManager.SignInAsync(user, isPersistent: false);
+        RedirectManager.RedirectTo("Account/Setup/Configure");
+    }
+
+    private sealed class InputModel
+    {
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = "";
+
+        [Required]
+        [StringLength(100, MinimumLength = 6, ErrorMessage = "The {0} must be at least {2} characters long.")]
+        [DataType(DataType.Password)]
+        public string Password { get; set; } = "";
+
+        [DataType(DataType.Password)]
+        [Compare("Password", ErrorMessage = "The password and confirmation do not match.")]
+        public string ConfirmPassword { get; set; } = "";
+    }
+}

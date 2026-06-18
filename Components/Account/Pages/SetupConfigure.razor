@@ -1,0 +1,174 @@
+@page "/Account/Setup/Configure"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@layout UnauthenticatedLayout
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using IndxCloudApi.Data
+@using IndxCloudApi.Services
+@attribute [Authorize]
+@inject AuthenticationStateProvider AuthStateProvider
+@inject TeamService TeamService
+@inject InstanceSettingsService InstanceSettingsService
+@inject NavigationManager NavigationManager
+@inject ILogger<SetupConfigure> Logger
+
+<PageTitle>Set up your instance</PageTitle>
+
+<h3 style="margin-bottom: 4px;">Set up your instance</h3>
+<p style="color: var(--lv5); font: var(--text-sm); margin-bottom: 20px;">
+    Your admin account is ready. Two more steps.
+</p>
+
+<div style="display: flex; gap: 6px; margin-bottom: 24px;">
+    @for (var s = 1; s <= 2; s++)
+    {
+        <div style="flex: 1; height: 3px; border-radius: 2px; background: @(s <= _step ? "var(--CTeal)" : "var(--lv3)");"></div>
+    }
+</div>
+
+@if (!string.IsNullOrEmpty(_error))
+{
+    <div style="padding: 12px 16px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255,66,56,0.08); margin-bottom: 16px; font: var(--text-sm);">
+        @_error
+    </div>
+}
+
+@if (_step == 1)
+{
+    <h4 style="margin-bottom: 6px;">Your team</h4>
+    <p style="color: var(--lv5); font: var(--text-sm); margin-bottom: 12px;">
+        Datasets are owned by a <strong>team</strong>. This is your organisation's primary team — you can add members and create more teams later.
+    </p>
+    <InputField Label="Team name" placeholder="my-team" @bind-Value="_teamName" />
+}
+else
+{
+    <h4 style="margin-bottom: 12px;">Your instance</h4>
+    <div style="display: flex; flex-direction: column; gap: 14px;">
+        <InputField Label="Instance name" placeholder="Indx" @bind-Value="_instanceName" />
+        <SelectField Label="Who can join this instance?" Options="_joinModes" @bind-Value="_registrationMode" />
+        <p style="font: var(--text-xs); color: var(--lv5);">@JoinModeHint(_registrationMode)</p>
+        <p style="font: var(--text-xs); color: var(--lv5);">Email sending is off by default (logged to console). Configure it any time under <strong>Admin → Settings</strong>.</p>
+    </div>
+}
+
+<div style="display: flex; gap: 8px; margin-top: 28px;">
+    @if (_step > 1)
+    {
+        <Button Variant="secondary" @onclick="() => { _step = 1; _error = null; }" Disabled="@_busy">Back</Button>
+    }
+    <Button Variant="primary" @onclick="Next" Disabled="@_busy">
+        @(_busy ? "Finishing…" : _step < 2 ? "Continue" : "Finish setup")
+    </Button>
+</div>
+
+@code {
+    private int _step = 1;
+    private bool _busy;
+    private string? _error;
+
+    private Guid _teamId;
+    private string _teamName = "";
+    private string _instanceName = "Indx";
+    private string? _registrationMode = nameof(RegistrationMode.Invite);
+    private string _adminEmailDomain = "";
+
+    private static readonly IEnumerable<SelectField.SelectOption> _joinModes =
+    [
+        new("Only people I invite", nameof(RegistrationMode.Invite)),
+        new("Only my email domain", nameof(RegistrationMode.EmailDomain)),
+        new("Closed — only admins add accounts", nameof(RegistrationMode.Closed)),
+        new("Anyone can register", nameof(RegistrationMode.Open)),
+    ];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var settings = InstanceSettingsService.Load();
+        if (settings.SetupComplete)
+        {
+            NavigationManager.NavigateTo("/", forceLoad: true);
+            return;
+        }
+        _instanceName = settings.InstanceName;
+
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        _adminEmailDomain = authState.User.FindFirst(ClaimTypes.Email)?.Value?.Split('@').LastOrDefault() ?? "";
+
+        if (!string.IsNullOrEmpty(userId))
+        {
+            // The admin's personal team was created during account provisioning; prefill it so
+            // they can keep or rename it here.
+            var teams = await TeamService.GetTeamsForUserAsync(userId);
+            var primary = teams.FirstOrDefault();
+            if (primary.Team != null)
+            {
+                _teamId = primary.Team.Id;
+                _teamName = primary.Team.Name;
+            }
+        }
+    }
+
+    private static string JoinModeHint(string? mode) => mode switch
+    {
+        nameof(RegistrationMode.Invite) => "Only email addresses you add to the invite list can register. Manage invites under Admin → Users.",
+        nameof(RegistrationMode.EmailDomain) => "Only people whose email is on your domain can register. We'll allow your domain automatically.",
+        nameof(RegistrationMode.Closed) => "No self-registration — only you (admin) can create accounts, from Admin → Users.",
+        _ => "Anyone who reaches this server can create an account.",
+    };
+
+    private async Task Next()
+    {
+        _error = null;
+        if (_step == 1)
+        {
+            if (string.IsNullOrWhiteSpace(_teamName))
+            { _error = "Give your team a name."; return; }
+            _step = 2;
+            return;
+        }
+        await FinishAsync();
+    }
+
+    private async Task FinishAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_instanceName))
+        { _error = "Give your instance a name."; return; }
+
+        _busy = true;
+        try
+        {
+            // Rename the personal team to the chosen name (no-op if unchanged / sanitises to same).
+            if (_teamId != Guid.Empty && !string.IsNullOrWhiteSpace(_teamName))
+            {
+                await TeamService.RenameTeamAsync(_teamId, _teamName.Trim());
+            }
+
+            var settings = InstanceSettingsService.Load();
+            settings.InstanceName = _instanceName.Trim();
+            if (Enum.TryParse<RegistrationMode>(_registrationMode, out var mode))
+            {
+                settings.RegistrationMode = mode;
+                if (mode == RegistrationMode.EmailDomain && !string.IsNullOrWhiteSpace(_adminEmailDomain)
+                    && !settings.AllowedDomains.Contains(_adminEmailDomain, StringComparer.OrdinalIgnoreCase))
+                {
+                    settings.AllowedDomains.Add(_adminEmailDomain);
+                }
+            }
+            settings.SetupComplete = true;
+            InstanceSettingsService.Save(settings);
+
+            Logger.LogInformation("First-run setup complete: instance '{Instance}', team '{Team}'.", settings.InstanceName, _teamName);
+
+            NavigationManager.NavigateTo("/Account/Welcome", forceLoad: true);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "First-run configuration failed");
+            _error = $"Setup failed: {ex.Message}";
+            _busy = false;
+        }
+    }
+}

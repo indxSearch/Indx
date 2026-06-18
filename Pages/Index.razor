@@ -15,6 +15,7 @@
 @inject NavigationManager NavigationManager
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject UserManager<ApplicationUser> UserManager
+@inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
 @inject IndxCloudApi.Services.ActiveTeamState ActiveTeam
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject IJSRuntime JSRuntime
@@ -57,7 +58,14 @@ else
     {
         <div style="margin-top: 40px; max-width: 520px;">
             <p style="color: var(--lv5); margin-bottom: 20px;">A dataset holds your JSON documents and search index. Create one here to get started.</p>
-            <Button Variant="primary" Size="default" @onclick="() => _showNewDatasetForm = true">Create your first dataset</Button>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                <input class="indx-text-input" placeholder="Dataset name" value="@_newDatasetName" @oninput="e => _newDatasetName = e.Value?.ToString() ?? string.Empty" @onkeydown="OnNewDatasetKeyDown" />
+                <Button Variant="primary" Size="default" @onclick="CreateDataset" disabled="@string.IsNullOrWhiteSpace(_newDatasetName)">Create your first dataset</Button>
+            </div>
+            @if (!string.IsNullOrEmpty(_createError))
+            {
+                <p style="color:var(--CSignal);margin-top:4px;margin-bottom:0;">@_createError</p>
+            }
 
             <div style="margin-top: 24px;">
                 <p style="color: var(--lv5); margin-bottom: 8px;">Using an LLM to set up your search? Get the skill.</p>
@@ -825,6 +833,12 @@ else
         if (user.Identity == null || !user.Identity.IsAuthenticated)
         {
             NavigationManager.NavigateTo("/Account/Login", forceLoad: true);
+            return;
+        }
+        // Onboarding not finished (admin account exists but instance not configured yet) → finish it.
+        if (!InstanceSettingsService.Load().SetupComplete)
+        {
+            NavigationManager.NavigateTo("/Account/Setup/Configure", forceLoad: true);
             return;
         }
         userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;

@@ -962,6 +962,11 @@
             to include one, omit for a plain notice. <paramref name="bodyHtml"/> is inserted as-is.
             </summary>
         </member>
+        <member name="P:IndxCloudApi.Services.InstanceSettings.SetupComplete">
+            <summary>True once the first-run onboarding (admin account + team + instance settings)
+            has completed. Until then, the app routes visitors into the setup flow. Gated on this
+            flag rather than "are there users?" because OAuth creates the admin mid-flow.</summary>
+        </member>
         <member name="P:IndxCloudApi.Services.InstanceSettings.LicenseToken">
             <summary>Bearer token for the Indx license portal. When set, overrides the
             Indx:LicenseToken app setting. Stored locally (settings.json) like other secrets.
