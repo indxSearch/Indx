@@ -179,24 +179,14 @@ else
 @{
     var mcpEnabled = Settings.Load().McpEnabled;
     var mcpUrl = Nav.BaseUri.TrimEnd('/') + "/mcp";
-    var mcpSnippet =
-        "{\n  \"mcpServers\": {\n    \"indx\": {\n      \"command\": \"npx\",\n" +
-        "      \"args\": [\"mcp-remote\", \"" + mcpUrl + "\", \"--header\", \"Authorization: Bearer <your-api-key>\"]\n" +
-        "    }\n  }\n}";
 }
 @if (mcpEnabled)
 {
-    <div style="margin-top:32px; padding: 20px; border: 1px solid var(--lv2); border-radius: var(--radius); background: var(--lv1);">
+    <div style="margin-top:32px; padding: 16px 20px; border: 1px solid var(--lv2); border-radius: var(--radius); background: var(--lv1);">
         <strong>Use with AI agents (MCP)</strong>
         <p style="color:var(--lv5); font:var(--text-sm); margin:8px 0 0;">
-            Add this as a remote MCP server in your AI client:
-            <code>@mcpUrl</code> — authenticate with any API key above as a <strong>Bearer</strong> token.
+            Connect your agent to <code>@mcpUrl</code> and authenticate with any API key above as a <strong>Bearer</strong> token.
         </p>
-        <p style="color:var(--lv4); font:var(--text-xs); margin:10px 0 6px;">
-            Clients without a header field can use the <code>mcp-remote</code> bridge:
-        </p>
-        <textarea style="width:100%; padding:10px; border:1px solid var(--lv3); border-radius:var(--radius); background:var(--lv0); color:var(--lv8); font-family:monospace; font-size:11px;"
-                  rows="8" readonly>@mcpSnippet</textarea>
     </div>
 }
 
