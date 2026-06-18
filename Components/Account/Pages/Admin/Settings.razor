@@ -126,16 +126,16 @@
                 .Where(d => d.Contains('.'))
                 .ToList();
 
+            // Mutate the loaded settings in place — never construct a fresh InstanceSettings,
+            // or fields this page doesn't edit (SetupComplete, LicenseToken, Plan, AllowedEmails)
+            // get silently wiped to their defaults.
             var settings = SettingsService.Load();
-            SettingsService.Save(new InstanceSettings
-            {
-                InstanceName = _instanceName.Trim(),
-                RequireEmailVerification = _requireEmailVerification,
-                AllowUserSelfDeletion = _allowUserSelfDeletion,
-                RegistrationMode = mode,
-                AllowedDomains = domains,
-                AllowedEmails = settings.AllowedEmails,
-            });
+            settings.InstanceName = _instanceName.Trim();
+            settings.RequireEmailVerification = _requireEmailVerification;
+            settings.AllowUserSelfDeletion = _allowUserSelfDeletion;
+            settings.RegistrationMode = mode;
+            settings.AllowedDomains = domains;
+            SettingsService.Save(settings);
 
             _successMessage = "Settings saved.";
         }
