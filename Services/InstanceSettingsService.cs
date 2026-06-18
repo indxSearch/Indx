@@ -12,6 +12,11 @@ internal class InstanceSettings
     public bool AllowUserSelfDeletion { get; set; } = true;
     public string InstanceName { get; set; } = "Indx";
 
+    /// <summary>Master switch for the MCP server (/mcp). On by default (frictionless self-host);
+    /// admins can disable the agent-facing surface. Enforced at runtime, so it takes effect without
+    /// a restart.</summary>
+    public bool McpEnabled { get; set; } = true;
+
     /// <summary>True once the first-run onboarding (admin account + team + instance settings)
     /// has completed. Until then, the app routes visitors into the setup flow. Gated on this
     /// flag rather than "are there users?" because OAuth creates the admin mid-flow.</summary>

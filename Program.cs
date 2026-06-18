@@ -674,6 +674,19 @@ public class Program
         // Map API Controllers
         app.MapControllers();
 
+        // Runtime master-switch: when an admin disables MCP (Instance Settings), /mcp 404s without
+        // a restart. Only touches settings on the /mcp path, off the normal hot path.
+        app.Use(async (context, next) =>
+        {
+            if (context.Request.Path.StartsWithSegments("/mcp")
+                && !context.RequestServices.GetRequiredService<IndxCloudApi.Services.InstanceSettingsService>().Load().McpEnabled)
+            {
+                context.Response.StatusCode = StatusCodes.Status404NotFound;
+                return;
+            }
+            await next();
+        });
+
         // MCP endpoint (Streamable HTTP). Requires a valid bearer token (API key) on the JWT
         // scheme specifically — so an unauthenticated call gets a 401 (what MCP clients expect),
         // not a 302 redirect to the cookie login. Tools scope access to the caller's teams.

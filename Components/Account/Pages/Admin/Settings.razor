@@ -52,6 +52,18 @@
     </div>
 
     <div style="margin-bottom: 32px;">
+        <h3>AI Agents (MCP)</h3>
+        <p style="color: var(--lv5); margin: 8px 0 20px;">Let AI agents query your datasets over the Model Context Protocol.</p>
+        <div>
+            <ToggleSwitch Label="Enable MCP server" @bind-Checked="_mcpEnabled" />
+            <p style="font: var(--text-xs); color: var(--lv4); margin-top: 4px; margin-left: 48px;">
+                Exposes a read-only <code>/mcp</code> endpoint (search, describe, get document) authenticated by API key.
+                When disabled, the endpoint returns 404. Users connect via <a href="/Account/ApiKey">API keys</a>.
+            </p>
+        </div>
+    </div>
+
+    <div style="margin-bottom: 32px;">
         <h3>Registration</h3>
         <p style="color: var(--lv5); margin: 8px 0 20px;">Control who can create accounts on this instance.</p>
 
@@ -83,6 +95,7 @@
     private string _instanceName = "Indx";
     private bool _requireEmailVerification;
     private bool _allowUserSelfDeletion = true;
+    private bool _mcpEnabled = true;
     private string _registrationMode = "Open";
     private string _allowedDomainsText = "";
     private string? _successMessage;
@@ -102,6 +115,7 @@
         _instanceName = settings.InstanceName;
         _requireEmailVerification = settings.RequireEmailVerification;
         _allowUserSelfDeletion = settings.AllowUserSelfDeletion;
+        _mcpEnabled = settings.McpEnabled;
         _registrationMode = settings.RegistrationMode.ToString();
         _allowedDomainsText = string.Join("\n", settings.AllowedDomains);
     }
@@ -133,6 +147,7 @@
             settings.InstanceName = _instanceName.Trim();
             settings.RequireEmailVerification = _requireEmailVerification;
             settings.AllowUserSelfDeletion = _allowUserSelfDeletion;
+            settings.McpEnabled = _mcpEnabled;
             settings.RegistrationMode = mode;
             settings.AllowedDomains = domains;
             SettingsService.Save(settings);

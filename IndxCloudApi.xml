@@ -1172,6 +1172,11 @@
             exact value match. An open bound uses double.MinValue / double.MaxValue.
             </summary>
         </member>
+        <member name="P:IndxCloudApi.Services.InstanceSettings.McpEnabled">
+            <summary>Master switch for the MCP server (/mcp). On by default (frictionless self-host);
+            admins can disable the agent-facing surface. Enforced at runtime, so it takes effect without
+            a restart.</summary>
+        </member>
         <member name="P:IndxCloudApi.Services.InstanceSettings.SetupComplete">
             <summary>True once the first-run onboarding (admin account + team + instance settings)
             has completed. Until then, the app routes visitors into the setup flow. Gated on this

@@ -15,6 +15,8 @@
 @inject ApplicationDbContext Db
 @inject IJSRuntime JSRuntime
 @inject ILogger<ApiKey> Logger
+@inject NavigationManager Nav
+@inject IndxCloudApi.Services.InstanceSettingsService Settings
 
 <PageTitle>API Keys</PageTitle>
 
@@ -27,6 +29,29 @@
 {
     <div style="padding: 16px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255,66,56,0.08); margin-bottom: 24px;">
         @errorMessage
+    </div>
+}
+
+@* ── MCP / AI agents ── *@
+@{
+    var mcpEnabled = Settings.Load().McpEnabled;
+    var mcpUrl = Nav.BaseUri.TrimEnd('/') + "/mcp";
+    var mcpSnippet =
+        "{\n  \"mcpServers\": {\n    \"indx\": {\n      \"command\": \"npx\",\n" +
+        "      \"args\": [\"mcp-remote\", \"" + mcpUrl + "\", \"--header\", \"Authorization: Bearer <your-api-key>\"]\n" +
+        "    }\n  }\n}";
+}
+@if (mcpEnabled)
+{
+    <div style="padding: 20px; border: 1px solid var(--lv2); border-radius: var(--radius); background: var(--lv1); margin-bottom: 32px;">
+        <strong>Use with AI agents (MCP)</strong>
+        <p style="color:var(--lv5); font:var(--text-sm); margin:8px 0 12px;">
+            Any API key below is the bearer token for the read-only MCP endpoint (search, describe, get document):
+            <code>@mcpUrl</code>
+        </p>
+        <p style="color:var(--lv5); font:var(--text-xs); margin:0 0 6px;">Example Claude Desktop config (<code>mcp-remote</code> injects the auth header):</p>
+        <textarea style="width:100%; padding:10px; border:1px solid var(--lv3); border-radius:var(--radius); background:var(--lv0); color:var(--lv8); font-family:monospace; font-size:11px;"
+                  rows="8" readonly>@mcpSnippet</textarea>
     </div>
 }
 
