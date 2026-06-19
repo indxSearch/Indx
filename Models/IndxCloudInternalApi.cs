@@ -32,7 +32,7 @@ namespace IndxCloudApi.Models
 
             var licensePath = GetLicensePath();
             var newMatcher = new SearchEngine(MakeLogPrefix(teamId, dataSetName), Indx.Utilities.ILoggerFactory.GetFactory(logFileName),
-               (int)configuration, licensePath)
+               (ConfigurationProfile)(int)configuration, licensePath)
             {
                 Persistence = persistence
             };
@@ -960,7 +960,7 @@ namespace IndxCloudApi.Models
                 var matcher = new SearchEngine(
                     MakeLogPrefix(teamId, dataSetName),
                     Indx.Utilities.ILoggerFactory.GetFactory(logFileName),
-                    (int)configuration,
+                    (ConfigurationProfile)(int)configuration,
                     licensePath)
                 {
                     Persistence = persistence
