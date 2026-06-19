@@ -921,9 +921,17 @@ namespace IndxCloudApi.Models
             {
                 jsonStream.Position = 0;
                 validate.Init(jsonStream);
+                ApplyDeclaredKeyField(validate, dataSetName, teamId);
+
+                // Cheap guard: the declared key field must be present (as a numeric/string field) in
+                // this data. If it is absent from every document, Haskey() is false and the engine would
+                // silently auto-key — the Load below would "succeed" with surrogate keys and mask that
+                // the chosen key isn't in this data. Catch it here, before paying for the full load.
+                if (validate.DocumentFields?.Haskey() != true)
+                    return DescribeKeyedLoadFailure(declared, $"field '{declared}' is not present in the data");
+
                 var cfgErr = validate.SetFieldConfiguration(liveConfig);
                 if (!string.IsNullOrEmpty(cfgErr)) return $"Field configuration error: {cfgErr}";
-                ApplyDeclaredKeyField(validate, dataSetName, teamId);
 
                 jsonStream.Position = 0;
                 var pm = new ProcessMonitor();
