@@ -782,21 +782,28 @@
             <summary>
             Applies the dataset's cloud-declared key field to the engine's <see cref="T:Indx.Api.DocumentFields"/>
             just before an external Load assigns and persists document keys. The lib does not persist the
-            key-field name, so this re-establishes it on every fresh load (incl. replace). A no-op when no
-            key field is declared (engine keeps its default "id"/auto behaviour) or fields aren't analyzed.
+            key-field name, so this re-establishes it on every fresh load (incl. replace).
+            <list type="bullet">
+              <item>undeclared ("") → no-op: the engine keeps its default — the "id" field if present, else auto.</item>
+              <item>explicit auto (sentinel) → clears the key field so the engine auto-generates keys.</item>
+              <item>a field name → that field becomes the key.</item>
+            </list>
             </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetDeclaredKeyField(System.String,System.String)">
-            <summary>The dataset's declared key field, or empty string if none/unwired.</summary>
+            <summary>
+            The dataset's declared key field for API consumers: a field name, or "" meaning the default
+            (the "id" field when present, otherwise auto-generated). Explicit auto-generated maps to "".
+            </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.SetKeyField(System.String,System.String,System.String,System.Boolean@)">
             <summary>
-            Declares <paramref name="fieldName"/> (empty = none / auto-generated) as the dataset's key
-            field: validates it exists and is numeric (the engine key is a long; a non-numeric key would
-            silently collide via digit-stripping), persists the choice cloud-side, and applies it to the
-            live engine. Returns null on success or an error message. <paramref name="needsReloadToReKey"/>
-            is true when the dataset already holds loaded documents — their keys are frozen, so the new
-            key field only takes effect on the next replace/reload.
+            Declares <paramref name="fieldName"/> (empty = auto-generated) as the dataset's key field:
+            validates it exists and is numeric (the engine key is a long; a non-numeric key would silently
+            collide via digit-stripping), persists the choice cloud-side, and applies it to the live engine.
+            Returns null on success or an error message. <paramref name="needsReloadToReKey"/> is true when
+            the dataset already holds loaded documents — their keys are frozen, so the new key field only
+            takes effect on the next replace/reload.
             </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ResolveEngine(System.String,System.String)">

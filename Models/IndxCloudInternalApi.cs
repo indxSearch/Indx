@@ -834,35 +834,50 @@ namespace IndxCloudApi.Models
         // Per-dataset metadata incl. the declared key field (cloud-owned). Wired in once at startup.
         private Services.DatasetMetadataStore? _metadataStore;
 
+        // Stored when the user explicitly chooses auto-generated keys even though a real key field is
+        // available. Distinct from "" (undeclared) — which falls back to the engine default (the "id"
+        // field when present, else auto). Never a real JSON field name.
+        internal const string KeyFieldAutoSentinel = "__indx_auto_key__";
+
         /// <summary>Attaches the metadata store (description + declared key field) (startup-only).</summary>
         internal void AttachMetadataStore(Services.DatasetMetadataStore store) => _metadataStore = store;
 
         /// <summary>
         /// Applies the dataset's cloud-declared key field to the engine's <see cref="DocumentFields"/>
         /// just before an external Load assigns and persists document keys. The lib does not persist the
-        /// key-field name, so this re-establishes it on every fresh load (incl. replace). A no-op when no
-        /// key field is declared (engine keeps its default "id"/auto behaviour) or fields aren't analyzed.
+        /// key-field name, so this re-establishes it on every fresh load (incl. replace).
+        /// <list type="bullet">
+        ///   <item>undeclared ("") → no-op: the engine keeps its default — the "id" field if present, else auto.</item>
+        ///   <item>explicit auto (sentinel) → clears the key field so the engine auto-generates keys.</item>
+        ///   <item>a field name → that field becomes the key.</item>
+        /// </list>
         /// </summary>
         private void ApplyDeclaredKeyField(ICloudSearchEngine instance, string dataSetName, string teamId)
         {
             var declared = _metadataStore?.LoadKeyField(teamId, dataSetName);
-            if (string.IsNullOrEmpty(declared)) return;
+            if (string.IsNullOrEmpty(declared)) return; // undeclared → engine default (id if present, else auto)
             var df = instance.DocumentFields;
             if (df != null)
-                df.NameOfDocumentKeyField = declared;
+                df.NameOfDocumentKeyField = declared == KeyFieldAutoSentinel ? "" : declared;
         }
 
-        /// <summary>The dataset's declared key field, or empty string if none/unwired.</summary>
+        /// <summary>
+        /// The dataset's declared key field for API consumers: a field name, or "" meaning the default
+        /// (the "id" field when present, otherwise auto-generated). Explicit auto-generated maps to "".
+        /// </summary>
         internal string GetDeclaredKeyField(string dataSetName, string teamId)
-            => _metadataStore?.LoadKeyField(teamId, dataSetName) ?? "";
+        {
+            var raw = _metadataStore?.LoadKeyField(teamId, dataSetName) ?? "";
+            return raw == KeyFieldAutoSentinel ? "" : raw;
+        }
 
         /// <summary>
-        /// Declares <paramref name="fieldName"/> (empty = none / auto-generated) as the dataset's key
-        /// field: validates it exists and is numeric (the engine key is a long; a non-numeric key would
-        /// silently collide via digit-stripping), persists the choice cloud-side, and applies it to the
-        /// live engine. Returns null on success or an error message. <paramref name="needsReloadToReKey"/>
-        /// is true when the dataset already holds loaded documents — their keys are frozen, so the new
-        /// key field only takes effect on the next replace/reload.
+        /// Declares <paramref name="fieldName"/> (empty = auto-generated) as the dataset's key field:
+        /// validates it exists and is numeric (the engine key is a long; a non-numeric key would silently
+        /// collide via digit-stripping), persists the choice cloud-side, and applies it to the live engine.
+        /// Returns null on success or an error message. <paramref name="needsReloadToReKey"/> is true when
+        /// the dataset already holds loaded documents — their keys are frozen, so the new key field only
+        /// takes effect on the next replace/reload.
         /// </summary>
         internal string? SetKeyField(string dataSetName, string teamId, string fieldName, out bool needsReloadToReKey)
         {
@@ -876,7 +891,14 @@ namespace IndxCloudApi.Models
                 return "Analyze the dataset (upload a sample) before declaring its key field";
 
             fieldName ??= "";
-            if (fieldName.Length > 0)
+            string storeValue, applyValue;
+            if (fieldName.Length == 0)
+            {
+                // Explicit auto-generated: force the engine off any default key field.
+                storeValue = KeyFieldAutoSentinel;
+                applyValue = "";
+            }
+            else
             {
                 var field = df.GetField(fieldName);
                 if (field == null)
@@ -884,10 +906,11 @@ namespace IndxCloudApi.Models
                 if (field.Type != System.Text.Json.JsonValueKind.Number)
                     return $"The key field must be numeric (the engine key is a whole number); " +
                            $"'{fieldName}' is {field.Type}. Pick a numeric id field, or choose auto-generated.";
+                storeValue = applyValue = fieldName;
             }
 
-            _metadataStore.SaveKeyField(teamId, dataSetName, fieldName);
-            df.NameOfDocumentKeyField = fieldName; // apply to the live engine for the next load
+            _metadataStore.SaveKeyField(teamId, dataSetName, storeValue);
+            df.NameOfDocumentKeyField = applyValue; // apply to the live engine for the next load
 
             // If documents are already loaded, their JsonData.Id keys are persisted and won't change
             // until the data is reloaded (a replace).

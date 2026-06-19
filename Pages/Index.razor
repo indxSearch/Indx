@@ -324,7 +324,6 @@ else
                                                           Elevated />
                                         </span>
                                     </div>
-                                    @KeyFieldRow(datasetName, ownerUserId, isEditor)
                                     <div class="indx-table-wrap">
                                         <table class="indx-table">
                                             <thead>
@@ -396,6 +395,7 @@ else
                                             </tbody>
                                         </table>
                                     </div>
+                                    @KeyFieldRow(datasetName, ownerUserId, isEditor)
                                     <div style="display:flex;gap:8px;align-items:center;margin-top:8px;margin-bottom:8px;flex-wrap:wrap;">
                                         <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-{datasetName}")" />
                                         <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportFile(datasetName)">Upload field configuration</Button>
@@ -469,7 +469,6 @@ else
                                 {
                                     @if (_editedFieldConfigs.TryGetValue(datasetName, out var readyFields) && readyFields != null)
                                     {
-                                        @KeyFieldRow(datasetName, ownerUserId, isEditor)
                                         <div class="indx-table-wrap">
                                             <table class="indx-table">
                                                 <thead>
@@ -541,6 +540,7 @@ else
                                                 </tbody>
                                             </table>
                                         </div>
+                                        @KeyFieldRow(datasetName, ownerUserId, isEditor)
                                         <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
                                             <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportFieldConfig(datasetName)">Export field configuration as json</Button>
                                             @if (isEditor)
@@ -2245,11 +2245,14 @@ else
         new("High", "High") { Icon = _iconWeightHigh },
     ];
 
-    // ── Declared key field (primary key) ──
+    // ── Declared key field (document key / primary key) ──
     // Cloud-owned (DatasetMetadataStore) since the lib doesn't persist the key-field name. Applied
     // to the engine before each external Load. See indx_dataset_primary_key.md.
+    // Local cache holds the raw stored value: "" = undeclared (engine default), the sentinel = explicit
+    // auto-generated, otherwise a field name.
     private const string AutoKeyValue = "__auto__";
-    private readonly Dictionary<string, string> _keyFieldByDataset = new(); // "" = auto-generated
+    private static string KeyAutoSentinel => IndxCloudApi.Models.IndxCloudInternalApi.KeyFieldAutoSentinel;
+    private readonly Dictionary<string, string> _keyFieldByDataset = new();
     private readonly HashSet<string> _keyFieldNeedsReload = new();
     private string? _keyFieldError;
     private string? _keyFieldErrorDataset;
@@ -2260,25 +2263,33 @@ else
         _keyFieldByDataset[datasetName] = DatasetMeta.LoadKeyField(teamId, datasetName);
     }
 
-    private string KeyFieldValue(string datasetName) =>
-        string.IsNullOrEmpty(_keyFieldByDataset.GetValueOrDefault(datasetName)) ? AutoKeyValue : _keyFieldByDataset[datasetName];
+    // The value shown as selected in the dropdown. Resolves the undeclared default to "id" when an
+    // "id" number field exists (that's what the engine actually keys on), else auto-generated.
+    private string KeyFieldValue(string datasetName)
+    {
+        var raw = _keyFieldByDataset.GetValueOrDefault(datasetName) ?? "";
+        if (raw == KeyAutoSentinel) return AutoKeyValue;
+        if (raw.Length > 0) return raw;
+        return IsNumericField(datasetName, "id") ? "id" : AutoKeyValue;
+    }
 
     private string KeyFieldDisplay(string datasetName)
     {
-        var v = _keyFieldByDataset.GetValueOrDefault(datasetName) ?? "";
-        return v.Length == 0 ? "Auto-generated (no key field)" : v;
+        var v = KeyFieldValue(datasetName);
+        return v == AutoKeyValue ? "Auto-generated" : v;
     }
 
     private List<SelectField.SelectOption> KeyFieldOptions(string datasetName)
     {
-        var opts = new List<SelectField.SelectOption> { new("Auto-generated (no key field)", AutoKeyValue) };
+        var opts = new List<SelectField.SelectOption>();
         if (_editedFieldConfigs.TryGetValue(datasetName, out var f) && f != null)
             foreach (var fld in f.Where(x => x.FieldType == "Number"))
                 opts.Add(new SelectField.SelectOption(fld.FieldName, fld.FieldName));
+        opts.Add(new SelectField.SelectOption("Auto-generated (no key field)", AutoKeyValue));
         // Keep a declared-but-now-missing key visible so it isn't silently dropped from the dropdown.
         var cur = _keyFieldByDataset.GetValueOrDefault(datasetName) ?? "";
-        if (cur.Length > 0 && !opts.Any(o => o.Value == cur))
-            opts.Add(new SelectField.SelectOption($"{cur} (unavailable)", cur));
+        if (cur.Length > 0 && cur != KeyAutoSentinel && !opts.Any(o => o.Value == cur))
+            opts.Insert(0, new SelectField.SelectOption($"{cur} (unavailable)", cur));
         return opts;
     }
 
@@ -2298,14 +2309,20 @@ else
             _keyFieldErrorDataset = datasetName;
             return;
         }
-        _keyFieldByDataset[datasetName] = fieldName;
+        // Mirror what the store now holds so the dropdown reflects the choice (sentinel for explicit auto).
+        _keyFieldByDataset[datasetName] = fieldName.Length == 0 ? KeyAutoSentinel : fieldName;
         if (needsReload) _keyFieldNeedsReload.Add(datasetName);
         else _keyFieldNeedsReload.Remove(datasetName);
     }
 
-    private RenderFragment KeyFieldRow(string datasetName, string teamId, bool editable) =>@<div style="display:flex;align-items:center;gap:10px;margin:0 0 12px;flex-wrap:wrap;">
+    private RenderFragment KeyFieldRow(string datasetName, string teamId, bool editable) =>@<div style="display:flex;align-items:center;gap:12px;margin:14px 0 4px;flex-wrap:wrap;">
         @{ EnsureKeyFieldLoaded(datasetName, teamId); }
-        <span style="font:var(--text-xs);font-weight:600;color:var(--lv5);">Key field</span>
+        <div style="display:flex;flex-direction:column;gap:2px;max-width:480px;">
+            <span style="font:var(--text-xs);font-weight:600;color:var(--lv5);">Document key</span>
+            <span style="font:var(--text-xs);color:var(--lv4);">
+                The field whose value is each document's unique ID — used for updates, the replace operation and analytics. Must be a whole number, or pick “Auto-generated” to number documents 0, 1, 2…
+            </span>
+        </div>
         @if (editable)
         {
             <div style="width:220px;">
@@ -2319,10 +2336,11 @@ else
         {
             <span style="font:var(--text-xs);color:var(--lv5);">@KeyFieldDisplay(datasetName)</span>
         }
-        <span style="font:var(--text-xs);color:var(--lv4);max-width:420px;">The numeric field that identifies each document — used by update, replace and analytics.</span>
         @if (_keyFieldNeedsReload.Contains(datasetName))
         {
-            <span style="font:var(--text-xs);color:var(--lv4);">↳ existing documents keep their keys until the next replace</span>
+            <span style="font:var(--text-xs);color:var(--lv4);max-width:300px;">
+                Saved. Documents already loaded keep their current ID — this applies the next time you replace the dataset's data.
+            </span>
         }
         @if (_keyFieldError != null && _keyFieldErrorDataset == datasetName)
         {
