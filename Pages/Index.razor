@@ -304,14 +304,11 @@ else
                                 @if (_editedFieldConfigs.TryGetValue(datasetName, out var editedFields) && editedFields != null)
                                 {
                                     <div class="indx-field-config-toolbar">
-                                        <Button Variant="primary" Size="micro"
-                                                @onclick="() => StartLoadAndIndex(datasetName)"
-                                                disabled="@(!HasSearchable(datasetName))">
-                                            Load and Index
-                                        </Button>
-                                        @if (_searchableTouched.Contains(datasetName) && !HasSearchable(datasetName))
+                                        <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-{datasetName}")" />
+                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportFile(datasetName)">Upload field configuration</Button>
+                                        @if (_importWarnings.TryGetValue(datasetName, out var warning) && warning != null)
                                         {
-                                            <span class="indx-field-config-error">At least one field must be searchable</span>
+                                            <span class="indx-field-config-import-warning">@warning</span>
                                         }
                                         <span style="margin-left:auto;display:flex;gap:16px;align-items:center;">
                                             <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
@@ -400,12 +397,15 @@ else
                                         </table>
                                     </div>
                                     @KeyFieldRow(datasetName, ownerUserId, isEditor)
-                                    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;margin-bottom:8px;flex-wrap:wrap;">
-                                        <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-{datasetName}")" />
-                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportFile(datasetName)">Upload field configuration</Button>
-                                        @if (_importWarnings.TryGetValue(datasetName, out var warning) && warning != null)
+                                    <div class="indx-field-config-toolbar" style="margin-top:8px;margin-bottom:8px;">
+                                        <Button Variant="primary" Size="micro"
+                                                @onclick="() => StartLoadAndIndex(datasetName)"
+                                                disabled="@(!HasSearchable(datasetName))">
+                                            Load and Index
+                                        </Button>
+                                        @if (_searchableTouched.Contains(datasetName) && !HasSearchable(datasetName))
                                         {
-                                            <span class="indx-field-config-import-warning">@warning</span>
+                                            <span class="indx-field-config-error">At least one field must be searchable</span>
                                         }
                                         <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportFieldConfig(datasetName)">Export field configuration as json</Button>
                                     </div>
