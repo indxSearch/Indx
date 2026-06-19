@@ -97,15 +97,13 @@ namespace IndxCloudApi.Models
         /// Builds a fresh, Ready engine from <paramref name="jsonStream"/>, carrying over the
         /// dataset's field config (reconciled against the new schema).
         ///
-        /// Done in two passes so a failure can NEVER damage the persisted dataset: the engine's
-        /// external-source Load clears the old documents before appending, and that clear commits
-        /// separately from the append — so a single persisted Load that fails partway would leave
-        /// the dataset empty on disk. Pass 1 validates the entire build in memory (no persistence);
-        /// only when it succeeds does pass 2 commit it for real. (Pass 1 can be dropped once the lib
-        /// makes the clear+append atomic.)
+        /// Single pass: the engine's external Load is now atomic (the lib clears + appends in one
+        /// transaction and rolls back on failure — <c>590c2c58</c>), and the caller only swaps this
+        /// engine in after a successful build, so a failed build leaves the persisted dataset and the
+        /// live engine untouched. No in-memory dry-run pass is needed for safety.
         ///
-        /// The stream is re-read several times (Init resets to 0 after; Load resets to 0 before), so
-        /// it must be seekable/buffered.
+        /// The stream is re-read (Init resets to 0 after; Load resets to 0 before), so it must be
+        /// seekable/buffered.
         /// </summary>
         private (SearchEngine shadow, ReplaceSchemaChange summary) BuildShadowFromJson(
             string dataSetName, string teamId, Stream jsonStream, ProcessMonitor monitor)
@@ -115,61 +113,44 @@ namespace IndxCloudApi.Models
                 configuration = (int)(cfgRead.ReadDataSetConfiguration()
                     ?? throw new InvalidOperationException($"Dataset '{dataSetName}' has no configuration"));
 
-            // ── Pass 1: validate in memory (no persistence touches the db) ────────────────
-            FieldProxy[] carry;
-            ReplaceSchemaChange summary;
-            var validate = NewReplaceEngine(configuration, dataSetName, teamId);
+            var shadow = NewReplaceEngine(configuration, dataSetName, teamId);
             try
             {
-                // Read the current field config from the db (read-only), then detach persistence so
-                // nothing in this pass can write/clear.
-                var oldConfig = validate.LoadDocumentFieldsFromDb()
-                    ? validate.GetFieldConfiguration()
+                // Current field config — restored from the db without loading any documents.
+                FieldProxy[] oldConfig = shadow.LoadDocumentFieldsFromDb()
+                    ? shadow.GetFieldConfiguration()
                     : Array.Empty<FieldProxy>();
-                validate.Persistence?.Dispose();
-                validate.Persistence = null;
+
+                // Detach persistence while we Init + reconcile (which can reject the new schema). This
+                // phase must hold no db connection, so a rejected build leaves the dataset's db
+                // completely untouched — no lingering lock to break the next access.
+                shadow.Persistence?.Dispose();
+                shadow.Persistence = null;
 
                 jsonStream.Position = 0;
-                validate.Init(jsonStream);
-                ApplyDeclaredKeyField(validate, dataSetName, teamId); // re-key from the declared field
-                (carry, summary) = ReconcileFieldConfig(oldConfig, validate.GetFieldConfiguration());
-                ApplyCarry(validate, carry);
+                shadow.Init(jsonStream);
+                ApplyDeclaredKeyField(shadow, dataSetName, teamId); // re-key from the declared field
+                var (carry, summary) = ReconcileFieldConfig(oldConfig, shadow.GetFieldConfiguration());
+                ApplyCarry(shadow, carry);
 
+                // Reconcile passed → commit for real. The lib's external Load is atomic (clears +
+                // appends in one transaction, rolls back on failure — 590c2c58), and the caller only
+                // swaps this engine in after a successful build, so no in-memory dry-run is needed.
+                shadow.Persistence = new Persistence(SearchDbConnectionString, dataSetName, teamId);
                 jsonStream.Position = 0;
-                validate.Load(jsonStream); // in-memory only — no clear, no append
-                var vm = new ProcessMonitor();
-                validate.Index(vm);
-                vm.WaitForCompletion();
-                if (!vm.Succeeded)
-                    throw new InvalidOperationException(
-                        $"Replace failed to build the new index: {vm.ErrorMessage ?? "unknown error"}");
-            }
-            finally
-            {
-                validate.Dispose();
-            }
-
-            // ── Pass 2: commit (this Load clears + persists; we already know it builds) ────
-            var real = NewReplaceEngine(configuration, dataSetName, teamId);
-            try
-            {
-                jsonStream.Position = 0;
-                real.Init(jsonStream);
-                ApplyDeclaredKeyField(real, dataSetName, teamId); // re-key from the declared field
-                ApplyCarry(real, carry);
-                jsonStream.Position = 0;
-                real.Load(jsonStream);
-                real.Index(monitor);
+                shadow.Load(jsonStream);
+                shadow.Index(monitor);
                 monitor.WaitForCompletion();
                 if (!monitor.Succeeded)
                     throw new InvalidOperationException($"Replace index failed: {monitor.ErrorMessage ?? "unknown error"}");
+
+                return (shadow, summary);
             }
             catch
             {
-                real.Dispose();
+                shadow.Dispose();
                 throw;
             }
-            return (real, summary);
         }
 
         private SearchEngine NewReplaceEngine(int configuration, string dataSetName, string teamId) =>
