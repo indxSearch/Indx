@@ -915,7 +915,7 @@ namespace IndxCloudApi.Models
             using var validate = new SearchEngine(
                 MakeLogPrefix(teamId, dataSetName),
                 Indx.Utilities.ILoggerFactory.GetFactory(logFileName),
-                configuration,
+                (ConfigurationProfile)configuration,
                 GetLicensePath());
             try
             {
@@ -944,8 +944,9 @@ namespace IndxCloudApi.Models
         }
 
         private static string DescribeKeyedLoadFailure(string keyField, string? raw) =>
-            $"The data can't be loaded with key field '{keyField}'. It must be a whole number present on " +
-            $"every document; pick a different key field, or choose Auto-generated." +
+            $"The data can't be loaded with key field '{keyField}'. A key must be a whole number that is " +
+            $"unique and present on every document (a price or rank won't work — values repeat). Pick a " +
+            $"field that uniquely identifies each document, or choose Auto-generated." +
             (string.IsNullOrEmpty(raw) ? "" : $" (engine: {raw})");
 
         /// <summary>

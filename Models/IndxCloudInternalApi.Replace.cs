@@ -176,7 +176,7 @@ namespace IndxCloudApi.Models
             new SearchEngine(
                 MakeLogPrefix(teamId, dataSetName),
                 Indx.Utilities.ILoggerFactory.GetFactory(logFileName),
-                configuration,
+                (ConfigurationProfile)configuration,
                 GetLicensePath())
             {
                 Persistence = new Persistence(SearchDbConnectionString, dataSetName, teamId)

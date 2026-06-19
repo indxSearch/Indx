@@ -324,6 +324,10 @@ else
                                                           Elevated />
                                         </span>
                                     </div>
+                                    @if (!string.IsNullOrEmpty(_uploadError) && _uploadErrorDataset == datasetName)
+                                    {
+                                        <p style="color:var(--CSignal);margin:4px 0 8px;max-width:680px;">@_uploadError</p>
+                                    }
                                     <div class="indx-table-wrap">
                                         <table class="indx-table">
                                             <thead>
@@ -1534,6 +1538,8 @@ else
     {
         if (!HasSearchable(datasetName)) return;
         if (!_bufferedFiles.TryGetValue(datasetName, out var ms)) return;
+        _uploadError = null; // clear any prior load error before retrying
+        _uploadErrorDataset = null;
 
         // Apply field configuration before Load so MakeSearchEngines sees the correct searchable set
         if (_editedFieldConfigs.TryGetValue(datasetName, out var edited))
