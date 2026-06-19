@@ -249,20 +249,23 @@ else
                                         <p style="color:var(--CSignal);margin-top:4px;">@_uploadError</p>
                                     }
                                 }
-                                <div style="margin-top:16px;">
-                                    @if (deleteConfirmDataset == datasetName)
-                                    {
-                                        <div style="display:flex;gap:8px;align-items:center;">
-                                            <span style="font:var(--text-xs);color:var(--lv5);">Are you sure?</span>
-                                            <Button Variant="danger" Size="micro" @onclick="() => ConfirmDelete(datasetName)">Yes, Delete</Button>
-                                            <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)">Delete dataset</Button>
-                                    }
-                                </div>
+                                @if (isAdmin)
+                                {
+                                    <div style="margin-top:16px;">
+                                        @if (deleteConfirmDataset == datasetName)
+                                        {
+                                            <div style="display:flex;gap:8px;align-items:center;">
+                                                <span style="font:var(--text-xs);color:var(--lv5);">Are you sure?</span>
+                                                <Button Variant="danger" Size="micro" @onclick="() => ConfirmDelete(datasetName)">Yes, Delete</Button>
+                                                <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)">Delete dataset</Button>
+                                        }
+                                    </div>
+                                }
                             }
 
                             @* ── Uploading progress ── *@
@@ -757,28 +760,31 @@ else
                                         <p style="color:var(--CSignal);font:var(--text-xs);margin-top:4px;">@_transferError</p>
                                     }
                                 }
-                                @if (engineState == SystemState.Ready)
+                                @if (isAdmin)
                                 {
-                                    <h3 style="color:var(--CSignal);margin-top:24px;margin-bottom:8px;">Danger Zone</h3>
-                                }
-                                @if (!isUploading && !isLoadIndexing && !isSaving)
-                                {
-                                    @if (deleteConfirmDataset == datasetName)
+                                    @if (engineState == SystemState.Ready)
                                     {
-                                        <div style="display:flex;gap:8px;align-items:center;">
-                                            <span style="font:var(--text-xs);color:var(--lv5);">Are you sure?</span>
-                                            <Button Variant="danger" Size="micro" @onclick="() => ConfirmDelete(datasetName)">Yes, Delete</Button>
-                                            <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
-                                        </div>
+                                        <h3 style="color:var(--CSignal);margin-top:24px;margin-bottom:8px;">Danger Zone</h3>
+                                    }
+                                    @if (!isUploading && !isLoadIndexing && !isSaving)
+                                    {
+                                        @if (deleteConfirmDataset == datasetName)
+                                        {
+                                            <div style="display:flex;gap:8px;align-items:center;">
+                                                <span style="font:var(--text-xs);color:var(--lv5);">Are you sure?</span>
+                                                <Button Variant="danger" Size="micro" @onclick="() => ConfirmDelete(datasetName)">Yes, Delete</Button>
+                                                <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <Button Variant="@(engineState == SystemState.Ready ? "secondary" : "ghost")" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)">Delete dataset</Button>
+                                        }
                                     }
                                     else
                                     {
-                                        <Button Variant="@(engineState == SystemState.Ready ? "secondary" : "ghost")" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)">Delete dataset</Button>
+                                        <p style="color:var(--lv4);font:var(--text-xs);">Cannot delete while an operation is in progress.</p>
                                     }
-                                }
-                                else
-                                {
-                                    <p style="color:var(--lv4);font:var(--text-xs);">Cannot delete while an operation is in progress.</p>
                                 }
                             </div>
                         }
