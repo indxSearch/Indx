@@ -219,24 +219,22 @@ namespace IndxCloudApi.Controllers
         [HttpPut(DataSetRoute + "/CreateOrOpen")]
         public IActionResult CreateOrOpen(string teamName, string dataSetName)
         {
-            return CreateOrOpen(teamName, dataSetName, 400);
+            return CreateOrOpen(teamName, dataSetName, ConfigurationProfile.Production);
         }
 
         /// <summary>
-        /// CreateOrOpen will create a data set with specified configuration.
+        /// CreateOrOpen will create a data set with the specified configuration profile.
         /// </summary>
         [HttpPut(DataSetRoute + "/CreateOrOpen/{configuration}")]
-        public IActionResult CreateOrOpen(string teamName, string dataSetName, int configuration)
+        public IActionResult CreateOrOpen(string teamName, string dataSetName, ConfigurationProfile configuration)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return BadRequest("invalid dataSetName");
-            if (!CoreSearchEngine.ConfigurationExists(configuration))
-                return BadRequest("illegal configuration number");
             var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, dataSetName, ctx.OwnerKey);
             if (!persistence.DataSetExists())
-                persistence.CreateOrOpenDataSet(configuration);
+                persistence.CreateOrOpenDataSet((int)configuration);
             return Ok();
         }
 

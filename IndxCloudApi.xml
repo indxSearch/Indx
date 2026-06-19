@@ -102,9 +102,9 @@
             CreateOrOpen will create a data set. Uses default configuration.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.CreateOrOpen(System.String,System.String,System.Int32)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.CreateOrOpen(System.String,System.String,Indx.Api.ConfigurationProfile)">
             <summary>
-            CreateOrOpen will create a data set with specified configuration.
+            CreateOrOpen will create a data set with the specified configuration profile.
             </summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.CreateRangeFilter(System.String,System.String,Indx.CloudApi.RangeFilterProxy)">
