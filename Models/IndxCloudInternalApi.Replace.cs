@@ -130,7 +130,8 @@ namespace IndxCloudApi.Models
                 validate.Persistence = null;
 
                 jsonStream.Position = 0;
-                validate.Init(jsonStream); // default key field "id"
+                validate.Init(jsonStream);
+                ApplyDeclaredKeyField(validate, dataSetName, teamId); // re-key from the declared field
                 (carry, summary) = ReconcileFieldConfig(oldConfig, validate.GetFieldConfiguration());
                 ApplyCarry(validate, carry);
 
@@ -154,6 +155,7 @@ namespace IndxCloudApi.Models
             {
                 jsonStream.Position = 0;
                 real.Init(jsonStream);
+                ApplyDeclaredKeyField(real, dataSetName, teamId); // re-key from the declared field
                 ApplyCarry(real, carry);
                 jsonStream.Position = 0;
                 real.Load(jsonStream);

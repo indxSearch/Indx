@@ -324,6 +324,7 @@ else
                                                           Elevated />
                                         </span>
                                     </div>
+                                    @KeyFieldRow(datasetName, ownerUserId, isEditor)
                                     <div class="indx-table-wrap">
                                         <table class="indx-table">
                                             <thead>
@@ -468,6 +469,7 @@ else
                                 {
                                     @if (_editedFieldConfigs.TryGetValue(datasetName, out var readyFields) && readyFields != null)
                                     {
+                                        @KeyFieldRow(datasetName, ownerUserId, isEditor)
                                         <div class="indx-table-wrap">
                                             <table class="indx-table">
                                                 <thead>
@@ -2242,6 +2244,91 @@ else
         new("Medium", "Med") { Icon = _iconWeightMedium },
         new("High", "High") { Icon = _iconWeightHigh },
     ];
+
+    // ── Declared key field (primary key) ──
+    // Cloud-owned (DatasetMetadataStore) since the lib doesn't persist the key-field name. Applied
+    // to the engine before each external Load. See indx_dataset_primary_key.md.
+    private const string AutoKeyValue = "__auto__";
+    private readonly Dictionary<string, string> _keyFieldByDataset = new(); // "" = auto-generated
+    private readonly HashSet<string> _keyFieldNeedsReload = new();
+    private string? _keyFieldError;
+    private string? _keyFieldErrorDataset;
+
+    private void EnsureKeyFieldLoaded(string datasetName, string teamId)
+    {
+        if (_keyFieldByDataset.ContainsKey(datasetName)) return;
+        _keyFieldByDataset[datasetName] = DatasetMeta.LoadKeyField(teamId, datasetName);
+    }
+
+    private string KeyFieldValue(string datasetName) =>
+        string.IsNullOrEmpty(_keyFieldByDataset.GetValueOrDefault(datasetName)) ? AutoKeyValue : _keyFieldByDataset[datasetName];
+
+    private string KeyFieldDisplay(string datasetName)
+    {
+        var v = _keyFieldByDataset.GetValueOrDefault(datasetName) ?? "";
+        return v.Length == 0 ? "Auto-generated (no key field)" : v;
+    }
+
+    private List<SelectField.SelectOption> KeyFieldOptions(string datasetName)
+    {
+        var opts = new List<SelectField.SelectOption> { new("Auto-generated (no key field)", AutoKeyValue) };
+        if (_editedFieldConfigs.TryGetValue(datasetName, out var f) && f != null)
+            foreach (var fld in f.Where(x => x.FieldType == "Number"))
+                opts.Add(new SelectField.SelectOption(fld.FieldName, fld.FieldName));
+        // Keep a declared-but-now-missing key visible so it isn't silently dropped from the dropdown.
+        var cur = _keyFieldByDataset.GetValueOrDefault(datasetName) ?? "";
+        if (cur.Length > 0 && !opts.Any(o => o.Value == cur))
+            opts.Add(new SelectField.SelectOption($"{cur} (unavailable)", cur));
+        return opts;
+    }
+
+    private async Task OnKeyFieldChanged(string datasetName, string teamId, string? value)
+    {
+        _keyFieldError = null;
+        _keyFieldErrorDataset = null;
+        var fieldName = (value == null || value == AutoKeyValue) ? "" : value;
+        var (err, needsReload) = await Task.Run(() =>
+        {
+            var e = IndxCloudApi.Models.IndxCloudInternalApi.Manager.SetKeyField(datasetName, teamId, fieldName, out var nr);
+            return (e, nr);
+        });
+        if (err != null)
+        {
+            _keyFieldError = err;
+            _keyFieldErrorDataset = datasetName;
+            return;
+        }
+        _keyFieldByDataset[datasetName] = fieldName;
+        if (needsReload) _keyFieldNeedsReload.Add(datasetName);
+        else _keyFieldNeedsReload.Remove(datasetName);
+    }
+
+    private RenderFragment KeyFieldRow(string datasetName, string teamId, bool editable) =>@<div style="display:flex;align-items:center;gap:10px;margin:0 0 12px;flex-wrap:wrap;">
+        @{ EnsureKeyFieldLoaded(datasetName, teamId); }
+        <span style="font:var(--text-xs);font-weight:600;color:var(--lv5);">Key field</span>
+        @if (editable)
+        {
+            <div style="width:220px;">
+                <SelectField Size="micro"
+                             Options="KeyFieldOptions(datasetName)"
+                             Value="@KeyFieldValue(datasetName)"
+                             ValueChanged="@(v => OnKeyFieldChanged(datasetName, teamId, v))" />
+            </div>
+        }
+        else
+        {
+            <span style="font:var(--text-xs);color:var(--lv5);">@KeyFieldDisplay(datasetName)</span>
+        }
+        <span style="font:var(--text-xs);color:var(--lv4);max-width:420px;">The numeric field that identifies each document — used by update, replace and analytics.</span>
+        @if (_keyFieldNeedsReload.Contains(datasetName))
+        {
+            <span style="font:var(--text-xs);color:var(--lv4);">↳ existing documents keep their keys until the next replace</span>
+        }
+        @if (_keyFieldError != null && _keyFieldErrorDataset == datasetName)
+        {
+            <span style="font:var(--text-xs);color:var(--CSignal);">@_keyFieldError</span>
+        }
+    </div>;
 
     // ── Dataset description (MCP describe_dataset context) ──
     private readonly Dictionary<string, string> _descEdit = new();

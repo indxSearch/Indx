@@ -220,6 +220,7 @@ namespace IndxCloudApi.Models
             var instance = FindInstance(dataSetName, teamId);
             if (instance == null)
                 return false;
+            ApplyDeclaredKeyField(instance, dataSetName, teamId);
             instance.Load(jsonData, pm);
             return true;
         }
@@ -250,6 +251,7 @@ namespace IndxCloudApi.Models
             var instance = FindInstance(dataSetName, teamId);
             if (instance == null)
                 return (false, $"{nameof(LoadJsonStreamAsync)} SearchEngine not found");
+            ApplyDeclaredKeyField(instance, dataSetName, teamId);
             var pm = new ProcessMonitor();
             await instance.LoadAsync(jsonData, pm);
             return (pm.Succeeded, pm.ErrorMessage);
@@ -265,6 +267,7 @@ namespace IndxCloudApi.Models
             var instance = FindInstance(dataSetName, teamId);
             if (instance == null)
                 return null;
+            ApplyDeclaredKeyField(instance, dataSetName, teamId);
             var pm = new ProcessMonitor();
             // Run on thread-pool so MemoryStream reads (which complete synchronously) don't
             // block the Blazor server thread and freeze the UI on large files.
@@ -491,6 +494,7 @@ namespace IndxCloudApi.Models
             DisposeDataSetInstance(dataSetName, teamId);
             persistence.DeleteDataSet();
             _boostStore?.Delete(teamId, dataSetName);
+            _metadataStore?.Delete(teamId, dataSetName);
             return true;
         }
 
@@ -586,6 +590,7 @@ namespace IndxCloudApi.Models
             var db = new SqLiteManager(SearchDbConnectionString);
             db.TransferOwnership(dataSetName, currentTeamId, newTeamId);
             _boostStore?.Transfer(currentTeamId, newTeamId, dataSetName);
+            _metadataStore?.Transfer(currentTeamId, newTeamId, dataSetName);
 
             // Warm up the engine for the new owning team, same as InitializeSystem does on startup.
             var instance = FindInstance(dataSetName, newTeamId);
@@ -824,6 +829,71 @@ namespace IndxCloudApi.Models
         {
             _boostStore = store;
             _boostCeiling = saturationCeiling;
+        }
+
+        // Per-dataset metadata incl. the declared key field (cloud-owned). Wired in once at startup.
+        private Services.DatasetMetadataStore? _metadataStore;
+
+        /// <summary>Attaches the metadata store (description + declared key field) (startup-only).</summary>
+        internal void AttachMetadataStore(Services.DatasetMetadataStore store) => _metadataStore = store;
+
+        /// <summary>
+        /// Applies the dataset's cloud-declared key field to the engine's <see cref="DocumentFields"/>
+        /// just before an external Load assigns and persists document keys. The lib does not persist the
+        /// key-field name, so this re-establishes it on every fresh load (incl. replace). A no-op when no
+        /// key field is declared (engine keeps its default "id"/auto behaviour) or fields aren't analyzed.
+        /// </summary>
+        private void ApplyDeclaredKeyField(ICloudSearchEngine instance, string dataSetName, string teamId)
+        {
+            var declared = _metadataStore?.LoadKeyField(teamId, dataSetName);
+            if (string.IsNullOrEmpty(declared)) return;
+            var df = instance.DocumentFields;
+            if (df != null)
+                df.NameOfDocumentKeyField = declared;
+        }
+
+        /// <summary>The dataset's declared key field, or empty string if none/unwired.</summary>
+        internal string GetDeclaredKeyField(string dataSetName, string teamId)
+            => _metadataStore?.LoadKeyField(teamId, dataSetName) ?? "";
+
+        /// <summary>
+        /// Declares <paramref name="fieldName"/> (empty = none / auto-generated) as the dataset's key
+        /// field: validates it exists and is numeric (the engine key is a long; a non-numeric key would
+        /// silently collide via digit-stripping), persists the choice cloud-side, and applies it to the
+        /// live engine. Returns null on success or an error message. <paramref name="needsReloadToReKey"/>
+        /// is true when the dataset already holds loaded documents — their keys are frozen, so the new
+        /// key field only takes effect on the next replace/reload.
+        /// </summary>
+        internal string? SetKeyField(string dataSetName, string teamId, string fieldName, out bool needsReloadToReKey)
+        {
+            needsReloadToReKey = false;
+            if (_metadataStore == null)
+                return "Key-field store is not available";
+
+            var instance = FindInstance(dataSetName, teamId);
+            var df = instance?.DocumentFields;
+            if (df == null)
+                return "Analyze the dataset (upload a sample) before declaring its key field";
+
+            fieldName ??= "";
+            if (fieldName.Length > 0)
+            {
+                var field = df.GetField(fieldName);
+                if (field == null)
+                    return $"Field '{fieldName}' does not exist in this dataset";
+                if (field.Type != System.Text.Json.JsonValueKind.Number)
+                    return $"The key field must be numeric (the engine key is a whole number); " +
+                           $"'{fieldName}' is {field.Type}. Pick a numeric id field, or choose auto-generated.";
+            }
+
+            _metadataStore.SaveKeyField(teamId, dataSetName, fieldName);
+            df.NameOfDocumentKeyField = fieldName; // apply to the live engine for the next load
+
+            // If documents are already loaded, their JsonData.Id keys are persisted and won't change
+            // until the data is reloaded (a replace).
+            var state = instance!.Status.SystemState;
+            needsReloadToReKey = state is SystemState.Ready or SystemState.Loaded or SystemState.Indexing;
+            return null;
         }
 
         private Query FromCloudQuery2Query(CloudQuery cloudQuery, ICloudSearchEngine engine, string teamId, string dataSetName)

@@ -786,9 +786,11 @@ public class Program
             // saturation ceiling) into the search path.
             var boostStore = app.Services.GetRequiredService<IndxCloudApi.Services.BoostRuleStore>();
             boostStore.EnsureTable();
-            app.Services.GetRequiredService<IndxCloudApi.Services.DatasetMetadataStore>().EnsureTable();
+            var metadataStore = app.Services.GetRequiredService<IndxCloudApi.Services.DatasetMetadataStore>();
+            metadataStore.EnsureTable();
             var boostCeiling = builder.Configuration.GetValue<int?>("Indx:BoostSaturationCeiling") ?? 6;
             IndxCloudInternalApi.Manager.AttachBoostStore(boostStore, boostCeiling);
+            IndxCloudInternalApi.Manager.AttachMetadataStore(metadataStore);
 
             // Detect license file for summary
             if (!string.IsNullOrWhiteSpace(licensePath) && File.Exists(licensePath))

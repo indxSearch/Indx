@@ -262,6 +262,21 @@
             GetFieldConfiguration returns the full configuration of every field in the dataset.
             </summary>
         </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetKeyField(System.String,System.String)">
+            <summary>
+            Returns the dataset's declared key field — the JSON field whose value identifies each
+            document (the primary key). Empty string means none is declared (the engine auto-generates
+            keys). Required, when set, to be a numeric field.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetKeyField(System.String,System.String,System.String)">
+            <summary>
+            Declares the dataset's key field (the JSON field whose value is each document's primary key).
+            Pass an empty string to clear it (auto-generated keys). The field must be numeric. The choice
+            is preserved across reloads and applied on the next Load/replace; documents already loaded
+            keep their existing keys until the data is reloaded.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.UpdateJsonRecords(System.String,System.String,System.String[])">
             <summary>
             Updates existing JSON records in the dataset.
@@ -760,6 +775,30 @@
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.AttachBoostStore(IndxCloudApi.Services.BoostRuleStore,System.Int32)">
             <summary>Attaches the boost-rule store + saturation ceiling to the search path (startup-only).</summary>
         </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.AttachMetadataStore(IndxCloudApi.Services.DatasetMetadataStore)">
+            <summary>Attaches the metadata store (description + declared key field) (startup-only).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ApplyDeclaredKeyField(Indx.Api.ICloudSearchEngine,System.String,System.String)">
+            <summary>
+            Applies the dataset's cloud-declared key field to the engine's <see cref="T:Indx.Api.DocumentFields"/>
+            just before an external Load assigns and persists document keys. The lib does not persist the
+            key-field name, so this re-establishes it on every fresh load (incl. replace). A no-op when no
+            key field is declared (engine keeps its default "id"/auto behaviour) or fields aren't analyzed.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetDeclaredKeyField(System.String,System.String)">
+            <summary>The dataset's declared key field, or empty string if none/unwired.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.SetKeyField(System.String,System.String,System.String,System.Boolean@)">
+            <summary>
+            Declares <paramref name="fieldName"/> (empty = none / auto-generated) as the dataset's key
+            field: validates it exists and is numeric (the engine key is a long; a non-numeric key would
+            silently collide via digit-stripping), persists the choice cloud-side, and applies it to the
+            live engine. Returns null on success or an error message. <paramref name="needsReloadToReKey"/>
+            is true when the dataset already holds loaded documents — their keys are frozen, so the new
+            key field only takes effect on the next replace/reload.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ResolveEngine(System.String,System.String)">
             <summary>
             Returns the engine for a team-owned dataset, or null if the dataset doesn't exist.
@@ -1103,18 +1142,24 @@
         </member>
         <member name="T:IndxCloudApi.Services.DatasetMetadataStore">
             <summary>
-            Cloud-owned per-dataset metadata (currently an owner-authored description used by the MCP
-            <c>describe_dataset</c> tool to give agents domain context). Stored in its own table in
-            indx.db — same pattern as <see cref="T:IndxCloudApi.Services.BoostRuleStore"/>, so the lib (SqLiteManager) is untouched.
-            Keyed by (TeamId, DatasetName); cached in memory; writes invalidate the cache.
+            Cloud-owned per-dataset metadata. Holds an owner-authored <c>Description</c> (used by the MCP
+            <c>describe_dataset</c> tool to give agents domain context) and the declared <c>KeyField</c>
+            (the JSON field whose value is the document's primary key — see <c>indx_dataset_primary_key.md</c>).
+            The lib does not persist the key-field name anywhere, so the cloud owns it and re-applies it
+            before each external Load. Stored in its own table in indx.db — same pattern as
+            <see cref="T:IndxCloudApi.Services.BoostRuleStore"/>, so the lib (SqLiteManager) is untouched. Keyed by
+            (TeamId, DatasetName); cached in memory; writes invalidate the cache.
             </summary>
         </member>
         <member name="M:IndxCloudApi.Services.DatasetMetadataStore.#ctor(Microsoft.Extensions.Logging.ILogger{IndxCloudApi.Services.DatasetMetadataStore})">
             <summary>
-            Cloud-owned per-dataset metadata (currently an owner-authored description used by the MCP
-            <c>describe_dataset</c> tool to give agents domain context). Stored in its own table in
-            indx.db — same pattern as <see cref="T:IndxCloudApi.Services.BoostRuleStore"/>, so the lib (SqLiteManager) is untouched.
-            Keyed by (TeamId, DatasetName); cached in memory; writes invalidate the cache.
+            Cloud-owned per-dataset metadata. Holds an owner-authored <c>Description</c> (used by the MCP
+            <c>describe_dataset</c> tool to give agents domain context) and the declared <c>KeyField</c>
+            (the JSON field whose value is the document's primary key — see <c>indx_dataset_primary_key.md</c>).
+            The lib does not persist the key-field name anywhere, so the cloud owns it and re-applies it
+            before each external Load. Stored in its own table in indx.db — same pattern as
+            <see cref="T:IndxCloudApi.Services.BoostRuleStore"/>, so the lib (SqLiteManager) is untouched. Keyed by
+            (TeamId, DatasetName); cached in memory; writes invalidate the cache.
             </summary>
         </member>
         <member name="M:IndxCloudApi.Services.DatasetMetadataStore.EnsureTable">
@@ -1126,8 +1171,23 @@
         <member name="M:IndxCloudApi.Services.DatasetMetadataStore.Save(System.String,System.String,System.String)">
             <summary>Sets the dataset description and invalidates the cache.</summary>
         </member>
+        <member name="M:IndxCloudApi.Services.DatasetMetadataStore.LoadKeyField(System.String,System.String)">
+            <summary>
+            The dataset's declared key-field name, or empty string if none is declared (the engine then
+            falls back to its default "id"/auto-increment behaviour). Cached after first read.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.DatasetMetadataStore.SaveKeyField(System.String,System.String,System.String)">
+            <summary>
+            Declares the dataset's key field (empty string = none / auto-generated) and invalidates the
+            cache. Validation (field exists, numeric) is the caller's responsibility.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Services.DatasetMetadataStore.Delete(System.String,System.String)">
             <summary>Removes a dataset's description (on dataset delete) and invalidates the cache.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.DatasetMetadataStore.Transfer(System.String,System.String,System.String)">
+            <summary>Moves a dataset's metadata (description + key field) to a new owning team.</summary>
         </member>
         <member name="T:IndxCloudApi.Services.IndxEdition">
             <summary>How this instance is deployed. Fixed at deploy time via Indx:Edition.</summary>

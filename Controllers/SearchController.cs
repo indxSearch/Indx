@@ -792,6 +792,40 @@ namespace IndxCloudApi.Controllers
         }
 
         /// <summary>
+        /// Returns the dataset's declared key field — the JSON field whose value identifies each
+        /// document (the primary key). Empty string means none is declared (the engine auto-generates
+        /// keys). Required, when set, to be a numeric field.
+        /// </summary>
+        [HttpGet(DataSetRoute + "/GetKeyField")]
+        public ActionResult<string> GetKeyField(string teamName, string dataSetName)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            return IndxCloudInternalApi.Manager.GetDeclaredKeyField(dataSetName, ctx.OwnerKey);
+        }
+
+        /// <summary>
+        /// Declares the dataset's key field (the JSON field whose value is each document's primary key).
+        /// Pass an empty string to clear it (auto-generated keys). The field must be numeric. The choice
+        /// is preserved across reloads and applied on the next Load/replace; documents already loaded
+        /// keep their existing keys until the data is reloaded.
+        /// </summary>
+        [HttpPut(DataSetRoute + "/SetKeyField")]
+        public IActionResult SetKeyField(string teamName, string dataSetName, [FromBody] string fieldName)
+        {
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return BadRequest("invalid dataSetName");
+
+            var failure = IndxCloudInternalApi.Manager.SetKeyField(
+                dataSetName, ctx.OwnerKey, fieldName ?? "", out var needsReloadToReKey);
+            if (failure != null)
+                return BadRequest(failure);
+            return Ok(new { keyField = fieldName ?? "", needsReloadToReKey });
+        }
+
+        /// <summary>
         /// Updates existing JSON records in the dataset.
         /// </summary>
         [HttpPut(DataSetRoute + "/update")]
