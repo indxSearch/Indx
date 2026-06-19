@@ -94,38 +94,109 @@ namespace IndxCloudApi.Models
         }
 
         /// <summary>
-        /// Builds a fresh, Ready engine from <paramref name="jsonStream"/>: read the current field
-        /// config (no doc load) → Init the new JSON → carry over config for fields that survive by
-        /// name+type → Load → Index. The stream is read twice (Init resets to 0 after, Load resets to
-        /// 0 before), so it must be seekable/buffered.
+        /// Builds a fresh, Ready engine from <paramref name="jsonStream"/>, carrying over the
+        /// dataset's field config (reconciled against the new schema).
+        ///
+        /// Done in two passes so a failure can NEVER damage the persisted dataset: the engine's
+        /// external-source Load clears the old documents before appending, and that clear commits
+        /// separately from the append — so a single persisted Load that fails partway would leave
+        /// the dataset empty on disk. Pass 1 validates the entire build in memory (no persistence);
+        /// only when it succeeds does pass 2 commit it for real. (Pass 1 can be dropped once the lib
+        /// makes the clear+append atomic.)
+        ///
+        /// The stream is re-read several times (Init resets to 0 after; Load resets to 0 before), so
+        /// it must be seekable/buffered.
         /// </summary>
         private (SearchEngine shadow, ReplaceSchemaChange summary) BuildShadowFromJson(
             string dataSetName, string teamId, Stream jsonStream, ProcessMonitor monitor)
         {
-            var persistence = new Persistence(SearchDbConnectionString, dataSetName, teamId);
-            var configuration = persistence.ReadDataSetConfiguration()
-                ?? throw new InvalidOperationException($"Dataset '{dataSetName}' has no configuration");
+            int configuration;
+            using (var cfgRead = new Persistence(SearchDbConnectionString, dataSetName, teamId))
+                configuration = (int)(cfgRead.ReadDataSetConfiguration()
+                    ?? throw new InvalidOperationException($"Dataset '{dataSetName}' has no configuration"));
 
-            var shadow = new SearchEngine(
+            // ── Pass 1: validate in memory (no persistence touches the db) ────────────────
+            FieldProxy[] carry;
+            ReplaceSchemaChange summary;
+            var validate = NewReplaceEngine(configuration, dataSetName, teamId);
+            try
+            {
+                // Read the current field config from the db (read-only), then detach persistence so
+                // nothing in this pass can write/clear.
+                var oldConfig = validate.LoadDocumentFieldsFromDb()
+                    ? validate.GetFieldConfiguration()
+                    : Array.Empty<FieldProxy>();
+                validate.Persistence?.Dispose();
+                validate.Persistence = null;
+
+                jsonStream.Position = 0;
+                validate.Init(jsonStream); // default key field "id"
+                (carry, summary) = ReconcileFieldConfig(oldConfig, validate.GetFieldConfiguration());
+                ApplyCarry(validate, carry);
+
+                jsonStream.Position = 0;
+                validate.Load(jsonStream); // in-memory only — no clear, no append
+                var vm = new ProcessMonitor();
+                validate.Index(vm);
+                vm.WaitForCompletion();
+                if (!vm.Succeeded)
+                    throw new InvalidOperationException(
+                        $"Replace failed to build the new index: {vm.ErrorMessage ?? "unknown error"}");
+            }
+            finally
+            {
+                validate.Dispose();
+            }
+
+            // ── Pass 2: commit (this Load clears + persists; we already know it builds) ────
+            var real = NewReplaceEngine(configuration, dataSetName, teamId);
+            try
+            {
+                jsonStream.Position = 0;
+                real.Init(jsonStream);
+                ApplyCarry(real, carry);
+                jsonStream.Position = 0;
+                real.Load(jsonStream);
+                real.Index(monitor);
+                monitor.WaitForCompletion();
+                if (!monitor.Succeeded)
+                    throw new InvalidOperationException($"Replace index failed: {monitor.ErrorMessage ?? "unknown error"}");
+            }
+            catch
+            {
+                real.Dispose();
+                throw;
+            }
+            return (real, summary);
+        }
+
+        private SearchEngine NewReplaceEngine(int configuration, string dataSetName, string teamId) =>
+            new SearchEngine(
                 MakeLogPrefix(teamId, dataSetName),
                 Indx.Utilities.ILoggerFactory.GetFactory(logFileName),
-                (int)configuration,
+                configuration,
                 GetLicensePath())
             {
-                Persistence = persistence
+                Persistence = new Persistence(SearchDbConnectionString, dataSetName, teamId)
             };
 
-            // Current (old) field config — restored from the db without loading any documents.
-            FieldProxy[] oldConfig = shadow.LoadDocumentFieldsFromDb()
-                ? shadow.GetFieldConfiguration()
-                : Array.Empty<FieldProxy>();
+        private static void ApplyCarry(SearchEngine engine, FieldProxy[] carry)
+        {
+            if (carry.Length == 0) return;
+            var err = engine.SetFieldConfiguration(carry);
+            if (!string.IsNullOrEmpty(err))
+                throw new InvalidOperationException($"Replace field-config carry-over failed: {err}");
+        }
 
-            // Detect the new schema (default key field "id", matching today's analyze path).
-            shadow.Init(jsonStream);
-            var newSchema = shadow.GetFieldConfiguration();
+        /// <summary>
+        /// Carries old field roles onto fields that survive by name AND type; returns the carry set
+        /// plus a schema-change summary. Throws if the new schema keeps none of the currently
+        /// searchable fields (nothing to index — fail clearly instead of "no documents to load").
+        /// </summary>
+        private static (FieldProxy[] carry, ReplaceSchemaChange summary) ReconcileFieldConfig(
+            FieldProxy[] oldConfig, FieldProxy[] newSchema)
+        {
             var newByName = newSchema.ToDictionary(f => f.FieldName, StringComparer.Ordinal);
-
-            // Reconcile: carry old roles onto fields that survive by name AND type.
             var carry = new List<FieldProxy>();
             var typeChanged = new List<string>();
             foreach (var o in oldConfig)
@@ -134,15 +205,12 @@ namespace IndxCloudApi.Models
                 if (string.Equals(o.FieldType ?? "", n.FieldType ?? "", StringComparison.OrdinalIgnoreCase))
                     carry.Add(o);
                 else
-                    typeChanged.Add(o.FieldName); // reset (don't carry roles onto a changed type)
+                    typeChanged.Add(o.FieldName);
             }
             var oldNames = oldConfig.Select(o => o.FieldName).ToHashSet(StringComparer.Ordinal);
             var added = newSchema.Where(n => !oldNames.Contains(n.FieldName)).Select(n => n.FieldName).ToList();
             var removed = oldConfig.Where(o => !newByName.ContainsKey(o.FieldName)).Select(o => o.FieldName).ToList();
 
-            // Replace preserves the existing field config; if the new JSON keeps none of the
-            // currently-searchable fields there is nothing to index. Fail with a clear message
-            // rather than the cryptic "no documents to load" from the index step.
             if (oldConfig.Any(o => o.Searchable == true) && !carry.Any(f => f.Searchable == true))
                 throw new InvalidOperationException(
                     "The new data keeps none of this dataset's searchable fields, so it can't be indexed. " +
@@ -150,21 +218,7 @@ namespace IndxCloudApi.Models
                     "one of the currently searchable fields. To load a different schema, configure the " +
                     "dataset's fields for it first.");
 
-            if (carry.Count > 0)
-            {
-                var err = shadow.SetFieldConfiguration(carry.ToArray());
-                if (!string.IsNullOrEmpty(err))
-                    throw new InvalidOperationException($"Replace field-config carry-over failed: {err}");
-            }
-
-            // Load the new documents (clears + persists in the engine's external-load path) and index.
-            shadow.Load(jsonStream);
-            shadow.Index(monitor);
-            monitor.WaitForCompletion();
-            if (!monitor.Succeeded)
-                throw new InvalidOperationException($"Replace index failed: {monitor.ErrorMessage ?? "unknown error"}");
-
-            return (shadow, new ReplaceSchemaChange(added, removed, typeChanged));
+            return (carry.ToArray(), new ReplaceSchemaChange(added, removed, typeChanged));
         }
     }
 }

@@ -205,6 +205,26 @@ else
                                         @(engineState == SystemState.Indexing ? "Indexing in progress…" : "Loading in progress…")
                                     </p>
                                 </div>
+                                @* Recovery escape hatch: a dataset can get stuck in a non-Ready state (e.g. an
+                                   interrupted load). A team admin can always delete it to recover. *@
+                                @if (isAdmin)
+                                {
+                                    @if (deleteConfirmDataset == datasetName)
+                                    {
+                                        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                                            <span style="font:var(--text-xs);color:var(--lv5);">Delete this dataset?</span>
+                                            <Button Variant="danger" Size="micro" @onclick="() => ConfirmDelete(datasetName)">Yes, Delete</Button>
+                                            <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                                            <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)">Delete dataset</Button>
+                                            <span style="font:var(--text-xs);color:var(--lv4);">Stuck here? Delete to recover.</span>
+                                        </div>
+                                    }
+                                }
                             }
 
                             @* ── Hibernated (data on disk, engine not loaded) or empty (needs upload) ── *@

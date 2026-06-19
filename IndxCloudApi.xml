@@ -802,11 +802,26 @@
             </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.BuildShadowFromJson(System.String,System.String,System.IO.Stream,Indx.Api.ProcessMonitor)">
+             <summary>
+             Builds a fresh, Ready engine from <paramref name="jsonStream"/>, carrying over the
+             dataset's field config (reconciled against the new schema).
+            
+             Done in two passes so a failure can NEVER damage the persisted dataset: the engine's
+             external-source Load clears the old documents before appending, and that clear commits
+             separately from the append — so a single persisted Load that fails partway would leave
+             the dataset empty on disk. Pass 1 validates the entire build in memory (no persistence);
+             only when it succeeds does pass 2 commit it for real. (Pass 1 can be dropped once the lib
+             makes the clear+append atomic.)
+            
+             The stream is re-read several times (Init resets to 0 after; Load resets to 0 before), so
+             it must be seekable/buffered.
+             </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ReconcileFieldConfig(Indx.Api.FieldProxy[],Indx.Api.FieldProxy[])">
             <summary>
-            Builds a fresh, Ready engine from <paramref name="jsonStream"/>: read the current field
-            config (no doc load) → Init the new JSON → carry over config for fields that survive by
-            name+type → Load → Index. The stream is read twice (Init resets to 0 after, Load resets to
-            0 before), so it must be seekable/buffered.
+            Carries old field roles onto fields that survive by name AND type; returns the carry set
+            plus a schema-change summary. Throws if the new schema keeps none of the currently
+            searchable fields (nothing to index — fail clearly instead of "no documents to load").
             </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunMutationOnShadow``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})">
