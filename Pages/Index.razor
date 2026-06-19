@@ -682,6 +682,49 @@ else
                                     }
                                 }
 
+                                @* ── Replace data (atomic full reload) ── *@
+                                @if (isEditor)
+                                {
+                                    <h3 style="margin-top:24px;margin-bottom:6px;">Replace data</h3>
+                                    <p style="color:var(--lv5);font:var(--text-xs);margin-bottom:8px;max-width:560px;">
+                                        Atomically reload the whole dataset from a new JSON file. The current data keeps serving with zero downtime until the new index is ready; field configuration, boost rules and the description are preserved. If the new file fails to load, the current data is left untouched.
+                                    </p>
+                                    @if (_replaceBusy == datasetName)
+                                    {
+                                        <p style="color:var(--lv5);font:var(--text-xs);">Replacing…</p>
+                                    }
+                                    else
+                                    {
+                                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                                            <InputFile OnChange="@(e => OnReplaceFileSelected(datasetName, e))" accept=".json" style="display:none" id="@($"replace-input-{datasetName}")" />
+                                            <label for="@($"replace-input-{datasetName}")" class="indx-upload-label">
+                                                <Json Size="14" />
+                                                @if (_replaceFile != null && _replaceFileDataset == datasetName)
+                                                {
+                                                    <span>@_replaceFile.Name (@FormatBytes(_replaceFile.Size))</span>
+                                                }
+                                                else
+                                                {
+                                                    <span>Choose JSON…</span>
+                                                }
+                                            </label>
+                                            @if (_replaceFile != null && _replaceFileDataset == datasetName)
+                                            {
+                                                <Button Variant="secondary" Size="micro" @onclick="() => RunReplace(datasetName)">Replace all data</Button>
+                                                <Button Variant="ghost" Size="micro" @onclick="@(() => { _replaceFile = null; _replaceFileDataset = null; })">Cancel</Button>
+                                            }
+                                        </div>
+                                    }
+                                    @if (_replaceResultDataset == datasetName && !string.IsNullOrEmpty(_replaceResult))
+                                    {
+                                        <p style="color:var(--CTeal);font:var(--text-xs);margin-top:6px;">@_replaceResult</p>
+                                    }
+                                    @if (_replaceErrorDataset == datasetName && !string.IsNullOrEmpty(_replaceError))
+                                    {
+                                        <p style="color:var(--CSignal);font:var(--text-xs);margin-top:6px;">@_replaceError</p>
+                                    }
+                                }
+
                                 @{
                                     var transferTargets = _myTeams
                                         .Where(t => t.Team.Id.ToString() != activeTeamId && TeamRoles.CanAdmin(t.Role))
@@ -1297,6 +1340,70 @@ else
         _uploadError = null;
         _uploadErrorDataset = null;
         StateHasChanged();
+    }
+
+    // ── Replace data (atomic full reload) ──
+    private IBrowserFile? _replaceFile;
+    private string? _replaceFileDataset;
+    private string? _replaceBusy;
+    private string? _replaceResult, _replaceResultDataset;
+    private string? _replaceError, _replaceErrorDataset;
+
+    private void OnReplaceFileSelected(string datasetName, InputFileChangeEventArgs e)
+    {
+        _replaceFile = e.File;
+        _replaceFileDataset = datasetName;
+        _replaceResult = _replaceError = null;
+        StateHasChanged();
+    }
+
+    private async Task RunReplace(string datasetName)
+    {
+        if (_replaceFile == null || string.IsNullOrEmpty(activeTeamId)) return;
+        var file = _replaceFile;
+        var teamId = activeTeamId!;
+        _replaceFile = null;
+        _replaceFileDataset = null;
+        _replaceResult = _replaceError = null;
+        _replaceBusy = datasetName;
+        StateHasChanged();
+
+        System.IO.FileStream? fs = null;
+        try
+        {
+            var tempPath = System.IO.Path.Combine(System.IO.Path.GetTempPath(), $"indx-replace-{Guid.NewGuid():N}.tmp");
+            fs = new System.IO.FileStream(tempPath, System.IO.FileMode.Create, System.IO.FileAccess.ReadWrite,
+                System.IO.FileShare.None, 65536, System.IO.FileOptions.DeleteOnClose);
+            await using (var stream = file.OpenReadStream(maxAllowedSize: 2_000_000_000L))
+                await stream.CopyToAsync(fs);
+            fs.Position = 0;
+
+            var localFs = fs;
+            var summary = await Task.Run(() => IndxCloudInternalApi.Manager.RunReplaceFromJson(datasetName, teamId, localFs));
+
+            _keepAlive[datasetName] = IndxCloudInternalApi.Manager.GetKeepAliveInfo(datasetName, teamId);
+            _searchResults.Remove(datasetName); // preview now points at stale docs
+
+            var parts = new List<string>();
+            if (summary.Added.Count > 0) parts.Add($"added {string.Join(", ", summary.Added)}");
+            if (summary.Removed.Count > 0) parts.Add($"removed {string.Join(", ", summary.Removed)}");
+            if (summary.TypeChanged.Count > 0) parts.Add($"type changed {string.Join(", ", summary.TypeChanged)}");
+            _replaceResultDataset = datasetName;
+            _replaceResult = parts.Count > 0
+                ? $"Data replaced. Schema changes: {string.Join("; ", parts)}."
+                : "Data replaced.";
+        }
+        catch (Exception ex)
+        {
+            _replaceErrorDataset = datasetName;
+            _replaceError = $"Replace failed: {ex.Message}";
+        }
+        finally
+        {
+            fs?.Dispose();
+            _replaceBusy = null;
+            StateHasChanged();
+        }
     }
 
     private void CancelUpload()
