@@ -434,13 +434,14 @@ else
                                 @if (!isSaving)
                                 {
                                     <div class="indx-field-config-toolbar">
-                                        @if (isEditor && IsDirty(datasetName))
+                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportFieldConfig(datasetName)">Export field configuration as json</Button>
+                                        @if (isEditor)
                                         {
-                                            <Button Variant="primary" Size="micro" @onclick="() => SaveFieldConfig(datasetName, ownerUserId)" disabled="@(!HasSearchable(datasetName))">Save</Button>
-                                            <Button Variant="secondary" Size="micro" @onclick="() => CancelFieldConfig(datasetName)">Cancel</Button>
-                                            @if (_searchableTouched.Contains(datasetName) && !HasSearchable(datasetName))
+                                            <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-ready-{datasetName}")" />
+                                            <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportReadyFile(datasetName)">Upload field configuration</Button>
+                                            @if (_importWarnings.TryGetValue(datasetName, out var readyWarning) && readyWarning != null)
                                             {
-                                                <span class="indx-field-config-error">At least one field must be searchable</span>
+                                                <span class="indx-field-config-import-warning">@readyWarning</span>
                                             }
                                         }
                                         <span style="margin-left:auto;display:flex;gap:16px;align-items:center;">
@@ -545,18 +546,17 @@ else
                                             </table>
                                         </div>
                                         @KeyFieldRow(datasetName, ownerUserId, isEditor)
-                                        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap;">
-                                            <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportFieldConfig(datasetName)">Export field configuration as json</Button>
-                                            @if (isEditor)
-                                            {
-                                                <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-ready-{datasetName}")" />
-                                                <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportReadyFile(datasetName)">Upload field configuration</Button>
-                                                @if (_importWarnings.TryGetValue(datasetName, out var readyWarning) && readyWarning != null)
+                                        @if (isEditor && IsDirty(datasetName))
+                                        {
+                                            <div class="indx-field-config-toolbar" style="margin-top:8px;">
+                                                <Button Variant="primary" Size="micro" @onclick="() => SaveFieldConfig(datasetName, ownerUserId)" disabled="@(!HasSearchable(datasetName))">Save</Button>
+                                                <Button Variant="secondary" Size="micro" @onclick="() => CancelFieldConfig(datasetName)">Cancel</Button>
+                                                @if (_searchableTouched.Contains(datasetName) && !HasSearchable(datasetName))
                                                 {
-                                                    <span class="indx-field-config-import-warning">@readyWarning</span>
+                                                    <span class="indx-field-config-error">At least one field must be searchable</span>
                                                 }
-                                            }
-                                        </div>
+                                            </div>
+                                        }
                                     }
                                 }
                             }
