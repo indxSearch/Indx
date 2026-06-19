@@ -214,6 +214,16 @@
             Loads the jsonData into search engine as a stream.
             </summary>
         </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.Replace(System.String,System.String)">
+            <summary>
+            Atomically replaces the entire dataset's documents with the streamed JSON. Unlike
+            delete+recreate this preserves the dataset's identity, field configuration, boost rules
+            and description, serves the old data with zero downtime until the new index is ready, and
+            leaves the old dataset untouched if the new JSON fails to build. Works whether the dataset
+            is Ready, hibernated or idle-evicted (the old documents are never reloaded). Returns a
+            summary of how the new schema differed from the previous field configuration.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.LoadString(System.String,System.String,System.String)">
             <summary>
             Loads the jsonData into search engine as a string.
@@ -607,6 +617,13 @@
             datasets) is decided in the controllers via team membership, so this class no longer
             carries any per-user sharing/grantee logic — it just maps (dataSetName, teamId) to an engine.
             </summary>
+            <summary>
+            Atomic full-dataset replace: builds a fresh engine from a new JSON stream, carries over the
+            dataset's field config (reconciled against the new schema), and swaps it in — preserving the
+            dataset's identity, boost rules and description (those are keyed by name in separate stores
+            and are never touched here). Reuses the shadow-swap orchestration. State-transparent: works on
+            a Ready, hibernated or idle-evicted dataset without ever reloading the old documents.
+            </summary>
              <summary>
              Shadow-swap orchestration for heavy mutations.
             
@@ -777,6 +794,21 @@
             (0 / int.MaxValue).</para>
             </summary>
         </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunReplaceFromJson(System.String,System.String,System.IO.Stream)">
+            <summary>
+            Replaces all documents in the dataset with the contents of <paramref name="jsonStream"/>.
+            Returns the schema-change summary. The old dataset keeps serving until the swap; on any
+            build failure the old dataset is left untouched (nothing is swapped in).
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.BuildShadowFromJson(System.String,System.String,System.IO.Stream,Indx.Api.ProcessMonitor)">
+            <summary>
+            Builds a fresh, Ready engine from <paramref name="jsonStream"/>: read the current field
+            config (no doc load) → Init the new JSON → carry over config for fields that survive by
+            name+type → Load → Index. The stream is read twice (Init resets to 0 after, Load resets to
+            0 before), so it must be seekable/buffered.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunMutationOnShadow``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})">
              <summary>
              Runs <paramref name="mutation"/> on a shadow SearchEngine and swaps it in
@@ -847,6 +879,12 @@
             is logged and we dispose anyway — pending searches will fail their next pool
             access and propagate the disposal to the caller.
             </summary>
+        </member>
+        <member name="T:IndxCloudApi.Models.ReplaceSchemaChange">
+            <summary>Summary of how the new JSON's schema differed from the dataset's current field config.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.ReplaceSchemaChange.#ctor(System.Collections.Generic.IReadOnlyList{System.String},System.Collections.Generic.IReadOnlyList{System.String},System.Collections.Generic.IReadOnlyList{System.String})">
+            <summary>Summary of how the new JSON's schema differed from the dataset's current field config.</summary>
         </member>
         <member name="T:IndxCloudApi.Models.LoginInfo">
             <summary>

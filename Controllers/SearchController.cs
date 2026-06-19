@@ -617,6 +617,43 @@ namespace IndxCloudApi.Controllers
         }
 
         /// <summary>
+        /// Atomically replaces the entire dataset's documents with the streamed JSON. Unlike
+        /// delete+recreate this preserves the dataset's identity, field configuration, boost rules
+        /// and description, serves the old data with zero downtime until the new index is ready, and
+        /// leaves the old dataset untouched if the new JSON fails to build. Works whether the dataset
+        /// is Ready, hibernated or idle-evicted (the old documents are never reloaded). Returns a
+        /// summary of how the new schema differed from the previous field configuration.
+        /// </summary>
+        [RequestSizeLimit(2_000_000_000)]
+        [HttpPut(DataSetRoute + "/replace")]
+        public ActionResult<ReplaceSchemaChange> Replace(string teamName, string dataSetName)
+        {
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return BadRequest("invalid dataSetName");
+            HttpContext.Request.EnableBuffering();
+            if (HttpContext.Request.ContentLength is null or 0)
+                return BadRequest("Empty request body, stream missing");
+            var bodyStream = HttpContext.Request.Body;
+            bodyStream.Position = 0;
+            try
+            {
+                var summary = IndxCloudInternalApi.Manager.RunReplaceFromJson(dataSetName, ctx.OwnerKey, bodyStream);
+                return Ok(summary);
+            }
+            catch (ShadowBusyException ex)
+            {
+                return StatusCode(StatusCodes.Status409Conflict, ex.Message);
+            }
+            catch (Exception ex)
+            {
+                // Build failed (bad JSON / index error) — old dataset is unchanged.
+                return StatusCode(StatusCodes.Status422UnprocessableEntity, ex.Message);
+            }
+        }
+
+        /// <summary>
         /// Loads the jsonData into search engine as a string.
         /// </summary>
         [RequestSizeLimit(2_000_000_000)]
