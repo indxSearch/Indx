@@ -872,6 +872,21 @@ namespace IndxCloudApi.Models
         }
 
         /// <summary>
+        /// The fields eligible to be the document key: numeric AND non-optional (present + set on every
+        /// analyzed document). A key field must identify every document, so optional fields — which the
+        /// lib's Init flags when a field is null/empty/absent on some document — are excluded.
+        /// </summary>
+        internal string[] GetKeyFieldCandidates(string dataSetName, string teamId)
+        {
+            var df = FindInstance(dataSetName, teamId)?.DocumentFields;
+            if (df == null) return Array.Empty<string>();
+            return df.GetFieldList()
+                .Where(f => f.Type == System.Text.Json.JsonValueKind.Number && !f.Optional)
+                .Select(f => f.Name)
+                .ToArray();
+        }
+
+        /// <summary>
         /// When the dataset uses a custom (explicitly declared) key field, dry-runs the whole Load+Index
         /// in memory — with NO persistence — before the real, destructive external Load. Returns an error
         /// message if the data can't be loaded with that key (e.g. the field is missing on some documents),
@@ -968,6 +983,9 @@ namespace IndxCloudApi.Models
                 if (field.Type != System.Text.Json.JsonValueKind.Number)
                     return $"The key field must be numeric (the engine key is a whole number); " +
                            $"'{fieldName}' is {field.Type}. Pick a numeric id field, or choose auto-generated.";
+                if (field.Optional)
+                    return $"The key field must identify every document, but '{fieldName}' is missing or " +
+                           $"empty on some documents. Pick a field that's always set, or choose auto-generated.";
                 storeValue = applyValue = fieldName;
             }
 

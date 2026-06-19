@@ -1113,6 +1113,9 @@ else
         _ruleTimeLimited.Clear();
         _descEdit.Clear();
         _descSaved.Clear();
+        _keyFieldByDataset.Clear();
+        _keyFieldCandidates.Clear();
+        _keyFieldNeedsReload.Clear();
         _searchableTouched.Clear();
         _searchTexts.Clear();
         _searchResults.Clear();
@@ -2266,6 +2269,7 @@ else
     private const string AutoKeyValue = "__auto__";
     private static string KeyAutoSentinel => IndxCloudApi.Models.IndxCloudInternalApi.KeyFieldAutoSentinel;
     private readonly Dictionary<string, string> _keyFieldByDataset = new();
+    private readonly Dictionary<string, string[]> _keyFieldCandidates = new(); // numeric + non-optional
     private readonly HashSet<string> _keyFieldNeedsReload = new();
     private string? _keyFieldError;
     private string? _keyFieldErrorDataset;
@@ -2274,16 +2278,21 @@ else
     {
         if (_keyFieldByDataset.ContainsKey(datasetName)) return;
         _keyFieldByDataset[datasetName] = DatasetMeta.LoadKeyField(teamId, datasetName);
+        _keyFieldCandidates[datasetName] =
+            IndxCloudApi.Models.IndxCloudInternalApi.Manager.GetKeyFieldCandidates(datasetName, teamId);
     }
 
-    // The value shown as selected in the dropdown. Resolves the undeclared default to "id" when an
-    // "id" number field exists (that's what the engine actually keys on), else auto-generated.
+    private bool IsKeyCandidate(string datasetName, string field) =>
+        _keyFieldCandidates.TryGetValue(datasetName, out var c) && c.Contains(field);
+
+    // The value shown as selected in the dropdown. Resolves the undeclared default to "id" when "id" is
+    // a valid candidate (numeric + always present — that's what the engine actually keys on), else auto.
     private string KeyFieldValue(string datasetName)
     {
         var raw = _keyFieldByDataset.GetValueOrDefault(datasetName) ?? "";
         if (raw == KeyAutoSentinel) return AutoKeyValue;
         if (raw.Length > 0) return raw;
-        return IsNumericField(datasetName, "id") ? "id" : AutoKeyValue;
+        return IsKeyCandidate(datasetName, "id") ? "id" : AutoKeyValue;
     }
 
     private string KeyFieldDisplay(string datasetName)
@@ -2294,12 +2303,13 @@ else
 
     private List<SelectField.SelectOption> KeyFieldOptions(string datasetName)
     {
+        // Only numeric, non-optional fields are eligible — a key must identify every document.
         var opts = new List<SelectField.SelectOption>();
-        if (_editedFieldConfigs.TryGetValue(datasetName, out var f) && f != null)
-            foreach (var fld in f.Where(x => x.FieldType == "Number"))
-                opts.Add(new SelectField.SelectOption(fld.FieldName, fld.FieldName));
+        if (_keyFieldCandidates.TryGetValue(datasetName, out var cands))
+            foreach (var name in cands)
+                opts.Add(new SelectField.SelectOption(name, name));
         opts.Add(new SelectField.SelectOption("Auto-generated (no key field)", AutoKeyValue));
-        // Keep a declared-but-now-missing key visible so it isn't silently dropped from the dropdown.
+        // Keep a declared-but-now-ineligible key visible so it isn't silently dropped from the dropdown.
         var cur = _keyFieldByDataset.GetValueOrDefault(datasetName) ?? "";
         if (cur.Length > 0 && cur != KeyAutoSentinel && !opts.Any(o => o.Value == cur))
             opts.Insert(0, new SelectField.SelectOption($"{cur} (unavailable)", cur));

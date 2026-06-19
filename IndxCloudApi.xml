@@ -796,6 +796,13 @@
             (the "id" field when present, otherwise auto-generated). Explicit auto-generated maps to "".
             </summary>
         </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.GetKeyFieldCandidates(System.String,System.String)">
+            <summary>
+            The fields eligible to be the document key: numeric AND non-optional (present + set on every
+            analyzed document). A key field must identify every document, so optional fields — which the
+            lib's Init flags when a field is null/empty/absent on some document — are excluded.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ValidateExternalLoadForCustomKey(System.String,System.String,System.IO.Stream)">
              <summary>
              When the dataset uses a custom (explicitly declared) key field, dry-runs the whole Load+Index
