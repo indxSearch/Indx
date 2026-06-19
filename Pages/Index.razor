@@ -1120,6 +1120,7 @@ else
         _keyFieldByDataset.Clear();
         _keyFieldCandidates.Clear();
         _keyFieldNeedsReload.Clear();
+        _keyFieldChecking.Clear();
         _searchableTouched.Clear();
         _searchTexts.Clear();
         _searchResults.Clear();
@@ -2277,6 +2278,7 @@ else
     private readonly Dictionary<string, string> _keyFieldByDataset = new();
     private readonly Dictionary<string, string[]> _keyFieldCandidates = new(); // numeric + non-optional
     private readonly HashSet<string> _keyFieldNeedsReload = new();
+    private readonly HashSet<string> _keyFieldChecking = new(); // dry-run validation in progress
     private string? _keyFieldError;
     private string? _keyFieldErrorDataset;
 
@@ -2342,6 +2344,32 @@ else
         _keyFieldByDataset[datasetName] = fieldName.Length == 0 ? KeyAutoSentinel : fieldName;
         if (needsReload) _keyFieldNeedsReload.Add(datasetName);
         else _keyFieldNeedsReload.Remove(datasetName);
+
+        // Notify immediately if the chosen key can't actually identify the documents. While the
+        // uploaded data is still buffered (setup) and fields are configured, dry-run the key in memory
+        // now so the user finds out at selection time, not only when they click Load and Index.
+        if (fieldName.Length > 0 && HasSearchable(datasetName) && _bufferedFiles.TryGetValue(datasetName, out var buffered))
+        {
+            // The dry-run reads the engine's field config, so apply the user's current edits first —
+            // otherwise a valid key could falsely fail the dry-run's index on "no searchable field".
+            if (_editedFieldConfigs.TryGetValue(datasetName, out var edited))
+                IndxCloudApi.Models.IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, teamId)?.SetFieldConfiguration(edited);
+
+            _keyFieldChecking.Add(datasetName);
+            await InvokeAsync(StateHasChanged);
+            var checkErr = await Task.Run(() =>
+            {
+                try
+                {
+                    buffered.Position = 0;
+                    return IndxCloudApi.Models.IndxCloudInternalApi.Manager
+                        .ValidateExternalLoadForCustomKey(datasetName, teamId, buffered);
+                }
+                catch (Exception ex) { return ex.Message; }
+            });
+            _keyFieldChecking.Remove(datasetName);
+            if (checkErr != null) { _keyFieldError = checkErr; _keyFieldErrorDataset = datasetName; }
+        }
     }
 
     private RenderFragment KeyFieldRow(string datasetName, string teamId, bool editable) =>@<div style="display:flex;align-items:center;gap:12px;margin:14px 0 4px;flex-wrap:wrap;">
@@ -2365,7 +2393,11 @@ else
         {
             <span style="font:var(--text-xs);color:var(--lv5);">@KeyFieldDisplay(datasetName)</span>
         }
-        @if (_keyFieldNeedsReload.Contains(datasetName))
+        @if (_keyFieldChecking.Contains(datasetName))
+        {
+            <span style="font:var(--text-xs);color:var(--lv4);">Checking that this field can identify every document…</span>
+        }
+        else if (_keyFieldNeedsReload.Contains(datasetName))
         {
             <span style="font:var(--text-xs);color:var(--lv4);max-width:300px;">
                 Saved. Documents already loaded keep their current ID — this applies the next time you replace the dataset's data.
@@ -2373,7 +2405,7 @@ else
         }
         @if (_keyFieldError != null && _keyFieldErrorDataset == datasetName)
         {
-            <span style="font:var(--text-xs);color:var(--CSignal);">@_keyFieldError</span>
+            <span style="font:var(--text-xs);color:var(--CSignal);max-width:520px;">@_keyFieldError</span>
         }
     </div>;
 
