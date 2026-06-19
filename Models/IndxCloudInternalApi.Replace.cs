@@ -140,6 +140,16 @@ namespace IndxCloudApi.Models
             var added = newSchema.Where(n => !oldNames.Contains(n.FieldName)).Select(n => n.FieldName).ToList();
             var removed = oldConfig.Where(o => !newByName.ContainsKey(o.FieldName)).Select(o => o.FieldName).ToList();
 
+            // Replace preserves the existing field config; if the new JSON keeps none of the
+            // currently-searchable fields there is nothing to index. Fail with a clear message
+            // rather than the cryptic "no documents to load" from the index step.
+            if (oldConfig.Any(o => o.Searchable == true) && !carry.Any(f => f.Searchable == true))
+                throw new InvalidOperationException(
+                    "The new data keeps none of this dataset's searchable fields, so it can't be indexed. " +
+                    "Replace preserves the existing field configuration — the new JSON must include at least " +
+                    "one of the currently searchable fields. To load a different schema, configure the " +
+                    "dataset's fields for it first.");
+
             if (carry.Count > 0)
             {
                 var err = shadow.SetFieldConfiguration(carry.ToArray());
