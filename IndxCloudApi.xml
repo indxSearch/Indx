@@ -796,6 +796,20 @@
             (the "id" field when present, otherwise auto-generated). Explicit auto-generated maps to "".
             </summary>
         </member>
+        <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.ValidateExternalLoadForCustomKey(System.String,System.String,System.IO.Stream)">
+             <summary>
+             When the dataset uses a custom (explicitly declared) key field, dry-runs the whole Load+Index
+             in memory — with NO persistence — before the real, destructive external Load. Returns an error
+             message if the data can't be loaded with that key (e.g. the field is missing on some documents),
+             or null if it's safe. A no-op (null) for the default/auto key, or when fields aren't configured.
+            
+             Why: the lib's external Load clears the db, and on failure it leaves the engine stuck in
+             "Loading" with the load transaction still holding the SQLite write lock (so even Delete then
+             fails with "database is locked"). The key-field feature makes that failure reachable from the
+             UI, so we keep it entirely in memory. (Interim — the real fix is the lib rolling back + resetting
+             state on a failed Load.)
+             </summary>
+        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.SetKeyField(System.String,System.String,System.String,System.Boolean@)">
             <summary>
             Declares <paramref name="fieldName"/> (empty = auto-generated) as the dataset's key field:

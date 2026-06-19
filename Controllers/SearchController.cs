@@ -605,6 +605,14 @@ namespace IndxCloudApi.Controllers
                 return BadRequest("Empty request body, stream missing");
             var bodyStream = HttpContext.Request.Body;
             bodyStream.Position = 0;
+
+            // Guard: when a custom key field is declared, dry-run the load in memory first so a bad key
+            // (e.g. missing on some documents) fails cleanly instead of clearing + locking the database.
+            var keyError = IndxCloudInternalApi.Manager.ValidateExternalLoadForCustomKey(dataSetName, ctx.OwnerKey, bodyStream);
+            if (keyError != null)
+                return StatusCode(StatusCodes.Status422UnprocessableEntity, keyError);
+            bodyStream.Position = 0;
+
             var pm = new ProcessMonitor();
             if (IndxCloudInternalApi.Manager.Load(dataSetName, ctx.OwnerKey, bodyStream, pm))
                 pm.WaitForCompletion();
@@ -668,6 +676,10 @@ namespace IndxCloudApi.Controllers
                 writer.Write(jsonData);
                 writer.Flush();
             }
+            memoryStream.Position = 0;
+            var keyError = IndxCloudInternalApi.Manager.ValidateExternalLoadForCustomKey(dataSetName, ctx.OwnerKey, memoryStream);
+            if (keyError != null)
+                return StatusCode(StatusCodes.Status422UnprocessableEntity, keyError);
             memoryStream.Position = 0;
             var pm = new ProcessMonitor();
             if (IndxCloudInternalApi.Manager.Load(dataSetName, ctx.OwnerKey, memoryStream, pm))

@@ -872,6 +872,68 @@ namespace IndxCloudApi.Models
         }
 
         /// <summary>
+        /// When the dataset uses a custom (explicitly declared) key field, dry-runs the whole Load+Index
+        /// in memory — with NO persistence — before the real, destructive external Load. Returns an error
+        /// message if the data can't be loaded with that key (e.g. the field is missing on some documents),
+        /// or null if it's safe. A no-op (null) for the default/auto key, or when fields aren't configured.
+        ///
+        /// Why: the lib's external Load clears the db, and on failure it leaves the engine stuck in
+        /// "Loading" with the load transaction still holding the SQLite write lock (so even Delete then
+        /// fails with "database is locked"). The key-field feature makes that failure reachable from the
+        /// UI, so we keep it entirely in memory. (Interim — the real fix is the lib rolling back + resetting
+        /// state on a failed Load.)
+        /// </summary>
+        internal string? ValidateExternalLoadForCustomKey(string dataSetName, string teamId, Stream jsonStream)
+        {
+            var declared = _metadataStore?.LoadKeyField(teamId, dataSetName) ?? "";
+            if (declared.Length == 0 || declared == KeyFieldAutoSentinel) return null; // no custom key → cheap path
+            if (!jsonStream.CanSeek) return null; // can't re-read to dry-run; don't buffer a huge body
+
+            var liveConfig = FindInstance(dataSetName, teamId)?.GetFieldConfiguration();
+            if (liveConfig == null || liveConfig.Length == 0) return null;
+
+            int configuration;
+            using (var cfg = new Persistence(SearchDbConnectionString, dataSetName, teamId))
+                configuration = (int)(cfg.ReadDataSetConfiguration() ?? 400);
+
+            // Persistence stays null → nothing this engine does can touch or lock the database.
+            using var validate = new SearchEngine(
+                MakeLogPrefix(teamId, dataSetName),
+                Indx.Utilities.ILoggerFactory.GetFactory(logFileName),
+                configuration,
+                GetLicensePath());
+            try
+            {
+                jsonStream.Position = 0;
+                validate.Init(jsonStream);
+                var cfgErr = validate.SetFieldConfiguration(liveConfig);
+                if (!string.IsNullOrEmpty(cfgErr)) return $"Field configuration error: {cfgErr}";
+                ApplyDeclaredKeyField(validate, dataSetName, teamId);
+
+                jsonStream.Position = 0;
+                var pm = new ProcessMonitor();
+                validate.Load(jsonStream, pm);
+                pm.WaitForCompletion();
+                if (!pm.Succeeded) return DescribeKeyedLoadFailure(declared, pm.ErrorMessage);
+
+                var im = new ProcessMonitor();
+                validate.Index(im);
+                im.WaitForCompletion();
+                if (!im.Succeeded) return DescribeKeyedLoadFailure(declared, im.ErrorMessage);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                return DescribeKeyedLoadFailure(declared, ex.Message);
+            }
+        }
+
+        private static string DescribeKeyedLoadFailure(string keyField, string? raw) =>
+            $"The data can't be loaded with key field '{keyField}'. It must be a whole number present on " +
+            $"every document; pick a different key field, or choose Auto-generated." +
+            (string.IsNullOrEmpty(raw) ? "" : $" (engine: {raw})");
+
+        /// <summary>
         /// Declares <paramref name="fieldName"/> (empty = auto-generated) as the dataset's key field:
         /// validates it exists and is numeric (the engine key is a long; a non-numeric key would silently
         /// collide via digit-stripping), persists the choice cloud-side, and applies it to the live engine.

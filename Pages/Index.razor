@@ -1555,6 +1555,19 @@ else
         var pollCts = new CancellationTokenSource();
         try
         {
+            // Guard: when a custom key field is declared, dry-run the load in memory first (off the UI
+            // thread) so a bad key fails cleanly instead of clearing + locking the dataset's database.
+            ms.Position = 0;
+            var keyError = await Task.Run(() =>
+                IndxCloudInternalApi.Manager.ValidateExternalLoadForCustomKey(datasetName, activeTeamId!, ms));
+            if (keyError != null)
+            {
+                _uploadError = keyError;
+                _uploadErrorDataset = datasetName;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
             // Phase 1: Load
             ms.Position = 0;
             var loadResult = IndxCloudInternalApi.Manager.StartLoadAsync(datasetName, activeTeamId!,ms);
