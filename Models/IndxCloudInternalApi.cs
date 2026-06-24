@@ -887,16 +887,15 @@ namespace IndxCloudApi.Models
         }
 
         /// <summary>
-        /// When the dataset uses a custom (explicitly declared) key field, dry-runs the whole Load+Index
-        /// in memory — with NO persistence — before the real, destructive external Load. Returns an error
-        /// message if the data can't be loaded with that key (e.g. the field is missing on some documents),
-        /// or null if it's safe. A no-op (null) for the default/auto key, or when fields aren't configured.
+        /// UX-only pre-check for the field-config UI: when the user picks a custom key field, dry-run the
+        /// whole Load+Index in memory (NO persistence) against the buffered upload and return an error
+        /// message if that key can't identify the documents (missing on some, or non-unique), else null.
+        /// A no-op (null) for the default/auto key, or when fields aren't configured.
         ///
-        /// Why: the lib's external Load clears the db, and on failure it leaves the engine stuck in
-        /// "Loading" with the load transaction still holding the SQLite write lock (so even Delete then
-        /// fails with "database is locked"). The key-field feature makes that failure reachable from the
-        /// UI, so we keep it entirely in memory. (Interim — the real fix is the lib rolling back + resetting
-        /// state on a failed Load.)
+        /// This is purely to tell the user *at selection time* that a key won't work — it catches the one
+        /// thing the lib can't surface cheaply yet (uniqueness; see indx_lib_fixes.md #3). It is NOT used
+        /// on the actual load path: the lib's external Load is now atomic + state-resetting, so a bad key
+        /// fails cleanly there on its own. Runs during setup (no live engine), so peak memory is ~1×.
         /// </summary>
         internal string? ValidateExternalLoadForCustomKey(string dataSetName, string teamId, Stream jsonStream)
         {
@@ -956,6 +955,20 @@ namespace IndxCloudApi.Models
             $"unique and present on every document (a price or rank won't work — values repeat). Pick a " +
             $"field that uniquely identifies each document, or choose Auto-generated." +
             (string.IsNullOrEmpty(raw) ? "" : $" (engine: {raw})");
+
+        /// <summary>
+        /// Turns a raw external-load failure message into something actionable when the dataset has a
+        /// custom key field declared — e.g. a non-unique key throws a bare "An item with the same key
+        /// has already been added", which becomes the "must be unique and present on every document"
+        /// guidance. Returns the raw message unchanged when no custom key is declared.
+        /// </summary>
+        internal string DescribeLoadFailure(string dataSetName, string teamId, string? rawError)
+        {
+            var declared = GetDeclaredKeyField(dataSetName, teamId);
+            return string.IsNullOrEmpty(declared)
+                ? (rawError ?? "Load failed")
+                : DescribeKeyedLoadFailure(declared, rawError);
+        }
 
         /// <summary>
         /// Declares <paramref name="fieldName"/> (empty = auto-generated) as the dataset's key field:

@@ -604,20 +604,17 @@ namespace IndxCloudApi.Controllers
             var bodyStream = HttpContext.Request.Body;
             bodyStream.Position = 0;
 
-            // Guard: when a custom key field is declared, dry-run the load in memory first so a bad key
-            // (e.g. missing on some documents) fails cleanly instead of clearing + locking the database.
-            var keyError = IndxCloudInternalApi.Manager.ValidateExternalLoadForCustomKey(dataSetName, ctx.OwnerKey, bodyStream);
-            if (keyError != null)
-                return StatusCode(StatusCodes.Status422UnprocessableEntity, keyError);
-            bodyStream.Position = 0;
-
+            // In-place load: streams straight into the engine (peak memory ~1× — no second copy). A
+            // failed load is non-destructive on disk (the lib's clear+append is atomic) and leaves the
+            // dataset recoverable (Error → WakeUp/reload). For zero-downtime updates, use replace.
             var pm = new ProcessMonitor();
             if (IndxCloudInternalApi.Manager.Load(dataSetName, ctx.OwnerKey, bodyStream, pm))
                 pm.WaitForCompletion();
             else
                 return BadRequest("LoadStreamAsync failed, Load returned false");
             if (!pm.Succeeded)
-                return StatusCode(StatusCodes.Status422UnprocessableEntity, pm.ErrorMessage);
+                return StatusCode(StatusCodes.Status422UnprocessableEntity,
+                    IndxCloudInternalApi.Manager.DescribeLoadFailure(dataSetName, ctx.OwnerKey, pm.ErrorMessage));
 
             return Ok();
         }
@@ -675,17 +672,13 @@ namespace IndxCloudApi.Controllers
                 writer.Flush();
             }
             memoryStream.Position = 0;
-            var keyError = IndxCloudInternalApi.Manager.ValidateExternalLoadForCustomKey(dataSetName, ctx.OwnerKey, memoryStream);
-            if (keyError != null)
-                return StatusCode(StatusCodes.Status422UnprocessableEntity, keyError);
-            memoryStream.Position = 0;
             var pm = new ProcessMonitor();
             if (IndxCloudInternalApi.Manager.Load(dataSetName, ctx.OwnerKey, memoryStream, pm))
                 pm.WaitForCompletion();
             else
                 return BadRequest("LoadString failed, Load returned false");
             if (!pm.Succeeded)
-                return BadRequest(pm.ErrorMessage);
+                return BadRequest(IndxCloudInternalApi.Manager.DescribeLoadFailure(dataSetName, ctx.OwnerKey, pm.ErrorMessage));
             return Ok();
         }
 
