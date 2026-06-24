@@ -311,7 +311,7 @@ else
                             {
                                 @if (_editedFieldConfigs.TryGetValue(datasetName, out var editedFields) && editedFields != null)
                                 {
-                                    <div class="indx-field-config-toolbar">
+                                    <div class="indx-field-config-toolbar indx-field-config-toolbar--split">
                                         <div class="indx-field-config-toolbar-group">
                                             <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-{datasetName}")" />
                                             <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportFile(datasetName)">Import field configuration</Button>
@@ -320,7 +320,7 @@ else
                                                 <span class="indx-field-config-import-warning">@warning</span>
                                             }
                                         </div>
-                                        <div class="indx-field-config-toolbar-group" style="margin-left:auto;gap:16px;">
+                                        <div class="indx-field-config-toolbar-group" style="gap:16px;">
                                             <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
                                                           CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
                                                           Label="Show unused fields"
@@ -443,7 +443,7 @@ else
                             {
                                 @if (!isSaving)
                                 {
-                                    <div class="indx-field-config-toolbar">
+                                    <div class="indx-field-config-toolbar indx-field-config-toolbar--split">
                                         <div class="indx-field-config-toolbar-group">
                                             <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportFieldConfig(datasetName)">Export field configuration as json</Button>
                                             @if (isEditor)
@@ -456,7 +456,7 @@ else
                                                 }
                                             }
                                         </div>
-                                        <div class="indx-field-config-toolbar-group" style="margin-left:auto;gap:16px;">
+                                        <div class="indx-field-config-toolbar-group" style="gap:16px;">
                                             <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
                                                           CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
                                                           Label="Show unused fields"

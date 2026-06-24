@@ -103,13 +103,19 @@
     min-height: 30px;
 }
 
-/* A logical cluster of toolbar controls (e.g. import/export buttons, or the display toggles).
-   Stays together as a unit and wraps to its own row when the toolbar runs out of width. */
+/* Two-cluster toolbar: clusters sit at opposite ends side-by-side, and when the row runs out of
+   width (≈ tablet) the second cluster drops to its own row — each line left-aligned (space-between
+   leaves a single item at the start). */
+.indx-field-config-toolbar--split {
+    justify-content: space-between;
+}
+
+/* A logical cluster of toolbar controls (import/export buttons, or the display toggles). Its items
+   stay on one line so the cluster wraps as a unit, not control-by-control. */
 .indx-field-config-toolbar-group {
     display: flex;
     align-items: center;
     gap: 8px;
-    flex-wrap: wrap;
 }
 
 .indx-field-config-error {
