@@ -93,13 +93,23 @@
 .indx-field-config-toolbar {
     display: flex;
     align-items: center;
-    gap: 8px;
+    flex-wrap: wrap;
+    gap: 8px 16px;
     margin-top: 8px;
     margin-bottom: 8px;
     width: 100%;
     padding-right: 12px;
     box-sizing: border-box;
     min-height: 30px;
+}
+
+/* A logical cluster of toolbar controls (e.g. import/export buttons, or the display toggles).
+   Stays together as a unit and wraps to its own row when the toolbar runs out of width. */
+.indx-field-config-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .indx-field-config-error {

@@ -312,13 +312,15 @@ else
                                 @if (_editedFieldConfigs.TryGetValue(datasetName, out var editedFields) && editedFields != null)
                                 {
                                     <div class="indx-field-config-toolbar">
-                                        <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-{datasetName}")" />
-                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportFile(datasetName)">Upload field configuration</Button>
-                                        @if (_importWarnings.TryGetValue(datasetName, out var warning) && warning != null)
-                                        {
-                                            <span class="indx-field-config-import-warning">@warning</span>
-                                        }
-                                        <span style="margin-left:auto;display:flex;gap:16px;align-items:center;">
+                                        <div class="indx-field-config-toolbar-group">
+                                            <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-{datasetName}")" />
+                                            <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportFile(datasetName)">Import field configuration</Button>
+                                            @if (_importWarnings.TryGetValue(datasetName, out var warning) && warning != null)
+                                            {
+                                                <span class="indx-field-config-import-warning">@warning</span>
+                                            }
+                                        </div>
+                                        <div class="indx-field-config-toolbar-group" style="margin-left:auto;gap:16px;">
                                             <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
                                                           CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
                                                           Label="Show unused fields"
@@ -327,7 +329,7 @@ else
                                                           CheckedChanged="@(v => { if (v) _showAdvancedFields.Add(datasetName); else _showAdvancedFields.Remove(datasetName); })"
                                                           Label="Show advanced settings"
                                                           Elevated />
-                                        </span>
+                                        </div>
                                     </div>
                                     @if (!string.IsNullOrEmpty(_uploadError) && _uploadErrorDataset == datasetName)
                                     {
@@ -442,17 +444,19 @@ else
                                 @if (!isSaving)
                                 {
                                     <div class="indx-field-config-toolbar">
-                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportFieldConfig(datasetName)">Export field configuration as json</Button>
-                                        @if (isEditor)
-                                        {
-                                            <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-ready-{datasetName}")" />
-                                            <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportReadyFile(datasetName)">Upload field configuration</Button>
-                                            @if (_importWarnings.TryGetValue(datasetName, out var readyWarning) && readyWarning != null)
+                                        <div class="indx-field-config-toolbar-group">
+                                            <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportFieldConfig(datasetName)">Export field configuration as json</Button>
+                                            @if (isEditor)
                                             {
-                                                <span class="indx-field-config-import-warning">@readyWarning</span>
+                                                <InputFile OnChange="@(e => ImportFieldConfig(datasetName, e))" accept=".json" style="display:none" id="@($"fieldconfig-import-ready-{datasetName}")" />
+                                                <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerImportReadyFile(datasetName)">Import field configuration</Button>
+                                                @if (_importWarnings.TryGetValue(datasetName, out var readyWarning) && readyWarning != null)
+                                                {
+                                                    <span class="indx-field-config-import-warning">@readyWarning</span>
+                                                }
                                             }
-                                        }
-                                        <span style="margin-left:auto;display:flex;gap:16px;align-items:center;">
+                                        </div>
+                                        <div class="indx-field-config-toolbar-group" style="margin-left:auto;gap:16px;">
                                             <ToggleSwitch Checked="@_showUnusedFields.Contains(datasetName)"
                                                           CheckedChanged="@(v => { if (v) _showUnusedFields.Add(datasetName); else _showUnusedFields.Remove(datasetName); })"
                                                           Label="Show unused fields"
@@ -461,7 +465,7 @@ else
                                                           CheckedChanged="@(v => { if (v) _showAdvancedFields.Add(datasetName); else _showAdvancedFields.Remove(datasetName); })"
                                                           Label="Show advanced settings"
                                                           Elevated />
-                                        </span>
+                                        </div>
                                     </div>
                                 }
 
