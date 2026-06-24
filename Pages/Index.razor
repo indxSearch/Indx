@@ -79,7 +79,8 @@ else
     else
     {
         <Tabs Items="@AllDatasetTabItems()"
-              @bind-Active="selectedDataset" />
+              @bind-Active="selectedDataset"
+              Scrollable="true" />
 
         @if (selectedDataset != null)
         {
