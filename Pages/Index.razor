@@ -288,12 +288,20 @@ else
                                 }
                             }
 
-                            @* ── Uploading progress ── *@
+                            @* ── Upload + analyze progress ── *@
                             @if (isUploading)
                             {
                                 <div class="indx-field-config-saving">
                                     <ProgressBar Value="@_uploadProgress" ShowLabel FulfilledColor />
-                                    <p class="indx-field-config-saving-label">Uploading…</p>
+                                    @if (_analyzingDataset == datasetName)
+                                    {
+                                        @* Init: discovering the field schema (fast — no documents stored or indexed yet). *@
+                                        <p class="indx-field-config-saving-label">Analyzing…</p>
+                                    }
+                                    else
+                                    {
+                                        <p class="indx-field-config-saving-label">Uploading…</p>
+                                    }
                                     <Button Variant="secondary" Size="micro" @onclick="CancelUpload">Cancel</Button>
                                 </div>
                             }
@@ -993,6 +1001,7 @@ else
 
     // Upload phase (stream file + analyze)
     private string? _uploadingDataset;
+    private string? _analyzingDataset; // set while Init runs (schema scan) after the upload transfer
     private int _uploadProgress;
     private IBrowserFile? _selectedFile;
     private string? _selectedFileDataset;
@@ -1485,7 +1494,11 @@ else
                 }
             }
 
-            // Analyze field structure asynchronously (avoids blocking Blazor thread on large files)
+            // Analyze field structure asynchronously (avoids blocking Blazor thread on large files).
+            // Init only discovers the schema (field names/types/presence) — no documents are stored or
+            // indexed yet — so it's the fast first pass. Label it distinctly from the upload transfer.
+            _analyzingDataset = datasetName;
+            await InvokeAsync(StateHasChanged);
             fs.Position = 0;
             var initError = await IndxCloudInternalApi.Manager.InitFromStreamAsync(datasetName, activeTeamId!,fs);
             if (!string.IsNullOrEmpty(initError))
@@ -1528,6 +1541,7 @@ else
             _uploadCts?.Dispose();
             _uploadCts = null;
             _uploadingDataset = null;
+            _analyzingDataset = null;
             await LoadDatasets();
             await InvokeAsync(StateHasChanged);
         }
