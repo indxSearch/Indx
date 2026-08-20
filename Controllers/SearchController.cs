@@ -253,9 +253,9 @@ namespace IndxCloudApi.Controllers
                 return BadRequest("CreateRangeFilter non existing dataset name");
             if (RequireState(matcher, "CreateRangeFilter", SystemState.Ready) is { } stateError)
                 return stateError;
-            var filter = matcher.CreateRangeFilter(rangeFilter.FieldName, rangeFilter.LowerLimit, rangeFilter.UpperLimit);
+            var filter = matcher.CreateRangeFilter(rangeFilter.FieldName, rangeFilter.LowerLimit, rangeFilter.UpperLimit, out var filterError);
             if (filter == null)
-                return BadRequest("invalid filter arguments");
+                return BadRequest(filterError ?? "invalid filter arguments");
             var filterProxy = new FilterProxy(filter.SerializedKey);
             return Ok(filterProxy);
         }
@@ -272,12 +272,12 @@ namespace IndxCloudApi.Controllers
                 return BadRequest("invalid dataSetName");
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("CreateRangeFilter non existing dataset name");
+                return BadRequest("CreateValueFilter non existing dataset name");
             if (RequireState(matcher, "CreateValueFilter", SystemState.Ready) is { } stateError)
                 return stateError;
-            var filter = matcher.CreateValueFilter(valueFilter.FieldName, valueFilter.Value);
+            var filter = matcher.CreateValueFilter(valueFilter.FieldName, valueFilter.Value, out var filterError);
             if (filter == null)
-                return BadRequest("invalid filter arguments, filter value must have tostring implementation");
+                return BadRequest(filterError ?? "invalid filter arguments");
             var filterProxy = new FilterProxy(filter.SerializedKey);
             return Ok(filterProxy);
         }

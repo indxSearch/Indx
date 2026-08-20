@@ -16,9 +16,9 @@ namespace IndxCloudApi.Services
         public static Filter? Build(ISearchEngine engine, string field, string? value, double? min, double? max)
         {
             if (min.HasValue || max.HasValue)
-                return engine.CreateRangeFilter(field, min ?? double.MinValue, max ?? double.MaxValue);
+                return engine.CreateRangeFilter(field, min ?? double.MinValue, max ?? double.MaxValue, out _);
             if (!string.IsNullOrEmpty(value))
-                return engine.CreateValueFilter(field, value, isCaseSensitive: false);
+                return engine.CreateValueFilter(field, value, isCaseSensitive: false, out _);
             return null;
         }
     }
