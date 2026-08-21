@@ -185,6 +185,34 @@ public class Program
         .AddEntityFrameworkStores<ApplicationDbContext>()
         .AddDefaultTokenProviders();
 
+        // API clients must never be redirected to the HTML login page: when the
+        // cookie scheme challenges on an /api path it answers 401/403 instead.
+        // (GetToken keeps cookie support for web-UI users fetching a token, and
+        // an unauthenticated API call gets a proper 401 rather than a 302.)
+        builder.Services.ConfigureApplicationCookie(options =>
+        {
+            var onLogin = options.Events.OnRedirectToLogin;
+            options.Events.OnRedirectToLogin = ctx =>
+            {
+                if (ctx.Request.Path.StartsWithSegments("/api"))
+                {
+                    ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                    return Task.CompletedTask;
+                }
+                return onLogin(ctx);
+            };
+            var onDenied = options.Events.OnRedirectToAccessDenied;
+            options.Events.OnRedirectToAccessDenied = ctx =>
+            {
+                if (ctx.Request.Path.StartsWithSegments("/api"))
+                {
+                    ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+                    return Task.CompletedTask;
+                }
+                return onDenied(ctx);
+            };
+        });
+
         // Configure Authentication with multiple schemes
         var authBuilder = builder.Services.AddAuthentication();
 
@@ -601,6 +629,26 @@ public class Program
         // ============================================
         // HTTP PIPELINE CONFIGURATION
         // ============================================
+
+        // API errors are JSON, never HTML: an unhandled exception on an /api
+        // path returns a ProblemDetails (application/problem+json) with a trace
+        // id and no internal details — in every environment. Non-API paths keep
+        // the Razor error page (Production) / developer page (Development).
+        app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/api"),
+            branch => branch.UseExceptionHandler(errApp => errApp.Run(async context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+                var problem = new Microsoft.AspNetCore.Mvc.ProblemDetails
+                {
+                    Status = StatusCodes.Status500InternalServerError,
+                    Title = "Internal server error",
+                    Detail = "An unexpected error occurred. The incident has been logged.",
+                    Extensions = { ["code"] = "internalError", ["traceId"] = context.TraceIdentifier }
+                };
+                await context.Response.WriteAsJsonAsync(problem,
+                    (System.Text.Json.JsonSerializerOptions?)null, "application/problem+json");
+            })));
+
         if (!app.Environment.IsDevelopment())
         {
             app.UseExceptionHandler("/Error");
@@ -648,8 +696,23 @@ public class Program
                 if (!allowed)
                 {
                     context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    await context.Response.WriteAsync(
-                        "Password change required. Call POST /api/changePassword first.");
+                    if (context.Request.Path.StartsWithSegments("/api"))
+                    {
+                        var problem = new Microsoft.AspNetCore.Mvc.ProblemDetails
+                        {
+                            Status = StatusCodes.Status403Forbidden,
+                            Title = "Password change required",
+                            Detail = "Password change required. Call POST /api/changePassword first.",
+                            Extensions = { ["code"] = "passwordChangeRequired" }
+                        };
+                        await context.Response.WriteAsJsonAsync(problem,
+                            (System.Text.Json.JsonSerializerOptions?)null, "application/problem+json");
+                    }
+                    else
+                    {
+                        await context.Response.WriteAsync(
+                            "Password change required. Call POST /api/changePassword first.");
+                    }
                     return;
                 }
             }

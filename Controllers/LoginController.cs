@@ -1,5 +1,6 @@
 ﻿using IndxCloudApi.Data;
 using IndxCloudApi.Models;
+using IndxCloudApi.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -49,7 +50,7 @@ namespace IndxCloudApi.Controllers
         {
             var user = await _userManager.GetUserAsync(User);
             if (user == null)
-                return Unauthorized("User not found");
+                return ApiProblems.Problem(StatusCodes.Status401Unauthorized, "userNotFound", "Authentication failed", "The authenticated user no longer exists.");
 
             // Generate JWT token for the current user
             var loginInfo = new LoginInfo
@@ -74,17 +75,17 @@ namespace IndxCloudApi.Controllers
         public async Task<IActionResult> PostAsync([FromBody] LoginInfo info)
         {
             if (info == null || string.IsNullOrEmpty(info.UserEmail) || string.IsNullOrEmpty(info.UserPassWord))
-                return BadRequest("Invalid login credentials");
+                return ApiProblems.InvalidArgument("UserEmail and UserPassWord are required.");
 
             // Find user by email
             var user = await _userManager.FindByEmailAsync(info.UserEmail);
             if (user == null)
-                return Unauthorized("Invalid credentials");
+                return ApiProblems.InvalidCredentials();
 
             // Verify password without signing in (no cookie created)
             var isPasswordValid = await _userManager.CheckPasswordAsync(user, info.UserPassWord);
             if (!isPasswordValid)
-                return Unauthorized("Invalid credentials");
+                return ApiProblems.InvalidCredentials();
 
             // Check if email is confirmed (based on your Identity configuration)
             //if (!user.EmailConfirmed)
@@ -111,18 +112,21 @@ namespace IndxCloudApi.Controllers
                 || string.IsNullOrEmpty(request.CurrentPassword)
                 || string.IsNullOrEmpty(request.NewPassword))
             {
-                return BadRequest("CurrentPassword and NewPassword are required");
+                return ApiProblems.InvalidArgument("CurrentPassword and NewPassword are required.");
             }
 
             var user = await _userManager.GetUserAsync(User);
             if (user == null)
-                return Unauthorized("User not found");
+                return ApiProblems.Problem(StatusCodes.Status401Unauthorized, "userNotFound", "Authentication failed", "The authenticated user no longer exists.");
 
             var result = await _userManager.ChangePasswordAsync(
                 user, request.CurrentPassword, request.NewPassword);
             if (!result.Succeeded)
             {
-                return BadRequest(new { errors = result.Errors.Select(e => e.Description).ToArray() });
+                var problem = ApiProblems.Problem(StatusCodes.Status400BadRequest, "passwordChangeFailed", "Password change failed",
+                    string.Join(" ", result.Errors.Select(e => e.Description)));
+                ((Microsoft.AspNetCore.Mvc.ProblemDetails)problem.Value!).Extensions["errors"] = result.Errors.Select(e => e.Description).ToArray();
+                return problem;
             }
 
             user.MustChangePassword = false;

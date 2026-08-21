@@ -45,7 +45,7 @@ namespace IndxCloudApi.Models
                 // auto-loading the old documents from the database — we're replacing them.
                 var container = GetOrCreateInstance(dataSetName, teamId);
                 if (container == null)
-                    throw new InvalidOperationException($"Dataset '{dataSetName}' does not exist");
+                    throw new DataSetNotFoundException(dataSetName);
 
                 ReplaceSchemaChange summary;
                 (shadow, summary) = BuildShadowFromJson(dataSetName, teamId, jsonStream, monitor);

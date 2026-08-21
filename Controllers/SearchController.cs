@@ -1,4 +1,4 @@
-using Asp.Versioning;
+﻿using Asp.Versioning;
 using Indx.Api;
 using Indx.CloudApi;
 using Indx.Core;
@@ -48,19 +48,19 @@ namespace IndxCloudApi.Controllers
             HttpContext.Request.EnableBuffering();
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngineForInit(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("AnalyzeStreamAsync non existing dataset name or configuration");
+                return ApiProblems.DatasetNotFound(dataSetName);
             var state = matcher.Status;
             if (state.InvalidDataSetName)
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             var pm = new ProcessMonitor();
             matcher.Init(HttpContext.Request.Body, pm);
             pm.WaitForCompletion();
             if (!pm.Succeeded)
-                return BadRequest("Analyze failed, likely invalid json data");
+                return ApiProblems.InvalidArgument("Analyze failed, likely invalid json data");
             if (matcher.DocumentFields == null)
-                return BadRequest("Analyze failed, DocumentFields==null");
+                return ApiProblems.InvalidArgument("Analyze failed, DocumentFields==null");
             if (matcher.Persistence == null)
-                return BadRequest("Analyze failed, Persistence==null");
+                return ApiProblems.InvalidArgument("Analyze failed, Persistence==null");
             matcher.Persistence.SaveDocumentFields(matcher.DocumentFields.GetSerialized());
             return Ok(state);
         }
@@ -76,19 +76,19 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (string.IsNullOrEmpty(jsonData))
-                return BadRequest("null or empty jsonData argument");
+                return ApiProblems.InvalidArgument("null or empty jsonData argument");
             var state = IndxCloudInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
             if (state == null || state.InvalidDataSetName)
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngineForInit(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("AnalyzeString non existing dataset name or configuration");
+                return ApiProblems.DatasetNotFound(dataSetName);
             var df = DocumentFields.Analyze(jsonData, out string error2);
             if (!string.IsNullOrEmpty(error2) || df == null)
-                return BadRequest(error2);
+                return ApiProblems.InvalidArgument(error2);
             matcher.SetDocumentFieldsInternal(df);
             if (matcher.Persistence == null)
-                return BadRequest("Analyze failed, Persistence==null");
+                return ApiProblems.InvalidArgument("Analyze failed, Persistence==null");
             matcher.Persistence.SaveDocumentFields(df.GetSerialized());
             return state;
         }
@@ -102,10 +102,10 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("CombineFilters, non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "CombineFilters", SystemState.Ready) is { } stateError)
                 return stateError;
             var fa = matcher.GetFilterFromKey(combineFilters.A.HashString);
@@ -129,15 +129,15 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("CreateBoost non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "CreateBoost", SystemState.Ready) is { } stateError)
                 return stateError;
             var filter = matcher.GetFilterFromKey(boost.FilterProxy.HashString);
             if (filter == null)
-                return BadRequest("invalid filter arguments");
+                return ApiProblems.InvalidArgument("invalid filter arguments");
             matcher.CreateBoost(filter, boost.BoostStrength);
             return Ok(boost);
         }
@@ -152,7 +152,7 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             return boostStore.Load(ctx.OwnerKey, dataSetName).ToArray();
         }
 
@@ -167,9 +167,9 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             if (rules == null)
-                return BadRequest("rules body is required");
+                return ApiProblems.InvalidArgument("rules body is required");
 
             // Best-effort field validation when the engine is loaded; never hard-fail on a
             // hibernated dataset (apply-time skips unbuildable conditions anyway).
@@ -177,17 +177,17 @@ namespace IndxCloudApi.Controllers
             foreach (var rule in rules)
             {
                 if (string.IsNullOrWhiteSpace(rule.Name))
-                    return BadRequest("each rule needs a name");
+                    return ApiProblems.InvalidArgument("each rule needs a name");
                 if (rule.Conditions == null || rule.Conditions.Count == 0)
-                    return BadRequest($"rule '{rule.Name}' needs at least one condition");
+                    return ApiProblems.InvalidArgument($"rule '{rule.Name}' needs at least one condition");
                 foreach (var c in rule.Conditions)
                 {
                     var hasValue = !string.IsNullOrEmpty(c.Value);
                     var hasRange = c.Min.HasValue || c.Max.HasValue;
                     if (hasValue == hasRange)
-                        return BadRequest($"condition on '{c.Field}' must be either a value or a range");
+                        return ApiProblems.InvalidArgument($"condition on '{c.Field}' must be either a value or a range");
                     if (fields != null && fields.GetField(c.Field) is not { Filterable: true })
-                        return BadRequest($"field '{c.Field}' is not filterable");
+                        return ApiProblems.InvalidArgument($"field '{c.Field}' is not filterable");
                 }
             }
 
@@ -208,7 +208,7 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             boostStore.Delete(ctx.OwnerKey, dataSetName);
             return NoContent();
         }
@@ -231,7 +231,7 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, dataSetName, ctx.OwnerKey);
             if (!persistence.DataSetExists())
                 persistence.CreateOrOpenDataSet((int)configuration);
@@ -247,15 +247,15 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("CreateRangeFilter non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "CreateRangeFilter", SystemState.Ready) is { } stateError)
                 return stateError;
             var filter = matcher.CreateRangeFilter(rangeFilter.FieldName, rangeFilter.LowerLimit, rangeFilter.UpperLimit, out var filterError);
             if (filter == null)
-                return BadRequest(filterError ?? "invalid filter arguments");
+                return ApiProblems.InvalidArgument(filterError ?? "invalid filter arguments");
             var filterProxy = new FilterProxy(filter.SerializedKey);
             return Ok(filterProxy);
         }
@@ -269,15 +269,15 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("CreateValueFilter non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "CreateValueFilter", SystemState.Ready) is { } stateError)
                 return stateError;
             var filter = matcher.CreateValueFilter(valueFilter.FieldName, valueFilter.Value, out var filterError);
             if (filter == null)
-                return BadRequest(filterError ?? "invalid filter arguments");
+                return ApiProblems.InvalidArgument(filterError ?? "invalid filter arguments");
             var filterProxy = new FilterProxy(filter.SerializedKey);
             return Ok(filterProxy);
         }
@@ -292,7 +292,7 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, admin: true);
             if (ctx == null) return error!;
             if (!IndxCloudInternalApi.Manager.DeleteDataSet(dataSetName, ctx.OwnerKey))
-                return BadRequest("Attempt to delete non exixting dataset");
+                return ApiProblems.DatasetNotFound(dataSetName);
             return Ok();
         }
 
@@ -305,15 +305,15 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("DeleteDocument non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "DeleteJsonRecord", SystemState.Ready) is { } stateError)
                 return stateError;
             var result = matcher.DeleteJsonRecord(documentKey);
             if (!result)
-                return BadRequest("DeleteDocument document not found");
+                return ApiProblems.DocumentNotFound(documentKey);
             return Ok();
         }
 
@@ -326,14 +326,14 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             return RunHeavy(dataSetName, ctx.OwnerKey, "DeleteJsonRecords", engine =>
             {
                 foreach (var documentKey in documentKeys)
                 {
                     var result = engine.DeleteJsonRecord(documentKey);
                     if (!result)
-                        return BadRequest($"DeleteJsonRecords document not found: {documentKey}");
+                        return ApiProblems.DocumentNotFound(documentKey);
                 }
                 return Ok();
             }, SystemState.Ready);
@@ -347,6 +347,8 @@ namespace IndxCloudApi.Controllers
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
+            if (IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
             return IndxCloudInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, true, false, false, false, false, false);
         }
 
@@ -358,6 +360,8 @@ namespace IndxCloudApi.Controllers
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
+            if (IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
             return IndxCloudInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, false, false, true, false);
         }
 
@@ -369,6 +373,8 @@ namespace IndxCloudApi.Controllers
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
+            if (IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
             return IndxCloudInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, false, true, false, false);
         }
 
@@ -382,7 +388,7 @@ namespace IndxCloudApi.Controllers
             if (ctx == null) return error!;
             ICloudSearchEngine? engine = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (engine == null)
-                return BadRequest("GetJson non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(engine, "GetJson", SystemState.Loaded, SystemState.Indexing, SystemState.Ready) is { } stateError)
                 return stateError;
             var jsonStrings = new string[keys.Length];
@@ -401,7 +407,7 @@ namespace IndxCloudApi.Controllers
             if (ctx == null) return error!;
             var engine = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (engine == null)
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.DatasetNotFound(dataSetName);
             return engine.Persistence?.NumberOfJsonRecords() ?? 0;
         }
 
@@ -413,6 +419,8 @@ namespace IndxCloudApi.Controllers
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
+            if (IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
             return IndxCloudInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, true, false, false, false, false);
         }
 
@@ -424,6 +432,8 @@ namespace IndxCloudApi.Controllers
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
+            if (IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
             return IndxCloudInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, true, false, false, false);
         }
 
@@ -437,7 +447,7 @@ namespace IndxCloudApi.Controllers
             if (ctx == null) return error!;
             var status = IndxCloudInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
             if (status == null)
-                return BadRequest($"GetStatus failed: dataset '{dataSetName}' not found in team '{teamName}'");
+                return ApiProblems.DatasetNotFound(dataSetName);
 
             return new CloudSystemStatus(status)
             {
@@ -454,6 +464,8 @@ namespace IndxCloudApi.Controllers
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
+            if (IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
             return IndxCloudInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, false, false, false, true);
         }
 
@@ -499,7 +511,7 @@ namespace IndxCloudApi.Controllers
 
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("IndexDataSet non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
 
             // First-time indexing needs Loaded; a Ready dataset is re-indexed via shadow-swap.
             // Created / Loading / Indexing / Hibernated / Error are not indexable here → 409.
@@ -517,17 +529,17 @@ namespace IndxCloudApi.Controllers
                 }
                 catch (ShadowBusyException ex)
                 {
-                    return StatusCode(StatusCodes.Status409Conflict, ex.Message);
+                    return ApiProblems.ShadowBusy(ex.Message);
                 }
             }
             else if (!IndxCloudInternalApi.Manager.DoIndex(dataSetName, ctx.OwnerKey))
             {
-                return BadRequest("IndexDataSet failed, DoIndex returned false");
+                return ApiProblems.InvalidArgument("IndexDataSet failed, DoIndex returned false");
             }
 
             var status = IndxCloudInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
             if (status == null)
-                return BadRequest("IndexDataSet failed, status==null");
+                return ApiProblems.InvalidArgument("IndexDataSet failed, status==null");
             return status;
         }
 
@@ -540,15 +552,15 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("InsertJsonRecord non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "InsertJsonRecord", SystemState.Created, SystemState.Loaded, SystemState.Ready) is { } stateError)
                 return stateError;
             var result = matcher.InsertJsonRecord(jsonData, out string error2);
             if (!result)
-                return BadRequest(error2);
+                return ApiProblems.InvalidArgument(error2);
             return Ok();
         }
 
@@ -561,12 +573,12 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             return RunHeavy(dataSetName, ctx.OwnerKey, "InsertJsonRecords", engine =>
             {
                 var result = engine.InsertJsonRecords(jsonRecords, null, out string error2);
                 if (!result)
-                    return BadRequest(error2);
+                    return ApiProblems.InvalidArgument(error2);
                 return Ok();
             }, SystemState.Created, SystemState.Loaded, SystemState.Ready);
         }
@@ -580,13 +592,15 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
 
+            if (IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
             var pm = new ProcessMonitor();
             var success = IndxCloudInternalApi.Manager.LoadFromDatabase(dataSetName, ctx.OwnerKey, pm);
             if (!success)
-                return BadRequest("LoadFromDatabaseAsync failed, success==null");
+                return ApiProblems.LoadFailed("LoadFromDatabase failed.");
             await pm.WaitForCompletionAsync();
             if (!pm.Succeeded)
-                return BadRequest(pm.ErrorMessage);
+                return ApiProblems.LoadFailed(pm.ErrorMessage);
             return Ok();
         }
 
@@ -598,9 +612,11 @@ namespace IndxCloudApi.Controllers
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
+            if (IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
             HttpContext.Request.EnableBuffering();
             if (HttpContext.Request.ContentLength == null || HttpContext.Request.ContentLength == 0)
-                return BadRequest("Empty request body, stream missing");
+                return ApiProblems.InvalidArgument("Empty request body, stream missing");
             var bodyStream = HttpContext.Request.Body;
             bodyStream.Position = 0;
 
@@ -611,10 +627,9 @@ namespace IndxCloudApi.Controllers
             if (IndxCloudInternalApi.Manager.Load(dataSetName, ctx.OwnerKey, bodyStream, pm))
                 pm.WaitForCompletion();
             else
-                return BadRequest("LoadStreamAsync failed, Load returned false");
+                return ApiProblems.LoadFailed("LoadStream failed.");
             if (!pm.Succeeded)
-                return StatusCode(StatusCodes.Status422UnprocessableEntity,
-                    IndxCloudInternalApi.Manager.DescribeLoadFailure(dataSetName, ctx.OwnerKey, pm.ErrorMessage));
+                return ApiProblems.LoadFailed(IndxCloudInternalApi.Manager.DescribeLoadFailure(dataSetName, ctx.OwnerKey, pm.ErrorMessage));
 
             return Ok();
         }
@@ -634,10 +649,10 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             HttpContext.Request.EnableBuffering();
             if (HttpContext.Request.ContentLength is null or 0)
-                return BadRequest("Empty request body, stream missing");
+                return ApiProblems.InvalidArgument("Empty request body, stream missing");
             var bodyStream = HttpContext.Request.Body;
             bodyStream.Position = 0;
             try
@@ -647,12 +662,16 @@ namespace IndxCloudApi.Controllers
             }
             catch (ShadowBusyException ex)
             {
-                return StatusCode(StatusCodes.Status409Conflict, ex.Message);
+                return ApiProblems.ShadowBusy(ex.Message);
+            }
+            catch (DataSetNotFoundException)
+            {
+                return ApiProblems.DatasetNotFound(dataSetName);
             }
             catch (Exception ex)
             {
                 // Build failed (bad JSON / index error) — old dataset is unchanged.
-                return StatusCode(StatusCodes.Status422UnprocessableEntity, ex.Message);
+                return ApiProblems.LoadFailed(ex.Message);
             }
         }
 
@@ -665,6 +684,8 @@ namespace IndxCloudApi.Controllers
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
+            if (IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
             var memoryStream = new MemoryStream();
             using (var writer = new StreamWriter(memoryStream, Encoding.UTF8, leaveOpen: true))
             {
@@ -676,9 +697,9 @@ namespace IndxCloudApi.Controllers
             if (IndxCloudInternalApi.Manager.Load(dataSetName, ctx.OwnerKey, memoryStream, pm))
                 pm.WaitForCompletion();
             else
-                return BadRequest("LoadString failed, Load returned false");
+                return ApiProblems.LoadFailed("LoadString failed.");
             if (!pm.Succeeded)
-                return BadRequest(IndxCloudInternalApi.Manager.DescribeLoadFailure(dataSetName, ctx.OwnerKey, pm.ErrorMessage));
+                return ApiProblems.LoadFailed(IndxCloudInternalApi.Manager.DescribeLoadFailure(dataSetName, ctx.OwnerKey, pm.ErrorMessage));
             return Ok();
         }
 
@@ -691,10 +712,10 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (query == null)
-                return BadRequest("Search query body is required");
+                return ApiProblems.InvalidArgument("Search query body is required");
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("Search non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "Search", SystemState.Ready) is { } stateError)
                 return stateError;
             Indx.Api.Result res = IndxCloudInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey);
@@ -713,13 +734,13 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("non existing dataSetName");
+                return ApiProblems.DatasetNotFound(dataSetName);
             var df = matcher.DocumentFields;
             if (df == null)
-                return BadRequest("SearchController.SetFieldConfiguration invalid status");
+                return ApiProblems.InvalidArgument("SearchController.SetFieldConfiguration invalid status");
 
             // If any proposed change requires rebuilding the index AND the engine is serving
             // searches, route via the shadow-swap path so live searches are not blocked. The
@@ -730,7 +751,7 @@ namespace IndxCloudApi.Controllers
             {
                 foreach (var cfg in fields)
                     if (df.GetField(cfg.FieldName) == null)
-                        return BadRequest(
+                        return ApiProblems.InvalidArgument(
                             $"SearchController.SetFieldConfiguration non existing fieldname: {cfg.FieldName}");
 
                 try
@@ -740,18 +761,18 @@ namespace IndxCloudApi.Controllers
                 }
                 catch (ShadowBusyException ex)
                 {
-                    return StatusCode(StatusCodes.Status409Conflict, ex.Message);
+                    return ApiProblems.ShadowBusy(ex.Message);
                 }
                 catch (InvalidOperationException ex)
                 {
-                    return BadRequest(ex.Message);
+                    return ApiProblems.InvalidArgument(ex.Message);
                 }
             }
 
             // Inline: only query-time flags changed, or engine is not yet Ready.
             var failed = matcher.SetFieldConfiguration(fields);
             if (failed != null)
-                return BadRequest($"SearchController.SetFieldConfiguration non existing fieldname: {failed}");
+                return ApiProblems.InvalidArgument($"SearchController.SetFieldConfiguration non existing fieldname: {failed}");
             return Ok();
         }
 
@@ -790,7 +811,7 @@ namespace IndxCloudApi.Controllers
             if (ctx == null) return error!;
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return Array.Empty<FieldProxy>();
+                return ApiProblems.DatasetNotFound(dataSetName);
             return matcher.GetFieldConfiguration();
         }
 
@@ -819,12 +840,12 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
 
             var failure = IndxCloudInternalApi.Manager.SetKeyField(
                 dataSetName, ctx.OwnerKey, fieldName ?? "", out var needsReloadToReKey);
             if (failure != null)
-                return BadRequest(failure);
+                return ApiProblems.InvalidArgument(failure);
             return Ok(new { keyField = fieldName ?? "", needsReloadToReKey });
         }
 
@@ -837,14 +858,14 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             return RunHeavy(dataSetName, ctx.OwnerKey, "UpdateJsonRecords", engine =>
             {
                 foreach (var jsonData in jsonRecords)
                 {
                     var result = engine.UpdateJsonRecord(jsonData, out string error2);
                     if (!result)
-                        return BadRequest(error2);
+                        return ApiProblems.InvalidArgument(error2);
                 }
                 return Ok();
             }, SystemState.Ready);
@@ -859,15 +880,15 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("UpdateJsonRecord non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "UpdateJsonRecord", SystemState.Ready) is { } stateError)
                 return stateError;
             var result = matcher.UpdateJsonRecord(jsonData, out string error2);
             if (!result)
-                return BadRequest(error2);
+                return ApiProblems.InvalidArgument(error2);
             return Ok();
         }
 
@@ -880,15 +901,15 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("UpdateField non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "UpdateField", SystemState.Loaded, SystemState.Ready) is { } stateError)
                 return stateError;
             var result = matcher.UpdateField(documentKey, update.FieldName, UnwrapJsonElement(update.Value)!, out string error2);
             if (!result)
-                return BadRequest(error2);
+                return ApiProblems.InvalidArgument(error2);
             return Ok();
         }
 
@@ -901,12 +922,12 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             return RunHeavy(dataSetName, ctx.OwnerKey, "DeleteRecordsInFilter", engine =>
             {
                 var filter = engine.GetFilterFromKey(filterProxy.HashString);
                 if (filter == null)
-                    return BadRequest("DeleteRecordsInFilter invalid filter key");
+                    return ApiProblems.InvalidArgument("DeleteRecordsInFilter invalid filter key");
                 engine.LoadFilters(new[] { filter });
                 engine.DeleteRecordsInFilter(filter);
                 return Ok();
@@ -922,15 +943,15 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             return RunHeavy(dataSetName, ctx.OwnerKey, "UpdateFieldInFilter", engine =>
             {
                 var filter = engine.GetFilterFromKey(payload.Filter.HashString);
                 if (filter == null)
-                    return BadRequest("UpdateFieldInFilter invalid filter key");
+                    return ApiProblems.InvalidArgument("UpdateFieldInFilter invalid filter key");
                 var count = engine.UpdateFieldInFilter(filter, payload.FieldName, UnwrapJsonElement(payload.Value)!, out string error2);
                 if (count == 0 && !string.IsNullOrEmpty(error2))
-                    return BadRequest(error2);
+                    return ApiProblems.InvalidArgument(error2);
                 return Ok(count);
             }, SystemState.Ready);
         }
@@ -944,16 +965,16 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("DeleteFilter non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             var filter = matcher.GetFilterFromKey(filterProxy.HashString);
             if (filter == null)
-                return BadRequest("DeleteFilter invalid filter key");
+                return ApiProblems.InvalidArgument("DeleteFilter invalid filter key");
             var result = matcher.DeleteFilter(filter);
             if (!result)
-                return BadRequest("DeleteFilter failed, filter not found in cache");
+                return ApiProblems.InvalidArgument("DeleteFilter failed, filter not found in cache");
             return Ok();
         }
 
@@ -966,10 +987,10 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("DeleteAllFilters non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             matcher.DeleteAllFilters();
             return Ok();
         }
@@ -983,10 +1004,10 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("LoadAllFilters non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "LoadAllFilters", SystemState.Loaded, SystemState.Indexing, SystemState.Ready) is { } stateError)
                 return stateError;
             matcher.LoadAllFilters();
@@ -1002,10 +1023,10 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("GetNumberOfFilters non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             return Ok(matcher.NumberOfFilters);
         }
 
@@ -1018,15 +1039,15 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("Hibernate non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "Hibernate", SystemState.Ready) is { } stateError)
                 return stateError;
             var result = matcher.Hibernate(out string errorMessage);
             if (!result)
-                return BadRequest(errorMessage);
+                return ApiProblems.InvalidArgument(errorMessage);
             return Ok();
         }
 
@@ -1039,15 +1060,15 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("WakeUp non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "WakeUp", SystemState.Hibernated) is { } stateError)
                 return stateError;
             var result = matcher.WakeUp();
             if (!result)
-                return BadRequest("WakeUp failed");
+                return ApiProblems.InvalidArgument("WakeUp failed");
             return Ok();
         }
 
@@ -1061,12 +1082,12 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             // No lifecycle-state guard: SetEmbeddableFields is idempotent and may legitimately be
             // re-sent on an already-Ready dataset (it operates on DocumentFields, which the manager
             // null-checks). Adding a Created-only guard would wrongly reject that idempotent re-send.
             if (!IndxCloudInternalApi.Manager.SetEmbeddableFields(fields, dataSetName, ctx.OwnerKey))
-                return BadRequest("SetEmbeddableFields failed — dataset not found or unknown field name");
+                return ApiProblems.InvalidArgument("SetEmbeddableFields failed — dataset not found or unknown field name");
             return Ok();
         }
 
@@ -1080,12 +1101,12 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (query?.Vector == null || query.Vector.Length == 0)
-                return BadRequest("Vector must be a non-empty float array");
+                return ApiProblems.InvalidArgument("Vector must be a non-empty float array");
             if (string.IsNullOrEmpty(query.FieldName))
-                return BadRequest("FieldName is required");
+                return ApiProblems.InvalidArgument("FieldName is required");
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("VectorSearch non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "VectorSearch", SystemState.Ready) is { } stateError)
                 return stateError;
             return IndxCloudInternalApi.Manager.VectorSearch(query, dataSetName, ctx.OwnerKey);
@@ -1101,12 +1122,12 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (query?.Vector == null || query.Vector.Length == 0)
-                return BadRequest("Vector must be a non-empty float array");
+                return ApiProblems.InvalidArgument("Vector must be a non-empty float array");
             if (string.IsNullOrEmpty(query.EmbeddingField))
-                return BadRequest("EmbeddingField is required");
+                return ApiProblems.InvalidArgument("EmbeddingField is required");
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("HybridSearch non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "HybridSearch", SystemState.Ready) is { } stateError)
                 return stateError;
             return IndxCloudInternalApi.Manager.HybridSearch(query, dataSetName, ctx.OwnerKey);
@@ -1119,8 +1140,10 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Resolves the team from the route and the JWT user id, enforcing membership and the
         /// requested permission level. On failure sets <paramref name="error"/> to the response
-        /// to return (401 if unauthenticated, 403 if not a member or insufficient role) and
-        /// returns null.
+        /// to return and returns null: 401 if unauthenticated, 404 teamNotFound when the team
+        /// does not exist OR the caller is not a member (identical on purpose — team names must
+        /// not be enumerable), 403 insufficientRole only when the caller IS a member but the
+        /// role is too low.
         /// </summary>
         private TeamContext? ResolveTeam(string teamName, out ActionResult? error, bool write = false, bool admin = false)
         {
@@ -1129,9 +1152,9 @@ namespace IndxCloudApi.Controllers
             if (string.IsNullOrEmpty(userId)) { error = Unauthorized(); return null; }
 
             var ctx = resolver.Resolve(teamName, userId);
-            if (ctx == null) { error = StatusCode(StatusCodes.Status403Forbidden, "Not a member of this team, or team does not exist"); return null; }
-            if (admin && !TeamRoles.CanAdmin(ctx.Role)) { error = StatusCode(StatusCodes.Status403Forbidden, "Team Admin role required"); return null; }
-            if (write && !TeamRoles.CanWrite(ctx.Role)) { error = StatusCode(StatusCodes.Status403Forbidden, "Team Editor role required"); return null; }
+            if (ctx == null) { error = ApiProblems.TeamNotFound(teamName); return null; }
+            if (admin && !TeamRoles.CanAdmin(ctx.Role)) { error = ApiProblems.InsufficientRole("Admin"); return null; }
+            if (write && !TeamRoles.CanWrite(ctx.Role)) { error = ApiProblems.InsufficientRole("Editor"); return null; }
             return ctx;
         }
 
@@ -1149,7 +1172,7 @@ namespace IndxCloudApi.Controllers
         {
             var engine = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, teamId);
             if (engine == null)
-                return BadRequest($"{operationName} non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             if (allowed.Length > 0 && RequireState(engine, operationName, allowed) is { } stateError)
                 return stateError;
             try
@@ -1158,11 +1181,11 @@ namespace IndxCloudApi.Controllers
             }
             catch (KeyNotFoundException)
             {
-                return BadRequest($"{operationName} non existing dataset name");
+                return ApiProblems.DatasetNotFound(dataSetName);
             }
             catch (ShadowBusyException ex)
             {
-                return StatusCode(StatusCodes.Status409Conflict, ex.Message);
+                return ApiProblems.ShadowBusy(ex.Message);
             }
         }
 
@@ -1187,6 +1210,7 @@ namespace IndxCloudApi.Controllers
                 Detail = $"{operation} requires the dataset to be {string.Join("/", allowed)}; " +
                          $"it is currently {state}. {StateGuidance(state, status)}"
             };
+            problem.Extensions["code"] = "invalidState";
             problem.Extensions["operation"] = operation;
             problem.Extensions["currentState"] = state.ToString();
             problem.Extensions["allowedStates"] = allowed.Select(s => s.ToString()).ToArray();
@@ -1195,7 +1219,13 @@ namespace IndxCloudApi.Controllers
                 problem.Extensions["errorMessage"] = status.ErrorMessage;
             if (retryable)
                 Response.Headers["Retry-After"] = "2";
-            return Conflict(problem);
+            // application/problem+json, matching every other error in the API
+            // (Conflict(object) would serve it as plain application/json).
+            return new ObjectResult(problem)
+            {
+                StatusCode = StatusCodes.Status409Conflict,
+                ContentTypes = { "application/problem+json" }
+            };
         }
 
         /// <summary>Per-state, operation-independent guidance shown in the 409 body.</summary>
@@ -1216,18 +1246,18 @@ namespace IndxCloudApi.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
-                return BadRequest("invalid dataSetName");
+                return ApiProblems.InvalidDatasetName(dataSetName);
             var matcher = IndxCloudInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
-                return BadRequest("non existing dataSetName");
+                return ApiProblems.DatasetNotFound(dataSetName);
             var df = matcher.DocumentFields;
             if (df == null)
-                return BadRequest("invalid status");
+                return ApiProblems.InvalidArgument("invalid status");
             foreach (var name in fieldNames)
             {
                 var f = df.GetField(name);
                 if (f == null)
-                    return BadRequest($"non existing fieldname: {name}");
+                    return ApiProblems.InvalidArgument($"non existing fieldname: {name}");
                 apply(f, name);
             }
             return Ok();

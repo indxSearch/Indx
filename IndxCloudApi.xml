@@ -352,8 +352,10 @@
             <summary>
             Resolves the team from the route and the JWT user id, enforcing membership and the
             requested permission level. On failure sets <paramref name="error"/> to the response
-            to return (401 if unauthenticated, 403 if not a member or insufficient role) and
-            returns null.
+            to return and returns null: 401 if unauthenticated, 404 teamNotFound when the team
+            does not exist OR the caller is not a member (identical on purpose — team names must
+            not be enumerable), 403 insufficientRole only when the caller IS a member but the
+            role is too low.
             </summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.RunHeavy(System.String,System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,Microsoft.AspNetCore.Mvc.ActionResult},Indx.Api.SystemState[])">
@@ -623,6 +625,16 @@
         </member>
         <member name="P:IndxCloudApi.Models.CloudSystemStatus.ShadowBuildStartedUtc">
             <summary>UTC timestamp at which the in-progress shadow build started, or null if none is active.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Models.DataSetNotFoundException">
+            <summary>
+            Thrown by internal operations that address a dataset which does not exist
+            (neither live in memory nor persisted). The controller maps this to
+            HTTP 404 with error code <c>datasetNotFound</c>.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.DataSetNotFoundException.#ctor(System.String)">
+            <summary>Creates the exception with a message naming the missing dataset.</summary>
         </member>
         <member name="T:IndxCloudApi.Models.IndxCloudInternalApi">
             <summary>
@@ -1047,6 +1059,29 @@
         </member>
         <member name="M:IndxCloudApi.Services.ActiveTeamState.Switch(System.Guid)">
             <summary>Switch the active team (must be one the user belongs to).</summary>
+        </member>
+        <member name="T:IndxCloudApi.Services.ApiProblems">
+            <summary>
+            The API's single error-response vocabulary: every error is an
+            RFC 9457 <see cref="T:Microsoft.AspNetCore.Mvc.ProblemDetails"/> served as
+            <c>application/problem+json</c>, carrying a machine-readable
+            <c>code</c> extension so clients never have to parse English prose.
+            Status-code semantics:
+            <list type="bullet">
+            <item><c>404</c> — the addressed resource does not exist: dataset,
+              document, or team (a team you are not a member of is reported
+              identically to one that does not exist, so team names cannot be
+              enumerated).</item>
+            <item><c>403</c> — you are a member, but your team role is too low.</item>
+            <item><c>400</c> — the request itself is invalid (syntax, arguments,
+              unusable payload).</item>
+            <item><c>409</c> — the request is valid but the dataset's current
+              state cannot serve it (lifecycle guard, concurrent shadow build).</item>
+            </list>
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.ApiProblems.Problem(System.Int32,System.String,System.String,System.String)">
+            <summary>Builds a ProblemDetails response with the given status and machine-readable code.</summary>
         </member>
         <member name="T:IndxCloudApi.Services.AzureCommunicationEmailSender">
             <summary>
