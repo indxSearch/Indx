@@ -28,9 +28,16 @@ namespace IndxCloudApi.Controllers
     [ApiController]
     [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     [EnableCors("NewPolicy")]
-    // Calling a dataset operation in a state it cannot serve (e.g. Search before Ready) returns
-    // 409 Conflict with a ProblemDetails body (currentState, allowedStates, retryable + Retry-After
-    // header when retryable). Declared here so it appears in the OpenAPI spec for every endpoint.
+    // Every error is an RFC 9457 ProblemDetails (application/problem+json) carrying a
+    // machine-readable "code" extension — declared here so the OpenAPI spec is honest for every
+    // endpoint: 400 (invalidArgument / invalidDatasetName / loadFailed / operationFailed),
+    // 403 (insufficientRole), 404 (datasetNotFound / documentNotFound / teamNotFound), and
+    // 409 (invalidState with currentState/allowedStates/retryable + Retry-After header when
+    // retryable, or shadowBusy). 401 comes body-less from the JWT middleware.
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status409Conflict)]
     public class SearchController(TeamContextResolver resolver, TeamService teams, BoostRuleStore boostStore, IEditionService edition) : Controller
     {

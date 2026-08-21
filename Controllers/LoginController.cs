@@ -18,6 +18,10 @@ namespace IndxCloudApi.Controllers
     /// </summary>
     [Route("api/[controller]")]
     [ApiController]
+    // Failed logins answer with RFC 9457 ProblemDetails carrying a "code" extension:
+    // 401 invalidCredentials / userNotFound, 400 invalidArgument / passwordChangeFailed.
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
     public class LoginController : ControllerBase
     {
         private readonly SignInManager<ApplicationUser> _signInManager;
