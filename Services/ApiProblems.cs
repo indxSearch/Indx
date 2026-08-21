@@ -47,6 +47,11 @@ namespace IndxCloudApi.Services
             Problem(StatusCodes.Status404NotFound, "documentNotFound", "Document not found",
                 $"No document with key {documentKey} exists in the dataset.");
 
+        /// <summary>Batch variant: names every missing key, so the caller can fix the whole batch in one round-trip.</summary>
+        public static ObjectResult DocumentsNotFound(IReadOnlyCollection<long> documentKeys) =>
+            Problem(StatusCodes.Status404NotFound, "documentNotFound", "Documents not found",
+                $"No documents with keys [{string.Join(", ", documentKeys)}] exist in the dataset. The batch was not applied.");
+
         public static ObjectResult TeamNotFound(string teamName) =>
             Problem(StatusCodes.Status404NotFound, "teamNotFound", "Team not found",
                 $"Team '{teamName}' does not exist, or you are not a member of it.");

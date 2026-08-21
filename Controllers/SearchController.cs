@@ -56,11 +56,11 @@ namespace IndxCloudApi.Controllers
             matcher.Init(HttpContext.Request.Body, pm);
             pm.WaitForCompletion();
             if (!pm.Succeeded)
-                return ApiProblems.InvalidArgument("Analyze failed, likely invalid json data");
+                return ApiProblems.LoadFailed("Analyze failed - the request body is not parseable JSON.");
             if (matcher.DocumentFields == null)
-                return ApiProblems.InvalidArgument("Analyze failed, DocumentFields==null");
+                return ApiProblems.OperationFailed("Analyze did not produce a field set.");
             if (matcher.Persistence == null)
-                return ApiProblems.InvalidArgument("Analyze failed, Persistence==null");
+                return ApiProblems.OperationFailed("The dataset has no storage attached, so the analyzed fields could not be saved.");
             matcher.Persistence.SaveDocumentFields(matcher.DocumentFields.GetSerialized());
             return Ok(state);
         }
@@ -88,7 +88,7 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.InvalidArgument(error2);
             matcher.SetDocumentFieldsInternal(df);
             if (matcher.Persistence == null)
-                return ApiProblems.InvalidArgument("Analyze failed, Persistence==null");
+                return ApiProblems.OperationFailed("The dataset has no storage attached, so the analyzed fields could not be saved.");
             matcher.Persistence.SaveDocumentFields(df.GetSerialized());
             return state;
         }
@@ -137,7 +137,7 @@ namespace IndxCloudApi.Controllers
                 return stateError;
             var filter = matcher.GetFilterFromKey(boost.FilterProxy.HashString);
             if (filter == null)
-                return ApiProblems.InvalidArgument("invalid filter arguments");
+                return ApiProblems.InvalidArgument("Unknown filter key. Create the filter first, then reference it by the returned key.");
             matcher.CreateBoost(filter, boost.BoostStrength);
             return Ok(boost);
         }
@@ -329,6 +329,11 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.InvalidDatasetName(dataSetName);
             return RunHeavy(dataSetName, ctx.OwnerKey, "DeleteJsonRecords", engine =>
             {
+                // All-or-nothing: validate every key before deleting anything, so one bad
+                // key can't leave the batch half-deleted.
+                var missing = documentKeys.Where(k => string.IsNullOrEmpty(engine.GetJsonDataOfKey(k))).ToArray();
+                if (missing.Length > 0)
+                    return ApiProblems.DocumentsNotFound(missing);
                 foreach (var documentKey in documentKeys)
                 {
                     var result = engine.DeleteJsonRecord(documentKey);
@@ -531,23 +536,31 @@ namespace IndxCloudApi.Controllers
                 {
                     return ApiProblems.ShadowBusy(ex.Message);
                 }
+                catch (InvalidOperationException ex)
+                {
+                    // Same mapping as SetFieldConfiguration's shadow path — a failed shadow
+                    // build is a clean 400, not an unhandled 500.
+                    return ApiProblems.OperationFailed(ex.Message);
+                }
             }
             else if (!IndxCloudInternalApi.Manager.DoIndex(dataSetName, ctx.OwnerKey))
             {
-                return ApiProblems.InvalidArgument("IndexDataSet failed, DoIndex returned false");
+                return ApiProblems.OperationFailed("Indexing could not be started.");
             }
 
             var status = IndxCloudInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
             if (status == null)
-                return ApiProblems.InvalidArgument("IndexDataSet failed, status==null");
+                return ApiProblems.OperationFailed("Indexing did not report a status.");
             return status;
         }
 
         /// <summary>
-        /// Inserts one single Json record.
+        /// Inserts one single Json record. The route key must match the document's key field
+        /// (the engine keys documents from the body, so a disagreeing route would otherwise
+        /// silently insert under a different key than the URL claims).
         /// </summary>
         [HttpPost(DataSetRoute + "/insert/{documentKey:long}")]
-        public ActionResult InsertJsonRecord(string teamName, string dataSetName, [FromBody] string jsonData)
+        public ActionResult InsertJsonRecord(string teamName, string dataSetName, long documentKey, [FromBody] string jsonData)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
@@ -558,6 +571,9 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "InsertJsonRecord", SystemState.Created, SystemState.Loaded, SystemState.Ready) is { } stateError)
                 return stateError;
+            if (TryReadBodyKey(matcher, jsonData, out long bodyKey) && bodyKey != documentKey)
+                return ApiProblems.InvalidArgument(
+                    $"The route addresses document {documentKey} but the body's key field says {bodyKey}. Nothing was inserted.");
             var result = matcher.InsertJsonRecord(jsonData, out string error2);
             if (!result)
                 return ApiProblems.InvalidArgument(error2);
@@ -740,7 +756,7 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             var df = matcher.DocumentFields;
             if (df == null)
-                return ApiProblems.InvalidArgument("SearchController.SetFieldConfiguration invalid status");
+                return ApiProblems.InvalidArgument("The dataset has not been analyzed yet, so there are no fields to configure.");
 
             // If any proposed change requires rebuilding the index AND the engine is serving
             // searches, route via the shadow-swap path so live searches are not blocked. The
@@ -752,7 +768,7 @@ namespace IndxCloudApi.Controllers
                 foreach (var cfg in fields)
                     if (df.GetField(cfg.FieldName) == null)
                         return ApiProblems.InvalidArgument(
-                            $"SearchController.SetFieldConfiguration non existing fieldname: {cfg.FieldName}");
+                            $"Field '{cfg.FieldName}' does not exist in this dataset.");
 
                 try
                 {
@@ -765,14 +781,14 @@ namespace IndxCloudApi.Controllers
                 }
                 catch (InvalidOperationException ex)
                 {
-                    return ApiProblems.InvalidArgument(ex.Message);
+                    return ApiProblems.OperationFailed(ex.Message);
                 }
             }
 
             // Inline: only query-time flags changed, or engine is not yet Ready.
             var failed = matcher.SetFieldConfiguration(fields);
             if (failed != null)
-                return ApiProblems.InvalidArgument($"SearchController.SetFieldConfiguration non existing fieldname: {failed}");
+                return ApiProblems.InvalidArgument($"Field '{failed}' does not exist in this dataset.");
             return Ok();
         }
 
@@ -861,21 +877,25 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.InvalidDatasetName(dataSetName);
             return RunHeavy(dataSetName, ctx.OwnerKey, "UpdateJsonRecords", engine =>
             {
-                foreach (var jsonData in jsonRecords)
-                {
-                    var result = engine.UpdateJsonRecord(jsonData, out string error2);
-                    if (!result)
-                        return ApiProblems.InvalidArgument(error2);
-                }
+                // The engine's batch update validates every record's key before mutating
+                // anything, so a bad record rejects the whole batch instead of leaving it
+                // half-applied (the old per-record loop aborted mid-way). Records whose key
+                // matches no live document are skipped, by the engine's batch contract.
+                var result = engine.UpdateJsonRecords(jsonRecords, null, out string error2);
+                if (!result)
+                    return ApiProblems.InvalidArgument(error2);
                 return Ok();
             }, SystemState.Ready);
         }
 
         /// <summary>
-        /// Updates one single Document.
+        /// Updates one single Document. The route key must address an existing document and
+        /// match the document's key field (the engine keys documents from the body, so a
+        /// disagreeing route would otherwise silently update a different document than the
+        /// URL claims).
         /// </summary>
         [HttpPut(DataSetRoute + "/update/{documentKey:long}")]
-        public ActionResult UpdateJsonRecord(string teamName, string dataSetName, [FromBody] string jsonData)
+        public ActionResult UpdateJsonRecord(string teamName, string dataSetName, long documentKey, [FromBody] string jsonData)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
@@ -886,9 +906,20 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "UpdateJsonRecord", SystemState.Ready) is { } stateError)
                 return stateError;
+            if (string.IsNullOrEmpty(matcher.GetJsonDataOfKey(documentKey)))
+                return ApiProblems.DocumentNotFound(documentKey);
+            if (TryReadBodyKey(matcher, jsonData, out long bodyKey) && bodyKey != documentKey)
+                return ApiProblems.InvalidArgument(
+                    $"The route addresses document {documentKey} but the body's key field says {bodyKey}. Nothing was updated.");
             var result = matcher.UpdateJsonRecord(jsonData, out string error2);
             if (!result)
+            {
+                // The engine skips records whose key matches no live document; for a single
+                // update that means the addressed document is gone (deleted tombstone).
+                if (error2.EndsWith("no valid records to update"))
+                    return ApiProblems.DocumentNotFound(documentKey);
                 return ApiProblems.InvalidArgument(error2);
+            }
             return Ok();
         }
 
@@ -927,7 +958,7 @@ namespace IndxCloudApi.Controllers
             {
                 var filter = engine.GetFilterFromKey(filterProxy.HashString);
                 if (filter == null)
-                    return ApiProblems.InvalidArgument("DeleteRecordsInFilter invalid filter key");
+                    return ApiProblems.InvalidArgument("Unknown filter key. Create the filter first, then reference it by the returned key.");
                 engine.LoadFilters(new[] { filter });
                 engine.DeleteRecordsInFilter(filter);
                 return Ok();
@@ -948,7 +979,7 @@ namespace IndxCloudApi.Controllers
             {
                 var filter = engine.GetFilterFromKey(payload.Filter.HashString);
                 if (filter == null)
-                    return ApiProblems.InvalidArgument("UpdateFieldInFilter invalid filter key");
+                    return ApiProblems.InvalidArgument("Unknown filter key. Create the filter first, then reference it by the returned key.");
                 var count = engine.UpdateFieldInFilter(filter, payload.FieldName, UnwrapJsonElement(payload.Value)!, out string error2);
                 if (count == 0 && !string.IsNullOrEmpty(error2))
                     return ApiProblems.InvalidArgument(error2);
@@ -971,10 +1002,10 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             var filter = matcher.GetFilterFromKey(filterProxy.HashString);
             if (filter == null)
-                return ApiProblems.InvalidArgument("DeleteFilter invalid filter key");
+                return ApiProblems.InvalidArgument("Unknown filter key. Create the filter first, then reference it by the returned key.");
             var result = matcher.DeleteFilter(filter);
             if (!result)
-                return ApiProblems.InvalidArgument("DeleteFilter failed, filter not found in cache");
+                return ApiProblems.InvalidArgument("The filter is not registered on this dataset (it may already have been deleted).");
             return Ok();
         }
 
@@ -1068,7 +1099,7 @@ namespace IndxCloudApi.Controllers
                 return stateError;
             var result = matcher.WakeUp();
             if (!result)
-                return ApiProblems.InvalidArgument("WakeUp failed");
+                return ApiProblems.OperationFailed("WakeUp failed - the dataset could not be restored from storage.");
             return Ok();
         }
 
@@ -1252,15 +1283,46 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             var df = matcher.DocumentFields;
             if (df == null)
-                return ApiProblems.InvalidArgument("invalid status");
+                return ApiProblems.InvalidArgument("The dataset has not been analyzed yet, so there are no fields to configure.");
             foreach (var name in fieldNames)
             {
                 var f = df.GetField(name);
                 if (f == null)
-                    return ApiProblems.InvalidArgument($"non existing fieldname: {name}");
+                    return ApiProblems.InvalidArgument($"Field '{name}' does not exist in this dataset.");
                 apply(f, name);
             }
             return Ok();
+        }
+
+        /// <summary>
+        /// Reads the dataset's key-field value out of a single JSON document body, so the
+        /// single-record routes can honor their {documentKey} instead of silently ignoring it.
+        /// Returns false when the body carries no readable key — the engine then reports its
+        /// own, more specific error.
+        /// </summary>
+        private static bool TryReadBodyKey(ICloudSearchEngine engine, string jsonData, out long key)
+        {
+            key = 0;
+            var keyField = engine.DocumentFields?.NameOfDocumentKeyField;
+            if (string.IsNullOrEmpty(keyField) || string.IsNullOrEmpty(jsonData))
+                return false;
+            try
+            {
+                using var doc = JsonDocument.Parse(jsonData);
+                if (doc.RootElement.ValueKind != JsonValueKind.Object
+                    || !doc.RootElement.TryGetProperty(keyField, out var el))
+                    return false;
+                return el.ValueKind switch
+                {
+                    JsonValueKind.Number => el.TryGetInt64(out key),
+                    JsonValueKind.String => long.TryParse(el.GetString(), out key),
+                    _ => false
+                };
+            }
+            catch (JsonException)
+            {
+                return false;
+            }
         }
 
         /// <summary>

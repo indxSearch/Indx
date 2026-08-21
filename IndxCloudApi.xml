@@ -194,9 +194,11 @@
             IndexDataSet will start indexing of the loaded documents.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.InsertJsonRecord(System.String,System.String,System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.InsertJsonRecord(System.String,System.String,System.Int64,System.String)">
             <summary>
-            Inserts one single Json record.
+            Inserts one single Json record. The route key must match the document's key field
+            (the engine keys documents from the body, so a disagreeing route would otherwise
+            silently insert under a different key than the URL claims).
             </summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.InsertJsonRecords(System.String,System.String,System.String[])">
@@ -282,9 +284,12 @@
             Updates existing JSON records in the dataset.
             </summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateJsonRecord(System.String,System.String,System.String)">
+        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateJsonRecord(System.String,System.String,System.Int64,System.String)">
             <summary>
-            Updates one single Document.
+            Updates one single Document. The route key must address an existing document and
+            match the document's key field (the engine keys documents from the body, so a
+            disagreeing route would otherwise silently update a different document than the
+            URL claims).
             </summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.UpdateField(System.String,System.String,System.Int64,Indx.CloudApi.UpdateFieldProxy)">
@@ -378,6 +383,14 @@
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.SetFieldFlag(System.String,System.String,System.Collections.Generic.IEnumerable{System.String},System.Action{Indx.Api.Field,System.String})">
             <summary>Shared body for the legacy Set*Fields helpers — resolve, validate, mutate each field.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.TryReadBodyKey(Indx.Api.ICloudSearchEngine,System.String,System.Int64@)">
+            <summary>
+            Reads the dataset's key-field value out of a single JSON document body, so the
+            single-record routes can honor their {documentKey} instead of silently ignoring it.
+            Returns false when the body carries no readable key — the engine then reports its
+            own, more specific error.
+            </summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.UnwrapJsonElement(System.Object)">
             <summary>
@@ -1082,6 +1095,9 @@
         </member>
         <member name="M:IndxCloudApi.Services.ApiProblems.Problem(System.Int32,System.String,System.String,System.String)">
             <summary>Builds a ProblemDetails response with the given status and machine-readable code.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Services.ApiProblems.DocumentsNotFound(System.Collections.Generic.IReadOnlyCollection{System.Int64})">
+            <summary>Batch variant: names every missing key, so the caller can fix the whole batch in one round-trip.</summary>
         </member>
         <member name="T:IndxCloudApi.Services.AzureCommunicationEmailSender">
             <summary>
