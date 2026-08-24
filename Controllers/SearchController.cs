@@ -231,6 +231,10 @@ namespace IndxCloudApi.Controllers
 
         /// <summary>
         /// CreateOrOpen will create a data set with the specified configuration profile.
+        /// Idempotent: if the data set already exists it is left as-is — including its
+        /// original configuration profile, which is fixed at creation.
+        /// (Undefined profile values are rejected with a validation 400 by MVC's
+        /// enum model binding — pinned by ErrorContractTests.)
         /// </summary>
         [HttpPut(DataSetRoute + "/CreateOrOpen/{configuration}")]
         public IActionResult CreateOrOpen(string teamName, string dataSetName, ConfigurationProfile configuration)
@@ -239,7 +243,7 @@ namespace IndxCloudApi.Controllers
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
-            var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, dataSetName, ctx.OwnerKey);
+            using var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, dataSetName, ctx.OwnerKey);
             if (!persistence.DataSetExists())
                 persistence.CreateOrOpenDataSet((int)configuration);
             return Ok();

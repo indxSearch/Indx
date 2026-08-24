@@ -105,6 +105,10 @@
         <member name="M:IndxCloudApi.Controllers.SearchController.CreateOrOpen(System.String,System.String,Indx.Api.ConfigurationProfile)">
             <summary>
             CreateOrOpen will create a data set with the specified configuration profile.
+            Idempotent: if the data set already exists it is left as-is — including its
+            original configuration profile, which is fixed at creation.
+            (Undefined profile values are rejected with a validation 400 by MVC's
+            enum model binding — pinned by ErrorContractTests.)
             </summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.CreateRangeFilter(System.String,System.String,Indx.CloudApi.RangeFilterProxy)">
