@@ -16,7 +16,7 @@ namespace IndxCloudApi.Controllers
     /// <summary>
     /// Endpoint to provide JWT bearer token based authentication
     /// </summary>
-    [Route("api/[controller]")]
+    [Route("api/login")]
     [ApiController]
     // Failed logins answer with RFC 9457 ProblemDetails carrying a "code" extension:
     // 401 invalidCredentials / userNotFound, 400 invalidArgument / passwordChangeFailed.
@@ -49,7 +49,7 @@ namespace IndxCloudApi.Controllers
         /// </summary>
         /// <returns>JWT token if user is authenticated</returns>
         [Authorize]
-        [HttpGet("GetToken")]
+        [HttpGet("token")]
         public async Task<IActionResult> GetTokenAsync()
         {
             var user = await _userManager.GetUserAsync(User);
@@ -109,7 +109,7 @@ namespace IndxCloudApi.Controllers
         /// <param name="request">Current and new password</param>
         /// <returns>Ok on success, BadRequest with Identity errors otherwise.</returns>
         [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
-        [HttpPost("/api/changePassword")]
+        [HttpPost("/api/change-password")]
         public async Task<IActionResult> ChangePasswordAsync([FromBody] ChangePasswordRequest request)
         {
             if (request == null
@@ -138,7 +138,18 @@ namespace IndxCloudApi.Controllers
             return Ok(new { changed = true });
         }
 
-        private string GenerateJasonWebToken(LoginInfo info, ApplicationUser user)  
+        /// <summary>Legacy route for <see cref="GetTokenAsync"/>.</summary>
+        [Authorize]
+        [HttpGet("GetToken"), ApiExplorerSettings(IgnoreApi = true)]
+        public Task<IActionResult> GetTokenLegacyAsync() => GetTokenAsync();
+
+        /// <summary>Legacy route for <see cref="ChangePasswordAsync"/>.</summary>
+        [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+        [HttpPost("/api/changePassword"), ApiExplorerSettings(IgnoreApi = true)]
+        public Task<IActionResult> ChangePasswordLegacyAsync([FromBody] ChangePasswordRequest request)
+            => ChangePasswordAsync(request);
+
+        private string GenerateJasonWebToken(LoginInfo info, ApplicationUser user)
         {
             var jwtKey = _config["Jwt:Key"];
             if (string.IsNullOrEmpty(jwtKey))

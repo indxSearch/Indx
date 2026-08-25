@@ -42,6 +42,12 @@
             <param name="request">Current and new password</param>
             <returns>Ok on success, BadRequest with Identity errors otherwise.</returns>
         </member>
+        <member name="M:IndxCloudApi.Controllers.LoginController.GetTokenLegacyAsync">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.LoginController.GetTokenAsync"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.LoginController.ChangePasswordLegacyAsync(IndxCloudApi.Models.ChangePasswordRequest)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.LoginController.ChangePasswordAsync(IndxCloudApi.Models.ChangePasswordRequest)"/>.</summary>
+        </member>
         <member name="T:IndxCloudApi.Controllers.SearchController">
             <summary>
             API endpoints for managing, analyzing, indexing, and searching JSON datasets. Datasets are
@@ -97,16 +103,11 @@
         <member name="M:IndxCloudApi.Controllers.SearchController.DeleteBoostRules(System.String,System.String)">
             <summary>Clears all boost rules for the dataset.</summary>
         </member>
-        <member name="M:IndxCloudApi.Controllers.SearchController.CreateOrOpen(System.String,System.String)">
-            <summary>
-            CreateOrOpen will create a data set. Uses default configuration.
-            </summary>
-        </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.CreateOrOpen(System.String,System.String,Indx.Api.ConfigurationProfile)">
             <summary>
-            CreateOrOpen will create a data set with the specified configuration profile.
-            Idempotent: if the data set already exists it is left as-is — including its
-            original configuration profile, which is fixed at creation.
+            Creates the data set with the given configuration profile (201). Idempotent:
+            if the data set already exists it is left as-is — including its original
+            configuration profile, which is fixed at creation — and answers 200.
             (Undefined profile values are rejected with a validation 400 by MVC's
             enum model binding — pinned by ErrorContractTests.)
             </summary>
@@ -249,19 +250,19 @@
             </summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.SetSearchableFields(System.String,System.String,System.ValueTuple{System.String,System.Single}[])">
-            <summary>Sets the Searchable property and weight on the specified fields (legacy helper).</summary>
+            <summary>Sets the Searchable property and weight on the specified fields.</summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.SetFilterableFields(System.String,System.String,System.String[])">
-            <summary>Sets the Filterable property on the specified fields (legacy helper).</summary>
+            <summary>Sets the Filterable property on the specified fields.</summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.SetFacetableFields(System.String,System.String,System.String[])">
-            <summary>Sets the Facetable property on the specified fields (legacy helper).</summary>
+            <summary>Sets the Facetable property on the specified fields.</summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.SetSortableFields(System.String,System.String,System.String[])">
-            <summary>Sets the Sortable property on the specified fields (legacy helper).</summary>
+            <summary>Sets the Sortable property on the specified fields.</summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.SetWordIndexingFields(System.String,System.String,System.String[])">
-            <summary>Sets the WordIndexing property on the specified fields (legacy helper).</summary>
+            <summary>Sets the WordIndexing property on the specified fields.</summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.GetFieldConfiguration(System.String,System.String)">
             <summary>
@@ -356,6 +357,153 @@
             <summary>
             Combines text search with embedding nearest-neighbour search and blends scores.
             </summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.LegacyOk(Microsoft.AspNetCore.Mvc.IActionResult)">
+            <summary>Translates a modern success result back to the legacy always-200 contract.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.LegacyCount(Microsoft.AspNetCore.Mvc.ActionResult{IndxCloudApi.Models.CountResponse})">
+            <summary>Unwraps the modern <see cref="T:IndxCloudApi.Models.CountResponse"/> envelope back to the legacy naked number.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.AnalyzeStreamLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.AnalyzeStreamAsync(System.String,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.AnalyzeStringLegacy(System.String,System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.AnalyzeString(System.String,System.String,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.CombineFiltersLegacy(System.String,System.String,Indx.CloudApi.CombinedFilterProxy)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.CombineFilters(System.String,System.String,Indx.CloudApi.CombinedFilterProxy)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.CreateBoostLegacy(System.String,System.String,Indx.CloudApi.BoostProxy)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.CreateBoost(System.String,System.String,Indx.CloudApi.BoostProxy)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.CreateOrOpenLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.CreateOrOpen(System.String,System.String,Indx.Api.ConfigurationProfile)"/> (default profile).</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.CreateOrOpenLegacy(System.String,System.String,Indx.Api.ConfigurationProfile)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.CreateOrOpen(System.String,System.String,Indx.Api.ConfigurationProfile)"/> with the profile in the route.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.CreateRangeFilterLegacy(System.String,System.String,Indx.CloudApi.RangeFilterProxy)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.CreateRangeFilter(System.String,System.String,Indx.CloudApi.RangeFilterProxy)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.CreateValueFilterLegacy(System.String,System.String,Indx.CloudApi.ValueFilterProxy)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.CreateValueFilter(System.String,System.String,Indx.CloudApi.ValueFilterProxy)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetAllFieldsLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.GetAllFields(System.String,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetFacetableFieldsLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.GetFacetableFields(System.String,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetFilterableFieldsLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.GetFilterableFields(System.String,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetSearchableFieldsLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.GetSearchableFields(System.String,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetSortableFieldsLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.GetSortableFields(System.String,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetWordIndexingFieldsLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.GetWordIndexingFields(System.String,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetJsonLegacy(System.String,System.String,System.Int64[])">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.GetJson(System.String,System.String,System.Int64[])"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetNumberOfJsonRecordsInDbLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.GetNumberOfJsonRecordsInDb(System.String,System.String)"/> — naked number body.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetStatusLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.GetStatus(System.String,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.IndexDataSetLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.IndexDataSet(System.String,System.String)"/> — GET, and 200 with the status body.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.InsertJsonRecordLegacy(System.String,System.String,System.Int64,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.InsertJsonRecord(System.String,System.String,System.Int64,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.InsertJsonRecordsLegacy(System.String,System.String,System.String[])">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.InsertJsonRecords(System.String,System.String,System.String[])"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.LoadFromDatabaseLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.LoadFromDatabaseAsync(System.String,System.String)"/> — GET.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.LoadStreamLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.LoadStreamAsync(System.String,System.String)"/> — PUT.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.ReplaceLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.Replace(System.String,System.String)"/> — PUT.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.LoadStringLegacy(System.String,System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.LoadString(System.String,System.String,System.String)"/> — PUT.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetFieldConfigurationLegacy(System.String,System.String,Indx.Api.FieldProxy[])">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.SetFieldConfiguration(System.String,System.String,Indx.Api.FieldProxy[])"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetSearchableFieldsLegacy(System.String,System.String,System.ValueTuple{System.String,System.Single}[])">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.SetSearchableFields(System.String,System.String,System.ValueTuple{System.String,System.Single}[])"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetFilterableFieldsLegacy(System.String,System.String,System.String[])">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.SetFilterableFields(System.String,System.String,System.String[])"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetFacetableFieldsLegacy(System.String,System.String,System.String[])">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.SetFacetableFields(System.String,System.String,System.String[])"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetSortableFieldsLegacy(System.String,System.String,System.String[])">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.SetSortableFields(System.String,System.String,System.String[])"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetWordIndexingFieldsLegacy(System.String,System.String,System.String[])">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.SetWordIndexingFields(System.String,System.String,System.String[])"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetEmbeddableFieldsLegacy(System.String,System.String,System.String[])">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.SetEmbeddableFields(System.String,System.String,System.String[])"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetFieldConfigurationLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.GetFieldConfiguration(System.String,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetKeyFieldLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.GetKeyField(System.String,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.SetKeyFieldLegacy(System.String,System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.SetKeyField(System.String,System.String,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateJsonRecordsLegacy(System.String,System.String,System.String[])">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.UpdateJsonRecords(System.String,System.String,System.String[])"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateJsonRecordLegacy(System.String,System.String,System.Int64,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.UpdateJsonRecord(System.String,System.String,System.Int64,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateFieldLegacy(System.String,System.String,System.Int64,Indx.CloudApi.UpdateFieldProxy)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.UpdateField(System.String,System.String,System.Int64,Indx.CloudApi.UpdateFieldProxy)"/> — PUT field/{key}.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteRecordsInFilterLegacy(System.String,System.String,Indx.CloudApi.FilterProxy)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.DeleteRecordsInFilter(System.String,System.String,Indx.CloudApi.FilterProxy)"/> — DELETE with body.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.UpdateFieldInFilterLegacy(System.String,System.String,Indx.CloudApi.FilterFieldUpdateProxy)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.UpdateFieldInFilter(System.String,System.String,Indx.CloudApi.FilterFieldUpdateProxy)"/> — naked count body.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteFilterLegacy(System.String,System.String,Indx.CloudApi.FilterProxy)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.DeleteFilter(System.String,System.String,Indx.CloudApi.FilterProxy)"/> — DELETE with body.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.DeleteAllFiltersLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.DeleteAllFilters(System.String,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.LoadAllFiltersLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.LoadAllFilters(System.String,System.String)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.GetNumberOfFiltersLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.GetNumberOfFilters(System.String,System.String)"/> — naked number body.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.HibernateLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.Hibernate(System.String,System.String)"/> — PUT.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.WakeUpLegacy(System.String,System.String)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.WakeUp(System.String,System.String)"/> — PUT.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.VectorSearchLegacy(System.String,System.String,Indx.CloudApi.VectorQueryProxy)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.VectorSearch(System.String,System.String,Indx.CloudApi.VectorQueryProxy)"/>.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Controllers.SearchController.HybridSearchLegacy(System.String,System.String,Indx.CloudApi.HybridQueryProxy)">
+            <summary>Legacy route for <see cref="M:IndxCloudApi.Controllers.SearchController.HybridSearch(System.String,System.String,Indx.CloudApi.HybridQueryProxy)"/>.</summary>
         </member>
         <member name="M:IndxCloudApi.Controllers.SearchController.ResolveTeam(System.String,Microsoft.AspNetCore.Mvc.ActionResult@,System.Boolean,System.Boolean)">
             <summary>
@@ -642,6 +790,20 @@
         </member>
         <member name="P:IndxCloudApi.Models.CloudSystemStatus.ShadowBuildStartedUtc">
             <summary>UTC timestamp at which the in-progress shadow build started, or null if none is active.</summary>
+        </member>
+        <member name="T:IndxCloudApi.Models.CountResponse">
+            <summary>
+            Envelope for count-valued responses on the modern API surface
+            (<c>{"count": n}</c>). The legacy route aliases unwrap it back to the
+            naked number those routes have always returned.
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Models.CountResponse.#ctor(System.Int32)">
+            <summary>
+            Envelope for count-valued responses on the modern API surface
+            (<c>{"count": n}</c>). The legacy route aliases unwrap it back to the
+            naked number those routes have always returned.
+            </summary>
         </member>
         <member name="T:IndxCloudApi.Models.DataSetNotFoundException">
             <summary>

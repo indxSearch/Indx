@@ -47,7 +47,7 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// As Analyze but handles a stream as input text.
         /// </summary>
-        [HttpPost(DataSetRoute + "/AnalyzeStreamAsync")]
+        [HttpPost(DataSetRoute + "/analyze")]
         public async Task<ActionResult<SystemStatus>> AnalyzeStreamAsync(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -77,7 +77,7 @@ namespace IndxCloudApi.Controllers
         /// a 400 error, it is sent as plain text.
         /// </summary>
         [RequestSizeLimit(2_000_000_000)]
-        [HttpPost(DataSetRoute + "/AnalyzeString")]
+        [HttpPost(DataSetRoute + "/analyze/text")]
         public ActionResult<SystemStatus> AnalyzeString(string teamName, string dataSetName, [FromBody] string jsonData)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -103,7 +103,7 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// CombineFilters will combine two filters using AND or OR operation.
         /// </summary>
-        [HttpPut(DataSetRoute + "/CombineFilters")]
+        [HttpPost(DataSetRoute + "/filters/combine")]
         public ActionResult<FilterProxy> CombineFilters(string teamName, string dataSetName, [FromBody] CombinedFilterProxy combineFilters)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -130,7 +130,7 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// CreateBoost will create a Boost setup which may be passed to any search.
         /// </summary>
-        [HttpPut(DataSetRoute + "/CreateBoost")]
+        [HttpPost(DataSetRoute + "/boosts/from-filter")]
         public ActionResult<BoostProxy> CreateBoost(string teamName, string dataSetName, [FromBody] BoostProxy boost)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -169,6 +169,7 @@ namespace IndxCloudApi.Controllers
         /// match or a numeric range (not both).
         /// </summary>
         [HttpPut(DataSetRoute + "/boosts")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult SetBoostRules(string teamName, string dataSetName, [FromBody] BoostRule[] rules)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -205,7 +206,7 @@ namespace IndxCloudApi.Controllers
                 foreach (var rule in rules) { rule.ActiveFrom = null; rule.ActiveUntil = null; }
 
             boostStore.Save(ctx.OwnerKey, dataSetName, rules);
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>Clears all boost rules for the dataset.</summary>
@@ -221,38 +222,33 @@ namespace IndxCloudApi.Controllers
         }
 
         /// <summary>
-        /// CreateOrOpen will create a data set. Uses default configuration.
-        /// </summary>
-        [HttpPut(DataSetRoute + "/CreateOrOpen")]
-        public IActionResult CreateOrOpen(string teamName, string dataSetName)
-        {
-            return CreateOrOpen(teamName, dataSetName, ConfigurationProfile.Production);
-        }
-
-        /// <summary>
-        /// CreateOrOpen will create a data set with the specified configuration profile.
-        /// Idempotent: if the data set already exists it is left as-is — including its
-        /// original configuration profile, which is fixed at creation.
+        /// Creates the data set with the given configuration profile (201). Idempotent:
+        /// if the data set already exists it is left as-is — including its original
+        /// configuration profile, which is fixed at creation — and answers 200.
         /// (Undefined profile values are rejected with a validation 400 by MVC's
         /// enum model binding — pinned by ErrorContractTests.)
         /// </summary>
-        [HttpPut(DataSetRoute + "/CreateOrOpen/{configuration}")]
-        public IActionResult CreateOrOpen(string teamName, string dataSetName, ConfigurationProfile configuration)
+        [HttpPut(DataSetRoute)]
+        [ProducesResponseType(StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public IActionResult CreateOrOpen(string teamName, string dataSetName,
+            [FromQuery] ConfigurationProfile configuration = ConfigurationProfile.Production)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
             using var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, dataSetName, ctx.OwnerKey);
-            if (!persistence.DataSetExists())
-                persistence.CreateOrOpenDataSet((int)configuration);
-            return Ok();
+            if (persistence.DataSetExists())
+                return Ok();
+            persistence.CreateOrOpenDataSet((int)configuration);
+            return StatusCode(StatusCodes.Status201Created);
         }
 
         /// <summary>
         /// CreateRangeFilter will create a RangeFilter which may be passed to any search.
         /// </summary>
-        [HttpPut(DataSetRoute + "/CreateRangeFilter")]
+        [HttpPost(DataSetRoute + "/filters/range")]
         public ActionResult<FilterProxy> CreateRangeFilter(string teamName, string dataSetName, [FromBody] RangeFilterProxy rangeFilter)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -274,7 +270,7 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// CreateValueFilter will create a ValueFilter which may be passed to any search.
         /// </summary>
-        [HttpPut(DataSetRoute + "/CreateValueFilter")]
+        [HttpPost(DataSetRoute + "/filters/value")]
         public ActionResult<FilterProxy> CreateValueFilter(string teamName, string dataSetName, [FromBody] ValueFilterProxy valueFilter)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -298,19 +294,21 @@ namespace IndxCloudApi.Controllers
         /// Requires team Admin.
         /// </summary>
         [HttpDelete(DataSetRoute)]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult DeleteDataSet(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, admin: true);
             if (ctx == null) return error!;
             if (!IndxCloudInternalApi.Manager.DeleteDataSet(dataSetName, ctx.OwnerKey))
                 return ApiProblems.DatasetNotFound(dataSetName);
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
         /// Deletes a document from the dataset by its key.
         /// </summary>
         [HttpDelete(DataSetRoute + "/documents/{documentKey:long}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult DeleteJsonRecord(string teamName, string dataSetName, long documentKey)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -325,13 +323,14 @@ namespace IndxCloudApi.Controllers
             var result = matcher.DeleteJsonRecord(documentKey);
             if (!result)
                 return ApiProblems.DocumentNotFound(documentKey);
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
         /// Deletes documents from the dataset by their keys.
         /// </summary>
         [HttpDelete(DataSetRoute + "/documents")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult DeleteJsonRecords(string teamName, string dataSetName, [FromBody] long[] documentKeys)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -351,14 +350,14 @@ namespace IndxCloudApi.Controllers
                     if (!result)
                         return ApiProblems.DocumentNotFound(documentKey);
                 }
-                return Ok();
+                return NoContent();
             }, SystemState.Ready);
         }
 
         /// <summary>
         /// GetAllFields will return the fields found during analyze.
         /// </summary>
-        [HttpGet(DataSetRoute + "/GetallFields")]
+        [HttpGet(DataSetRoute + "/fields")]
         public ActionResult<string[]> GetAllFields(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -371,7 +370,7 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// GetFacetableFields will return the array of facetable field names.
         /// </summary>
-        [HttpGet(DataSetRoute + "/GetFacetableFields")]
+        [HttpGet(DataSetRoute + "/fields/facetable")]
         public ActionResult<string[]> GetFacetableFields(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -384,7 +383,7 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// GetFilterableFields will return the array of filterable field names.
         /// </summary>
-        [HttpGet(DataSetRoute + "/GetFilterableFields")]
+        [HttpGet(DataSetRoute + "/fields/filterable")]
         public ActionResult<string[]> GetFilterableFields(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -397,7 +396,7 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Returns the raw json records as string[] for the keys.
         /// </summary>
-        [HttpPost(DataSetRoute + "/GetJson")]
+        [HttpPost(DataSetRoute + "/documents/lookup")]
         public ActionResult<string[]> GetJson(string teamName, string dataSetName, [FromBody] long[] keys)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -416,21 +415,21 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Returns the number of JSON records in the database for the given dataset.
         /// </summary>
-        [HttpGet(DataSetRoute + "/GetNumberOfJsonRecordsInDb")]
-        public ActionResult<int> GetNumberOfJsonRecordsInDb(string teamName, string dataSetName)
+        [HttpGet(DataSetRoute + "/documents/count")]
+        public ActionResult<CountResponse> GetNumberOfJsonRecordsInDb(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             var engine = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (engine == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
-            return engine.Persistence?.NumberOfJsonRecords() ?? 0;
+            return Ok(new CountResponse(engine.Persistence?.NumberOfJsonRecords() ?? 0));
         }
 
         /// <summary>
         /// GetSearchableFields will return the array of searchable field names.
         /// </summary>
-        [HttpGet(DataSetRoute + "/GetSearchableFields")]
+        [HttpGet(DataSetRoute + "/fields/searchable")]
         public ActionResult<string[]> GetSearchableFields(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -443,7 +442,7 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// GetSortableFields will return the array of sortable field names.
         /// </summary>
-        [HttpGet(DataSetRoute + "/GetSortableFields")]
+        [HttpGet(DataSetRoute + "/fields/sortable")]
         public ActionResult<string[]> GetSortableFields(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -456,7 +455,7 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// GetStatus will return the status of the dataSetName in the search engine.
         /// </summary>
-        [HttpGet(DataSetRoute + "/GetStatus")]
+        [HttpGet(DataSetRoute + "/status")]
         public ActionResult<CloudSystemStatus> GetStatus(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -475,7 +474,7 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// GetWordIndexingFields will return the array of word-indexing field names.
         /// </summary>
-        [HttpGet(DataSetRoute + "/GetWordIndexingFields")]
+        [HttpGet(DataSetRoute + "/fields/word-indexing")]
         public ActionResult<string[]> GetWordIndexingFields(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -519,8 +518,9 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// IndexDataSet will start indexing of the loaded documents.
         /// </summary>
-        [HttpGet(DataSetRoute + "/IndexDataSet")]
-        public ActionResult<SystemStatus> IndexDataSet(string teamName, string dataSetName)
+        [HttpPost(DataSetRoute + "/index")]
+        [ProducesResponseType(typeof(SystemStatus), StatusCodes.Status202Accepted)]
+        public IActionResult IndexDataSet(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
@@ -562,7 +562,9 @@ namespace IndxCloudApi.Controllers
             var status = IndxCloudInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
             if (status == null)
                 return ApiProblems.OperationFailed("Indexing did not report a status.");
-            return status;
+            // The work continues in the background — 202 with the current status;
+            // poll GET status until Ready.
+            return Accepted(status);
         }
 
         /// <summary>
@@ -570,7 +572,8 @@ namespace IndxCloudApi.Controllers
         /// (the engine keys documents from the body, so a disagreeing route would otherwise
         /// silently insert under a different key than the URL claims).
         /// </summary>
-        [HttpPost(DataSetRoute + "/insert/{documentKey:long}")]
+        [HttpPost(DataSetRoute + "/documents/{documentKey:long}")]
+        [ProducesResponseType(StatusCodes.Status201Created)]
         public ActionResult InsertJsonRecord(string teamName, string dataSetName, long documentKey, [FromBody] string jsonData)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -588,13 +591,14 @@ namespace IndxCloudApi.Controllers
             var result = matcher.InsertJsonRecord(jsonData, out string error2);
             if (!result)
                 return ApiProblems.InvalidArgument(error2);
-            return Ok();
+            return StatusCode(StatusCodes.Status201Created);
         }
 
         /// <summary>
         /// Inserts new JSON records into the dataset.
         /// </summary>
-        [HttpPost(DataSetRoute + "/insert")]
+        [HttpPost(DataSetRoute + "/documents")]
+        [ProducesResponseType(StatusCodes.Status201Created)]
         public ActionResult InsertJsonRecords(string teamName, string dataSetName, [FromBody] string[] jsonRecords)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -606,14 +610,15 @@ namespace IndxCloudApi.Controllers
                 var result = engine.InsertJsonRecords(jsonRecords, null, out string error2);
                 if (!result)
                     return ApiProblems.InvalidArgument(error2);
-                return Ok();
+                return StatusCode(StatusCodes.Status201Created);
             }, SystemState.Created, SystemState.Loaded, SystemState.Ready);
         }
 
         /// <summary>
         /// Loads the jsonData into search engine from the database.
         /// </summary>
-        [HttpGet(DataSetRoute + "/LoadFromDatabase")]
+        [HttpPost(DataSetRoute + "/load/from-database")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public async Task<ActionResult> LoadFromDatabaseAsync(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -628,13 +633,14 @@ namespace IndxCloudApi.Controllers
             await pm.WaitForCompletionAsync();
             if (!pm.Succeeded)
                 return ApiProblems.LoadFailed(pm.ErrorMessage);
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
         /// Loads the jsonData into search engine as a stream.
         /// </summary>
-        [HttpPut(DataSetRoute + "/LoadStream")]
+        [HttpPost(DataSetRoute + "/load")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult LoadStreamAsync(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -658,7 +664,7 @@ namespace IndxCloudApi.Controllers
             if (!pm.Succeeded)
                 return ApiProblems.LoadFailed(IndxCloudInternalApi.Manager.DescribeLoadFailure(dataSetName, ctx.OwnerKey, pm.ErrorMessage));
 
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
@@ -670,7 +676,7 @@ namespace IndxCloudApi.Controllers
         /// summary of how the new schema differed from the previous field configuration.
         /// </summary>
         [RequestSizeLimit(2_000_000_000)]
-        [HttpPut(DataSetRoute + "/replace")]
+        [HttpPost(DataSetRoute + "/replace")]
         public ActionResult<ReplaceSchemaChange> Replace(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -706,7 +712,8 @@ namespace IndxCloudApi.Controllers
         /// Loads the jsonData into search engine as a string.
         /// </summary>
         [RequestSizeLimit(2_000_000_000)]
-        [HttpPut(DataSetRoute + "/LoadString")]
+        [HttpPost(DataSetRoute + "/load/text")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult LoadString(string teamName, string dataSetName, [FromBody] string jsonData)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -727,13 +734,13 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.LoadFailed("LoadString failed.");
             if (!pm.Succeeded)
                 return ApiProblems.LoadFailed(IndxCloudInternalApi.Manager.DescribeLoadFailure(dataSetName, ctx.OwnerKey, pm.ErrorMessage));
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
         /// Search will validate the search query and return the search result.
         /// </summary>
-        [HttpPost(DataSetRoute + "/Search")]
+        [HttpPost(DataSetRoute + "/search")]
         public ActionResult<Indx.Api.Result> Search(string teamName, string dataSetName, [FromBody] CloudQuery query)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -755,7 +762,8 @@ namespace IndxCloudApi.Controllers
         /// in one call. Nullable properties have replace semantics: null = leave untouched,
         /// any value (including false) = overwrite.
         /// </summary>
-        [HttpPut(DataSetRoute + "/SetFieldConfiguration")]
+        [HttpPut(DataSetRoute + "/fields/configuration")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult SetFieldConfiguration(string teamName, string dataSetName, [FromBody] FieldProxy[] fields)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -784,7 +792,7 @@ namespace IndxCloudApi.Controllers
                 try
                 {
                     IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(dataSetName, ctx.OwnerKey, fields);
-                    return Ok();
+                    return NoContent();
                 }
                 catch (ShadowBusyException ex)
                 {
@@ -800,38 +808,43 @@ namespace IndxCloudApi.Controllers
             var failed = matcher.SetFieldConfiguration(fields);
             if (failed != null)
                 return ApiProblems.InvalidArgument($"Field '{failed}' does not exist in this dataset.");
-            return Ok();
+            return NoContent();
         }
 
-        /// <summary>Sets the Searchable property and weight on the specified fields (legacy helper).</summary>
-        [HttpPut(DataSetRoute + "/SetSearchableFields")]
+        /// <summary>Sets the Searchable property and weight on the specified fields.</summary>
+        [HttpPut(DataSetRoute + "/fields/searchable")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult SetSearchableFields(string teamName, string dataSetName, [FromBody] (string Name, float Weight)[] fields)
             => SetFieldFlag(teamName, dataSetName, fields.Select(f => f.Name), (f, t) => { f.Searchable = true; f.Weight = fields.First(x => x.Name == t).Weight; });
 
-        /// <summary>Sets the Filterable property on the specified fields (legacy helper).</summary>
-        [HttpPut(DataSetRoute + "/SetFilterableFields")]
+        /// <summary>Sets the Filterable property on the specified fields.</summary>
+        [HttpPut(DataSetRoute + "/fields/filterable")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult SetFilterableFields(string teamName, string dataSetName, [FromBody] string[] fields)
             => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.Filterable = true);
 
-        /// <summary>Sets the Facetable property on the specified fields (legacy helper).</summary>
-        [HttpPut(DataSetRoute + "/SetFacetableFields")]
+        /// <summary>Sets the Facetable property on the specified fields.</summary>
+        [HttpPut(DataSetRoute + "/fields/facetable")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult SetFacetableFields(string teamName, string dataSetName, [FromBody] string[] fields)
             => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.Facetable = true);
 
-        /// <summary>Sets the Sortable property on the specified fields (legacy helper).</summary>
-        [HttpPut(DataSetRoute + "/SetSortableFields")]
+        /// <summary>Sets the Sortable property on the specified fields.</summary>
+        [HttpPut(DataSetRoute + "/fields/sortable")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult SetSortableFields(string teamName, string dataSetName, [FromBody] string[] fields)
             => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.Sortable = true);
 
-        /// <summary>Sets the WordIndexing property on the specified fields (legacy helper).</summary>
-        [HttpPut(DataSetRoute + "/SetWordIndexingFields")]
+        /// <summary>Sets the WordIndexing property on the specified fields.</summary>
+        [HttpPut(DataSetRoute + "/fields/word-indexing")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult SetWordIndexingFields(string teamName, string dataSetName, [FromBody] string[] fields)
             => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.WordIndexing = true);
 
         /// <summary>
         /// GetFieldConfiguration returns the full configuration of every field in the dataset.
         /// </summary>
-        [HttpGet(DataSetRoute + "/GetFieldConfiguration")]
+        [HttpGet(DataSetRoute + "/fields/configuration")]
         public ActionResult<FieldProxy[]> GetFieldConfiguration(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -847,7 +860,7 @@ namespace IndxCloudApi.Controllers
         /// document (the primary key). Empty string means none is declared (the engine auto-generates
         /// keys). Required, when set, to be a numeric field.
         /// </summary>
-        [HttpGet(DataSetRoute + "/GetKeyField")]
+        [HttpGet(DataSetRoute + "/fields/key")]
         public ActionResult<string> GetKeyField(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -861,7 +874,7 @@ namespace IndxCloudApi.Controllers
         /// is preserved across reloads and applied on the next Load/replace; documents already loaded
         /// keep their existing keys until the data is reloaded.
         /// </summary>
-        [HttpPut(DataSetRoute + "/SetKeyField")]
+        [HttpPut(DataSetRoute + "/fields/key")]
         public IActionResult SetKeyField(string teamName, string dataSetName, [FromBody] string fieldName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -879,7 +892,8 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Updates existing JSON records in the dataset.
         /// </summary>
-        [HttpPut(DataSetRoute + "/update")]
+        [HttpPut(DataSetRoute + "/documents")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult UpdateJsonRecords(string teamName, string dataSetName, [FromBody] string[] jsonRecords)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -895,7 +909,7 @@ namespace IndxCloudApi.Controllers
                 var result = engine.UpdateJsonRecords(jsonRecords, null, out string error2);
                 if (!result)
                     return ApiProblems.InvalidArgument(error2);
-                return Ok();
+                return NoContent();
             }, SystemState.Ready);
         }
 
@@ -905,7 +919,8 @@ namespace IndxCloudApi.Controllers
         /// disagreeing route would otherwise silently update a different document than the
         /// URL claims).
         /// </summary>
-        [HttpPut(DataSetRoute + "/update/{documentKey:long}")]
+        [HttpPut(DataSetRoute + "/documents/{documentKey:long}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult UpdateJsonRecord(string teamName, string dataSetName, long documentKey, [FromBody] string jsonData)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -931,13 +946,14 @@ namespace IndxCloudApi.Controllers
                     return ApiProblems.DocumentNotFound(documentKey);
                 return ApiProblems.InvalidArgument(error2);
             }
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
         /// Updates a single field on a document identified by its key.
         /// </summary>
-        [HttpPut(DataSetRoute + "/field/{documentKey:long}")]
+        [HttpPatch(DataSetRoute + "/documents/{documentKey:long}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult UpdateField(string teamName, string dataSetName, long documentKey, [FromBody] UpdateFieldProxy update)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -952,13 +968,14 @@ namespace IndxCloudApi.Controllers
             var result = matcher.UpdateField(documentKey, update.FieldName, UnwrapJsonElement(update.Value)!, out string error2);
             if (!result)
                 return ApiProblems.InvalidArgument(error2);
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
         /// Deletes all documents matching the given filter.
         /// </summary>
-        [HttpDelete(DataSetRoute + "/DeleteRecordsInFilter")]
+        [HttpPost(DataSetRoute + "/documents/delete-by-filter")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult DeleteRecordsInFilter(string teamName, string dataSetName, [FromBody] FilterProxy filterProxy)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -972,15 +989,15 @@ namespace IndxCloudApi.Controllers
                     return ApiProblems.InvalidArgument("Unknown filter key. Create the filter first, then reference it by the returned key.");
                 engine.LoadFilters(new[] { filter });
                 engine.DeleteRecordsInFilter(filter);
-                return Ok();
+                return NoContent();
             }, SystemState.Ready);
         }
 
         /// <summary>
         /// Updates a field on all documents matching the given filter. Returns the number of updated documents.
         /// </summary>
-        [HttpPut(DataSetRoute + "/UpdateFieldInFilter")]
-        public ActionResult<int> UpdateFieldInFilter(string teamName, string dataSetName, [FromBody] FilterFieldUpdateProxy payload)
+        [HttpPost(DataSetRoute + "/documents/update-by-filter")]
+        public ActionResult<CountResponse> UpdateFieldInFilter(string teamName, string dataSetName, [FromBody] FilterFieldUpdateProxy payload)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
@@ -994,14 +1011,15 @@ namespace IndxCloudApi.Controllers
                 var count = engine.UpdateFieldInFilter(filter, payload.FieldName, UnwrapJsonElement(payload.Value)!, out string error2);
                 if (count == 0 && !string.IsNullOrEmpty(error2))
                     return ApiProblems.InvalidArgument(error2);
-                return Ok(count);
+                return Ok(new CountResponse(count));
             }, SystemState.Ready);
         }
 
         /// <summary>
         /// Deletes a single filter from the filter cache.
         /// </summary>
-        [HttpDelete(DataSetRoute + "/DeleteFilter")]
+        [HttpPost(DataSetRoute + "/filters/delete")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult DeleteFilter(string teamName, string dataSetName, [FromBody] FilterProxy filterProxy)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -1017,13 +1035,14 @@ namespace IndxCloudApi.Controllers
             var result = matcher.DeleteFilter(filter);
             if (!result)
                 return ApiProblems.InvalidArgument("The filter is not registered on this dataset (it may already have been deleted).");
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
         /// Deletes all filters from the filter cache.
         /// </summary>
-        [HttpDelete(DataSetRoute + "/DeleteAllFilters")]
+        [HttpDelete(DataSetRoute + "/filters")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult DeleteAllFilters(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -1034,13 +1053,14 @@ namespace IndxCloudApi.Controllers
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             matcher.DeleteAllFilters();
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
         /// Pre-loads all registered filters in the background.
         /// </summary>
-        [HttpPost(DataSetRoute + "/LoadAllFilters")]
+        [HttpPost(DataSetRoute + "/filters/load")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult LoadAllFilters(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -1053,14 +1073,14 @@ namespace IndxCloudApi.Controllers
             if (RequireState(matcher, "LoadAllFilters", SystemState.Loaded, SystemState.Indexing, SystemState.Ready) is { } stateError)
                 return stateError;
             matcher.LoadAllFilters();
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
         /// Returns the number of filters currently registered in the filter cache.
         /// </summary>
-        [HttpGet(DataSetRoute + "/GetNumberOfFilters")]
-        public ActionResult<int> GetNumberOfFilters(string teamName, string dataSetName)
+        [HttpGet(DataSetRoute + "/filters/count")]
+        public ActionResult<CountResponse> GetNumberOfFilters(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
@@ -1069,13 +1089,14 @@ namespace IndxCloudApi.Controllers
             ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
-            return Ok(matcher.NumberOfFilters);
+            return Ok(new CountResponse(matcher.NumberOfFilters));
         }
 
         /// <summary>
         /// Hibernates the dataset, freeing in-memory structures while retaining persisted data.
         /// </summary>
-        [HttpPut(DataSetRoute + "/Hibernate")]
+        [HttpPost(DataSetRoute + "/hibernate")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult Hibernate(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -1090,13 +1111,14 @@ namespace IndxCloudApi.Controllers
             var result = matcher.Hibernate(out string errorMessage);
             if (!result)
                 return ApiProblems.InvalidArgument(errorMessage);
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
         /// Wakes up a hibernated dataset, restoring it from the persisted state.
         /// </summary>
-        [HttpPut(DataSetRoute + "/WakeUp")]
+        [HttpPost(DataSetRoute + "/wakeup")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult WakeUp(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -1111,14 +1133,15 @@ namespace IndxCloudApi.Controllers
             var result = matcher.WakeUp();
             if (!result)
                 return ApiProblems.OperationFailed("WakeUp failed - the dataset could not be restored from storage.");
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
         /// Marks the specified fields as embeddable so that their vector values are indexed
         /// during the next Load. Must be called after AnalyzeStream and before LoadStream.
         /// </summary>
-        [HttpPut(DataSetRoute + "/SetEmbeddableFields")]
+        [HttpPut(DataSetRoute + "/fields/embeddable")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult SetEmbeddableFields(string teamName, string dataSetName, [FromBody] string[] fields)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -1130,13 +1153,13 @@ namespace IndxCloudApi.Controllers
             // null-checks). Adding a Created-only guard would wrongly reject that idempotent re-send.
             if (!IndxCloudInternalApi.Manager.SetEmbeddableFields(fields, dataSetName, ctx.OwnerKey))
                 return ApiProblems.InvalidArgument("SetEmbeddableFields failed — dataset not found or unknown field name");
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
         /// Searches a single embedding field using approximate nearest-neighbour search.
         /// </summary>
-        [HttpPost(DataSetRoute + "/VectorSearch")]
+        [HttpPost(DataSetRoute + "/search/vector")]
         public ActionResult<Indx.CloudApi.EmbeddingResultEntry[]> VectorSearch(
             string teamName, string dataSetName, [FromBody] Indx.CloudApi.VectorQueryProxy query)
         {
@@ -1157,7 +1180,7 @@ namespace IndxCloudApi.Controllers
         /// <summary>
         /// Combines text search with embedding nearest-neighbour search and blends scores.
         /// </summary>
-        [HttpPost(DataSetRoute + "/HybridSearch")]
+        [HttpPost(DataSetRoute + "/search/hybrid")]
         public ActionResult<Indx.CloudApi.EmbeddingResultEntry[]> HybridSearch(
             string teamName, string dataSetName, [FromBody] Indx.CloudApi.HybridQueryProxy query)
         {
@@ -1174,6 +1197,277 @@ namespace IndxCloudApi.Controllers
                 return stateError;
             return IndxCloudInternalApi.Manager.HybridSearch(query, dataSetName, ctx.OwnerKey);
         }
+
+        #region Legacy route aliases
+
+        // The pre-modernization routes, kept verbatim so existing clients are
+        // unaffected by the modern surface above: same route, same verb, same
+        // success status (always 200) and same body shape as they have always
+        // had. Hidden from OpenAPI — the modern routes are the documented
+        // surface. Each alias delegates to its modern action; LegacyOk /
+        // LegacyCount translate the modern success results (204/201/202,
+        // CountResponse envelope) back to the legacy shape. Errors pass
+        // through untouched — the error contract is identical on both
+        // surfaces.
+
+        /// <summary>Translates a modern success result back to the legacy always-200 contract.</summary>
+        private static ActionResult LegacyOk(IActionResult result) => result switch
+        {
+            NoContentResult => new OkResult(),
+            StatusCodeResult { StatusCode: StatusCodes.Status201Created } => new OkResult(),
+            AcceptedResult accepted => new OkObjectResult(accepted.Value),
+            _ => (ActionResult)result,
+        };
+
+        /// <summary>Unwraps the modern <see cref="CountResponse"/> envelope back to the legacy naked number.</summary>
+        private static ActionResult LegacyCount(ActionResult<CountResponse> result) => result.Result switch
+        {
+            OkObjectResult { Value: CountResponse c } => new OkObjectResult(c.Count),
+            { } other => other,
+            null => result.Value is { } v ? new OkObjectResult(v.Count) : new OkResult(),
+        };
+
+        /// <summary>Legacy route for <see cref="AnalyzeStreamAsync"/>.</summary>
+        [HttpPost(DataSetRoute + "/AnalyzeStreamAsync"), ApiExplorerSettings(IgnoreApi = true)]
+        public async Task<ActionResult<SystemStatus>> AnalyzeStreamLegacy(string teamName, string dataSetName)
+            => await AnalyzeStreamAsync(teamName, dataSetName);
+
+        /// <summary>Legacy route for <see cref="AnalyzeString"/>.</summary>
+        [RequestSizeLimit(2_000_000_000)]
+        [HttpPost(DataSetRoute + "/AnalyzeString"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<SystemStatus> AnalyzeStringLegacy(string teamName, string dataSetName, [FromBody] string jsonData)
+            => AnalyzeString(teamName, dataSetName, jsonData);
+
+        /// <summary>Legacy route for <see cref="CombineFilters"/>.</summary>
+        [HttpPut(DataSetRoute + "/CombineFilters"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<FilterProxy> CombineFiltersLegacy(string teamName, string dataSetName, [FromBody] CombinedFilterProxy combineFilters)
+            => CombineFilters(teamName, dataSetName, combineFilters);
+
+        /// <summary>Legacy route for <see cref="CreateBoost"/>.</summary>
+        [HttpPut(DataSetRoute + "/CreateBoost"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<BoostProxy> CreateBoostLegacy(string teamName, string dataSetName, [FromBody] BoostProxy boost)
+            => CreateBoost(teamName, dataSetName, boost);
+
+        /// <summary>Legacy route for <see cref="CreateOrOpen"/> (default profile).</summary>
+        [HttpPut(DataSetRoute + "/CreateOrOpen"), ApiExplorerSettings(IgnoreApi = true)]
+        public IActionResult CreateOrOpenLegacy(string teamName, string dataSetName)
+            => LegacyOk(CreateOrOpen(teamName, dataSetName));
+
+        /// <summary>Legacy route for <see cref="CreateOrOpen"/> with the profile in the route.</summary>
+        [HttpPut(DataSetRoute + "/CreateOrOpen/{configuration}"), ApiExplorerSettings(IgnoreApi = true)]
+        public IActionResult CreateOrOpenLegacy(string teamName, string dataSetName, ConfigurationProfile configuration)
+            => LegacyOk(CreateOrOpen(teamName, dataSetName, configuration));
+
+        /// <summary>Legacy route for <see cref="CreateRangeFilter"/>.</summary>
+        [HttpPut(DataSetRoute + "/CreateRangeFilter"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<FilterProxy> CreateRangeFilterLegacy(string teamName, string dataSetName, [FromBody] RangeFilterProxy rangeFilter)
+            => CreateRangeFilter(teamName, dataSetName, rangeFilter);
+
+        /// <summary>Legacy route for <see cref="CreateValueFilter"/>.</summary>
+        [HttpPut(DataSetRoute + "/CreateValueFilter"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<FilterProxy> CreateValueFilterLegacy(string teamName, string dataSetName, [FromBody] ValueFilterProxy valueFilter)
+            => CreateValueFilter(teamName, dataSetName, valueFilter);
+
+        /// <summary>Legacy route for <see cref="GetAllFields"/>.</summary>
+        [HttpGet(DataSetRoute + "/GetallFields"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<string[]> GetAllFieldsLegacy(string teamName, string dataSetName)
+            => GetAllFields(teamName, dataSetName);
+
+        /// <summary>Legacy route for <see cref="GetFacetableFields"/>.</summary>
+        [HttpGet(DataSetRoute + "/GetFacetableFields"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<string[]> GetFacetableFieldsLegacy(string teamName, string dataSetName)
+            => GetFacetableFields(teamName, dataSetName);
+
+        /// <summary>Legacy route for <see cref="GetFilterableFields"/>.</summary>
+        [HttpGet(DataSetRoute + "/GetFilterableFields"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<string[]> GetFilterableFieldsLegacy(string teamName, string dataSetName)
+            => GetFilterableFields(teamName, dataSetName);
+
+        /// <summary>Legacy route for <see cref="GetSearchableFields"/>.</summary>
+        [HttpGet(DataSetRoute + "/GetSearchableFields"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<string[]> GetSearchableFieldsLegacy(string teamName, string dataSetName)
+            => GetSearchableFields(teamName, dataSetName);
+
+        /// <summary>Legacy route for <see cref="GetSortableFields"/>.</summary>
+        [HttpGet(DataSetRoute + "/GetSortableFields"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<string[]> GetSortableFieldsLegacy(string teamName, string dataSetName)
+            => GetSortableFields(teamName, dataSetName);
+
+        /// <summary>Legacy route for <see cref="GetWordIndexingFields"/>.</summary>
+        [HttpGet(DataSetRoute + "/GetWordIndexingFields"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<string[]> GetWordIndexingFieldsLegacy(string teamName, string dataSetName)
+            => GetWordIndexingFields(teamName, dataSetName);
+
+        /// <summary>Legacy route for <see cref="GetJson"/>.</summary>
+        [HttpPost(DataSetRoute + "/GetJson"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<string[]> GetJsonLegacy(string teamName, string dataSetName, [FromBody] long[] keys)
+            => GetJson(teamName, dataSetName, keys);
+
+        /// <summary>Legacy route for <see cref="GetNumberOfJsonRecordsInDb"/> — naked number body.</summary>
+        [HttpGet(DataSetRoute + "/GetNumberOfJsonRecordsInDb"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<int> GetNumberOfJsonRecordsInDbLegacy(string teamName, string dataSetName)
+            => LegacyCount(GetNumberOfJsonRecordsInDb(teamName, dataSetName));
+
+        /// <summary>Legacy route for <see cref="GetStatus"/>.</summary>
+        [HttpGet(DataSetRoute + "/GetStatus"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<CloudSystemStatus> GetStatusLegacy(string teamName, string dataSetName)
+            => GetStatus(teamName, dataSetName);
+
+        /// <summary>Legacy route for <see cref="IndexDataSet"/> — GET, and 200 with the status body.</summary>
+        [HttpGet(DataSetRoute + "/IndexDataSet"), ApiExplorerSettings(IgnoreApi = true)]
+        public IActionResult IndexDataSetLegacy(string teamName, string dataSetName)
+            => LegacyOk(IndexDataSet(teamName, dataSetName));
+
+        /// <summary>Legacy route for <see cref="InsertJsonRecord"/>.</summary>
+        [HttpPost(DataSetRoute + "/insert/{documentKey:long}"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult InsertJsonRecordLegacy(string teamName, string dataSetName, long documentKey, [FromBody] string jsonData)
+            => LegacyOk(InsertJsonRecord(teamName, dataSetName, documentKey, jsonData));
+
+        /// <summary>Legacy route for <see cref="InsertJsonRecords"/>.</summary>
+        [HttpPost(DataSetRoute + "/insert"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult InsertJsonRecordsLegacy(string teamName, string dataSetName, [FromBody] string[] jsonRecords)
+            => LegacyOk(InsertJsonRecords(teamName, dataSetName, jsonRecords));
+
+        /// <summary>Legacy route for <see cref="LoadFromDatabaseAsync"/> — GET.</summary>
+        [HttpGet(DataSetRoute + "/LoadFromDatabase"), ApiExplorerSettings(IgnoreApi = true)]
+        public async Task<ActionResult> LoadFromDatabaseLegacy(string teamName, string dataSetName)
+            => LegacyOk(await LoadFromDatabaseAsync(teamName, dataSetName));
+
+        /// <summary>Legacy route for <see cref="LoadStreamAsync"/> — PUT.</summary>
+        [HttpPut(DataSetRoute + "/LoadStream"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult LoadStreamLegacy(string teamName, string dataSetName)
+            => LegacyOk(LoadStreamAsync(teamName, dataSetName));
+
+        /// <summary>Legacy route for <see cref="Replace"/> — PUT.</summary>
+        [RequestSizeLimit(2_000_000_000)]
+        [HttpPut(DataSetRoute + "/replace"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<ReplaceSchemaChange> ReplaceLegacy(string teamName, string dataSetName)
+            => Replace(teamName, dataSetName);
+
+        /// <summary>Legacy route for <see cref="LoadString"/> — PUT.</summary>
+        [RequestSizeLimit(2_000_000_000)]
+        [HttpPut(DataSetRoute + "/LoadString"), ApiExplorerSettings(IgnoreApi = true)]
+        public IActionResult LoadStringLegacy(string teamName, string dataSetName, [FromBody] string jsonData)
+            => LegacyOk(LoadString(teamName, dataSetName, jsonData));
+
+        /// <summary>Legacy route for <see cref="SetFieldConfiguration"/>.</summary>
+        [HttpPut(DataSetRoute + "/SetFieldConfiguration"), ApiExplorerSettings(IgnoreApi = true)]
+        public IActionResult SetFieldConfigurationLegacy(string teamName, string dataSetName, [FromBody] FieldProxy[] fields)
+            => LegacyOk(SetFieldConfiguration(teamName, dataSetName, fields));
+
+        /// <summary>Legacy route for <see cref="SetSearchableFields"/>.</summary>
+        [HttpPut(DataSetRoute + "/SetSearchableFields"), ApiExplorerSettings(IgnoreApi = true)]
+        public IActionResult SetSearchableFieldsLegacy(string teamName, string dataSetName, [FromBody] (string Name, float Weight)[] fields)
+            => LegacyOk(SetSearchableFields(teamName, dataSetName, fields));
+
+        /// <summary>Legacy route for <see cref="SetFilterableFields"/>.</summary>
+        [HttpPut(DataSetRoute + "/SetFilterableFields"), ApiExplorerSettings(IgnoreApi = true)]
+        public IActionResult SetFilterableFieldsLegacy(string teamName, string dataSetName, [FromBody] string[] fields)
+            => LegacyOk(SetFilterableFields(teamName, dataSetName, fields));
+
+        /// <summary>Legacy route for <see cref="SetFacetableFields"/>.</summary>
+        [HttpPut(DataSetRoute + "/SetFacetableFields"), ApiExplorerSettings(IgnoreApi = true)]
+        public IActionResult SetFacetableFieldsLegacy(string teamName, string dataSetName, [FromBody] string[] fields)
+            => LegacyOk(SetFacetableFields(teamName, dataSetName, fields));
+
+        /// <summary>Legacy route for <see cref="SetSortableFields"/>.</summary>
+        [HttpPut(DataSetRoute + "/SetSortableFields"), ApiExplorerSettings(IgnoreApi = true)]
+        public IActionResult SetSortableFieldsLegacy(string teamName, string dataSetName, [FromBody] string[] fields)
+            => LegacyOk(SetSortableFields(teamName, dataSetName, fields));
+
+        /// <summary>Legacy route for <see cref="SetWordIndexingFields"/>.</summary>
+        [HttpPut(DataSetRoute + "/SetWordIndexingFields"), ApiExplorerSettings(IgnoreApi = true)]
+        public IActionResult SetWordIndexingFieldsLegacy(string teamName, string dataSetName, [FromBody] string[] fields)
+            => LegacyOk(SetWordIndexingFields(teamName, dataSetName, fields));
+
+        /// <summary>Legacy route for <see cref="SetEmbeddableFields"/>.</summary>
+        [HttpPut(DataSetRoute + "/SetEmbeddableFields"), ApiExplorerSettings(IgnoreApi = true)]
+        public IActionResult SetEmbeddableFieldsLegacy(string teamName, string dataSetName, [FromBody] string[] fields)
+            => LegacyOk(SetEmbeddableFields(teamName, dataSetName, fields));
+
+        /// <summary>Legacy route for <see cref="GetFieldConfiguration"/>.</summary>
+        [HttpGet(DataSetRoute + "/GetFieldConfiguration"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<FieldProxy[]> GetFieldConfigurationLegacy(string teamName, string dataSetName)
+            => GetFieldConfiguration(teamName, dataSetName);
+
+        /// <summary>Legacy route for <see cref="GetKeyField"/>.</summary>
+        [HttpGet(DataSetRoute + "/GetKeyField"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<string> GetKeyFieldLegacy(string teamName, string dataSetName)
+            => GetKeyField(teamName, dataSetName);
+
+        /// <summary>Legacy route for <see cref="SetKeyField"/>.</summary>
+        [HttpPut(DataSetRoute + "/SetKeyField"), ApiExplorerSettings(IgnoreApi = true)]
+        public IActionResult SetKeyFieldLegacy(string teamName, string dataSetName, [FromBody] string fieldName)
+            => SetKeyField(teamName, dataSetName, fieldName);
+
+        /// <summary>Legacy route for <see cref="UpdateJsonRecords"/>.</summary>
+        [HttpPut(DataSetRoute + "/update"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult UpdateJsonRecordsLegacy(string teamName, string dataSetName, [FromBody] string[] jsonRecords)
+            => LegacyOk(UpdateJsonRecords(teamName, dataSetName, jsonRecords));
+
+        /// <summary>Legacy route for <see cref="UpdateJsonRecord"/>.</summary>
+        [HttpPut(DataSetRoute + "/update/{documentKey:long}"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult UpdateJsonRecordLegacy(string teamName, string dataSetName, long documentKey, [FromBody] string jsonData)
+            => LegacyOk(UpdateJsonRecord(teamName, dataSetName, documentKey, jsonData));
+
+        /// <summary>Legacy route for <see cref="UpdateField"/> — PUT field/{key}.</summary>
+        [HttpPut(DataSetRoute + "/field/{documentKey:long}"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult UpdateFieldLegacy(string teamName, string dataSetName, long documentKey, [FromBody] UpdateFieldProxy update)
+            => LegacyOk(UpdateField(teamName, dataSetName, documentKey, update));
+
+        /// <summary>Legacy route for <see cref="DeleteRecordsInFilter"/> — DELETE with body.</summary>
+        [HttpDelete(DataSetRoute + "/DeleteRecordsInFilter"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult DeleteRecordsInFilterLegacy(string teamName, string dataSetName, [FromBody] FilterProxy filterProxy)
+            => LegacyOk(DeleteRecordsInFilter(teamName, dataSetName, filterProxy));
+
+        /// <summary>Legacy route for <see cref="UpdateFieldInFilter"/> — naked count body.</summary>
+        [HttpPut(DataSetRoute + "/UpdateFieldInFilter"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<int> UpdateFieldInFilterLegacy(string teamName, string dataSetName, [FromBody] FilterFieldUpdateProxy payload)
+            => LegacyCount(UpdateFieldInFilter(teamName, dataSetName, payload));
+
+        /// <summary>Legacy route for <see cref="DeleteFilter"/> — DELETE with body.</summary>
+        [HttpDelete(DataSetRoute + "/DeleteFilter"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult DeleteFilterLegacy(string teamName, string dataSetName, [FromBody] FilterProxy filterProxy)
+            => LegacyOk(DeleteFilter(teamName, dataSetName, filterProxy));
+
+        /// <summary>Legacy route for <see cref="DeleteAllFilters"/>.</summary>
+        [HttpDelete(DataSetRoute + "/DeleteAllFilters"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult DeleteAllFiltersLegacy(string teamName, string dataSetName)
+            => LegacyOk(DeleteAllFilters(teamName, dataSetName));
+
+        /// <summary>Legacy route for <see cref="LoadAllFilters"/>.</summary>
+        [HttpPost(DataSetRoute + "/LoadAllFilters"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult LoadAllFiltersLegacy(string teamName, string dataSetName)
+            => LegacyOk(LoadAllFilters(teamName, dataSetName));
+
+        /// <summary>Legacy route for <see cref="GetNumberOfFilters"/> — naked number body.</summary>
+        [HttpGet(DataSetRoute + "/GetNumberOfFilters"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<int> GetNumberOfFiltersLegacy(string teamName, string dataSetName)
+            => LegacyCount(GetNumberOfFilters(teamName, dataSetName));
+
+        /// <summary>Legacy route for <see cref="Hibernate"/> — PUT.</summary>
+        [HttpPut(DataSetRoute + "/Hibernate"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult HibernateLegacy(string teamName, string dataSetName)
+            => LegacyOk(Hibernate(teamName, dataSetName));
+
+        /// <summary>Legacy route for <see cref="WakeUp"/> — PUT.</summary>
+        [HttpPut(DataSetRoute + "/WakeUp"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult WakeUpLegacy(string teamName, string dataSetName)
+            => LegacyOk(WakeUp(teamName, dataSetName));
+
+        /// <summary>Legacy route for <see cref="VectorSearch"/>.</summary>
+        [HttpPost(DataSetRoute + "/VectorSearch"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<Indx.CloudApi.EmbeddingResultEntry[]> VectorSearchLegacy(
+            string teamName, string dataSetName, [FromBody] Indx.CloudApi.VectorQueryProxy query)
+            => VectorSearch(teamName, dataSetName, query);
+
+        /// <summary>Legacy route for <see cref="HybridSearch"/>.</summary>
+        [HttpPost(DataSetRoute + "/HybridSearch"), ApiExplorerSettings(IgnoreApi = true)]
+        public ActionResult<Indx.CloudApi.EmbeddingResultEntry[]> HybridSearchLegacy(
+            string teamName, string dataSetName, [FromBody] Indx.CloudApi.HybridQueryProxy query)
+            => HybridSearch(teamName, dataSetName, query);
+
+        #endregion Legacy route aliases
 
         #endregion Public Methods
 
@@ -1302,7 +1596,7 @@ namespace IndxCloudApi.Controllers
                     return ApiProblems.InvalidArgument($"Field '{name}' does not exist in this dataset.");
                 apply(f, name);
             }
-            return Ok();
+            return NoContent();
         }
 
         /// <summary>
