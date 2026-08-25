@@ -153,11 +153,11 @@ else
         <h3>How to use this key</h3>
 
         <h4>cURL</h4>
-        <pre style="padding:15px; background:var(--lv1); border:1px solid var(--lv3); border-radius:var(--radius); overflow-x:auto; font-family:monospace; font-size:11px; margin:10px 0 24px;"><code>curl -X PUT "https://localhost:5001/api/CreateOrOpen/myDataset/1" \
+        <pre style="padding:15px; background:var(--lv1); border:1px solid var(--lv3); border-radius:var(--radius); overflow-x:auto; font-family:monospace; font-size:11px; margin:10px 0 24px;"><code>curl -X PUT "https://localhost:5001/api/teams/myTeam/datasets/myDataset?configuration=Production" \
      -H "Authorization: Bearer @newlyCreatedToken"</code></pre>
 
         <h4>JavaScript / Fetch</h4>
-        <pre style="padding:15px; background:var(--lv1); border:1px solid var(--lv3); border-radius:var(--radius); overflow-x:auto; font-family:monospace; font-size:11px; margin:10px 0 24px;"><code>fetch('https://localhost:5001/api/CreateOrOpen/myDataset/1', {
+        <pre style="padding:15px; background:var(--lv1); border:1px solid var(--lv3); border-radius:var(--radius); overflow-x:auto; font-family:monospace; font-size:11px; margin:10px 0 24px;"><code>fetch('https://localhost:5001/api/teams/myTeam/datasets/myDataset?configuration=Production', {
   method: 'PUT',
   headers: { 'Authorization': 'Bearer @newlyCreatedToken' }
 })</code></pre>
