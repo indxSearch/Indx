@@ -1,0 +1,16 @@
+.indx-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--lv6);
+    background-color: var(--lv2);
+    font: var(--text-xs);
+    border-radius: 10px;
+    padding: 2px 6px;
+    white-space: nowrap;
+}
+
+/* Taller, more-padded badge — pairs well with a leading icon. Same font size. */
+.indx-chip-large {
+    padding: 3px 9px;
+}

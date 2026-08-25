@@ -1,0 +1,25 @@
+<span class="indx-chip @(Size == "large" ? "indx-chip-large" : null) @Class" style="@_style">@if (Icon != null) { @Icon(14) }@ChildContent</span>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Color { get; set; }
+    [Parameter] public string? TextColor { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Optional leading icon. Sized and coloured (currentColor) to match the chip text.</summary>
+    [Parameter] public RenderFragment<int>? Icon { get; set; }
+
+    /// <summary>"default" (compact) or "large" (taller, more padding; suits a leading icon).</summary>
+    [Parameter] public string Size { get; set; } = "default";
+
+    private string _style
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (!string.IsNullOrEmpty(Color))     parts.Add($"background-color:{Color}");
+            if (!string.IsNullOrEmpty(TextColor)) parts.Add($"color:{TextColor}");
+            return string.Join(";", parts);
+        }
+    }
+}

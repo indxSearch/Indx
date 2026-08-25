@@ -1,0 +1,109 @@
+/* Systm Design Tokens — single source of truth for all Blazor apps.
+   Pair with fonts/fonts.css (FunktionalGrotesk + Inter @font-face).
+   The fonts.css overrides --font-family to FunktionalGrotesk, so link it
+   after this file (or in either order — the cascade resolves the var). */
+
+:root {
+    --spacing: 5px;
+    --radius: 1px;
+
+    --lv0: #FFFFFF;
+    --lv1: #FBFBFB;
+    --lv2: #EFEFEF;
+    --lv3: #CFCFCF;
+    --lv4: #757575;
+    --lv5: #4A4A50;
+    --lv6: #1A1A21;
+    --lv7: #121215;
+    --lv8: #080809;
+
+    --CSignal: #FF4238;
+    --CTeal: #72F5C6;
+    --CPureBlue: #0000ff;
+    --CLightBlue: #6B9EFF;
+    --CWarning: #FFC107;
+
+    /* Semantic: "confirmed / success" — teal is weak on white, so use pure blue
+       on light mode; teal reads well on dark (overridden below). */
+    --CConfirmed: var(--CPureBlue);
+
+    /* FONT FAMILY */
+    --font-family: 'Inter', sans-serif;
+
+    /* TEXT — line-height tuned per scale: looser for body (wraps to multiple lines),
+       tighter for large display sizes. Controls (buttons/inputs) use fixed heights with
+       centered text, so the body bump doesn't change their metrics. */
+    --text-2xs: 350 10px/1.5 var(--font-family);
+    --text-xs: 350 11px/1.5 var(--font-family);
+    --text-sm: 350 13px/1.5 var(--font-family);
+    --text-base: 350 15px/1.5 var(--font-family);
+    --text-lg: 350 17px/1.4 var(--font-family);
+    --text-xl: 350 19px/1.4 var(--font-family);
+    --text-2xl: 350 24px/1.25 var(--font-family);
+    --text-3xl: 350 30px/1.2 var(--font-family);
+    --text-4xl: 350 36px/1.15 var(--font-family);
+
+    --pattern-checkerboard-light: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23080809'/%3E%3Crect x='1' width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-checkerboard-dark: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='1' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+
+    --light: 300;
+    --book: 350;
+    --reg: 400;
+    --med: 500;
+    --semi: 600;
+    --bold: 700;
+}
+
+/* Dark mode via system preference */
+@media (prefers-color-scheme: dark) {
+    :root {
+        --pattern-checkerboard-light: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='1' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+
+        --lv0: #080809;
+        --lv1: #121215;
+        --lv2: #1A1A21;
+        --lv3: #393941;
+        --lv4: #565661;
+        --lv5: #8F8F97;
+        --lv6: #EFEFEF;
+        --lv7: #FBFBFB;
+        --lv8: #FFFFFF;
+
+        /* Teal reads well on dark backgrounds. */
+        --CConfirmed: var(--CTeal);
+    }
+}
+
+/* InputField — the text input box. A reusable class: used both by the InputField
+   component and directly on raw <input> elements. The InputField wrapper/label
+   live in InputField.razor.css (scoped); the box style is global so it can be
+   shared. */
+.indx-input {
+    font: var(--text-xs);
+    padding: 10px;
+    height: 30px;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--lv7);
+    box-sizing: border-box;
+    width: 100%;
+}
+.indx-input:not(:disabled):hover { border-color: var(--lv5); }
+.indx-input:not(:disabled):active { border-color: var(--lv5); }
+.indx-input:focus { outline: none; border-color: var(--lv5); }
+.indx-input::placeholder { color: var(--lv5); }
+.indx-input:disabled { opacity: 0.6; cursor: not-allowed; }
+.indx-input::selection { background: var(--lv3); }
+.indx-input[type="number"]::-webkit-inner-spin-button,
+.indx-input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.indx-input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+.indx-input-error { border-color: var(--CSignal); }
+.indx-input-error:focus { border-color: var(--CSignal); }
+.indx-input-error-text { font: var(--text-2xs); color: var(--CSignal); }
+.indx-input-border-bottom { padding: 0; border: none; border-bottom: 1px solid var(--lv3); border-radius: 0; }
+.indx-input-border-bottom:not(:disabled):hover { border-bottom-color: var(--lv5); }
+.indx-input-border-bottom:not(:disabled):active { border-bottom-color: var(--lv5); }
+.indx-input-border-bottom:focus { outline: none; border-bottom-color: var(--lv5); }
+.indx-input-border-bottom.indx-input-error { border-bottom-color: var(--CSignal); }
+.indx-input-border-bottom.indx-input-error:focus { border-bottom-color: var(--CSignal); }

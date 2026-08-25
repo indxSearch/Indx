@@ -1,0 +1,163 @@
+@using System.Globalization
+
+<div class="indx-datepicker-wrapper">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <span class="indx-datepicker-label">@Label</span>
+    }
+    <div class="indx-datepicker-field">
+        <div class="@_inputBoxClass">
+            <button type="button"
+                    class="indx-datepicker-icon"
+                    aria-label="Open calendar"
+                    tabindex="-1"
+                    disabled="@Disabled"
+                    @onclick="ToggleCalendar">
+                <HourGlass Size="14" />
+            </button>
+            <input type="date"
+                   class="indx-datepicker-input"
+                   value="@(Value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))"
+                   disabled="@Disabled"
+                   aria-invalid="@(HasError ? "true" : "false")"
+                   @onchange="OnNativeChange" />
+        </div>
+
+        @if (_open)
+        {
+            <div class="indx-datepicker-backdrop" @onclick="CloseCalendar"></div>
+            <div class="indx-datepicker-calendar">
+                <div class="indx-datepicker-header">
+                    <button type="button" class="indx-datepicker-nav" aria-label="Previous month" @onclick="PrevMonth">
+                        <ChevronLeft Size="14" />
+                    </button>
+                    <span class="indx-datepicker-month">@Months[_viewMonth - 1] @_viewYear</span>
+                    <button type="button" class="indx-datepicker-nav" aria-label="Next month" @onclick="NextMonth">
+                        <ChevronRight Size="14" />
+                    </button>
+                </div>
+                <div class="indx-datepicker-weekdays">
+                    @foreach (var w in Weekdays)
+                    {
+                        <span class="indx-datepicker-weekday">@w</span>
+                    }
+                </div>
+                <div class="indx-datepicker-grid">
+                    @foreach (var d in BuildGrid(_viewYear, _viewMonth))
+                    {
+                        var outside = d.Month != _viewMonth;
+                        var selected = Value.HasValue && d == Value.Value;
+                        var isToday = d == _today;
+                        var dayClass = "indx-datepicker-day"
+                            + (outside ? " indx-datepicker-outside" : "")
+                            + (selected ? " indx-datepicker-selected" : "")
+                            + (isToday && !selected ? " indx-datepicker-today" : "");
+                        var day = d;
+                        <button type="button" class="@dayClass" @onclick="() => SelectDay(day)">@day.Day</button>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <span class="indx-datepicker-error-text" role="alert">@Error</span>
+    }
+</div>
+
+@code {
+    [Parameter] public DateOnly? Value { get; set; }
+    [Parameter] public EventCallback<DateOnly?> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public bool IsValid { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+
+    private static readonly string[] Weekdays = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+    private static readonly string[] Months =
+    [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+
+    private bool _open;
+    private readonly DateOnly _today = DateOnly.FromDateTime(DateTime.Today);
+    private int _viewYear;
+    private int _viewMonth; // 1-based (1..12)
+
+    protected override void OnInitialized()
+    {
+        var init = Value ?? _today;
+        _viewYear = init.Year;
+        _viewMonth = init.Month;
+    }
+
+    private bool HasError => !string.IsNullOrEmpty(Error) || !IsValid;
+
+    private string _inputBoxClass =>
+        "indx-datepicker-input-box" + (HasError ? " indx-datepicker-input-box-error" : "");
+
+    // Native <input type="date"> always reports its value as an ISO yyyy-MM-dd string.
+    private async Task OnNativeChange(ChangeEventArgs e)
+    {
+        var s = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(s))
+        {
+            await SetValue(null);
+        }
+        else if (DateOnly.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
+        {
+            _viewYear = d.Year;
+            _viewMonth = d.Month;
+            await SetValue(d);
+        }
+    }
+
+    private void ToggleCalendar()
+    {
+        if (Disabled) return;
+        _open = !_open;
+        if (_open && Value.HasValue)
+        {
+            _viewYear = Value.Value.Year;
+            _viewMonth = Value.Value.Month;
+        }
+    }
+
+    private void CloseCalendar() => _open = false;
+
+    private void PrevMonth()
+    {
+        if (_viewMonth == 1) { _viewMonth = 12; _viewYear--; }
+        else _viewMonth--;
+    }
+
+    private void NextMonth()
+    {
+        if (_viewMonth == 12) { _viewMonth = 1; _viewYear++; }
+        else _viewMonth++;
+    }
+
+    // 6×7 grid (Monday-first), incl. leading/trailing days from adjacent months.
+    private static IEnumerable<DateOnly> BuildGrid(int year, int month)
+    {
+        var first = new DateOnly(year, month, 1);
+        var startOffset = ((int)first.DayOfWeek + 6) % 7; // Sun=0 → Mon-first index
+        var gridStart = first.AddDays(-startOffset);
+        for (var i = 0; i < 42; i++)
+        {
+            yield return gridStart.AddDays(i);
+        }
+    }
+
+    private async Task SelectDay(DateOnly d)
+    {
+        _open = false;
+        await SetValue(d);
+    }
+
+    private async Task SetValue(DateOnly? d)
+    {
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(d);
+    }
+}

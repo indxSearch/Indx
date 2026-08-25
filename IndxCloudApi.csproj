@@ -5,6 +5,10 @@
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<UserSecretsId>aspnet-IndxCloudApi-753A8260-85A1-4678-9E16-CC33E76477FD</UserSecretsId>
+		<!-- Indx.Systm.Blazor lives INSIDE this folder so it rides the git-subtree split to the
+		     public repo, but it is its own project (referenced below) — keep its files out of
+		     this app's own compile/content globs or every component gets compiled twice. -->
+		<DefaultItemExcludes>$(DefaultItemExcludes);Indx.Systm.Blazor/**</DefaultItemExcludes>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
 		<DocumentationFile>IndxCloudApi.xml</DocumentationFile>
 
@@ -12,7 +16,7 @@
 		<Version>2.0.0</Version>
 		<AssemblyVersion>2.0.0.0</AssemblyVersion>
 		<FileVersion>2.0.0.0</FileVersion>
-		<InformationalVersion>2.0.0-alpha</InformationalVersion>
+		<InformationalVersion>2.0.0-beta</InformationalVersion>
 
 		<!-- License Information -->
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>
@@ -81,7 +85,7 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\Indx.Systm.Blazor\Indx.Systm.Blazor.csproj" />
+		<ProjectReference Include="Indx.Systm.Blazor\Indx.Systm.Blazor.csproj" />
 	</ItemGroup>
 
 	<!-- ===== Indx engine reference selection =====

@@ -1,4 +1,4 @@
-using Asp.Versioning;
+﻿using Asp.Versioning;
 using IndxCloudApi.Data;
 using IndxCloudApi.Models;
 using IndxCloudApi.Services;
@@ -419,9 +419,9 @@ public class Program
         // ============================================
         builder.Services.AddSwaggerGen(c =>
         {
-            c.SwaggerDoc("v2.0-alpha", new OpenApiInfo
+            c.SwaggerDoc("v2.0-beta", new OpenApiInfo
             {
-                Version = "2.0-alpha",
+                Version = "2.0-beta",
                 Title = "Indx Cloud API",
                 Description = "JWT Authenticated HTTP API for Indx Search"
             });
@@ -484,13 +484,13 @@ public class Program
             options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         });
 
-        // API versioning: default 2.0-alpha. Header/query-based so the existing
+        // API versioning: default 2.0-beta. Header/query-based so the existing
         // /api/... URLs stay unchanged (no breaking change for clients). Clients
-        // that want explicit versioning send `api-version: 2.0-alpha` as a header
+        // that want explicit versioning send `api-version: 2.0-beta` as a header
         // or query parameter; otherwise the default version applies.
         builder.Services.AddApiVersioning(options =>
         {
-            options.DefaultApiVersion = new ApiVersion(2, 0, "alpha");
+            options.DefaultApiVersion = new ApiVersion(2, 0, "beta");
             options.AssumeDefaultVersionWhenUnspecified = true;
             options.ReportApiVersions = true;
             options.ApiVersionReader = ApiVersionReader.Combine(
@@ -766,7 +766,7 @@ public class Program
         app.UseSwagger();
         app.UseSwaggerUI(c =>
         {
-            c.SwaggerEndpoint("/swagger/v2.0-alpha/swagger.json", "Indx Cloud API v2.0-alpha");
+            c.SwaggerEndpoint("/swagger/v2.0-beta/swagger.json", "Indx Cloud API v2.0-beta");
             c.RoutePrefix = "swagger";
 
             // Auto-authenticate with JWT token if user is logged in

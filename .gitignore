@@ -144,6 +144,12 @@ wwwroot/lib/
 # Indx speficig
 *.license
 
+# Runtime instance state, written by the app (InstanceSettingsService). Contains
+# SetupComplete, registration policy, and potentially the license portal token —
+# never commit: a committed copy skips first-run onboarding on fresh installs
+# and can leak the token.
+IndxData/settings.json
+
 # Secret/key material — never commit to the public repo.
 # (The root monorepo .gitignore covers these too, but it does NOT travel with the
 #  git-subtree split, so the rules must be repeated here.) jwt.key is the JWT

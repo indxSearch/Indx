@@ -1,0 +1,73 @@
+@* Ported from the React @indxsearch/systm SearchField. Search-as-you-type friendly:
+   binds Value on every keystroke (oninput). *@
+<div class="searchfield @SizeClass">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label for="@_id" class="label">@Label</label>
+    }
+    <div class="container">
+        @if (ShowSearchIcon)
+        {
+            <span class="icon" aria-hidden="true"><Indx.Systm.Blazor.Icons.Search Size="@_iconSize" Color="currentColor" /></span>
+        }
+        <input id="@_id"
+               type="search"
+               class="input @(HasError ? "error" : "")"
+               value="@Value"
+               placeholder="@Placeholder"
+               disabled="@Disabled"
+               autocomplete="off"
+               @oninput="OnInput"
+               aria-invalid="@(HasError ? "true" : "false")"
+               @attributes="AdditionalAttributes" />
+        @if (RightContent is not null || (Clearable && !string.IsNullOrEmpty(Value)))
+        {
+            <div class="right">
+                @RightContent
+                @if (Clearable && !string.IsNullOrEmpty(Value))
+                {
+                    <Button Variant="ghost" Size="micro" @onclick="Clear">Clear</Button>
+                }
+            </div>
+        }
+    </div>
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <span class="error-text" role="alert">@Error</span>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? Error { get; set; }
+    /// <summary>"micro" or "default".</summary>
+    [Parameter] public string Size { get; set; } = "default";
+    [Parameter] public bool ShowSearchIcon { get; set; } = true;
+    /// <summary>Show a ghost "Clear" button when there's text (default true).</summary>
+    [Parameter] public bool Clearable { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public RenderFragment? RightContent { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool HasError => !string.IsNullOrEmpty(Error);
+    private string _id => Id ?? _generatedId;
+    private readonly string _generatedId = $"search-{Guid.NewGuid():N}";
+    private int _iconSize => Size == "micro" ? 14 : 21;
+    private string SizeClass => Size == "micro" ? "size-micro" : "size-default";
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        Value = e.Value?.ToString();
+        await ValueChanged.InvokeAsync(Value);
+    }
+
+    private async Task Clear()
+    {
+        Value = "";
+        await ValueChanged.InvokeAsync(Value);
+    }
+}

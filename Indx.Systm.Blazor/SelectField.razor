@@ -1,0 +1,90 @@
+@implements IDisposable
+
+<div class="indx-select-wrapper">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label for="@_id" class="indx-select-label">@Label</label>
+    }
+    <div class="indx-select-trigger">
+        <button type="button" id="@_id" class="indx-select indx-select-@Size" @onclick="Toggle" @onkeydown="OnKeyDown" @attributes="AdditionalAttributes">
+            <span class="indx-select-value @(string.IsNullOrEmpty(Value) ? "indx-select-placeholder" : null)" style="display:inline-flex; align-items:center; gap:6px;">
+                @if (SelectedOption?.Icon is { } selIcon)
+                {
+                    @selIcon(_iconSize)
+                }
+                <span>@(SelectedLabel ?? Placeholder)</span>
+            </span>
+            <span class="indx-select-icon" aria-hidden="true"><ChevronDown Size="@_iconSize" /></span>
+        </button>
+        @if (_open)
+        {
+            <div class="indx-select-backdrop" @onclick="Close"></div>
+            <div class="indx-select-menu" role="listbox">
+                @foreach (var option in Options)
+                {
+                    <Button Variant="ghost" Size="@Size" @onclick="() => Pick(option.Value)" style="width:100%; justify-content:space-between;">
+                        <span style="display:inline-flex; align-items:center; gap:6px;">
+                            @if (option.Icon is { } optIcon)
+                            {
+                                @optIcon(_iconSize)
+                            }
+                            <span>@option.Label</span>
+                        </span>
+                        @if (Value == option.Value)
+                        {
+                            <Check Size="12" />
+                        }
+                    </Button>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    /// <summary>"micro" | "default" | "large" — matches Button sizing.</summary>
+    [Parameter] public string Size { get; set; } = "default";
+
+    [Parameter, EditorRequired] public IEnumerable<SelectOption> Options { get; set; } = [];
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _open;
+
+    private string _id => Id ?? _generatedId;
+    private readonly string _generatedId = $"select-{Guid.NewGuid():N}";
+
+    // Match Button's icon sizing.
+    private int _iconSize => Size == "large" ? 21 : 14;
+
+    private SelectOption? SelectedOption => Options.FirstOrDefault(o => o.Value == Value);
+    private string? SelectedLabel => SelectedOption?.Label;
+
+    private void Toggle() => _open = !_open;
+    private void Close() => _open = false;
+
+    private async Task Pick(string value)
+    {
+        _open = false;
+        await ValueChanged.InvokeAsync(value);
+    }
+
+    // v1 keyboard support: Escape closes. (Arrow-key navigation / type-ahead is a follow-up.)
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") _open = false;
+    }
+
+    public void Dispose() { }
+
+    public record SelectOption(string Label, string Value)
+    {
+        /// <summary>Optional leading icon, rendered in the trigger and menu. Receives the icon size.</summary>
+        public RenderFragment<int>? Icon { get; init; }
+    }
+}

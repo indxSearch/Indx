@@ -1,0 +1,42 @@
+@if (Open)
+{
+    <div class="indx-modal-overlay" @onclick="HandleOverlayClick">
+        <div class="indx-modal-content"
+             role="dialog"
+             aria-modal="true"
+             aria-label="@(Title ?? "Dialog")"
+             @onclick:stopPropagation="true">
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <h2 class="indx-modal-title">@Title</h2>
+            }
+            @if (!string.IsNullOrEmpty(Description))
+            {
+                <p class="indx-modal-description">@Description</p>
+            }
+            @if (ShowClose)
+            {
+                <button type="button" class="indx-modal-close" aria-label="Close" @onclick="Close">
+                    <XOrError Size="16" />
+                </button>
+            }
+            @ChildContent
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Description { get; set; }
+    [Parameter] public bool ShowClose { get; set; } = true;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    private async Task Close()
+    {
+        if (OpenChanged.HasDelegate) await OpenChanged.InvokeAsync(false);
+    }
+
+    private async Task HandleOverlayClick() => await Close();
+}

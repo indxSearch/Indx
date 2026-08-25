@@ -23,7 +23,7 @@ namespace IndxCloudApi.Controllers
     /// their team role (Admin/Editor/Viewer) decides what they may do. Membership is checked on
     /// every request, so removing a user from a team takes effect immediately.
     /// </summary>
-    [ApiVersion("2.0-alpha")]
+    [ApiVersion("2.0-beta")]
     [Route("api")]
     [ApiController]
     [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]

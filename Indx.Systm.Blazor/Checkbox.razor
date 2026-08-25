@@ -1,0 +1,50 @@
+@if (!string.IsNullOrEmpty(Label) || !string.IsNullOrEmpty(Score))
+{
+    <label for="@_id" class="@_wrapperClass">
+        <input id="@_id"
+               type="checkbox"
+               class="indx-checkbox"
+               checked="@Checked"
+               disabled="@Disabled"
+               @onchange="OnChange"
+               @attributes="AdditionalAttributes" />
+        @if (!string.IsNullOrEmpty(Label))
+        {
+            <span class="indx-checkbox-label">@Label</span>
+        }
+        @if (!string.IsNullOrEmpty(Score))
+        {
+            <span class="indx-checkbox-score">@Score</span>
+        }
+    </label>
+}
+else
+{
+    <input id="@_id"
+           type="checkbox"
+           class="indx-checkbox"
+           checked="@Checked"
+           disabled="@Disabled"
+           @onchange="OnChange"
+           @attributes="AdditionalAttributes" />
+}
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Score { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public bool Checked { get; set; }
+    [Parameter] public EventCallback<bool> CheckedChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _id => Id ?? _generatedId;
+    private readonly string _generatedId = $"checkbox-{Guid.NewGuid():N}";
+
+    private string _wrapperClass => $"indx-checkbox-wrapper{(Disabled ? " indx-checkbox-disabled" : "")}";
+
+    private async Task OnChange(ChangeEventArgs e)
+    {
+        await CheckedChanged.InvokeAsync((bool)(e.Value ?? false));
+    }
+}

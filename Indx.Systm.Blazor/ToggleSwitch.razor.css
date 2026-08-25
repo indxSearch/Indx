@@ -1,0 +1,79 @@
+.indx-toggle-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    user-select: none;
+    /* This control is a <label>; null out any host-app global label margin so it
+       centers cleanly against inputs/buttons in a flex row. */
+    margin: 0;
+}
+
+.indx-toggle-input {
+    position: absolute;
+    opacity: 0;
+    width: 28px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.indx-toggle-input:disabled {
+    cursor: not-allowed;
+}
+
+.indx-toggle-input:focus-visible + .indx-toggle-slider {
+    outline: 2px solid var(--lv5);
+    outline-offset: 2px;
+}
+
+.indx-toggle-label {
+    font: var(--text-sm);
+    color: var(--lv7);
+}
+
+.indx-toggle-slider {
+    position: relative;
+    display: inline-block;
+    width: 28px;
+    height: 18px;
+    background: var(--lv2);
+    border-radius: var(--radius);
+    flex-shrink: 0;
+}
+
+.indx-toggle-wrapper:not(.indx-toggle-disabled):hover .indx-toggle-input:not(:checked) + .indx-toggle-slider {
+    background-color: var(--lv3);
+}
+
+.indx-toggle-slider::before {
+    position: absolute;
+    content: "";
+    height: 12px;
+    width: 12px;
+    left: 3px;
+    top: 3px;
+    background-color: var(--lv8);
+    border-radius: var(--radius);
+    transition: transform 0.02s;
+}
+
+.indx-toggle-input:checked + .indx-toggle-slider {
+    background-color: var(--lv3);
+}
+
+.indx-toggle-input:checked + .indx-toggle-slider::before {
+    transform: translateX(10px);
+}
+
+.indx-toggle-input:disabled + .indx-toggle-slider {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.indx-toggle-disabled {
+    cursor: not-allowed;
+}
+
+.indx-toggle-disabled .indx-toggle-label {
+    opacity: 0.5;
+}

@@ -1,0 +1,11 @@
+<svg width="@_width" height="@_height" viewBox="0 0 7 5" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <path d="M5 5H4V4H5V5ZM7 5H6V4H7V5ZM6 4L5 4L5 1L6 1L6 4ZM1 3H0L0 2L1 2L1 3ZM3 3H2V2L3 2V3ZM5 1L4 1V0L5 0V1ZM7 1L6 1V0L7 0V1Z" fill="@Color"/>
+</svg>
+
+@code {
+    [Parameter] public string Color { get; set; } = "currentColor";
+    [Parameter] public int Size { get; set; } = 21;
+
+    private string _width => $"{Size}px";
+    private string _height => System.FormattableString.Invariant($"{Size * 0.7142857142857143:F2}px");
+}

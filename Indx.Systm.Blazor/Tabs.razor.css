@@ -1,0 +1,75 @@
+.indx-tabs {
+    display: flex;
+    border-bottom: 1px solid var(--lv3);
+    gap: 0;
+}
+
+/* Scrollable variant: overflow scrolls horizontally instead of clipping. The scrollbar is hidden
+   and the edges fade (mask) to hint there's more — no shadows. The fade is scroll-aware: each edge
+   only fades when there's content scrolled off it (data-overflow-start / -end set from JS), so there
+   is no left fade at rest. */
+.indx-tabs-scrollable {
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none; /* Firefox */
+    --tabs-fade-start: 0px;
+    --tabs-fade-end: 0px;
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--tabs-fade-start), #000 calc(100% - var(--tabs-fade-end)), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 var(--tabs-fade-start), #000 calc(100% - var(--tabs-fade-end)), transparent 100%);
+}
+
+.indx-tabs-scrollable[data-overflow-start] {
+    --tabs-fade-start: 22px;
+}
+
+.indx-tabs-scrollable[data-overflow-end] {
+    --tabs-fade-end: 22px;
+}
+
+.indx-tabs-scrollable::-webkit-scrollbar {
+    display: none; /* Chrome/Safari */
+}
+
+.indx-tabs-scrollable .indx-tab {
+    flex-shrink: 0; /* keep full size; overflow scrolls rather than squishing tabs */
+}
+
+.indx-tab {
+    display: inline-flex;
+    align-items: center;
+    font-weight: var(--med);
+    color: var(--lv5);
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.indx-tab-micro {
+    font: var(--text-xs);
+    height: 30px;
+    padding: 0 10px;
+}
+
+.indx-tab-default {
+    font: var(--text-sm);
+    height: 40px;
+    padding: 0 15px;
+}
+
+.indx-tab-large {
+    font: var(--text-base);
+    height: 50px;
+    padding: 0 20px;
+}
+
+.indx-tab:hover {
+    color: var(--lv7);
+}
+
+.indx-tab-active {
+    color: var(--lv7);
+    border-bottom-color: var(--lv7);
+}

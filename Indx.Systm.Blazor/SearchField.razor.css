@@ -1,0 +1,112 @@
+/* Ported from @indxsearch/systm SearchField.module.css */
+.searchfield {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.label {
+    font: var(--text-sm);
+    color: var(--lv8);
+}
+
+.container {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.input {
+    width: 100%;
+    border-radius: 1px;
+    border: none;
+    color: var(--lv8);
+    box-sizing: border-box;
+    caret-color: var(--lv7);
+    background: none;
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.input:focus {
+    outline: none;
+}
+
+/* Hide the browser's native search clear (×) — we render our own Clear button. */
+.input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    display: none;
+}
+
+.input::placeholder {
+    color: var(--lv4);
+    transition: opacity 0.2s;
+}
+
+.input:focus::placeholder {
+    opacity: 0;
+}
+
+.input::selection {
+    background: var(--lv3);
+}
+
+.input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.input.error {
+    outline: 0.5px solid var(--CSignal);
+}
+
+/* Search icon: the inner <svg> uses currentColor, so the span's color drives it. */
+.icon {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    color: var(--lv4);
+    pointer-events: none;
+    transition: color 0.2s;
+}
+
+.container:focus-within .icon {
+    color: var(--lv7);
+}
+
+.right {
+    position: absolute;
+    right: 5px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+/* Sizes */
+.size-micro .input {
+    font: var(--text-xs);
+    height: 30px;
+    padding-left: 25px;
+    padding-right: 48px; /* room for the Clear button */
+}
+.size-micro .icon {
+    left: 5px;
+}
+
+.size-default .input {
+    font: var(--text-base);
+    height: 40px;
+    padding-left: 35px;
+    padding-right: 52px; /* room for the Clear button */
+}
+.size-default .icon {
+    left: 7px;
+}
+
+.error-text {
+    font: var(--text-2xs);
+    color: var(--CSignal);
+}

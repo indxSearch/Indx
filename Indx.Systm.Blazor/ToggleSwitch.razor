@@ -1,0 +1,37 @@
+<label for="@_id" class="@_wrapperClass">
+    <input id="@_id"
+           type="checkbox"
+           role="switch"
+           class="indx-toggle-input"
+           checked="@Checked"
+           disabled="@Disabled"
+           aria-label="@AriaLabel"
+           @onchange="OnChange"
+           @attributes="AdditionalAttributes" />
+    <span class="indx-toggle-slider" aria-hidden="true"></span>
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <span class="indx-toggle-label">@Label</span>
+    }
+</label>
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public bool Checked { get; set; }
+    [Parameter] public EventCallback<bool> CheckedChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool Elevated { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _id => Id ?? _generatedId;
+    private readonly string _generatedId = $"toggle-{Guid.NewGuid():N}";
+
+    private string _wrapperClass => $"indx-toggle-wrapper{(Disabled ? " indx-toggle-disabled" : "")}{(Elevated ? " indx-toggle-elevated" : "")}";
+
+    private async Task OnChange(ChangeEventArgs e)
+    {
+        await CheckedChanged.InvokeAsync((bool)(e.Value ?? false));
+    }
+}
