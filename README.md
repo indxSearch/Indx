@@ -5,9 +5,12 @@ A self-hosted search service built on [Indx Search](https://indx.co). Blazor Ser
 ## What's Included
 
 - Blazor Server web interface with admin panel
+- **Teams** — datasets belong to teams; members join with per-team roles
 - HTTP API with JWT authentication and API key management
+- **MCP server** at `/mcp` — connect AI agents (Claude, etc.) directly to your search data
 - User registration, login, and account management
 - Local accounts with optional Microsoft and Google OAuth
+- Server-side boost rules, facets, vector & hybrid search
 - Notifications system
 - SQLite databases — no external database required
 - Swagger UI at `/swagger`
@@ -27,7 +30,7 @@ cd IndxCloudApi
 dotnet run
 ```
 
-Open `https://localhost:5001` and register an account. The first user to register becomes the admin.
+Open `https://localhost:5001` — the first visit walks you through a short setup: create the admin account, name your team, and pick instance settings. Done in under a minute.
 
 Works immediately with no configuration:
 - Local username/password accounts
@@ -36,13 +39,47 @@ Works immediately with no configuration:
 
 ## First-Run Setup
 
-After deploying and registering your admin account, go to **Admin → Settings** to configure:
+The setup wizard runs automatically on first visit. Afterwards, **Admin → Settings** configures:
 
 - **Registration mode** — Open, domain-restricted, or closed
 - **Email provider** — Switch from console logging to Azure Communication Services
 - **OAuth** — Enable Microsoft and/or Google sign-in
 
 Most settings can be changed through the UI without restarting the app.
+
+## Teams
+
+Everything is organized around teams:
+
+- Every user gets a **personal team** on signup — your datasets live there by default.
+- Create more teams to share datasets with colleagues. Members are invited with a
+  per-team role: **Admin** (manage members, delete datasets), **Editor** (load,
+  index, configure), or **Viewer** (search and read).
+- Datasets can be **transferred** between teams you belong to.
+- The HTTP API is team-scoped: every dataset route is
+  `/api/teams/{team}/datasets/{dataset}/…`.
+
+## MCP — connect AI agents
+
+The server exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` (Streamable HTTP). Point an MCP-capable client — Claude Code, Claude Desktop, or any other — at it with a bearer token, and the agent gets read-only retrieval tools over your datasets: search, field info, status.
+
+- Same JWT tokens and team permissions as the rest of the API
+- Read-only by design — agents can search, not mutate
+- Admins can disable it instance-wide under **Instance Settings** (no restart needed)
+
+## API Access
+
+1. Log in and open **API Key** in the menu to generate a bearer token
+2. Every dataset operation is scoped to a team and dataset:
+
+```bash
+curl -X POST "https://localhost:5001/api/teams/<team>/datasets/<dataset>/search" \
+  -H "Authorization: Bearer <your-token>" \
+  -H "Content-Type: application/json" \
+  -d '{ "text": "your query", "maxNumberOfRecordsToReturn": 10 }'
+```
+
+Full API reference at `/swagger`.
 
 ## Configuration
 
@@ -151,31 +188,6 @@ https://your-app.azurewebsites.net/signin-microsoft
 https://your-app.azurewebsites.net/signin-google
 ```
 
-### Docker
-
-```bash
-docker build -t indxcloudapi .
-docker run -p 8080:8080 \
-  -v /your/data:/app/IndxData \
-  -e Jwt__Key="your-secret-key-minimum-32-characters" \
-  -e ASPNETCORE_ENVIRONMENT=Production \
-  indxcloudapi
-```
-
-Mount a volume to `/app/IndxData` to persist databases and license files across container restarts.
-
-## API Access
-
-1. Register and log in at `/Account/Login`
-2. Navigate to **API Key** in the menu to generate a JWT token
-3. Use the token in API requests:
-
-```bash
-curl -H "Authorization: Bearer <your-token>" https://localhost:5001/api/Search/myDataset
-```
-
-Full API reference available at `/swagger`.
-
 ## Database
 
 Two SQLite files in `./IndxData/`:
@@ -222,6 +234,6 @@ dotnet test
 
 ## Related Projects
 
-- [IndxCloudLoader (C#)](https://github.com/indxSearch/IndxCloudLoader) — CLI tool for bulk-loading JSON into IndxCloudApi
-- [IndxNodeLoader (Node.js)](https://github.com/indxSearch/IndxNodeLoader) — Node.js equivalent
-- [indx-intrface (React)](https://github.com/indxSearch/indx-intrface) — React search UI components
+- [`@indxsearch/intrface`](https://www.npmjs.com/package/@indxsearch/intrface) — React search UI components for IndxCloudApi (with [`@indxsearch/systm`](https://www.npmjs.com/package/@indxsearch/systm) and [`@indxsearch/pixl`](https://www.npmjs.com/package/@indxsearch/pixl))
+- [`IndxSearchLib`](https://www.nuget.org/packages/IndxSearchLib) — the embedded C# search engine this server is built on
+- [Documentation](https://v5.docs.indx.co) — guides, how-tos, and the full API reference
