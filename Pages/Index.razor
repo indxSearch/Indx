@@ -198,6 +198,12 @@ else
                    ════════════════════════════════════════ *@
                         @if (activeTab == "fields")
                         {
+                            @if (_analyzeWarnings.TryGetValue(datasetName, out var analyzeWarning))
+                            {
+                                <div style="border-left:3px solid var(--CWarning);background:var(--lv1);padding:10px 14px;margin-top:16px;">
+                                    <p style="font:var(--text-sm);color:var(--lv6);margin:0;">@analyzeWarning</p>
+                                </div>
+                            }
                             @* ── Loading / Indexing in progress (navigated back while engine is busy) ── *@
                             @if ((engineState is SystemState.Loading or SystemState.Loaded or SystemState.Indexing) && !isLoadIndexing)
                             {
@@ -1046,6 +1052,7 @@ else
 
     // Upload phase (stream file + analyze)
     private string? _uploadingDataset;
+    private readonly Dictionary<string, string> _analyzeWarnings = new();
     private string? _analyzingDataset; // set while Init runs (schema scan) after the upload transfer
     private int _uploadProgress;
     private IBrowserFile? _selectedFile;
@@ -1563,6 +1570,26 @@ else
 
             // Populate field config for display; show unused fields by default for new datasets
             var engine = IndxCloudInternalApi.Manager.FindSearchEngine(datasetName, activeTeamId!);
+
+            // Envelope detection: a single document in a non-trivial file almost always means
+            // the JSON is a root object WRAPPING the real document array (an export envelope) -
+            // the parser reads it as one giant document, which then "loads" as 1 record and can
+            // exhaust memory during indexing. Warn now, before Load/Index is attempted.
+            var analyzedDocs = engine?.DocumentFields?.AnalyzedDocumentCount ?? 0;
+            var analyzedBytes = _bufferedFiles.TryGetValue(datasetName, out var buffered) ? buffered.Length : 0;
+            if (analyzedDocs == 1 && analyzedBytes > 100_000)
+            {
+                _analyzeWarnings[datasetName] =
+                    $"Only 1 document was found in a {analyzedBytes / (1024.0 * 1024.0):F1} MB file. " +
+                    "This usually means the JSON is an export envelope: a root object wrapping the real " +
+                    "document array (e.g. { \"count\": …, \"products\": [ … ] }). Indx expects the stream " +
+                    "to BE the array of documents - extract the inner array and upload that instead.";
+            }
+            else
+            {
+                _analyzeWarnings.Remove(datasetName);
+            }
+
             var fields = engine?.GetFieldConfiguration();
             if (fields != null)
             {
@@ -2021,6 +2048,7 @@ else
             {
                 deleteConfirmDataset = null;
                 expandedFieldConfig.Remove(datasetName);
+                _analyzeWarnings.Remove(datasetName);
                 fieldConfigs.Remove(datasetName);
                 _editedFieldConfigs.Remove(datasetName);
                 _searchTexts.Remove(datasetName);
