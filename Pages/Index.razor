@@ -174,7 +174,7 @@ else
 
                         @* ── Dataset tab nav (hidden when hibernated: that view is just Wake up /
                               Delete, no tabs — the user lands here directly after Hibernate now) ── *@
-                        @if (engineState == SystemState.Ready || (isAnalyzed && !isLoadIndexing && isEditor))
+                        @if (engineState == SystemState.Ready || (isAnalyzed && !isLoadIndexing && isEditor) || (engineState == SystemState.Error && isAdmin))
                         {
                             <nav class="indx-dataset-nav">
                                 <Button Variant="@(activeTab == "fields" ? "primary" : "ghost")" Size="micro" IconLeft="_iconFields" @onclick="@(() => _datasetTabs[selectedDataset] = "fields")">Field configuration</Button>
@@ -203,7 +203,7 @@ else
                             {
                                 <div class="indx-field-config-saving" style="margin-top:16px;">
                                     <p class="indx-field-config-saving-label">
-                                        @(engineState == SystemState.Indexing ? "Indexing in progress…" : "Loading in progress…")
+                                        @(engineState switch { SystemState.Indexing => "Indexing in progress…", SystemState.Loaded => "Data loaded — waiting for indexing.", _ => "Loading in progress…" })
                                     </p>
                                 </div>
                                 @* Recovery escape hatch: a dataset can get stuck in a non-Ready state (e.g. an
@@ -225,6 +225,46 @@ else
                                             <span style="font:var(--text-xs);color:var(--lv4);">Stuck here? Delete to recover.</span>
                                         </div>
                                     }
+                                }
+                            }
+
+                            @* ── Engine error (e.g. OutOfMemory during load/index): the engine is dead
+                               and no other panel matches this state, so without this block the card
+                               shows only the Error chip with nothing actionable. Surface the error and
+                               give the admin the escape: delete (works regardless of engine state —
+                               DeleteDataSet disposes the instance and removes the stored rows). ── *@
+                            @if (engineState == SystemState.Error)
+                            {
+                                <div class="indx-field-config-saving" style="margin-top:16px;">
+                                    <p class="indx-field-config-saving-label" style="color:var(--CSignal);">
+                                        The search engine hit an unrecoverable error@(string.IsNullOrEmpty(status?.ErrorMessage) ? "." : $": {status!.ErrorMessage}")
+                                    </p>
+                                    <p style="font:var(--text-xs);color:var(--lv5);margin-top:4px;">
+                                        This often means the server ran out of memory while loading or indexing.
+                                        The dataset cannot recover on its own — delete it, then retry with a
+                                        smaller dataset or on a larger instance.
+                                    </p>
+                                </div>
+                                @if (isAdmin)
+                                {
+                                    @if (deleteConfirmDataset == datasetName)
+                                    {
+                                        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+                                            <span style="font:var(--text-xs);color:var(--lv5);">Delete this dataset?</span>
+                                            <Button Variant="danger" Size="micro" @onclick="() => ConfirmDelete(datasetName)">Yes, Delete</Button>
+                                            <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div style="margin-top:8px;">
+                                            <Button Variant="danger" Size="micro" IconLeft="_iconDelete" @onclick="() => ShowDeleteConfirm(datasetName)">Delete dataset</Button>
+                                        </div>
+                                    }
+                                }
+                                else
+                                {
+                                    <p style="font:var(--text-xs);color:var(--lv4);margin-top:8px;">A team admin can delete this dataset to recover.</p>
                                 }
                             }
 
