@@ -1101,16 +1101,27 @@ namespace IndxCloudApi.Models
                 {
                     if (engine.Status.SystemState == SystemState.Created)
                     {
-                        var loadMonitor = new ProcessMonitor();
+                        // Bounded waits: DbLock is held for the duration, and every
+                        // other request for this dataset queues behind it. An
+                        // unbounded WaitForCompletion here turns a wedged build
+                        // (e.g. a build thread that died under memory pressure and
+                        // left the state at Indexing) into a permanently bricked
+                        // dataset with a growing pile of blocked request threads.
+                        var loadMonitor = new ProcessMonitor { TimeoutSeconds = 600 };
                         engine.LoadFromDatabaseSync(loadMonitor);
-                        loadMonitor.WaitForCompletion();
+                        bool loaded = loadMonitor.WaitForCompletion();
 
-                        var indexMonitor = new ProcessMonitor();
+                        var indexMonitor = new ProcessMonitor { TimeoutSeconds = 600 };
                         engine.Index(monitor: indexMonitor);
-                        indexMonitor.WaitForCompletion();
+                        bool indexed = indexMonitor.WaitForCompletion();
 
-                        _logger.LogInformation(MakeLogPrefix(teamId, dataSetName)
-                            + $"auto-loaded on demand (KeepAliveTimeHrs={instance.KeepAliveTimeHrs})");
+                        if (loaded && indexed)
+                            _logger.LogInformation(MakeLogPrefix(teamId, dataSetName)
+                                + $"auto-loaded on demand (KeepAliveTimeHrs={instance.KeepAliveTimeHrs})");
+                        else
+                            _logger.LogError(MakeLogPrefix(teamId, dataSetName)
+                                + $"auto-load timed out (load completed:{loaded}, index completed:{indexed}) — "
+                                + "releasing the request; the dataset stays non-Ready until reloaded");
                     }
                 }
                 instance.Touch(TimeProvider.GetUtcNow());
