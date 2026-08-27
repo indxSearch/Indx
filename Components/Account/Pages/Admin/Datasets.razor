@@ -65,17 +65,17 @@ else
                     <td style="padding: 10px 12px; color: var(--lv6); font-family: monospace;">@row.DataSetName</td>
                     <td style="padding: 10px 12px; color: var(--lv5);">@(row.TeamName ?? row.TeamId)</td>
                     <td style="padding: 10px 12px;">
-                        @if (row.State is null)
+                        @if (row.DisplayState is null)
                         {
                             <span style="color: var(--lv4);">—</span>
                         }
                         else
                         {
-                            <Chip Size="large" Color="@StateColor(row.State.Value)" TextColor="#080809" Icon="@StateChipIcon(row.State.Value)">@row.State.Value.ToString()</Chip>
+                            <Chip Size="large" Color="@StateColor(row.DisplayState.Value)" TextColor="#080809" Icon="@StateChipIcon(row.DisplayState.Value)">@row.DisplayState.Value.ToString()</Chip>
                         }
                     </td>
                     <td style="padding: 10px 12px; text-align: right; color: var(--lv5); font-variant-numeric: tabular-nums;">
-                        @(row.State is null ? "—" : row.DocumentCount.ToString("N0"))
+                        @(row.DisplayState is null ? "—" : row.DisplayCount.ToString("N0"))
                     </td>
                     <td style="padding: 10px 12px; color: var(--lv5);">
                         @(row.LastIndexed is { } t && t > DateTime.MinValue ? t.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "—")
@@ -132,6 +132,7 @@ else
     private RenderFragment<int> _iconTrolley => size => @<Trolley Size="size" />;
     private RenderFragment<int> _iconHourGlass => size => @<HourGlass Size="size" />;
     private RenderFragment<int> _iconWarning => size => @<Warning Size="size" />;
+    private RenderFragment<int> _iconHibernate => size => @<Hibernate Size="size" />;
     private RenderFragment<int> _iconEmpty => size => @<Empty Size="size" />;
 
     private RenderFragment<int>? StateChipIcon(SystemState state) => state switch
@@ -141,15 +142,30 @@ else
         SystemState.Indexing => _iconHourGlass,
         SystemState.Error => _iconWarning,
         SystemState.Created => _iconEmpty,
+        SystemState.Hibernated => _iconHibernate,
         _ => null,
     };
 
     private record DatasetRow(
         string DataSetName, string TeamId, string? TeamName,
         SystemState? State, int DocumentCount, DateTime? LastIndexed,
-        int KeepAliveTimeHrs, bool Loaded, TimeSpan? Remaining)
+        int KeepAliveTimeHrs, bool Loaded, TimeSpan? Remaining, int RecordCount)
     {
         public string Key => $"{TeamId}/{DataSetName}";
+
+        /// <summary>
+        /// What the admin should see. The raw engine state says "Created" (or the engine
+        /// is not instantiated at all) for a dataset whose documents live in indx.db with
+        /// no index in memory - which is hibernation, not an empty dataset. Same inference
+        /// the user dashboard makes (Index.razor: Created + records on disk = hibernated).
+        /// </summary>
+        public SystemState? DisplayState =>
+            (State is null or SystemState.Created) && RecordCount > 0
+                ? SystemState.Hibernated
+                : State;
+
+        /// <summary>In-memory count when serving; persisted count when hibernated.</summary>
+        public int DisplayCount => DisplayState == SystemState.Hibernated ? RecordCount : DocumentCount;
     }
 
     private static string KeepAliveLabel(int hrs) => hrs switch
@@ -175,6 +191,7 @@ else
         SystemState.Ready => "var(--CTeal)",
         SystemState.Loaded => "var(--CLightBlue)",
         SystemState.Created => "var(--lv3)",
+        SystemState.Hibernated => "var(--CLightBlue)",
         _ => "var(--CWarning)",
     };
 
@@ -210,7 +227,7 @@ else
             return new DatasetRow(
                 r.DataSetName, r.TeamId, teamMap.GetValueOrDefault(r.TeamId),
                 status?.SystemState, status?.DocumentCount ?? 0, status?.TimeOfLastIndexBuild,
-                ka.KeepAliveTimeHrs, ka.Ready, ka.Remaining);
+                ka.KeepAliveTimeHrs, ka.Ready, ka.Remaining, ka.RecordCount);
         });
         _rows = [.. rows.OrderBy(r => r.TeamName ?? r.TeamId).ThenBy(r => r.DataSetName)];
     }
