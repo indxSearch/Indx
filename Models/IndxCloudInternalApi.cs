@@ -202,16 +202,43 @@ namespace IndxCloudApi.Models
         /// engine, and persists the field configuration. Must be called after CreateOrOpen and
         /// before Load. Returns null on success or an error message on failure.
         /// </summary>
+        /// <remarks>
+        /// Goes through <c>Init</c> — the same call the REST analyze endpoint makes
+        /// (<c>SearchController.AnalyzeStreamAsync</c>) — rather than
+        /// <c>DocumentFields.AnalyzeAsync</c>, which the portal used to call.
+        /// <para>The old path handed the WHOLE stream to <c>JsonDocument.ParseAsync</c>: raw
+        /// bytes in a rented buffer plus a metadata row per JSON element, both alive at once.
+        /// Measured peak managed heap was 517 MB for a 225 MB file and 2048 MB for a 486 MB
+        /// one. Init streams through JsonParser a document at a time: 70 MB and 2 MB for the
+        /// same two files — its ceiling is the largest single document, not the file. The
+        /// numbers are in Notes/portal-analyze-streaming-plan.md; the probe that produced them
+        /// is ParserTests/AnalyzePathMemoryProbeTests.</para>
+        /// <para>The wait is the SYNCHRONOUS WaitForCompletion pushed onto a threadpool thread,
+        /// not <c>WaitForCompletionAsync</c>. Init dispatches the work to a background thread
+        /// and returns, so an async awaiter arrives before MarkStarted has run, and
+        /// WaitForCompletionAsync completes a not-yet-started monitor immediately by design
+        /// (pinned by ProcessMonitorTests.WaitForCompletionAsync_OnFreshMonitor_CompletesImmediately).
+        /// Awaiting it here returned instantly with Succeeded still false — every upload would
+        /// have reported a failure while the analyze ran on in the background.</para>
+        /// <para>Init sets DocumentFields on the engine itself, so there is no
+        /// SetDocumentFieldsInternal call, and it rewinds the stream afterwards, which the
+        /// caller relies on when it hands the same FileStream to the Load step.</para>
+        /// </remarks>
         internal async Task<string?> InitFromStreamAsync(string dataSetName, string teamId, Stream jsonStream)
         {
             var engine = FindSearchEngineForInit(dataSetName, teamId);
             if (engine == null)
                 return "Dataset not found";
-            var (df, error) = await DocumentFields.AnalyzeAsync(jsonStream);
-            if (!string.IsNullOrEmpty(error) || df == null)
-                return string.IsNullOrEmpty(error) ? "Analyze returned no fields" : error;
-            engine.SetDocumentFieldsInternal(df);
-            engine.Persistence?.SaveDocumentFields(df.GetSerialized());
+            using var monitor = new ProcessMonitor();
+            engine.Init(jsonStream, monitor);
+            await Task.Run(() => monitor.WaitForCompletion());
+            if (!monitor.Succeeded)
+                return string.IsNullOrEmpty(monitor.ErrorMessage)
+                    ? "Analyze failed - the stream is not parseable JSON."
+                    : monitor.ErrorMessage;
+            if (engine.DocumentFields == null)
+                return "Analyze returned no fields";
+            engine.Persistence?.SaveDocumentFields(engine.DocumentFields.GetSerialized());
             return null;
         }
 

@@ -881,6 +881,28 @@
             engine, and persists the field configuration. Must be called after CreateOrOpen and
             before Load. Returns null on success or an error message on failure.
             </summary>
+            <remarks>
+            Goes through <c>Init</c> — the same call the REST analyze endpoint makes
+            (<c>SearchController.AnalyzeStreamAsync</c>) — rather than
+            <c>DocumentFields.AnalyzeAsync</c>, which the portal used to call.
+            <para>The old path handed the WHOLE stream to <c>JsonDocument.ParseAsync</c>: raw
+            bytes in a rented buffer plus a metadata row per JSON element, both alive at once.
+            Measured peak managed heap was 517 MB for a 225 MB file and 2048 MB for a 486 MB
+            one. Init streams through JsonParser a document at a time: 70 MB and 2 MB for the
+            same two files — its ceiling is the largest single document, not the file. The
+            numbers are in Notes/portal-analyze-streaming-plan.md; the probe that produced them
+            is ParserTests/AnalyzePathMemoryProbeTests.</para>
+            <para>The wait is the SYNCHRONOUS WaitForCompletion pushed onto a threadpool thread,
+            not <c>WaitForCompletionAsync</c>. Init dispatches the work to a background thread
+            and returns, so an async awaiter arrives before MarkStarted has run, and
+            WaitForCompletionAsync completes a not-yet-started monitor immediately by design
+            (pinned by ProcessMonitorTests.WaitForCompletionAsync_OnFreshMonitor_CompletesImmediately).
+            Awaiting it here returned instantly with Succeeded still false — every upload would
+            have reported a failure while the analyze ran on in the background.</para>
+            <para>Init sets DocumentFields on the engine itself, so there is no
+            SetDocumentFieldsInternal call, and it rewinds the stream afterwards, which the
+            caller relies on when it hands the same FileStream to the Load step.</para>
+            </remarks>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.StartLoadAsync(System.String,System.String,System.IO.Stream)">
             <summary>
