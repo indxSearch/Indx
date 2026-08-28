@@ -59,6 +59,25 @@ Everything is organized around teams:
 - The HTTP API is team-scoped: every dataset route is
   `/api/teams/{team}/datasets/{dataset}/…`.
 
+## Loading Data
+
+Data goes in as **JSON** — from the web UI or over the API.
+
+**From the UI:** open your dataset, upload a JSON file, mark which fields are searchable
+(and filterable / facetable / sortable), then **Load & Index**. The search preview tab lets
+you try queries immediately.
+
+**The format:** an array of JSON documents. Nested objects become dotted field names
+(`brand.displayName`), arrays are supported, and fields are auto-detected with types on
+upload. **Export files that wrap the documents in a root object** — e.g.
+`{ "count": …, "products": [ … ] }`, as many systems export — are handled automatically:
+Indx finds the document array inside the envelope on its own, so upload the file as-is.
+
+**Over the API:** the same steps as endpoints — analyze, field configuration, load, index —
+plus **single-document operations** (`POST`/`PUT`/`PATCH`/`DELETE …/documents/{key}`) that
+keep the search index in sync incrementally, so pushing individual record changes from a
+source system needs no re-index. See `/swagger` for the full surface.
+
 ## MCP — connect AI agents
 
 The server exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` (Streamable HTTP). Point an MCP-capable client — Claude Code, Claude Desktop, or any other — at it with a bearer token, and the agent gets read-only retrieval tools over your datasets: search, field info, status.
