@@ -1940,34 +1940,94 @@ else
         }
     }
 
-    private IEnumerable<JsonProperty> GetDisplayFields(string datasetName, JsonElement doc)
+    /// <summary>One field shown on a search-preview row.</summary>
+    private record DisplayField(string Name, string Value);
+
+    /// <summary>
+    /// The (up to four) fields shown per hit: searchable first, then facetable, then the
+    /// rest — unchanged. What changed is how a field finds its value.
+    /// <para>This used to enumerate the hit document's own top-level properties and match
+    /// their names against the configuration. That only works while documents are flat. The
+    /// parser names a nested value by its whole path — <c>displayName.values.text</c>, see
+    /// DocumentFields.ProcessObjectElement — and no such property exists at the top level,
+    /// so nothing ever matched: every field fell through to the third bucket and the row
+    /// came out in document order, with the field the user marked searchable missing
+    /// altogether. Verified in the portal on a nested Relewise export.</para>
+    /// <para>So the iteration is inverted: walk the configured fields, which already carry
+    /// the parser's names, and resolve each name as a path into the document. Nothing has to
+    /// re-derive how a field is named. It is also less work than before — at most four
+    /// lookups per hit instead of enumerating a wide document.</para>
+    /// </summary>
+    private IEnumerable<DisplayField> GetDisplayFields(string datasetName, JsonElement doc)
     {
         const int max = 4;
-        var allProps = doc.EnumerateObject()
-            .Where(p => p.Value.ValueKind is JsonValueKind.String or JsonValueKind.Number or JsonValueKind.True or JsonValueKind.False)
-            .ToList();
 
         if (!_editedFieldConfigs.TryGetValue(datasetName, out var fields) || fields == null)
-            return allProps.Take(max);
+            return doc.EnumerateObject()
+                .Where(p => p.Value.ValueKind is JsonValueKind.String or JsonValueKind.Number
+                                              or JsonValueKind.True or JsonValueKind.False)
+                .Take(max)
+                .Select(p => new DisplayField(p.Name, p.Value.ToString()))
+                .ToList();
 
-        var searchable = fields.Where(f => f.Searchable == true).Select(f => f.FieldName).ToHashSet();
-        var facetable = fields.Where(f => f.Facetable == true).Select(f => f.FieldName).ToHashSet();
+        // Same three buckets, same priority, same cap — applied to the field list now.
+        var ordered = fields.Where(f => f.Searchable == true)
+            .Concat(fields.Where(f => f.Facetable == true && f.Searchable != true))
+            .Concat(fields.Where(f => f.Searchable != true && f.Facetable != true));
 
-        var result = new List<JsonProperty>(max);
-
-        foreach (var p in allProps)
-            if (result.Count < max && searchable.Contains(p.Name))
-                result.Add(p);
-
-        foreach (var p in allProps)
-            if (result.Count < max && facetable.Contains(p.Name) && !searchable.Contains(p.Name))
-                result.Add(p);
-
-        foreach (var p in allProps)
-            if (result.Count < max && !searchable.Contains(p.Name) && !facetable.Contains(p.Name))
-                result.Add(p);
-
+        var result = new List<DisplayField>(max);
+        foreach (var f in ordered)
+        {
+            if (result.Count >= max) break;
+            // Absent on this document — an Optional field, say — shows as an empty cell
+            // rather than being skipped, so the columns stay the same down the result list.
+            result.Add(new DisplayField(f.FieldName, ResolveFieldValue(doc, f.FieldName)));
+        }
         return result;
+    }
+
+    /// <summary>
+    /// Follows a parser field name — dot-separated, no array indices — down to its value.
+    /// A segment landing on an array applies the rest of the path to its elements and takes
+    /// the first that yields something, which mirrors how the parser collapses arrays when
+    /// it names the field. Returns an empty string when the document has no value there.
+    /// </summary>
+    private static string ResolveFieldValue(JsonElement element, string path) =>
+        ResolveFieldValue(element, path.Split('.'), 0);
+
+    private static string ResolveFieldValue(JsonElement element, string[] segments, int index)
+    {
+        for (; index < segments.Length; index++)
+        {
+            if (element.ValueKind == JsonValueKind.Array)
+            {
+                // Resume the SAME segment inside each element: the parser did not spend a
+                // segment on the array, so neither do we.
+                foreach (var item in element.EnumerateArray())
+                {
+                    var found = ResolveFieldValue(item, segments, index);
+                    if (!string.IsNullOrEmpty(found)) return found;
+                }
+                return string.Empty;
+            }
+            if (element.ValueKind != JsonValueKind.Object ||
+                !element.TryGetProperty(segments[index], out element))
+                return string.Empty;
+        }
+
+        // A name always ends at a scalar, but guard anyway: a future change to how fields
+        // are named should leave an empty cell, not a type name, in the UI.
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                if (item.ValueKind is JsonValueKind.Object or JsonValueKind.Array) continue;
+                var text = item.ToString();
+                if (!string.IsNullOrEmpty(text)) return text;
+            }
+            return string.Empty;
+        }
+        return element.ValueKind == JsonValueKind.Object ? string.Empty : element.ToString();
     }
 
     private void ClearSearch(string datasetName)

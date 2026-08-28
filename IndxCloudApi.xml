@@ -1235,6 +1235,37 @@
         <member name="M:IndxCloudApi.Pages.Index.PreviewHit.#ctor(System.Text.Json.JsonElement,System.UInt16)">
             <summary>One search-preview row: the document and its relevance score.</summary>
         </member>
+        <member name="T:IndxCloudApi.Pages.Index.DisplayField">
+            <summary>One field shown on a search-preview row.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Pages.Index.DisplayField.#ctor(System.String,System.String)">
+            <summary>One field shown on a search-preview row.</summary>
+        </member>
+        <member name="M:IndxCloudApi.Pages.Index.GetDisplayFields(System.String,System.Text.Json.JsonElement)">
+            <summary>
+            The (up to four) fields shown per hit: searchable first, then facetable, then the
+            rest — unchanged. What changed is how a field finds its value.
+            <para>This used to enumerate the hit document's own top-level properties and match
+            their names against the configuration. That only works while documents are flat. The
+            parser names a nested value by its whole path — <c>displayName.values.text</c>, see
+            DocumentFields.ProcessObjectElement — and no such property exists at the top level,
+            so nothing ever matched: every field fell through to the third bucket and the row
+            came out in document order, with the field the user marked searchable missing
+            altogether. Verified in the portal on a nested Relewise export.</para>
+            <para>So the iteration is inverted: walk the configured fields, which already carry
+            the parser's names, and resolve each name as a path into the document. Nothing has to
+            re-derive how a field is named. It is also less work than before — at most four
+            lookups per hit instead of enumerating a wide document.</para>
+            </summary>
+        </member>
+        <member name="M:IndxCloudApi.Pages.Index.ResolveFieldValue(System.Text.Json.JsonElement,System.String)">
+            <summary>
+            Follows a parser field name — dot-separated, no array indices — down to its value.
+            A segment landing on an array applies the rest of the path to its elements and takes
+            the first that yields something, which mirrors how the parser collapses arrays when
+            it names the field. Returns an empty string when the document has no value there.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Pages.Index.FieldOptionsForCondition(System.String,System.String)">
             <summary>
             Field options for one condition's picker. If the condition references a field that is no
