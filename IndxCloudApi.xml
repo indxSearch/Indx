@@ -4,6 +4,17 @@
         <name>IndxCloudApi</name>
     </assembly>
     <members>
+        <member name="P:IndxCloudApi.Components.Account.Pages.Admin.Datasets.DatasetRow.DisplayState">
+            <summary>
+            What the admin should see. The raw engine state says "Created" (or the engine
+            is not instantiated at all) for a dataset whose documents live in indx.db with
+            no index in memory - which is hibernation, not an empty dataset. Same inference
+            the user dashboard makes (Index.razor: Created + records on disk = hibernated).
+            </summary>
+        </member>
+        <member name="P:IndxCloudApi.Components.Account.Pages.Admin.Datasets.DatasetRow.DisplayCount">
+            <summary>In-memory count when serving; persisted count when hibernated.</summary>
+        </member>
         <member name="T:IndxCloudApi.Controllers.LoginController">
             <summary>
             Endpoint to provide JWT bearer token based authentication
