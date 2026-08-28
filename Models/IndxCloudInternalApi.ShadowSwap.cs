@@ -1,4 +1,4 @@
-using Indx.Api;
+﻿using Indx.Api;
 using Indx.Storage;
 using Indx.Utilities;
 using Microsoft.Extensions.Logging;
@@ -29,6 +29,12 @@ namespace IndxCloudApi.Models
         private readonly ConcurrentDictionary<string, ProcessMonitor> _shadowMonitors = new();
         private const int DisposalGraceSeconds = 30;
         private const int DisposalPollMilliseconds = 200;
+
+        /// <summary>
+        /// Waited once before the grace poll begins, covering searches that hold an
+        /// engine reference but have not yet registered as active.
+        /// </summary>
+        private const int DisposalSettleMilliseconds = 500;
 
         /// <summary>
         /// Runs <paramref name="mutation"/> on a shadow SearchEngine and swaps it in
@@ -300,6 +306,13 @@ namespace IndxCloudApi.Models
         {
             try
             {
+                // Settle first, then poll. A search registers as active only once it
+                // takes a thread slot inside Search(), which is after ResolveEngine
+                // handed it this engine — so immediately after a swap the counter can
+                // read zero while a search is already on its way in. Breaking on that
+                // zero would dispose the engine underneath it.
+                await Task.Delay(DisposalSettleMilliseconds).ConfigureAwait(false);
+
                 var deadline = DateTime.UtcNow.AddSeconds(DisposalGraceSeconds);
                 while (DateTime.UtcNow < deadline)
                 {

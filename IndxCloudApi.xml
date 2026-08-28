@@ -1070,6 +1070,17 @@
             (0 / int.MaxValue).</para>
             </summary>
         </member>
+        <member name="F:IndxCloudApi.Models.IndxCloudInternalApi.SearchEngineInstance.theInstance">
+            <summary>
+            The live engine. <b>volatile is load-bearing:</b> replace publishes a
+            fully built shadow here from inside <c>_dictionaryLock</c>, but every
+            reader — <c>ResolveEngine</c>, <c>FindInstance</c> — reads it without
+            taking that lock. Without the acquire barrier a reader can observe the
+            new reference before the writes that built the object behind it are
+            visible, and answer a search from an engine that looks empty: HTTP 200,
+            no timeout, no records. x86 hides this; ARM64 does not.
+            </summary>
+        </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunReplaceFromJson(System.String,System.String,System.IO.Stream)">
             <summary>
             Replaces all documents in the dataset with the contents of <paramref name="jsonStream"/>.
@@ -1096,6 +1107,12 @@
             Carries old field roles onto fields that survive by name AND type; returns the carry set
             plus a schema-change summary. Throws if the new schema keeps none of the currently
             searchable fields (nothing to index — fail clearly instead of "no documents to load").
+            </summary>
+        </member>
+        <member name="F:IndxCloudApi.Models.IndxCloudInternalApi.DisposalSettleMilliseconds">
+            <summary>
+            Waited once before the grace poll begins, covering searches that hold an
+            engine reference but have not yet registered as active.
             </summary>
         </member>
         <member name="M:IndxCloudApi.Models.IndxCloudInternalApi.RunMutationOnShadow``1(System.String,System.String,System.Func{Indx.Api.ICloudSearchEngine,``0})">

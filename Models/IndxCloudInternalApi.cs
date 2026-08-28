@@ -1,4 +1,4 @@
-using Indx.Api;
+﻿using Indx.Api;
 using Indx.CloudApi;
 using Indx.Embeddings;
 using Indx.Storage;
@@ -1209,7 +1209,16 @@ namespace IndxCloudApi.Models
             // Serializes lazy auto-load (ResolveEngine) for this one dataset so two concurrent cold
             // requests don't both LoadFromDatabaseSync + Index the same engine.
             internal readonly object DbLock = new();
-            internal ICloudSearchEngine? theInstance;
+            /// <summary>
+        /// The live engine. <b>volatile is load-bearing:</b> replace publishes a
+        /// fully built shadow here from inside <c>_dictionaryLock</c>, but every
+        /// reader — <c>ResolveEngine</c>, <c>FindInstance</c> — reads it without
+        /// taking that lock. Without the acquire barrier a reader can observe the
+        /// new reference before the writes that built the object behind it are
+        /// visible, and answer a search from an engine that looks empty: HTTP 200,
+        /// no timeout, no records. x86 hides this; ARM64 does not.
+        /// </summary>
+        internal volatile ICloudSearchEngine? theInstance;
             // Identity, kept so the idle sweeper can call DisposeDataSetInstance (the dictionary key
             // teamId+dataSetName is a non-reversible concatenation).
             internal string DataSetName = string.Empty;
