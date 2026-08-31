@@ -157,3 +157,9 @@ IndxData/settings.json
 *.key
 *.pfx
 *.pem
+
+# Generated at build (Swagger reads it from the build output, not the repo).
+IndxCloudApi.xml
+
+# IDE/tooling caches
+*.lscache
