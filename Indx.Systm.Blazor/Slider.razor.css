@@ -1,0 +1,132 @@
+/* Port of indx-systm Slider (single-thumb). Values mirror Slider.module.css exactly:
+   5px checkerboard basetrack, lv5 fill, 18x13 lv7 thumb with 1px radius and a 24x19
+   hit area. The thumb is the native range thumb so dragging, stepping, and keyboard
+   support stay native; the basetrack and fill are underlay divs. */
+
+.indx-slider {
+    width: 100%;
+}
+
+.indx-slider-label {
+    font: var(--text-xs);
+    color: var(--lv6);
+    margin-bottom: 4px;
+    display: block;
+}
+
+.indx-slider-track {
+    position: relative;
+    height: 13px;
+    width: 100%;
+}
+
+.indx-slider-basetrack {
+    position: absolute;
+    top: 4px;
+    left: 0;
+    right: 0;
+    height: 5px;
+    border-radius: 1px;
+    overflow: hidden;
+}
+
+.indx-slider-basetrack::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: var(--pattern-checkerboard-light);
+    background-repeat: repeat;
+    background-size: 2px 2px;
+    border-radius: 1px;
+    opacity: 0.3;
+    pointer-events: none;
+}
+
+.indx-slider-fill {
+    position: absolute;
+    top: 4px;
+    left: 0;
+    height: 5px;
+    background-color: var(--lv5);
+    border-radius: 1px;
+    pointer-events: none;
+}
+
+.indx-slider-input {
+    -webkit-appearance: none;
+    appearance: none;
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    outline: none;
+}
+
+.indx-slider-input::-webkit-slider-runnable-track {
+    -webkit-appearance: none;
+    background: transparent;
+    height: 13px;
+}
+
+.indx-slider-input::-moz-range-track {
+    background: transparent;
+    height: 13px;
+}
+
+.indx-slider-input::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 13px;
+    border: none;
+    border-radius: 1px;
+    background-color: var(--lv7);
+    cursor: grab;
+}
+
+.indx-slider-input::-moz-range-thumb {
+    width: 18px;
+    height: 13px;
+    border: none;
+    border-radius: 1px;
+    background-color: var(--lv7);
+    cursor: grab;
+}
+
+.indx-slider-input:active::-webkit-slider-thumb {
+    cursor: grabbing;
+}
+
+.indx-slider-input:active::-moz-range-thumb {
+    cursor: grabbing;
+}
+
+/* Larger invisible hit area (24x19 in the React version) — the native input already
+   spans the full 13px row; padding the vertical hit zone beyond it: */
+.indx-slider-input {
+    top: -3px;
+    height: 19px;
+}
+
+.indx-slider-input:focus-visible {
+    outline: 2px solid var(--lv5);
+    outline-offset: 2px;
+    border-radius: 1px;
+}
+
+.indx-slider-input:disabled::-webkit-slider-thumb {
+    background-color: var(--lv5);
+    cursor: not-allowed;
+}
+
+.indx-slider-input:disabled::-moz-range-thumb {
+    background-color: var(--lv5);
+    cursor: not-allowed;
+}
+
+.indx-slider-input:disabled {
+    cursor: not-allowed;
+}

@@ -431,9 +431,21 @@ else
                                                             <td class="indx-table-check"><Checkbox Checked="@(field.HighResolution == true)" CheckedChanged="@(v => { field.HighResolution = v; })" /></td>
                                                         }
                                                         <td>
-                                                            <input class="indx-num-input" type="number" step="0.1" min="0"
-                                                                   value="@(field.Weight.HasValue ? field.Weight.Value.ToString("0.0##", CultureInfo.InvariantCulture) : "")"
-                                                                   @onchange="@(e => { field.Weight = ParseFloat(e.Value?.ToString()); })" />
+                                                            @if (!_showAdvancedFields.Contains(datasetName) && IsSliderWeight(field.Weight))
+                                                            {
+                                                                <div class="indx-weight-slider">
+                                                                    <Slider Min="0.5" Max="3" Step="0.25" AriaLabel="Weight"
+                                                                            Value="@(field.Weight ?? 1.0f)"
+                                                                            ValueChanged="@(v => { field.Weight = (float)v; })" />
+                                                                    <span class="indx-weight-value">@((field.Weight ?? 1.0f).ToString("0.0#", CultureInfo.InvariantCulture))</span>
+                                                                </div>
+                                                            }
+                                                            else
+                                                            {
+                                                                <input class="indx-num-input" type="number" step="0.1" min="0"
+                                                                       value="@(field.Weight.HasValue ? field.Weight.Value.ToString("0.0##", CultureInfo.InvariantCulture) : "")"
+                                                                       @onchange="@(e => { field.Weight = ParseFloat(e.Value?.ToString()); })" />
+                                                            }
                                                         </td>
                                                         @if (_showAdvancedFields.Contains(datasetName))
                                                         {
@@ -582,9 +594,21 @@ else
                                                                 <td class="indx-table-check"><Checkbox Checked="@(field.HighResolution == true)" CheckedChanged="@(v => { field.HighResolution = v; })" Disabled="@(!isEditor)" /></td>
                                                             }
                                                             <td>
-                                                                <input class="indx-num-input" type="number" step="0.1" min="0" disabled="@(!isEditor)"
-                                                                       value="@(field.Weight.HasValue ? field.Weight.Value.ToString("0.0##", CultureInfo.InvariantCulture) : "")"
-                                                                       @onchange="@(e => { field.Weight = ParseFloat(e.Value?.ToString()); })" />
+                                                                @if (!_showAdvancedFields.Contains(datasetName) && IsSliderWeight(field.Weight))
+                                                                {
+                                                                    <div class="indx-weight-slider">
+                                                                        <Slider Min="0.5" Max="3" Step="0.25" AriaLabel="Weight" Disabled="@(!isEditor)"
+                                                                                Value="@(field.Weight ?? 1.0f)"
+                                                                                ValueChanged="@(v => { field.Weight = (float)v; })" />
+                                                                        <span class="indx-weight-value">@((field.Weight ?? 1.0f).ToString("0.0#", CultureInfo.InvariantCulture))</span>
+                                                                    </div>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <input class="indx-num-input" type="number" step="0.1" min="0" disabled="@(!isEditor)"
+                                                                           value="@(field.Weight.HasValue ? field.Weight.Value.ToString("0.0##", CultureInfo.InvariantCulture) : "")"
+                                                                           @onchange="@(e => { field.Weight = ParseFloat(e.Value?.ToString()); })" />
+                                                                }
                                                             </td>
                                                             @if (_showAdvancedFields.Contains(datasetName))
                                                             {
@@ -2657,6 +2681,17 @@ else
 
     private static string? FieldTypeLabel(string? type, bool? isArray) =>
         type == null ? null : isArray == true ? $"Array ({type}s)" : type;
+
+    // The simple-mode weight slider (0.5-3.0, step 0.25) only renders values it can show
+    // truthfully; anything off-grid or out of range (advanced mode, imported configs, the
+    // API) keeps the numeric input so a stored value is never silently rounded.
+    private static bool IsSliderWeight(float? weight)
+    {
+        var v = weight ?? 1.0f;
+        if (v < 0.5f || v > 3.0f) return false;
+        var quartered = v * 4f;
+        return Math.Abs(quartered - Math.Round(quartered)) < 0.001f;
+    }
 
     private RenderFragment<int>? FieldTypeIcon(string? type, bool? isArray) =>
         isArray == true ? _iconArrayType : type switch

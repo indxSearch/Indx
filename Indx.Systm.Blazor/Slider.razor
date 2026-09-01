@@ -1,0 +1,65 @@
+@using System.Globalization
+
+<div class="indx-slider @Class">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label for="@_id" class="indx-slider-label">@Label</label>
+    }
+    <div class="indx-slider-track">
+        <div class="indx-slider-basetrack"></div>
+        <div class="indx-slider-fill" style="@_fillStyle"></div>
+        <input id="@_id"
+               type="range"
+               class="indx-slider-input"
+               min="@Fmt(Min)"
+               max="@Fmt(Max)"
+               step="@(Step.HasValue ? Fmt(Step.Value) : "any")"
+               value="@Fmt(Value)"
+               disabled="@Disabled"
+               aria-label="@AriaLabel"
+               @oninput="OnInput"
+               @onchange="OnCommit"
+               @attributes="AdditionalAttributes" />
+    </div>
+</div>
+
+@code {
+    [Parameter] public double Min { get; set; } = 0;
+    [Parameter] public double Max { get; set; } = 100;
+    /// <summary>Snap increment. Omit for a continuous slider.</summary>
+    [Parameter] public double? Step { get; set; }
+    [Parameter] public double Value { get; set; }
+    [Parameter] public EventCallback<double> ValueChanged { get; set; }
+    /// <summary>Fires once when the drag ends (the native change event), with the settled value.</summary>
+    [Parameter] public EventCallback<double> FinalChanged { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _id => Id ?? _generatedId;
+    private readonly string _generatedId = $"indx-slider-{Guid.NewGuid():N}";
+
+    // The fill must end under the native thumb's center: the thumb travels within
+    // [0, width - 18px], so its center sits at 9px + fraction * (width - 18px).
+    private string _fillStyle
+    {
+        get
+        {
+            var span = Max - Min;
+            var fraction = span > 0 ? Math.Clamp((Value - Min) / span, 0, 1) : 0;
+            return FormattableString.Invariant($"width: calc(9px + {fraction:0.####} * (100% - 18px));");
+        }
+    }
+
+    private static string Fmt(double v) => v.ToString("0.####", CultureInfo.InvariantCulture);
+
+    private Task OnInput(ChangeEventArgs e) => Parse(e) is { } v ? ValueChanged.InvokeAsync(v) : Task.CompletedTask;
+
+    private Task OnCommit(ChangeEventArgs e) => Parse(e) is { } v ? FinalChanged.InvokeAsync(v) : Task.CompletedTask;
+
+    private static double? Parse(ChangeEventArgs e) =>
+        double.TryParse(e.Value?.ToString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) ? v : null;
+}

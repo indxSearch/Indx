@@ -176,6 +176,25 @@
     appearance: textfield;
 }
 
+.indx-weight-slider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 110px;
+}
+
+.indx-weight-slider > :first-child {
+    flex: 1;
+}
+
+.indx-weight-value {
+    font: var(--text-xs);
+    color: var(--lv5);
+    font-variant-numeric: tabular-nums;
+    min-width: 30px;
+    text-align: right;
+}
+
 .indx-table-check {
     text-align: center;
 }
