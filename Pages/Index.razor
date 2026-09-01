@@ -2649,9 +2649,9 @@ else
     private RenderFragment<int> _iconHibernate => size => @<Hibernate Size="size" />;
     private RenderFragment<int> _iconEmpty => size => @<Empty Size="size" />;
     private RenderFragment<int> _iconShadowIndexing => size => @<ShadowIndexing Size="size" />;
-    private RenderFragment<int> _iconStringType => size => @<StringType Size="size" />;
-    private RenderFragment<int> _iconNumberType => size => @<NumberType Size="size" />;
-    private RenderFragment<int> _iconBoolType => size => @<BoolType Size="size" />;
+    private RenderFragment<int> _iconStringType => size => @<StringType Size="size" Color="var(--lv7)" />;
+    private RenderFragment<int> _iconNumberType => size => @<NumberType Size="size" Color="var(--lv7)" />;
+    private RenderFragment<int> _iconBoolType => size => @<BoolType Size="size" Color="var(--lv7)" />;
 
     private RenderFragment<int>? FieldTypeIcon(string? type) => type switch
     {
