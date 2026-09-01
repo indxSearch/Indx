@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const inputFolder = path.join(__dirname, 'wwwroot/icons');
-const outputFolder = path.join(__dirname, 'Components/Systm/Icons');
+const outputFolder = path.join(__dirname, 'Indx.Systm.Blazor', 'Icons');
 
 if (!fs.existsSync(outputFolder)) {
   fs.mkdirSync(outputFolder, { recursive: true });
@@ -11,10 +11,15 @@ if (!fs.existsSync(outputFolder)) {
 // C# built-in type names that would cause ambiguity errors
 const RESERVED_NAMES = new Set(['Array', 'String', 'Object', 'Number', 'Bool', 'List']);
 
+// Names that would shadow a root namespace used by the project (class Icons.Microsoft
+// makes `@using Microsoft.AspNetCore...` unresolvable everywhere)
+const NAMESPACE_COLLISIONS = { Microsoft: 'MicrosoftLogo', Indx: 'IndxLogo', Google: 'GoogleLogo' };
+
 function toPascalCase(filename) {
   const name = filename
     .replace(/[-\s]+(.)/g, (_, c) => c.toUpperCase()) // hyphen/space → capitalize next
     .replace(/^(.)/, c => c.toUpperCase());            // capitalize first char
+  if (NAMESPACE_COLLISIONS[name]) return NAMESPACE_COLLISIONS[name];
   return RESERVED_NAMES.has(name) ? `${name}Type` : name;
 }
 
@@ -53,7 +58,7 @@ files.forEach(file => {
     [Parameter] public int Size { get; set; } = ${defaultSize};
 
     private string _width => $"{Size}px";
-    private string _height => $"{Size * ${aspectRatio}:F2}px";
+    private string _height => System.FormattableString.Invariant($"{Size * ${aspectRatio}:F2}px");
 }
 `;
 
