@@ -228,10 +228,6 @@
     white-space: nowrap;
 }
 
-.cell-value ::deep svg {
-    transform: translateY(1px);
-}
-
 .indx-table {
     width: 100%;
     border-collapse: collapse;
