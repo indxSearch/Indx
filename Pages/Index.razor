@@ -415,7 +415,7 @@ else
                                                                 <span>@field.FieldName</span>
                                                                 @if (field.FieldType != null)
                                                                 {
-                                                                    <span class="cell-value">@(field.FieldType + (field.IsArray == true ? "[]" : ""))@if (FieldTypeIcon(field.FieldType) is { } typeIcon) { @typeIcon(14) }</span>
+                                                                    <span class="cell-value">@FieldTypeLabel(field.FieldType, field.IsArray)@if (FieldTypeIcon(field.FieldType, field.IsArray) is { } typeIcon) { @typeIcon(14) }</span>
                                                                 }
                                                             </div>
                                                         </td>
@@ -566,7 +566,7 @@ else
                                                                     <span>@field.FieldName</span>
                                                                     @if (field.FieldType != null)
                                                                     {
-                                                                        <span class="cell-value">@(field.FieldType + (field.IsArray == true ? "[]" : ""))@if (FieldTypeIcon(field.FieldType) is { } typeIcon) { @typeIcon(14) }</span>
+                                                                        <span class="cell-value">@FieldTypeLabel(field.FieldType, field.IsArray)@if (FieldTypeIcon(field.FieldType, field.IsArray) is { } typeIcon) { @typeIcon(14) }</span>
                                                                     }
                                                                 </div>
                                                             </td>
@@ -2653,13 +2653,19 @@ else
     private RenderFragment<int> _iconNumberType => size => @<NumberType Size="size" Color="var(--lv7)" />;
     private RenderFragment<int> _iconBoolType => size => @<BoolType Size="size" Color="var(--lv7)" />;
 
-    private RenderFragment<int>? FieldTypeIcon(string? type) => type switch
-    {
-        "String" => _iconStringType,
-        "Number" => _iconNumberType,
-        "Boolean" => _iconBoolType,
-        _ => null,
-    };
+    private RenderFragment<int> _iconArrayType => size => @<ArrayType Size="size" Color="var(--lv7)" />;
+
+    private static string? FieldTypeLabel(string? type, bool? isArray) =>
+        type == null ? null : isArray == true ? $"Array ({type}s)" : type;
+
+    private RenderFragment<int>? FieldTypeIcon(string? type, bool? isArray) =>
+        isArray == true ? _iconArrayType : type switch
+        {
+            "String" => _iconStringType,
+            "Number" => _iconNumberType,
+            "Boolean" => _iconBoolType,
+            _ => null,
+        };
 
     // Maps the engine state to its chip icon (Ready=Flag, Loading=Trolley, Indexing=Hour glass,
     // Error=Warning, Created=Empty). Hibernated uses its own chip with the Hibernate icon.
