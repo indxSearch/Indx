@@ -219,6 +219,9 @@
 }
 
 .cell-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
     font: var(--text-xs);
     font-weight: var(--book);
     color: var(--lv5);
