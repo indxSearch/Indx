@@ -746,62 +746,76 @@ namespace IndxCloudApi.Models
                 throw new InvalidOperationException("SearchDbConnectionString is null or empty");
             }
 
-            // Tracks the dataset currently being warmed up so the catch block can report which
-            // dataset failed (e.g. when an OutOfMemoryException is thrown mid-load).
-            string currentTeamId = "";
-            string currentDataSet = "";
-            try
+            var sqLiteManager = new SqLiteManager(SearchDbConnectionString);
+            if (!sqLiteManager.DatabaseExists())
             {
-                var sqLiteManager = new SqLiteManager(SearchDbConnectionString);
-                if (!sqLiteManager.DatabaseExists())
-                {
-                    _logger.LogInformation($"{tag} no database found at {SearchDbConnectionString}");
-                    return;
-                }
-                // Add the KeepAliveTimeHrs column to databases that predate it (existing rows backfill
-                // to int.MaxValue = warm-at-startup, never disposed). No-op once present.
-                sqLiteManager.EnsureKeepAliveColumn();
-                // Owner keys in the storage layer are team ids. Warm up every dataset under each.
-                var owners = sqLiteManager.GetUsers();
-                var work = owners
-                    .SelectMany(teamId => sqLiteManager.GetUserDataSets(teamId)
-                        .Select(dataSet => (teamId, dataSet)))
-                    .ToList();
-                var teamCount = owners.Count;
-                var total = work.Count;
-                _logger.LogInformation($"{tag} warming up {total} dataset(s) across {teamCount} team(s), workingSet {WorkingSetMb()} MB");
+                _logger.LogInformation($"{tag} no database found at {SearchDbConnectionString}");
+                return;
+            }
+            // Add the KeepAliveTimeHrs column to databases that predate it (existing rows backfill
+            // to int.MaxValue = warm-at-startup, never disposed). No-op once present. Stays on the
+            // boot path: requests read the column as soon as the server is listening.
+            sqLiteManager.EnsureKeepAliveColumn();
+        }
 
-                var overallSw = System.Diagnostics.Stopwatch.StartNew();
-                int i = 0, loaded = 0, skipped = 0;
-                foreach (var (teamId, dataSet) in work)
-                {
-                    i++;
-                    currentTeamId = teamId;
-                    currentDataSet = dataSet;
+        /// <summary>
+        /// Loads and indexes every persisted dataset (except KeepAliveTimeHrs == 0, which is
+        /// client-managed). Runs in the background after the server starts listening — pre-warming
+        /// is an optimization, not a prerequisite: a request that arrives first auto-loads its
+        /// dataset on demand in ResolveEngine under the same per-dataset DbLock, and both paths
+        /// re-check the state inside the lock so the work happens exactly once. Startup must never
+        /// block on this: a large persisted store on slow storage (Azure SMB content shares) takes
+        /// minutes, and IIS/ANCM kills the process after its startup time limit (120 s by default)
+        /// — the boot loop this caused when it ran inline before the server was up.
+        /// </summary>
+        internal void WarmUpPersistedDatasets()
+        {
+            const string tag = nameof(IndxCloudInternalApi) + "." + nameof(WarmUpPersistedDatasets);
+            var sqLiteManager = new SqLiteManager(SearchDbConnectionString);
+            if (!sqLiteManager.DatabaseExists())
+                return;
 
-                    var instance = FindInstance(dataSet, teamId);
-                    if (instance == null)
+            // Owner keys in the storage layer are team ids. Warm up every dataset under each.
+            var owners = sqLiteManager.GetUsers();
+            var work = owners
+                .SelectMany(teamId => sqLiteManager.GetUserDataSets(teamId)
+                    .Select(dataSet => (teamId, dataSet)))
+                .ToList();
+            var total = work.Count;
+            _logger.LogInformation($"{tag} warming up {total} dataset(s) across {owners.Count} team(s), workingSet {WorkingSetMb()} MB");
+
+            var overallSw = System.Diagnostics.Stopwatch.StartNew();
+            int i = 0, loaded = 0, skipped = 0, failed = 0;
+            foreach (var (teamId, dataSet) in work)
+            {
+                i++;
+                // Per-dataset containment: one broken dataset (corrupt rows, OOM, a wedged build)
+                // must not abort the warm-up of everything behind it in the list.
+                try
+                {
+                    var wrapper = GetOrCreateInstance(dataSet, teamId);
+                    var engine = wrapper?.theInstance;
+                    if (wrapper == null || engine == null)
                     {
                         _logger.LogWarning($"{tag} [{i}/{total}] no engine instance for team {teamId} dataset '{dataSet}', skipping");
                         skipped++;
                         continue;
                     }
-                    if (instance.Persistence == null)
+                    if (engine.Persistence == null)
                     {
                         _logger.LogWarning($"{tag} [{i}/{total}] instance.Persistence is null for team {teamId} dataset '{dataSet}', skipping");
                         skipped++;
                         continue;
                     }
                     // KeepAliveTimeHrs == 0 means "do not autoload at startup" — the client manages
-                    // loading itself. The engine shell stays registered (stamped via FindInstance) but
-                    // unloaded. Any other value (incl. int.MaxValue and N-hour) is warmed here.
-                    if (instance.Persistence.ReadKeepAliveHrs() == 0)
+                    // loading itself. The engine shell stays registered but unloaded.
+                    if (engine.Persistence.ReadKeepAliveHrs() == 0)
                     {
                         _logger.LogInformation($"{tag} [{i}/{total}] skipping '{dataSet}' team {teamId}: KeepAliveTimeHrs=0 (client-managed)");
                         skipped++;
                         continue;
                     }
-                    var records = instance.Persistence.NumberOfJsonRecords();
+                    var records = engine.Persistence.NumberOfJsonRecords();
                     if (records == 0)
                     {
                         _logger.LogInformation($"{tag} [{i}/{total}] skipping '{dataSet}' team {teamId}: 0 records");
@@ -810,30 +824,51 @@ namespace IndxCloudApi.Models
                     }
 
                     var beforeMb = WorkingSetMb();
-                    _logger.LogInformation($"{tag} [{i}/{total}] loading '{dataSet}' team {teamId}: {records} records, workingSet {beforeMb} MB");
                     var sw = System.Diagnostics.Stopwatch.StartNew();
+                    lock (wrapper.DbLock)
+                    {
+                        // A request may have auto-loaded (or a client begun loading) this dataset
+                        // while we worked through the list — same double-check as ResolveEngine.
+                        if (engine.Status.SystemState != SystemState.Created)
+                        {
+                            _logger.LogInformation($"{tag} [{i}/{total}] '{dataSet}' team {teamId} already {engine.Status.SystemState}, skipping");
+                            skipped++;
+                            continue;
+                        }
 
-                    var monitor = new ProcessMonitor();
-                    instance.LoadFromDatabaseSync(monitor);
-                    monitor.WaitForCompletion();
-                    monitor = new ProcessMonitor();
-                    instance.Index(monitor: monitor);
-                    monitor.WaitForCompletion();
+                        _logger.LogInformation($"{tag} [{i}/{total}] loading '{dataSet}' team {teamId}: {records} records, workingSet {beforeMb} MB");
+                        var monitor = new ProcessMonitor { TimeoutSeconds = 600 };
+                        engine.LoadFromDatabaseSync(monitor);
+                        if (!monitor.WaitForCompletion())
+                        {
+                            _logger.LogError($"{tag} [{i}/{total}] load of '{dataSet}' team {teamId} did not complete; dataset stays non-Ready");
+                            failed++;
+                            continue;
+                        }
+                        monitor = new ProcessMonitor { TimeoutSeconds = 600 };
+                        engine.Index(monitor: monitor);
+                        if (!monitor.WaitForCompletion())
+                        {
+                            _logger.LogError($"{tag} [{i}/{total}] index of '{dataSet}' team {teamId} did not complete; dataset stays non-Ready");
+                            failed++;
+                            continue;
+                        }
+                    }
 
                     sw.Stop();
                     var afterMb = WorkingSetMb();
                     loaded++;
                     _logger.LogInformation($"{tag} [{i}/{total}] loaded '{dataSet}' in {sw.ElapsedMilliseconds} ms, workingSet now {afterMb} MB (delta {afterMb - beforeMb} MB)");
                 }
+                catch (Exception ex)
+                {
+                    failed++;
+                    _logger.LogError($"{tag} [{i}/{total}] failed warming '{dataSet}' team {teamId}: {ex}");
+                }
+            }
 
-                overallSw.Stop();
-                _logger.LogInformation($"{tag} completed: {loaded} loaded, {skipped} empty/skipped, {overallSw.ElapsedMilliseconds} ms, workingSet {WorkingSetMb()} MB");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"{tag} failed while processing dataset '{currentDataSet}' team {currentTeamId}: {ex}");
-                throw;
-            }
+            overallSw.Stop();
+            _logger.LogInformation($"{tag} completed: {loaded} loaded, {skipped} skipped, {failed} failed, {overallSw.ElapsedMilliseconds} ms, workingSet {WorkingSetMb()} MB");
         }
 
         /// <summary>

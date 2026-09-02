@@ -940,6 +940,27 @@ public class Program
         var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
         lifetime.ApplicationStopped.Register(IndxCloudInternalApi.Shutdown);
 
+        // Warm persisted datasets AFTER the server starts listening, on a background thread.
+        // Inline warm-up used to block startup for minutes on a large store over Azure's SMB
+        // content share, so IIS/ANCM killed the process at its 120 s startup limit and the app
+        // boot-looped. Requests that arrive before a dataset is warm auto-load it on demand
+        // (ResolveEngine); until then the dataset honestly reports its non-Ready state.
+        lifetime.ApplicationStarted.Register(() =>
+        {
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    IndxCloudInternalApi.Manager.WarmUpPersistedDatasets();
+                }
+                catch (Exception ex)
+                {
+                    app.Services.GetRequiredService<ILogger<Program>>()
+                        .LogError(ex, "Background dataset warm-up failed");
+                }
+            });
+        });
+
         app.Run();
     }
 
