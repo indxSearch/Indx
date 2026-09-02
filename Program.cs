@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Caching.Memory;
@@ -594,6 +595,7 @@ public class Program
                 // bootstrap the history table with the initial migration before
                 // calling Migrate() so it doesn't try to re-create existing tables.
                 BootstrapMigrationHistoryIfNeeded(context, logger);
+                ClearStaleMigrationLock(context, logger);
                 logger.LogInformation("Applying EF migrations...");
                 context.Database.Migrate();
                 logger.LogInformation("✓ Database schema is up to date");
@@ -962,6 +964,50 @@ public class Program
         });
 
         app.Run();
+    }
+
+    /// <summary>
+    /// EF Core serializes migrations by inserting a row into <c>__EFMigrationsLock</c> and
+    /// deleting it when done — but only a surviving process deletes it. A process killed while
+    /// holding the lock (e.g. IIS/ANCM's startup time limit) leaves the row behind, and every
+    /// later boot then waits forever on a dead owner: EF has no staleness detection on SQLite.
+    /// This clears rows older than five minutes before <c>Migrate()</c>. The age threshold is
+    /// what keeps the multi-instance case safe: a live migration holds the lock for well under
+    /// a second on SQLite, so a five-minute-old row cannot belong to a live migrator. EF writes
+    /// the timestamp as sortable UTC text, the same lexical order as SQLite's
+    /// <c>datetime('now')</c>, so plain string comparison is correct.
+    /// </summary>
+    internal static void ClearStaleMigrationLock(ApplicationDbContext context, ILogger logger)
+    {
+        try
+        {
+            using var connection = new SqliteConnection(context.Database.GetConnectionString());
+            connection.Open();
+
+            using (var exists = connection.CreateCommand())
+            {
+                exists.CommandText =
+                    "SELECT COUNT(*) FROM sqlite_master WHERE name = '__EFMigrationsLock' AND type = 'table';";
+                if (Convert.ToInt32(exists.ExecuteScalar()) == 0)
+                    return; // first boot — Migrate() creates the table itself
+            }
+
+            using var delete = connection.CreateCommand();
+            delete.CommandText =
+                "DELETE FROM __EFMigrationsLock WHERE Timestamp < datetime('now', '-5 minutes');";
+            var cleared = delete.ExecuteNonQuery();
+            if (cleared > 0)
+                logger.LogWarning(
+                    "Cleared {Count} stale __EFMigrationsLock row(s) left by a process that died " +
+                    "mid-migration; without this, every boot would wait on the dead owner forever.",
+                    cleared);
+        }
+        catch (Exception ex)
+        {
+            // Best-effort: a failure here must not block startup — worst case Migrate() itself
+            // surfaces the real problem.
+            logger.LogWarning(ex, "Stale migration-lock check failed; continuing to Migrate()");
+        }
     }
 
     /// <summary>
