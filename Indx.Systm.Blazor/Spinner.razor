@@ -1,0 +1,9 @@
+<span class="indx-spinner @(Variant == "dots" ? "indx-spinner-dots" : "indx-spinner-line") @Class"
+      role="status" aria-label="@AriaLabel"></span>
+
+@code {
+    /// <summary>"line" (default): the classic - \ | / character spinner. "dots": . .. ...</summary>
+    [Parameter] public string Variant { get; set; } = "line";
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string AriaLabel { get; set; } = "Loading";
+}
