@@ -611,6 +611,45 @@ namespace IndxCloudApi.Models
         /// per-user ownership transfer): evicts the old engine, updates SQLite atomically,
         /// then warms up the engine under the new owning team.
         /// </summary>
+        /// <summary>
+        /// The dataset's synonym list, or null when it has none. Read from the live engine, which
+        /// was given the stored list when it was built.
+        /// </summary>
+        internal SynonymList? GetSynonyms(string dataSetName, string teamId)
+        {
+            return FindInstance(dataSetName, teamId)?.SynonymList;
+        }
+
+        /// <summary>
+        /// Stores the dataset's synonym list and applies it to the live engine, or removes both when
+        /// <paramref name="list"/> is null. Takes effect on the next search — synonyms are applied to
+        /// the query text, so nothing has to be re-indexed. Returns false when the dataset does not
+        /// exist in storage.
+        /// </summary>
+        internal bool SetSynonyms(string dataSetName, string teamId, SynonymList? list)
+        {
+            var engine = FindInstance(dataSetName, teamId);
+            if (engine?.Persistence == null)
+                return false;
+
+            if (list == null)
+            {
+                engine.Persistence.DeleteSynonyms();
+                engine.SynonymList = null;
+                _logger.LogInformation(MakeLogPrefix(teamId, dataSetName) + "synonym list removed");
+                return true;
+            }
+
+            list.UpdatedUtc = TimeProvider.GetUtcNow();
+            if (!engine.Persistence.SaveSynonyms(list.GetSerialized()))
+                return false;
+
+            engine.SynonymList = list;
+            _logger.LogInformation(MakeLogPrefix(teamId, dataSetName)
+                + $"synonym list set ({list.Entries.Count} entries)");
+            return true;
+        }
+
         internal void TransferOwnership(string dataSetName, string currentTeamId, string newTeamId)
         {
             DisposeDataSetInstance(dataSetName, currentTeamId);
@@ -1233,6 +1272,21 @@ namespace IndxCloudApi.Models
                 {
                     Persistence = persistence
                 };
+
+                // The dataset's synonym list is engine configuration, so it is restored here — the
+                // one place an engine is built — rather than looked up per search. A stored list
+                // that will not parse is logged and skipped: a bad list must not brick the dataset.
+                try
+                {
+                    var storedSynonyms = persistence.ReadSynonyms();
+                    if (!string.IsNullOrWhiteSpace(storedSynonyms))
+                        matcher.SynonymList = SynonymList.Deserialize(storedSynonyms);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, MakeLogPrefix(teamId, dataSetName)
+                        + "stored synonym list could not be parsed — continuing without it");
+                }
 
                 var instance = new SearchEngineInstance
                 {

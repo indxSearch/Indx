@@ -856,6 +856,57 @@ namespace IndxCloudApi.Controllers
         }
 
         /// <summary>
+        /// Returns the dataset's synonym list, or a <c>null</c> body when it has none — always 200.
+        /// The list widens every search on this dataset: a query word that matches an entry gets that
+        /// entry's terms appended to the query text before scoring.
+        /// <para>One list per dataset — there is no name to supply, and no other dataset is affected.</para>
+        /// </summary>
+        [HttpGet(DataSetRoute + "/synonyms")]
+        [ProducesResponseType(typeof(SynonymList), StatusCodes.Status200OK)]
+        public ActionResult<SynonymList?> GetSynonymList(string teamName, string dataSetName)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
+
+            // JsonResult, not Ok(): Ok(null) is turned into 204 with an empty body by
+            // HttpNoContentOutputFormatter, and an empty body makes the idiomatic client call
+            // (GetFromJsonAsync<SynonymList>) throw instead of yielding null. This writes a literal
+            // JSON null with 200, so "no list" and "here is the list" are one code path for callers.
+            return new JsonResult(IndxCloudInternalApi.Manager.GetSynonyms(dataSetName, ctx.OwnerKey));
+        }
+
+        /// <summary>
+        /// Sets the dataset's synonym list, replacing any list it already had. Send a body of
+        /// <c>null</c> to remove the list — the dataset then searches without synonyms again.
+        /// <para>Takes effect on the very next search: synonyms are applied to the query text, so
+        /// nothing is re-indexed and the dataset does not have to be in any particular state. The
+        /// list is stored with the dataset, so it survives a restart and follows the dataset if it
+        /// is transferred to another team.</para>
+        /// <para>Note that widening a query lowers Coverage scores in proportion to how much text is
+        /// added — see the remarks on <c>Indx.Api.SynonymList</c>.</para>
+        /// </summary>
+        [HttpPut(DataSetRoute + "/synonyms")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public IActionResult SetSynonymList(string teamName, string dataSetName, [FromBody] SynonymList? list)
+        {
+            var ctx = ResolveTeam(teamName, out var error, write: true);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return ApiProblems.InvalidDatasetName(dataSetName);
+            ICloudSearchEngine? matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
+
+            if (!IndxCloudInternalApi.Manager.SetSynonyms(dataSetName, ctx.OwnerKey, list))
+                return ApiProblems.OperationFailed(
+                    "The synonym list could not be stored — the dataset has no storage attached.");
+            return NoContent();
+        }
+
+        /// <summary>
         /// Returns the dataset's declared key field — the JSON field whose value identifies each
         /// document (the primary key). Empty string means none is declared (the engine auto-generates
         /// keys). Required, when set, to be a numeric field.

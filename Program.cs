@@ -845,7 +845,12 @@ public class Program
             // Ensure the DataSetAccess table exists for existing databases (idempotent).
             var accessTableManager = new Indx.Storage.SqLiteManager(searchConnectionString);
             if (accessTableManager.DatabaseExists())
+            {
                 accessTableManager.EnsureDataSetAccessTableExists();
+                // Synonym lists and the per-dataset attachment column, for databases created before
+                // synonyms existed. Owned by the library, unlike the boost/metadata tables below.
+                accessTableManager.EnsureSynonymSchema();
+            }
 
             // Per-dataset boost rules: ensure the cloud-owned table and wire the store (+ the
             // saturation ceiling) into the search path.
