@@ -1035,7 +1035,11 @@ else
                                     // load here means the section never renders from a stale gap.
                                     EnsureSynonymsLoaded(selectedDataset, ownerUserId);
                                     var synList = _synonymLists.GetValueOrDefault(selectedDataset);
-                                    var visibleSynEntries = FilteredSynonymEntries(selectedDataset).ToList();
+                                    var matchedSynEntries = FilteredSynonymEntries(selectedDataset).ToList();
+                                    // Render cap instead of paging: the list is one blob and the fuzzy
+                                    // filter is the navigation — ranked results make the top rows the
+                                    // right rows, so a huge list just asks for a narrower filter.
+                                    var visibleSynEntries = matchedSynEntries.Take(SynonymRenderCap).ToList();
                                 }
 
                                 <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
@@ -1045,7 +1049,7 @@ else
                                         <input class="indx-text-input" placeholder="Filter entries" style="max-width:220px;"
                                                value="@_synonymFilter.GetValueOrDefault(selectedDataset)"
                                                @oninput="e => _synonymFilter[selectedDataset] = e.Value?.ToString() ?? string.Empty" />
-                                        <span style="color:var(--lv4); font:var(--text-xs); white-space:nowrap;">@visibleSynEntries.Count of @synList.Entries.Count entries</span>
+                                        <span style="color:var(--lv4); font:var(--text-xs); white-space:nowrap;">@matchedSynEntries.Count of @synList.Entries.Count entries</span>
                                     }
                                     <div style="flex:1;"></div>
                                     <InputFile OnChange="@(e => ImportSynonyms(selectedDataset, ownerUserId, e))" accept=".json" style="display:none" id="@($"synonyms-import-{selectedDataset}")" />
@@ -1114,6 +1118,10 @@ else
                                             }
                                         </tbody>
                                     </table>
+                                    @if (matchedSynEntries.Count > SynonymRenderCap)
+                                    {
+                                        <p style="color:var(--lv4); font:var(--text-xs); margin-top:8px;">Showing the first @SynonymRenderCap of @matchedSynEntries.Count — refine the filter to narrow it down.</p>
+                                    }
                                 }
 
                                 @if (!string.IsNullOrEmpty(_synonymError))
@@ -2800,6 +2808,10 @@ else
     // next search, no re-indexing) — there is no local dirty state to manage.
     private readonly Dictionary<string, SynonymList?> _synonymLists = new();
     private readonly Dictionary<string, string> _synonymFilter = new();
+
+    /// <summary>Most entry rows rendered at once — chips per row make very large lists
+    /// expensive to diff, and the ranked filter puts the right rows on top anyway.</summary>
+    private const int SynonymRenderCap = 100;
     private string? _synonymError;
     private bool _synRemoveConfirm;
 
