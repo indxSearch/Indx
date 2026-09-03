@@ -650,6 +650,68 @@ namespace IndxCloudApi.Models
             return true;
         }
 
+        /// <summary>
+        /// Copies the synonym list from one of the team's datasets onto another, replacing whatever
+        /// list the target had. The two end up with independent copies: editing one afterwards does
+        /// not touch the other.
+        ///
+        /// <para>Intended for the portal, which reaches this directly — the REST surface deliberately
+        /// stays at GET/PUT, and a client there can copy by reading one and writing the other.</para>
+        ///
+        /// <para>Both datasets must belong to <paramref name="teamId"/>. A source with no list is a
+        /// failure rather than a way to clear the target: "copy nothing onto it" is far more likely
+        /// to be a mistake than an intention, and <see cref="SetSynonyms"/> with null already exists
+        /// for clearing.</para>
+        /// </summary>
+        /// <returns>True on success; otherwise false with <paramref name="error"/> describing why.</returns>
+        internal bool CopySynonyms(string fromDataSetName, string toDataSetName, string teamId, out string error)
+        {
+            error = string.Empty;
+
+            if (string.Equals(fromDataSetName, toDataSetName, StringComparison.Ordinal))
+            {
+                error = "The source and the target are the same dataset.";
+                return false;
+            }
+
+            var source = FindInstance(fromDataSetName, teamId);
+            if (source == null)
+            {
+                error = $"The dataset '{fromDataSetName}' was not found.";
+                return false;
+            }
+
+            // The engine holds the stored list from the moment it is built, so this reads what the
+            // source's searches actually use, and works even on a dataset that is not loaded.
+            var original = source.SynonymList;
+            if (original == null)
+            {
+                error = $"The dataset '{fromDataSetName}' has no synonym list to copy.";
+                return false;
+            }
+
+            if (FindInstance(toDataSetName, teamId) == null)
+            {
+                error = $"The dataset '{toDataSetName}' was not found.";
+                return false;
+            }
+
+            // Round-trip through the serialized form for a genuine deep copy. Sharing the instance
+            // would leave the two datasets holding the same object, so a later in-place edit or
+            // Invalidate() on one would silently reach into the other.
+            var copy = SynonymList.Deserialize(original.GetSerialized());
+
+            if (!SetSynonyms(toDataSetName, teamId, copy))
+            {
+                error = $"The synonym list could not be stored on '{toDataSetName}'.";
+                return false;
+            }
+
+            _logger.LogInformation(MakeLogPrefix(teamId, toDataSetName)
+                + $"synonym list copied from '{fromDataSetName}' ({copy.Entries.Count} entries)");
+            return true;
+        }
+
         internal void TransferOwnership(string dataSetName, string currentTeamId, string newTeamId)
         {
             DisposeDataSetInstance(dataSetName, currentTeamId);
