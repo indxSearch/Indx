@@ -1025,84 +1025,95 @@ else
                         {
                             <div style="margin-top: 16px;">
                                 <p style="color: var(--lv5); font: var(--text-sm); margin-bottom: 12px;">
-                                    Synonyms widen searches: when a query word matches an entry, its terms are appended to the query text before scoring.
-                                    Changes apply on the next search — no re-indexing. Expansion lowers Coverage scores in proportion to the added text.
+                                    Synonyms widen searches: when a query matches an entry, its synonyms are appended to the query text before scoring.
+                                    Changes apply on the next search — no re-indexing.
                                 </p>
 
                                 @{
-                                    // Self-loading: the click handler also loads, but the edit cache can be
-                                    // cleared while this tab is active (team switch, dataset refresh) — an
-                                    // idempotent load here means the section never renders from a stale gap.
+                                    // Self-loading: the tab button also loads, but the cache can be cleared
+                                    // while this tab is active (team switch, dataset refresh) — an idempotent
+                                    // load here means the section never renders from a stale gap.
                                     EnsureSynonymsLoaded(selectedDataset, ownerUserId);
-                                    var synList = _editedSynonyms.GetValueOrDefault(selectedDataset);
-                                }
-
-                                @if (synList == null)
-                                {
-                                    <p style="color: var(--lv4); font: var(--text-sm); margin: 8px 0 12px;">No synonym list on this dataset.</p>
-                                    <div style="display:flex; gap:8px; align-items:center;">
-                                        <Button Variant="secondary" Size="micro" IconLeft="_iconPanelAdd" @onclick="@(() => CreateSynonymList(selectedDataset))">New synonym list</Button>
-                                        <InputFile OnChange="@(e => ImportSynonyms(selectedDataset, e))" accept=".json" style="display:none" id="@($"synonyms-import-{selectedDataset}")" />
-                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerSynonymsImport(selectedDataset)">Import from json</Button>
-                                    </div>
-                                }
-                                else
-                                {
+                                    var synList = _synonymLists.GetValueOrDefault(selectedDataset);
                                     var visibleSynEntries = FilteredSynonymEntries(selectedDataset).ToList();
+                                }
 
-                                    <div style="display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+                                <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap;">
+                                    <Button Variant="secondary" Size="micro" IconLeft="_iconPanelAdd" @onclick="@(() => OpenSynonymModal(null))">Create new</Button>
+                                    @if (synList != null && synList.Entries.Count > 0)
+                                    {
                                         <input class="indx-text-input" placeholder="Filter entries" style="max-width:220px;"
                                                value="@_synonymFilter.GetValueOrDefault(selectedDataset)"
                                                @oninput="e => _synonymFilter[selectedDataset] = e.Value?.ToString() ?? string.Empty" />
                                         <span style="color:var(--lv4); font:var(--text-xs); white-space:nowrap;">@visibleSynEntries.Count of @synList.Entries.Count entries</span>
-                                        <div style="flex:1;"></div>
-                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportSynonyms(selectedDataset)">Export as json</Button>
-                                        <InputFile OnChange="@(e => ImportSynonyms(selectedDataset, e))" accept=".json" style="display:none" id="@($"synonyms-import-{selectedDataset}")" />
-                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerSynonymsImport(selectedDataset)">Import from json</Button>
-                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="@(() => { _editedSynonyms[selectedDataset] = null; })">Remove list</Button>
-                                    </div>
-
-                                    @if (synList.Entries.Count == 0)
-                                    {
-                                        <p style="color: var(--lv4); font: var(--text-sm); margin: 8px 0 12px;">No entries yet.</p>
                                     }
-                                    else
+                                    <div style="flex:1;"></div>
+                                    <InputFile OnChange="@(e => ImportSynonyms(selectedDataset, ownerUserId, e))" accept=".json" style="display:none" id="@($"synonyms-import-{selectedDataset}")" />
+                                    <Button Variant="ghost" Size="micro" IconLeft="_iconDynamicJson" @onclick="() => TriggerSynonymsImport(selectedDataset)">Import from json</Button>
+                                    @if (synList != null)
                                     {
-                                        <table class="indx-table">
-                                            <thead>
+                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDownload" @onclick="() => ExportSynonyms(selectedDataset)">Export as json</Button>
+                                        @if (_synRemoveConfirm)
+                                        {
+                                            <span style="color:var(--lv5); font:var(--text-sm);">Remove the whole list?</span>
+                                            <Button Variant="primary" Size="micro" @onclick="@(() => RemoveSynonymList(selectedDataset, ownerUserId))">Remove</Button>
+                                            <Button Variant="secondary" Size="micro" @onclick="@(() => _synRemoveConfirm = false)">Cancel</Button>
+                                        }
+                                        else
+                                        {
+                                            <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="@(() => _synRemoveConfirm = true)">Remove list</Button>
+                                        }
+                                    }
+                                </div>
+
+                                @if (synList == null || synList.Entries.Count == 0)
+                                {
+                                    <p style="color: var(--lv4); font: var(--text-sm); margin: 8px 0 12px;">No synonyms on this dataset yet.</p>
+                                }
+                                else
+                                {
+                                    <table class="indx-table">
+                                        <tbody>
+                                            @foreach (var synEntry in visibleSynEntries)
+                                            {
                                                 <tr>
-                                                    <th style="width:190px;"><span class="indx-th-tip" data-tooltip="Multidirectional: every term triggers the whole group. One-way: only the trigger expands, into the terms.">Direction</span></th>
-                                                    <th style="width:190px;"><span class="indx-th-tip" data-tooltip="The word that fires a one-way expansion (e.g. an acronym). Multidirectional entries trigger on every term instead.">Trigger</span></th>
-                                                    <th><span class="indx-th-tip" data-tooltip="Terms appended to the query on a match. Separate terms with semicolons — a comma is part of a term.">Terms (separated by ;)</span></th>
-                                                    <th style="width:40px;"></th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                @foreach (var synEntry in visibleSynEntries)
-                                                {
-                                                    <tr>
-                                                        <td><SelectField Size="micro" Options="_synonymDirectionOptions" Value="@synEntry.Direction.ToString()" ValueChanged="@(v => synEntry.Direction = ParseDirection(v))" /></td>
-                                                        <td>
+                                                    <td>
+                                                        @* One-way: From → the synonyms it expands into.
+                                                           Two-way: every term ↔ every other. *@
+                                                        @* Clicking any chip opens the edit modal for its entry. *@
+                                                        <div style="display:flex; flex-wrap:wrap; align-items:center; gap:6px;">
                                                             @if (synEntry.Direction == SynonymDirection.OneWay)
                                                             {
-                                                                <InputField placeholder="trigger" @bind-Value="synEntry.Source" />
+                                                                <span style="cursor:pointer;" @onclick="@(() => OpenSynonymModal(synEntry))"><Chip>@synEntry.Source</Chip></span>
+                                                                <ArrowRight Size="14" Color="var(--lv5)" />
+                                                                @foreach (var synTerm in synEntry.Terms)
+                                                                {
+                                                                    <span style="cursor:pointer;" @onclick="@(() => OpenSynonymModal(synEntry))"><Chip>@synTerm</Chip></span>
+                                                                }
                                                             }
                                                             else
                                                             {
-                                                                <span style="color:var(--lv3); padding-left:8px;">—</span>
+                                                                @for (int ti = 0; ti < synEntry.Terms.Length; ti++)
+                                                                {
+                                                                    @* Copy to a local: the Chip's child content renders deferred,
+                                                                       so capturing the loop variable itself would read past the end. *@
+                                                                    var synTerm = synEntry.Terms[ti];
+                                                                    @if (ti > 0)
+                                                                    {
+                                                                        <ResizeEw Size="14" Color="var(--lv5)" />
+                                                                    }
+                                                                    <span style="cursor:pointer;" @onclick="@(() => OpenSynonymModal(synEntry))"><Chip>@synTerm</Chip></span>
+                                                                }
                                                             }
-                                                        </td>
-                                                        <td><InputField placeholder="term; term; term" Value="@JoinTerms(synEntry.Terms)" ValueChanged="@(v => synEntry.Terms = SplitTerms(v))" ValueExpression="@(() => _synonymTermsProxy)" /></td>
-                                                        <td><Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="@(() => synList.Entries.Remove(synEntry))" /></td>
-                                                    </tr>
-                                                }
-                                            </tbody>
-                                        </table>
-                                    }
-
-                                    <div style="margin-top:14px;">
-                                        <Button Variant="secondary" Size="micro" IconLeft="_iconPanelAdd" @onclick="@(() => AddSynonymEntry(selectedDataset))">Add entry</Button>
-                                    </div>
+                                                        </div>
+                                                    </td>
+                                                    <td style="text-align:right; white-space:nowrap; width:1%;">
+                                                        <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="@(() => DeleteSynonymEntry(selectedDataset, ownerUserId, synEntry))" />
+                                                    </td>
+                                                </tr>
+                                            }
+                                        </tbody>
+                                    </table>
                                 }
 
                                 @if (!string.IsNullOrEmpty(_synonymError))
@@ -1110,13 +1121,35 @@ else
                                     <p style="color:var(--CSignal); font:var(--text-sm); margin-top:10px;">@_synonymError</p>
                                 }
 
-                                @if (SynonymsDirty(selectedDataset))
-                                {
-                                    <div style="display:flex; gap:8px; margin-top:16px;">
-                                        <Button Variant="primary" Size="micro" IconLeft="_iconSave" @onclick="@(() => SaveSynonyms(selectedDataset, ownerUserId))">Save synonyms</Button>
-                                        <Button Variant="secondary" Size="micro" @onclick="@(() => CancelSynonyms(selectedDataset))">Cancel</Button>
+                                <Modal @bind-Open="_synModalOpen" Title="@(_synModalTarget == null ? "New synonym entry" : "Edit synonym entry")">
+                                    <div style="display:flex; flex-direction:column; gap:14px; min-width:380px;">
+                                        <div>
+                                            <span style="color:var(--lv5); font:var(--text-xs); display:block; margin-bottom:4px;">Type</span>
+                                            <SelectField Size="micro" Options="_synonymTypeOptions" Value="@(_synModalOneWay ? "OneWay" : "TwoWay")" ValueChanged="@(v => _synModalOneWay = v == "OneWay")" />
+                                            <span style="color:var(--lv4); font:var(--text-xs); display:block; margin-top:4px;">
+                                                @(_synModalOneWay
+                                                    ? "Only From expands, into the synonyms — searching a synonym does not pull in From."
+                                                    : "Every synonym is equivalent; matching any of them pulls in the whole group.")
+                                            </span>
+                                        </div>
+                                        @if (_synModalOneWay)
+                                        {
+                                            <InputField Label="From" placeholder="e.g. hms" @bind-Value="_synModalFrom" />
+                                        }
+                                        <div>
+                                            <InputField Label="Synonyms" placeholder="term; term; term" @bind-Value="_synModalTerms" />
+                                            <span style="color:var(--lv4); font:var(--text-xs); display:block; margin-top:4px;">Separate terms with semicolons — a comma is part of a term. Multi-word terms are fine.</span>
+                                        </div>
+                                        @if (!string.IsNullOrEmpty(_synModalError))
+                                        {
+                                            <p style="color:var(--CSignal); font:var(--text-sm); margin:0;">@_synModalError</p>
+                                        }
+                                        <div style="display:flex; gap:8px; justify-content:flex-end;">
+                                            <Button Variant="secondary" Size="micro" @onclick="@(() => _synModalOpen = false)">Cancel</Button>
+                                            <Button Variant="primary" Size="micro" @onclick="@(() => SaveSynonymModal(selectedDataset, ownerUserId))">Save</Button>
+                                        </div>
                                     </div>
-                                }
+                                </Modal>
                             </div>
                         }
 
@@ -1303,9 +1336,10 @@ else
         _editedBoostRules.Clear();
         _savedBoostJson.Clear();
         _ruleTimeLimited.Clear();
-        _editedSynonyms.Clear();
-        _savedSynonymJson.Clear();
+        _synonymLists.Clear();
         _synonymFilter.Clear();
+        foreach (var engine in _synFilterEngines.Values) engine.Dispose();
+        _synFilterEngines.Clear();
         _descEdit.Clear();
         _descSaved.Clear();
         _keyFieldByDataset.Clear();
@@ -1408,7 +1442,12 @@ else
         await LoadDatasets(); // dataset now belongs to another team — drops off this view
     }
 
-    public void Dispose() => ActiveTeam.OnChange -= HandleTeamChanged;
+    public void Dispose()
+    {
+        ActiveTeam.OnChange -= HandleTeamChanged;
+        foreach (var engine in _synFilterEngines.Values) engine.Dispose();
+        _synFilterEngines.Clear();
+    }
 
     private void StartTransitionPollingIfNeeded()
     {
@@ -2756,103 +2795,171 @@ else
     }
 
     // ── Synonyms (per-dataset synonym list, stored in the engine's own database) ─────
-    // Same edit-local-copy model as boost rules: load into an edited copy, compare JSON
-    // against a saved baseline for dirty tracking, Save pushes through the internal API
-    // which persists and applies to the live engine (effective on the next search).
-    // A null edited value means "no list" — saving null removes the stored list.
-    private readonly Dictionary<string, SynonymList?> _editedSynonyms = new();
-    private readonly Dictionary<string, string> _savedSynonymJson = new();
+    // List view + create/edit modal. Every action saves immediately through the internal
+    // API, which persists the list and applies it to the live engine (effective on the
+    // next search, no re-indexing) — there is no local dirty state to manage.
+    private readonly Dictionary<string, SynonymList?> _synonymLists = new();
     private readonly Dictionary<string, string> _synonymFilter = new();
     private string? _synonymError;
+    private bool _synRemoveConfirm;
 
-    private static readonly IEnumerable<SelectField.SelectOption> _synonymDirectionOptions =
-        [new("Multidirectional", "Multidirectional"), new("One-way", "OneWay")];
+    // Create/edit modal state. A null target means the modal is creating a new entry.
+    private bool _synModalOpen;
+    private SynonymEntry? _synModalTarget;
+    private bool _synModalOneWay;
+    private string? _synModalFrom;
+    private string? _synModalTerms;
+    private string? _synModalError;
 
-    private static SynonymDirection ParseDirection(string? v) =>
-        Enum.TryParse<SynonymDirection>(v, out var d) ? d : SynonymDirection.Multidirectional;
-
-    // InputBase-derived components demand a ValueExpression even outside an EditForm, where it
-    // is only used to build a FieldIdentifier. The Terms cell computes its value (join/split of
-    // Entry.Terms), so there is no real member to bind — this proxy satisfies the contract.
-    private string _synonymTermsProxy = string.Empty;
-
-    private static string JoinTerms(string[] terms) => string.Join("; ", terms);
+    private static readonly IEnumerable<SelectField.SelectOption> _synonymTypeOptions =
+        [new("Two-way", "TwoWay"), new("One-way", "OneWay")];
 
     private static string[] SplitTerms(string? text) =>
         (text ?? string.Empty).Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
     private void EnsureSynonymsLoaded(string datasetName, string teamId)
     {
-        if (_savedSynonymJson.ContainsKey(datasetName)) return;
+        if (_synonymLists.ContainsKey(datasetName)) return;
         var json = IndxCloudInternalApi.Manager.GetSynonyms(datasetName, teamId)?.GetSerialized();
-        _editedSynonyms[datasetName] = json == null ? null : SynonymList.Deserialize(json);
-        _savedSynonymJson[datasetName] = json ?? "null";
+        _synonymLists[datasetName] = json == null ? null : SynonymList.Deserialize(json);
     }
 
-    private bool SynonymsDirty(string datasetName)
+    // The filter box is itself an Indx search: the entries are indexed in a small
+    // in-memory engine, so filtering is fault tolerant (typo, affix and trigram
+    // matching from the standard configuration) and results come back ranked.
+    private readonly Dictionary<string, SearchEngine> _synFilterEngines = new();
+
+    private void InvalidateSynonymFilterEngine(string datasetName)
     {
-        if (!_savedSynonymJson.TryGetValue(datasetName, out var saved)) return false;
-        return (_editedSynonyms.GetValueOrDefault(datasetName)?.GetSerialized() ?? "null") != saved;
+        if (_synFilterEngines.Remove(datasetName, out var engine)) engine.Dispose();
     }
 
-    private void CreateSynonymList(string datasetName)
+    /// <summary>Returns the filter engine for the dataset's current entries, building it
+    /// lazily — an entry list this size indexes in milliseconds. Null when there is
+    /// nothing to index.</summary>
+    private SearchEngine? GetSynonymFilterEngine(string datasetName)
     {
-        _synonymError = null;
-        _editedSynonyms[datasetName] = new SynonymList();
-        AddSynonymEntry(datasetName);
+        if (_synFilterEngines.TryGetValue(datasetName, out var cached)) return cached;
+        var list = _synonymLists.GetValueOrDefault(datasetName);
+        if (list == null || list.Entries.Count == 0) return null;
+
+        var docs = list.Entries.Select((en, i) => new
+        {
+            key = i,
+            text = ((en.Source ?? string.Empty) + " " + string.Join(" ", en.Terms)).Trim()
+        });
+        using var stream = new System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(docs)));
+
+        var engine = new SearchEngine();
+        var initMonitor = new ProcessMonitor();
+        engine.Init(stream, "key", initMonitor);
+        initMonitor.WaitForCompletion();
+        foreach (var field in engine.GetFieldList())
+            if (field.Name == "text") field.Searchable = true;
+        stream.Position = 0;
+        var loadMonitor = new ProcessMonitor();
+        engine.Load(stream, loadMonitor);
+        loadMonitor.WaitForCompletion();
+        var indexMonitor = new ProcessMonitor();
+        engine.Index(monitor: indexMonitor);
+        indexMonitor.WaitForCompletion();
+
+        _synFilterEngines[datasetName] = engine;
+        return engine;
     }
 
-    private void AddSynonymEntry(string datasetName)
-    {
-        _synonymError = null;
-        _editedSynonyms.GetValueOrDefault(datasetName)?.Entries.Add(new SynonymEntry());
-    }
-
-    /// <summary>Rows matching the filter text on trigger or any term. A freshly added, still
-    /// empty row is always shown so it can't vanish under an active filter.</summary>
     private IEnumerable<SynonymEntry> FilteredSynonymEntries(string datasetName)
     {
-        var list = _editedSynonyms.GetValueOrDefault(datasetName);
+        var list = _synonymLists.GetValueOrDefault(datasetName);
         if (list == null) return [];
         var filter = _synonymFilter.GetValueOrDefault(datasetName);
         if (string.IsNullOrWhiteSpace(filter)) return list.Entries;
+
+        try
+        {
+            var engine = GetSynonymFilterEngine(datasetName);
+            if (engine != null)
+            {
+                var result = engine.Search(new Query { Text = filter, MaxNumberOfRecordsToReturn = Math.Max(50, list.Entries.Count) });
+                return result.Records
+                    .Where(r => r.Score > 0 && r.DocumentKey >= 0 && r.DocumentKey < list.Entries.Count)
+                    .Select(r => list.Entries[(int)r.DocumentKey])
+                    .ToList();
+            }
+        }
+        catch
+        {
+            // The fuzzy filter is a convenience — fall through to plain substring matching.
+        }
+
         return list.Entries.Where(en =>
-            (en.Terms.Length == 0 && string.IsNullOrWhiteSpace(en.Source)) ||
             (en.Source?.Contains(filter, StringComparison.OrdinalIgnoreCase) ?? false) ||
             en.Terms.Any(t => t.Contains(filter, StringComparison.OrdinalIgnoreCase)));
     }
 
-    private async Task SaveSynonyms(string datasetName, string teamId)
+    private void OpenSynonymModal(SynonymEntry? entry)
     {
         _synonymError = null;
-        var list = _editedSynonyms.GetValueOrDefault(datasetName);
-        if (list != null)
-        {
-            foreach (var entry in list.Entries)
-            {
-                if (entry.Terms.Length == 0) { _synonymError = "Every entry needs at least one term."; return; }
-                if (entry.Direction == SynonymDirection.OneWay && string.IsNullOrWhiteSpace(entry.Source)) { _synonymError = "One-way entries need a trigger."; return; }
-            }
-        }
-
-        // Deep copy so the live engine never shares an instance with the page's edit state.
-        var copy = list == null ? null : SynonymList.Deserialize(list.GetSerialized());
-        var ok = await Task.Run(() => IndxCloudInternalApi.Manager.SetSynonyms(datasetName, teamId, copy));
-        if (!ok) { _synonymError = "Failed to save the synonym list."; return; }
-        _savedSynonymJson[datasetName] = list?.GetSerialized() ?? "null";
+        _synModalError = null;
+        _synModalTarget = entry;
+        _synModalOneWay = entry?.Direction == SynonymDirection.OneWay;
+        _synModalFrom = entry?.Source;
+        _synModalTerms = entry == null ? null : string.Join("; ", entry.Terms);
+        _synModalOpen = true;
     }
 
-    private void CancelSynonyms(string datasetName)
+    private async Task SaveSynonymModal(string datasetName, string teamId)
+    {
+        _synModalError = null;
+        var terms = SplitTerms(_synModalTerms);
+        if (terms.Length == 0) { _synModalError = "Enter at least one synonym."; return; }
+        if (_synModalOneWay && string.IsNullOrWhiteSpace(_synModalFrom)) { _synModalError = "A one-way entry needs a From term."; return; }
+
+        var list = _synonymLists.GetValueOrDefault(datasetName) ?? new SynonymList();
+        _synonymLists[datasetName] = list;
+
+        var entry = _synModalTarget ?? new SynonymEntry();
+        entry.Direction = _synModalOneWay ? SynonymDirection.OneWay : SynonymDirection.Multidirectional;
+        entry.Source = _synModalOneWay ? _synModalFrom!.Trim() : null;
+        entry.Terms = terms;
+        if (_synModalTarget == null) list.Entries.Add(entry);
+
+        if (await PushSynonyms(datasetName, teamId))
+            _synModalOpen = false;
+        else
+            _synModalError = "Failed to save.";
+    }
+
+    private async Task DeleteSynonymEntry(string datasetName, string teamId, SynonymEntry entry)
     {
         _synonymError = null;
-        if (_savedSynonymJson.TryGetValue(datasetName, out var json))
-            _editedSynonyms[datasetName] = json == "null" ? null : SynonymList.Deserialize(json);
+        _synonymLists.GetValueOrDefault(datasetName)?.Entries.Remove(entry);
+        if (!await PushSynonyms(datasetName, teamId)) _synonymError = "Failed to save.";
+    }
+
+    private async Task RemoveSynonymList(string datasetName, string teamId)
+    {
+        _synonymError = null;
+        _synRemoveConfirm = false;
+        _synonymLists[datasetName] = null;
+        if (!await PushSynonyms(datasetName, teamId)) _synonymError = "Failed to remove the list.";
+    }
+
+    /// <summary>Persists the current list and applies it to the live engine. Pushes a deep
+    /// copy so the engine never shares an instance with the page's edit state; null removes
+    /// the stored list.</summary>
+    private async Task<bool> PushSynonyms(string datasetName, string teamId)
+    {
+        InvalidateSynonymFilterEngine(datasetName);
+        var list = _synonymLists.GetValueOrDefault(datasetName);
+        var copy = list == null ? null : SynonymList.Deserialize(list.GetSerialized());
+        return await Task.Run(() => IndxCloudInternalApi.Manager.SetSynonyms(datasetName, teamId, copy));
     }
 
     private async Task TriggerSynonymsImport(string datasetName) =>
         await JSRuntime.InvokeVoidAsync("indxTriggerFileInput", $"synonyms-import-{datasetName}");
 
-    private async Task ImportSynonyms(string datasetName, InputFileChangeEventArgs e)
+    private async Task ImportSynonyms(string datasetName, string teamId, InputFileChangeEventArgs e)
     {
         _synonymError = null;
         try
@@ -2861,7 +2968,8 @@ else
             using var reader = new System.IO.StreamReader(stream);
             var imported = SynonymList.Deserialize(await reader.ReadToEndAsync());
             if (imported.Entries.Count == 0) { _synonymError = "No entries found in the file."; return; }
-            _editedSynonyms[datasetName] = imported;
+            _synonymLists[datasetName] = imported;
+            if (!await PushSynonyms(datasetName, teamId)) _synonymError = "Failed to save the imported list.";
         }
         catch (Exception ex)
         {
@@ -2871,7 +2979,7 @@ else
 
     private async Task ExportSynonyms(string datasetName)
     {
-        var list = _editedSynonyms.GetValueOrDefault(datasetName);
+        var list = _synonymLists.GetValueOrDefault(datasetName);
         if (list == null) return;
         var opts = new JsonSerializerOptions { WriteIndented = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } };
         var json = JsonSerializer.Serialize(list, opts);
