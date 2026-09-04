@@ -179,6 +179,23 @@ namespace IndxCloudApi.Mcp
             return ParseJson(engine.GetJsonDataOfKey(key));
         }
 
+        [McpServerTool(Name = "get_synonyms", UseStructuredContent = false, ReadOnly = true)]
+        [System.ComponentModel.Description("Get a dataset's synonym list (an experimental feature), or null when it has none. " +
+                     "Searches expand through these entries: when the query matches an entry, its terms are appended to the " +
+                     "query text before scoring, so this explains why a search matched more than its literal words. " +
+                     "Multidirectional entries expand from any of their terms; OneWay entries expand only from their Source " +
+                     "term. Read-only — synonyms are edited in the portal or via PUT .../synonyms.")]
+        public async Task<JsonNode?> GetSynonyms(
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset)
+        {
+            var ownerKey = await ResolveOwnerKey(team);
+            if (IndxCloudInternalApi.Manager.ResolveEngine(dataset, ownerKey) == null)
+                throw new McpToolException($"Dataset '{dataset}' not found.");
+            var list = IndxCloudInternalApi.Manager.GetSynonyms(dataset, ownerKey);
+            return list == null ? null : ParseJson(list.GetSerialized());
+        }
+
         // ── Helpers ───────────────────────────────────────────────────────────
 
         private string RequireUserId() =>

@@ -11,6 +11,7 @@ A self-hosted search service built on [Indx Search](https://indx.co). Blazor Ser
 - User registration, login, and account management
 - Local accounts with optional Microsoft and Google OAuth
 - Server-side boost rules, facets, vector & hybrid search
+- Per-dataset synonym lists (experimental) — query expansion at search time
 - Notifications system
 - SQLite databases — no external database required
 - Swagger UI at `/swagger`
@@ -78,9 +79,33 @@ plus **single-document operations** (`POST`/`PUT`/`PATCH`/`DELETE …/documents/
 keep the search index in sync incrementally, so pushing individual record changes from a
 source system needs no re-index. See `/swagger` for the full surface.
 
+## Synonyms (experimental)
+
+Each dataset can carry a synonym list that widens searches: when a query matches an entry,
+the entry's terms are appended to the query text before scoring. Changes apply on the next
+search — nothing is re-indexed.
+
+Two kinds of entries:
+
+- **Two-way** — all terms are equivalent; matching any of them pulls in the whole group.
+  For inflected forms and spelling variants (*geriatri / geriatrisk / geriatriske*).
+- **One-way** — only the **From** term expands, into its synonyms. For acronyms: *hms*
+  should bring in *helse, miljø og sikkerhet*, but a search for *helse* must not become
+  a search for *hms*. Multi-word terms are matched as whole phrases.
+
+**From the UI:** the **Synonyms** tab on a dataset (editor role) — create and edit entries
+in a dialog, or import/export the whole list as JSON.
+
+**Over the API:** `GET`/`PUT api/teams/<team>/datasets/<dataset>/synonyms` — `GET` returns
+the list (or `null`), `PUT` replaces it (`null` removes it; editor role required).
+
+**Why experimental:** expansion widens recall but grows the query text, which dilutes
+Coverage scores proportionally — measure the net effect on your data before shipping a
+large list to production. Behavior may still change.
+
 ## MCP — connect AI agents
 
-The server exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` (Streamable HTTP). Point an MCP-capable client — Claude Code, Claude Desktop, or any other — at it with a bearer token, and the agent gets read-only retrieval tools over your datasets: search, field info, status.
+The server exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` (Streamable HTTP). Point an MCP-capable client — Claude Code, Claude Desktop, or any other — at it with a bearer token, and the agent gets read-only retrieval tools over your datasets: search, field info, status, synonym lists.
 
 - Same JWT tokens and team permissions as the rest of the API
 - Read-only by design — agents can search, not mutate
