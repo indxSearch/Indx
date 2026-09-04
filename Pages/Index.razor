@@ -1024,10 +1024,13 @@ else
                         @if (activeTab == "synonyms")
                         {
                             <div style="margin-top: 16px;">
-                                <p style="color: var(--lv5); font: var(--text-sm); margin-bottom: 12px;">
-                                    Synonyms widen searches: when a query matches an entry, its synonyms are appended to the query text before scoring.
-                                    Changes apply on the next search — no re-indexing.
-                                </p>
+                                <div style="display:flex; align-items:flex-start; gap:10px; margin-bottom: 12px;">
+                                    <p style="color: var(--lv5); font: var(--text-sm); margin: 0; flex: 1;">
+                                        Synonyms widen searches: when a query matches an entry, its synonyms are appended to the query text before scoring.
+                                        Changes apply on the next search — no re-indexing. Experimental: expansion widens recall but dilutes Coverage scores; behavior may change.
+                                    </p>
+                                    <Chip Color="var(--CWarning)" TextColor="#080809">Experimental</Chip>
+                                </div>
 
                                 @{
                                     // Self-loading: the tab button also loads, but the cache can be cleared
