@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
@@ -142,6 +143,11 @@ namespace IndxCloudApi.Controllers
 
             user.MustChangePassword = false;
             await _userManager.UpdateAsync(user);
+
+            // ChangePasswordAsync rotated the security stamp; drop the cached one so every
+            // login token issued before this call — including the one used to make it — is
+            // rejected immediately. The caller signs in again to get a fresh token.
+            TokenValidationCache.EvictUser(HttpContext.RequestServices.GetRequiredService<IMemoryCache>(), user.Id);
             return Ok(new { changed = true });
         }
 
@@ -172,7 +178,9 @@ namespace IndxCloudApi.Controllers
         new Claim(ClaimTypes.Name, user.UserName ?? info.UserEmail),
         new Claim(JwtRegisteredClaimNames.Sub, user.Id),
         new Claim(JwtRegisteredClaimNames.Email, info.UserEmail),
-        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+        new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+        // Ties this login token to the current password: see TokenValidationCache.
+        new Claim(TokenValidationCache.SecurityStampClaim, user.SecurityStamp ?? "")
     };
 
             // Add roles if needed

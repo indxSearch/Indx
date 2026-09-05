@@ -296,7 +296,7 @@ else
         key.IsRevoked = true;
         await Db.SaveChangesAsync();
         // Drop the cached "not revoked" verdict so the key stops working now, not in five minutes.
-        IndxCloudApi.Services.ApiKeyRevocation.Evict(MemoryCache, key.Jti);
+        IndxCloudApi.Services.TokenValidationCache.EvictJti(MemoryCache, key.Jti);
         revokeConfirmId = null;
         await LoadKeys();
         Logger.LogInformation("API key {Id} revoked for user {UserId}", key.Id, key.UserId);

@@ -322,27 +322,41 @@ public class Program
 
                     var cache = context.HttpContext.RequestServices.GetRequiredService<IMemoryCache>();
 
-                    var cacheKey = $"user_exists_{userId}";
-                    if (!cache.TryGetValue(cacheKey, out bool exists))
+                    // Current security stamp, or "" when the user no longer exists. Cached; the
+                    // password change/reset paths evict it (TokenValidationCache.EvictUser).
+                    var userKey = IndxCloudApi.Services.TokenValidationCache.UserKey(userId);
+                    if (!cache.TryGetValue(userKey, out string? currentStamp))
                     {
                         var userManager = context.HttpContext.RequestServices
                             .GetRequiredService<UserManager<ApplicationUser>>();
-                        exists = await userManager.FindByIdAsync(userId) != null;
-                        cache.Set(cacheKey, exists, TimeSpan.FromMinutes(5));
+                        var user = await userManager.FindByIdAsync(userId);
+                        currentStamp = user == null ? "" : (user.SecurityStamp ?? "");
+                        cache.Set(userKey, currentStamp, IndxCloudApi.Services.TokenValidationCache.CacheDuration);
                     }
 
-                    if (!exists) { context.Fail("User no longer exists."); return; }
+                    if (currentStamp == "") { context.Fail("User no longer exists."); return; }
+
+                    // Login tokens carry the stamp they were issued under; a password change or
+                    // reset rotates it, which retires every earlier login token at once. Named
+                    // API keys deliberately omit the claim so integrations survive a password
+                    // change — they are retired through revocation instead.
+                    var issuedStamp = context.Principal?.FindFirst(IndxCloudApi.Services.TokenValidationCache.SecurityStampClaim)?.Value;
+                    if (issuedStamp != null && issuedStamp != currentStamp)
+                    {
+                        context.Fail("Token was issued before the password was last changed.");
+                        return;
+                    }
 
                     var jti = context.Principal?.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti)?.Value;
                     if (jti != null)
                     {
-                        var revokeCacheKey = IndxCloudApi.Services.ApiKeyRevocation.CacheKey(jti);
+                        var revokeCacheKey = IndxCloudApi.Services.TokenValidationCache.JtiKey(jti);
                         if (!cache.TryGetValue(revokeCacheKey, out bool revoked))
                         {
                             var db = context.HttpContext.RequestServices
                                 .GetRequiredService<ApplicationDbContext>();
                             revoked = await db.ApiKeys.AnyAsync(k => k.Jti == jti && k.IsRevoked);
-                            cache.Set(revokeCacheKey, revoked, IndxCloudApi.Services.ApiKeyRevocation.CacheDuration);
+                            cache.Set(revokeCacheKey, revoked, IndxCloudApi.Services.TokenValidationCache.CacheDuration);
                         }
                         if (revoked) context.Fail("Token has been revoked.");
                     }
@@ -525,7 +539,13 @@ public class Program
         {
             options.AddPolicy("NewPolicy", policy =>
             {
-                if (builder.Environment.IsProduction() && corsAllowedOrigins.Length > 0)
+                if (!builder.Environment.IsProduction())
+                {
+                    policy.AllowAnyOrigin()
+                        .AllowAnyMethod()
+                        .AllowAnyHeader();
+                }
+                else if (corsAllowedOrigins.Length > 0)
                 {
                     policy.WithOrigins(corsAllowedOrigins)
                         .AllowAnyMethod()
@@ -533,9 +553,14 @@ public class Program
                 }
                 else
                 {
-                    policy.AllowAnyOrigin()
-                        .AllowAnyMethod()
-                        .AllowAnyHeader();
+                    // Production with no origins configured: allow no cross-origin browser
+                    // access rather than falling open. Same-origin traffic (the Blazor UI,
+                    // Swagger, MCP, any server-to-server client) is unaffected by CORS.
+                    policy.WithOrigins();
+                    Console.WriteLine(
+                        "⚠ Cors:AllowedOrigins is not set. Browser apps on other origins cannot call " +
+                        "this API until it is (comma-separated list of origins, e.g. " +
+                        "https://app.example.com). Same-origin use is unaffected.");
                 }
             });
         });
