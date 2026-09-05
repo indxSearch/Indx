@@ -39,6 +39,10 @@ namespace IndxCloudApi.Components.Datasets
         // ── Engine view ───────────────────────────────────────────────────────
         public SystemStatus? Status { get; set; }
         internal IndxCloudInternalApi.KeepAliveInfo? KeepAlive { get; set; }
+        /// <summary>True once <see cref="RefreshStatus"/> has succeeded at least once. Until then
+        /// the engine state is unknown and nothing state-dependent (upload prompt, wake panel,
+        /// tab nav) should render — an unknown state must not look like an empty dataset.</summary>
+        public bool HasStatus => Status != null && KeepAlive != null;
         public SystemState EngineState => Status?.SystemState ?? SystemState.Created;
         /// <summary>A Created engine with records persisted on disk is hibernated (manual datasets
         /// stay this way until woken; timed/pinned wake themselves on access), not an empty dataset.</summary>
@@ -49,10 +53,18 @@ namespace IndxCloudApi.Components.Datasets
         {
             try
             {
-                KeepAlive = Engines.GetKeepAliveInfo(Name, TeamId);
-                Status = Engines.GetState(Name, TeamId);
+                // Status first: for a timed/pinned dataset GetState triggers the lazy reload, and the
+                // keep-alive view (Ready, remaining time) must describe the engine after that.
+                var status = Engines.GetState(Name, TeamId);
+                var keepAlive = Engines.GetKeepAliveInfo(Name, TeamId);
+                Status = status;
+                KeepAlive = keepAlive;
             }
-            catch { /* dataset may be mid-transition; keep the last known view */ }
+            catch (Exception ex)
+            {
+                // Dataset may be mid-transition; keep the last known view.
+                Console.WriteLine($"[DatasetContext] status refresh failed for {Name}: {ex.Message}");
+            }
         }
 
         public ICloudSearchEngine? FindEngine() => Engines.FindSearchEngine(Name, TeamId);

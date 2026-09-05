@@ -86,7 +86,7 @@
                     var showNav = isReady || (Ctx.IsAnalyzed && !Ctx.IsLoadIndexing && Ctx.IsEditor) || (engineState == SystemState.Error && Ctx.IsAdmin);
                     var tab = Ctx.ActiveTab;
                 }
-                @if (showNav)
+                @if (showNav && Ctx.HasStatus)
                 {
                     <nav class="indx-dataset-nav">
                         <Button Variant="@NavVariant("fields")" Size="micro" IconLeft="DatasetIcons.Fields" @onclick="@(() => SelectTab("fields"))">Field configuration</Button>

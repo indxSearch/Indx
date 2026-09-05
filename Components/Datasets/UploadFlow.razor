@@ -6,7 +6,7 @@
 @using IndxCloudApi.Models
 
 @inherits DatasetTabBase
-@if (!Active) { return; }
+@if (!Active || !Ctx.HasStatus) { return; }
 
 @{
     var state = Ctx.EngineState;
