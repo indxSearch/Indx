@@ -150,6 +150,9 @@
             Ctx.RefreshStatus();
             if (Ctx.EngineState == SystemState.Ready) Ctx.EnsureFieldsLoaded();
             StartPollingIfTransitional();
+            // The tab components rendered once already (before status was known) and Blazor
+            // skips children whose parameters did not change — tell them the context moved.
+            Ctx.NotifyChanged();
         }
     }
 
@@ -181,7 +184,7 @@
                 if (Ctx.EngineState == SystemState.Ready) Ctx.EnsureFieldsLoaded();
                 return Ctx.IsTransitional;
             },
-            () => InvokeAsync(StateHasChanged),
+            () => InvokeAsync(() => { StateHasChanged(); Ctx.NotifyChanged(); }),
             cts.Token).ContinueWith(_ =>
             {
                 if (ReferenceEquals(_pollCts, cts)) _pollCts = null;

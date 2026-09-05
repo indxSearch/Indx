@@ -25,7 +25,9 @@ namespace IndxCloudApi.Components.Datasets
 
         private void OnContextChanged()
         {
-            if (Active) _ = InvokeAsync(StateHasChanged);
+            // Inactive tabs render nothing, so this is cheap for them too; always re-render
+            // rather than risk a stale first render surviving until the next parameter change.
+            _ = InvokeAsync(StateHasChanged);
         }
 
         /// <summary>Re-renders this tab and the rest of the panel from any thread.</summary>
