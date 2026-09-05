@@ -350,7 +350,10 @@ else if (licenseInfo != null)
                         {
                             <span style="flex: 1; color: var(--CTeal); font-size: 13px;">✓ Token set — fetching enabled</span>
                             <Button Variant="secondary" Size="micro" @onclick="BeginEditToken" Disabled="@_isFetching">Edit</Button>
-                            <Button Variant="ghost" Size="micro" @onclick="() => { _removeTokenConfirm = true; _fetchMessage = null; _fetchError = null; }" Disabled="@_isFetching">Remove</Button>
+                            <ConfirmButton Label="Remove" ConfirmLabel="Remove token" Disabled="@_isFetching"
+                                           Prompt="Remove the license token? Auto-fetch stops; any license file already on disk is kept."
+                                           Open="@_removeTokenConfirm" OpenChanged="v => { _removeTokenConfirm = v; if (v) { _fetchMessage = null; _fetchError = null; } }"
+                                           OnConfirm="RemoveToken" />
                         }
                         else
                         {
@@ -364,14 +367,6 @@ else if (licenseInfo != null)
                         }
                     </div>
 
-                    @if (_removeTokenConfirm)
-                    {
-                        <div style="display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: rgba(255,178,41,0.06); border: 1px solid var(--CWarning); border-radius: var(--radius);">
-                            <span style="font-size: 13px;">Remove the license token? Auto-fetch stops; any license file already on disk is kept.</span>
-                            <Button Variant="danger" Size="micro" @onclick="RemoveToken" Disabled="@_isFetching">Remove token</Button>
-                            <Button Variant="secondary" Size="micro" @onclick="() => _removeTokenConfirm = false">Cancel</Button>
-                        </div>
-                    }
 
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <Button Variant="secondary" Size="micro" @onclick="FetchNow"

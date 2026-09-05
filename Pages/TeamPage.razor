@@ -109,22 +109,14 @@ else
             <div style="width:220px;"><InputField @bind-Value="_renameInput" /></div>
             <Button Variant="secondary" Size="micro" @onclick="OnRename">Rename</Button>
         </div>
-        @if (!_confirmDelete)
-        {
-            <Button Variant="ghost" Size="micro" disabled="@(ActiveTeam.Teams.Count <= 1)" @onclick="() => _confirmDelete = true">Delete team</Button>
+        <ConfirmButton Label="Delete team" Prompt="@($"Delete \"{ActiveTeam.ActiveTeamName}\"? This can't be undone.")"
+                       ConfirmLabel="Yes, delete" Variant="primary" CancelVariant="ghost"
+                       Disabled="@(ActiveTeam.Teams.Count <= 1)" @bind-Open="_confirmDelete" OnConfirm="OnDelete">
             @if (ActiveTeam.Teams.Count <= 1)
             {
-                <span style="color:var(--lv4); font:var(--text-2xs); margin-left:8px;">You can't delete your only team.</span>
+                <span style="color:var(--lv4); font:var(--text-2xs);">You can't delete your only team.</span>
             }
-        }
-        else
-        {
-            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <span style="color:var(--CSignal); font:var(--text-sm);">Delete "@ActiveTeam.ActiveTeamName"? This can't be undone.</span>
-                <Button Variant="primary" Size="micro" @onclick="OnDelete">Yes, delete</Button>
-                <Button Variant="ghost" Size="micro" @onclick="() => _confirmDelete = false">Cancel</Button>
-            </div>
-        }
+        </ConfirmButton>
     }
 
     @* ── Create team (any user) ── *@

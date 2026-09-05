@@ -87,17 +87,9 @@ else
                         {
                             <Button Variant="ghost" Size="micro" @onclick="() => PromoteUser(u.Id)">Make Admin</Button>
                         }
-                        @if (_deleteConfirmId == u.Id)
-                        {
-                            <Button Variant="danger" Size="micro" @onclick="() => DeleteUser(u.Id)">Confirm Delete</Button>
-                            <Button Variant="ghost" Size="micro" @onclick="() => _deleteConfirmId = null">Cancel</Button>
-                        }
-                        else
-                        {
-                            <Tooltip Content="Delete user">
-                                <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="() => _deleteConfirmId = u.Id" />
-                            </Tooltip>
-                        }
+                        <ConfirmButton Label="" Title="Delete user" Icon="_iconDelete" ConfirmLabel="Confirm Delete" CancelVariant="ghost"
+                                       Open="@(_deleteConfirmId == u.Id)" OpenChanged="v => _deleteConfirmId = v ? u.Id : null"
+                                       OnConfirm="() => DeleteUser(u.Id)" />
                     </td>
                 </tr>
             }

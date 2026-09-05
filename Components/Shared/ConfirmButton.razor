@@ -16,14 +16,16 @@
 else
 {
     <div class="indx-confirm-row">
-        <Button Variant="@TriggerVariant" Size="@Size" IconLeft="@Icon" Disabled="@Disabled" @onclick="() => SetOpen(true)">@Label</Button>
+        <Button Variant="@TriggerVariant" Size="@Size" IconLeft="@Icon" Disabled="@Disabled" title="@Title" @onclick="() => SetOpen(true)">@Label</Button>
         @ChildContent
     </div>
 }
 
 @code {
-    /// <summary>Text of the trigger button.</summary>
+    /// <summary>Text of the trigger button. Empty for an icon-only trigger — set <see cref="Title"/> then.</summary>
     [Parameter, EditorRequired] public string Label { get; set; } = "";
+    /// <summary>Native tooltip on the trigger (for icon-only triggers).</summary>
+    [Parameter] public string? Title { get; set; }
     /// <summary>Question shown next to the confirm button; omit for none.</summary>
     [Parameter] public string? Prompt { get; set; }
     [Parameter] public string ConfirmLabel { get; set; } = "Confirm";

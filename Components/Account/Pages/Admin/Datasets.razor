@@ -107,17 +107,9 @@ else
                         }
                     </td>
                     <td style="padding: 10px 12px; text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
-                        @if (_deleteConfirmKey == row.Key)
-                        {
-                            <Button Variant="danger" Size="micro" @onclick="() => DeleteDataset(row.DataSetName, row.TeamId)">Confirm Delete</Button>
-                            <Button Variant="ghost" Size="micro" @onclick="() => _deleteConfirmKey = null">Cancel</Button>
-                        }
-                        else
-                        {
-                            <Tooltip Content="Delete dataset">
-                                <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" @onclick="() => _deleteConfirmKey = row.Key" />
-                            </Tooltip>
-                        }
+                        <ConfirmButton Label="" Title="Delete dataset" Icon="_iconDelete" ConfirmLabel="Confirm Delete" CancelVariant="ghost"
+                                       Open="@(_deleteConfirmKey == row.Key)" OpenChanged="v => _deleteConfirmKey = v ? row.Key : null"
+                                       OnConfirm="() => DeleteDataset(row.DataSetName, row.TeamId)" />
                     </td>
                 </tr>
             }
