@@ -7,19 +7,22 @@
     }
     <div class="indx-slider-track">
         <div class="indx-slider-basetrack"></div>
-        <div class="indx-slider-fill" style="@_fillStyle"></div>
-        <input id="@_id"
-               type="range"
-               class="indx-slider-input"
-               min="@Fmt(Min)"
-               max="@Fmt(Max)"
-               step="@(Step.HasValue ? Fmt(Step.Value) : "any")"
-               value="@Fmt(Value)"
-               disabled="@Disabled"
-               aria-label="@AriaLabel"
-               @oninput="OnInput"
-               @onchange="OnCommit"
-               @attributes="AdditionalAttributes" />
+        @if (HasValidRange)
+        {
+            <div class="indx-slider-fill" style="@_fillStyle"></div>
+            <input id="@_id"
+                   type="range"
+                   class="indx-slider-input"
+                   min="@Fmt(Min)"
+                   max="@Fmt(Max)"
+                   step="@(Step.HasValue ? Fmt(Step.Value) : "any")"
+                   value="@Fmt(Value)"
+                   disabled="@Disabled"
+                   aria-label="@AriaLabel"
+                   @oninput="OnInput"
+                   @onchange="OnCommit"
+                   @attributes="AdditionalAttributes" />
+        }
     </div>
 </div>
 
@@ -41,6 +44,12 @@
 
     private string _id => Id ?? _generatedId;
     private readonly string _generatedId = $"indx-slider-{Guid.NewGuid():N}";
+    private bool HasValidRange =>
+        double.IsFinite(Min) &&
+        double.IsFinite(Max) &&
+        double.IsFinite(Value) && double.IsFinite(Max - Min) &&
+        Max > Min &&
+        (!Step.HasValue || (double.IsFinite(Step.Value) && Step.Value > 0));
 
     // The fill must end under the native thumb's center: the thumb travels within
     // [0, width - 18px], so its center sits at 9px + fraction * (width - 18px).

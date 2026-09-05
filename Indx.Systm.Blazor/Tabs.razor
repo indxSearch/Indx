@@ -1,15 +1,23 @@
 @using Microsoft.JSInterop
+@using Microsoft.AspNetCore.Components.Web
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
 <div class="indx-tabs @(Scrollable ? "indx-tabs-scrollable" : "")"
      role="tablist"
      @ref="_listEl">
-    @foreach (var item in Items)
+    @foreach (var item in _items)
     {
+        var selected = Active == item.Value;
         <button class="indx-tab indx-tab-@Size @(Active == item.Value ? "indx-tab-active" : "")"
+                id="@TabId(item)"
+                role="tab"
                 type="button"
-                @onclick="() => OnClick(item.Value)">
+                aria-selected="@selected"
+                aria-controls="@PanelIdProvider?.Invoke(item)"
+                tabindex="@(IsTabStop(item) ? "0" : "-1")"
+                @onclick="() => OnClick(item.Value)"
+                @onkeydown="(args) => OnKeyDown(item, args)">
             @item.Label
         </button>
     }
@@ -20,6 +28,8 @@
     [Parameter] public string? Active { get; set; }
     [Parameter] public EventCallback<string?> ActiveChanged { get; set; }
     [Parameter] public string Size { get; set; } = "default";
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public Func<TabItem, string?>? PanelIdProvider { get; set; }
 
     /// <summary>
     /// When the tabs don't fit, scroll horizontally instead of clipping. The edges fade to hint there's
@@ -30,22 +40,70 @@
 
     private ElementReference _listEl;
     private IJSObjectReference? _module;
+    private readonly string _generatedId = $"indx-tabs-{Guid.NewGuid():N}";
+    private IReadOnlyList<TabItem> _items => Items as IReadOnlyList<TabItem> ?? Items.ToArray();
+    private string _id => Id ?? _generatedId;
+
+    private string TabId(TabItem item) => $"{_id}-tab-{item.Value}";
+
+    private bool IsTabStop(TabItem item) =>
+        Active == item.Value ||
+        (!_items.Any(candidate => candidate.Value == Active) && _items.FirstOrDefault() == item);
 
     private async Task OnClick(string value)
     {
         await ActiveChanged.InvokeAsync(value);
     }
 
+    private async Task OnKeyDown(TabItem current, KeyboardEventArgs args)
+    {
+        var currentIndex = IndexOf(current);
+        if (currentIndex < 0 || _items.Count == 0) return;
+
+        int? nextIndex = args.Key switch
+        {
+            "ArrowLeft" => (currentIndex - 1 + _items.Count) % _items.Count,
+            "ArrowRight" => (currentIndex + 1) % _items.Count,
+            "Home" => 0,
+            "End" => _items.Count - 1,
+            _ => null,
+        };
+
+        if (nextIndex is { } index)
+        {
+            var next = _items[index];
+            await ActiveChanged.InvokeAsync(next.Value);
+            await FocusTab(next);
+            return;
+        }
+
+    }
+
+    private async Task FocusTab(TabItem item)
+    {
+        if (_module is null) return;
+        await _module.InvokeVoidAsync("focusTab", TabId(item), Scrollable);
+    }
+
+    private int IndexOf(TabItem item)
+    {
+        for (var i = 0; i < _items.Count; i++)
+        {
+            if (_items[i] == item) return i;
+        }
+
+        return -1;
+    }
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!Scrollable) return;
         if (firstRender)
         {
             _module = await JS.InvokeAsync<IJSObjectReference>(
                 "import", "./_content/Indx.Systm.Blazor/Tabs.razor.js");
             await _module.InvokeVoidAsync("init", _listEl);
         }
-        else if (_module is not null)
+        else if (Scrollable && _module is not null)
         {
             // Tabs may have changed (e.g. a dataset added/removed) — recompute the fade edges.
             await _module.InvokeVoidAsync("refresh", _listEl);

@@ -1,13 +1,26 @@
 @if (!string.IsNullOrEmpty(Href))
 {
-    <a class="@_classes"
-       href="@Href"
-       aria-disabled="@(Disabled ? "true" : null)"
-       @attributes="AdditionalAttributes">
-        @if (IconLeft != null) { @IconLeft(_iconSize) }
-        @ChildContent
-        @if (IconRight != null) { <span class="indx-btn-icon-right">@IconRight(_iconSize)</span> }
-    </a>
+    @if (Disabled)
+    {
+        <span class="@_classes"
+              aria-disabled="true"
+              tabindex="-1"
+              @attributes="DisabledAttributes">
+            @if (IconLeft != null) { @IconLeft(_iconSize) }
+            @ChildContent
+            @if (IconRight != null) { <span class="indx-btn-icon-right">@IconRight(_iconSize)</span> }
+        </span>
+    }
+    else
+    {
+        <a class="@_classes"
+           href="@Href"
+           @attributes="AdditionalAttributes">
+            @if (IconLeft != null) { @IconLeft(_iconSize) }
+            @ChildContent
+            @if (IconRight != null) { <span class="indx-btn-icon-right">@IconRight(_iconSize)</span> }
+        </a>
+    }
 }
 else
 {
@@ -33,6 +46,11 @@ else
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private int _iconSize => Size == "large" ? 21 : 14;
+
+    private Dictionary<string, object>? DisabledAttributes => AdditionalAttributes?
+        .Where(pair => !pair.Key.StartsWith("on", StringComparison.OrdinalIgnoreCase)
+            && !new[] { "href", "tabindex", "aria-disabled", "contenteditable" }.Contains(pair.Key, StringComparer.OrdinalIgnoreCase))
+        .ToDictionary(pair => pair.Key, pair => pair.Value);
 
     private string _classes => $"indx-btn indx-btn-{Size} indx-btn-{Variant}";
 }
