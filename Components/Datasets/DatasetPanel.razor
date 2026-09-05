@@ -7,6 +7,7 @@
    console had with its name-keyed dictionaries, now without the dictionaries. *@
 @using Indx.Api
 @implements IDisposable
+@inject IDatasetEngines Engines
 
 <div class="indx-dataset-card" hidden="@(!Visible)">
     <div class="indx-dataset-card-inner">
@@ -135,7 +136,7 @@
 
     protected override void OnInitialized()
     {
-        Ctx = new DatasetContext(Name, TeamId, Role, MyTeams);
+        Ctx = new DatasetContext(Engines, Name, TeamId, Role, MyTeams);
         Ctx.Changed += OnCtxChanged;
         Ctx.DatasetListChanged += () => OnDatasetListChanged.InvokeAsync();
     }

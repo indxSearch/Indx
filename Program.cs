@@ -103,6 +103,7 @@ public class Program
         builder.Services.AddScoped<RegistrationValidator>();
         builder.Services.AddSingleton<InstanceSettingsService>();
         builder.Services.AddScoped<BrowserFiles>();
+        builder.Services.AddSingleton<IDatasetEngines, ManagerDatasetEngines>();
         builder.Services.AddSingleton<IndxCloudApi.Services.BoostRuleStore>();
         builder.Services.AddSingleton<IndxCloudApi.Services.DatasetMetadataStore>();
 

@@ -9,6 +9,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject InstanceSettingsService InstanceSettingsService
 @inject ActiveTeamState ActiveTeam
+@inject IDatasetEngines Engines
 @implements IDisposable
 
 @* The dataset console shell: the team's dataset list as a tab strip, the "new dataset" form,
@@ -149,7 +150,7 @@ else
         {
             _datasets = string.IsNullOrEmpty(_activeTeamId)
                 ? []
-                : IndxCloudInternalApi.Manager.GetTeamDataSets(_activeTeamId).ToArray();
+                : Engines.GetTeamDataSets(_activeTeamId).ToArray();
         }
         catch
         {

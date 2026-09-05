@@ -245,7 +245,7 @@
             Ctx.IsAnalyzing = true;
             await Render();
             fs.Position = 0;
-            var initError = await IndxCloudInternalApi.Manager.InitFromStreamAsync(Ctx.Name, Ctx.TeamId, fs);
+            var initError = await Ctx.Engines.InitFromStreamAsync(Ctx.Name, Ctx.TeamId, fs);
             if (!string.IsNullOrEmpty(initError))
             {
                 Ctx.OperationError = $"Analyze failed: {initError}";
@@ -331,7 +331,7 @@
             // serve yet); a bad custom key is already flagged at selection time, and otherwise the load
             // fails cleanly below (the lib's clear+append is atomic, so the db is left recoverable).
             ms.Position = 0;
-            var loadResult = IndxCloudInternalApi.Manager.StartLoadAsync(Ctx.Name, Ctx.TeamId, ms);
+            var loadResult = Ctx.Engines.StartLoadAsync(Ctx.Name, Ctx.TeamId, ms);
             if (loadResult == null)
             {
                 Ctx.OperationError = "Load failed: dataset not found";
@@ -348,7 +348,7 @@
 
             if (!loadMonitor.Succeeded)
             {
-                Ctx.OperationError = "Load failed: " + IndxCloudInternalApi.Manager.DescribeLoadFailure(Ctx.Name, Ctx.TeamId, loadMonitor.ErrorMessage);
+                Ctx.OperationError = "Load failed: " + Ctx.Engines.DescribeLoadFailure(Ctx.Name, Ctx.TeamId, loadMonitor.ErrorMessage);
                 return;
             }
 

@@ -172,7 +172,7 @@
     private void Load()
     {
         _loaded = true;
-        var json = IndxCloudInternalApi.Manager.GetSynonyms(Ctx.Name, Ctx.TeamId)?.GetSerialized();
+        var json = Ctx.Engines.GetSynonyms(Ctx.Name, Ctx.TeamId)?.GetSerialized();
         _list = json == null ? null : SynonymList.Deserialize(json);
     }
 
@@ -296,7 +296,7 @@
     {
         InvalidateFilterEngine();
         var copy = _list == null ? null : SynonymList.Deserialize(_list.GetSerialized());
-        return await Task.Run(() => IndxCloudInternalApi.Manager.SetSynonyms(Ctx.Name, Ctx.TeamId, copy));
+        return await Task.Run(() => Ctx.Engines.SetSynonyms(Ctx.Name, Ctx.TeamId, copy));
     }
 
     private async Task ImportAsync(InputFileChangeEventArgs e)

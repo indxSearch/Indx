@@ -15,13 +15,17 @@ namespace IndxCloudApi.Components.Datasets
     /// </summary>
     public sealed class DatasetContext : IDisposable
     {
-        public DatasetContext(string name, string teamId, string? role, IReadOnlyList<(Team Team, string Role)> myTeams)
+        internal DatasetContext(IDatasetEngines engines, string name, string teamId, string? role, IReadOnlyList<(Team Team, string Role)> myTeams)
         {
+            Engines = engines;
             Name = name;
             TeamId = teamId;
             Role = role;
             MyTeams = myTeams;
         }
+
+        /// <summary>The engine registry, injectable so tabs are testable without a live engine.</summary>
+        internal IDatasetEngines Engines { get; }
 
         // ── Identity ──────────────────────────────────────────────────────────
         public string Name { get; }
@@ -45,13 +49,13 @@ namespace IndxCloudApi.Components.Datasets
         {
             try
             {
-                KeepAlive = IndxCloudInternalApi.Manager.GetKeepAliveInfo(Name, TeamId);
-                Status = IndxCloudInternalApi.Manager.GetState(Name, TeamId);
+                KeepAlive = Engines.GetKeepAliveInfo(Name, TeamId);
+                Status = Engines.GetState(Name, TeamId);
             }
             catch { /* dataset may be mid-transition; keep the last known view */ }
         }
 
-        public ICloudSearchEngine? FindEngine() => IndxCloudInternalApi.Manager.FindSearchEngine(Name, TeamId);
+        public ICloudSearchEngine? FindEngine() => Engines.FindSearchEngine(Name, TeamId);
 
         // ── Field configuration spine ─────────────────────────────────────────
         /// <summary>The configuration as the engine currently has it (baseline for dirty checks).</summary>
@@ -205,7 +209,7 @@ namespace IndxCloudApi.Components.Datasets
         {
             try
             {
-                var ok = await Task.Run(() => IndxCloudInternalApi.Manager.DeleteDataSet(Name, TeamId));
+                var ok = await Task.Run(() => Engines.DeleteDataSet(Name, TeamId));
                 DeleteConfirmOpen = false;
                 if (!ok) return false;
                 SetBufferedFile(null);
@@ -224,7 +228,7 @@ namespace IndxCloudApi.Components.Datasets
         /// Off (client-managed) datasets; timed/pinned reload on the next access.</summary>
         public async Task HibernateAsync()
         {
-            await Task.Run(() => IndxCloudInternalApi.Manager.DisposeDataSetInstance(Name, TeamId));
+            await Task.Run(() => Engines.DisposeDataSetInstance(Name, TeamId));
             // A hibernated dataset isn't Ready, so the tab nav disappears. Land on the
             // field-config view, where the "Hibernated → Wake up" UI lives.
             ActiveTab = "fields";

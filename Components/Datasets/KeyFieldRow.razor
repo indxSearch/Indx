@@ -58,7 +58,7 @@
         if (_loaded) return;
         _loaded = true;
         _stored = DatasetMeta.LoadKeyField(Ctx.TeamId, Ctx.Name);
-        _candidates = IndxCloudInternalApi.Manager.GetKeyFieldCandidates(Ctx.Name, Ctx.TeamId);
+        _candidates = Ctx.Engines.GetKeyFieldCandidates(Ctx.Name, Ctx.TeamId);
     }
 
     private bool IsCandidate(string field) => _candidates.Contains(field);
@@ -94,7 +94,7 @@
         var fieldName = (value == null || value == AutoKeyValue) ? "" : value;
         var (err, needsReload) = await Task.Run(() =>
         {
-            var e = IndxCloudInternalApi.Manager.SetKeyField(Ctx.Name, Ctx.TeamId, fieldName, out var nr);
+            var e = Ctx.Engines.SetKeyField(Ctx.Name, Ctx.TeamId, fieldName, out var nr);
             return (e, nr);
         });
         if (err != null)
@@ -124,7 +124,7 @@
                 try
                 {
                     buffered.Position = 0;
-                    return IndxCloudInternalApi.Manager.ValidateExternalLoadForCustomKey(Ctx.Name, Ctx.TeamId, buffered);
+                    return Ctx.Engines.ValidateExternalLoadForCustomKey(Ctx.Name, Ctx.TeamId, buffered);
                 }
                 catch (Exception ex) { return ex.Message; }
             });

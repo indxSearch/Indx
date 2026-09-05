@@ -74,7 +74,7 @@ else if (Ctx.EditedFields is { } fields)
         _pollCts?.Dispose();
         _pollCts = new CancellationTokenSource();
         var pollingTask = ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(100),
-            () => { Ctx.ShadowBuildPercent = IndxCloudInternalApi.Manager.GetShadowBuildPercent(Ctx.Name, Ctx.TeamId); return true; },
+            () => { Ctx.ShadowBuildPercent = Ctx.Engines.GetShadowBuildPercent(Ctx.Name, Ctx.TeamId); return true; },
             Render, _pollCts.Token);
 
         try
@@ -86,7 +86,7 @@ else if (Ctx.EditedFields is { } fields)
                 var df = engine.DocumentFields;
                 bool needsReindex = df?.RequiresReindex(edited) ?? false;
                 if (needsReindex && engine.Status.SystemState == SystemState.Ready)
-                    IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(Ctx.Name, Ctx.TeamId, edited);
+                    Ctx.Engines.RunFieldConfigurationOnShadow(Ctx.Name, Ctx.TeamId, edited);
                 else
                     engine.SetFieldConfiguration(edited);
             });

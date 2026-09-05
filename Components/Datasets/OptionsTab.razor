@@ -279,7 +279,7 @@
 
         // Team-scoped: SetKeepAliveHrs only affects this team's dataset; the Options tab is
         // already gated to team Admins.
-        if (IndxCloudInternalApi.Manager.SetKeepAliveHrs(Ctx.Name, Ctx.TeamId, hrs))
+        if (Ctx.Engines.SetKeepAliveHrs(Ctx.Name, Ctx.TeamId, hrs))
         {
             _editingKeepAlive = false;
             Ctx.RefreshStatus();
@@ -333,7 +333,7 @@
             fs.Position = 0;
 
             var localFs = fs;
-            var summary = await Task.Run(() => IndxCloudInternalApi.Manager.RunReplaceFromJson(Ctx.Name, Ctx.TeamId, localFs));
+            var summary = await Task.Run(() => Ctx.Engines.RunReplaceFromJson(Ctx.Name, Ctx.TeamId, localFs));
 
             Ctx.RefreshStatus();
             Ctx.NotifyDocumentsReplaced(); // preview now points at stale docs
@@ -368,7 +368,7 @@
         {
             // TransferOwnership evicts the source engine (can be slow) — run off the circuit.
             var target = _transferTargetTeamId;
-            await Task.Run(() => IndxCloudInternalApi.Manager.TransferOwnership(Ctx.Name, Ctx.TeamId, target));
+            await Task.Run(() => Ctx.Engines.TransferOwnership(Ctx.Name, Ctx.TeamId, target));
         }
         catch (Exception ex)
         {
