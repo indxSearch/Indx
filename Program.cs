@@ -1187,18 +1187,32 @@ public class Program
             return;
         }
 
-        var adminPassword = configuration["Identity:AdminInitialPassword"];
-        if (string.IsNullOrWhiteSpace(adminPassword))
-        {
-            adminPassword = "Admin123!@#";
-        }
-
         var skipPasswordChange = configuration.GetValue<bool>(
             "Identity:SkipPasswordChangeForSeed", false);
 
         var adminUser = await userManager.FindByEmailAsync(adminEmail);
         if (adminUser == null)
         {
+            // Identity:AdminEmail without Identity:AdminInitialPassword used to fall back to a
+            // fixed password, i.e. a known credential on every such instance. Generate one
+            // instead and print it once: the operator reads it from the startup log, signs in,
+            // and the must-change gate forces a new password on that first login.
+            var adminPassword = configuration["Identity:AdminInitialPassword"];
+            var generatedPassword = string.IsNullOrWhiteSpace(adminPassword);
+            if (generatedPassword)
+            {
+                adminPassword = GenerateInitialPassword();
+                logger.LogWarning(
+                    "Identity:AdminEmail is set but Identity:AdminInitialPassword is not. " +
+                    "A one-time password was generated for {Email} — it is shown ONLY here, ONCE:\n" +
+                    "==================================================================\n" +
+                    "  Initial admin password: {Password}\n" +
+                    "==================================================================\n" +
+                    "You will be asked to choose a new password on first login. To avoid this " +
+                    "step, set Identity:AdminInitialPassword before the first start.",
+                    adminEmail, adminPassword);
+            }
+
             adminUser = new ApplicationUser
             {
                 UserName = adminEmail,
@@ -1207,7 +1221,10 @@ public class Program
                 MustChangePassword = !skipPasswordChange
             };
 
-            var result = await userManager.CreateAsync(adminUser, adminPassword);
+            // A generated password is worthless if it can be skipped over: always gate it.
+            if (generatedPassword) adminUser.MustChangePassword = true;
+
+            var result = await userManager.CreateAsync(adminUser, adminPassword!);
             if (result.Succeeded)
             {
                 await userManager.AddToRoleAsync(adminUser, "Admin");
@@ -1224,5 +1241,32 @@ public class Program
                     string.Join("; ", result.Errors.Select(e => e.Description)));
             }
         }
+    }
+
+    /// <summary>
+    /// 20 characters from a URL-safe alphabet with at least one lowercase, uppercase, digit and
+    /// symbol, so it always satisfies the Identity password policy configured above.
+    /// </summary>
+    private static string GenerateInitialPassword()
+    {
+        const string lower = "abcdefghjkmnpqrstuvwxyz";
+        const string upper = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+        const string digits = "23456789";
+        const string symbols = "!@#$%&*-_+=";
+        const string all = lower + upper + digits + symbols;
+
+        static char Pick(string alphabet) =>
+            alphabet[System.Security.Cryptography.RandomNumberGenerator.GetInt32(alphabet.Length)];
+
+        var chars = new List<char> { Pick(lower), Pick(upper), Pick(digits), Pick(symbols) };
+        while (chars.Count < 20) chars.Add(Pick(all));
+
+        // Fisher–Yates so the guaranteed classes are not always in the first four positions.
+        for (int i = chars.Count - 1; i > 0; i--)
+        {
+            int j = System.Security.Cryptography.RandomNumberGenerator.GetInt32(i + 1);
+            (chars[i], chars[j]) = (chars[j], chars[i]);
+        }
+        return new string(chars.ToArray());
     }
 }
