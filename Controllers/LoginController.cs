@@ -91,9 +91,16 @@ namespace IndxCloudApi.Controllers
             if (!isPasswordValid)
                 return ApiProblems.InvalidCredentials();
 
-            // Check if email is confirmed (based on your Identity configuration)
-            //if (!user.EmailConfirmed)
-            //    return Unauthorized("Email not confirmed");
+            // Same policy as the browser login (Login.razor): when the instance requires a
+            // verified address — set by the admin at runtime or via Identity:RequireConfirmedEmail —
+            // an unconfirmed user must not be able to get a JWT either.
+            // (InstanceSettingsService is internal, so it is resolved here rather than injected
+            // through the public constructor.)
+            var instanceSettings = HttpContext.RequestServices.GetRequiredService<InstanceSettingsService>();
+            var requireConfirmed = instanceSettings.Load().RequireEmailVerification
+                || _config.GetValue<bool>("Identity:RequireConfirmedEmail", false);
+            if (requireConfirmed && !user.EmailConfirmed)
+                return ApiProblems.EmailNotConfirmed();
 
             // Generate JWT token
             var tokenstring = GenerateJasonWebToken(info, user);

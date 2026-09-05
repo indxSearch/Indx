@@ -79,5 +79,9 @@ namespace IndxCloudApi.Services
         public static ObjectResult InvalidCredentials() =>
             Problem(StatusCodes.Status401Unauthorized, "invalidCredentials", "Authentication failed",
                 "The user name or password is incorrect.");
+
+        public static ObjectResult EmailNotConfirmed() =>
+            Problem(StatusCodes.Status403Forbidden, "emailNotConfirmed", "Email not confirmed",
+                "Confirm your email address before signing in. Check your inbox for the confirmation link.");
     }
 }

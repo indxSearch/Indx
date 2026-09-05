@@ -336,13 +336,13 @@ public class Program
                     var jti = context.Principal?.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti)?.Value;
                     if (jti != null)
                     {
-                        var revokeCacheKey = $"jti_revoked_{jti}";
+                        var revokeCacheKey = IndxCloudApi.Services.ApiKeyRevocation.CacheKey(jti);
                         if (!cache.TryGetValue(revokeCacheKey, out bool revoked))
                         {
                             var db = context.HttpContext.RequestServices
                                 .GetRequiredService<ApplicationDbContext>();
                             revoked = await db.ApiKeys.AnyAsync(k => k.Jti == jti && k.IsRevoked);
-                            cache.Set(revokeCacheKey, revoked, TimeSpan.FromMinutes(5));
+                            cache.Set(revokeCacheKey, revoked, IndxCloudApi.Services.ApiKeyRevocation.CacheDuration);
                         }
                         if (revoked) context.Fail("Token has been revoked.");
                     }

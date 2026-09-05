@@ -36,18 +36,30 @@ internal class InstanceSettings
 
 internal class InstanceSettingsService
 {
-    private static readonly string SettingsPath = "./IndxData/settings.json";
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     private readonly IOptions<RegistrationOptions> _configFallback;
     private readonly ILogger<InstanceSettingsService> _logger;
 
+    /// <summary>Directory holding settings.json. <c>Indx:DataDirectory</c> if configured, else
+    /// <c>{ContentRoot}/IndxData</c> — the same anchor as jwt.key, so the file does not move
+    /// with the process working directory.</summary>
+    public string DataDirectory { get; }
+    public string SettingsPath { get; }
+
     public InstanceSettingsService(
         IOptions<RegistrationOptions> configFallback,
-        ILogger<InstanceSettingsService> logger)
+        ILogger<InstanceSettingsService> logger,
+        IConfiguration configuration,
+        IHostEnvironment environment)
     {
         _configFallback = configFallback;
         _logger = logger;
+        var configured = configuration["Indx:DataDirectory"];
+        DataDirectory = string.IsNullOrWhiteSpace(configured)
+            ? Path.Combine(environment.ContentRootPath, "IndxData")
+            : Path.GetFullPath(configured);
+        SettingsPath = Path.Combine(DataDirectory, "settings.json");
     }
 
     public InstanceSettings Load()
@@ -77,7 +89,7 @@ internal class InstanceSettingsService
 
     public void Save(InstanceSettings settings)
     {
-        Directory.CreateDirectory("./IndxData");
+        Directory.CreateDirectory(DataDirectory);
         var json = JsonSerializer.Serialize(settings, JsonOptions);
         File.WriteAllText(SettingsPath, json);
         _logger.LogInformation("Instance settings saved to {Path}", SettingsPath);
