@@ -1,0 +1,50 @@
+.indx-dataset-card {
+    margin-top: calc(var(--spacing) * 4);
+}
+
+.indx-dataset-card-inner {
+    position: relative;
+}
+
+.indx-dataset-nav {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing) * 2);
+    margin-top: 20px;
+    margin-bottom: 30px;
+}
+
+.indx-status-wrap {
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--lv2);
+}
+
+.indx-status-table {
+    border-collapse: collapse;
+    font: var(--text-sm);
+}
+
+.indx-status-table td {
+    padding: 4px 16px 4px 0;
+    vertical-align: top;
+    color: var(--lv6);
+}
+
+.indx-status-table td:first-child {
+    color: var(--lv4);
+    white-space: nowrap;
+    font-weight: var(--med);
+    /* Fixed label-column width so the value/chip column starts at the same place whether the
+       table has one row (Created/Hibernated) or many (Ready) — keeps the state chip aligned. */
+    min-width: 150px;
+}
+
+.indx-status-chips {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.indx-status-alert {
+    color: var(--CSignal);
+}

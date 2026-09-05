@@ -1,0 +1,386 @@
+@* Dataset options for team admins: description (MCP context), keep-alive policy, manual
+   hibernate, atomic Replace, transfer to another team, and the danger-zone delete. *@
+@using Indx.Api
+@using IndxCloudApi.Models
+@inherits DatasetTabBase
+@inject DatasetMetadataStore DatasetMeta
+
+@if (!Active) { return; }
+
+<div class="opt-tab">
+
+    @* ── Description (domain context for AI agents over MCP) ── *@
+    @if (Ctx.IsEditor)
+    {
+        <h3 class="opt-heading">Description</h3>
+        <p class="opt-help">
+            Domain context shown to AI agents that use this dataset over MCP (<code>describe_dataset</code>) — e.g. what the records are and what key fields mean.
+        </p>
+        <div class="opt-narrow">
+            <Textarea @bind-Value="_descEdit" Rows="3" placeholder="What is this dataset? Any field caveats an agent should know?" />
+        </div>
+        @if (_descEdit != _descSaved)
+        {
+            <div class="opt-row opt-row--top">
+                <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" @onclick="SaveDescriptionAsync">Save description</Button>
+                <Button Variant="ghost" Size="micro" @onclick="() => _descEdit = _descSaved">Cancel</Button>
+            </div>
+        }
+        <div class="opt-gap"></div>
+    }
+
+    @* ── Keep-alive (team admins manage their dataset's memory lifecycle) ── *@
+    <h3 class="opt-heading">Keep-alive</h3>
+    <p class="opt-help">
+        Controls how long this dataset stays loaded in memory. <strong>Pinned</strong> keeps it always loaded; <strong>Off</strong> lets the client load it on demand; <strong>Timed</strong> unloads it after inactivity and reloads it automatically on next use.
+    </p>
+    @{ var ka = Ctx.KeepAlive; }
+    @if (_editingKeepAlive)
+    {
+        <div class="opt-row">
+            <div class="opt-w220"><SelectField @bind-Value="_keepAliveEditMode" Options="KeepAliveModes" /></div>
+            @if (_keepAliveEditMode == "timed")
+            {
+                <div class="opt-w80"><InputField @bind-Value="_keepAliveEditHours" placeholder="hours" /></div>
+            }
+            <Button Variant="primary" Size="micro" @onclick="SaveKeepAlive">Save</Button>
+            <Button Variant="ghost" Size="micro" @onclick="() => _editingKeepAlive = false">Cancel</Button>
+        </div>
+    }
+    else
+    {
+        <div class="opt-row">
+            <span class="opt-tabular">@KeepAliveLabel(ka?.KeepAliveTimeHrs ?? int.MaxValue)</span>
+            <span class="opt-muted">@RemainingLabel(ka)</span>
+            <Button Variant="ghost" Size="micro" @onclick="BeginEditKeepAlive">Edit</Button>
+        </div>
+    }
+    @if (!string.IsNullOrEmpty(_keepAliveError) && _editingKeepAlive)
+    {
+        <p class="opt-error">@_keepAliveError</p>
+    }
+
+    @* Manual hibernate — frees memory now. Only durable for Off (client-managed) datasets;
+       timed/pinned would auto-reload on the next access. *@
+    @if (Ctx.EngineState == SystemState.Ready)
+    {
+        @if (ka?.KeepAliveTimeHrs == 0)
+        {
+            <div class="opt-row opt-row--top10">
+                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Hibernate" @onclick="HibernateAsync" disabled="@_hibernating">
+                    @(_hibernating ? "Hibernating…" : "Hibernate now")
+                </Button>
+                <span class="opt-muted">Unloads from memory; data stays on disk. Wake it from the Field configuration tab.</span>
+            </div>
+        }
+        else
+        {
+            <p class="opt-muted opt-row--top10">Set keep-alive to <strong>Off</strong> to hibernate this dataset manually.</p>
+        }
+    }
+
+    @* ── Replace data (atomic full reload) ── *@
+    @if (Ctx.IsEditor)
+    {
+        <h3 class="opt-heading opt-heading--section">Replace data</h3>
+        <p class="opt-help">
+            Atomically reload the whole dataset from a new JSON file. The current data keeps serving with zero downtime until the new index is ready; field configuration, boost rules and the description are preserved. If the new file fails to load, the current data is left untouched.
+        </p>
+        @if (_replaceBusy)
+        {
+            <p class="opt-help">Replacing…</p>
+        }
+        else
+        {
+            <div class="opt-row">
+                <InputFile OnChange="OnReplaceFileSelected" accept=".json" style="display:none" id="@ReplaceInputId" />
+                <label for="@ReplaceInputId" class="indx-upload-label">
+                    <Json Size="14" />
+                    @if (_replaceFile != null)
+                    {
+                        <span>@_replaceFile.Name (@DatasetContext.FormatBytes(_replaceFile.Size))</span>
+                    }
+                    else
+                    {
+                        <span>Choose JSON…</span>
+                    }
+                </label>
+                @if (_replaceFile != null)
+                {
+                    <Button Variant="secondary" Size="micro" @onclick="RunReplaceAsync">Replace all data</Button>
+                    <Button Variant="ghost" Size="micro" @onclick="() => _replaceFile = null">Cancel</Button>
+                }
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(_replaceResult))
+        {
+            <p class="opt-success">@_replaceResult</p>
+        }
+        @if (!string.IsNullOrEmpty(_replaceError))
+        {
+            <p class="opt-error opt-error--6">@_replaceError</p>
+        }
+    }
+
+    @* ── Transfer to another team ── *@
+    @{
+        var transferTargets = Ctx.MyTeams
+            .Where(t => t.Team.Id.ToString() != Ctx.TeamId && TeamRoles.CanAdmin(t.Role))
+            .ToList();
+    }
+    @if (transferTargets.Count > 0)
+    {
+        <h3 class="opt-heading">Transfer to another team</h3>
+        <p class="opt-help">Move this dataset to another team you administer. The current team loses access.</p>
+        @if (!_transferConfirm)
+        {
+            <div class="opt-row">
+                <div class="opt-w240">
+                    <SelectField Size="micro" Placeholder="Select a team…" @bind-Value="_transferTargetTeamId"
+                                 Options="@transferTargets.Select(t => new SelectField.SelectOption(t.Team.Name, t.Team.Id.ToString())).ToList()" />
+                </div>
+                <Button Variant="secondary" Size="micro" disabled="@string.IsNullOrEmpty(_transferTargetTeamId)" @onclick="() => { _transferError = null; _transferConfirm = true; }">Transfer</Button>
+            </div>
+        }
+        else
+        {
+            <div class="opt-row">
+                <span class="opt-danger-text">Move "@Ctx.Name" to the selected team? This team loses access.</span>
+                <Button Variant="primary" Size="micro" @onclick="TransferAsync">Confirm transfer</Button>
+                <Button Variant="ghost" Size="micro" @onclick="() => _transferConfirm = false">Cancel</Button>
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(_transferError))
+        {
+            <p class="opt-error">@_transferError</p>
+        }
+    }
+
+    @* ── Danger zone ── *@
+    @if (Ctx.IsAdmin)
+    {
+        @if (Ctx.EngineState == SystemState.Ready)
+        {
+            <h3 class="opt-heading opt-heading--danger">Danger Zone</h3>
+        }
+        @if (!Ctx.IsBusy)
+        {
+            <ConfirmButton Label="Delete dataset" Icon="DatasetIcons.Delete" Prompt="Are you sure?" ConfirmLabel="Yes, Delete"
+                           TriggerVariant="@(Ctx.EngineState == SystemState.Ready ? "secondary" : "ghost")"
+                           Open="@Ctx.DeleteConfirmOpen" OpenChanged="v => { Ctx.DeleteConfirmOpen = v; Ctx.NotifyChanged(); }"
+                           OnConfirm="DeleteAsync" />
+        }
+        else
+        {
+            <p class="opt-muted">Cannot delete while an operation is in progress.</p>
+        }
+    }
+</div>
+
+@code {
+
+    private static readonly IEnumerable<SelectField.SelectOption> KeepAliveModes =
+    [
+        new("∞ Pinned — always loaded", "max"),
+        new("Off — client-managed", "0"),
+        new("Timed — idle eviction", "timed"),
+    ];
+
+    private string ReplaceInputId => $"replace-input-{Ctx.Name}";
+
+    // Description
+    private bool _descLoaded;
+    private string _descEdit = "";
+    private string _descSaved = "";
+
+    // Keep-alive
+    private bool _editingKeepAlive;
+    private string _keepAliveEditMode = "max";   // "max" (∞ pinned) | "0" (manual) | "timed"
+    private string _keepAliveEditHours = "24";
+    private string? _keepAliveError;
+    private bool _hibernating;
+
+    // Replace
+    private IBrowserFile? _replaceFile;
+    private bool _replaceBusy;
+    private string? _replaceResult;
+    private string? _replaceError;
+
+    // Transfer
+    private string _transferTargetTeamId = "";
+    private bool _transferConfirm;
+    private string? _transferError;
+
+    protected override void OnParametersSet()
+    {
+        if (Active && Ctx.IsEditor && !_descLoaded)
+        {
+            _descLoaded = true;
+            _descEdit = _descSaved = DatasetMeta.Load(Ctx.TeamId, Ctx.Name);
+        }
+    }
+
+    // ── Description ──────────────────────────────────────────────────────────
+
+    private async Task SaveDescriptionAsync()
+    {
+        var text = _descEdit ?? "";
+        await Task.Run(() => DatasetMeta.Save(Ctx.TeamId, Ctx.Name, text));
+        _descSaved = text;
+    }
+
+    // ── Keep-alive ───────────────────────────────────────────────────────────
+
+    private static string KeepAliveLabel(int hrs) => hrs switch
+    {
+        int.MaxValue => "∞ pinned",
+        0 => "Off (manual)",
+        _ => $"{hrs} h",
+    };
+
+    private static string RemainingLabel(IndxCloudInternalApi.KeepAliveInfo? ka)
+    {
+        if (ka is null || ka.KeepAliveTimeHrs is int.MaxValue or 0) return "";
+        if (!ka.Ready) return "(not loaded)";
+        if (ka.Remaining is { } rem)
+            return rem.TotalHours >= 1 ? $"~{(int)rem.TotalHours}h {rem.Minutes}m left" : $"~{rem.Minutes}m left";
+        return "";
+    }
+
+    private void BeginEditKeepAlive()
+    {
+        _keepAliveError = null;
+        (_keepAliveEditMode, _keepAliveEditHours) = (Ctx.KeepAlive?.KeepAliveTimeHrs ?? int.MaxValue) switch
+        {
+            int.MaxValue => ("max", "24"),
+            0 => ("0", "24"),
+            var h => ("timed", h.ToString()),
+        };
+        _editingKeepAlive = true;
+    }
+
+    private void SaveKeepAlive()
+    {
+        _keepAliveError = null;
+
+        int hrs;
+        switch (_keepAliveEditMode)
+        {
+            case "max": hrs = int.MaxValue; break;
+            case "0": hrs = 0; break;
+            default:
+                if (!int.TryParse((_keepAliveEditHours ?? "").Trim(), out hrs) || hrs < 1)
+                {
+                    _keepAliveError = $"\"{_keepAliveEditHours}\" is not a valid number of hours — enter a whole number of 1 or more.";
+                    return;
+                }
+                break;
+        }
+
+        // Team-scoped: SetKeepAliveHrs only affects this team's dataset; the Options tab is
+        // already gated to team Admins.
+        if (IndxCloudInternalApi.Manager.SetKeepAliveHrs(Ctx.Name, Ctx.TeamId, hrs))
+        {
+            _editingKeepAlive = false;
+            Ctx.RefreshStatus();
+            Ctx.NotifyChanged();
+        }
+        else
+        {
+            _keepAliveError = $"Could not update keep-alive for \"{Ctx.Name}\".";
+        }
+    }
+
+    private async Task HibernateAsync()
+    {
+        _hibernating = true;
+        StateHasChanged();
+        try
+        {
+            await Ctx.HibernateAsync();
+        }
+        finally
+        {
+            _hibernating = false;
+            Ctx.NotifyChanged();
+        }
+    }
+
+    // ── Replace ──────────────────────────────────────────────────────────────
+
+    private void OnReplaceFileSelected(InputFileChangeEventArgs e)
+    {
+        _replaceFile = e.File;
+        _replaceResult = _replaceError = null;
+    }
+
+    private async Task RunReplaceAsync()
+    {
+        if (_replaceFile == null) return;
+        var file = _replaceFile;
+        _replaceFile = null;
+        _replaceResult = _replaceError = null;
+        _replaceBusy = true;
+        StateHasChanged();
+
+        FileStream? fs = null;
+        try
+        {
+            var tempPath = Path.Combine(Path.GetTempPath(), $"indx-replace-{Guid.NewGuid():N}.tmp");
+            fs = new FileStream(tempPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 65536, FileOptions.DeleteOnClose);
+            await using (var stream = file.OpenReadStream(maxAllowedSize: 2_000_000_000L))
+                await stream.CopyToAsync(fs);
+            fs.Position = 0;
+
+            var localFs = fs;
+            var summary = await Task.Run(() => IndxCloudInternalApi.Manager.RunReplaceFromJson(Ctx.Name, Ctx.TeamId, localFs));
+
+            Ctx.RefreshStatus();
+            Ctx.NotifyDocumentsReplaced(); // preview now points at stale docs
+
+            var parts = new List<string>();
+            if (summary.Added.Count > 0) parts.Add($"added {string.Join(", ", summary.Added)}");
+            if (summary.Removed.Count > 0) parts.Add($"removed {string.Join(", ", summary.Removed)}");
+            if (summary.TypeChanged.Count > 0) parts.Add($"type changed {string.Join(", ", summary.TypeChanged)}");
+            _replaceResult = parts.Count > 0
+                ? $"Data replaced. Schema changes: {string.Join("; ", parts)}."
+                : "Data replaced.";
+        }
+        catch (Exception ex)
+        {
+            _replaceError = $"Replace failed: {ex.Message}";
+        }
+        finally
+        {
+            fs?.Dispose();
+            _replaceBusy = false;
+            Ctx.NotifyChanged();
+        }
+    }
+
+    // ── Transfer ─────────────────────────────────────────────────────────────
+
+    private async Task TransferAsync()
+    {
+        _transferError = null;
+        if (string.IsNullOrEmpty(_transferTargetTeamId)) return;
+        try
+        {
+            // TransferOwnership evicts the source engine (can be slow) — run off the circuit.
+            var target = _transferTargetTeamId;
+            await Task.Run(() => IndxCloudInternalApi.Manager.TransferOwnership(Ctx.Name, Ctx.TeamId, target));
+        }
+        catch (Exception ex)
+        {
+            _transferError = $"Transfer failed: {ex.Message}";
+            return;
+        }
+        _transferTargetTeamId = "";
+        _transferConfirm = false;
+        await Ctx.NotifyDatasetListChangedAsync(); // dataset now belongs to another team — drops off this view
+    }
+
+    // ── Delete ───────────────────────────────────────────────────────────────
+
+    private Task DeleteAsync() => Ctx.DeleteAsync();
+}

@@ -1,0 +1,8 @@
+.key-row { display: flex; align-items: center; gap: 12px; margin: 14px 0 4px; flex-wrap: wrap; }
+.key-text { display: flex; flex-direction: column; gap: 2px; max-width: 480px; }
+.key-title { font: var(--text-xs); font-weight: 600; color: var(--lv5); }
+.key-help { font: var(--text-xs); color: var(--lv4); }
+.key-help--value { color: var(--lv5); }
+.key-help--narrow { max-width: 300px; }
+.key-select { width: 220px; }
+.key-error { font: var(--text-xs); color: var(--CSignal); max-width: 520px; }

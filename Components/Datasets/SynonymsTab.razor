@@ -1,0 +1,332 @@
+@* Per-dataset synonym list, stored in the engine's own database. List view + create/edit
+   modal. Every action saves immediately through the internal API, which persists the list and
+   applies it to the live engine (effective on the next search, no re-indexing) — there is no
+   local dirty state to manage. *@
+@using System.Text.Json
+@using Indx.Api
+@using IndxCloudApi.Models
+@inherits DatasetTabBase
+@inject BrowserFiles Files
+
+@if (!Active) { return; }
+
+<div class="syn-tab">
+    <div class="syn-intro">
+        <p>
+            Synonyms widen searches: when a query matches an entry, its synonyms are appended to the query text before scoring.
+            Changes apply on the next search — no re-indexing. Experimental: expansion widens recall but dilutes Coverage scores; behavior may change.
+        </p>
+        <Chip Color="var(--CWarning)" TextColor="#080809">Experimental</Chip>
+    </div>
+
+    @{
+        var matched = FilteredEntries().ToList();
+        // Render cap instead of paging: the list is one blob and the fuzzy filter is the
+        // navigation — ranked results make the top rows the right rows, so a huge list just
+        // asks for a narrower filter.
+        var visible = matched.Take(RenderCap).ToList();
+    }
+
+    <div class="syn-toolbar">
+        <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="@(() => OpenModal(null))">Create new</Button>
+        @if (_list != null && _list.Entries.Count > 0)
+        {
+            <input class="indx-text-input syn-filter" placeholder="Filter entries"
+                   value="@_filter" @oninput="e => _filter = e.Value?.ToString() ?? string.Empty" />
+            <span class="syn-count">@matched.Count of @_list.Entries.Count entries</span>
+        }
+        <div class="syn-spacer"></div>
+        <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
+        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)">Import from json</Button>
+        @if (_list != null)
+        {
+            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="ExportAsync">Export as json</Button>
+            <ConfirmButton Label="Remove list" Icon="DatasetIcons.Delete" Prompt="Remove the whole list?"
+                           ConfirmLabel="Remove" Variant="primary" OnConfirm="RemoveListAsync" />
+        }
+    </div>
+
+    @if (_list == null || _list.Entries.Count == 0)
+    {
+        <p class="syn-empty">No synonyms on this dataset yet.</p>
+    }
+    else
+    {
+        <table class="indx-table">
+            <tbody>
+                @foreach (var entry in visible)
+                {
+                    <tr>
+                        <td>
+                            @* One-way: From → the synonyms it expands into. Two-way: every term ↔ every other.
+                               Clicking any chip opens the edit modal for its entry. *@
+                            <div class="syn-chips">
+                                @if (entry.Direction == SynonymDirection.OneWay)
+                                {
+                                    <span class="syn-chip" @onclick="@(() => OpenModal(entry))"><Chip>@entry.Source</Chip></span>
+                                    <ArrowRight Size="14" Color="var(--lv5)" />
+                                    @foreach (var term in entry.Terms)
+                                    {
+                                        <span class="syn-chip" @onclick="@(() => OpenModal(entry))"><Chip>@term</Chip></span>
+                                    }
+                                }
+                                else
+                                {
+                                    @for (int ti = 0; ti < entry.Terms.Length; ti++)
+                                    {
+                                        @* Copy to a local: the Chip's child content renders deferred,
+                                           so capturing the loop variable itself would read past the end. *@
+                                        var term = entry.Terms[ti];
+                                        @if (ti > 0)
+                                        {
+                                            <ResizeEw Size="14" Color="var(--lv5)" />
+                                        }
+                                        <span class="syn-chip" @onclick="@(() => OpenModal(entry))"><Chip>@term</Chip></span>
+                                    }
+                                }
+                            </div>
+                        </td>
+                        <td class="syn-row-actions">
+                            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="@(() => DeleteEntryAsync(entry))" />
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+        @if (matched.Count > RenderCap)
+        {
+            <p class="syn-cap-note">Showing the first @RenderCap of @matched.Count — refine the filter to narrow it down.</p>
+        }
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <p class="syn-error">@_error</p>
+    }
+
+    <Modal @bind-Open="_modalOpen" Title="@(_modalTarget == null ? "New synonym entry" : "Edit synonym entry")">
+        <div class="syn-modal">
+            <div>
+                <span class="syn-label">Type</span>
+                <SelectField Size="micro" Options="TypeOptions" Value="@(_modalOneWay ? "OneWay" : "TwoWay")" ValueChanged="@(v => _modalOneWay = v == "OneWay")" />
+                <span class="syn-hint">
+                    @(_modalOneWay
+                        ? "Only From expands, into the synonyms — searching a synonym does not pull in From."
+                        : "Every synonym is equivalent; matching any of them pulls in the whole group.")
+                </span>
+            </div>
+            @if (_modalOneWay)
+            {
+                <InputField Label="From" placeholder="e.g. hms" @bind-Value="_modalFrom" />
+            }
+            <div>
+                <InputField Label="Synonyms" placeholder="term; term; term" @bind-Value="_modalTerms" />
+                <span class="syn-hint">Separate terms with semicolons — a comma is part of a term. Multi-word terms are fine.</span>
+            </div>
+            @if (!string.IsNullOrEmpty(_modalError))
+            {
+                <p class="syn-error syn-error--modal">@_modalError</p>
+            }
+            <div class="syn-modal-actions">
+                <Button Variant="secondary" Size="micro" @onclick="@(() => _modalOpen = false)">Cancel</Button>
+                <Button Variant="primary" Size="micro" @onclick="SaveModalAsync">Save</Button>
+            </div>
+        </div>
+    </Modal>
+</div>
+
+@code {
+
+    /// <summary>Most entry rows rendered at once — chips per row make very large lists
+    /// expensive to diff, and the ranked filter puts the right rows on top anyway.</summary>
+    private const int RenderCap = 100;
+
+    private static readonly IEnumerable<SelectField.SelectOption> TypeOptions =
+        [new("Two-way", "TwoWay"), new("One-way", "OneWay")];
+
+    private string ImportInputId => $"synonyms-import-{Ctx.Name}";
+
+    private bool _loaded;
+    private SynonymList? _list;
+    private string _filter = string.Empty;
+    private string? _error;
+
+    // Create/edit modal state. A null target means the modal is creating a new entry.
+    private bool _modalOpen;
+    private SynonymEntry? _modalTarget;
+    private bool _modalOneWay;
+    private string? _modalFrom;
+    private string? _modalTerms;
+    private string? _modalError;
+
+    // The filter box is itself an Indx search: the entries are indexed in a small in-memory
+    // engine, so filtering is fault tolerant (typo, affix and trigram matching from the
+    // standard configuration) and results come back ranked.
+    private SearchEngine? _filterEngine;
+
+    protected override void OnParametersSet()
+    {
+        if (Active && !_loaded) Load();
+    }
+
+    private void Load()
+    {
+        _loaded = true;
+        var json = IndxCloudInternalApi.Manager.GetSynonyms(Ctx.Name, Ctx.TeamId)?.GetSerialized();
+        _list = json == null ? null : SynonymList.Deserialize(json);
+    }
+
+    private static string[] SplitTerms(string? text) =>
+        (text ?? string.Empty).Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+
+    private void InvalidateFilterEngine()
+    {
+        _filterEngine?.Dispose();
+        _filterEngine = null;
+    }
+
+    /// <summary>The filter engine for the current entries, built lazily — an entry list this
+    /// size indexes in milliseconds. Null when there is nothing to index.</summary>
+    private SearchEngine? GetFilterEngine()
+    {
+        if (_filterEngine != null) return _filterEngine;
+        if (_list == null || _list.Entries.Count == 0) return null;
+
+        var docs = _list.Entries.Select((en, i) => new
+        {
+            key = i,
+            text = ((en.Source ?? string.Empty) + " " + string.Join(" ", en.Terms)).Trim()
+        });
+        using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(docs)));
+
+        var engine = new SearchEngine();
+        var initMonitor = new ProcessMonitor();
+        engine.Init(stream, "key", initMonitor);
+        initMonitor.WaitForCompletion();
+        foreach (var field in engine.GetFieldList())
+            if (field.Name == "text") field.Searchable = true;
+        stream.Position = 0;
+        var loadMonitor = new ProcessMonitor();
+        engine.Load(stream, loadMonitor);
+        loadMonitor.WaitForCompletion();
+        var indexMonitor = new ProcessMonitor();
+        engine.Index(monitor: indexMonitor);
+        indexMonitor.WaitForCompletion();
+
+        _filterEngine = engine;
+        return engine;
+    }
+
+    private IEnumerable<SynonymEntry> FilteredEntries()
+    {
+        if (_list == null) return [];
+        if (string.IsNullOrWhiteSpace(_filter)) return _list.Entries;
+
+        try
+        {
+            var engine = GetFilterEngine();
+            if (engine != null)
+            {
+                var result = engine.Search(new Query { Text = _filter, MaxNumberOfRecordsToReturn = Math.Max(50, _list.Entries.Count) });
+                return result.Records
+                    .Where(r => r.Score > 0 && r.DocumentKey >= 0 && r.DocumentKey < _list.Entries.Count)
+                    .Select(r => _list.Entries[(int)r.DocumentKey])
+                    .ToList();
+            }
+        }
+        catch
+        {
+            // The fuzzy filter is a convenience — fall through to plain substring matching.
+        }
+
+        return _list.Entries.Where(en =>
+            (en.Source?.Contains(_filter, StringComparison.OrdinalIgnoreCase) ?? false) ||
+            en.Terms.Any(t => t.Contains(_filter, StringComparison.OrdinalIgnoreCase)));
+    }
+
+    private void OpenModal(SynonymEntry? entry)
+    {
+        _error = null;
+        _modalError = null;
+        _modalTarget = entry;
+        _modalOneWay = entry?.Direction == SynonymDirection.OneWay;
+        _modalFrom = entry?.Source;
+        _modalTerms = entry == null ? null : string.Join("; ", entry.Terms);
+        _modalOpen = true;
+    }
+
+    private async Task SaveModalAsync()
+    {
+        _modalError = null;
+        var terms = SplitTerms(_modalTerms);
+        if (terms.Length == 0) { _modalError = "Enter at least one synonym."; return; }
+        if (_modalOneWay && string.IsNullOrWhiteSpace(_modalFrom)) { _modalError = "A one-way entry needs a From term."; return; }
+
+        _list ??= new SynonymList();
+        var entry = _modalTarget ?? new SynonymEntry();
+        entry.Direction = _modalOneWay ? SynonymDirection.OneWay : SynonymDirection.Multidirectional;
+        entry.Source = _modalOneWay ? _modalFrom!.Trim() : null;
+        entry.Terms = terms;
+        if (_modalTarget == null) _list.Entries.Add(entry);
+
+        if (await PushAsync())
+            _modalOpen = false;
+        else
+            _modalError = "Failed to save.";
+    }
+
+    private async Task DeleteEntryAsync(SynonymEntry entry)
+    {
+        _error = null;
+        _list?.Entries.Remove(entry);
+        if (!await PushAsync()) _error = "Failed to save.";
+    }
+
+    private async Task RemoveListAsync()
+    {
+        _error = null;
+        _list = null;
+        if (!await PushAsync()) _error = "Failed to remove the list.";
+    }
+
+    /// <summary>Persists the current list and applies it to the live engine. Pushes a deep
+    /// copy so the engine never shares an instance with the page's edit state; null removes
+    /// the stored list.</summary>
+    private async Task<bool> PushAsync()
+    {
+        InvalidateFilterEngine();
+        var copy = _list == null ? null : SynonymList.Deserialize(_list.GetSerialized());
+        return await Task.Run(() => IndxCloudInternalApi.Manager.SetSynonyms(Ctx.Name, Ctx.TeamId, copy));
+    }
+
+    private async Task ImportAsync(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 5_000_000);
+            using var reader = new StreamReader(stream);
+            var imported = SynonymList.Deserialize(await reader.ReadToEndAsync());
+            if (imported.Entries.Count == 0) { _error = "No entries found in the file."; return; }
+            _list = imported;
+            if (!await PushAsync()) _error = "Failed to save the imported list.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Failed to import: {ex.Message}";
+        }
+    }
+
+    private async Task ExportAsync()
+    {
+        if (_list == null) return;
+        var opts = new JsonSerializerOptions { WriteIndented = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } };
+        await Files.DownloadAsync($"{Ctx.Name}-synonyms.json", JsonSerializer.Serialize(_list, opts));
+    }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        InvalidateFilterEngine();
+    }
+}

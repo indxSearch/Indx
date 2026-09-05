@@ -1,0 +1,122 @@
+.indx-table-wrap {
+    margin-bottom: 12px;
+}
+
+@media (max-width: 1440px) {
+    .indx-table-wrap {
+        overflow-x: auto;
+    }
+
+    .indx-table thead {
+        position: static;
+    }
+}
+
+.indx-num-input {
+    width: 70px;
+    padding: 10px;
+    height: 30px;
+    font: var(--text-xs);
+    background: transparent;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    color: var(--lv7);
+    box-sizing: border-box;
+}
+
+.indx-num-input:hover {
+    border-color: var(--lv5);
+}
+
+.indx-num-input:focus {
+    outline: none;
+    border-color: var(--lv5);
+}
+
+.indx-num-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.indx-num-input::-webkit-inner-spin-button,
+.indx-num-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.indx-num-input {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.indx-weight-slider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 110px;
+}
+
+.indx-weight-slider > :first-child {
+    flex: 1;
+}
+
+.indx-weight-value {
+    font: var(--text-xs);
+    color: var(--lv5);
+    font-variant-numeric: tabular-nums;
+    min-width: 30px;
+    text-align: right;
+}
+
+
+.indx-table-check {
+    text-align: center;
+}
+
+/* Column header tooltips */
+.indx-th-tip {
+    position: relative;
+    cursor: default;
+}
+
+.indx-th-tip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--lv7);
+    color: var(--lv1);
+    font: var(--text-xs);
+    font-weight: var(--book);
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    white-space: normal;
+    width: 200px;
+    z-index: 100;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    line-height: 1.4;
+}
+
+.indx-th-tip:hover::after {
+    opacity: 1;
+}
+
+.indx-cell-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.indx-cell-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font: var(--text-xs);
+    font-weight: var(--book);
+    color: var(--lv5);
+    white-space: nowrap;
+}

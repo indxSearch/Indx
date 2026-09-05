@@ -1,0 +1,138 @@
+@* The field-configuration editor table. Mutates the FieldProxy objects in place (they are the
+   context's shared working copy) and raises OnChanged so the owner can re-render. Used both
+   for a freshly analyzed upload (always editable) and a Ready dataset (editable for editors). *@
+@using System.Globalization
+@using Indx.Api
+
+<div class="indx-table-wrap">
+    <table class="indx-table">
+        <thead>
+            <tr>
+                <th>Field and type</th>
+                <th><span class="indx-th-tip" data-tooltip="Included in full-text search. At least one field must be searchable.">Searchable</span></th>
+                <th><span class="indx-th-tip" data-tooltip="Can be used to filter results by exact value or range.">Filterable</span></th>
+                <th><span class="indx-th-tip" data-tooltip="Field values are counted and returned as facets for building filter UI.">Facetable</span></th>
+                <th><span class="indx-th-tip" data-tooltip="Results can be sorted by this field's value.">Sortable</span></th>
+                @if (ShowAdvanced)
+                {
+                    <th><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
+                    <th><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
+                    <th><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
+                    <th><span class="indx-th-tip" data-tooltip="Sharper matching for run-together or split-word queries. Coverage already matches these; high resolution improves precision — recommended only for key fields such as titles.">HighResolution</span></th>
+                }
+                <th><span class="indx-th-tip" data-tooltip="Relevance weight for this field (recommended range 0.5–3.0). Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0.">Weight</span></th>
+                @if (ShowAdvanced)
+                {
+                    <th><span class="indx-th-tip" data-tooltip="BM25F length normalisation (0–1). Higher values penalise longer fields more. Activates BM25F multi-field scoring.">BM25b</span></th>
+                    <th><span class="indx-th-tip" data-tooltip="BM25F term saturation factor. Higher values give more weight to repeated terms in this field.">BM25k1</span></th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var field in Fields.Where(f => ShowUnused || !IsUnused(f)))
+            {
+                <tr title="@(!Editable ? "Read-only — editor access is required to change field configuration" : null)">
+                    <td>
+                        <div class="indx-cell-inner">
+                            <span>@field.FieldName</span>
+                            @if (field.FieldType != null)
+                            {
+                                <span class="indx-cell-value">@FieldTypeLabel(field.FieldType, field.IsArray)@if (DatasetIcons.ForFieldType(field.FieldType, field.IsArray) is { } typeIcon) { @typeIcon(14) }</span>
+                            }
+                        </div>
+                    </td>
+                    <td class="indx-table-check"><Checkbox Checked="@(field.Searchable == true)" CheckedChanged="@(v => Set(() => { field.Searchable = v; SearchableTouched = true; }))" Disabled="@(!Editable)" /></td>
+                    <td class="indx-table-check"><Checkbox Checked="@(field.Filterable == true)" CheckedChanged="@(v => Set(() => field.Filterable = v))" Disabled="@(!Editable)" /></td>
+                    <td class="indx-table-check"><Checkbox Checked="@(field.Facetable == true)" CheckedChanged="@(v => Set(() => field.Facetable = v))" Disabled="@(!Editable)" /></td>
+                    <td class="indx-table-check"><Checkbox Checked="@(field.Sortable == true)" CheckedChanged="@(v => Set(() => field.Sortable = v))" Disabled="@(!Editable)" /></td>
+                    @if (ShowAdvanced)
+                    {
+                        <td class="indx-table-check"><Checkbox Checked="@(field.WordIndexing == true)" CheckedChanged="@(v => Set(() => field.WordIndexing = v))" Disabled="@(!Editable)" /></td>
+                        <td class="indx-table-check"><Checkbox Checked="@(field.Embeddable == true)" CheckedChanged="@(v => Set(() => field.Embeddable = v))" Disabled="@(!Editable)" /></td>
+                        <td class="indx-table-check"><Checkbox Checked="@(field.PreloadFilters == true)" CheckedChanged="@(v => Set(() => field.PreloadFilters = v))" Disabled="@(!Editable)" /></td>
+                        <td class="indx-table-check"><Checkbox Checked="@(field.HighResolution == true)" CheckedChanged="@(v => Set(() => field.HighResolution = v))" Disabled="@(!Editable)" /></td>
+                    }
+                    <td>
+                        @if (!ShowAdvanced && IsSliderWeight(field.Weight))
+                        {
+                            <div class="indx-weight-slider">
+                                <Slider Min="0.5" Max="3" Step="0.25" AriaLabel="Weight" Disabled="@(!Editable)"
+                                        Value="@(field.Weight ?? 1.0f)"
+                                        ValueChanged="@(v => Set(() => field.Weight = (float)v))" />
+                                <span class="indx-weight-value">@((field.Weight ?? 1.0f).ToString("0.0#", CultureInfo.InvariantCulture))</span>
+                            </div>
+                        }
+                        else
+                        {
+                            <input class="indx-num-input" type="number" step="0.1" min="0" disabled="@(!Editable)"
+                                   value="@(field.Weight.HasValue ? field.Weight.Value.ToString("0.0##", CultureInfo.InvariantCulture) : "")"
+                                   @onchange="@(e => Set(() => field.Weight = ParseFloat(e.Value?.ToString())))" />
+                        }
+                    </td>
+                    @if (ShowAdvanced)
+                    {
+                        <td>
+                            <input class="indx-num-input" type="number" step="0.01" min="0" max="1" disabled="@(!Editable)"
+                                   value="@(field.BM25b.HasValue ? field.BM25b.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                   @onchange="@(e => Set(() => field.BM25b = ParseFloat(e.Value?.ToString())))" />
+                        </td>
+                        <td>
+                            <input class="indx-num-input" type="number" step="0.1" min="0" disabled="@(!Editable)"
+                                   value="@(field.BM25k1.HasValue ? field.BM25k1.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                                   @onchange="@(e => Set(() => field.BM25k1 = ParseFloat(e.Value?.ToString())))" />
+                        </td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public FieldProxy[] Fields { get; set; } = [];
+    [Parameter] public bool Editable { get; set; } = true;
+    /// <summary>Also list fields with no capability ticked.</summary>
+    [Parameter] public bool ShowUnused { get; set; }
+    /// <summary>Show the WordIndexing / Embeddable / PreloadFilters / HighResolution / BM25 columns
+    /// and switch the weight control from slider to number input.</summary>
+    [Parameter] public bool ShowAdvanced { get; set; }
+    /// <summary>Set once the user has touched a Searchable box — the owner uses it to decide
+    /// when to show the "at least one searchable field" error.</summary>
+    [Parameter] public bool SearchableTouched { get; set; }
+    [Parameter] public EventCallback<bool> SearchableTouchedChanged { get; set; }
+    /// <summary>Raised after any edit (the FieldProxy objects are mutated in place).</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private async Task Set(Action mutate)
+    {
+        var touchedBefore = SearchableTouched;
+        mutate();
+        if (SearchableTouched != touchedBefore) await SearchableTouchedChanged.InvokeAsync(SearchableTouched);
+        await OnChanged.InvokeAsync();
+    }
+
+    public static bool IsUnused(FieldProxy f) =>
+        f.Searchable != true && f.Filterable != true && f.Facetable != true &&
+        f.Sortable != true && f.WordIndexing != true && f.Embeddable != true &&
+        f.PreloadFilters != true && f.HighResolution != true;
+
+    private static float? ParseFloat(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        return float.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var f) ? f : null;
+    }
+
+    private static string? FieldTypeLabel(string? type, bool? isArray) =>
+        type == null ? null : isArray == true ? $"Array ({type}s)" : type;
+
+    // The simple-mode weight slider (0.5-3.0, step 0.25) only renders values it can show
+    // truthfully; anything off-grid or out of range (advanced mode, imported configs, the
+    // API) keeps the numeric input so a stored value is never silently rounded.
+    private static bool IsSliderWeight(float? weight)
+    {
+        var v = weight ?? 1.0f;
+        if (v < 0.5f || v > 3.0f) return false;
+        var quartered = v * 4f;
+        return Math.Abs(quartered - Math.Round(quartered)) < 0.001f;
+    }
+}

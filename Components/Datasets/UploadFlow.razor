@@ -1,0 +1,492 @@
+@* Everything a dataset shows on the Fields tab before it is Ready: the empty / hibernated
+   panel, upload → analyze (schema scan), the analyzed configure-then-"Load and Index" view,
+   the load/index progress bars, and wake-from-hibernation. Once the engine is Ready the
+   FieldConfigTab takes over. *@
+@using Indx.Api
+@using IndxCloudApi.Models
+
+@inherits DatasetTabBase
+@if (!Active) { return; }
+
+@{
+    var state = Ctx.EngineState;
+    var status = Ctx.Status;
+}
+
+@if (Ctx.AnalyzeWarning is { } analyzeWarning)
+{
+    <div class="up-warning">
+        <p>@analyzeWarning</p>
+    </div>
+}
+
+@* ── Loading / Indexing in progress (navigated back while engine is busy) ── *@
+@if (Ctx.IsTransitional && !Ctx.IsLoadIndexing)
+{
+    <div class="indx-field-config-saving up-top16">
+        <p class="indx-field-config-saving-label">
+            @(state switch { SystemState.Indexing => "Indexing in progress…", SystemState.Loaded => "Data loaded — waiting for indexing.", _ => "Loading in progress…" })
+        </p>
+    </div>
+    @* Recovery escape hatch: a dataset can get stuck in a non-Ready state (e.g. an
+       interrupted load). A team admin can always delete it to recover. *@
+    @if (Ctx.IsAdmin)
+    {
+        <div class="up-top8">
+            <ConfirmButton Label="Delete dataset" Icon="DatasetIcons.Delete" Prompt="Delete this dataset?" ConfirmLabel="Yes, Delete"
+                           Open="@Ctx.DeleteConfirmOpen" OpenChanged="SetDeleteConfirm" OnConfirm="Ctx.DeleteAsync">
+                <span class="up-hint">Stuck here? Delete to recover.</span>
+            </ConfirmButton>
+        </div>
+    }
+}
+
+@* ── Engine error (e.g. OutOfMemory during load/index): the engine is dead and no other
+   panel matches this state. Surface the error and give the admin the escape: delete works
+   regardless of engine state. ── *@
+@if (state == SystemState.Error)
+{
+    <div class="indx-field-config-saving up-top16">
+        <p class="indx-field-config-saving-label up-error-text">
+            The search engine hit an unrecoverable error@(string.IsNullOrEmpty(status?.ErrorMessage) ? "." : $": {status!.ErrorMessage}")
+        </p>
+        <p class="up-help up-top4">
+            This often means the server ran out of memory while loading or indexing.
+            The dataset cannot recover on its own — delete it, then retry with a
+            smaller dataset or on a larger instance.
+        </p>
+    </div>
+    @if (Ctx.IsAdmin)
+    {
+        <div class="up-top8">
+            <ConfirmButton Label="Delete dataset" Icon="DatasetIcons.Delete" Prompt="Delete this dataset?" ConfirmLabel="Yes, Delete" TriggerVariant="danger"
+                           Open="@Ctx.DeleteConfirmOpen" OpenChanged="SetDeleteConfirm" OnConfirm="Ctx.DeleteAsync" />
+        </div>
+    }
+    else
+    {
+        <p class="up-hint up-top8">A team admin can delete this dataset to recover.</p>
+    }
+}
+
+@* ── Hibernated (data on disk, engine not loaded) or empty (needs upload) ── *@
+@if (state == SystemState.Created && !Ctx.IsAnalyzed && !Ctx.IsUploading && !Ctx.IsLoadIndexing && Ctx.IsEditor)
+{
+    @if (Ctx.IsHibernated)
+    {
+        var recordCount = Ctx.KeepAlive?.RecordCount ?? 0;
+        <p class="up-intro up-narrow">
+            This dataset is <strong>hibernated</strong> — @recordCount.ToString("N0") document@(recordCount == 1 ? "" : "s") @(recordCount == 1 ? "is" : "are") stored on disk but not loaded into memory. Wake it to search and edit.
+        </p>
+        <div class="up-row up-top8">
+            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Eye" @onclick="StartWake">Wake up</Button>
+        </div>
+        @if (!string.IsNullOrEmpty(Ctx.OperationError))
+        {
+            <p class="up-error">@Ctx.OperationError</p>
+        }
+    }
+    else
+    {
+        <p class="up-intro">Upload a JSON file to configure and index this dataset.</p>
+        <div class="up-row up-top8">
+            <InputFile OnChange="OnFileSelected" accept=".json" style="display:none" id="@FileInputId" />
+            <label for="@FileInputId" class="indx-upload-label">
+                <Json Size="14" />
+                @if (_selectedFile != null)
+                {
+                    <span>@_selectedFile.Name (@DatasetContext.FormatBytes(_selectedFile.Size))</span>
+                }
+                else
+                {
+                    <span>Choose JSON file…</span>
+                }
+            </label>
+            @if (_selectedFile != null)
+            {
+                <Button Variant="primary" Size="micro" @onclick="StartUploadAsync">Upload</Button>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(Ctx.OperationError))
+        {
+            <p class="up-error">@Ctx.OperationError</p>
+        }
+    }
+    @if (Ctx.IsAdmin)
+    {
+        <div class="up-top16">
+            <ConfirmButton Label="Delete dataset" Icon="DatasetIcons.Delete" Prompt="Are you sure?" ConfirmLabel="Yes, Delete"
+                           Open="@Ctx.DeleteConfirmOpen" OpenChanged="SetDeleteConfirm" OnConfirm="Ctx.DeleteAsync" />
+        </div>
+    }
+}
+
+@* ── Upload + analyze progress ── *@
+@if (Ctx.IsUploading)
+{
+    <div class="indx-field-config-saving">
+        <ProgressBar Value="@Ctx.UploadProgress" ShowLabel FulfilledColor />
+        @if (Ctx.IsAnalyzing)
+        {
+            @* Init: discovering the field schema (fast — no documents stored or indexed yet). *@
+            <p class="indx-field-config-saving-label">Analyzing…</p>
+        }
+        else
+        {
+            <p class="indx-field-config-saving-label">Uploading…</p>
+        }
+        <Button Variant="secondary" Size="micro" @onclick="CancelUpload">Cancel</Button>
+    </div>
+}
+
+@* ── Analyzed: configure + Load and Index ── *@
+@if (state != SystemState.Ready && Ctx.IsAnalyzed && !Ctx.IsUploading && !Ctx.IsLoadIndexing && Ctx.EditedFields is { } editedFields)
+{
+    <FieldConfigToolbar @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced" OnImported="StateHasChanged" @ref="_toolbar" />
+    @if (!string.IsNullOrEmpty(Ctx.OperationError))
+    {
+        <p class="up-error up-error--wide">@Ctx.OperationError</p>
+    }
+    <FieldConfigTable Fields="editedFields" Editable="true" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced"
+                      @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged" />
+    <KeyFieldRow Editable="@Ctx.IsEditor" />
+    <div class="indx-field-config-toolbar">
+        <Button Variant="primary" Size="micro" @onclick="StartLoadAndIndex" disabled="@(!Ctx.HasSearchable)">
+            Load and Index
+        </Button>
+        @if (_searchableTouched && !Ctx.HasSearchable)
+        {
+            <span class="indx-field-config-error">At least one field must be searchable</span>
+        }
+        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="() => _toolbar!.ExportAsync()">Export field configuration as json</Button>
+    </div>
+}
+
+@* ── Load & Index progress (also used by Wake) ── *@
+@if (Ctx.IsLoadIndexing)
+{
+    <div class="indx-field-config-saving">
+        <ProgressBar Value="Ctx.LoadProgress" ShowLabel FulfilledColor />
+        <p class="indx-field-config-saving-label">Loading…</p>
+    </div>
+    @if (Ctx.IsIndexingPhase)
+    {
+        <div class="indx-field-config-saving">
+            <ProgressBar Value="Ctx.IndexProgress" ShowLabel FulfilledColor />
+            <p class="indx-field-config-saving-label">Indexing…</p>
+        </div>
+    }
+}
+
+@code {
+
+    private string FileInputId => $"fileinput-{Ctx.Name}";
+
+    private IBrowserFile? _selectedFile;
+    private CancellationTokenSource? _uploadCts;
+    private bool _showUnused;
+    private bool _showAdvanced;
+    private bool _searchableTouched;
+    private FieldConfigToolbar? _toolbar;
+
+    private void SetDeleteConfirm(bool open)
+    {
+        Ctx.DeleteConfirmOpen = open;
+        Ctx.NotifyChanged();
+    }
+
+    // ── Upload → Analyze ─────────────────────────────────────────────────────
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _selectedFile = e.File;
+        Ctx.OperationError = null;
+    }
+
+    private void CancelUpload() => _uploadCts?.Cancel();
+
+    private async Task StartUploadAsync()
+    {
+        if (_selectedFile == null) return;
+        var file = _selectedFile;
+        _selectedFile = null;
+        Ctx.OperationError = null;
+        Ctx.IsUploading = true;
+        Ctx.UploadProgress = 0;
+        _uploadCts = new CancellationTokenSource();
+        Ctx.NotifyChanged();
+
+        FileStream? fs = null;
+        try
+        {
+            // Stream file to a temp file instead of memory to avoid large heap allocations
+            var tempPath = Path.Combine(Path.GetTempPath(), $"indx-upload-{Guid.NewGuid():N}.tmp");
+            fs = new FileStream(tempPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None, bufferSize: 65536, FileOptions.DeleteOnClose);
+            const int chunkSize = 65536;
+            var buffer = new byte[chunkSize];
+            long totalRead = 0;
+            await using var stream = file.OpenReadStream(maxAllowedSize: 2_000_000_000L);
+            int bytesRead;
+            while ((bytesRead = await stream.ReadAsync(buffer, _uploadCts.Token)) > 0)
+            {
+                await fs.WriteAsync(buffer, 0, bytesRead, _uploadCts.Token);
+                totalRead += bytesRead;
+                var pct = file.Size > 0 ? (int)(100L * totalRead / file.Size) : 0;
+                if (pct != Ctx.UploadProgress)
+                {
+                    Ctx.UploadProgress = pct;
+                    await Render();
+                }
+            }
+
+            // Analyze field structure asynchronously (avoids blocking Blazor thread on large files).
+            // Init only discovers the schema (field names/types/presence) — no documents are stored or
+            // indexed yet — so it's the fast first pass. Label it distinctly from the upload transfer.
+            Ctx.IsAnalyzing = true;
+            await Render();
+            fs.Position = 0;
+            var initError = await IndxCloudInternalApi.Manager.InitFromStreamAsync(Ctx.Name, Ctx.TeamId, fs);
+            if (!string.IsNullOrEmpty(initError))
+            {
+                Ctx.OperationError = $"Analyze failed: {initError}";
+                fs.Dispose();
+                fs = null;
+                return;
+            }
+
+            // Hand the stream to the context for the Load & Index step
+            Ctx.SetBufferedFile(fs);
+            fs = null; // ownership transferred
+
+            // A single document in a non-trivial file means no document array was found: the
+            // whole file is being read as one record, which then "loads" as 1 document and can
+            // exhaust memory during indexing. Warn now, before Load/Index is attempted. (Init
+            // finds the documents inside an export envelope on its own, so what is left when
+            // this fires is a file whose records the detection could not locate at all.)
+            var engine = Ctx.FindEngine();
+            var analyzedDocs = engine?.DocumentFields?.AnalyzedDocumentCount ?? 0;
+            var analyzedBytes = Ctx.BufferedFile?.Length ?? 0;
+            Ctx.AnalyzeWarning = analyzedDocs == 1 && analyzedBytes > 100_000
+                ? $"Only 1 document was found in a {analyzedBytes / (1024.0 * 1024.0):F1} MB file. " +
+                  "Indx finds the document array inside an export envelope on its own " +
+                  "(e.g. { \"count\": …, \"products\": [ … ] }), so this means no array of objects " +
+                  "was found anywhere in the file - it is being read as one large document. " +
+                  "Check the structure before loading: the records may be nested deeper than the " +
+                  "detection reaches, or the file may hold a single document after all."
+                : null;
+
+            // Populate field config for display; show unused fields by default for new datasets
+            Ctx.RefreshFieldsFromEngine();
+            _showUnused = true;
+        }
+        catch (OperationCanceledException)
+        {
+            fs?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Ctx.OperationError = $"Upload failed: {ex.Message}";
+            fs?.Dispose();
+        }
+        finally
+        {
+            _uploadCts?.Dispose();
+            _uploadCts = null;
+            Ctx.IsUploading = false;
+            Ctx.IsAnalyzing = false;
+            Ctx.RefreshStatus();
+            await Render();
+        }
+    }
+
+    // ── Load & Index ─────────────────────────────────────────────────────────
+
+    private void StartLoadAndIndex()
+    {
+        if (!Ctx.HasSearchable) return;
+        var ms = Ctx.BufferedFile;
+        if (ms == null) return;
+        Ctx.OperationError = null; // clear any prior load error before retrying
+
+        // Apply field configuration before Load so MakeSearchEngines sees the correct searchable set
+        if (Ctx.EditedFields is { } edited)
+        {
+            var engine = Ctx.FindEngine();
+            engine?.SetFieldConfiguration(edited);
+            var df = engine?.DocumentFields;
+            if (df != null && engine?.Persistence != null)
+                engine.Persistence.SaveDocumentFields(df.GetSerialized());
+        }
+
+        BeginProgress();
+        _ = RunLoadAndIndexAsync(ms);
+    }
+
+    private async Task RunLoadAndIndexAsync(FileStream ms)
+    {
+        var pollCts = new CancellationTokenSource();
+        try
+        {
+            // Phase 1: Load — in-place (peak memory ~1×). This is the first load (no live engine to
+            // serve yet); a bad custom key is already flagged at selection time, and otherwise the load
+            // fails cleanly below (the lib's clear+append is atomic, so the db is left recoverable).
+            ms.Position = 0;
+            var loadResult = IndxCloudInternalApi.Manager.StartLoadAsync(Ctx.Name, Ctx.TeamId, ms);
+            if (loadResult == null)
+            {
+                Ctx.OperationError = "Load failed: dataset not found";
+                return;
+            }
+            var (loadTask, loadMonitor) = loadResult.Value;
+
+            var pollTask = PollMonitor(loadMonitor, v => Ctx.LoadProgress = v, pollCts.Token);
+            await loadTask;
+            pollCts.Cancel();
+            try { await pollTask; } catch { }
+            Ctx.LoadProgress = loadMonitor.ProgressPercent;
+            await Render();
+
+            if (!loadMonitor.Succeeded)
+            {
+                Ctx.OperationError = "Load failed: " + IndxCloudInternalApi.Manager.DescribeLoadFailure(Ctx.Name, Ctx.TeamId, loadMonitor.ErrorMessage);
+                return;
+            }
+
+            // Release the buffer — no longer needed
+            Ctx.TakeBufferedFile();
+            ms.Dispose();
+
+            // Phase 2: Index — keep Loading bar at 100%
+            Ctx.LoadProgress = 100;
+            Ctx.IndexProgress = 0;
+            Ctx.IsIndexingPhase = true;
+            await Render();
+
+            var indexMonitor = new ProcessMonitor();
+            pollCts = new CancellationTokenSource();
+            pollTask = PollMonitor(indexMonitor, v => Ctx.IndexProgress = v, pollCts.Token);
+
+            await Task.Run(() =>
+            {
+                Ctx.FindEngine()?.Index(monitor: indexMonitor);
+                indexMonitor.WaitForCompletion();
+            });
+            pollCts.Cancel();
+            try { await pollTask; } catch { }
+            Ctx.IndexProgress = indexMonitor.ProgressPercent;
+            await Render();
+
+            if (!indexMonitor.Succeeded)
+                Console.WriteLine($"Index failed: {indexMonitor.ErrorMessage}");
+
+            Ctx.RefreshFieldsFromEngine();
+        }
+        catch (ObjectDisposedException) { }
+        finally
+        {
+            pollCts.Cancel();
+            pollCts.Dispose();
+            await EndProgress();
+        }
+    }
+
+    // ── Wake a hibernated dataset (load + index from the store, no upload) ───
+
+    private void StartWake()
+    {
+        Ctx.OperationError = null;
+        BeginProgress(); // reuses the Load/Index progress bars
+        _ = RunWakeAsync();
+    }
+
+    private async Task RunWakeAsync()
+    {
+        var pollCts = new CancellationTokenSource();
+        try
+        {
+            // Phase 1: rehydrate documents from the SQLite store (data is already persisted).
+            // LoadFromDatabaseSync is the same path the startup warmup / lazy-reload use.
+            var loadMonitor = new ProcessMonitor();
+            var pollTask = PollMonitor(loadMonitor, v => Ctx.LoadProgress = v, pollCts.Token);
+            await Task.Run(() =>
+            {
+                var eng = Ctx.FindEngine();
+                if (eng == null) { loadMonitor.MarkFinished(); return; }
+                eng.LoadFromDatabaseSync(loadMonitor);
+                loadMonitor.WaitForCompletion();
+            });
+            pollCts.Cancel();
+            try { await pollTask; } catch { }
+            Ctx.LoadProgress = loadMonitor.ProgressPercent;
+            await Render();
+
+            if (!loadMonitor.Succeeded)
+            {
+                Ctx.OperationError = $"Wake failed: {loadMonitor.ErrorMessage ?? "could not load from store"}";
+                return;
+            }
+
+            // Phase 2: rebuild the inverted index.
+            Ctx.LoadProgress = 100;
+            Ctx.IndexProgress = 0;
+            Ctx.IsIndexingPhase = true;
+            await Render();
+
+            var indexMonitor = new ProcessMonitor();
+            pollCts = new CancellationTokenSource();
+            pollTask = PollMonitor(indexMonitor, v => Ctx.IndexProgress = v, pollCts.Token);
+            await Task.Run(() =>
+            {
+                Ctx.FindEngine()?.Index(monitor: indexMonitor);
+                indexMonitor.WaitForCompletion();
+            });
+            pollCts.Cancel();
+            try { await pollTask; } catch { }
+            Ctx.IndexProgress = indexMonitor.ProgressPercent;
+            await Render();
+
+            Ctx.RefreshFieldsFromEngine();
+        }
+        catch (ObjectDisposedException) { }
+        finally
+        {
+            pollCts.Cancel();
+            pollCts.Dispose();
+            await EndProgress();
+        }
+    }
+
+    // ── Shared progress plumbing ─────────────────────────────────────────────
+
+    private void BeginProgress()
+    {
+        Ctx.IsLoadIndexing = true;
+        Ctx.LoadProgress = 0;
+        Ctx.IndexProgress = 0;
+        Ctx.IsIndexingPhase = false;
+        Ctx.NotifyChanged();
+    }
+
+    private async Task EndProgress()
+    {
+        Ctx.IsLoadIndexing = false;
+        Ctx.LoadProgress = 0;
+        Ctx.IndexProgress = 0;
+        Ctx.IsIndexingPhase = false;
+        Ctx.RefreshStatus();
+        try { await Render(); }
+        catch (ObjectDisposedException) { }
+    }
+
+    private Task PollMonitor(ProcessMonitor monitor, Action<int> setProgress, CancellationToken ct) =>
+        ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(150),
+            () => { setProgress(monitor.ProgressPercent); return true; },
+            Render, ct);
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        _uploadCts?.Cancel();
+        _uploadCts?.Dispose();
+    }
+}

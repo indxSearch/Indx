@@ -781,3 +781,135 @@ a.btn-danger:hover {
    component and raw <input class="indx-input"> usages. */
 
 /* Chip styling now lives with the component: Indx.Systm.Blazor/Chip.razor.css */
+
+/* ── Data tables (dataset console: field configuration, synonyms) ── */
+.indx-table {
+    width: 100%;
+    border-collapse: collapse;
+    font: var(--text-sm);
+    background-color: var(--lv0);
+}
+
+.indx-table th,
+.indx-table td {
+    text-align: left;
+    padding: 0 15px;
+    height: 40px;
+    border: 0.5px solid var(--lv3);
+}
+
+.indx-table thead {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.indx-table thead tr {
+    background-color: var(--lv2);
+    box-shadow: 0 0.5px 0 var(--lv3);
+}
+
+.indx-table thead th {
+    font-weight: var(--reg);
+}
+
+.indx-table tbody tr {
+    background-color: transparent;
+}
+
+.indx-table tbody td {
+    font-weight: var(--reg);
+}
+
+/* ── Field configuration toolbar / progress (dataset console) ── */
+.indx-field-config-import-warning {
+    font: var(--text-xs);
+    color: var(--CWarning);
+}
+
+.indx-table-wrap {
+    margin-bottom: 12px;
+}
+
+@media (max-width: 1440px) {
+    .indx-table-wrap {
+        overflow-x: auto;
+    }
+
+    .indx-table thead {
+        position: static;
+    }
+}
+
+.indx-field-config-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    width: 100%;
+    padding-right: 12px;
+    box-sizing: border-box;
+    min-height: 30px;
+}
+
+/* Two-cluster toolbar: clusters sit at opposite ends side-by-side, and when the row runs out of
+   width (≈ tablet) the second cluster drops to its own row — each line left-aligned (space-between
+   leaves a single item at the start). */
+.indx-field-config-toolbar--split {
+    justify-content: space-between;
+}
+
+/* A logical cluster of toolbar controls (import/export buttons, or the display toggles). Its items
+   stay on one line so the cluster wraps as a unit, not control-by-control. */
+.indx-field-config-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.indx-field-config-error {
+    font: var(--text-xs);
+    color: var(--CSignal);
+}
+
+.indx-field-config-saving {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    width: 100%;
+    max-width: 400px;
+}
+
+.indx-field-config-saving-label {
+    font: var(--text-sm);
+    color: var(--lv5);
+    white-space: nowrap;
+    margin: 0;
+}
+
+.indx-field-config-toolbar-group--wide { gap: 16px; }
+
+/* ── Plain text input (dataset console) ── */
+.indx-text-input {
+    padding: 6px 10px;
+    height: 30px;
+    font: var(--text-xs);
+    background: transparent;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    color: var(--lv7);
+    box-sizing: border-box;
+    min-width: 200px;
+}
+
+.indx-text-input:hover {
+    border-color: var(--lv5);
+}
+
+.indx-text-input:focus {
+    outline: none;
+    border-color: var(--lv5);
+}

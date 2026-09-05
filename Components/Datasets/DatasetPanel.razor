@@ -1,0 +1,227 @@
+@* One dataset of the active team: status table, tab nav and the tab components. Owns the
+   DatasetContext the tabs share, loads status/field config on first display, and polls the
+   engine while it is loading or indexing in the background.
+
+   Every panel of the team stays mounted (hidden when not selected) so an upload or edit in
+   progress on one dataset survives switching to another — the same behaviour the single-page
+   console had with its name-keyed dictionaries, now without the dictionaries. *@
+@using Indx.Api
+@implements IDisposable
+
+<div class="indx-dataset-card" hidden="@(!Visible)">
+    <div class="indx-dataset-card-inner">
+        <Surface Transparent>
+            <CascadingValue Value="Ctx" IsFixed>
+
+                @* ── Status table (always shown when status is available) ── *@
+                @if (Ctx.Status is { } status)
+                {
+                    var state = Ctx.EngineState;
+                    <div class="indx-status-wrap">
+                        <table class="indx-status-table">
+                            <tbody>
+                                <tr>
+                                    <td>System State</td>
+                                    <td class="indx-status-chips">
+                                        @if (Ctx.IsHibernated)
+                                        {
+                                            <Chip Size="large" Color="var(--CLightBlue)" TextColor="#080809" Icon="DatasetIcons.Hibernate">Hibernated</Chip>
+                                        }
+                                        else
+                                        {
+                                            <Chip Size="large" Color="@StateChipColor(state)" TextColor="@StateChipTextColor(state)" Icon="@DatasetIcons.ForState(state)">@state</Chip>
+                                        }
+                                        @if (Ctx.IsSaving && state == SystemState.Ready)
+                                        {
+                                            <Chip Size="large" Color="var(--lv8)" TextColor="var(--lv0)" Icon="DatasetIcons.ShadowIndexing">Shadow indexing</Chip>
+                                        }
+                                    </td>
+                                </tr>
+                                @if (state == SystemState.Ready)
+                                {
+                                    <tr><td>Document Count</td><td>@status.DocumentCount</td></tr>
+                                    <tr><td>Search Counter</td><td>@status.SearchCounter</td></tr>
+                                    <tr><td>Seconds To Index</td><td>@status.SecondsToIndex.ToString("0.##")s</td></tr>
+                                    <tr><td>Instance Created</td><td>@TimeAgo(status.TimeOfInstanceCreation)</td></tr>
+                                    <tr><td>Last Index Build</td><td>@TimeAgo(status.TimeOfLastIndexBuild)</td></tr>
+                                    @if (status.LicenseInfo?.DocumentLimitExceeded == true)
+                                    {
+                                        <tr><td class="indx-status-alert">License Limit</td><td class="indx-status-alert">@status.DocumentCount.ToString("N0") / @status.LicenseInfo.DocumentLimit.ToString("N0")</td></tr>
+                                    }
+                                    @if (status.InvalidArgument)
+                                    {
+                                        <tr><td class="indx-status-alert">Invalid Argument</td><td>@status.InvalidArgument</td></tr>
+                                    }
+                                    @if (status.InvalidState)
+                                    {
+                                        <tr><td class="indx-status-alert">Invalid State</td><td>@status.InvalidState</td></tr>
+                                    }
+                                    @if (status.TooLongClientText)
+                                    {
+                                        <tr><td class="indx-status-alert">Too Long Client Text</td><td>@status.TooLongClientText</td></tr>
+                                    }
+                                    @if (status.TooLongSearchText)
+                                    {
+                                        <tr><td class="indx-status-alert">Too Long Search Text</td><td>@status.TooLongSearchText</td></tr>
+                                    }
+                                    @if (status.UnknownConfigurationError)
+                                    {
+                                        <tr><td class="indx-status-alert">Config Error</td><td>@status.UnknownConfigurationError</td></tr>
+                                    }
+                                    @if (!string.IsNullOrEmpty(status.ErrorMessage))
+                                    {
+                                        <tr><td class="indx-status-alert">Error</td><td>@status.ErrorMessage</td></tr>
+                                    }
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+
+                @* ── Dataset tab nav (hidden when hibernated: that view is just Wake up / Delete) ── *@
+                @{
+                    var engineState = Ctx.EngineState;
+                    var isReady = engineState == SystemState.Ready;
+                    var showNav = isReady || (Ctx.IsAnalyzed && !Ctx.IsLoadIndexing && Ctx.IsEditor) || (engineState == SystemState.Error && Ctx.IsAdmin);
+                    var tab = Ctx.ActiveTab;
+                }
+                @if (showNav)
+                {
+                    <nav class="indx-dataset-nav">
+                        <Button Variant="@NavVariant("fields")" Size="micro" IconLeft="DatasetIcons.Fields" @onclick="@(() => SelectTab("fields"))">Field configuration</Button>
+                        @if (isReady)
+                        {
+                            <Button Variant="@NavVariant("search")" Size="micro" IconLeft="DatasetIcons.Search" @onclick="@(() => SelectTab("search"))">Search preview</Button>
+                        }
+                        @if (isReady && Ctx.IsEditor)
+                        {
+                            <Button Variant="@NavVariant("boosts")" Size="micro" IconLeft="DatasetIcons.Boost" @onclick="@(() => SelectTab("boosts"))">Boost rules</Button>
+                            <Button Variant="@NavVariant("synonyms")" Size="micro" IconLeft="DatasetIcons.Synonym" @onclick="@(() => SelectTab("synonyms"))">Synonyms</Button>
+                        }
+                        @if (Ctx.IsAdmin)
+                        {
+                            <Button Variant="@NavVariant("options")" Size="micro" IconLeft="DatasetIcons.Sliders" @onclick="@(() => SelectTab("options"))">Options</Button>
+                        }
+                    </nav>
+                }
+
+                @* ── Tabs. All stay mounted so edit state survives switching; only the active one renders. ── *@
+                <UploadFlow Active="@(tab == "fields")" />
+                <FieldConfigTab Active="@(tab == "fields" && isReady)" />
+                <SearchPreviewTab Active="@(tab == "search")" />
+                <OptionsTab Active="@(tab == "options")" />
+                <BoostRulesTab Active="@(tab == "boosts")" />
+                <SynonymsTab Active="@(tab == "synonyms")" />
+
+            </CascadingValue>
+        </Surface>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter, EditorRequired] public string TeamId { get; set; } = "";
+    [Parameter] public string? Role { get; set; }
+    [Parameter] public IReadOnlyList<(Data.Team Team, string Role)> MyTeams { get; set; } = [];
+    /// <summary>Whether this is the selected dataset. Hidden panels stay mounted.</summary>
+    [Parameter] public bool Visible { get; set; }
+    /// <summary>The dataset was deleted, transferred or hibernated; the shell reloads its list.</summary>
+    [Parameter] public EventCallback OnDatasetListChanged { get; set; }
+
+    public DatasetContext Ctx { get; private set; } = default!;
+
+    private bool _loaded;
+    private CancellationTokenSource? _pollCts;
+
+    protected override void OnInitialized()
+    {
+        Ctx = new DatasetContext(Name, TeamId, Role, MyTeams);
+        Ctx.Changed += OnCtxChanged;
+        Ctx.DatasetListChanged += () => OnDatasetListChanged.InvokeAsync();
+    }
+
+    protected override void OnParametersSet()
+    {
+        Ctx.MyTeams = MyTeams;
+        if (Visible && !_loaded)
+        {
+            _loaded = true;
+            Ctx.RefreshStatus();
+            if (Ctx.EngineState == SystemState.Ready) Ctx.EnsureFieldsLoaded();
+            StartPollingIfTransitional();
+        }
+    }
+
+    private void OnCtxChanged()
+    {
+        StartPollingIfTransitional();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void SelectTab(string tab)
+    {
+        Ctx.ActiveTab = tab;
+    }
+
+    private string NavVariant(string tab) => Ctx.ActiveTab == tab ? "primary" : "ghost";
+
+    /// <summary>While the engine loads or indexes in the background (a load started from the API,
+    /// or a page reopened mid-operation), refresh the status once a second until it settles, and
+    /// pick up the field configuration the moment it becomes Ready.</summary>
+    private void StartPollingIfTransitional()
+    {
+        if (_pollCts != null || !Ctx.IsTransitional || Ctx.IsLoadIndexing) return;
+        _pollCts = new CancellationTokenSource();
+        var cts = _pollCts;
+        _ = ProgressPoller.RunAsync(TimeSpan.FromSeconds(1),
+            () =>
+            {
+                Ctx.RefreshStatus();
+                if (Ctx.EngineState == SystemState.Ready) Ctx.EnsureFieldsLoaded();
+                return Ctx.IsTransitional;
+            },
+            () => InvokeAsync(StateHasChanged),
+            cts.Token).ContinueWith(_ =>
+            {
+                if (ReferenceEquals(_pollCts, cts)) _pollCts = null;
+                cts.Dispose();
+            });
+    }
+
+    private static string StateChipColor(SystemState state) => state switch
+    {
+        SystemState.Ready => "var(--CTeal)",
+        SystemState.Loading => "var(--CLightBlue)",
+        SystemState.Indexing => "var(--CWarning)",
+        SystemState.Error => "var(--CSignal)",
+        _ => "var(--lv3)",
+    };
+
+    private static string StateChipTextColor(SystemState state) => state switch
+    {
+        SystemState.Error => "var(--lv0)",
+        SystemState.Ready => "#080809",
+        SystemState.Loading => "#080809",
+        SystemState.Indexing => "#080809",
+        _ => "var(--lv5)",
+    };
+
+    private static string TimeAgo(DateTime dt)
+    {
+        if (dt == default) return "—";
+        var age = DateTime.Now - dt;
+        if (age.TotalSeconds < 60) return "just now";
+        if (age.TotalMinutes < 60) return $"{(int)age.TotalMinutes}m ago";
+        if (age.TotalHours < 24) return $"{(int)age.TotalHours}h ago";
+        if (age.TotalDays < 30) return $"{(int)age.TotalDays}d ago";
+        if (age.TotalDays < 365) return $"{(int)(age.TotalDays / 30)}mo ago";
+        return $"{(int)(age.TotalDays / 365)}y ago";
+    }
+
+    public void Dispose()
+    {
+        Ctx.Changed -= OnCtxChanged;
+        _pollCts?.Cancel();
+        Ctx.Dispose();
+    }
+}

@@ -1,0 +1,135 @@
+@* Declared key field (document key / primary key). Cloud-owned (DatasetMetadataStore) since
+   the lib doesn't persist the key-field name; applied to the engine before each external
+   Load. See indx_dataset_primary_key.md. *@
+@using IndxCloudApi.Models
+@inject DatasetMetadataStore DatasetMeta
+
+<div class="key-row">
+    <div class="key-text">
+        <span class="key-title">Document key</span>
+        <span class="key-help">
+            The field whose value is each document's unique ID — used for updates, the replace operation and analytics. Must be a whole number, or pick “Auto-generated” to number documents 0, 1, 2…
+        </span>
+    </div>
+    @if (Editable)
+    {
+        <div class="key-select">
+            <SelectField Size="micro" Options="Options()" Value="@CurrentValue" ValueChanged="OnChangedAsync" />
+        </div>
+    }
+    else
+    {
+        <span class="key-help key-help--value">@Display</span>
+    }
+    @if (_checking)
+    {
+        <span class="key-help">Checking that this field can identify every document…</span>
+    }
+    else if (_needsReload)
+    {
+        <span class="key-help key-help--narrow">
+            Saved. Documents already loaded keep their current ID — this applies the next time you replace the dataset's data.
+        </span>
+    }
+    @if (_error != null)
+    {
+        <span class="key-error">@_error</span>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public DatasetContext Ctx { get; set; } = default!;
+    [Parameter] public bool Editable { get; set; }
+
+    private const string AutoKeyValue = "__auto__";
+    private static string KeyAutoSentinel => IndxCloudInternalApi.KeyFieldAutoSentinel;
+
+    // Raw stored value: "" = undeclared (engine default), the sentinel = explicit auto-generated,
+    // otherwise a field name.
+    private string _stored = "";
+    private string[] _candidates = []; // numeric + non-optional
+    private bool _loaded;
+    private bool _needsReload;
+    private bool _checking; // dry-run validation in progress
+    private string? _error;
+
+    protected override void OnParametersSet()
+    {
+        if (_loaded) return;
+        _loaded = true;
+        _stored = DatasetMeta.LoadKeyField(Ctx.TeamId, Ctx.Name);
+        _candidates = IndxCloudInternalApi.Manager.GetKeyFieldCandidates(Ctx.Name, Ctx.TeamId);
+    }
+
+    private bool IsCandidate(string field) => _candidates.Contains(field);
+
+    // The value shown as selected. Resolves the undeclared default to "id" when "id" is a valid
+    // candidate (numeric + always present — that's what the engine actually keys on), else auto.
+    private string CurrentValue
+    {
+        get
+        {
+            if (_stored == KeyAutoSentinel) return AutoKeyValue;
+            if (_stored.Length > 0) return _stored;
+            return IsCandidate("id") ? "id" : AutoKeyValue;
+        }
+    }
+
+    private string Display => CurrentValue == AutoKeyValue ? "Auto-generated" : CurrentValue;
+
+    private List<SelectField.SelectOption> Options()
+    {
+        // Only numeric, non-optional fields are eligible — a key must identify every document.
+        var opts = _candidates.Select(name => new SelectField.SelectOption(name, name)).ToList();
+        opts.Add(new SelectField.SelectOption("Auto-generated (no key field)", AutoKeyValue));
+        // Keep a declared-but-now-ineligible key visible so it isn't silently dropped from the dropdown.
+        if (_stored.Length > 0 && _stored != KeyAutoSentinel && !opts.Any(o => o.Value == _stored))
+            opts.Insert(0, new SelectField.SelectOption($"{_stored} (unavailable)", _stored));
+        return opts;
+    }
+
+    private async Task OnChangedAsync(string? value)
+    {
+        _error = null;
+        var fieldName = (value == null || value == AutoKeyValue) ? "" : value;
+        var (err, needsReload) = await Task.Run(() =>
+        {
+            var e = IndxCloudInternalApi.Manager.SetKeyField(Ctx.Name, Ctx.TeamId, fieldName, out var nr);
+            return (e, nr);
+        });
+        if (err != null)
+        {
+            _error = err;
+            return;
+        }
+        // Mirror what the store now holds so the dropdown reflects the choice (sentinel for explicit auto).
+        _stored = fieldName.Length == 0 ? KeyAutoSentinel : fieldName;
+        _needsReload = needsReload;
+
+        // Notify immediately if the chosen key can't actually identify the documents. While the
+        // uploaded data is still buffered (setup) and fields are configured, dry-run the key in
+        // memory now so the user finds out at selection time, not only on Load and Index.
+        var buffered = Ctx.BufferedFile;
+        if (fieldName.Length > 0 && Ctx.HasSearchable && buffered != null)
+        {
+            // The dry-run reads the engine's field config, so apply the user's current edits first —
+            // otherwise a valid key could falsely fail the dry-run's index on "no searchable field".
+            if (Ctx.EditedFields is { } edited)
+                Ctx.FindEngine()?.SetFieldConfiguration(edited);
+
+            _checking = true;
+            await InvokeAsync(StateHasChanged);
+            var checkErr = await Task.Run(() =>
+            {
+                try
+                {
+                    buffered.Position = 0;
+                    return IndxCloudInternalApi.Manager.ValidateExternalLoadForCustomKey(Ctx.Name, Ctx.TeamId, buffered);
+                }
+                catch (Exception ex) { return ex.Message; }
+            });
+            _checking = false;
+            if (checkErr != null) _error = checkErr;
+        }
+    }
+}

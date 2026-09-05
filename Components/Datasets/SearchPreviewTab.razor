@@ -1,0 +1,245 @@
+@* Quick search against the live engine (with the dataset's boost rules applied, as real
+   searches see them) plus an engine-side timing loop. Reads the edited field configuration
+   from the context to pick which fields to show per hit. *@
+@using System.Text.Json
+@using Indx.Api
+@using IndxCloudApi.Models
+
+@inherits DatasetTabBase
+@if (!Active) { return; }
+
+@if (Ctx.EngineState == SystemState.Ready)
+{
+    <div class="indx-search-panel">
+        @if (string.IsNullOrEmpty(_text))
+        {
+            <svg class="indx-search-bg-logo" viewBox="0 0 203 146" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M58.4248 145.003V145.503H58.9248V145.003H58.4248ZM29.7109 145.003H29.2109V145.503H29.7109V145.003ZM29.7109 116.203V115.703H29.2109V116.203H29.7109ZM58.4248 116.203H58.9248V115.703H58.4248V116.203ZM173.284 145.003V145.503H173.784V145.003H173.284ZM144.57 145.003H144.07V145.503H144.57V145.003ZM144.57 116.203V115.703H144.07V116.203H144.57ZM173.284 116.203H173.784V115.703H173.284V116.203ZM29.7139 116.198V116.698H30.2139V116.198H29.7139ZM1 116.198H0.5V116.698H1V116.198ZM1 87.3984V86.8984H0.5V87.3984H1ZM29.7139 87.3984H30.2139V86.8984H29.7139V87.3984ZM202.003 116.198V116.698H202.503V116.198H202.003ZM173.289 116.198H172.789V116.698H173.289V116.198ZM173.289 87.3984V86.8984H172.789V87.3984H173.289ZM202.003 87.3984H202.503V86.8984H202.003V87.3984ZM144.565 87.4014V87.9014H145.065V87.4014H144.565ZM58.4297 87.4014H57.9297V87.9014H58.4297V87.4014ZM58.4297 58.6016V58.1016H57.9297V58.6016H58.4297ZM144.565 58.6016H145.065V58.1016H144.565V58.6016ZM58.4248 29.7998V30.2998H58.9248V29.7998H58.4248ZM29.7139 29.7998V29.2998H29.2139V29.7998H29.7139ZM29.7139 58.5967V59.0967H30.2139V58.5967H29.7139ZM1 58.5967H0.5V59.0967H1V58.5967ZM1 29.7969V29.2969H0.5V29.7969H1ZM29.7109 29.7969V30.2969H30.2109V29.7969H29.7109ZM29.7109 1V0.5H29.2109V1H29.7109ZM58.4248 1H58.9248V0.5H58.4248V1ZM202.003 58.5967V59.0967H202.503V58.5967H202.003ZM173.289 58.5967H172.789V59.0967H173.289V58.5967ZM173.289 29.7969V29.2969H172.789V29.7969H173.289ZM202.003 29.7969H202.503V29.2969H202.003V29.7969ZM173.284 29.7998V30.2998H173.784V29.7998H173.284ZM144.57 29.7998H144.07V30.2998H144.57V29.7998ZM144.57 1V0.5H144.07V1H144.57ZM173.284 1H173.784V0.5H173.284V1ZM58.4248 145.003V144.503H29.7109V145.003V145.503H58.4248V145.003ZM29.7109 145.003H30.2109V116.203H29.7109H29.2109V145.003H29.7109ZM29.7109 116.203V116.703H58.4248V116.203V115.703H29.7109V116.203ZM58.4248 116.203H57.9248V145.003H58.4248H58.9248V116.203H58.4248ZM173.284 145.003V144.503H144.57V145.003V145.503H173.284V145.003ZM144.57 145.003H145.07V116.203H144.57H144.07V145.003H144.57ZM144.57 116.203V116.703H173.284V116.203V115.703H144.57V116.203ZM173.284 116.203H172.784V145.003H173.284H173.784V116.203H173.284ZM29.7139 116.198V115.698H1V116.198V116.698H29.7139V116.198ZM1 116.198H1.5V87.3984H1H0.5V116.198H1ZM1 87.3984V87.8984H29.7139V87.3984V86.8984H1V87.3984ZM29.7139 87.3984H29.2139V116.198H29.7139H30.2139V87.3984H29.7139ZM202.003 116.198V115.698H173.289V116.198V116.698H202.003V116.198ZM173.289 116.198H173.789V87.3984H173.289H172.789V116.198H173.289ZM173.289 87.3984V87.8984H202.003V87.3984V86.8984H173.289V87.3984ZM202.003 87.3984H201.503V116.198H202.003H202.503V87.3984H202.003ZM144.565 87.4014V86.9014H58.4297V87.4014V87.9014H144.565V87.4014ZM58.4297 87.4014H58.9297V58.6016H58.4297H57.9297V87.4014H58.4297ZM58.4297 58.6016V59.1016H144.565V58.6016V58.1016H58.4297V58.6016ZM144.565 58.6016H144.065V87.4014H144.565H145.065V58.6016H144.565ZM58.4248 29.7998V29.2998H29.7139V29.7998V30.2998H58.4248V29.7998ZM29.7139 29.7998H29.2139V58.5967H29.7139H30.2139V29.7998H29.7139ZM29.7139 58.5967V58.0967H1V58.5967V59.0967H29.7139V58.5967ZM1 58.5967H1.5V29.7969H1H0.5V58.5967H1ZM1 29.7969V30.2969H29.7109V29.7969V29.2969H1V29.7969ZM29.7109 29.7969H30.2109V1H29.7109H29.2109V29.7969H29.7109ZM29.7109 1V1.5H58.4248V1V0.5H29.7109V1ZM58.4248 1H57.9248V29.7998H58.4248H58.9248V1H58.4248ZM202.003 58.5967V58.0967H173.289V58.5967V59.0967H202.003V58.5967ZM173.289 58.5967H173.789V29.7969H173.289H172.789V58.5967H173.289ZM173.289 29.7969V30.2969H202.003V29.7969V29.2969H173.289V29.7969ZM202.003 29.7969H201.503V58.5967H202.003H202.503V29.7969H202.003ZM173.284 29.7998V29.2998H144.57V29.7998V30.2998H173.284V29.7998ZM144.57 29.7998H145.07V1H144.57H144.07V29.7998H144.57ZM144.57 1V1.5H173.284V1V0.5H144.57V1ZM173.284 1H172.784V29.7998H173.284H173.784V1H173.284Z" fill="currentColor" />
+            </svg>
+        }
+        <div class="indx-search-field-wrap">
+            <span class="indx-search-field-icon"><Search Size="16" /></span>
+            <input class="indx-search-field-input"
+                   type="search"
+                   placeholder="@($"Search {Ctx.Name}")"
+                   value="@_text"
+                   @oninput="@(e => RunQuickSearch(e.Value?.ToString() ?? string.Empty))" />
+            @if (!string.IsNullOrEmpty(_text))
+            {
+                <div class="indx-search-clear">
+                    <Button Variant="ghost" Size="micro" @onclick="Clear">Clear</Button>
+                </div>
+            }
+        </div>
+        @if (_results != null)
+        {
+            @if (_results.Count == 0 && !string.IsNullOrEmpty(_text))
+            {
+                <p class="indx-search-empty">No results</p>
+            }
+            else if (_results.Count > 0)
+            {
+                <div class="indx-search-results">
+                    @foreach (var hit in _results)
+                    {
+                        <div class="indx-search-result-item">
+                            <span class="indx-search-result-fields">
+                                @foreach (var prop in GetDisplayFields(hit.Doc))
+                                {
+                                    <span class="indx-search-result-field"><span class="indx-search-result-key">@prop.Name</span> @prop.Value</span>
+                                }
+                            </span>
+                            <span class="indx-search-result-score" title="Relevance score">@hit.Score</span>
+                        </div>
+                    }
+                </div>
+                <div class="indx-perf-toolbar">
+                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Speedometer"
+                            disabled="@_perfRunning"
+                            @onclick="RunPerfTest">
+                        @(_perfRunning ? "Running…" : "Run performance benchmark")
+                    </Button>
+                    @if (_perf != null)
+                    {
+                        <span class="indx-perf-result">@_perf.Iterations× — avg <strong>@_perf.AvgMs.ToString("0.0") ms</strong></span>
+                    }
+                </div>
+            }
+        }
+    </div>
+}
+else
+{
+    <p class="indx-search-not-ready">Index your dataset first to enable search preview.</p>
+}
+
+@code {
+
+    private record PreviewHit(JsonElement Doc, ushort Score);
+    private record PerfTestResult(int Iterations, double TotalMs, double AvgMs, double MinMs, double MaxMs);
+    private record DisplayField(string Name, string Value);
+
+    private string _text = string.Empty;
+    private List<PreviewHit>? _results;
+    private PerfTestResult? _perf;
+    private bool _perfRunning;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        // A Replace swaps the documents under the cached hits.
+        Ctx.DocumentsReplaced += Invalidate;
+    }
+
+    private void Invalidate()
+    {
+        _results = null;
+        _perf = null;
+    }
+
+    private void Clear()
+    {
+        _text = string.Empty;
+        _results = null;
+        _perf = null;
+    }
+
+    private void RunQuickSearch(string text)
+    {
+        _text = text;
+        _perf = null;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            _results = null;
+            return;
+        }
+        var engine = Ctx.FindEngine();
+        if (engine == null) return;
+        // EnableBoost so the preview reflects this dataset's saved boost rules (applied
+        // server-side in FromCloudQuery2Query), matching what real searches return.
+        var query = new global::Indx.CloudApi.CloudQuery { Text = text, MaxNumberOfRecordsToReturn = 8, EnableBoost = true };
+        var result = IndxCloudInternalApi.Manager.Search(query, Ctx.Name, Ctx.TeamId);
+        var hits = new List<PreviewHit>();
+        foreach (var record in result.Records)
+        {
+            var json = engine.GetJsonDataOfKey(record.DocumentKey);
+            if (!string.IsNullOrEmpty(json))
+            {
+                try { hits.Add(new PreviewHit(JsonDocument.Parse(json).RootElement.Clone(), record.Score)); }
+                catch { }
+            }
+        }
+        _results = hits;
+    }
+
+    private async Task RunPerfTest()
+    {
+        var text = _text;
+        if (string.IsNullOrWhiteSpace(text) || _perfRunning) return;
+        _perfRunning = true;
+        _perf = null;
+        StateHasChanged();
+        await Task.Yield();
+
+        const int iterations = 100;
+        var timings = new double[iterations];
+        var query = new global::Indx.CloudApi.CloudQuery { Text = text, MaxNumberOfRecordsToReturn = 8 };
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        await Task.Run(() =>
+        {
+            for (int i = 0; i < iterations; i++)
+            {
+                var t0 = sw.Elapsed.TotalMilliseconds;
+                IndxCloudInternalApi.Manager.Search(query, Ctx.Name, Ctx.TeamId);
+                timings[i] = sw.Elapsed.TotalMilliseconds - t0;
+            }
+        });
+        var total = timings.Sum();
+        _perf = new PerfTestResult(iterations, total, total / iterations, timings.Min(), timings.Max());
+        _perfRunning = false;
+    }
+
+    /// <summary>
+    /// The (up to four) fields shown per hit: searchable first, then facetable, then the rest.
+    /// Walks the configured fields, which already carry the parser's (dotted) names, and
+    /// resolves each name as a path into the document — see <see cref="ResolveFieldValue(JsonElement,string)"/>.
+    /// Enumerating the document's own top-level properties instead would miss every nested field.
+    /// </summary>
+    private IEnumerable<DisplayField> GetDisplayFields(JsonElement doc)
+    {
+        const int max = 4;
+
+        var fields = Ctx.EditedFields;
+        if (fields == null)
+            return doc.EnumerateObject()
+                .Where(p => p.Value.ValueKind is JsonValueKind.String or JsonValueKind.Number
+                                              or JsonValueKind.True or JsonValueKind.False)
+                .Take(max)
+                .Select(p => new DisplayField(p.Name, p.Value.ToString()))
+                .ToList();
+
+        var ordered = fields.Where(f => f.Searchable == true)
+            .Concat(fields.Where(f => f.Facetable == true && f.Searchable != true))
+            .Concat(fields.Where(f => f.Searchable != true && f.Facetable != true));
+
+        var result = new List<DisplayField>(max);
+        foreach (var f in ordered)
+        {
+            if (result.Count >= max) break;
+            // Absent on this document — an Optional field, say — shows as an empty cell
+            // rather than being skipped, so the columns stay the same down the result list.
+            result.Add(new DisplayField(f.FieldName, ResolveFieldValue(doc, f.FieldName)));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Follows a parser field name — dot-separated, no array indices — down to its value.
+    /// A segment landing on an array applies the rest of the path to its elements and takes
+    /// the first that yields something, which mirrors how the parser collapses arrays when
+    /// it names the field. Returns an empty string when the document has no value there.
+    /// </summary>
+    private static string ResolveFieldValue(JsonElement element, string path) =>
+        ResolveFieldValue(element, path.Split('.'), 0);
+
+    private static string ResolveFieldValue(JsonElement element, string[] segments, int index)
+    {
+        for (; index < segments.Length; index++)
+        {
+            if (element.ValueKind == JsonValueKind.Array)
+            {
+                // Resume the SAME segment inside each element: the parser did not spend a
+                // segment on the array, so neither do we.
+                foreach (var item in element.EnumerateArray())
+                {
+                    var found = ResolveFieldValue(item, segments, index);
+                    if (!string.IsNullOrEmpty(found)) return found;
+                }
+                return string.Empty;
+            }
+            if (element.ValueKind != JsonValueKind.Object ||
+                !element.TryGetProperty(segments[index], out element))
+                return string.Empty;
+        }
+
+        // A name always ends at a scalar, but guard anyway: a future change to how fields
+        // are named should leave an empty cell, not a type name, in the UI.
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                if (item.ValueKind is JsonValueKind.Object or JsonValueKind.Array) continue;
+                var text = item.ToString();
+                if (!string.IsNullOrEmpty(text)) return text;
+            }
+            return string.Empty;
+        }
+        return element.ValueKind == JsonValueKind.Object ? string.Empty : element.ToString();
+    }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        Ctx.DocumentsReplaced -= Invalidate;
+    }
+}

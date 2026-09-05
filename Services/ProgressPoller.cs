@@ -9,8 +9,10 @@ namespace IndxCloudApi.Services
     /// </summary>
     public static class ProgressPoller
     {
+        /// <param name="interval">Delay before each tick.</param>
         /// <param name="tick">Reads the latest progress into component state. Return false to stop.</param>
         /// <param name="render">Typically <c>() => InvokeAsync(StateHasChanged)</c>.</param>
+        /// <param name="ct">Stops the loop; cancellation is swallowed.</param>
         public static async Task RunAsync(TimeSpan interval, Func<Task<bool>> tick, Func<Task> render, CancellationToken ct)
         {
             try

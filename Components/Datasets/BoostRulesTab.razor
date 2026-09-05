@@ -1,0 +1,254 @@
+@* Per-dataset ranking rules (BoostRuleStore). The condition builder reads the *edited*
+   field configuration from the context, so an unsaved Filterable toggle in the Fields tab
+   immediately changes what can be picked here. *@
+@using System.Text.Json
+@using IndxCloudApi.Models
+@using Indx.Api
+@inherits DatasetTabBase
+@inject BoostRuleStore BoostStore
+@inject IEditionService Edition
+
+@if (!Active) { return; }
+
+<div class="boost-tab">
+    <p class="boost-intro">
+        Ranking rules that lift matching documents when a search runs with <code>enableBoost</code>. Conditions use filterable fields; rules stack.
+    </p>
+
+    @{ var fieldOpts = FieldOptions(); }
+
+    @if (fieldOpts.Count == 0)
+    {
+        <p class="boost-warning">No filterable fields on this dataset — mark a field <strong>Filterable</strong> in Field configuration to build boost rules.</p>
+    }
+    else
+    {
+        @if (_rules.Count == 0)
+        {
+            <p class="boost-empty">No boost rules yet.</p>
+        }
+
+        <div class="boost-rules">
+            @foreach (var rule in _rules)
+            {
+                <div class="boost-rule">
+                    <div class="boost-rule-head">
+                        <ToggleSwitch @bind-Checked="rule.Enabled" />
+                        <div class="boost-grow"><InputField placeholder="Rule name" @bind-Value="rule.Name" /></div>
+                        <span class="boost-label">Strength:</span>
+                        <div class="boost-w130"><SelectField Size="micro" Options="StrengthOptions" Value="@rule.Strength.ToString()" ValueChanged="@(v => rule.Strength = ParseStrength(v))" /></div>
+                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="@(() => _rules.Remove(rule))" />
+                    </div>
+
+                    <div class="boost-conditions">
+                        @for (int ci = 0; ci < rule.Conditions.Count; ci++)
+                        {
+                            var cond = rule.Conditions[ci];
+                            <div class="boost-condition">
+                                <div class="boost-w190"><SelectField Size="micro" Options="FieldOptionsForCondition(cond.Field)" Value="@cond.Field" ValueChanged="@(v => OnConditionFieldChanged(cond, v))" /></div>
+                                @if (IsNumericField(cond.Field))
+                                {
+                                    <span class="boost-label">between</span>
+                                    <div class="boost-w90"><InputField placeholder="min" @bind-Value="cond.MinText" /></div>
+                                    <span class="boost-label">and</span>
+                                    <div class="boost-w90"><InputField placeholder="max" @bind-Value="cond.MaxText" /></div>
+                                }
+                                else if (IsBooleanField(cond.Field))
+                                {
+                                    <span class="boost-label">is</span>
+                                    <ToggleSwitch Label="@(cond.Value == "true" ? "true" : "false")" Checked="@(cond.Value == "true")" CheckedChanged="@(v => cond.Value = v ? "true" : "false")" />
+                                }
+                                else
+                                {
+                                    <span class="boost-label">equals</span>
+                                    <div class="boost-grow boost-value"><InputField placeholder="value" @bind-Value="cond.Value" /></div>
+                                }
+                                @if (rule.Conditions.Count > 1)
+                                {
+                                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="@(() => rule.Conditions.Remove(cond))" />
+                                }
+                            </div>
+                            @if (ci < rule.Conditions.Count - 1)
+                            {
+                                <div class="boost-w130"><SelectField Size="micro" Options="JoinOptions" Value="@rule.Join.ToString()" ValueChanged="@(v => rule.Join = ParseJoin(v))" /></div>
+                            }
+                        }
+                        <div><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="@(() => rule.Conditions.Add(NewCondition(fieldOpts[0].Value)))">Add condition</Button></div>
+                    </div>
+
+                    @if (Edition.IsEnabled(EditionFeature.BoostRuleScheduling))
+                    {
+                        <div class="boost-schedule">
+                            <Checkbox Label="Time limit" Checked="@IsTimeLimited(rule)" CheckedChanged="@(v => SetTimeLimited(rule, v))" />
+                            @if (IsTimeLimited(rule))
+                            {
+                                <div class="boost-dates">
+                                    <div><span class="boost-date-label">Active from</span><DatePicker @bind-Value="rule.ActiveFrom" /></div>
+                                    <div><span class="boost-date-label">Active until</span><DatePicker @bind-Value="rule.ActiveUntil" /></div>
+                                </div>
+                            }
+                            else
+                            {
+                                <span class="boost-hint">Always active</span>
+                            }
+                        </div>
+                    }
+
+                    @{ var badFields = rule.Conditions.Where(c => !string.IsNullOrEmpty(c.Field) && !FilterableFieldNames().Contains(c.Field)).Select(c => c.Field).Distinct().ToList(); }
+                    @if (badFields.Count > 0)
+                    {
+                        <p class="boost-warning boost-warning--rule">References non-filterable field(s): @string.Join(", ", badFields). This rule won't apply until fixed.</p>
+                    }
+                </div>
+            }
+        </div>
+
+        <div class="boost-add">
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="AddRule">Add boost rule</Button>
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <p class="boost-error">@_error</p>
+        }
+
+        @if (IsDirty)
+        {
+            <div class="boost-actions">
+                <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" @onclick="SaveAsync">Save boost rules</Button>
+                <Button Variant="secondary" Size="micro" @onclick="Cancel">Cancel</Button>
+            </div>
+        }
+    }
+</div>
+
+@code {
+
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+    };
+
+    private static readonly IEnumerable<SelectField.SelectOption> JoinOptions =
+        [new("AND", "And"), new("OR", "Or")];
+
+    private static readonly IEnumerable<SelectField.SelectOption> StrengthOptions =
+    [
+        new("Low", "Low") { Icon = DatasetIcons.WeightLow },
+        new("Medium", "Med") { Icon = DatasetIcons.WeightMedium },
+        new("High", "High") { Icon = DatasetIcons.WeightHigh },
+    ];
+
+    private bool _loaded;
+    private List<BoostRule> _rules = new();
+    private string? _savedJson;
+    private string? _error;
+
+    // Rules with no schedule are "always active". The Time-limit checkbox reveals the date
+    // pickers; a rule is considered time-limited if the box was ticked or it already carries a date.
+    private readonly HashSet<BoostRule> _ruleTimeLimited = new();
+
+    protected override void OnParametersSet()
+    {
+        if (Active && !_loaded) Load();
+    }
+
+    private void Load()
+    {
+        _loaded = true;
+        var rules = BoostStore.Load(Ctx.TeamId, Ctx.Name);
+        _savedJson = JsonSerializer.Serialize(rules, JsonOpts);
+        _rules = JsonSerializer.Deserialize<List<BoostRule>>(_savedJson, JsonOpts) ?? new();
+    }
+
+    private List<string> FilterableFieldNames() =>
+        Ctx.EditedFields?.Where(x => x.Filterable == true).Select(x => x.FieldName).ToList() ?? new();
+
+    private List<SelectField.SelectOption> FieldOptions() =>
+        FilterableFieldNames().Select(n => new SelectField.SelectOption(n, n)).ToList();
+
+    /// <summary>Field options for one condition's picker. If the condition references a field
+    /// that is no longer filterable (or gone), keep it in the list — labelled "(unavailable)" —
+    /// so its stored name still shows instead of a blank dropdown.</summary>
+    private List<SelectField.SelectOption> FieldOptionsForCondition(string? currentField)
+    {
+        var opts = FieldOptions();
+        if (!string.IsNullOrEmpty(currentField) && !opts.Any(o => o.Value == currentField))
+            opts.Add(new SelectField.SelectOption($"{currentField} (unavailable)", currentField));
+        return opts;
+    }
+
+    private string? FieldType(string field) => Ctx.EditedFields?.FirstOrDefault(x => x.FieldName == field)?.FieldType;
+    private bool IsNumericField(string field) => FieldType(field) == "Number";
+    private bool IsBooleanField(string field) => FieldType(field) == "Boolean";
+
+    private BoostCondition NewCondition(string field)
+    {
+        var c = new BoostCondition { Field = field };
+        if (IsBooleanField(field)) c.Value = "false";
+        else if (!IsNumericField(field)) c.Value = "";
+        return c;
+    }
+
+    private void OnConditionFieldChanged(BoostCondition cond, string? newField)
+    {
+        cond.Field = newField ?? "";
+        if (IsNumericField(cond.Field)) { cond.Value = null; }
+        else if (IsBooleanField(cond.Field))
+        {
+            cond.Min = null; cond.Max = null;
+            if (cond.Value != "true" && cond.Value != "false") cond.Value = "false";
+        }
+        else { cond.Min = null; cond.Max = null; cond.Value ??= ""; }
+    }
+
+    private void AddRule()
+    {
+        _error = null;
+        var first = FilterableFieldNames().FirstOrDefault() ?? "";
+        _rules.Add(new BoostRule { Name = "New rule", Conditions = new() { NewCondition(first) } });
+    }
+
+    private static BoostStrength ParseStrength(string? v) => Enum.TryParse<BoostStrength>(v, out var s) ? s : BoostStrength.Med;
+    private static BoostJoin ParseJoin(string? v) => Enum.TryParse<BoostJoin>(v, out var j) ? j : BoostJoin.And;
+
+    private bool IsTimeLimited(BoostRule rule) =>
+        _ruleTimeLimited.Contains(rule) || rule.ActiveFrom.HasValue || rule.ActiveUntil.HasValue;
+
+    private void SetTimeLimited(BoostRule rule, bool on)
+    {
+        if (on) _ruleTimeLimited.Add(rule);
+        else { _ruleTimeLimited.Remove(rule); rule.ActiveFrom = null; rule.ActiveUntil = null; }
+    }
+
+    private bool IsDirty => _loaded && JsonSerializer.Serialize(_rules, JsonOpts) != _savedJson;
+
+    private async Task SaveAsync()
+    {
+        _error = null;
+        foreach (var r in _rules)
+        {
+            if (string.IsNullOrWhiteSpace(r.Name)) { _error = "Every rule needs a name."; return; }
+            if (r.Conditions.Count == 0) { _error = $"Rule \"{r.Name}\" needs at least one condition."; return; }
+            foreach (var c in r.Conditions)
+            {
+                if (string.IsNullOrWhiteSpace(c.Field)) { _error = $"Rule \"{r.Name}\" has a condition with no field."; return; }
+                if (IsNumericField(c.Field))
+                {
+                    if (c.Min == null && c.Max == null) { _error = $"Rule \"{r.Name}\": set a min or max for {c.Field}."; return; }
+                }
+                else if (string.IsNullOrWhiteSpace(c.Value)) { _error = $"Rule \"{r.Name}\": enter a value for {c.Field}."; return; }
+            }
+        }
+        var rules = _rules;
+        await Task.Run(() => BoostStore.Save(Ctx.TeamId, Ctx.Name, rules));
+        _savedJson = JsonSerializer.Serialize(rules, JsonOpts);
+    }
+
+    private void Cancel()
+    {
+        _error = null;
+        if (_savedJson != null)
+            _rules = JsonSerializer.Deserialize<List<BoostRule>>(_savedJson, JsonOpts) ?? new();
+    }
+}

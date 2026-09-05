@@ -1,0 +1,33 @@
+.syn-tab { margin-top: 16px; }
+
+.syn-intro {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+.syn-intro p { color: var(--lv5); font: var(--text-sm); margin: 0; flex: 1; }
+
+.syn-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+}
+.syn-filter { max-width: 220px; }
+.syn-count { color: var(--lv4); font: var(--text-xs); white-space: nowrap; }
+.syn-spacer { flex: 1; }
+
+.syn-empty { color: var(--lv4); font: var(--text-sm); margin: 8px 0 12px; }
+.syn-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.syn-chip { cursor: pointer; }
+.syn-row-actions { text-align: right; white-space: nowrap; width: 1%; }
+.syn-cap-note { color: var(--lv4); font: var(--text-xs); margin-top: 8px; }
+.syn-error { color: var(--CSignal); font: var(--text-sm); margin-top: 10px; }
+.syn-error--modal { margin: 0; }
+
+.syn-modal { display: flex; flex-direction: column; gap: 14px; min-width: 380px; }
+.syn-label { color: var(--lv5); font: var(--text-xs); display: block; margin-bottom: 4px; }
+.syn-hint { color: var(--lv4); font: var(--text-xs); display: block; margin-top: 4px; }
+.syn-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }

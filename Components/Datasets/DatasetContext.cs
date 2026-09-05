@@ -1,5 +1,5 @@
 using Indx.Api;
-using Indx.CloudApi;
+
 using IndxCloudApi.Data;
 using IndxCloudApi.Models;
 using IndxCloudApi.Services;
@@ -13,7 +13,7 @@ namespace IndxCloudApi.Components.Datasets
     /// <see cref="NotifyChanged"/> so the panel re-renders the parts it owns (status table,
     /// tab nav). Replaces the name-keyed dictionaries the single-page console used to hold.
     /// </summary>
-    internal sealed class DatasetContext : IDisposable
+    public sealed class DatasetContext : IDisposable
     {
         public DatasetContext(string name, string teamId, string? role, IReadOnlyList<(Team Team, string Role)> myTeams)
         {
@@ -34,7 +34,7 @@ namespace IndxCloudApi.Components.Datasets
 
         // ── Engine view ───────────────────────────────────────────────────────
         public SystemStatus? Status { get; set; }
-        public IndxCloudInternalApi.KeepAliveInfo? KeepAlive { get; set; }
+        internal IndxCloudInternalApi.KeepAliveInfo? KeepAlive { get; set; }
         public SystemState EngineState => Status?.SystemState ?? SystemState.Created;
         /// <summary>A Created engine with records persisted on disk is hibernated (manual datasets
         /// stay this way until woken; timed/pinned wake themselves on access), not an empty dataset.</summary>
@@ -196,6 +196,49 @@ namespace IndxCloudApi.Components.Datasets
         /// reloads the team's dataset list.</summary>
         public event Func<Task>? DatasetListChanged;
         public Task NotifyDatasetListChangedAsync() => DatasetListChanged?.Invoke() ?? Task.CompletedTask;
+
+        // ── Dataset-level operations shared by more than one tab ─────────────
+
+        /// <summary>Deletes the dataset. Runs off the circuit (engine disposal can take
+        /// seconds) and tells the shell to reload its list. Returns false on failure.</summary>
+        public async Task<bool> DeleteAsync()
+        {
+            try
+            {
+                var ok = await Task.Run(() => IndxCloudInternalApi.Manager.DeleteDataSet(Name, TeamId));
+                DeleteConfirmOpen = false;
+                if (!ok) return false;
+                SetBufferedFile(null);
+                await NotifyDatasetListChangedAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error deleting dataset: {ex.Message}");
+                DeleteConfirmOpen = false;
+                return false;
+            }
+        }
+
+        /// <summary>Unloads the engine from memory (data stays on disk). Only durable for
+        /// Off (client-managed) datasets; timed/pinned reload on the next access.</summary>
+        public async Task HibernateAsync()
+        {
+            await Task.Run(() => IndxCloudInternalApi.Manager.DisposeDataSetInstance(Name, TeamId));
+            // A hibernated dataset isn't Ready, so the tab nav disappears. Land on the
+            // field-config view, where the "Hibernated → Wake up" UI lives.
+            ActiveTab = "fields";
+            RefreshStatus();
+            await NotifyDatasetListChangedAsync();
+        }
+
+        public static string FormatBytes(long bytes)
+        {
+            if (bytes >= 1_073_741_824) return $"{bytes / 1_073_741_824.0:F1} GB";
+            if (bytes >= 1_048_576) return $"{bytes / 1_048_576.0:F1} MB";
+            if (bytes >= 1024) return $"{bytes / 1024.0:F1} KB";
+            return $"{bytes} B";
+        }
 
         public void Dispose()
         {

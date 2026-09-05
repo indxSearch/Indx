@@ -1,0 +1,123 @@
+@* Field configuration for a Ready dataset: the editable table, key field, import/export,
+   and Save — which reindexes on a shadow engine when the change requires it, with progress. *@
+@using Indx.Api
+@using IndxCloudApi.Models
+
+@inherits DatasetTabBase
+@if (!Active) { return; }
+
+@if (!Ctx.IsSaving)
+{
+    <FieldConfigToolbar ExportFirst CanImport="@Ctx.IsEditor" IdSuffix="-ready"
+                        @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced" OnImported="StateHasChanged" />
+}
+
+@if (!string.IsNullOrEmpty(_saveError))
+{
+    <p class="fc-error">@_saveError</p>
+}
+
+@if (Ctx.IsSaving)
+{
+    <div class="indx-field-config-saving">
+        <ProgressBar Value="Ctx.ShadowBuildPercent" ShowLabel FulfilledColor />
+        <p class="indx-field-config-saving-label">@(Ctx.ShadowBuildPercent == 0 ? "Preparing…" : "Reindexing…")</p>
+    </div>
+}
+else if (Ctx.EditedFields is { } fields)
+{
+    <FieldConfigTable Fields="fields" Editable="@Ctx.IsEditor" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced"
+                      @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged" />
+    <KeyFieldRow Editable="@Ctx.IsEditor" />
+    @if (Ctx.IsEditor && Ctx.IsDirty)
+    {
+        <div class="indx-field-config-toolbar">
+            <Button Variant="primary" Size="micro" @onclick="Save" disabled="@(!Ctx.HasSearchable)">Save</Button>
+            <Button Variant="secondary" Size="micro" @onclick="Cancel">Cancel</Button>
+            @if (_searchableTouched && !Ctx.HasSearchable)
+            {
+                <span class="indx-field-config-error">At least one field must be searchable</span>
+            }
+        </div>
+    }
+}
+
+@code {
+
+    private bool _showUnused;
+    private bool _showAdvanced;
+    private bool _searchableTouched;
+    private string? _saveError;
+    private CancellationTokenSource? _pollCts;
+
+    private void Cancel()
+    {
+        Ctx.CancelEdits();
+        Ctx.NotifyChanged();
+    }
+
+    private void Save()
+    {
+        var edited = Ctx.EditedFields;
+        if (edited == null || !Ctx.HasSearchable) return;
+
+        Ctx.IsSaving = true;
+        Ctx.ShadowBuildPercent = 0;
+        _saveError = null;
+        Ctx.NotifyChanged();
+
+        _ = RunSaveAsync(edited);
+    }
+
+    private async Task RunSaveAsync(FieldProxy[] edited)
+    {
+        _pollCts?.Dispose();
+        _pollCts = new CancellationTokenSource();
+        var pollingTask = ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(100),
+            () => { Ctx.ShadowBuildPercent = IndxCloudInternalApi.Manager.GetShadowBuildPercent(Ctx.Name, Ctx.TeamId); return true; },
+            Render, _pollCts.Token);
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                var engine = Ctx.FindEngine();
+                if (engine == null) return;
+                var df = engine.DocumentFields;
+                bool needsReindex = df?.RequiresReindex(edited) ?? false;
+                if (needsReindex && engine.Status.SystemState == SystemState.Ready)
+                    IndxCloudInternalApi.Manager.RunFieldConfigurationOnShadow(Ctx.Name, Ctx.TeamId, edited);
+                else
+                    engine.SetFieldConfiguration(edited);
+            });
+
+            Ctx.RefreshFieldsFromEngine();
+        }
+        catch (ShadowBusyException)
+        {
+            _saveError = "A shadow build is already in progress. Please wait for it to complete.";
+        }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
+        {
+            _saveError = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            _pollCts.Cancel();
+            try { await pollingTask; } catch { }
+            Ctx.IsSaving = false;
+            Ctx.ShadowBuildPercent = 0;
+            Ctx.RefreshStatus();
+            try { await Render(); }
+            catch (ObjectDisposedException) { }
+        }
+    }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        _pollCts?.Cancel();
+        _pollCts?.Dispose();
+    }
+}
