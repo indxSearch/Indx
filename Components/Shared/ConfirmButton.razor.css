@@ -1,0 +1,11 @@
+.indx-confirm-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.indx-confirm-prompt {
+    font: var(--text-xs);
+    color: var(--lv5);
+}

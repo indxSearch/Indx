@@ -1,0 +1,54 @@
+@* A trigger button that swaps itself for "[prompt] [confirm] [cancel]" until the user decides.
+   The open state can be owned by the parent via @bind-Open so one token can drive several sites
+   (the dataset console shows "delete" in more than one place); left unbound it is self-contained. *@
+
+@if (Open)
+{
+    <div class="indx-confirm-row">
+        @if (!string.IsNullOrEmpty(Prompt))
+        {
+            <span class="indx-confirm-prompt">@Prompt</span>
+        }
+        <Button Variant="@Variant" Size="@Size" Disabled="@Disabled" @onclick="Confirm">@ConfirmLabel</Button>
+        <Button Variant="@CancelVariant" Size="@Size" @onclick="() => SetOpen(false)">Cancel</Button>
+    </div>
+}
+else
+{
+    <div class="indx-confirm-row">
+        <Button Variant="@TriggerVariant" Size="@Size" IconLeft="@Icon" Disabled="@Disabled" @onclick="() => SetOpen(true)">@Label</Button>
+        @ChildContent
+    </div>
+}
+
+@code {
+    /// <summary>Text of the trigger button.</summary>
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    /// <summary>Question shown next to the confirm button; omit for none.</summary>
+    [Parameter] public string? Prompt { get; set; }
+    [Parameter] public string ConfirmLabel { get; set; } = "Confirm";
+    /// <summary>Variant of the confirm button (default danger).</summary>
+    [Parameter] public string Variant { get; set; } = "danger";
+    [Parameter] public string TriggerVariant { get; set; } = "ghost";
+    [Parameter] public string CancelVariant { get; set; } = "secondary";
+    [Parameter] public string Size { get; set; } = "micro";
+    [Parameter] public RenderFragment<int>? Icon { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    /// <summary>Rendered after the trigger while closed (e.g. a hint).</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    private async Task SetOpen(bool value)
+    {
+        Open = value;
+        await OpenChanged.InvokeAsync(value);
+    }
+
+    private async Task Confirm()
+    {
+        await SetOpen(false);
+        await OnConfirm.InvokeAsync();
+    }
+}

@@ -14,7 +14,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ApplicationDbContext Db
 @inject Microsoft.Extensions.Caching.Memory.IMemoryCache MemoryCache
-@inject IJSRuntime JSRuntime
+@inject IndxCloudApi.Services.BrowserFiles BrowserFiles
 @inject ILogger<ApiKey> Logger
 @inject NavigationManager Nav
 @inject IndxCloudApi.Services.InstanceSettingsService Settings
@@ -339,7 +339,7 @@ else
         if (string.IsNullOrEmpty(newlyCreatedToken)) return;
         try
         {
-            await JSRuntime.InvokeVoidAsync("copyToClipboard", newlyCreatedToken);
+            await BrowserFiles.CopyToClipboardAsync(newlyCreatedToken);
             copyMessage = "Copied to clipboard";
             StateHasChanged();
             await Task.Delay(3000);
