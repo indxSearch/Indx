@@ -32,7 +32,7 @@ namespace IndxCloudApi.Models
 
             var licensePath = GetLicensePath();
             var newMatcher = new SearchEngine(MakeLogPrefix(teamId, dataSetName), Indx.Utilities.ILoggerFactory.GetFactory(logFileName),
-               (ConfigurationProfile)(int)configuration, licensePath)
+               ResolveConfiguration(configuration, dataSetName), licensePath)
             {
                 Persistence = persistence
             };
@@ -89,6 +89,36 @@ namespace IndxCloudApi.Models
         // Clock for keep-alive last-used stamping and idle-eviction. Overridable so tests can advance
         // time (FakeTimeProvider) without real waits. Defaults to the system clock.
         internal static TimeProvider TimeProvider { get; set; } = TimeProvider.System;
+
+        /// <summary>The only configuration number ever written to <c>DataSet.IndxConfiguration</c>.</summary>
+        private const int DefaultConfigurationNumber = 400;
+
+        /// <summary>
+        /// Resolves a dataset's persisted configuration to the parameters its engine is built with.
+        /// <para>
+        /// The <c>DataSet.IndxConfiguration</c> column stays: it is where a serialized configuration
+        /// will live once anything but the default is supported. Until then 400 is the only value
+        /// written, and it means <see cref="ConfigurationParameters.Default"/> — so this is the one
+        /// place that knows it, instead of four casts to <c>ConfigurationProfile</c>.
+        /// </para>
+        /// <para>
+        /// An unrecognised number resolves to the default rather than throwing. The engine is built
+        /// inside the registry lock on a request path, so throwing here would turn a stale column
+        /// value into a 500 for a dataset whose documents are perfectly fine.
+        /// </para>
+        /// </summary>
+        internal static ConfigurationParameters ResolveConfiguration(int? persisted, string dataSetName)
+        {
+            if (persisted is null or DefaultConfigurationNumber)
+                return ConfigurationParameters.Default;
+
+            // Cold path: the HTTP surface binds a ConfigurationProfile, so only 400 can be written.
+            // Reaching here means a hand-edited or future-written row.
+            Indx.Utilities.ILoggerFactory.Create<IndxCloudInternalApi>(logFileName).LogWarning(
+                "Dataset '{DataSet}' carries configuration {Configuration}, which is not supported; opening with the default.",
+                dataSetName, persisted);
+            return ConfigurationParameters.Default;
+        }
 
         private static string GetLicensePath()
         {
@@ -1069,15 +1099,15 @@ namespace IndxCloudApi.Models
             var liveConfig = FindInstance(dataSetName, teamId)?.GetFieldConfiguration();
             if (liveConfig == null || liveConfig.Length == 0) return null;
 
-            int configuration;
+            ConfigurationParameters configuration;
             using (var cfg = new Persistence(SearchDbConnectionString, dataSetName, teamId))
-                configuration = (int)(cfg.ReadDataSetConfiguration() ?? 400);
+                configuration = ResolveConfiguration(cfg.ReadDataSetConfiguration(), dataSetName);
 
             // Persistence stays null → nothing this engine does can touch or lock the database.
             using var validate = new SearchEngine(
                 MakeLogPrefix(teamId, dataSetName),
                 Indx.Utilities.ILoggerFactory.GetFactory(logFileName),
-                (ConfigurationProfile)configuration,
+                configuration,
                 GetLicensePath());
             try
             {
@@ -1329,7 +1359,7 @@ namespace IndxCloudApi.Models
                 var matcher = new SearchEngine(
                     MakeLogPrefix(teamId, dataSetName),
                     Indx.Utilities.ILoggerFactory.GetFactory(logFileName),
-                    (ConfigurationProfile)(int)configuration,
+                    ResolveConfiguration(configuration, dataSetName),
                     licensePath)
                 {
                     Persistence = persistence

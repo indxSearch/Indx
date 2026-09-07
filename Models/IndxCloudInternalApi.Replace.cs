@@ -1,4 +1,4 @@
-using Indx.Api;
+﻿using Indx.Api;
 using Indx.Storage;
 using Microsoft.Extensions.Logging;
 using System;
@@ -108,10 +108,10 @@ namespace IndxCloudApi.Models
         private (SearchEngine shadow, ReplaceSchemaChange summary) BuildShadowFromJson(
             string dataSetName, string teamId, Stream jsonStream, ProcessMonitor monitor)
         {
-            int configuration;
+            ConfigurationParameters configuration;
             using (var cfgRead = new Persistence(SearchDbConnectionString, dataSetName, teamId))
-                configuration = (int)(cfgRead.ReadDataSetConfiguration()
-                    ?? throw new InvalidOperationException($"Dataset '{dataSetName}' has no configuration"));
+                configuration = ResolveConfiguration(cfgRead.ReadDataSetConfiguration()
+                    ?? throw new InvalidOperationException($"Dataset '{dataSetName}' has no configuration"), dataSetName);
 
             var shadow = NewReplaceEngine(configuration, dataSetName, teamId);
             try
@@ -153,11 +153,11 @@ namespace IndxCloudApi.Models
             }
         }
 
-        private SearchEngine NewReplaceEngine(int configuration, string dataSetName, string teamId) =>
+        private SearchEngine NewReplaceEngine(ConfigurationParameters configuration, string dataSetName, string teamId) =>
             new SearchEngine(
                 MakeLogPrefix(teamId, dataSetName),
                 Indx.Utilities.ILoggerFactory.GetFactory(logFileName),
-                (ConfigurationProfile)configuration,
+                configuration,
                 GetLicensePath())
             {
                 Persistence = new Persistence(SearchDbConnectionString, dataSetName, teamId)
