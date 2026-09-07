@@ -65,10 +65,6 @@
                                     {
                                         <tr><td class="indx-status-alert">Too Long Search Text</td><td>@status.TooLongSearchText</td></tr>
                                     }
-                                    @if (status.UnknownConfigurationError)
-                                    {
-                                        <tr><td class="indx-status-alert">Config Error</td><td>@status.UnknownConfigurationError</td></tr>
-                                    }
                                     @if (!string.IsNullOrEmpty(status.ErrorMessage))
                                     {
                                         <tr><td class="indx-status-alert">Error</td><td>@status.ErrorMessage</td></tr>
