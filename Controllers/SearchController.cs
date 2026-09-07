@@ -222,17 +222,22 @@ namespace IndxCloudApi.Controllers
         }
 
         /// <summary>
-        /// Creates the data set with the given configuration profile (201). Idempotent:
-        /// if the data set already exists it is left as-is — including its original
-        /// configuration profile, which is fixed at creation — and answers 200.
-        /// (Undefined profile values are rejected with a validation 400 by MVC's
-        /// enum model binding — pinned by ErrorContractTests.)
+        /// Creates the data set (201). Idempotent: an existing data set is left exactly as it is and
+        /// answers 200.
+        /// <para>
+        /// There is no longer a <c>configuration</c> query parameter — there was one configuration to
+        /// choose from, so choosing was theatre. Clients that still send <c>?configuration=400</c>
+        /// (every published <c>@indxsearch/intrface</c> does) are unaffected: a query value that binds
+        /// to nothing is ignored, which <c>UnknownQueryParameterTests</c> pins. Note the one
+        /// behaviour change that comes with it — a garbage value used to be a validation 400 from
+        /// enum binding and is now simply ignored, which is safe only because the value no longer
+        /// reaches anything.
+        /// </para>
         /// </summary>
         [HttpPut(DataSetRoute)]
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        public IActionResult CreateOrOpen(string teamName, string dataSetName,
-            [FromQuery] ConfigurationProfile configuration = ConfigurationProfile.Production)
+        public IActionResult CreateOrOpen(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
@@ -241,7 +246,10 @@ namespace IndxCloudApi.Controllers
             using var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, dataSetName, ctx.OwnerKey);
             if (persistence.DataSetExists())
                 return Ok();
-            persistence.CreateOrOpenDataSet((int)configuration);
+            // Still writes 400. The column is kept for the serialized configuration it will hold, and
+            // until then ResolveConfiguration reads 400 as ConfigurationParameters.Default — so this
+            // and that have to keep agreeing. ConfigurationResolutionTests asserts they do.
+            persistence.CreateOrOpenDataSet(IndxCloudInternalApi.DefaultConfigurationNumber);
             return StatusCode(StatusCodes.Status201Created);
         }
 

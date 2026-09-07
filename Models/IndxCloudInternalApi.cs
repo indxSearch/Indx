@@ -90,8 +90,11 @@ namespace IndxCloudApi.Models
         // time (FakeTimeProvider) without real waits. Defaults to the system clock.
         internal static TimeProvider TimeProvider { get; set; } = TimeProvider.System;
 
-        /// <summary>The only configuration number ever written to <c>DataSet.IndxConfiguration</c>.</summary>
-        private const int DefaultConfigurationNumber = 400;
+        /// <summary>
+        /// The only configuration number ever written to <c>DataSet.IndxConfiguration</c>. Written by
+        /// <c>SearchController.CreateOrOpen</c> and read back here — the two must agree.
+        /// </summary>
+        internal const int DefaultConfigurationNumber = 400;
 
         /// <summary>
         /// Resolves a dataset's persisted configuration to the parameters its engine is built with.
@@ -99,7 +102,7 @@ namespace IndxCloudApi.Models
         /// The <c>DataSet.IndxConfiguration</c> column stays: it is where a serialized configuration
         /// will live once anything but the default is supported. Until then 400 is the only value
         /// written, and it means <see cref="ConfigurationParameters.Default"/> — so this is the one
-        /// place that knows it, instead of four casts to <c>ConfigurationProfile</c>.
+        /// place that knows it, instead of the four casts to a profile enum this replaced.
         /// </para>
         /// <para>
         /// An unrecognised number resolves to the default rather than throwing. The engine is built
@@ -112,8 +115,8 @@ namespace IndxCloudApi.Models
             if (persisted is null or DefaultConfigurationNumber)
                 return ConfigurationParameters.Default;
 
-            // Cold path: the HTTP surface binds a ConfigurationProfile, so only 400 can be written.
-            // Reaching here means a hand-edited or future-written row.
+            // Cold path: CreateOrOpen writes DefaultConfigurationNumber and nothing else can write
+            // this column, so reaching here means a hand-edited or future-written row.
             Indx.Utilities.ILoggerFactory.Create<IndxCloudInternalApi>(logFileName).LogWarning(
                 "Dataset '{DataSet}' carries configuration {Configuration}, which is not supported; opening with the default.",
                 dataSetName, persisted);
