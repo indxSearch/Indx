@@ -25,5 +25,5 @@
 .opt-step-mark { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
 .opt-step-dot { width: 4px; height: 4px; background: var(--lv3); }
 .opt-step--done .opt-step-mark { color: var(--CTeal); }
-.opt-step-label { flex: 1; }
-.opt-step-pct { font: var(--text-xs); color: var(--lv8); font-variant-numeric: tabular-nums; }
+.opt-step-label { flex: none; }
+.opt-step-pct { font: var(--text-xs); color: var(--lv8); font-variant-numeric: tabular-nums; margin-left: 4px; }
