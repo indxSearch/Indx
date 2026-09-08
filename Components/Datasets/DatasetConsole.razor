@@ -63,7 +63,8 @@ else if (_datasets.Length == 0)
 else
 {
     <Tabs Items="@_datasets.Select(d => new Tabs.TabItem(d, d))"
-          @bind-Active="_selectedDataset"
+          Active="@_selectedDataset"
+          ActiveChanged="SelectDataset"
           Scrollable="true" />
 
     @* Every panel stays mounted so work in progress on one dataset survives switching to another.
@@ -121,7 +122,9 @@ else
         await ActiveTeam.EnsureInitializedAsync(userId);
         ActiveTeam.OnChange += HandleTeamChanged;
         SyncFromActiveTeam();
+        _routedDataset = InitialDataset;
         LoadDatasetNames();
+        SyncUrl();
     }
 
     // Mirror the shared ActiveTeamState into the local fields the shell reads.
@@ -139,7 +142,19 @@ else
         SyncFromActiveTeam();
         _selectedDataset = null;
         LoadDatasetNames();
+        SyncUrl();
         await InvokeAsync(StateHasChanged);
+    }
+
+    // Browser back/forward between /datasets/{a} and /datasets/{b} re-renders this same instance
+    // with a new InitialDataset; follow it. (First render is handled in OnInitializedAsync.)
+    private string? _routedDataset;
+    protected override void OnParametersSet()
+    {
+        if (_isLoading || InitialDataset == _routedDataset) return;
+        _routedDataset = InitialDataset;
+        if (InitialDataset != null && _datasets.Contains(InitialDataset) && InitialDataset != _selectedDataset)
+            _selectedDataset = InitialDataset;
     }
 
     private void LoadDatasetNames()
@@ -168,7 +183,24 @@ else
     private Task ReloadDatasets()
     {
         LoadDatasetNames();
+        SyncUrl();
         return InvokeAsync(StateHasChanged);
+    }
+
+    /// <summary>Selecting a dataset (tab click) updates the URL to /datasets/{name} without a
+    /// page load, so a refresh or a shared link reopens the same dataset.</summary>
+    private void SelectDataset(string? name)
+    {
+        _selectedDataset = name;
+        SyncUrl();
+    }
+
+    private void SyncUrl()
+    {
+        var target = _selectedDataset == null ? "/" : $"/datasets/{Uri.EscapeDataString(_selectedDataset)}";
+        var current = "/" + NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+        if (current.TrimEnd('/') != target.TrimEnd('/'))
+            NavigationManager.NavigateTo(target, replace: true);
     }
 
     // ── Create dataset ──────────────────────────────────────────────────────
@@ -208,6 +240,7 @@ else
             _showNewDatasetForm = false;
             LoadDatasetNames();
             _selectedDataset = name;
+            SyncUrl();
         }
         catch (Exception ex)
         {

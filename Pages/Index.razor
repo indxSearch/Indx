@@ -1,6 +1,13 @@
 @page "/"
+@page "/datasets/{Dataset}"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 
 <PageTitle>Indx Cloud API</PageTitle>
 
-<DatasetConsole />
+<DatasetConsole InitialDataset="@Dataset" />
+
+@code {
+    /// <summary>Dataset to open, from /datasets/{name}. The console keeps the URL in step with
+    /// the selection so refresh and the back button land on the same dataset.</summary>
+    [Parameter] public string? Dataset { get; set; }
+}
