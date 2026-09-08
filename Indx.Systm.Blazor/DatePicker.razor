@@ -261,6 +261,10 @@
                 await _module.DisposeAsync();
             }
             catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+            catch (TaskCanceledException) { }
+            catch (JSException) { } // element already gone on the client
         }
     }
 
