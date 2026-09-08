@@ -139,6 +139,10 @@ namespace IndxCloudApi.Mcp
             var ownerKey = await ResolveOwnerKey(team);
             var engine = ResolveEngine(dataset, ownerKey);
 
+            // An empty query is a browse: "everything matching the filters". The engine only
+            // serves it with facets on, so enable them regardless of what the agent asked for —
+            // otherwise a filter-only call returns zero hits and looks like a trustworthy no-match.
+            var isBrowse = string.IsNullOrWhiteSpace(query);
             var cloudQuery = new CloudQuery
             {
                 Text = query ?? "",
@@ -146,7 +150,7 @@ namespace IndxCloudApi.Mcp
                 EnableCoverage = true,
                 CoverageSetup = new CoverageSetup { IncludePatternMatches = broaden },
                 EnableBoost = true,
-                EnableFacets = facets,
+                EnableFacets = facets || isBrowse,
             };
 
             if (filters is { Length: > 0 })
@@ -180,7 +184,7 @@ namespace IndxCloudApi.Mcp
         }
 
         [McpServerTool(Name = "get_synonyms", UseStructuredContent = false, ReadOnly = true)]
-        [System.ComponentModel.Description("Get a dataset's synonym list (an experimental feature), or null when it has none. " +
+        [System.ComponentModel.Description("Get a dataset's synonym list (an experimental feature), or an empty entries list when it has none. " +
                      "Searches expand through these entries: when the query matches an entry, its terms are appended to the " +
                      "query text before scoring, so this explains why a search matched more than its literal words. " +
                      "Multidirectional entries expand from any of their terms; OneWay entries expand only from their Source " +
@@ -193,7 +197,11 @@ namespace IndxCloudApi.Mcp
             if (IndxCloudInternalApi.Manager.ResolveEngine(dataset, ownerKey) == null)
                 throw new McpToolException($"Dataset '{dataset}' not found.");
             var list = IndxCloudInternalApi.Manager.GetSynonyms(dataset, ownerKey);
-            return list == null ? null : ParseJson(list.GetSerialized());
+            // A bare null serialises to no content at all on the MCP wire, which agents read as an
+            // empty (failed) response. Return an explicit, parseable "no list" object instead.
+            return list == null
+                ? new JsonObject { ["entries"] = new JsonArray(), ["note"] = "This dataset has no synonym list." }
+                : ParseJson(list.GetSerialized());
         }
 
         // ── Helpers ───────────────────────────────────────────────────────────
