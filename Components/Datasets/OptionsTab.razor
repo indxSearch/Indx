@@ -90,6 +90,7 @@
         {
             @* The steps of the shadow build, in order. The live engine keeps serving throughout;
                the new one is only swapped in at the last step. *@
+            <Surface Class="opt-steps-surface">
             <ol class="opt-steps" aria-live="polite">
                 @foreach (var (step, label) in ReplaceSteps)
                 {
@@ -108,7 +109,8 @@
                     </li>
                 }
             </ol>
-            <p class="opt-muted">Search keeps serving the current data until the new index is swapped in.</p>
+            <p class="opt-muted opt-steps-note">Search keeps serving the current data until the new index is swapped in.</p>
+            </Surface>
         }
         else
         {

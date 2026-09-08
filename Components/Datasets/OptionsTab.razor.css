@@ -18,7 +18,9 @@
 .opt-success { color: var(--CTeal); font: var(--text-xs); margin-top: 6px; }
 .opt-danger-text { color: var(--CSignal); font: var(--text-sm); }
 
-.opt-steps { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; max-width: 560px; }
+::deep .opt-steps-surface { max-width: 560px; padding: 14px 16px; margin: 4px 0 8px; box-sizing: border-box; }
+.opt-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.opt-steps-note { margin: 10px 0 0; }
 .opt-step { display: flex; align-items: center; gap: 10px; font: var(--text-sm); color: var(--lv6); }
 .opt-step--active { color: var(--lv8); font-weight: var(--med); }
 .opt-step--done { color: var(--lv8); }
