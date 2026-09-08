@@ -9,18 +9,21 @@ using System.Threading.Tasks;
 
 namespace IndxCloudApi.Models
 {
-    /// <summary>Summary of how the new JSON's schema differed from the dataset's current field config.
-    /// <c>LostRoles</c> lists the removed or retyped fields that had a role (searchable, filterable,
-    /// facetable, sortable) with the roles they carried — the changes a user must know about, since
-    /// searches and filters that relied on them now silently miss.</summary>
+    /// <summary>Summary of how the new JSON's schema differed from the dataset's current field config.</summary>
+    /// <param name="Added">Fields in the new JSON that were not previously configured (they load unconfigured).</param>
+    /// <param name="Removed">Previously configured fields absent from the new JSON (their config is dropped).</param>
+    /// <param name="TypeChanged">Fields whose detected type changed (their roles are reset).</param>
+    /// <param name="LostRoles">Removed or retyped fields that had a role (searchable, filterable, facetable,
+    /// sortable) with the roles they carried, as "name (roles)" — the changes a user must know about, since
+    /// searches and filters that relied on them now silently miss.</param>
+    /// <param name="KeyFieldFallback">Set when the dataset's declared key field is absent from the new data:
+    /// the engine fell back to its default key ("id" if present, else auto-generated), so document keys may
+    /// differ from before. Null when the declared key applied.</param>
     public sealed record ReplaceSchemaChange(
         IReadOnlyList<string> Added,
         IReadOnlyList<string> Removed,
         IReadOnlyList<string> TypeChanged,
         IReadOnlyList<string> LostRoles,
-        /// <summary>Set when the dataset's declared key field is absent from the new data: the
-        /// engine fell back to its default key ("id" if present, else auto-generated), so document
-        /// keys may differ from before. Null when the declared key applied.</summary>
         string? KeyFieldFallback);
 
     /// <summary>Which step of a running replace the dataset is in, for the UI. <c>Percent</c> is the
