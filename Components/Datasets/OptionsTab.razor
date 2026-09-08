@@ -138,6 +138,10 @@
         {
             <p class="opt-success">@_replaceResult</p>
         }
+        @if (!string.IsNullOrEmpty(_replaceWarning))
+        {
+            <p class="opt-warning">@_replaceWarning</p>
+        }
         @if (!string.IsNullOrEmpty(_replaceError))
         {
             <p class="opt-error opt-error--6">@_replaceError</p>
@@ -226,6 +230,7 @@
     private IBrowserFile? _replaceFile;
     private bool _replaceBusy;
     private string? _replaceResult;
+    private string? _replaceWarning;
     private string? _replaceError;
     private ReplaceProgress? _replaceProgress;
     private CancellationTokenSource? _replacePollCts;
@@ -352,7 +357,7 @@
     private void OnReplaceFileSelected(InputFileChangeEventArgs e)
     {
         _replaceFile = e.File;
-        _replaceResult = _replaceError = null;
+        _replaceResult = _replaceWarning = _replaceError = null;
     }
 
     private async Task RunReplaceAsync()
@@ -360,7 +365,7 @@
         if (_replaceFile == null) return;
         var file = _replaceFile;
         _replaceFile = null;
-        _replaceResult = _replaceError = null;
+        _replaceResult = _replaceWarning = _replaceError = null;
         _replaceBusy = true;
         _replaceProgress = new ReplaceProgress(ReplaceStep.Preparing, -1);
         StateHasChanged();
@@ -399,6 +404,11 @@
                 ? $"Data replaced. Schema changes: {string.Join("; ", parts)}."
                   + (summary.Added.Count > 0 ? " New fields are not searchable or filterable until you configure them in Field configuration." : "")
                 : "Data replaced.";
+            // A configured field that vanished is a behaviour change, not a schema footnote:
+            // searches, filters and boost rules that relied on it now silently miss.
+            _replaceWarning = summary.LostRoles.Count > 0
+                ? $"Configured fields no longer in the data: {string.Join("; ", summary.LostRoles)}. Searches and filters that used them will no longer match; boost rules referencing them are dormant."
+                : null;
         }
         catch (Exception ex)
         {

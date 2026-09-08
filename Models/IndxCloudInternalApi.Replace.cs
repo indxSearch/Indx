@@ -9,11 +9,15 @@ using System.Threading.Tasks;
 
 namespace IndxCloudApi.Models
 {
-    /// <summary>Summary of how the new JSON's schema differed from the dataset's current field config.</summary>
+    /// <summary>Summary of how the new JSON's schema differed from the dataset's current field config.
+    /// <c>LostRoles</c> lists the removed or retyped fields that had a role (searchable, filterable,
+    /// facetable, sortable) with the roles they carried — the changes a user must know about, since
+    /// searches and filters that relied on them now silently miss.</summary>
     public sealed record ReplaceSchemaChange(
         IReadOnlyList<string> Added,
         IReadOnlyList<string> Removed,
-        IReadOnlyList<string> TypeChanged);
+        IReadOnlyList<string> TypeChanged,
+        IReadOnlyList<string> LostRoles);
 
     /// <summary>Which step of a running replace the dataset is in, for the UI. <c>Percent</c> is the
     /// progress of the current step where the step reports it (analyze, load, index), else -1.</summary>
@@ -226,6 +230,16 @@ namespace IndxCloudApi.Models
         /// plus a schema-change summary. Throws if the new schema keeps none of the currently
         /// searchable fields (nothing to index — fail clearly instead of "no documents to load").
         /// </summary>
+        private static List<string> RoleNames(FieldProxy f)
+        {
+            var r = new List<string>();
+            if (f.Searchable == true) r.Add("searchable");
+            if (f.Filterable == true) r.Add("filterable");
+            if (f.Facetable == true) r.Add("facetable");
+            if (f.Sortable == true) r.Add("sortable");
+            return r;
+        }
+
         private static (FieldProxy[] carry, ReplaceSchemaChange summary) ReconcileFieldConfig(
             FieldProxy[] oldConfig, FieldProxy[] newSchema)
         {
@@ -251,7 +265,16 @@ namespace IndxCloudApi.Models
                     "one of the currently searchable fields. To load a different schema, configure the " +
                     "dataset's fields for it first.");
 
-            return (carry.ToArray(), new ReplaceSchemaChange(added, removed, typeChanged));
+            // Roles that no longer apply: a removed or retyped field that was searchable/filterable/
+            // facetable/sortable. Reported as "name (roles)" so the UI can warn precisely.
+            var lostRoles = oldConfig
+                .Where(o => !newByName.ContainsKey(o.FieldName) || typeChanged.Contains(o.FieldName))
+                .Select(o => (o.FieldName, Roles: RoleNames(o)))
+                .Where(x => x.Roles.Count > 0)
+                .Select(x => $"{x.FieldName} ({string.Join(", ", x.Roles)})")
+                .ToList();
+
+            return (carry.ToArray(), new ReplaceSchemaChange(added, removed, typeChanged, lostRoles));
         }
     }
 }

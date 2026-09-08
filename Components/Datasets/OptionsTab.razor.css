@@ -16,6 +16,7 @@
 .opt-error { color: var(--CSignal); font: var(--text-xs); margin-top: 4px; }
 .opt-error--6 { margin-top: 6px; }
 .opt-success { color: var(--CTeal); font: var(--text-xs); margin-top: 6px; }
+.opt-warning { color: var(--CWarning); font: var(--text-xs); margin-top: 4px; max-width: 560px; }
 .opt-danger-text { color: var(--CSignal); font: var(--text-sm); }
 
 ::deep .opt-steps-surface { max-width: 560px; padding: 14px 16px; margin: 4px 0 8px; box-sizing: border-box; }
