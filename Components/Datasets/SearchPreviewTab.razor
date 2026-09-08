@@ -61,7 +61,11 @@
                     </Button>
                     @if (_perf != null)
                     {
-                        <span class="indx-perf-result">@_perf.Iterations× — avg <strong>@_perf.AvgMs.ToString("0.0") ms</strong></span>
+                        <span class="indx-perf-result" title="@($"{_perf.Iterations} sequential searches after warm-up: min {_perf.MinMs:0.00} ms, max {_perf.MaxMs:0.00} ms. Throughput: the same {_perf.Iterations} searches run in parallel across all cores.")">
+                            latency <strong>@_perf.MedianMs.ToString("0.00") ms</strong> median · @_perf.P95Ms.ToString("0.00") ms p95
+                            <span class="indx-perf-sep">·</span>
+                            throughput <strong>@_perf.PerSecond.ToString("N0")</strong>/s
+                        </span>
                     }
                 </div>
             }
@@ -76,7 +80,7 @@ else
 @code {
 
     private record PreviewHit(JsonElement Doc, ushort Score);
-    private record PerfTestResult(int Iterations, double TotalMs, double AvgMs, double MinMs, double MaxMs);
+    private record PerfTestResult(int Iterations, double MedianMs, double P95Ms, double MinMs, double MaxMs, double PerSecond);
     private record DisplayField(string Name, string Value);
 
     private string _text = string.Empty;
@@ -142,20 +146,34 @@ else
         await Task.Yield();
 
         const int iterations = 100;
-        var timings = new double[iterations];
         var query = new global::Indx.CloudApi.CloudQuery { Text = text, MaxNumberOfRecordsToReturn = 8 };
-        var sw = System.Diagnostics.Stopwatch.StartNew();
-        await Task.Run(() =>
+        var result = await Task.Run(() =>
         {
+            // Warm-up: JIT, caches and the first-touch page faults are not what we're measuring.
+            for (int i = 0; i < 10; i++) Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
+
+            // Latency: one search at a time on one thread — what a single user waits.
+            var timings = new double[iterations];
+            var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int i = 0; i < iterations; i++)
             {
                 var t0 = sw.Elapsed.TotalMilliseconds;
                 Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
                 timings[i] = sw.Elapsed.TotalMilliseconds - t0;
             }
+            Array.Sort(timings);
+            var median = timings[iterations / 2];
+            var p95 = timings[(int)(iterations * 0.95)];
+
+            // Throughput: the same searches spread across all cores — what the box sustains.
+            // (This is the figure SpectreJsonClient's benchmark reports.)
+            var wall = System.Diagnostics.Stopwatch.StartNew();
+            Parallel.For(0, iterations, _ => Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId));
+            var perSecond = iterations / wall.Elapsed.TotalSeconds;
+
+            return new PerfTestResult(iterations, median, p95, timings[0], timings[^1], perSecond);
         });
-        var total = timings.Sum();
-        _perf = new PerfTestResult(iterations, total, total / iterations, timings.Min(), timings.Max());
+        _perf = result;
         _perfRunning = false;
     }
 

@@ -147,3 +147,5 @@
     white-space: nowrap;
 }
 .indx-search-not-ready { color: var(--lv5); margin-top: 16px; }
+
+.indx-perf-sep { margin: 0 6px; color: var(--lv4); }
