@@ -15,6 +15,12 @@ namespace IndxCloudApi.Models
         IReadOnlyList<string> Removed,
         IReadOnlyList<string> TypeChanged);
 
+    /// <summary>Which step of a running replace the dataset is in, for the UI. <c>Percent</c> is the
+    /// progress of the current step where the step reports it (analyze, load, index), else -1.</summary>
+    public enum ReplaceStep { Preparing, Analyzing, Reconciling, Loading, Indexing, Swapping, Done }
+
+    public sealed record ReplaceProgress(ReplaceStep Step, int Percent);
+
     /// <summary>
     /// Atomic full-dataset replace: builds a fresh engine from a new JSON stream, carries over the
     /// dataset's field config (reconciled against the new schema), and swaps it in — preserving the
@@ -37,6 +43,7 @@ namespace IndxCloudApi.Models
 
             var monitor = new ProcessMonitor();
             _shadowMonitors[key] = monitor;
+            _replaceProgress[key] = new ReplaceProgress(ReplaceStep.Preparing, -1);
 
             SearchEngine? shadow = null;
             try
@@ -48,10 +55,12 @@ namespace IndxCloudApi.Models
                     throw new DataSetNotFoundException(dataSetName);
 
                 ReplaceSchemaChange summary;
-                (shadow, summary) = BuildShadowFromJson(dataSetName, teamId, jsonStream, monitor);
+                (shadow, summary) = BuildShadowFromJson(dataSetName, teamId, jsonStream, monitor,
+                    progress => _replaceProgress[key] = progress);
 
                 // Atomic install. In-flight searches on the old engine keep working via the
                 // SearchEngineInstance indirection; only the inner pointer flips.
+                _replaceProgress[key] = new ReplaceProgress(ReplaceStep.Swapping, -1);
                 ICloudSearchEngine? swappedOut;
                 lock (_dictionaryLock)
                 {
@@ -70,6 +79,7 @@ namespace IndxCloudApi.Models
                 if (swappedOut != null)
                     _ = Task.Run(() => DisposeAfterGraceAsync(swappedOut, dataSetName, teamId));
 
+                _replaceProgress[key] = new ReplaceProgress(ReplaceStep.Done, 100);
                 return summary;
             }
             catch (Exception ex)
@@ -90,8 +100,15 @@ namespace IndxCloudApi.Models
                     }
                 }
                 _shadowBuildsInProgress.TryRemove(key, out _);
+                _replaceProgress.TryRemove(key, out _);
             }
         }
+
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, ReplaceProgress> _replaceProgress = new();
+
+        /// <summary>The current step of a replace running on the dataset, or null when none is.</summary>
+        internal ReplaceProgress? GetReplaceProgress(string dataSetName, string teamId)
+            => _replaceProgress.TryGetValue(MakeKey(dataSetName, teamId), out var p) ? p : null;
 
         /// <summary>
         /// Builds a fresh, Ready engine from <paramref name="jsonStream"/>, carrying over the
@@ -106,8 +123,10 @@ namespace IndxCloudApi.Models
         /// seekable/buffered.
         /// </summary>
         private (SearchEngine shadow, ReplaceSchemaChange summary) BuildShadowFromJson(
-            string dataSetName, string teamId, Stream jsonStream, ProcessMonitor monitor)
+            string dataSetName, string teamId, Stream jsonStream, ProcessMonitor monitor,
+            Action<ReplaceProgress>? report = null)
         {
+            report ??= _ => { };
             ConfigurationParameters configuration;
             using (var cfgRead = new Persistence(SearchDbConnectionString, dataSetName, teamId))
                 configuration = ResolveConfiguration(cfgRead.ReadDataSetConfiguration()
@@ -128,7 +147,14 @@ namespace IndxCloudApi.Models
                 shadow.Persistence = null;
 
                 jsonStream.Position = 0;
-                shadow.Init(jsonStream);
+                report(new ReplaceProgress(ReplaceStep.Analyzing, 0));
+                var initMonitor = new ProcessMonitor();
+                shadow.Init(jsonStream, initMonitor);
+                WaitReporting(initMonitor, p => report(new ReplaceProgress(ReplaceStep.Analyzing, p)));
+                if (!initMonitor.Succeeded)
+                    throw new InvalidOperationException($"Replace analyze failed: {initMonitor.ErrorMessage ?? "unknown error"}");
+
+                report(new ReplaceProgress(ReplaceStep.Reconciling, -1));
                 ApplyDeclaredKeyField(shadow, dataSetName, teamId); // re-key from the declared field
                 var (carry, summary) = ReconcileFieldConfig(oldConfig, shadow.GetFieldConfiguration());
                 ApplyCarry(shadow, carry);
@@ -138,9 +164,16 @@ namespace IndxCloudApi.Models
                 // swaps this engine in after a successful build, so no in-memory dry-run is needed.
                 shadow.Persistence = new Persistence(SearchDbConnectionString, dataSetName, teamId);
                 jsonStream.Position = 0;
-                shadow.Load(jsonStream);
+                report(new ReplaceProgress(ReplaceStep.Loading, 0));
+                var loadMonitor = new ProcessMonitor();
+                shadow.Load(jsonStream, loadMonitor);
+                WaitReporting(loadMonitor, p => report(new ReplaceProgress(ReplaceStep.Loading, p)));
+                if (!loadMonitor.Succeeded)
+                    throw new InvalidOperationException($"Replace load failed: {loadMonitor.ErrorMessage ?? "unknown error"}");
+
+                report(new ReplaceProgress(ReplaceStep.Indexing, 0));
                 shadow.Index(monitor);
-                monitor.WaitForCompletion();
+                WaitReporting(monitor, p => report(new ReplaceProgress(ReplaceStep.Indexing, p)));
                 if (!monitor.Succeeded)
                     throw new InvalidOperationException($"Replace index failed: {monitor.ErrorMessage ?? "unknown error"}");
 
@@ -151,6 +184,23 @@ namespace IndxCloudApi.Models
                 shadow.Dispose();
                 throw;
             }
+        }
+
+        /// <summary>Blocks until the monitor completes, forwarding its percent as it moves. The lib's
+        /// Init/Load/Index dispatch to a background thread and return at once; the synchronous
+        /// WaitForCompletion is the one wait that observes MarkStarted correctly (see InitFromStreamAsync).</summary>
+        private static void WaitReporting(ProcessMonitor monitor, Action<int> onPercent)
+        {
+            var last = -1;
+            using var done = new System.Threading.ManualResetEventSlim(false);
+            var waiter = Task.Run(() => { try { monitor.WaitForCompletion(); } finally { done.Set(); } });
+            while (!done.Wait(150))
+            {
+                var p = monitor.ProgressPercent;
+                if (p != last) { last = p; onPercent(p); }
+            }
+            waiter.GetAwaiter().GetResult();
+            onPercent(monitor.ProgressPercent);
         }
 
         private SearchEngine NewReplaceEngine(ConfigurationParameters configuration, string dataSetName, string teamId) =>

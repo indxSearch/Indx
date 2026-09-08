@@ -88,7 +88,27 @@
         </p>
         @if (_replaceBusy)
         {
-            <p class="opt-help">Replacing…</p>
+            @* The steps of the shadow build, in order. The live engine keeps serving throughout;
+               the new one is only swapped in at the last step. *@
+            <ol class="opt-steps" aria-live="polite">
+                @foreach (var (step, label) in ReplaceSteps)
+                {
+                    var state = StepState(step);
+                    <li class="opt-step opt-step--@state">
+                        <span class="opt-step-mark" aria-hidden="true">
+                            @if (state == "done") { <Check Size="14" /> }
+                            else if (state == "active") { <Spinner Name="circle-rotate" Size="14" /> }
+                            else { <span class="opt-step-dot"></span> }
+                        </span>
+                        <span class="opt-step-label">@label</span>
+                        @if (state == "active" && _replaceProgress?.Percent >= 0)
+                        {
+                            <span class="opt-step-pct">@_replaceProgress.Percent%</span>
+                        }
+                    </li>
+                }
+            </ol>
+            <p class="opt-muted">Search keeps serving the current data until the new index is swapped in.</p>
         }
         else
         {
@@ -205,6 +225,25 @@
     private bool _replaceBusy;
     private string? _replaceResult;
     private string? _replaceError;
+    private ReplaceProgress? _replaceProgress;
+    private CancellationTokenSource? _replacePollCts;
+
+    private static readonly (ReplaceStep Step, string Label)[] ReplaceSteps =
+    [
+        (ReplaceStep.Preparing,   "Prepare a new engine"),
+        (ReplaceStep.Analyzing,   "Analyze the new file's fields"),
+        (ReplaceStep.Reconciling, "Carry over field configuration and key field"),
+        (ReplaceStep.Loading,     "Load documents"),
+        (ReplaceStep.Indexing,    "Build the index"),
+        (ReplaceStep.Swapping,    "Swap in and retire the old engine"),
+    ];
+
+    private string StepState(ReplaceStep step)
+    {
+        var current = _replaceProgress?.Step ?? ReplaceStep.Preparing;
+        if (current == ReplaceStep.Done || step < current) return "done";
+        return step == current ? "active" : "pending";
+    }
 
     // Transfer
     private string _transferTargetTeamId = "";
@@ -321,7 +360,15 @@
         _replaceFile = null;
         _replaceResult = _replaceError = null;
         _replaceBusy = true;
+        _replaceProgress = new ReplaceProgress(ReplaceStep.Preparing, -1);
         StateHasChanged();
+
+        // Poll the build's step/percent while the replace runs off the circuit.
+        _replacePollCts?.Dispose();
+        _replacePollCts = new CancellationTokenSource();
+        var pollTask = ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(200),
+            () => { _replaceProgress = Ctx.Engines.GetReplaceProgress(Ctx.Name, Ctx.TeamId) ?? _replaceProgress; return true; },
+            () => InvokeAsync(StateHasChanged), _replacePollCts.Token);
 
         FileStream? fs = null;
         try
@@ -357,10 +404,20 @@
         }
         finally
         {
+            _replacePollCts?.Cancel();
+            try { await pollTask; } catch { }
             fs?.Dispose();
             _replaceBusy = false;
+            _replaceProgress = null;
             Ctx.NotifyChanged();
         }
+    }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        _replacePollCts?.Cancel();
+        _replacePollCts?.Dispose();
     }
 
     // ── Transfer ─────────────────────────────────────────────────────────────

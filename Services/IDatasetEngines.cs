@@ -27,6 +27,8 @@ namespace IndxCloudApi.Services
         (Task loadTask, ProcessMonitor monitor)? StartLoadAsync(string dataSetName, string teamId, Stream jsonData);
         string DescribeLoadFailure(string dataSetName, string teamId, string? rawError);
         ReplaceSchemaChange RunReplaceFromJson(string dataSetName, string teamId, Stream jsonStream);
+        /// <summary>Step and per-step percent of a replace in progress, or null when none is running.</summary>
+        ReplaceProgress? GetReplaceProgress(string dataSetName, string teamId);
 
         // Field configuration
         void RunFieldConfigurationOnShadow(string dataSetName, string teamId, FieldProxy[] fields);
@@ -59,6 +61,7 @@ namespace IndxCloudApi.Services
         public (Task loadTask, ProcessMonitor monitor)? StartLoadAsync(string d, string t, Stream s) => M.StartLoadAsync(d, t, s);
         public string DescribeLoadFailure(string d, string t, string? raw) => M.DescribeLoadFailure(d, t, raw);
         public ReplaceSchemaChange RunReplaceFromJson(string d, string t, Stream s) => M.RunReplaceFromJson(d, t, s);
+        public ReplaceProgress? GetReplaceProgress(string d, string t) => M.GetReplaceProgress(d, t);
 
         public void RunFieldConfigurationOnShadow(string d, string t, FieldProxy[] f) => M.RunFieldConfigurationOnShadow(d, t, f);
         public int GetShadowBuildPercent(string d, string t) => M.GetShadowBuildPercent(d, t);
