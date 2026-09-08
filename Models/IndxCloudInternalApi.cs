@@ -1053,8 +1053,13 @@ namespace IndxCloudApi.Models
             var declared = _metadataStore?.LoadKeyField(teamId, dataSetName);
             if (string.IsNullOrEmpty(declared)) return; // undeclared → engine default (id if present, else auto)
             var df = instance.DocumentFields;
-            if (df != null)
-                df.NameOfDocumentKeyField = declared == KeyFieldAutoSentinel ? "" : declared;
+            if (df == null) return;
+            if (declared != KeyFieldAutoSentinel && df.GetFieldList().All(f => f.Name != declared))
+                throw new InvalidOperationException(
+                    $"The declared key field '{declared}' is not present in the new data. Replace keeps the " +
+                    "dataset's key field; either include it in the JSON, or change the key field (Options → " +
+                    "Document key) before replacing.");
+            df.NameOfDocumentKeyField = declared == KeyFieldAutoSentinel ? "" : declared;
         }
 
         /// <summary>

@@ -336,6 +336,10 @@
             var summary = await Task.Run(() => Ctx.Engines.RunReplaceFromJson(Ctx.Name, Ctx.TeamId, localFs));
 
             Ctx.RefreshStatus();
+            // The shadow build re-ran Init and reconciled the field config against the new schema:
+            // fields that survived keep their roles, new fields arrive unconfigured. Pull that
+            // result into the Fields tab, otherwise it keeps showing the pre-replace working copy.
+            Ctx.RefreshFieldsFromEngine();
             Ctx.NotifyDocumentsReplaced(); // preview now points at stale docs
 
             var parts = new List<string>();
@@ -344,6 +348,7 @@
             if (summary.TypeChanged.Count > 0) parts.Add($"type changed {string.Join(", ", summary.TypeChanged)}");
             _replaceResult = parts.Count > 0
                 ? $"Data replaced. Schema changes: {string.Join("; ", parts)}."
+                  + (summary.Added.Count > 0 ? " New fields are not searchable or filterable until you configure them in Field configuration." : "")
                 : "Data replaced.";
         }
         catch (Exception ex)
