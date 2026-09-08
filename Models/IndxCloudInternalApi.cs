@@ -1054,12 +1054,22 @@ namespace IndxCloudApi.Models
             if (string.IsNullOrEmpty(declared)) return; // undeclared → engine default (id if present, else auto)
             var df = instance.DocumentFields;
             if (df == null) return;
-            if (declared != KeyFieldAutoSentinel && df.GetFieldList().All(f => f.Name != declared))
-                throw new InvalidOperationException(
-                    $"The declared key field '{declared}' is not present in the new data. Replace keeps the " +
-                    "dataset's key field; either include it in the JSON, or change the key field (Options → " +
-                    "Document key) before replacing.");
             df.NameOfDocumentKeyField = declared == KeyFieldAutoSentinel ? "" : declared;
+        }
+
+        /// <summary>
+        /// True when the dataset declares a named key field that <paramref name="instance"/>'s analyzed
+        /// schema does not contain. The engine then falls back to its default key (an "id" field if
+        /// present, else auto-generated) — the same thing it does for an undeclared key — so this is
+        /// a warning for the caller to surface, not a failure.
+        /// </summary>
+        private bool DeclaredKeyFieldIsMissing(ICloudSearchEngine instance, string dataSetName, string teamId, out string declared)
+        {
+            declared = _metadataStore?.LoadKeyField(teamId, dataSetName) ?? "";
+            if (string.IsNullOrEmpty(declared) || declared == KeyFieldAutoSentinel) return false;
+            var df = instance.DocumentFields;
+            var name = declared;
+            return df != null && df.GetFieldList().All(f => f.Name != name);
         }
 
         /// <summary>

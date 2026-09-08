@@ -406,9 +406,12 @@
                 : "Data replaced.";
             // A configured field that vanished is a behaviour change, not a schema footnote:
             // searches, filters and boost rules that relied on it now silently miss.
-            _replaceWarning = summary.LostRoles.Count > 0
-                ? $"Configured fields no longer in the data: {string.Join("; ", summary.LostRoles)}. Searches and filters that used them will no longer match; boost rules referencing them are dormant."
-                : null;
+            var warnings = new List<string>();
+            if (summary.LostRoles.Count > 0)
+                warnings.Add($"Configured fields no longer in the data: {string.Join("; ", summary.LostRoles)}. Searches and filters that used them will no longer match; boost rules referencing them are dormant.");
+            if (summary.KeyFieldFallback != null)
+                warnings.Add(summary.KeyFieldFallback + " Change it under Field configuration → Document key if that is not what you want.");
+            _replaceWarning = warnings.Count > 0 ? string.Join(" ", warnings) : null;
         }
         catch (Exception ex)
         {

@@ -17,7 +17,11 @@ namespace IndxCloudApi.Models
         IReadOnlyList<string> Added,
         IReadOnlyList<string> Removed,
         IReadOnlyList<string> TypeChanged,
-        IReadOnlyList<string> LostRoles);
+        IReadOnlyList<string> LostRoles,
+        /// <summary>Set when the dataset's declared key field is absent from the new data: the
+        /// engine fell back to its default key ("id" if present, else auto-generated), so document
+        /// keys may differ from before. Null when the declared key applied.</summary>
+        string? KeyFieldFallback);
 
     /// <summary>Which step of a running replace the dataset is in, for the UI. <c>Percent</c> is the
     /// progress of the current step where the step reports it (analyze, load, index), else -1.</summary>
@@ -159,8 +163,15 @@ namespace IndxCloudApi.Models
                     throw new InvalidOperationException($"Replace analyze failed: {initMonitor.ErrorMessage ?? "unknown error"}");
 
                 report(new ReplaceProgress(ReplaceStep.Reconciling, -1));
-                ApplyDeclaredKeyField(shadow, dataSetName, teamId); // re-key from the declared field
+                // Re-key from the declared field. If the new data no longer has it, the engine keys
+                // by its default instead (what an undeclared dataset does) — reported, not refused.
+                string? keyFallback = null;
+                if (DeclaredKeyFieldIsMissing(shadow, dataSetName, teamId, out var declaredKey))
+                    keyFallback = $"The declared key field '{declaredKey}' is not in the new data; documents were keyed by the engine default instead (an 'id' field if present, otherwise auto-generated).";
+                else
+                    ApplyDeclaredKeyField(shadow, dataSetName, teamId);
                 var (carry, summary) = ReconcileFieldConfig(oldConfig, shadow.GetFieldConfiguration());
+                summary = summary with { KeyFieldFallback = keyFallback };
                 ApplyCarry(shadow, carry);
 
                 // Reconcile passed → commit for real. The lib's external Load is atomic (clears +
@@ -274,7 +285,7 @@ namespace IndxCloudApi.Models
                 .Select(x => $"{x.FieldName} ({string.Join(", ", x.Roles)})")
                 .ToList();
 
-            return (carry.ToArray(), new ReplaceSchemaChange(added, removed, typeChanged, lostRoles));
+            return (carry.ToArray(), new ReplaceSchemaChange(added, removed, typeChanged, lostRoles, null));
         }
     }
 }
