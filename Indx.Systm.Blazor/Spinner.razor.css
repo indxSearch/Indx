@@ -1,53 +1,20 @@
-/* Text-based spinner in the terminal tradition. Pure CSS: the frames are discrete
-   `content` keyframes, so it needs no JS, and it inherits currentColor and the
-   surrounding font-size like any character. Monospace + fixed advance keep the
-   changing glyphs from jittering the layout. */
-
 .indx-spinner {
     display: inline-block;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-variant-ligatures: none;
-    text-align: left;
+    flex-shrink: 0;
 }
 
-.indx-spinner-line {
-    width: 1ch;
-}
-
-.indx-spinner-line::after {
-    content: "-";
-    animation: indx-spinner-line-frames 0.6s steps(1) infinite;
-}
-
-@keyframes indx-spinner-line-frames {
-    0%   { content: "-"; }
-    25%  { content: "\\"; }
-    50%  { content: "|"; }
-    75%  { content: "/"; }
-    100% { content: "-"; }
-}
-
-.indx-spinner-dots {
-    width: 3ch;
-}
-
-.indx-spinner-dots::after {
-    content: ".";
-    animation: indx-spinner-dots-frames 1.2s steps(1) infinite;
-}
-
-@keyframes indx-spinner-dots-frames {
-    0%   { content: "."; }
-    25%  { content: ".."; }
-    50%  { content: "..."; }
-    75%  { content: ".."; }
-    100% { content: "."; }
+/* Frames are invisible by default; the generated keyframes (wwwroot/spinners.generated.css)
+   flash each one on for its slot of the cycle, staggered via negative animation-delays. */
+.indx-spinner-frame {
+    opacity: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {
-    .indx-spinner-line::after,
-    .indx-spinner-dots::after {
-        animation: none;
-        content: "…";
+    .indx-spinner-frame {
+        animation: none !important;
+    }
+
+    .indx-spinner-frame:first-of-type {
+        opacity: 1;
     }
 }

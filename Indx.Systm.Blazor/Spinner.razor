@@ -1,9 +1,41 @@
-<span class="indx-spinner @(Variant == "dots" ? "indx-spinner-dots" : "indx-spinner-line") @Class"
-      role="status" aria-label="@AriaLabel"></span>
+@* Pixl-animated spinner, a port of @indxsearch/systm's Spinner. Every frame is a path inside
+   one SVG; the shared keyframes (wwwroot/spinners.generated.css) flash each frame on for its
+   slot of the cycle, staggered with negative animation delays, so exactly one frame shows at a
+   time. Pure CSS, no JS, no timers. Frames come from Spinners.generated.cs — the same data the
+   React component uses, emitted by the same generator. *@
+
+@{
+    var def = Spinners.All.TryGetValue(Name, out var found) ? found : Spinners.All.Values.First();
+    var vb = def.ViewBox.Split(' ');
+    var ratio = double.Parse(vb[3], System.Globalization.CultureInfo.InvariantCulture)
+              / double.Parse(vb[2], System.Globalization.CultureInfo.InvariantCulture);
+    var height = (Size * ratio).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    var frameDelay = Delay ?? def.Delay;
+    var frameCount = def.Frames.Length;
+    var cycle = frameCount * frameDelay;
+}
+
+<svg class="indx-spinner @Class"
+     width="@Size" height="@height" viewBox="@def.ViewBox" fill="none"
+     role="status" aria-label="@AriaLabel" xmlns="http://www.w3.org/2000/svg">
+    @for (int i = 0; i < frameCount; i++)
+    {
+        var d = def.Frames[i];
+        if (d.Length == 0) continue;
+        <path class="indx-spinner-frame" d="@d" fill="@Color"
+              style="animation: indx-spinner-@frameCount @(cycle)ms step-end infinite; animation-delay: @(i * frameDelay - cycle)ms;" />
+    }
+</svg>
 
 @code {
-    /// <summary>"line" (default): the classic - \ | / character spinner. "dots": . .. ...</summary>
-    [Parameter] public string Variant { get; set; } = "line";
+    /// <summary>Which spinner to play (a key of <see cref="Spinners.All"/>); defaults to the first.</summary>
+    [Parameter] public string Name { get; set; } = Spinners.Names.First();
+    /// <summary>Width in px; height follows the pixl 7×5 ratio. Ideally a multiple of 7.</summary>
+    [Parameter] public int Size { get; set; } = 21;
+    /// <summary>Any CSS color; defaults to currentColor.</summary>
+    [Parameter] public string Color { get; set; } = "currentColor";
+    /// <summary>Ms per frame, overriding the spinner's authored delay.</summary>
+    [Parameter] public int? Delay { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public string AriaLabel { get; set; } = "Loading";
 }

@@ -976,4 +976,10 @@ a.btn-danger:hover {
     margin-right: 8px;
     color: var(--lv8);
 }
+/* The overlay is plain markup outside any component, so the Spinner's scoped rule is repeated. */
+.indx-reconnect .indx-spinner-frame { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+    .indx-reconnect .indx-spinner-frame { animation: none !important; }
+    .indx-reconnect .indx-spinner-frame:first-of-type { opacity: 1; }
+}
 
