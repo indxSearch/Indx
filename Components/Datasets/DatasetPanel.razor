@@ -8,6 +8,7 @@
 @using Indx.Api
 @implements IDisposable
 @inject IDatasetEngines Engines
+@inject BoostRuleStore BoostStore
 
 <div class="indx-dataset-card" hidden="@(!Visible)">
     <div class="indx-dataset-card-inner">
@@ -92,7 +93,13 @@
                         }
                         @if (isReady && Ctx.IsEditor)
                         {
-                            <Button Variant="@NavVariant("boosts")" Size="micro" IconLeft="DatasetIcons.Boost" @onclick="@(() => SelectTab("boosts"))">Boost rules</Button>
+                            <Button Variant="@NavVariant("boosts")" Size="micro" IconLeft="DatasetIcons.Boost" @onclick="@(() => SelectTab("boosts"))">
+                                Boost rules
+                                @if (ExpiredBoostRules() is > 0 and var expired)
+                                {
+                                    <span class="indx-nav-badge" title="@expired expired boost rule(s) — no longer applying">@expired</span>
+                                }
+                            </Button>
                             <Button Variant="@NavVariant("synonyms")" Size="micro" IconLeft="DatasetIcons.Synonym" @onclick="@(() => SelectTab("synonyms"))">Synonyms</Button>
                         }
                         @if (Ctx.IsAdmin)
@@ -164,6 +171,14 @@
     }
 
     private string NavVariant(string tab) => Ctx.ActiveTab == tab ? "primary" : "ghost";
+
+    /// <summary>Enabled rules whose window has closed — the ones an editor most needs to notice,
+    /// since they look live until someone opens the tab. The store caches, so this is cheap.</summary>
+    private int ExpiredBoostRules()
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        return BoostStore.Load(Ctx.TeamId, Ctx.Name).Count(r => r.Enabled && r.ActiveUntil is { } u && u < today);
+    }
 
     /// <summary>While the engine loads or indexes in the background (a load started from the API,
     /// or a page reopened mid-operation), refresh the status once a second until it settles, and

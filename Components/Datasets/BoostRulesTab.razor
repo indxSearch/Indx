@@ -28,14 +28,36 @@
         {
             <p class="boost-empty">No boost rules yet.</p>
         }
+        else
+        {
+            var today = DateOnly.FromDateTime(DateTime.Today);
+            var expired = _rules.Count(r => r.Enabled && r.ActiveUntil is { } u && u < today);
+            var scheduled = _rules.Count(r => r.Enabled && r.ActiveFrom is { } f && f > today);
+            var disabled = _rules.Count(r => !r.Enabled);
+            var active = _rules.Count(r => r.IsActiveOn(today));
+            @if (expired + scheduled + disabled > 0)
+            {
+                <p class="boost-summary">
+                    <strong>@active</strong> of @_rules.Count rule(s) applying today.
+                    @if (expired > 0) { <span class="boost-summary-expired">@expired expired</span> }
+                    @if (scheduled > 0) { <span>@scheduled not started yet</span> }
+                    @if (disabled > 0) { <span>@disabled switched off</span> }
+                </p>
+            }
+        }
 
         <div class="boost-rules">
             @foreach (var rule in _rules)
             {
-                <div class="boost-rule">
+                var status = RuleStatus(rule);
+                <div class="boost-rule @(status?.Label.StartsWith("Expired") == true ? "boost-rule--expired" : "")">
                     <div class="boost-rule-head">
                         <ToggleSwitch @bind-Checked="rule.Enabled" />
                         <div class="boost-grow"><InputField placeholder="Rule name" @bind-Value="rule.Name" /></div>
+                        @if (status != null)
+                        {
+                            <Chip Color="@status.Value.Color" TextColor="@status.Value.TextColor">@status.Value.Label</Chip>
+                        }
                         <span class="boost-label">Strength:</span>
                         <div class="boost-w130"><SelectField Size="micro" Options="StrengthOptions" Value="@rule.Strength.ToString()" ValueChanged="@(v => rule.Strength = ParseStrength(v))" /></div>
                         <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="@(() => _rules.Remove(rule))" />
@@ -227,6 +249,17 @@
     private static BoostStrength ParseStrength(string? v) => Enum.TryParse<BoostStrength>(v, out var s) ? s : BoostStrength.Med;
     private static BoostJoin ParseJoin(string? v) => Enum.TryParse<BoostJoin>(v, out var j) ? j : BoostJoin.And;
 
+    /// <summary>A chip for rules that are not applying right now; null for an active rule.
+    /// Expired is the one that matters most: a campaign that quietly ended looks live otherwise.</summary>
+    private static (string Label, string Color, string TextColor)? RuleStatus(BoostRule rule)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        if (!rule.Enabled) return ("Off", "var(--lv3)", "var(--lv5)");
+        if (rule.ActiveUntil is { } until && until < today) return ($"Expired {until:yyyy-MM-dd}", "var(--CSignal)", "var(--lv0)");
+        if (rule.ActiveFrom is { } from && from > today) return ($"Starts {from:yyyy-MM-dd}", "var(--CLightBlue)", "#080809");
+        return null;
+    }
+
     private bool IsTimeLimited(BoostRule rule) =>
         _ruleTimeLimited.Contains(rule) || rule.ActiveFrom.HasValue || rule.ActiveUntil.HasValue;
 
@@ -258,6 +291,7 @@
         var rules = _rules;
         await Task.Run(() => BoostStore.Save(Ctx.TeamId, Ctx.Name, rules));
         _savedJson = JsonSerializer.Serialize(rules, JsonOpts);
+        Ctx.NotifyChanged(); // the panel's nav badge (expired count) reads the store
     }
 
     private void Cancel()

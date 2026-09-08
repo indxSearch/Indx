@@ -3,6 +3,9 @@
 .boost-warning { color: var(--CWarning); font: var(--text-sm); }
 .boost-warning--rule { font: var(--text-xs); margin-top: 8px; margin-bottom: 0; }
 .boost-empty { color: var(--lv4); font: var(--text-sm); margin: 8px 0 12px; }
+.boost-summary { color: var(--lv6); font: var(--text-sm); margin: 0 0 12px; display: flex; gap: 14px; flex-wrap: wrap; }
+.boost-summary-expired { color: var(--CSignal); }
+.boost-rule--expired { border-color: var(--CSignal); }
 .boost-rules { display: flex; flex-direction: column; gap: 12px; }
 .boost-rule {
     border: 1px solid var(--lv2);

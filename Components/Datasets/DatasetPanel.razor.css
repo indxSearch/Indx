@@ -48,3 +48,16 @@
 .indx-status-alert {
     color: var(--CSignal);
 }
+
+/* Count badge inside a nav button (expired boost rules). ::deep — it renders inside the systm Button. */
+::deep .indx-nav-badge {
+    display: inline-block;
+    margin-left: 6px;
+    padding: 0 5px;
+    font: var(--text-2xs);
+    font-weight: var(--med);
+    color: var(--lv0);
+    background: var(--CSignal);
+    border-radius: var(--radius);
+    line-height: 14px;
+}
