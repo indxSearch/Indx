@@ -28,7 +28,7 @@ namespace IndxCloudApi.Models
 
     /// <summary>Which step of a running replace the dataset is in, for the UI. <c>Percent</c> is the
     /// progress of the current step where the step reports it (analyze, load, index), else -1.</summary>
-    public enum ReplaceStep { Preparing, Analyzing, Reconciling, Loading, Indexing, Swapping, Done }
+    public enum ReplaceStep { Uploading, Preparing, Analyzing, Reconciling, Loading, Indexing, Swapping, Done }
 
     public sealed record ReplaceProgress(ReplaceStep Step, int Percent);
 

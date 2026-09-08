@@ -21,7 +21,8 @@
 
 ::deep .opt-steps-surface { max-width: 560px; padding: 14px 16px; margin: 4px 0 8px; box-sizing: border-box; }
 .opt-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.opt-steps-note { margin: 10px 0 0; }
+.opt-steps-foot { margin-top: 10px; justify-content: space-between; }
+.opt-steps-note { margin: 0; flex: 1; }
 .opt-step { display: flex; align-items: center; gap: 10px; font: var(--text-sm); color: var(--lv6); }
 .opt-step--active { color: var(--lv8); font-weight: var(--med); }
 .opt-step--done { color: var(--lv8); }

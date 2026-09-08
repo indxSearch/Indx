@@ -109,7 +109,17 @@
                     </li>
                 }
             </ol>
-            <p class="opt-muted opt-steps-note">Search keeps serving the current data until the new index is swapped in.</p>
+            <div class="opt-row opt-steps-foot">
+                <p class="opt-muted opt-steps-note">Search keeps serving the current data until the new index is swapped in.</p>
+                @if (CanCancelReplace)
+                {
+                    <Button Variant="secondary" Size="micro" @onclick="CancelReplaceTransfer">Cancel</Button>
+                }
+                else
+                {
+                    <span class="opt-muted" title="The build runs on a separate engine; the current data is not affected until the swap.">Can't cancel after transfer</span>
+                }
+            </div>
             </Surface>
         }
         else
@@ -234,9 +244,14 @@
     private string? _replaceError;
     private ReplaceProgress? _replaceProgress;
     private CancellationTokenSource? _replacePollCts;
+    private CancellationTokenSource? _replaceTransferCts;
+    private bool CanCancelReplace => _replaceProgress?.Step == ReplaceStep.Uploading;
+
+    private void CancelReplaceTransfer() => _replaceTransferCts?.Cancel();
 
     private static readonly (ReplaceStep Step, string Label)[] ReplaceSteps =
     [
+        (ReplaceStep.Uploading,   "Transfer the file to the server"),
         (ReplaceStep.Preparing,   "Prepare a new engine"),
         (ReplaceStep.Analyzing,   "Analyze the new file's fields"),
         (ReplaceStep.Reconciling, "Carry over field configuration and key field"),
@@ -247,7 +262,7 @@
 
     private string StepState(ReplaceStep step)
     {
-        var current = _replaceProgress?.Step ?? ReplaceStep.Preparing;
+        var current = _replaceProgress?.Step ?? ReplaceStep.Uploading;
         if (current == ReplaceStep.Done || step < current) return "done";
         return step == current ? "active" : "pending";
     }
@@ -367,10 +382,13 @@
         _replaceFile = null;
         _replaceResult = _replaceWarning = _replaceError = null;
         _replaceBusy = true;
-        _replaceProgress = new ReplaceProgress(ReplaceStep.Preparing, -1);
+        _replaceProgress = new ReplaceProgress(ReplaceStep.Uploading, 0);
+        _replaceTransferCts?.Dispose();
+        _replaceTransferCts = new CancellationTokenSource();
         StateHasChanged();
 
-        // Poll the build's step/percent while the replace runs off the circuit.
+        // Poll the build's step/percent while the replace runs off the circuit. During the
+        // transfer the manager has no progress yet, so the local Uploading state stands.
         _replacePollCts?.Dispose();
         _replacePollCts = new CancellationTokenSource();
         var pollTask = ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(200),
@@ -380,11 +398,27 @@
         FileStream? fs = null;
         try
         {
+            // Stream the browser file to a temp file in chunks, reporting transfer progress. This
+            // is the one phase the user can cancel: nothing has touched the engine yet.
             var tempPath = Path.Combine(Path.GetTempPath(), $"indx-replace-{Guid.NewGuid():N}.tmp");
             fs = new FileStream(tempPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 65536, FileOptions.DeleteOnClose);
-            await using (var stream = file.OpenReadStream(maxAllowedSize: 2_000_000_000L))
-                await stream.CopyToAsync(fs);
+            var buffer = new byte[65536];
+            long totalRead = 0;
+            var ct = _replaceTransferCts.Token;
+            await using (var stream = file.OpenReadStream(maxAllowedSize: 2_000_000_000L, ct))
+            {
+                int read;
+                while ((read = await stream.ReadAsync(buffer, ct)) > 0)
+                {
+                    await fs.WriteAsync(buffer.AsMemory(0, read), ct);
+                    totalRead += read;
+                    var pct = file.Size > 0 ? (int)(100L * totalRead / file.Size) : 0;
+                    if (pct != _replaceProgress?.Percent)
+                        _replaceProgress = new ReplaceProgress(ReplaceStep.Uploading, pct);
+                }
+            }
             fs.Position = 0;
+            _replaceProgress = new ReplaceProgress(ReplaceStep.Preparing, -1);
 
             var localFs = fs;
             var summary = await Task.Run(() => Ctx.Engines.RunReplaceFromJson(Ctx.Name, Ctx.TeamId, localFs));
@@ -413,6 +447,10 @@
                 warnings.Add(summary.KeyFieldFallback + " Change it under Field configuration → Document key if that is not what you want.");
             _replaceWarning = warnings.Count > 0 ? string.Join(" ", warnings) : null;
         }
+        catch (OperationCanceledException)
+        {
+            _replaceResult = "Replace cancelled during transfer. The dataset is unchanged.";
+        }
         catch (Exception ex)
         {
             _replaceError = $"Replace failed: {ex.Message}";
@@ -431,6 +469,8 @@
     public override void Dispose()
     {
         base.Dispose();
+        _replaceTransferCts?.Cancel();
+        _replaceTransferCts?.Dispose();
         _replacePollCts?.Cancel();
         _replacePollCts?.Dispose();
     }
