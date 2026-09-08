@@ -7,6 +7,7 @@
 @inherits DatasetTabBase
 @inject BoostRuleStore BoostStore
 @inject IEditionService Edition
+@inject BrowserFiles Files
 
 @if (!Active) { return; }
 
@@ -103,9 +104,20 @@
             }
         </div>
 
-        <div class="boost-add">
+        <div class="boost-toolbar">
             <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="AddRule">Add boost rule</Button>
+            <div class="boost-spacer"></div>
+            <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
+            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)">Import from json</Button>
+            @if (_rules.Count > 0)
+            {
+                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="ExportAsync">Export as json</Button>
+            }
         </div>
+        @if (!string.IsNullOrEmpty(_importNote))
+        {
+            <p class="boost-note">@_importNote</p>
+        }
 
         @if (!string.IsNullOrEmpty(_error))
         {
@@ -143,6 +155,9 @@
     private List<BoostRule> _rules = new();
     private string? _savedJson;
     private string? _error;
+    private string? _importNote;
+
+    private string ImportInputId => $"boosts-import-{Ctx.Name}";
 
     // Rules with no schedule are "always active". The Time-limit checkbox reveals the date
     // pickers; a rule is considered time-limited if the box was ticked or it already carries a date.
@@ -248,7 +263,50 @@
     private void Cancel()
     {
         _error = null;
+        _importNote = null;
         if (_savedJson != null)
             _rules = JsonSerializer.Deserialize<List<BoostRule>>(_savedJson, JsonOpts) ?? new();
+    }
+
+    // ── Import / export ───────────────────────────────────────────────────────
+    // Same file shape as GET/PUT …/boosts: a JSON array of rules. Import replaces the working
+    // copy (like field config and synonyms do) and leaves it unsaved, so Save commits and
+    // Cancel reverts. Rules naming fields this dataset lacks are kept — they show the existing
+    // "references non-filterable field" warning and stay dormant until the field appears.
+
+    private async Task ExportAsync()
+    {
+        var json = JsonSerializer.Serialize(_rules, new JsonSerializerOptions(JsonOpts) { WriteIndented = true });
+        await Files.DownloadAsync($"{Ctx.Name}-boost-rules.json", json);
+    }
+
+    private async Task ImportAsync(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        _importNote = null;
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 1_000_000);
+            using var reader = new StreamReader(stream);
+            var imported = JsonSerializer.Deserialize<List<BoostRule>>(await reader.ReadToEndAsync(),
+                new JsonSerializerOptions(JsonOpts) { PropertyNameCaseInsensitive = true });
+            if (imported == null)
+            {
+                _importNote = "Invalid boost-rules file.";
+                return;
+            }
+            var filterable = FilterableFieldNames();
+            var dormant = imported.Count(r => r.Conditions.Any(c => !string.IsNullOrEmpty(c.Field) && !filterable.Contains(c.Field)));
+            _rules = imported;
+            _ruleTimeLimited.Clear();
+            _importNote = imported.Count == 0
+                ? "Imported an empty list — save to remove all boost rules."
+                : $"Imported {imported.Count} rule(s), replacing the current list. Save to apply."
+                  + (dormant > 0 ? $" {dormant} reference field(s) this dataset does not have (filterable) and will stay dormant until it does." : "");
+        }
+        catch (Exception ex)
+        {
+            _importNote = $"Failed to import: {ex.Message}";
+        }
     }
 }

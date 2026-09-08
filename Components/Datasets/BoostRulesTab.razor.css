@@ -29,6 +29,8 @@
 .boost-dates { display: flex; gap: 20px; margin-top: 8px; }
 .boost-date-label { color: var(--lv5); font: var(--text-xs); display: block; margin-bottom: 2px; }
 .boost-hint { color: var(--lv4); font: var(--text-xs); display: block; margin-top: 4px; }
-.boost-add { margin-top: 14px; }
+.boost-toolbar { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.boost-spacer { flex: 1; }
+.boost-note { color: var(--lv5); font: var(--text-xs); margin-top: 8px; }
 .boost-error { color: var(--CSignal); font: var(--text-sm); margin-top: 10px; }
 .boost-actions { display: flex; gap: 8px; margin-top: 16px; }
