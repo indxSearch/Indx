@@ -1,4 +1,4 @@
-@page "/Account/ResendEmailConfirmation"
+@page "/account/resend-email-confirmation"
 @layout UnauthenticatedLayout
 @using System.ComponentModel.DataAnnotations
 @using System.Text
@@ -39,7 +39,7 @@
     </div>
 
     <div style="margin-top: 40px;">
-        <Button Href="/Account/Login" Variant="secondary">Back to log in</Button>
+        <Button Href="/account/login" Variant="secondary">Back to log in</Button>
     </div>
 }
 else
@@ -69,7 +69,7 @@ else
         </Button>
 
         <div style="margin-top: 40px; display: flex; flex-direction: column;">
-            <a href="/Account/Login" style="font: var(--text-sm);">Back to log in</a>
+            <a href="/account/login" style="font: var(--text-sm);">Back to log in</a>
         </div>
     </EditForm>
 }
@@ -102,7 +102,7 @@ else
                     code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
 
                     var callbackUrl = NavigationManager.GetUriWithQueryParameters(
-                        NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
+                        NavigationManager.ToAbsoluteUri("account/confirm-email").AbsoluteUri,
                         new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code });
 
                     var instanceName = InstanceSettingsService.Load().InstanceName;

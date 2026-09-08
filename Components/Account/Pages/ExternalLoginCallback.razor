@@ -1,4 +1,4 @@
-﻿@page "/Account/ExternalLogin/Callback"
+﻿@page "/account/external-login/callback"
 @using Microsoft.AspNetCore.Identity
 @using System.Security.Claims
 @using IndxCloudApi.Data
@@ -31,7 +31,7 @@
         if (info == null)
         {
             Logger.LogWarning("Error loading external login information");
-            NavigationManager.NavigateTo("/Account/Login");
+            NavigationManager.NavigateTo("/account/login");
             return;
         }
 
@@ -50,14 +50,14 @@
                 info.Principal.Identity?.Name, info.LoginProvider);
 
             // ✅ Redirect to API Key page after successful login
-            NavigationManager.NavigateTo("/Account/ApiKey");
+            NavigationManager.NavigateTo("/account/api-key");
             return;
         }
 
         if (result.IsLockedOut)
         {
             Logger.LogWarning("User account locked out");
-            NavigationManager.NavigateTo("/Account/Lockout");
+            NavigationManager.NavigateTo("/account/lockout");
             return;
         }
 
@@ -66,7 +66,7 @@
         if (string.IsNullOrEmpty(email))
         {
             Logger.LogWarning("Email claim not found from external provider {Provider}", info.LoginProvider);
-            NavigationManager.NavigateTo("/Account/Login");
+            NavigationManager.NavigateTo("/account/login");
             return;
         }
 
@@ -77,7 +77,7 @@
         if (!allowedResult.IsValid)
         {
             Logger.LogWarning("OAuth registration blocked - registration is closed. Email: {Email}", email);
-            NavigationManager.NavigateTo($"/Account/Login?error={Uri.EscapeDataString(allowedResult.ErrorMessage ?? "Registration not allowed")}");
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString(allowedResult.ErrorMessage ?? "Registration not allowed")}");
             return;
         }
 
@@ -86,7 +86,7 @@
         if (!emailResult.IsValid)
         {
             Logger.LogWarning("OAuth registration blocked - email domain not allowed. Email: {Email}", email);
-            NavigationManager.NavigateTo($"/Account/Login?error={Uri.EscapeDataString(emailResult.ErrorMessage ?? "Email not allowed")}");
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString(emailResult.ErrorMessage ?? "Email not allowed")}");
             return;
         }
 
@@ -108,7 +108,7 @@
             {
                 Logger.LogError("Failed to create user from external login: {Errors}",
                     string.Join(", ", createResult.Errors.Select(e => e.Description)));
-                NavigationManager.NavigateTo("/Account/Login");
+                NavigationManager.NavigateTo("/account/login");
                 return;
             }
 
@@ -129,13 +129,13 @@
                 email, info.LoginProvider);
 
             // ✅ Redirect to API Key page after successful registration + login
-            NavigationManager.NavigateTo("/Account/ApiKey");
+            NavigationManager.NavigateTo("/account/api-key");
         }
         else
         {
             Logger.LogError("Failed to add external login to user: {Errors}",
                 string.Join(", ", addLoginResult.Errors.Select(e => e.Description)));
-            NavigationManager.NavigateTo("/Account/Login");
+            NavigationManager.NavigateTo("/account/login");
         }
     }
 }

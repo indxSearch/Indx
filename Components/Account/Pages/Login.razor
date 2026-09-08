@@ -1,4 +1,4 @@
-﻿@page "/Account/Login"
+﻿@page "/account/login"
 @layout UnauthenticatedLayout
 @using Microsoft.AspNetCore.Authentication
 @using Microsoft.AspNetCore.Identity
@@ -34,7 +34,7 @@ else if (externalLogins.Count > 0)
     <div style="display: grid; gap: 10px;">
         @foreach (var provider in externalLogins)
         {
-            <form action="Account/PerformExternalLogin" method="post" data-enhance="false">
+            <form action="account/perform-external-login" method="post" data-enhance="false">
                 <AntiforgeryToken />
                 <input type="hidden" name="provider" value="@provider.Name" />
                 <input type="hidden" name="returnUrl" value="@ReturnUrl" />
@@ -95,9 +95,9 @@ else if (externalLogins.Count > 0)
     <Button Type="submit" Variant="secondary">Log in</Button>
 
     <div style="margin-top: 40px; display: flex; flex-direction: column;">
-        <a href="/Account/Register?returnUrl=@ReturnUrl" style="font: var(--text-sm); margin-bottom: 20px;">Register as a new user</a>
-        <a href="/Account/ForgotPassword" style="font: var(--text-xs); margin-bottom: 5px;">Forgot your password?</a>
-        <a href="/Account/ResendEmailConfirmation" style="font: var(--text-xs);">Resend email confirmation</a>
+        <a href="/account/register?returnUrl=@ReturnUrl" style="font: var(--text-sm); margin-bottom: 20px;">Register as a new user</a>
+        <a href="/account/forgot-password" style="font: var(--text-xs); margin-bottom: 5px;">Forgot your password?</a>
+        <a href="/account/resend-email-confirmation" style="font: var(--text-xs);">Resend email confirmation</a>
     </div>
 </EditForm>
 
@@ -125,7 +125,7 @@ else if (externalLogins.Count > 0)
         // (the setup page itself sends an already-signed-in admin on to the configuration step).
         if (isGet && !InstanceSettingsService.Load().SetupComplete)
         {
-            NavigationManager.NavigateTo("/Account/Setup", forceLoad: true);
+            NavigationManager.NavigateTo("/account/setup", forceLoad: true);
             return;
         }
 
@@ -174,12 +174,12 @@ else if (externalLogins.Count > 0)
         }
         else if (result.RequiresTwoFactor)
         {
-            NavigationManager.NavigateTo($"/Account/LoginWith2fa?returnUrl={ReturnUrl}", forceLoad: true);
+            NavigationManager.NavigateTo($"/account/login-with-2fa?returnUrl={ReturnUrl}", forceLoad: true);
         }
         else if (result.IsLockedOut)
         {
             Logger.LogWarning("User {Email} account locked out", Input.Email);
-            NavigationManager.NavigateTo("/Account/Lockout");
+            NavigationManager.NavigateTo("/account/lockout");
         }
         else
         {

@@ -1,4 +1,4 @@
-﻿@page "/Account/Register"
+﻿@page "/account/register"
 @layout UnauthenticatedLayout
 
 @using System.ComponentModel.DataAnnotations
@@ -79,7 +79,7 @@ else
         <Button Type="submit" Variant="secondary">Register</Button>
 
         <div style="margin-top: 40px; display: flex; flex-direction: column;">
-            <a href="/Account/Login" style="font: var(--text-sm); margin-bottom: 20px;">Already have an account? Log in</a>
+            <a href="/account/login" style="font: var(--text-sm); margin-bottom: 20px;">Already have an account? Log in</a>
         </div>
     </EditForm>
 }
@@ -99,7 +99,7 @@ else
         // dedicated setup flow (account + team + instance), not this bare form.
         if (!InstanceSettingsService.Load().SetupComplete)
         {
-            RedirectManager.RedirectTo("Account/Setup");
+            RedirectManager.RedirectTo("account/setup");
         }
     }
 
@@ -165,7 +165,7 @@ else
         var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
         code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
         var callbackUrl = NavigationManager.GetUriWithQueryParameters(
-            NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
+            NavigationManager.ToAbsoluteUri("account/confirm-email").AbsoluteUri,
             new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code, ["returnUrl"] = ReturnUrl });
         if (user.Email != null)
         {
@@ -177,7 +177,7 @@ else
         if (InstanceSettingsService.Load().RequireEmailVerification)
         {
             RedirectManager.RedirectTo(
-                "Account/RegisterConfirmation",
+                "account/register-confirmation",
                 new() { ["email"] = Input.Email, ["returnUrl"] = ReturnUrl });
         }
 

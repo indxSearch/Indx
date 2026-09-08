@@ -1,4 +1,4 @@
-@page "/Account/ConfirmEmail"
+@page "/account/confirm-email"
 @layout UnauthenticatedLayout
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.WebUtilities
@@ -24,7 +24,7 @@ else if (success)
         <h4>Email confirmed</h4>
         <p>Thank you for confirming your email address.</p>
         <div style="margin-top: 20px;">
-            <Button Href="/Account/Login" Variant="primary">Log in</Button>
+            <Button Href="/account/login" Variant="primary">Log in</Button>
         </div>
     </div>
 }

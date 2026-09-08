@@ -104,13 +104,13 @@ else
         var user = authState.User;
         if (user.Identity == null || !user.Identity.IsAuthenticated)
         {
-            NavigationManager.NavigateTo("/Account/Login", forceLoad: true);
+            NavigationManager.NavigateTo("/account/login", forceLoad: true);
             return;
         }
         // Onboarding not finished (admin account exists but instance not configured yet) → finish it.
         if (!InstanceSettingsService.Load().SetupComplete)
         {
-            NavigationManager.NavigateTo("/Account/Setup/Configure", forceLoad: true);
+            NavigationManager.NavigateTo("/account/setup/configure", forceLoad: true);
             return;
         }
         var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;

@@ -1,4 +1,4 @@
-@page "/Account/Manage"
+@page "/account/manage"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
@@ -64,12 +64,12 @@
             </div>
 
             <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top: 16px;">
-                <form method="post" action="Account/Logout" style="display:contents;">
+                <form method="post" action="account/logout" style="display:contents;">
                     <AntiforgeryToken />
                     <input type="hidden" name="returnUrl" value="" />
                     <Button Type="submit" Variant="ghost" Size="micro" IconLeft="_iconLogout">Log out</Button>
                 </form>
-                <Button Href="/Account/ChangePassword" Variant="ghost" Size="micro" IconLeft="_iconKey">Change password</Button>
+                <Button Href="/account/change-password" Variant="ghost" Size="micro" IconLeft="_iconKey">Change password</Button>
             </div>
         </div>
 
@@ -128,7 +128,7 @@
                 <input class="indx-input" @bind="confirmEmail" @bind:event="oninput" placeholder="@user?.Email" style="width: 200px;" />
                 @if (CanDeleteAccount)
                 {
-                    <form action="Account/Manage/DeleteAccount" method="post" style="display:contents;">
+                    <form action="account/manage/delete-account" method="post" style="display:contents;">
                         <AntiforgeryToken />
                         <Button Type="submit" Variant="danger" Size="micro">Yes, delete my account</Button>
                     </form>
@@ -216,7 +216,7 @@ else
             code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
 
             var callbackUrl = NavigationManager.GetUriWithQueryParameters(
-                NavigationManager.ToAbsoluteUri("Account/ConfirmEmail").AbsoluteUri,
+                NavigationManager.ToAbsoluteUri("account/confirm-email").AbsoluteUri,
                 new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code });
 
             var instanceName = InstanceSettingsService.Load().InstanceName;

@@ -1,4 +1,4 @@
-@page "/Account/Setup/Configure"
+@page "/account/setup/configure"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @layout UnauthenticatedLayout
 @using System.Security.Claims
@@ -162,7 +162,7 @@ else
 
             Logger.LogInformation("First-run setup complete: instance '{Instance}', team '{Team}'.", settings.InstanceName, _teamName);
 
-            NavigationManager.NavigateTo("/Account/Welcome", forceLoad: true);
+            NavigationManager.NavigateTo("/account/welcome", forceLoad: true);
         }
         catch (Exception ex)
         {

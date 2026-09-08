@@ -14,15 +14,15 @@
         <Button Href="/" Variant="@NavVariant("/", exact: true)" Size="micro" IconLeft="_iconHome">Datasets</Button>
         <AuthorizeView>
             <Authorized>
-                <Button Href="Account/ApiKey" Variant="@NavVariant("Account/ApiKey")" Size="micro" IconLeft="_iconKey">API Key</Button>
+                <Button Href="account/api-key" Variant="@NavVariant("account/api-key")" Size="micro" IconLeft="_iconKey">API Key</Button>
                 @if (Edition.LicensingVisible)
                 {
-                    <Button Href="Account/License" Variant="@NavVariant("Account/License")" Size="micro" IconLeft="_iconDoc">License</Button>
+                    <Button Href="account/license" Variant="@NavVariant("account/license")" Size="micro" IconLeft="_iconDoc">License</Button>
                 }
             </Authorized>
         </AuthorizeView>
         <AuthorizeView Roles="Admin">
-            <Button Href="Admin/Users" Variant="@NavVariant("Admin")" Size="micro" IconLeft="_iconAdmin">Admin</Button>
+            <Button Href="admin/users" Variant="@NavVariant("Admin")" Size="micro" IconLeft="_iconAdmin">Admin</Button>
         </AuthorizeView>
         <div class="nav-external-links">
             <Button Href="swagger" Variant="ghost" Size="micro" IconLeft="_iconApi">Swagger ↗</Button>
@@ -34,13 +34,13 @@
         <AuthorizeView>
             <Authorized>
                 <NotificationPanel />
-                <a href="Account/Manage" class="nav-bell" title="@context.User.Identity?.Name" aria-label="Account">
+                <a href="account/manage" class="nav-bell" title="@context.User.Identity?.Name" aria-label="Account">
                     <UserId Size="16" />
                 </a>
             </Authorized>
             <NotAuthorized>
-                <Button Href="Account/Register" Variant="secondary" Size="micro">Register</Button>
-                <Button Href="Account/Login" Variant="secondary" Size="micro">Log in</Button>
+                <Button Href="account/register" Variant="secondary" Size="micro">Register</Button>
+                <Button Href="account/login" Variant="secondary" Size="micro">Log in</Button>
             </NotAuthorized>
         </AuthorizeView>
     </div>

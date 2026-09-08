@@ -1,4 +1,4 @@
-@page "/Admin/Settings"
+@page "/admin/settings"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using IndxCloudApi.Services
@@ -58,7 +58,7 @@
             <ToggleSwitch Label="Enable MCP server" @bind-Checked="_mcpEnabled" />
             <p style="font: var(--text-xs); color: var(--lv4); margin-top: 4px; margin-left: 48px;">
                 Exposes a read-only <code>/mcp</code> endpoint (search, describe, get document) authenticated by API key.
-                When disabled, the endpoint returns 404. Users connect via <a href="/Account/ApiKey">API keys</a>.
+                When disabled, the endpoint returns 404. Users connect via <a href="/account/api-key">API keys</a>.
             </p>
         </div>
     </div>

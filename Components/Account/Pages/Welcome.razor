@@ -1,4 +1,4 @@
-@page "/Account/Welcome"
+@page "/account/welcome"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using Indx.Systm.Blazor.Icons
@@ -22,7 +22,7 @@
             <span class="welcome-arrow"><ArrowRight Size="16" /></span>
         </a>
 
-        <a href="/Account/ApiKey" class="welcome-card">
+        <a href="/account/api-key" class="welcome-card">
             <span class="welcome-icon"><Key Size="20" /></span>
             <span class="welcome-text">
                 <span class="welcome-title">Generate an API key</span>
@@ -31,7 +31,7 @@
             <span class="welcome-arrow"><ArrowRight Size="16" /></span>
         </a>
 
-        <a href="/Admin/Users" class="welcome-card">
+        <a href="/admin/users" class="welcome-card">
             <span class="welcome-icon"><UserPlus Size="20" /></span>
             <span class="welcome-text">
                 <span class="welcome-title">Manage your team</span>

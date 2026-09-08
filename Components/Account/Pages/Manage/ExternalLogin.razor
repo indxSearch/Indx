@@ -1,4 +1,4 @@
-﻿@page "/Account/ExternalLogin"
+﻿@page "/account/external-login"
 
 @using System.Security.Claims
 @using Microsoft.AspNetCore.Identity
@@ -43,7 +43,7 @@
         if (RemoteError is not null)
         {
             Logger.LogWarning("Remote error from external provider: {Error}", RemoteError);
-            NavigationManager.NavigateTo($"/Account/Login?error={Uri.EscapeDataString($"Error from external provider: {RemoteError}")}");
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString($"Error from external provider: {RemoteError}")}");
             return;
         }
 
@@ -51,7 +51,7 @@
         if (info is null)
         {
             Logger.LogWarning("Failed to load external login information");
-            NavigationManager.NavigateTo($"/Account/Login?error={Uri.EscapeDataString("Error loading external login information.")}");
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("Error loading external login information.")}");
             return;
         }
 
@@ -67,7 +67,7 @@
 
             // We should only reach this page via the login callback, so redirect back to
             // the login page if we get here some other way.
-            RedirectManager.RedirectTo("Account/Login");
+            RedirectManager.RedirectTo("account/login");
         }
     }
 
@@ -86,11 +86,11 @@
                 "{Name} logged in with {LoginProvider} provider.",
                 externalLoginInfo.Principal.Identity?.Name,
                 externalLoginInfo.LoginProvider);
-            RedirectManager.RedirectTo(ReturnUrl ?? "/Account/ApiKey");
+            RedirectManager.RedirectTo(ReturnUrl ?? "/account/api-key");
         }
         else if (result.IsLockedOut)
         {
-            RedirectManager.RedirectTo("Account/Lockout");
+            RedirectManager.RedirectTo("account/lockout");
         }
 
         // If the user does not have an account, automatically create one using the OAuth email
@@ -98,7 +98,7 @@
         if (string.IsNullOrEmpty(email))
         {
             Logger.LogWarning("Email claim not found from external provider {Provider}", externalLoginInfo.LoginProvider);
-            NavigationManager.NavigateTo($"/Account/Login?error={Uri.EscapeDataString("Email claim not found from external provider.")}");
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("Email claim not found from external provider.")}");
             return;
         }
 
@@ -107,7 +107,7 @@
         if (emailVerifiedClaim != null && emailVerifiedClaim != "true")
         {
             Logger.LogWarning("OAuth email not verified by provider {Provider} for {Email}", externalLoginInfo.LoginProvider, email);
-            NavigationManager.NavigateTo($"/Account/Login?error={Uri.EscapeDataString("Your email address has not been verified by the sign-in provider. Please verify it and try again.")}");
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("Your email address has not been verified by the sign-in provider. Please verify it and try again.")}");
             return;
         }
 
@@ -131,14 +131,14 @@
             {
                 Logger.LogInformation("Linked {Provider} to existing account {Email}", externalLoginInfo.LoginProvider, email);
                 await SignInManager.SignInAsync(existingUser, isPersistent: false, externalLoginInfo.LoginProvider);
-                RedirectManager.RedirectTo(ReturnUrl ?? "/Account/ApiKey");
+                RedirectManager.RedirectTo(ReturnUrl ?? "/account/api-key");
             }
             else
             {
                 Logger.LogError("Failed to link {Provider} to existing account {Email}: {Errors}",
                     externalLoginInfo.LoginProvider, email,
                     string.Join(", ", addLoginResult.Errors.Select(e => e.Description)));
-                NavigationManager.NavigateTo($"/Account/Login?error={Uri.EscapeDataString("Failed to link the sign-in provider to your account.")}");
+                NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("Failed to link the sign-in provider to your account.")}");
             }
             return;
         }
@@ -150,7 +150,7 @@
         if (!allowedResult.IsValid)
         {
             Logger.LogWarning("OAuth registration blocked - registration is closed. Email: {Email}", email);
-            NavigationManager.NavigateTo($"/Account/Login?error={Uri.EscapeDataString(allowedResult.ErrorMessage ?? "Registration not allowed")}");
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString(allowedResult.ErrorMessage ?? "Registration not allowed")}");
             return;
         }
 
@@ -159,7 +159,7 @@
         if (!emailResult.IsValid)
         {
             Logger.LogWarning("OAuth registration blocked - email domain not allowed. Email: {Email}", email);
-            NavigationManager.NavigateTo($"/Account/Login?error={Uri.EscapeDataString(emailResult.ErrorMessage ?? "Email not allowed")}");
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString(emailResult.ErrorMessage ?? "Email not allowed")}");
             return;
         }
 
@@ -186,19 +186,19 @@
             {
                 Logger.LogInformation("User created an account using {Name} provider.", externalLoginInfo.LoginProvider);
                 await SignInManager.SignInAsync(user, isPersistent: false, externalLoginInfo.LoginProvider);
-                RedirectManager.RedirectTo(ReturnUrl ?? "/Account/ApiKey");
+                RedirectManager.RedirectTo(ReturnUrl ?? "/account/api-key");
             }
             else
             {
                 Logger.LogError("Failed to add external login: {Errors}", string.Join(", ", addLoginResult.Errors.Select(e => e.Description)));
-                NavigationManager.NavigateTo($"/Account/Login?error={Uri.EscapeDataString("Failed to link external login.")}");
+                NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("Failed to link external login.")}");
             }
         }
         else
         {
             Logger.LogError("Failed to create user: {Errors}", string.Join(", ", createResult.Errors.Select(e => e.Description)));
             var errorMessage = string.Join(", ", createResult.Errors.Select(e => e.Description));
-            NavigationManager.NavigateTo($"/Account/Login?error={Uri.EscapeDataString(errorMessage)}");
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString(errorMessage)}");
         }
     }
 

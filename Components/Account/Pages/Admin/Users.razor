@@ -1,4 +1,4 @@
-@page "/Admin/Users"
+@page "/admin/users"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
@@ -213,7 +213,7 @@ else if (_isInviteMode)
         PersistInvites();
 
         var instanceName = SettingsService.Load().InstanceName;
-        var registerUrl = NavigationManager.ToAbsoluteUri("/Account/Register").ToString();
+        var registerUrl = NavigationManager.ToAbsoluteUri("/account/register").ToString();
         try
         {
             await EmailSender.SendEmailAsync(

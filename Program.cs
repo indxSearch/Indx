@@ -720,7 +720,7 @@ public class Program
                 var path = context.Request.Path;
                 var allowed =
                     path.StartsWithSegments("/api/changePassword", StringComparison.OrdinalIgnoreCase)
-                    || path.StartsWithSegments("/Account/ChangePassword", StringComparison.OrdinalIgnoreCase);
+                    || path.StartsWithSegments("/account/change-password", StringComparison.OrdinalIgnoreCase);
 
                 if (!allowed)
                 {
