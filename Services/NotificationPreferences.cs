@@ -32,6 +32,7 @@ internal static class NotificationPreferences
         new(NotificationType.UserRegistered,     "New user registered",   "A new account is created on this instance.",          AdminOnly: true),
         new(NotificationType.ApiKeyExpiringSoon, "API key expiring soon", "One of your API keys is within 14 days of expiring.", AdminOnly: false),
         new(NotificationType.ApiKeyExpired,      "API key expired",       "One of your API keys has expired.",                   AdminOnly: false),
+        new(NotificationType.BoostRuleExpired,   "Boost rule expired",    "A scheduled boost rule on one of your team's datasets has passed its end date and no longer applies.", AdminOnly: false),
     ];
 
     public static Dictionary<NotificationType, NotificationChannelPref> Parse(string? json)

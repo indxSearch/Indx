@@ -12,6 +12,7 @@ namespace IndxCloudApi.Data
         UserConfirmedEmail  = 4,
         ApiKeyExpiringSoon  = 5,
         ApiKeyExpired       = 6,
+        BoostRuleExpired    = 7,
     }
 
     public class Notification

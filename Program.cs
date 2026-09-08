@@ -118,6 +118,7 @@ public class Program
         builder.Services.AddScoped<IndxCloudApi.Services.TeamContextResolver>();
         builder.Services.AddScoped<IndxCloudApi.Services.DataMigrationService>();
         builder.Services.AddHostedService<IndxCloudApi.Services.TokenExpiryNotificationJob>();
+        builder.Services.AddHostedService<IndxCloudApi.Services.BoostRuleExpiryNotificationJob>();
         builder.Services.AddHostedService<IndxCloudApi.Services.DatasetIdleSweeper>();
 
         var registrationMode = builder.Configuration["Registration:Mode"] ?? "Open";
