@@ -19,11 +19,11 @@
 .opt-danger-text { color: var(--CSignal); font: var(--text-sm); }
 
 .opt-steps { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; max-width: 560px; }
-.opt-step { display: flex; align-items: center; gap: 10px; font: var(--text-sm); color: var(--lv4); }
-.opt-step--active { color: var(--lv8); }
-.opt-step--done { color: var(--lv5); }
+.opt-step { display: flex; align-items: center; gap: 10px; font: var(--text-sm); color: var(--lv6); }
+.opt-step--active { color: var(--lv8); font-weight: var(--med); }
+.opt-step--done { color: var(--lv8); }
 .opt-step-mark { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
 .opt-step-dot { width: 4px; height: 4px; background: var(--lv3); }
 .opt-step--done .opt-step-mark { color: var(--CTeal); }
 .opt-step-label { flex: 1; }
-.opt-step-pct { font: var(--text-xs); color: var(--lv5); font-variant-numeric: tabular-nums; }
+.opt-step-pct { font: var(--text-xs); color: var(--lv8); font-variant-numeric: tabular-nums; }
