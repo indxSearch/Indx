@@ -913,3 +913,67 @@ a.btn-danger:hover {
     outline: none;
     border-color: var(--lv5);
 }
+
+/* ── Blazor reconnect overlay ──────────────────────────────────────────────
+   Hidden until Blazor adds one of its state classes to #components-reconnect-modal.
+   The three message variants are all in the markup; the state class picks one. */
+.indx-reconnect {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: color-mix(in srgb, var(--lv0) 82%, transparent);
+    backdrop-filter: blur(2px);
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+.indx-reconnect.components-reconnect-show,
+.indx-reconnect.components-reconnect-failed,
+.indx-reconnect.components-reconnect-paused,
+.indx-reconnect.components-reconnect-resume-failed,
+.indx-reconnect.components-reconnect-rejected {
+    display: flex;
+}
+.indx-reconnect-panel {
+    width: min(420px, 100%);
+    background: var(--lv1);
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+}
+.indx-reconnect-title {
+    margin: 0 0 6px;
+    font: var(--text-base);
+    font-weight: var(--med);
+    color: var(--lv8);
+}
+.indx-reconnect-body {
+    margin: 0;
+    font: var(--text-sm);
+    color: var(--lv5);
+}
+.indx-reconnect-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+}
+.indx-reconnect-actions:empty { display: none; }
+
+/* State → message. Each span is hidden unless its state is active. */
+.indx-reconnect-reconnecting, .indx-reconnect-failed, .indx-reconnect-paused,
+.indx-reconnect-resume-failed, .indx-reconnect-rejected { display: none; }
+.components-reconnect-show .indx-reconnect-reconnecting { display: inline; }
+.components-reconnect-failed .indx-reconnect-failed { display: inline; }
+.components-reconnect-paused .indx-reconnect-paused { display: inline; }
+.components-reconnect-resume-failed .indx-reconnect-resume-failed { display: inline; }
+.components-reconnect-rejected .indx-reconnect-rejected { display: inline; }
+.components-reconnect-failed .indx-reconnect-actions .indx-reconnect-failed,
+.components-reconnect-resume-failed .indx-reconnect-actions .indx-reconnect-resume-failed,
+.components-reconnect-rejected .indx-reconnect-actions .indx-reconnect-rejected { display: inline-flex; }
+.indx-reconnect-icon {
+    vertical-align: -2px;
+    margin-right: 8px;
+    color: var(--lv8);
+}
+
