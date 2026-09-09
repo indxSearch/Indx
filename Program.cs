@@ -667,6 +667,18 @@ public class Program
         app.UseWhen(ctx => ctx.Request.Path.StartsWithSegments("/api"),
             branch => branch.UseExceptionHandler(errApp => errApp.Run(async context =>
             {
+                // The Detail below promises the incident has been logged, and until this was added
+                // nothing here logged anything — so a 500 handed the caller a traceId that led
+                // nowhere. That is how SweeperConcurrencyTests' one HTTP 500 under eviction fire
+                // ended up untraceable: the response was the only evidence, and it carries no cause
+                // by design. Log the exception against the same traceId the caller is given.
+                var failure = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+                context.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("IndxCloudApi.ApiErrors")
+                    .LogError(failure?.Error,
+                        "Unhandled exception on {Method} {Path} (traceId {TraceId})",
+                        context.Request.Method, context.Request.Path, context.TraceIdentifier);
+
                 context.Response.StatusCode = StatusCodes.Status500InternalServerError;
                 var problem = new Microsoft.AspNetCore.Mvc.ProblemDetails
                 {
