@@ -62,6 +62,10 @@
                                     {
                                         <tr><td class="indx-status-alert">Too Long Search Text</td><td>@status.TooLongSearchText</td></tr>
                                     }
+                                    @if (status.IndexedTextTruncated)
+                                    {
+                                        <tr><td class="indx-status-alert">Indexed Text Truncated</td><td>@status.IndexedTextTruncated</td></tr>
+                                    }
                                     @if (!string.IsNullOrEmpty(status.ErrorMessage))
                                     {
                                         <tr><td class="indx-status-alert">Error</td><td>@status.ErrorMessage</td></tr>
