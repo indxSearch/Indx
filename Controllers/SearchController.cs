@@ -116,8 +116,12 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "CombineFilters", SystemState.Ready) is { } stateError)
                 return stateError;
-            var fa = matcher.GetFilterFromKey(combineFilters.A.HashString);
-            var fb = matcher.GetFilterFromKey(combineFilters.B.HashString);
+            if (combineFilters == null)
+                return ApiProblems.InvalidArgument("A body with two filters to combine is required.");
+            var fa = ResolveFilter(matcher, combineFilters.A, "a", out var errorA);
+            if (fa == null) return errorA!;
+            var fb = ResolveFilter(matcher, combineFilters.B, "b", out var errorB);
+            if (fb == null) return errorB!;
             matcher.LoadFilters(new Filter[] { fa, fb });
             Filter result;
             if (combineFilters.UseAndOperation)
@@ -143,9 +147,10 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "CreateBoost", SystemState.Ready) is { } stateError)
                 return stateError;
-            var filter = matcher.GetFilterFromKey(boost.FilterProxy.HashString);
-            if (filter == null)
-                return ApiProblems.InvalidArgument("Unknown filter key. Create the filter first, then reference it by the returned key.");
+            if (boost == null)
+                return ApiProblems.InvalidArgument("A body with a filter to boost is required.");
+            var filter = ResolveFilter(matcher, boost.FilterProxy, "filterProxy", out var filterError);
+            if (filter == null) return filterError!;
             matcher.CreateBoost(filter, boost.BoostStrength);
             return Ok(boost);
         }
@@ -1051,9 +1056,8 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.InvalidDatasetName(dataSetName);
             return RunHeavy(dataSetName, ctx.OwnerKey, "DeleteRecordsInFilter", engine =>
             {
-                var filter = engine.GetFilterFromKey(filterProxy.HashString);
-                if (filter == null)
-                    return ApiProblems.InvalidArgument("Unknown filter key. Create the filter first, then reference it by the returned key.");
+                var filter = ResolveFilter(engine, filterProxy, "filter", out var filterError);
+                if (filter == null) return filterError!;
                 engine.LoadFilters(new[] { filter });
                 engine.DeleteRecordsInFilter(filter);
                 return NoContent();
@@ -1072,9 +1076,8 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.InvalidDatasetName(dataSetName);
             return RunHeavy(dataSetName, ctx.OwnerKey, "UpdateFieldInFilter", engine =>
             {
-                var filter = engine.GetFilterFromKey(payload.Filter.HashString);
-                if (filter == null)
-                    return ApiProblems.InvalidArgument("Unknown filter key. Create the filter first, then reference it by the returned key.");
+                var filter = ResolveFilter(engine, payload?.Filter, "filter", out var filterError);
+                if (filter == null) return filterError!;
                 var count = engine.UpdateFieldInFilter(filter, payload.FieldName, UnwrapJsonElement(payload.Value)!, out string error2);
                 if (count == 0 && !string.IsNullOrEmpty(error2))
                     return ApiProblems.InvalidArgument(error2);
@@ -1096,9 +1099,8 @@ namespace IndxCloudApi.Controllers
             var matcher = IndxCloudInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
-            var filter = matcher.GetFilterFromKey(filterProxy.HashString);
-            if (filter == null)
-                return ApiProblems.InvalidArgument("Unknown filter key. Create the filter first, then reference it by the returned key.");
+            var filter = ResolveFilter(matcher, filterProxy, "filter", out var filterError);
+            if (filter == null) return filterError!;
             var result = matcher.DeleteFilter(filter);
             if (!result)
                 return ApiProblems.InvalidArgument("The filter is not registered on this dataset (it may already have been deleted).");
@@ -1302,6 +1304,33 @@ namespace IndxCloudApi.Controllers
             if (admin && !TeamRoles.CanAdmin(ctx.Role)) { error = ApiProblems.InsufficientRole("Admin"); return null; }
             if (write && !TeamRoles.CanWrite(ctx.Role)) { error = ApiProblems.InsufficientRole("Editor"); return null; }
             return ctx;
+        }
+
+        /// <summary>
+        /// Resolves a client-supplied filter token, or sets <paramref name="error"/> to the 400
+        /// to return. Covers the three ways a token fails to become a filter: the proxy is
+        /// absent, its hashString is blank, or the engine cannot rebuild it.
+        /// <para>
+        /// Every endpoint that takes a token goes through here so the answer is the same one -
+        /// CombineFilters dereferenced its two operands without checking either, which made a
+        /// stale or mistyped token a 500, and the endpoints that did check reported it as
+        /// invalidArgument rather than the unknownFilter code that names the actual condition.
+        /// </para>
+        /// </summary>
+        private static Filter? ResolveFilter(ICloudSearchEngine engine, FilterProxy? proxy, string operand, out ActionResult? error)
+        {
+            error = null;
+            if (proxy == null || string.IsNullOrWhiteSpace(proxy.HashString))
+            {
+                error = ApiProblems.InvalidArgument($"'{operand}' is required and must carry a hashString.");
+                return null;
+            }
+            var filter = engine.GetFilterFromKey(proxy.HashString);
+            if (filter == null)
+                error = ApiProblems.UnknownFilter(
+                    $"'{operand}' could not be resolved. Create the filter first, then reference it by the returned hashString; " +
+                    "a filter also stops resolving if its field was removed or is no longer Filterable.");
+            return filter;
         }
 
         /// <summary>
