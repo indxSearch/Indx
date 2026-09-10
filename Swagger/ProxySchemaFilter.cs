@@ -7,7 +7,12 @@ using Swashbuckle.AspNetCore.SwaggerGen;
 namespace IndxCloudApi.Swagger
 {
     /// <summary>
-    /// Swagger schema filter that adds example values for proxy classes
+    /// Swagger schema filter that adds example values for proxy classes.
+    ///
+    /// The hashString examples are REAL tokens, not placeholders. They used to read
+    /// "example-hash-key-12345", which told readers the value was an opaque handle when it is the
+    /// filter expression in plain text - so nobody could tell from the docs that a token may be
+    /// composed client-side, which is the only way to reach NOT. See the Filters page.
     /// </summary>
     public class ProxySchemaFilter : ISchemaFilter
     {
@@ -45,7 +50,7 @@ namespace IndxCloudApi.Swagger
                     ["boostStrength"] = new OpenApiInteger((int)BoostStrength.Med),
                     ["filterProxy"] = new OpenApiObject
                     {
-                        ["hashString"] = new OpenApiString("example-filter-hash-key-12345")
+                        ["hashString"] = new OpenApiString("VF;category;electronics")
                     }
                 };
             }
@@ -56,11 +61,11 @@ namespace IndxCloudApi.Swagger
                 {
                     ["a"] = new OpenApiObject
                     {
-                        ["hashString"] = new OpenApiString("filter-a-hash-key-12345")
+                        ["hashString"] = new OpenApiString("VF;category;electronics")
                     },
                     ["b"] = new OpenApiObject
                     {
-                        ["hashString"] = new OpenApiString("filter-b-hash-key-67890")
+                        ["hashString"] = new OpenApiString("RF;price;10;100;")
                     },
                     ["useAndOperation"] = new OpenApiBoolean(true)
                 };
@@ -70,7 +75,7 @@ namespace IndxCloudApi.Swagger
             {
                 schema.Example = new OpenApiObject
                 {
-                    ["hashString"] = new OpenApiString("example-hash-key-12345")
+                    ["hashString"] = new OpenApiString("VF;category;electronics")
                 };
             }
         }
