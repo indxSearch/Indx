@@ -30,7 +30,8 @@ namespace IndxCloudApi.Controllers
     [EnableCors("NewPolicy")]
     // Every error is an RFC 9457 ProblemDetails (application/problem+json) carrying a
     // machine-readable "code" extension — declared here so the OpenAPI spec is honest for every
-    // endpoint: 400 (invalidArgument / invalidDatasetName / loadFailed / operationFailed),
+    // endpoint: 400 (invalidArgument / invalidDatasetName / loadFailed / operationFailed /
+    // unknownFilter),
     // 403 (insufficientRole), 404 (datasetNotFound / documentNotFound / teamNotFound), and
     // 409 (invalidState with currentState/allowedStates/retryable + Retry-After header when
     // retryable, or shadowBusy). 401 comes body-less from the JWT middleware.
@@ -760,8 +761,15 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "Search", SystemState.Ready) is { } stateError)
                 return stateError;
-            Indx.Api.Result res = IndxCloudInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey);
-            return res;
+            try
+            {
+                Indx.Api.Result res = IndxCloudInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey);
+                return res;
+            }
+            catch (UnknownFilterException ex)
+            {
+                return ApiProblems.UnknownFilter(ex.Message);
+            }
         }
 
         /// <summary>
@@ -1233,7 +1241,14 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "VectorSearch", SystemState.Ready) is { } stateError)
                 return stateError;
-            return IndxCloudInternalApi.Manager.VectorSearch(query, dataSetName, ctx.OwnerKey);
+            try
+            {
+                return IndxCloudInternalApi.Manager.VectorSearch(query, dataSetName, ctx.OwnerKey);
+            }
+            catch (UnknownFilterException ex)
+            {
+                return ApiProblems.UnknownFilter(ex.Message);
+            }
         }
 
         /// <summary>
@@ -1254,7 +1269,14 @@ namespace IndxCloudApi.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "HybridSearch", SystemState.Ready) is { } stateError)
                 return stateError;
-            return IndxCloudInternalApi.Manager.HybridSearch(query, dataSetName, ctx.OwnerKey);
+            try
+            {
+                return IndxCloudInternalApi.Manager.HybridSearch(query, dataSetName, ctx.OwnerKey);
+            }
+            catch (UnknownFilterException ex)
+            {
+                return ApiProblems.UnknownFilter(ex.Message);
+            }
         }
 
         #endregion Public Methods

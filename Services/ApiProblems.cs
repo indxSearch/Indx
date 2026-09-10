@@ -67,6 +67,14 @@ namespace IndxCloudApi.Services
         public static ObjectResult InvalidArgument(string detail) =>
             Problem(StatusCodes.Status400BadRequest, "invalidArgument", "Invalid request", detail);
 
+        /// <summary>
+        /// A referenced filter token could not be resolved. Distinct from invalidArgument
+        /// because the recovery is specific: re-create the filter and retry with the new
+        /// token, rather than fix the shape of the request.
+        /// </summary>
+        public static ObjectResult UnknownFilter(string detail) =>
+            Problem(StatusCodes.Status400BadRequest, "unknownFilter", "Unknown filter", detail);
+
         public static ObjectResult LoadFailed(string detail) =>
             Problem(StatusCodes.Status400BadRequest, "loadFailed", "Load failed", detail);
 

@@ -353,6 +353,11 @@ namespace IndxCloudApi.Models
                 Query query = FromCloudQuery2Query(cloudQuery, engine, teamId, dataSetName);
                 return engine.Search(query);
             }
+            catch (UnknownFilterException)
+            {
+                // A client error, answered 400 by the controller - not a fault worth an error log.
+                throw;
+            }
             catch (System.Exception ex)
             {
                 _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxCloudInternalAPI.Search exception" + ex.ToString());
@@ -583,10 +588,14 @@ namespace IndxCloudApi.Models
                 if (!engine.EmbeddingFields.TryGetValue(query.FieldName, out var index))
                     return [];
                 Filter? filter = query.Filter != null
-                    ? engine.GetFilterFromKey(query.Filter.HashString)
+                    ? ResolveFilterOrThrow(engine, query.Filter)
                     : null;
                 var results = index.Search(query.Vector, query.MaxResults, filter);
                 return results.Select(r => new EmbeddingResultEntry(r.documentKey, r.score)).ToArray();
+            }
+            catch (UnknownFilterException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -621,7 +630,7 @@ namespace IndxCloudApi.Models
 
                 // Embedding search — also fetch a larger pool
                 Filter? filter = query.Filter != null
-                    ? engine.GetFilterFromKey(query.Filter.HashString)
+                    ? ResolveFilterOrThrow(engine, query.Filter)
                     : null;
                 var embeddingResults = index.Search(query.Vector, poolSize, filter);
 
@@ -631,6 +640,10 @@ namespace IndxCloudApi.Models
                     .Take(query.MaxNumberOfRecordsToReturn)
                     .Select(r => new EmbeddingResultEntry(r.documentKey, r.score))
                     .ToArray();
+            }
+            catch (UnknownFilterException)
+            {
+                throw;
             }
             catch (Exception ex)
             {
@@ -1232,6 +1245,31 @@ namespace IndxCloudApi.Models
             return null;
         }
 
+        /// <summary>
+        /// Turns a client-supplied filter token into a live <see cref="Filter"/>, or throws
+        /// <see cref="UnknownFilterException"/> when it cannot be resolved.
+        /// <para>
+        /// GetFilterFromKey returns null for a token it cannot parse or rebuild. Assigning that
+        /// null onward means "no filter", so a mistyped, truncated or stale token used to widen
+        /// the search to the entire dataset and answer 200 — the caller asked to narrow and got
+        /// the opposite, with nothing in the response to say so. Failing here is the whole point:
+        /// a filter that cannot be honoured must not be silently dropped.
+        /// </para>
+        /// </summary>
+        private static Filter ResolveFilterOrThrow(ICloudSearchEngine engine, FilterProxy proxy)
+        {
+            // An empty token never reaches a filter, and it does not merely fail to resolve: the
+            // key parser yields an empty RPN list, which the derived-filter builder cannot handle.
+            // Caught here so it is a 400 like every other unusable token rather than a 500 - and
+            // it is reachable by default, FilterFieldUpdateProxy.Filter initialises to exactly this.
+            if (string.IsNullOrWhiteSpace(proxy.HashString))
+                throw new UnknownFilterException(proxy.HashString);
+            var filter = engine.GetFilterFromKey(proxy.HashString);
+            if (filter == null)
+                throw new UnknownFilterException(proxy.HashString);
+            return filter;
+        }
+
         private Query FromCloudQuery2Query(CloudQuery cloudQuery, ICloudSearchEngine engine, string teamId, string dataSetName)
         {
             Query query = new Query(cloudQuery.Text, cloudQuery.MaxNumberOfRecordsToReturn)
@@ -1250,7 +1288,7 @@ namespace IndxCloudApi.Models
             if (cloudQuery.FieldBoosts != null)
                 query.FieldBoosts = cloudQuery.FieldBoosts;
             if (cloudQuery.Filter != null)
-                query.Filter = engine.GetFilterFromKey(cloudQuery.Filter.HashString);
+                query.Filter = ResolveFilterOrThrow(engine, cloudQuery.Filter);
 
             // Client-supplied boosts (kept verbatim for backward compat) merged with the dataset's
             // stored, currently-active boost rules. Rules only apply when the query opts in via
@@ -1258,7 +1296,7 @@ namespace IndxCloudApi.Models
             var merged = new List<Boost>();
             if (cloudQuery.Boosts != null)
                 foreach (var b in cloudQuery.Boosts)
-                    merged.Add(engine.CreateBoost(engine.GetFilterFromKey(b.FilterProxy.HashString), b.BoostStrength));
+                    merged.Add(engine.CreateBoost(ResolveFilterOrThrow(engine, b.FilterProxy), b.BoostStrength));
 
             if (cloudQuery.EnableBoost && _boostStore != null)
             {
