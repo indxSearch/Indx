@@ -9,10 +9,11 @@ namespace IndxCloudApi.Swagger
     /// <summary>
     /// Swagger schema filter that adds example values for proxy classes.
     ///
-    /// The hashString examples are REAL tokens, not placeholders. They used to read
-    /// "example-hash-key-12345", which told readers the value was an opaque handle when it is the
-    /// filter expression in plain text - so nobody could tell from the docs that a token may be
-    /// composed client-side, which is the only way to reach NOT. See the Filters page.
+    /// The hashString examples are deliberately PLACEHOLDERS, not real tokens. The token is opaque
+    /// by contract - a client obtains one from a filter endpoint and passes it back - and a
+    /// realistic-looking example invites readers to infer a format and compose against it. Its
+    /// internal form is documented nowhere client-facing, on purpose; see Notes/backlog.md item 9
+    /// for why that policy was chosen over documenting it.
     /// </summary>
     public class ProxySchemaFilter : ISchemaFilter
     {
@@ -50,7 +51,7 @@ namespace IndxCloudApi.Swagger
                     ["boostStrength"] = new OpenApiInteger((int)BoostStrength.Med),
                     ["filterProxy"] = new OpenApiObject
                     {
-                        ["hashString"] = new OpenApiString("VF;category;electronics")
+                        ["hashString"] = new OpenApiString("example-filter-token-12345")
                     }
                 };
             }
@@ -61,11 +62,11 @@ namespace IndxCloudApi.Swagger
                 {
                     ["a"] = new OpenApiObject
                     {
-                        ["hashString"] = new OpenApiString("VF;category;electronics")
+                        ["hashString"] = new OpenApiString("example-filter-token-12345")
                     },
                     ["b"] = new OpenApiObject
                     {
-                        ["hashString"] = new OpenApiString("RF;price;10;100;")
+                        ["hashString"] = new OpenApiString("example-filter-token-67890")
                     },
                     ["useAndOperation"] = new OpenApiBoolean(true)
                 };
@@ -75,7 +76,7 @@ namespace IndxCloudApi.Swagger
             {
                 schema.Example = new OpenApiObject
                 {
-                    ["hashString"] = new OpenApiString("VF;category;electronics")
+                    ["hashString"] = new OpenApiString("example-filter-token-12345")
                 };
             }
         }
