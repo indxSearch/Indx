@@ -1,0 +1,20 @@
+@* The team page: [team ▾] with "Manage team" on the right, then the team's datasets as a grid.
+   Hosted by Pages/ConsolePage. *@
+
+<PageTitle>@TeamName</PageTitle>
+
+<ConsoleBreadcrumb TeamName="@TeamName">
+    <Actions>
+        <Button Variant="secondary" Size="micro" Href="@TeamRoutes.TeamSettings(TeamName)" IconLeft="_iconManage">Manage team</Button>
+    </Actions>
+</ConsoleBreadcrumb>
+
+<DatasetList TeamId="@TeamId" TeamName="@TeamName" Role="@Role" />
+
+@code {
+    [Parameter, EditorRequired] public string TeamName { get; set; } = "";
+    [Parameter, EditorRequired] public string TeamId { get; set; } = "";
+    [Parameter] public string? Role { get; set; }
+
+    private static readonly RenderFragment<int> _iconManage = size => @<Users Size="size" Color="currentColor" />;
+}

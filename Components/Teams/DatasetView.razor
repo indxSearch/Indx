@@ -1,17 +1,14 @@
-@page "/teams/{TeamName}/datasets/{Dataset}"
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
-@using Microsoft.AspNetCore.Authorization
-@attribute [Authorize]
-@inherits TeamRouteBase
 @inject IDatasetEngines Engines
+@inject NavigationManager NavigationManager
+@inject ActiveTeamState ActiveTeam
 
 <PageTitle>@Dataset · @TeamName</PageTitle>
 
 @* One dataset: [team ▾] › [dataset ▾] breadcrumb and the DatasetPanel (status, tab nav, tabs).
-   Only this dataset's panel is mounted; the sibling dropdown in the crumb navigates. *@
+   Only this dataset's panel is mounted; the sibling dropdown in the crumb navigates.
+   Hosted by Pages/ConsolePage. *@
 
-@if (TeamResolved)
-{
+<div>
     <ConsoleBreadcrumb TeamName="@TeamName" Dataset="@Dataset" Siblings="_siblings" />
 
     @if (_exists)
@@ -29,26 +26,22 @@
         <p style="color: var(--lv5);">No dataset named <strong>@Dataset</strong> in this team.</p>
         <Button Variant="secondary" Size="micro" Href="@TeamRoutes.Team(TeamName)">Back to @TeamName</Button>
     }
-}
+</div>
 
 @code {
-    [Parameter] public string Dataset { get; set; } = "";
+    [Parameter, EditorRequired] public string TeamName { get; set; } = "";
+    [Parameter, EditorRequired] public string TeamId { get; set; } = "";
+    [Parameter] public string? Role { get; set; }
+    [Parameter, EditorRequired] public string Dataset { get; set; } = "";
 
     private List<string> _siblings = new();
     private bool _exists;
     private string? _loadedFor;
 
-    protected override Task OnTeamResolvedAsync()
+    // Same instance, new dataset or team (crumb dropdowns, back/forward): re-read the list.
+    protected override void OnParametersSet()
     {
-        LoadSiblings();
-        return Task.CompletedTask;
-    }
-
-    // Same page instance, new dataset (crumb dropdown, back/forward): re-read the list.
-    protected override async Task OnParametersSetAsync()
-    {
-        await base.OnParametersSetAsync();
-        if (TeamResolved && _loadedFor != $"{TeamId}/{Dataset}") LoadSiblings();
+        if (_loadedFor != $"{TeamId}/{Dataset}") LoadSiblings();
     }
 
     private void LoadSiblings()

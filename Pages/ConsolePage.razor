@@ -1,0 +1,85 @@
+@page "/"
+@page "/team"
+@page "/datasets/{Dataset}"
+@page "/teams/{TeamName}"
+@page "/teams/{TeamName}/settings"
+@page "/teams/{TeamName}/datasets/{Dataset}"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inherits TeamRouteBase
+@implements IDisposable
+
+@* The whole console is ONE routed component on purpose. The router runs in static SSR and
+   each page is its own interactive island, so navigating between two different page
+   components tears the island down and shows a blank frame until the new one renders (the
+   nav, a separate island, is the only thing that survives). Keeping team page, settings and
+   dataset page as views inside one component means every hop is a parameter change on the
+   same instance: no teardown, no blink. Which view shows is derived from the URL. *@
+
+<PageTitle>Indx Cloud API</PageTitle>
+
+@if (NoTeam)
+{
+    <h1>Welcome</h1>
+    <p style="color: var(--lv5); margin-top: 24px;">You don't belong to a team yet. Ask a team admin to add you.</p>
+}
+else if (TeamResolved)
+{
+    @switch (_view)
+    {
+        case View.Dataset:
+            <DatasetView TeamName="@Team!.Name" TeamId="@TeamId" Role="@Role" Dataset="@(Dataset ?? "")" />
+            break;
+        case View.Settings:
+            <TeamSettingsView Team="@(Team!)" Role="@Role" UserId="@UserId" />
+            break;
+        default:
+            <TeamView TeamName="@Team!.Name" TeamId="@TeamId" Role="@Role" />
+            break;
+    }
+}
+
+@code {
+    /// <summary>The open dataset. Under /datasets/{x} (legacy) it is forwarded to the team.</summary>
+    [Parameter] public string? Dataset { get; set; }
+
+    private enum View { Team, Settings, Dataset }
+    private View _view;
+
+    protected override void OnInitialized()
+    {
+        NavigationManager.LocationChanged += OnLocationChanged;
+        _view = ViewFromUri();
+    }
+
+    // /teams/{name}/settings carries no route parameter that says "settings", so the view is
+    // read off the path. LocationChanged also fires for same-component navigations.
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        var view = ViewFromUri();
+        if (view == _view) return;
+        _view = view;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private View ViewFromUri()
+    {
+        var path = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).TrimEnd('/');
+        if (path.EndsWith("/settings", StringComparison.OrdinalIgnoreCase)) return View.Settings;
+        if (path.Contains("/datasets/", StringComparison.OrdinalIgnoreCase)) return View.Dataset;
+        return View.Team;
+    }
+
+    protected override void OnParametersSet() => _view = ViewFromUri();
+
+    // "/datasets/{x}" forwards to the same dataset under the remembered team.
+    protected override string ForwardToActiveTeam(string activeTeamName) =>
+        Dataset == null ? TeamRoutes.Team(activeTeamName) : TeamRoutes.Dataset(activeTeamName, Dataset);
+
+    public override void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+        base.Dispose();
+    }
+}

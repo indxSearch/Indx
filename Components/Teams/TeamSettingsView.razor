@@ -1,24 +1,22 @@
-@page "/teams/{TeamName}/settings"
-@rendermode @(new InteractiveServerRenderMode(prerender: false))
-@using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
 @using IndxCloudApi.Data
 @using IndxCloudApi.Services
-@attribute [Authorize]
-@inherits TeamRouteBase
+@inject ActiveTeamState ActiveTeam
 @inject TeamService TeamService
 @inject UserManager<ApplicationUser> UserManager
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject IEditionService Edition
+@inject InstanceSettingsService InstanceSettingsService
+@implements IDisposable
 
-<PageTitle>Manage @(Team?.Name ?? "team")</PageTitle>
+<PageTitle>Manage @Team.Name</PageTitle>
 
 @* Team settings: [team ▾] › Settings. Members and roles, rename, delete. Reached from the
-   "Manage team" button on the team page. *@
+   "Manage team" button on the team page. Hosted by Pages/ConsolePage. *@
 
-@if (TeamResolved)
-{
-    <ConsoleBreadcrumb TeamName="@TeamName" Page="Settings" />
+<ConsoleBreadcrumb TeamName="@Team.Name" Page="Settings" />
+
+<div>
 
     <h2 style="margin:0;">Manage team</h2>
     <p style="color: var(--lv5); margin-top: 4px;">Who can access this team's datasets, and the team itself.</p>
@@ -94,7 +92,7 @@
             <div style="width:220px;"><InputField @bind-Value="_renameInput" /></div>
             <Button Variant="secondary" Size="micro" @onclick="OnRename">Rename</Button>
         </div>
-        <ConfirmButton Label="Delete team" Prompt="@($"Delete \"{Team!.Name}\"? This can't be undone.")"
+        <ConfirmButton Label="Delete team" Prompt="@($"Delete \"{Team.Name}\"? This can't be undone.")"
                        ConfirmLabel="Yes, delete" Variant="primary" CancelVariant="ghost"
                        Disabled="@(ActiveTeam.Teams.Count <= 1)" @bind-Open="_confirmDelete" OnConfirm="OnDelete">
             @if (ActiveTeam.Teams.Count <= 1)
@@ -103,7 +101,7 @@
             }
         </ConfirmButton>
     }
-}
+</div>
 
 @code {
     private readonly List<SelectField.SelectOption> _roleOptions =
@@ -111,6 +109,11 @@
     private List<SelectField.SelectOption> _userOptions = new();
     private List<SelectField.SelectOption> _addRoleOptions = new();
 
+    [Parameter, EditorRequired] public Team Team { get; set; } = default!;
+    [Parameter] public string? Role { get; set; }
+    [Parameter, EditorRequired] public string UserId { get; set; } = "";
+
+    private Guid? _loadedFor;
     private bool _canAdmin;
     private bool _canAddMembers;
 
@@ -125,21 +128,36 @@
     private record MemberRow(string UserId, string Email, string Role);
     private record UserRow(string Id, string Email);
 
-    protected override Task OnTeamResolvedAsync() => LoadAsync();
-    protected override Task OnActiveTeamChangedAsync() => LoadAsync();
+    protected override void OnInitialized() => ActiveTeam.OnChange += OnActiveTeamChanged;
+    public void Dispose() => ActiveTeam.OnChange -= OnActiveTeamChanged;
+
+    // Membership or role changed (add/remove/role change go through ReloadAsync on some
+    // paths); re-read. ConsolePage handles a team that disappeared or was renamed.
+    private async void OnActiveTeamChanged()
+    {
+        if (ActiveTeam.Teams.All(t => t.Team.Id != Team.Id)) return;
+        await LoadAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor == Team.Id) return;
+        _loadedFor = Team.Id;
+        await LoadAsync();
+    }
 
     private async Task LoadAsync()
     {
-        if (!TeamResolved) { _members.Clear(); _addableUsers.Clear(); return; }
 
         _canAdmin = TeamRoles.CanAdmin(Role);
         // Editor and above — and only when the plan allows more than one user.
         _canAddMembers = TeamRoles.CanWrite(Role)
             && Edition.IsEnabled(EditionFeature.MultipleUsers);
-        _renameInput = Team!.Name ?? "";
+        _renameInput = Team.Name ?? "";
         _confirmDelete = false;
 
-        var members = await TeamService.GetMembersAsync(Team!.Id);
+        var members = await TeamService.GetMembersAsync(Team.Id);
         var rows = new List<MemberRow>();
         foreach (var m in members)
         {
@@ -168,7 +186,7 @@
         _error = null;
         try
         {
-            await TeamService.AddMemberAsync(Team!.Id, _addUserId, _addRole);
+            await TeamService.AddMemberAsync(Team.Id, _addUserId, _addRole);
         }
         catch (TeamService.TeamException ex) { _error = ex.Message; return; }
 
@@ -179,10 +197,10 @@
             {
                 var instanceName = InstanceSettingsService.Load().InstanceName;
                 await EmailSender.SendEmailAsync(added.Email,
-                    EmailTemplates.Subject(instanceName, $"You've been added to team \"{Team!.Name}\""),
+                    EmailTemplates.Subject(instanceName, $"You've been added to team \"{Team.Name}\""),
                     EmailTemplates.Notice(instanceName,
-                        $"Added to {Team!.Name}",
-                        $"You have been added to the team <strong>{Team!.Name}</strong> as <strong>{_addRole}</strong>."));
+                        $"Added to {Team.Name}",
+                        $"You have been added to the team <strong>{Team.Name}</strong> as <strong>{_addRole}</strong>."));
             }
             catch { /* email failure is non-fatal */ }
         }
@@ -193,7 +211,7 @@
     {
         if (string.IsNullOrEmpty(role)) return;
         _error = null;
-        try { await TeamService.ChangeRoleAsync(Team!.Id, userId, role); }
+        try { await TeamService.ChangeRoleAsync(Team.Id, userId, role); }
         catch (TeamService.TeamException ex) { _error = ex.Message; }
         await LoadAsync();
     }
@@ -201,7 +219,7 @@
     private async Task OnRemove(string userId)
     {
         _error = null;
-        try { await TeamService.RemoveMemberAsync(Team!.Id, userId); }
+        try { await TeamService.RemoveMemberAsync(Team.Id, userId); }
         catch (TeamService.TeamException ex) { _error = ex.Message; }
         await LoadAsync();
     }
@@ -209,7 +227,7 @@
     private async Task OnLeave()
     {
         _error = null;
-        try { await TeamService.RemoveMemberAsync(Team!.Id, UserId); }
+        try { await TeamService.RemoveMemberAsync(Team.Id, UserId); }
         catch (TeamService.TeamException ex) { _error = ex.Message; return; }
         await ActiveTeam.ReloadAsync(); // I left → active team falls back to another
     }
@@ -218,7 +236,7 @@
     {
         if (string.IsNullOrWhiteSpace(_renameInput)) return;
         _error = null;
-        try { await TeamService.RenameTeamAsync(Team!.Id, _renameInput); }
+        try { await TeamService.RenameTeamAsync(Team.Id, _renameInput); }
         catch (TeamService.TeamException ex) { _error = ex.Message; return; }
         await ActiveTeam.ReloadAsync();
     }
@@ -227,7 +245,7 @@
     {
         if (ActiveTeam.Teams.Count <= 1) { _error = "You can't delete your only team."; _confirmDelete = false; return; }
         _error = null;
-        try { await TeamService.DeleteTeamAsync(Team!.Id); }
+        try { await TeamService.DeleteTeamAsync(Team.Id); }
         catch (TeamService.TeamException ex) { _error = ex.Message; _confirmDelete = false; return; }
         await ActiveTeam.ReloadAsync();
     }

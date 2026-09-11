@@ -9,10 +9,12 @@ using Microsoft.AspNetCore.Components.Authorization;
 namespace IndxCloudApi.Components.Shared
 {
     /// <summary>
-    /// Base for the pages under <c>/teams/{TeamName}</c>. Resolves the team named in the URL
-    /// against the signed-in user's memberships, makes it the active (and remembered) team, and
-    /// bounces anything else: unauthenticated → login, onboarding unfinished → setup, not a
-    /// member (or no such team) → <c>/</c>, which lands on a team the user does belong to.
+    /// Base for the console page. Resolves the team named in the URL against the signed-in
+    /// user's memberships, makes it the active (and remembered) team, and bounces anything
+    /// else: unauthenticated → login, onboarding unfinished → setup, not a member (or no such
+    /// team) → the remembered team. With no team in the URL (<c>/</c>, the legacy routes) it
+    /// forwards to the remembered team via <see cref="ForwardToActiveTeam"/>, or reports
+    /// <see cref="NoTeam"/> when the user belongs to none.
     /// </summary>
     public abstract class TeamRouteBase : ComponentBase, IDisposable
     {
@@ -21,13 +23,15 @@ namespace IndxCloudApi.Components.Shared
         [Inject] internal InstanceSettingsService InstanceSettingsService { get; set; } = default!;
         [Inject] protected ActiveTeamState ActiveTeam { get; set; } = default!;
 
-        [Parameter] public string TeamName { get; set; } = "";
+        [Parameter] public string? TeamName { get; set; }
 
         protected string UserId { get; private set; } = "";
         protected Team? Team { get; private set; }
         protected string? Role { get; private set; }
         protected string TeamId => Team?.Id.ToString() ?? "";
         protected bool TeamResolved => Team != null;
+        /// <summary>The user belongs to no team, so there is nothing to land on.</summary>
+        protected bool NoTeam { get; private set; }
 
         private string? _resolvedFor;
         private bool _resolving;
@@ -47,14 +51,14 @@ namespace IndxCloudApi.Components.Shared
                 return;
             }
             UserId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
-            if (UserId.Length == 0) return;
+            if (UserId.Length == 0) { NoTeam = true; return; }
             await ActiveTeam.EnsureInitializedAsync(UserId);
             ActiveTeam.OnChange += HandleActiveTeamChanged;
             await ResolveTeamAsync();
         }
 
-        // The same page instance is reused when only the route parameter changes
-        // (switcher, back/forward), so re-resolve on every parameter set.
+        // The same instance is reused when only the route changes (switcher, links,
+        // back/forward), so re-resolve on every parameter set.
         protected override async Task OnParametersSetAsync()
         {
             if (UserId.Length > 0 && _resolvedFor != TeamName) await ResolveTeamAsync();
@@ -63,12 +67,18 @@ namespace IndxCloudApi.Components.Shared
         private async Task ResolveTeamAsync()
         {
             _resolvedFor = TeamName;
+            if (string.IsNullOrEmpty(TeamName))
+            {
+                if (ActiveTeam.ActiveTeamName == null) { NoTeam = true; return; }
+                NavigationManager.NavigateTo(ForwardToActiveTeam(ActiveTeam.ActiveTeamName), replace: true);
+                return;
+            }
             var entry = ActiveTeam.Find(TeamName);
             if (entry == null)
             {
                 Team = null;
                 Role = null;
-                NavigationManager.NavigateTo("/");
+                NavigationManager.NavigateTo("/", replace: true);
                 return;
             }
             var wasTeam = Team?.Id;
@@ -85,6 +95,9 @@ namespace IndxCloudApi.Components.Shared
             finally { _resolving = false; }
         }
 
+        /// <summary>Where a team-less URL should land, given the active team's name.</summary>
+        protected virtual string ForwardToActiveTeam(string activeTeamName) => TeamRoutes.Team(activeTeamName);
+
         /// <summary>Called once per team the page lands on (first load and every switch).</summary>
         protected virtual Task OnTeamResolvedAsync() => Task.CompletedTask;
 
@@ -93,7 +106,8 @@ namespace IndxCloudApi.Components.Shared
         private async void HandleActiveTeamChanged()
         {
             if (_resolving) return; // this page caused the change; OnTeamResolvedAsync covers it
-            var entry = ActiveTeam.Teams.FirstOrDefault(t => t.Team.Id == Team?.Id);
+            if (Team == null) return;
+            var entry = ActiveTeam.Teams.FirstOrDefault(t => t.Team.Id == Team.Id);
             if (entry.Team == null)
             {
                 NavigationManager.NavigateTo("/");
