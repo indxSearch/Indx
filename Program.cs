@@ -16,7 +16,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using System.Text;
 using System.Text.Json;
-using Utilities;
+using Indx.Utilities;
 
 namespace IndxCloudApi;
 
