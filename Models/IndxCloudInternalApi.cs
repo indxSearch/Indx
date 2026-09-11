@@ -556,8 +556,15 @@ namespace IndxCloudApi.Models
             if (!persistence.DataSetExists())
                 return false;
 
-            DisposeDataSetInstance(dataSetName, teamId);
+            // Rows first, instance second. GetOrCreateInstance builds a shell for any dataset
+            // that still has a DataSet row, and ResolveEngine auto-loads a shell that has
+            // records — so disposing first left a window in which a concurrent status poll
+            // (the panel polls once a second while loading/indexing) re-created the engine and
+            // loaded the rows that were about to be deleted. That zombie then answered for a
+            // dataset re-created under the same name. With the row gone before the dispose,
+            // nothing can appear behind the removal.
             persistence.DeleteDataSet();
+            DisposeDataSetInstance(dataSetName, teamId);
             _boostStore?.Delete(teamId, dataSetName);
             _metadataStore?.Delete(teamId, dataSetName);
             return true;

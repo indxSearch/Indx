@@ -36,11 +36,14 @@
                 @if (showNav && Ctx.HasStatus)
                 {
                     <nav class="indx-dataset-nav">
+                        @if (isReady)
+                        {
+                            <Button Variant="@NavVariant("status")" Size="micro" IconLeft="DatasetIcons.Status" @onclick="@(() => SelectTab("status"))">Status</Button>
+                        }
                         <Button Variant="@NavVariant("fields")" Size="micro" IconLeft="DatasetIcons.Fields" @onclick="@(() => SelectTab("fields"))">Field configuration</Button>
                         @if (isReady)
                         {
                             <Button Variant="@NavVariant("search")" Size="micro" IconLeft="DatasetIcons.Search" @onclick="@(() => SelectTab("search"))">Search preview</Button>
-                            <Button Variant="@NavVariant("status")" Size="micro" IconLeft="DatasetIcons.Status" @onclick="@(() => SelectTab("status"))">Status</Button>
                         }
                         @if (isReady && Ctx.IsEditor)
                         {
@@ -106,7 +109,11 @@
         {
             _loaded = true;
             Ctx.RefreshStatus();
-            if (Ctx.EngineState == SystemState.Ready) Ctx.EnsureFieldsLoaded();
+            if (Ctx.EngineState == SystemState.Ready)
+            {
+                Ctx.EnsureFieldsLoaded();
+                Ctx.ActiveTab = "status"; // a Ready dataset opens on Status; Created opens on the upload flow
+            }
             StartPollingIfTransitional();
             // The tab components rendered once already (before status was known) and Blazor
             // skips children whose parameters did not change — tell them the context moved.
