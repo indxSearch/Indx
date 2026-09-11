@@ -92,7 +92,7 @@
             <div style="width:220px;"><InputField @bind-Value="_renameInput" /></div>
             <Button Variant="secondary" Size="micro" @onclick="OnRename">Rename</Button>
         </div>
-        <ConfirmButton Label="Delete team" Prompt="@($"Delete \"{Team.Name}\"? This can't be undone.")"
+        <ConfirmButton Label="Delete team" Prompt="@DeletePrompt"
                        ConfirmLabel="Yes, delete" Variant="primary" CancelVariant="ghost"
                        Disabled="@(ActiveTeam.Teams.Count <= 1)" @bind-Open="_confirmDelete" OnConfirm="OnDelete">
             @if (ActiveTeam.Teams.Count <= 1)
@@ -240,6 +240,14 @@
         catch (TeamService.TeamException ex) { _error = ex.Message; return; }
         await ActiveTeam.ReloadAsync();
     }
+
+    // The prompt names what goes with the team: its datasets are deleted, not orphaned.
+    private string DeletePrompt => TeamService.GetDatasetNames(Team.Id).Count switch
+    {
+        0 => $"Delete \"{Team.Name}\"? This can't be undone.",
+        1 => $"Delete \"{Team.Name}\" and its 1 dataset? The dataset and all its documents are deleted too. This can't be undone.",
+        var n => $"Delete \"{Team.Name}\" and its {n} datasets? The datasets and all their documents are deleted too. This can't be undone.",
+    };
 
     private async Task OnDelete()
     {

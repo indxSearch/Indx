@@ -104,6 +104,7 @@ public class Program
         builder.Services.AddSingleton<InstanceSettingsService>();
         builder.Services.AddScoped<BrowserFiles>();
         builder.Services.AddSingleton<IDatasetEngines, ManagerDatasetEngines>();
+        builder.Services.AddSingleton<ITeamDatasets>(sp => sp.GetRequiredService<IDatasetEngines>());
         builder.Services.AddSingleton<IndxCloudApi.Services.BoostRuleStore>();
         builder.Services.AddSingleton<IndxCloudApi.Services.DatasetMetadataStore>();
 

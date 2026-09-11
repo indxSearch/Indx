@@ -10,15 +10,24 @@ namespace IndxCloudApi.Services
     /// tests can substitute a fake so component behaviour can be exercised without an engine.
     /// Method names and semantics mirror the manager one-to-one.
     /// </summary>
-    internal interface IDatasetEngines
+    /// <summary>
+    /// The public slice of the registry a team needs when it goes away: which datasets it owns
+    /// and how to delete one. Kept separate from <see cref="IDatasetEngines"/> (internal, and
+    /// full of internal types) so the public <see cref="TeamService"/> can take it.
+    /// </summary>
+    public interface ITeamDatasets
     {
-        // Registry / lifecycle
         List<string> GetTeamDataSets(string teamId);
+        bool DeleteDataSet(string dataSetName, string teamId);
+    }
+
+    internal interface IDatasetEngines : ITeamDatasets
+    {
+        // Registry / lifecycle (GetTeamDataSets / DeleteDataSet come from ITeamDatasets)
         SystemStatus? GetState(string dataSetName, string teamId);
         IndxCloudInternalApi.KeepAliveInfo GetKeepAliveInfo(string dataSetName, string teamId);
         bool SetKeepAliveHrs(string dataSetName, string teamId, int keepAliveHrs);
         ICloudSearchEngine? FindSearchEngine(string dataSetName, string teamId);
-        bool DeleteDataSet(string dataSetName, string teamId);
         void DisposeDataSetInstance(string dataSetName, string teamId);
         void TransferOwnership(string dataSetName, string currentTeamId, string newTeamId);
 

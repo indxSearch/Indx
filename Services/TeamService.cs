@@ -9,7 +9,7 @@ namespace IndxCloudApi.Services
     /// HTTP — the Blazor pages (and registration) call this service directly. The team
     /// <see cref="Team.Name"/> is the only human-facing name; it is globally unique and URL-safe.
     /// </summary>
-    public class TeamService(ApplicationDbContext db, IEditionService edition)
+    public class TeamService(ApplicationDbContext db, IEditionService edition, ITeamDatasets engines)
     {
         /// <summary>Thrown when an operation would violate a team invariant (name taken, last admin, etc.).</summary>
         public sealed class TeamException(string message) : Exception(message);
@@ -135,12 +135,36 @@ namespace IndxCloudApi.Services
         }
 
         /// <summary>Deletes a team. Membership rows cascade; dataset reassignment is the caller's concern.</summary>
-        public async Task DeleteTeamAsync(Guid teamId)
+        /// <summary>Names of the datasets the team owns (the engine registry keys them by team id).</summary>
+        public List<string> GetDatasetNames(Guid teamId)
+        {
+            try { return engines.GetTeamDataSets(teamId.ToString()); }
+            catch { return []; }
+        }
+
+        /// <summary>
+        /// Deletes the team and everything it owns. Datasets go first, through the registry's
+        /// DeleteDataSet so engines are disposed and rows, synonyms, boost rules and metadata are
+        /// removed together — the team row alone lives in identity.db, and removing only that
+        /// used to leave every dataset orphaned in indx.db, unreachable but still holding disk and
+        /// memory. Returns how many datasets were deleted.
+        /// </summary>
+        public async Task<int> DeleteTeamAsync(Guid teamId)
         {
             var team = await db.Teams.FirstOrDefaultAsync(t => t.Id == teamId);
-            if (team == null) return;
+            if (team == null) return 0;
+
+            var owner = team.Id.ToString();
+            var names = GetDatasetNames(team.Id);
+            // Off the caller's thread: disposing a loaded engine can take seconds.
+            var deleted = await Task.Run(() => names.Count(name => engines.DeleteDataSet(name, owner)));
+            var left = GetDatasetNames(team.Id);
+            if (left.Count > 0)
+                throw new TeamException($"Could not delete {left.Count} dataset(s) of the team ({string.Join(", ", left)}); the team was kept.");
+
             db.Teams.Remove(team);
             await db.SaveChangesAsync();
+            return deleted;
         }
 
         // ---- Membership --------------------------------------------------------------------
