@@ -32,33 +32,43 @@
                     var isReady = engineState == SystemState.Ready;
                     var showNav = isReady || (Ctx.IsAnalyzed && !Ctx.IsLoadIndexing && Ctx.IsEditor) || (engineState == SystemState.Error && Ctx.IsAdmin);
                     var tab = Ctx.ActiveTab;
+                    // Not Ready and not Error: the not-yet tabs are shown disabled.
+                    var pending = !isReady && engineState != SystemState.Error;
                 }
                 @if (showNav && Ctx.HasStatus)
                 {
+                    @* The full tab set is always laid out in the same order. Tabs that need a
+                       built index are disabled (with the reason) until the dataset is Ready, so
+                       the bar keeps its shape from the first upload onward. Error shows only what
+                       can act on it. Role rules hide, never disable: disabled means "not yet". *@
                     <nav class="indx-dataset-nav">
-                        @if (isReady)
+                        @if (isReady || pending)
                         {
-                            <Button Variant="@NavVariant("status")" Size="micro" IconLeft="DatasetIcons.Status" @onclick="@(() => SelectTab("status"))">Status</Button>
+                            @NavTab("status", "Status", DatasetIcons.Status, isReady)
                         }
-                        <Button Variant="@NavVariant("fields")" Size="micro" IconLeft="DatasetIcons.Fields" @onclick="@(() => SelectTab("fields"))">Field configuration</Button>
-                        @if (isReady)
+                        @NavTab("fields", "Field configuration", DatasetIcons.Fields, true)
+                        @if (isReady || pending)
                         {
-                            <Button Variant="@NavVariant("search")" Size="micro" IconLeft="DatasetIcons.Search" @onclick="@(() => SelectTab("search"))">Search preview</Button>
+                            @NavTab("search", "Search preview", DatasetIcons.Search, isReady)
                         }
-                        @if (isReady && Ctx.IsEditor)
+                        @if ((isReady || pending) && Ctx.IsEditor)
                         {
-                            <Button Variant="@NavVariant("boosts")" Size="micro" IconLeft="DatasetIcons.Boost" @onclick="@(() => SelectTab("boosts"))">
-                                Boost rules
-                                @if (ExpiredBoostRules() is > 0 and var expired)
-                                {
+                            @if (isReady && ExpiredBoostRules() is > 0 and var expired)
+                            {
+                                <Button Variant="@NavVariant("boosts")" Size="micro" IconLeft="DatasetIcons.Boost" @onclick="@(() => SelectTab("boosts"))">
+                                    Boost rules
                                     <span class="indx-nav-badge" title="@expired expired boost rule(s) — no longer applying">@expired</span>
-                                }
-                            </Button>
-                            <Button Variant="@NavVariant("synonyms")" Size="micro" IconLeft="DatasetIcons.Synonym" @onclick="@(() => SelectTab("synonyms"))">Synonyms</Button>
+                                </Button>
+                            }
+                            else
+                            {
+                                @NavTab("boosts", "Boost rules", DatasetIcons.Boost, isReady)
+                            }
+                            @NavTab("synonyms", "Synonyms", DatasetIcons.Synonym, isReady)
                         }
                         @if (Ctx.IsAdmin)
                         {
-                            <Button Variant="@NavVariant("options")" Size="micro" IconLeft="DatasetIcons.Sliders" @onclick="@(() => SelectTab("options"))">Options</Button>
+                            @NavTab("options", "Options", DatasetIcons.Sliders, true)
                         }
                     </nav>
                 }
@@ -133,6 +143,23 @@
     }
 
     private string NavVariant(string tab) => Ctx.ActiveTab == tab ? "primary" : "ghost";
+
+    private const string NotYet = "Available after the index is built";
+
+    /// <summary>One tab button; disabled with a tooltip when it needs a Ready engine.</summary>
+    private RenderFragment NavTab(string tab, string label, RenderFragment<int> icon, bool enabled) => __builder =>
+    {
+        if (enabled)
+        {
+            <Button Variant="@NavVariant(tab)" Size="micro" IconLeft="@icon" @onclick="@(() => SelectTab(tab))">@label</Button>
+        }
+        else
+        {
+            <Tooltip Content="@NotYet" Position="bottom">
+                <Button Variant="ghost" Size="micro" IconLeft="@icon" Disabled="true">@label</Button>
+            </Tooltip>
+        }
+    };
 
     /// <summary>Enabled rules whose window has closed — the ones an editor most needs to notice,
     /// since they look live until someone opens the tab. The store caches, so this is cheap.</summary>
