@@ -157,6 +157,39 @@
         }
     }
 
+    @* ── Rename ── *@
+    <h3 class="indx-section-heading">Rename</h3>
+    <p class="indx-section-help">
+        The name is the dataset's address: every API call, MCP client and link that uses the old name stops working. A loaded dataset is reloaded under the new name, which takes as long as an index build.
+    </p>
+    @if (!Ctx.IsBusy)
+    {
+        <div class="opt-row">
+            <div class="opt-w240">
+                <InputField placeholder="New dataset name" @bind-Value="_renameInput"
+                            @oninput="e => _renameInput = e.Value?.ToString() ?? string.Empty" @onkeydown="OnRenameKeyDown" />
+            </div>
+            @if (!_renameConfirm)
+            {
+                <Button Variant="secondary" Size="micro" disabled="@(!RenameReady)" @onclick="() => { _renameError = null; _renameConfirm = true; }">Rename</Button>
+            }
+            else
+            {
+                <span class="opt-danger-text">Rename "@Ctx.Name" to "@_renameInput.Trim()"? Clients using the old name will break.</span>
+                <Button Variant="primary" Size="micro" disabled="@_renaming" @onclick="RenameAsync">@(_renaming ? "Renaming…" : "Confirm rename")</Button>
+                <Button Variant="ghost" Size="micro" disabled="@_renaming" @onclick="() => _renameConfirm = false">Cancel</Button>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(_renameError))
+        {
+            <p class="opt-error">@_renameError</p>
+        }
+    }
+    else
+    {
+        <p class="opt-muted">Cannot rename while an operation is in progress.</p>
+    }
+
     @* ── Transfer to another team ── *@
     @{
         var transferTargets = Ctx.MyTeams
@@ -472,6 +505,47 @@
         _replaceTransferCts?.Dispose();
         _replacePollCts?.Cancel();
         _replacePollCts?.Dispose();
+    }
+
+    // ── Rename ───────────────────────────────────────────────────────────────
+
+    private string _renameInput = "";
+    private bool _renameConfirm;
+    private bool _renaming;
+    private string? _renameError;
+
+    private bool RenameReady => !string.IsNullOrWhiteSpace(_renameInput) && _renameInput.Trim() != Ctx.Name;
+
+    private async Task OnRenameKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && RenameReady)
+        {
+            if (_renameConfirm) await RenameAsync();
+            else { _renameError = null; _renameConfirm = true; }
+        }
+        if (e.Key == "Escape") _renameConfirm = false;
+    }
+
+    private async Task RenameAsync()
+    {
+        if (!RenameReady || _renaming) return;
+        _renameError = null;
+        _renaming = true;
+        await Render();
+        try
+        {
+            _renameError = await Ctx.RenameAsync(_renameInput);
+        }
+        catch (Exception ex)
+        {
+            _renameError = $"Rename failed: {ex.Message}";
+        }
+        finally
+        {
+            _renaming = false;
+            if (_renameError == null) { _renameInput = ""; _renameConfirm = false; }
+        }
+        await Render();
     }
 
     // ── Transfer ─────────────────────────────────────────────────────────────

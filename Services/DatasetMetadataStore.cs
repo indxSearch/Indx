@@ -194,5 +194,15 @@ namespace IndxCloudApi.Services
             if (!string.IsNullOrEmpty(keyField)) SaveKeyField(toTeamId, dataSetName, keyField);
             Delete(fromTeamId, dataSetName);
         }
+
+        /// <summary>Re-keys the description and key field under the dataset's new name (same team).</summary>
+        public void Rename(string teamId, string dataSetName, string newName)
+        {
+            var description = Load(teamId, dataSetName);
+            var keyField = LoadKeyField(teamId, dataSetName);
+            if (!string.IsNullOrEmpty(description)) Save(teamId, newName, description);
+            if (!string.IsNullOrEmpty(keyField)) SaveKeyField(teamId, newName, keyField);
+            Delete(teamId, dataSetName);
+        }
     }
 }

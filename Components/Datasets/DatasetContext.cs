@@ -213,6 +213,21 @@ namespace IndxCloudApi.Components.Datasets
         public event Func<Task>? DatasetListChanged;
         public Task NotifyDatasetListChangedAsync() => DatasetListChanged?.Invoke() ?? Task.CompletedTask;
 
+        /// <summary>Raised with the new name after a rename — the host navigates there, since the
+        /// name is in the URL and this context is bound to the old one.</summary>
+        public event Func<string, Task>? Renamed;
+
+        /// <summary>Renames the dataset. Runs off the circuit (a Ready engine reloads under the
+        /// new key). Returns the message to show on refusal, null on success.</summary>
+        public async Task<string?> RenameAsync(string newName)
+        {
+            var error = await Task.Run(() => Engines.RenameDataSet(Name, TeamId, newName));
+            if (error != null) return error;
+            SetBufferedFile(null);
+            if (Renamed != null) await Renamed(newName.Trim());
+            return null;
+        }
+
         // ── Dataset-level operations shared by more than one tab ─────────────
 
         /// <summary>Deletes the dataset. Runs off the circuit (engine disposal can take

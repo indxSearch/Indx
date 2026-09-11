@@ -154,6 +154,14 @@ namespace IndxCloudApi.Services
             Delete(fromTeamId, dataSetName);
         }
 
+        /// <summary>Re-keys the rules under the dataset's new name (same team).</summary>
+        public void Rename(string teamId, string dataSetName, string newName)
+        {
+            var rules = Load(teamId, dataSetName);
+            if (rules.Count > 0) Save(teamId, newName, rules);
+            Delete(teamId, dataSetName);
+        }
+
         /// <summary>
         /// Materializes the dataset's currently-active rules (enabled and within their schedule on
         /// <paramref name="today"/>) into engine <see cref="Boost"/> objects. A condition that can't

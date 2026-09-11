@@ -17,7 +17,8 @@
                       Role="@Role"
                       MyTeams="ActiveTeam.Teams"
                       Visible="true"
-                      OnDatasetListChanged="OnDatasetListChanged">
+                      OnDatasetListChanged="OnDatasetListChanged"
+                      OnRenamed="OnRenamed">
             <Header Context="ctx">
                 <ConsoleBreadcrumb TeamName="@TeamName" Dataset="@Dataset" Siblings="_siblings">
                     <Trailing><DatasetStatus Ctx="ctx" /></Trailing>
@@ -52,6 +53,14 @@
         try { _siblings = Engines.GetTeamDataSets(TeamId); }
         catch { _siblings = new(); }
         _exists = _siblings.Contains(Dataset);
+    }
+
+    /// <summary>Renamed: the URL carries the name, so go to the new one (the panel is keyed by
+    /// name and remounts with a fresh context).</summary>
+    private Task OnRenamed(string newName)
+    {
+        NavigationManager.NavigateTo(TeamRoutes.Dataset(TeamName, newName), replace: true);
+        return Task.CompletedTask;
     }
 
     /// <summary>Deleted, transferred or hibernated. Hibernated stays here (the panel shows

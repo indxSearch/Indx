@@ -765,6 +765,48 @@ namespace IndxCloudApi.Models
             return true;
         }
 
+        /// <summary>
+        /// Renames a dataset within its team. The pair (name, team) is the dataset's identity
+        /// everywhere — the registry key, the engine's Persistence binding, four indx.db tables and
+        /// the two cloud-owned ones — so a rename is a key rewrite in each, in the same shape as
+        /// <see cref="TransferOwnership"/>: dispose the engine, rewrite the rows, reload under the
+        /// new key. Every client that addressed the dataset by the old name is broken by design;
+        /// there is no alias. Returns the message to show on refusal, null on success.
+        /// </summary>
+        internal string? RenameDataSet(string dataSetName, string teamId, string newName)
+        {
+            newName = newName.Trim();
+            if (newName.Length == 0) return "Enter a name.";
+            if (!Indx.Utilities.FileNameValidity.IsValid(newName)) return "Invalid dataset name.";
+            if (string.Equals(newName, dataSetName, StringComparison.Ordinal)) return "That is already the dataset's name.";
+            var source = new Persistence(SearchDbConnectionString, dataSetName, teamId);
+            if (!source.DataSetExists()) return $"Dataset '{dataSetName}' not found.";
+            if (new Persistence(SearchDbConnectionString, newName, teamId).DataSetExists()) return $"Dataset '{newName}' already exists.";
+            if (_shadowBuildsInProgress.ContainsKey(MakeKey(dataSetName, teamId))) return "A field-configuration or replace build is in progress; try again when it has finished.";
+
+            var wasReady = FindInstance(dataSetName, teamId)?.Status.SystemState == SystemState.Ready;
+            DisposeDataSetInstance(dataSetName, teamId);
+            var db = new SqLiteManager(SearchDbConnectionString);
+            db.RenameDataSet(dataSetName, teamId, newName);
+            _boostStore?.Rename(teamId, dataSetName, newName);
+            _metadataStore?.Rename(teamId, dataSetName, newName);
+            _logger.LogInformation(MakeLogPrefix(teamId, dataSetName) + $"renamed to '{newName}'");
+
+            // Bring the renamed dataset back to where it was: a Ready engine reloads under the new
+            // key the way TransferOwnership does; a Created shell just gets created on next touch.
+            var instance = FindInstance(newName, teamId);
+            if (wasReady && instance?.Persistence != null && instance.Persistence.NumberOfJsonRecords() > 0)
+            {
+                var loadMonitor = new ProcessMonitor();
+                instance.LoadFromDatabaseSync(loadMonitor);
+                loadMonitor.WaitForCompletion();
+                var indexMonitor = new ProcessMonitor();
+                instance.Index(monitor: indexMonitor);
+                indexMonitor.WaitForCompletion();
+            }
+            return null;
+        }
+
         internal void TransferOwnership(string dataSetName, string currentTeamId, string newTeamId)
         {
             DisposeDataSetInstance(dataSetName, currentTeamId);

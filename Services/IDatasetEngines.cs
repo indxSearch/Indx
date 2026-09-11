@@ -30,6 +30,8 @@ namespace IndxCloudApi.Services
         ICloudSearchEngine? FindSearchEngine(string dataSetName, string teamId);
         void DisposeDataSetInstance(string dataSetName, string teamId);
         void TransferOwnership(string dataSetName, string currentTeamId, string newTeamId);
+        /// <summary>Renames within the team. Null on success, else the message to show.</summary>
+        string? RenameDataSet(string dataSetName, string teamId, string newName);
 
         // Ingest
         Task<string?> InitFromStreamAsync(string dataSetName, string teamId, Stream jsonStream);
@@ -65,6 +67,7 @@ namespace IndxCloudApi.Services
         public bool DeleteDataSet(string d, string t) => M.DeleteDataSet(d, t);
         public void DisposeDataSetInstance(string d, string t) => M.DisposeDataSetInstance(d, t);
         public void TransferOwnership(string d, string from, string to) => M.TransferOwnership(d, from, to);
+        public string? RenameDataSet(string d, string t, string newName) => M.RenameDataSet(d, t, newName);
 
         public Task<string?> InitFromStreamAsync(string d, string t, Stream s) => M.InitFromStreamAsync(d, t, s);
         public (Task loadTask, ProcessMonitor monitor)? StartLoadAsync(string d, string t, Stream s) => M.StartLoadAsync(d, t, s);

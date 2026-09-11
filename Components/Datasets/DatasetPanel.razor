@@ -99,6 +99,8 @@
     [Parameter] public RenderFragment<DatasetContext>? Header { get; set; }
     /// <summary>The dataset was deleted, transferred or hibernated; the shell reloads its list.</summary>
     [Parameter] public EventCallback OnDatasetListChanged { get; set; }
+    /// <summary>The dataset was renamed; the host navigates to the new name.</summary>
+    [Parameter] public EventCallback<string> OnRenamed { get; set; }
 
     public DatasetContext Ctx { get; private set; } = default!;
 
@@ -110,6 +112,7 @@
         Ctx = new DatasetContext(Engines, Name, TeamId, Role, MyTeams);
         Ctx.Changed += OnCtxChanged;
         Ctx.DatasetListChanged += () => OnDatasetListChanged.InvokeAsync();
+        Ctx.Renamed += newName => OnRenamed.InvokeAsync(newName);
     }
 
     protected override void OnParametersSet()
