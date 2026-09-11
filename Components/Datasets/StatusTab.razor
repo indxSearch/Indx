@@ -1,5 +1,6 @@
-@* Diagnostics for a Ready dataset: counts, timings, keep-alive, license usage. Everyone on the
-   team can read it; nothing here is editable (keep-alive is changed under Options). *@
+@* Diagnostics for a Ready dataset: counts, timings, keep-alive. Everyone on the team can read
+   it; nothing here is editable (keep-alive is changed under Options). Licensing is instance-wide
+   and lives on the License page; a limit breach still surfaces in the alert banner. *@
 @using Indx.Api
 @using IndxCloudApi.Models
 @inherits DatasetTabBase
@@ -36,20 +37,6 @@
                 }
             </tbody>
         </table>
-
-        @if (status.LicenseInfo is { } lic)
-        {
-            <h3 class="status-heading status-heading--section">License</h3>
-            <table class="status-table">
-                <tbody>
-                    <tr>
-                        <td>Document limit</td>
-                        <td class="@(lic.DocumentLimitExceeded ? "status-alert" : null)">@status.DocumentCount.ToString("N0") / @lic.DocumentLimit.ToString("N0")</td>
-                    </tr>
-                    <tr><td>Licensed</td><td>@(lic.Licensed ? lic.LicensedTo : "No (developer limit)")</td></tr>
-                </tbody>
-            </table>
-        }
     </div>
 }
 

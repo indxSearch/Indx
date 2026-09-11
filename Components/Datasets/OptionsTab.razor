@@ -12,8 +12,8 @@
     @* ── Description (domain context for AI agents over MCP) ── *@
     @if (Ctx.IsEditor)
     {
-        <h3 class="opt-heading">Description</h3>
-        <p class="opt-help">
+        <h3 class="indx-section-heading indx-section-heading--first">Description</h3>
+        <p class="indx-section-help">
             Domain context shown to AI agents that use this dataset over MCP (<code>describe_dataset</code>) — e.g. what the records are and what key fields mean.
         </p>
         <div class="opt-narrow">
@@ -26,12 +26,11 @@
                 <Button Variant="ghost" Size="micro" @onclick="() => _descEdit = _descSaved">Cancel</Button>
             </div>
         }
-        <div class="opt-gap"></div>
     }
 
     @* ── Keep-alive (team admins manage their dataset's memory lifecycle) ── *@
-    <h3 class="opt-heading">Keep-alive</h3>
-    <p class="opt-help">
+    <h3 class="indx-section-heading">Keep-alive</h3>
+    <p class="indx-section-help">
         Controls how long this dataset stays loaded in memory. <strong>Pinned</strong> keeps it always loaded; <strong>Off</strong> lets the client load it on demand; <strong>Timed</strong> unloads it after inactivity and reloads it automatically on next use.
     </p>
     @{ var ka = Ctx.KeepAlive; }
@@ -82,8 +81,8 @@
     @* ── Replace data (atomic full reload) ── *@
     @if (Ctx.IsEditor)
     {
-        <h3 class="opt-heading opt-heading--section">Replace data</h3>
-        <p class="opt-help">
+        <h3 class="indx-section-heading">Replace data</h3>
+        <p class="indx-section-help">
             Atomically reload the whole dataset from a new JSON file. The current data keeps serving with zero downtime until the new index is ready; field configuration, boost rules and the description are preserved. If the new file fails to load, the current data is left untouched.
         </p>
         @if (_replaceBusy)
@@ -166,8 +165,8 @@
     }
     @if (transferTargets.Count > 0)
     {
-        <h3 class="opt-heading opt-heading--section">Transfer to another team</h3>
-        <p class="opt-help">Move this dataset to another team you administer. The current team loses access.</p>
+        <h3 class="indx-section-heading">Transfer to another team</h3>
+        <p class="indx-section-help">Move this dataset to another team you administer. The current team loses access.</p>
         @if (!_transferConfirm)
         {
             <div class="opt-row">
@@ -197,7 +196,7 @@
     {
         @if (Ctx.EngineState == SystemState.Ready)
         {
-            <h3 class="opt-heading opt-heading--danger">Danger Zone</h3>
+            <h3 class="indx-section-heading indx-section-heading--danger">Danger Zone</h3>
         }
         @if (!Ctx.IsBusy)
         {

@@ -18,8 +18,8 @@
 
 <div>
 
-    <h2 style="margin:0;">Manage team</h2>
-    <p style="color: var(--lv5); margin-top: 4px;">Who can access this team's datasets, and the team itself.</p>
+    <h2 class="indx-section-heading indx-section-heading--first">Manage team</h2>
+    <p class="indx-section-help">Who can access this team's datasets, and the team itself.</p>
 
     @if (!string.IsNullOrEmpty(_error))
     {
@@ -27,7 +27,7 @@
     }
 
     @* ── Members ── *@
-    <h3 style="margin-top:28px; margin-bottom:12px;">Members</h3>
+    <h3 class="indx-section-heading">Members</h3>
     <table style="width:100%; border-collapse:collapse; font-size:13px;">
         <thead>
             <tr style="border-bottom:1px solid var(--lv3); color:var(--lv5);">
@@ -69,7 +69,7 @@
     @* ── Add member (Editor and above) ── *@
     @if (_canAddMembers)
     {
-        <h3 style="margin-top:28px; margin-bottom:12px;">Add a member</h3>
+        <h3 class="indx-section-heading">Add a member</h3>
         @if (_addableUsers.Count == 0)
         {
             <p style="color:var(--lv5);">Everyone with an account is already on this team.</p>
@@ -87,19 +87,38 @@
     @* ── Team settings (Admin) ── *@
     @if (_canAdmin)
     {
-        <h3 style="margin-top:32px; margin-bottom:12px;">Team settings</h3>
+        <h3 class="indx-section-heading">Team settings</h3>
         <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
             <div style="width:220px;"><InputField @bind-Value="_renameInput" /></div>
             <Button Variant="secondary" Size="micro" @onclick="OnRename">Rename</Button>
         </div>
-        <ConfirmButton Label="Delete team" Prompt="@DeletePrompt"
-                       ConfirmLabel="Yes, delete" Variant="primary" CancelVariant="ghost"
-                       Disabled="@(ActiveTeam.Teams.Count <= 1)" @bind-Open="_confirmDelete" OnConfirm="OnDelete">
-            @if (ActiveTeam.Teams.Count <= 1)
-            {
-                <span style="color:var(--lv4); font:var(--text-2xs);">You can't delete your only team.</span>
-            }
-        </ConfirmButton>
+    }
+
+    @* ── Danger zone (Admin): delete the team and everything it owns. Same shape as the
+       dataset's danger zone, plus typing the team name — the datasets go with it. ── *@
+    @if (_canAdmin)
+    {
+        <h3 class="indx-section-heading indx-section-heading--danger">Danger Zone</h3>
+        @if (ActiveTeam.Teams.Count <= 1)
+        {
+            <p class="indx-section-help">You can't delete your only team.</p>
+        }
+        else if (!_confirmDelete)
+        {
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="BeginDelete">Delete team</Button>
+        }
+        else
+        {
+            <p class="indx-section-help">@DeletePrompt</p>
+            <div class="indx-confirm-typed">
+                <div style="width:260px;">
+                    <InputField placeholder="@($"Type {Team.Name} to confirm")" @bind-Value="_deleteTyped"
+                                @oninput="e => _deleteTyped = e.Value?.ToString() ?? string.Empty" @onkeydown="OnDeleteKeyDown" />
+                </div>
+                <Button Variant="danger" Size="micro" IconLeft="DatasetIcons.Delete" Disabled="@(!DeleteTypedMatches)" @onclick="OnDelete">Yes, delete</Button>
+                <Button Variant="ghost" Size="micro" @onclick="CancelDelete">Cancel</Button>
+            </div>
+        }
     }
 </div>
 
@@ -244,13 +263,26 @@
     // The prompt names what goes with the team: its datasets are deleted, not orphaned.
     private string DeletePrompt => TeamService.GetDatasetNames(Team.Id).Count switch
     {
-        0 => $"Delete \"{Team.Name}\"? This can't be undone.",
-        1 => $"Delete \"{Team.Name}\" and its 1 dataset? The dataset and all its documents are deleted too. This can't be undone.",
-        var n => $"Delete \"{Team.Name}\" and its {n} datasets? The datasets and all their documents are deleted too. This can't be undone.",
+        0 => $"This deletes the team \"{Team.Name}\" and removes every member from it. This can't be undone.",
+        1 => $"This deletes the team \"{Team.Name}\" and its 1 dataset, with all its documents, and removes every member. This can't be undone.",
+        var n => $"This deletes the team \"{Team.Name}\" and its {n} datasets, with all their documents, and removes every member. This can't be undone.",
     };
+
+    private string _deleteTyped = "";
+    private bool DeleteTypedMatches => string.Equals(_deleteTyped.Trim(), Team.Name, StringComparison.OrdinalIgnoreCase);
+
+    private void BeginDelete() { _deleteTyped = ""; _error = null; _confirmDelete = true; }
+    private void CancelDelete() { _deleteTyped = ""; _confirmDelete = false; }
+
+    private async Task OnDeleteKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && DeleteTypedMatches) await OnDelete();
+        if (e.Key == "Escape") CancelDelete();
+    }
 
     private async Task OnDelete()
     {
+        if (!DeleteTypedMatches) return;
         if (ActiveTeam.Teams.Count <= 1) { _error = "You can't delete your only team."; _confirmDelete = false; return; }
         _error = null;
         try { await TeamService.DeleteTeamAsync(Team.Id); }

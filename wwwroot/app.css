@@ -311,6 +311,29 @@ a.btn-danger:hover {
     margin: 0 auto;
 }
 
+/* Section rhythm on dense pages (dataset Options, Manage team, …). One scale, on the spacing
+   token: 8× between sections, 2× from a heading to its help text or first control. The first
+   section in a page or tab carries no top margin — the title or tab bar above it spaces it. */
+.indx-section-heading {
+    margin-top: calc(var(--spacing) * 8);
+    margin-bottom: calc(var(--spacing) * 2);
+}
+
+.indx-section-heading--first {
+    margin-top: 0;
+}
+
+.indx-section-heading--danger {
+    color: var(--CSignal);
+}
+
+.indx-section-help {
+    color: var(--lv5);
+    font: var(--text-xs);
+    margin-bottom: calc(var(--spacing) * 2);
+    max-width: 560px;
+}
+
 /* Navigation */
 .nav {
     display: flex;
