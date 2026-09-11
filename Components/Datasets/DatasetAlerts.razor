@@ -1,0 +1,44 @@
+@* Engine alerts that must interrupt (license limit exceeded, invalid argument/state, too-long
+   search text, truncated indexed text, an error message). Renders nothing in the normal case,
+   so the panel has no status row unless something is wrong. Subscribes to the context itself
+   for the same reason DatasetStatus does. *@
+@using Indx.Api
+@implements IDisposable
+
+@if (Ctx.Status is { } status && status.SystemState == SystemState.Ready && Alerts(status) is { Count: > 0 } alerts)
+{
+    <div class="indx-dataset-alerts" role="alert">
+        @foreach (var (label, detail) in alerts)
+        {
+            <div class="indx-dataset-alert">
+                <span class="indx-dataset-alert-icon"><Warning Size="14" Color="currentColor" /></span>
+                <span class="indx-dataset-alert-label">@label</span>
+                @if (detail != null)
+                {
+                    <span class="indx-dataset-alert-detail">@detail</span>
+                }
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public DatasetContext Ctx { get; set; } = default!;
+
+    protected override void OnInitialized() => Ctx.Changed += OnChanged;
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Ctx.Changed -= OnChanged;
+
+    private static List<(string Label, string? Detail)> Alerts(SystemStatus status)
+    {
+        var list = new List<(string, string?)>();
+        if (status.LicenseInfo?.DocumentLimitExceeded == true)
+            list.Add(("License limit exceeded", $"{status.DocumentCount:N0} of {status.LicenseInfo.DocumentLimit:N0} documents"));
+        if (status.InvalidArgument) list.Add(("Invalid argument", null));
+        if (status.InvalidState) list.Add(("Invalid state", null));
+        if (status.TooLongSearchText) list.Add(("Too long search text", null));
+        if (status.IndexedTextTruncated) list.Add(("Indexed text truncated", null));
+        if (!string.IsNullOrEmpty(status.ErrorMessage)) list.Add(("Error", status.ErrorMessage));
+        return list;
+    }
+}

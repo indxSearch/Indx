@@ -26,10 +26,14 @@
 }
 else if (TeamResolved)
 {
+    @* LocationChanged fires before the router supplies the new route parameters, so the URL can
+       say "dataset" while Dataset still holds the previous value (null coming from the team
+       page). Render the dataset view only once the parameter has arrived; until then the team
+       view stays up, which is what was on screen anyway. *@
     @switch (_view)
     {
-        case View.Dataset:
-            <DatasetView TeamName="@Team!.Name" TeamId="@TeamId" Role="@Role" Dataset="@(Dataset ?? "")" />
+        case View.Dataset when Dataset != null:
+            <DatasetView TeamName="@Team!.Name" TeamId="@TeamId" Role="@Role" Dataset="@Dataset" />
             break;
         case View.Settings:
             <TeamSettingsView Team="@(Team!)" Role="@Role" UserId="@UserId" />

@@ -1,0 +1,30 @@
+.indx-dataset-alerts {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 12px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    background: var(--lv1);
+    font: var(--text-sm);
+}
+
+.indx-dataset-alert {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    color: var(--CSignal);
+}
+
+.indx-dataset-alert-icon {
+    display: inline-flex;
+    align-self: center;
+}
+
+.indx-dataset-alert-label {
+    font-weight: var(--med);
+}
+
+.indx-dataset-alert-detail {
+    color: var(--lv6);
+}

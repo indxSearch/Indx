@@ -1,0 +1,80 @@
+@* Diagnostics for a Ready dataset: counts, timings, keep-alive, license usage. Everyone on the
+   team can read it; nothing here is editable (keep-alive is changed under Options). *@
+@using Indx.Api
+@using IndxCloudApi.Models
+@inherits DatasetTabBase
+
+@if (!Active) { return; }
+
+@if (Ctx.Status is { } status)
+{
+    var ka = Ctx.KeepAlive;
+    <div class="status-tab">
+        <h3 class="status-heading">Index</h3>
+        <table class="status-table">
+            <tbody>
+                <tr>
+                    <td>State</td>
+                    <td><Chip Color="@DatasetStatus.ChipColor(status.SystemState)" TextColor="@DatasetStatus.ChipTextColor(status.SystemState)" Icon="@DatasetIcons.ForState(status.SystemState)">@status.SystemState</Chip></td>
+                </tr>
+                <tr><td>Documents</td><td>@status.DocumentCount.ToString("N0")</td></tr>
+                <tr><td>Records on disk</td><td>@((ka?.RecordCount ?? 0).ToString("N0"))</td></tr>
+                <tr><td>Last index build</td><td>@TimeAgo(status.TimeOfLastIndexBuild)</td></tr>
+                <tr><td>Seconds to index</td><td>@status.SecondsToIndex.ToString("0.##")s</td></tr>
+                <tr><td>Instance created</td><td>@TimeAgo(status.TimeOfInstanceCreation)</td></tr>
+            </tbody>
+        </table>
+
+        <h3 class="status-heading status-heading--section">Usage</h3>
+        <table class="status-table">
+            <tbody>
+                <tr><td>Searches since load</td><td>@status.SearchCounter.ToString("N0")</td></tr>
+                <tr><td>Keep-alive</td><td>@KeepAliveLabel(ka)</td></tr>
+                @if (ka?.LastUsedUtc is { } used)
+                {
+                    <tr><td>Last used</td><td>@TimeAgo(used.LocalDateTime)</td></tr>
+                }
+            </tbody>
+        </table>
+
+        @if (status.LicenseInfo is { } lic)
+        {
+            <h3 class="status-heading status-heading--section">License</h3>
+            <table class="status-table">
+                <tbody>
+                    <tr>
+                        <td>Document limit</td>
+                        <td class="@(lic.DocumentLimitExceeded ? "status-alert" : null)">@status.DocumentCount.ToString("N0") / @lic.DocumentLimit.ToString("N0")</td>
+                    </tr>
+                    <tr><td>Licensed</td><td>@(lic.Licensed ? lic.LicensedTo : "No (developer limit)")</td></tr>
+                </tbody>
+            </table>
+        }
+    </div>
+}
+
+@code {
+    private static string KeepAliveLabel(IndxCloudInternalApi.KeepAliveInfo? ka)
+    {
+        if (ka == null) return "—";
+        return ka.KeepAliveTimeHrs switch
+        {
+            int.MaxValue => "Always on",
+            0 => "Client managed",
+            var h when ka.Remaining is { } r => $"{h}h · {Math.Max(0, (int)Math.Ceiling(r.TotalMinutes))} min left",
+            var h => $"{h}h",
+        };
+    }
+
+    public static string TimeAgo(DateTime dt)
+    {
+        if (dt == default) return "—";
+        var age = DateTime.Now - dt;
+        if (age.TotalSeconds < 60) return "just now";
+        if (age.TotalMinutes < 60) return $"{(int)age.TotalMinutes}m ago";
+        if (age.TotalHours < 24) return $"{(int)age.TotalHours}h ago";
+        if (age.TotalDays < 30) return $"{(int)age.TotalDays}d ago";
+        if (age.TotalDays < 365) return $"{(int)(age.TotalDays / 30)}mo ago";
+        return $"{(int)(age.TotalDays / 365)}y ago";
+    }
+}

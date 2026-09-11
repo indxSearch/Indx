@@ -9,8 +9,6 @@
    Hosted by Pages/ConsolePage. *@
 
 <div>
-    <ConsoleBreadcrumb TeamName="@TeamName" Dataset="@Dataset" Siblings="_siblings" />
-
     @if (_exists)
     {
         <DatasetPanel @key="@($"{TeamId}/{Dataset}")"
@@ -19,12 +17,13 @@
                       Role="@Role"
                       MyTeams="ActiveTeam.Teams"
                       Visible="true"
-                      OnDatasetListChanged="OnDatasetListChanged" />
-    }
-    else
-    {
-        <p style="color: var(--lv5);">No dataset named <strong>@Dataset</strong> in this team.</p>
-        <Button Variant="secondary" Size="micro" Href="@TeamRoutes.Team(TeamName)">Back to @TeamName</Button>
+                      OnDatasetListChanged="OnDatasetListChanged">
+            <Header Context="ctx">
+                <ConsoleBreadcrumb TeamName="@TeamName" Dataset="@Dataset" Siblings="_siblings">
+                    <Trailing><DatasetStatus Ctx="ctx" /></Trailing>
+                </ConsoleBreadcrumb>
+            </Header>
+        </DatasetPanel>
     }
 </div>
 
@@ -39,9 +38,12 @@
     private string? _loadedFor;
 
     // Same instance, new dataset or team (crumb dropdowns, back/forward): re-read the list.
+    // A dataset that is not in this team (typo, deleted, moved) goes back to the team's list
+    // rather than rendering a page that looks like the dataset exists.
     protected override void OnParametersSet()
     {
         if (_loadedFor != $"{TeamId}/{Dataset}") LoadSiblings();
+        if (!_exists) NavigationManager.NavigateTo(TeamRoutes.Team(TeamName), replace: true);
     }
 
     private void LoadSiblings()

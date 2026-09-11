@@ -17,6 +17,11 @@
     flex-wrap: wrap;
 }
 
+.indx-new-dataset ::deep .indx-input-wrapper,
+.indx-new-dataset ::deep input {
+    max-width: 300px;
+}
+
 .indx-new-dataset--below {
     margin-top: 12px;
 }

@@ -12,6 +12,10 @@
 
 <div class="indx-console-header">
     <Breadcrumbs Items="_items" />
+    @if (Trailing != null)
+    {
+        <div class="indx-console-trailing">@Trailing</div>
+    }
     @if (Actions != null)
     {
         <div class="indx-console-actions">@Actions</div>
@@ -48,6 +52,8 @@
     [Parameter] public IReadOnlyList<string> Siblings { get; set; } = [];
     /// <summary>A trailing, unlinked step for a sub-page ("Settings").</summary>
     [Parameter] public string? Page { get; set; }
+    /// <summary>Shown directly after the trail, left-aligned (the dataset's state chip).</summary>
+    [Parameter] public RenderFragment? Trailing { get; set; }
     /// <summary>Buttons shown at the right end of the header row.</summary>
     [Parameter] public RenderFragment? Actions { get; set; }
 
@@ -106,10 +112,12 @@
 
     // ── New team ────────────────────────────────────────────────────────────
 
+    // Invoked from the Breadcrumbs component's click handler, which re-renders only that
+    // component — this one must re-render itself for the modal to appear.
     private Task OpenNewTeam()
     {
         _newTeamName = ""; _newTeamError = null; _newTeamOpen = true;
-        return Task.CompletedTask;
+        return InvokeAsync(StateHasChanged);
     }
 
     private async Task OnNewTeamKeyDown(KeyboardEventArgs e)
@@ -136,7 +144,7 @@
     private Task OpenNewDataset()
     {
         _newDatasetName = ""; _newDatasetError = null; _newDatasetOpen = true;
-        return Task.CompletedTask;
+        return InvokeAsync(StateHasChanged);
     }
 
     private async Task OnNewDatasetKeyDown(KeyboardEventArgs e)

@@ -1,0 +1,54 @@
+@* The dataset's state when it needs attention: Created (upload flow), Loading, Indexing,
+   Error, Hibernated, and "Shadow indexing" while a field-config rebuild runs. A plain Ready
+   engine shows nothing here — that is the normal case, reported on the Status tab instead.
+   Sits right after the breadcrumb trail so the state is visible without a row of its own. Subscribes to the context itself: it is rendered through a RenderFragment whose
+   parameter (the context) never changes, so the panel's re-render alone would not reach it. *@
+@using Indx.Api
+@implements IDisposable
+
+@if (Ctx.HasStatus)
+{
+    var state = Ctx.EngineState;
+    var ready = state == SystemState.Ready;
+    @if (!ready || Ctx.IsSaving)
+    {
+        <div class="indx-dataset-status">
+            @if (Ctx.IsHibernated)
+            {
+                <Chip Size="large" Color="var(--CLightBlue)" TextColor="#080809" Icon="DatasetIcons.Hibernate">Hibernated</Chip>
+            }
+            else if (!ready)
+            {
+                <Chip Size="large" Color="@ChipColor(state)" TextColor="@ChipTextColor(state)" Icon="@DatasetIcons.ForState(state)">@state</Chip>
+            }
+            @if (Ctx.IsSaving && ready)
+            {
+                <Chip Size="large" Color="var(--lv8)" TextColor="var(--lv0)" Icon="DatasetIcons.ShadowIndexing">Shadow indexing</Chip>
+            }
+        </div>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public DatasetContext Ctx { get; set; } = default!;
+
+    protected override void OnInitialized() => Ctx.Changed += OnChanged;
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Ctx.Changed -= OnChanged;
+
+    public static string ChipColor(SystemState state) => state switch
+    {
+        SystemState.Ready => "var(--CTeal)",
+        SystemState.Loading => "var(--CLightBlue)",
+        SystemState.Indexing => "var(--CWarning)",
+        SystemState.Error => "var(--CSignal)",
+        _ => "var(--lv3)",
+    };
+
+    public static string ChipTextColor(SystemState state) => state switch
+    {
+        SystemState.Error => "var(--lv0)",
+        SystemState.Ready or SystemState.Loading or SystemState.Indexing => "#080809",
+        _ => "var(--lv5)",
+    };
+}

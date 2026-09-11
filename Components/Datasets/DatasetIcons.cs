@@ -29,6 +29,7 @@ namespace IndxCloudApi.Components.Datasets
         public static readonly RenderFragment<int> WeightMedium = Of<Icons.WeightMedium>();
         public static readonly RenderFragment<int> WeightHigh = Of<Icons.WeightHigh>();
         public static readonly RenderFragment<int> Speedometer = Of<Icons.Speedometer>();
+        public static readonly RenderFragment<int> Status = Of<Icons.Speedometer>();
         public static readonly RenderFragment<int> Download = Of<Icons.Download>();
         public static readonly RenderFragment<int> DynamicJson = Of<Icons.DynamicJsonField>();
         public static readonly RenderFragment<int> Search = Of<Icons.Search>();

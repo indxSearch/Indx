@@ -1,0 +1,23 @@
+.status-tab { max-width: 560px; }
+.status-heading { margin-top: 8px; margin-bottom: 6px; }
+.status-heading--section { margin-top: 24px; }
+
+.status-table {
+    border-collapse: collapse;
+    font: var(--text-sm);
+}
+
+.status-table td {
+    padding: 4px 16px 4px 0;
+    vertical-align: top;
+    color: var(--lv6);
+}
+
+.status-table td:first-child {
+    color: var(--lv4);
+    white-space: nowrap;
+    font-weight: var(--med);
+    min-width: 170px;
+}
+
+.status-alert { color: var(--CSignal); }
