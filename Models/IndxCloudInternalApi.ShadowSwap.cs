@@ -151,7 +151,23 @@ namespace IndxCloudApi.Models
             if (matcher == null)
                 throw new KeyNotFoundException($"non existing dataset name: {dataSetName}");
 
-            if (matcher.Status.SystemState != SystemState.Ready)
+            // Read the state once. RunHeavy already checked it via RequireState, but a concurrent
+            // mutation can move it in between, and re-reading it per branch below would widen that
+            // same window inside this method.
+            var state = matcher.Status.SystemState;
+
+            // Loading/Indexing means the engine is mid-work, not that the request is wrong. Falling
+            // through to the direct call below would reach SearchEngine.InsertJsonRecords' own
+            // `!= Ready` guard, come back false, and surface as 400 invalidArgument — telling the
+            // client to fix its request when the truth is "retry shortly". Worse, it skips the
+            // shadow-busy gate entirely, so the 409 the concurrent-mutation contract promises was
+            // unreachable whenever the state had already left Ready.
+            if (state is SystemState.Loading or SystemState.Indexing)
+                throw new ShadowBusyException(dataSetName, state);
+
+            // Created/Loaded still run directly: there is no live index to protect, and the engine
+            // has its own handling for them. Only Ready earns a shadow.
+            if (state != SystemState.Ready)
                 return mutation(matcher);
 
             return RunMutationOnShadow(dataSetName, teamId, mutation);
