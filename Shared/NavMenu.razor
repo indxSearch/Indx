@@ -1,4 +1,5 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Text.RegularExpressions
 @implements IDisposable
 @inject NavigationManager NavigationManager
 @inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
@@ -11,7 +12,7 @@
     </span>
 
     <div class="nav-items @(_menuOpen ? "open" : "")">
-        <Button Href="/" Variant="@NavVariant("/", exact: true)" Size="micro" IconLeft="_iconHome">Datasets</Button>
+        <Button Href="/" Variant="@(_onConsole ? "primary" : "ghost")" Size="micro" IconLeft="_iconHome">Datasets</Button>
         <AuthorizeView>
             <Authorized>
                 <Button Href="account/api-key" Variant="@NavVariant("account/api-key")" Size="micro" IconLeft="_iconKey">API Key</Button>
@@ -102,6 +103,8 @@
         {
             var path = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
             if (path == "") return ("Datasets", _iconHome);
+            if (Regex.IsMatch(path, "^teams/[^/]+/datasets/")) return ("Dataset", _iconHome);
+            if (path.StartsWith("teams/")) return ("Team", _iconTeam);
             if (path.StartsWith("account/apikey")) return ("API Key", _iconKey);
             if (path.StartsWith("account/license")) return ("License", _iconDoc);
             if (path.StartsWith("team")) return ("Team", _iconTeam);
@@ -109,6 +112,16 @@
             if (path.StartsWith("swagger")) return ("Swagger", _iconApi);
             if (path.StartsWith("admin")) return ("Admin", _iconAdmin);
             return ("Datasets", _iconHome);
+        }
+    }
+
+    // "/" and every /teams/... page are the console; the Datasets item is active on all of them.
+    private bool _onConsole
+    {
+        get
+        {
+            var path = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/');
+            return path == "" || path.StartsWith("teams/", StringComparison.OrdinalIgnoreCase);
         }
     }
 

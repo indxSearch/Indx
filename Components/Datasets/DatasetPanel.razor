@@ -2,9 +2,9 @@
    DatasetContext the tabs share, loads status/field config on first display, and polls the
    engine while it is loading or indexing in the background.
 
-   Every panel of the team stays mounted (hidden when not selected) so an upload or edit in
-   progress on one dataset survives switching to another — the same behaviour the single-page
-   console had with its name-keyed dictionaries, now without the dictionaries. *@
+   Hosted by Pages/DatasetPage.razor, one panel per page. Visible is kept as a parameter so a
+   host can mount the panel hidden and show it later (the tests do); status loads on the first
+   visible render. *@
 @using Indx.Api
 @implements IDisposable
 @inject IDatasetEngines Engines

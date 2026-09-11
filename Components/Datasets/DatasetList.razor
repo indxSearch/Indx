@@ -1,0 +1,163 @@
+@* The team page's dataset section: a card per dataset (state at a glance, link into the
+   dataset page) and the "new dataset" form. Replaces the tab strip the console used to be.
+   Cards read the keep-alive view and the in-memory instance only — never GetState, which would
+   wake every timed dataset of the team just to list it. *@
+@using Indx.Api
+@inject IDatasetEngines Engines
+@inject NavigationManager NavigationManager
+
+<div class="indx-datasets-heading">
+    <h2>Datasets</h2>
+</div>
+
+@if (_rows.Count == 0)
+{
+    <div class="indx-empty-state">
+        <p class="indx-empty-intro">A dataset holds your JSON documents and search index. Create one here to get started.</p>
+        @if (CanCreate)
+        {
+            <div class="indx-new-dataset">
+                <InputField placeholder="Dataset name" @bind-Value="_newDatasetName"
+                            @oninput="OnNewDatasetInput" @onkeydown="OnNewDatasetKeyDown" />
+                <Button Variant="primary" Size="default" @onclick="CreateDataset" disabled="@string.IsNullOrWhiteSpace(_newDatasetName)">Create your first dataset</Button>
+            </div>
+            @if (!string.IsNullOrEmpty(_createError))
+            {
+                <p class="indx-create-error">@_createError</p>
+            }
+        }
+        <div class="indx-empty-skill">
+            <p class="indx-empty-intro indx-empty-intro--tight">Using an LLM to set up your search? Get the skill.</p>
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Agent" Href="https://www.skills.sh/indxsearch/skill-indx-search/indx-search">Indx Agent Skill ↗</Button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="indx-dataset-grid">
+        @foreach (var row in _rows)
+        {
+            <a class="indx-dataset-card" href="@TeamRoutes.Dataset(TeamName, row.Name)">
+                <span class="indx-dataset-card-head">
+                    <Database Size="14" Color="currentColor" />
+                    <span class="indx-dataset-card-name">@row.Name</span>
+                </span>
+                <span class="indx-dataset-card-foot">
+                    <Chip Size="small" Color="@row.ChipColor" TextColor="@row.ChipText" Icon="@row.Icon">@row.Label</Chip>
+                    @if (row.Count is { } n)
+                    {
+                        <span class="indx-dataset-card-count">@n.ToString("N0") @(n == 1 ? "document" : "documents")</span>
+                    }
+                </span>
+            </a>
+        }
+    </div>
+
+    @* "New dataset" sits below the grid, left-aligned, and expands into the name form in place. *@
+    @if (CanCreate)
+    {
+        <div class="indx-new-dataset indx-new-dataset--below">
+            @if (_showNewDatasetForm)
+            {
+                <InputField placeholder="Dataset name" @bind-Value="_newDatasetName"
+                            @oninput="OnNewDatasetInput" @onkeydown="OnNewDatasetKeyDown" />
+                <Button Variant="primary" Size="micro" @onclick="CreateDataset" disabled="@string.IsNullOrWhiteSpace(_newDatasetName)">Create</Button>
+                <Button Variant="secondary" Size="micro" @onclick="CancelNewDataset">Cancel</Button>
+            }
+            else
+            {
+                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="() => _showNewDatasetForm = true">New dataset</Button>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(_createError))
+        {
+            <p class="indx-create-error">@_createError</p>
+        }
+    }
+}
+
+@code {
+    [Parameter, EditorRequired] public string TeamId { get; set; } = "";
+    [Parameter, EditorRequired] public string TeamName { get; set; } = "";
+    [Parameter] public string? Role { get; set; }
+
+    private bool CanCreate => TeamRoles.CanWrite(Role);
+
+    private sealed record Row(string Name, string Label, string ChipColor, string ChipText, RenderFragment<int>? Icon, int? Count);
+
+    private List<Row> _rows = new();
+    private string _newDatasetName = string.Empty;
+    private bool _showNewDatasetForm;
+    private string? _createError;
+    private string? _loadedFor;
+
+    protected override void OnParametersSet()
+    {
+        if (_loadedFor == TeamId) return;
+        _loadedFor = TeamId;
+        _showNewDatasetForm = false;
+        _newDatasetName = string.Empty;
+        _createError = null;
+        Reload();
+    }
+
+    /// <summary>Re-read the team's datasets and their state.</summary>
+    public void Reload()
+    {
+        List<string> names;
+        try { names = string.IsNullOrEmpty(TeamId) ? [] : Engines.GetTeamDataSets(TeamId); }
+        catch { names = []; }
+        _rows = names.Select(Describe).ToList();
+    }
+
+    private Row Describe(string name)
+    {
+        try
+        {
+            var ka = Engines.GetKeepAliveInfo(name, TeamId);
+            var engine = Engines.FindSearchEngine(name, TeamId);
+            var state = engine is { IsDisposed: false } ? engine.Status.SystemState : (SystemState?)null;
+            if (state == SystemState.Ready)
+                return new Row(name, "Ready", "var(--CTeal)", "#080809", DatasetIcons.ForState(SystemState.Ready), engine!.Status.DocumentCount);
+            if (state is SystemState.Loading or SystemState.Loaded or SystemState.Indexing)
+                return new Row(name, state.ToString()!, "var(--CWarning)", "#080809", DatasetIcons.ForState(state.Value), null);
+            if (state == SystemState.Error)
+                return new Row(name, "Error", "var(--CSignal)", "var(--lv0)", DatasetIcons.ForState(SystemState.Error), null);
+            if (ka.RecordCount > 0)
+                return new Row(name, "Hibernated", "var(--CLightBlue)", "#080809", DatasetIcons.Hibernate, ka.RecordCount);
+            return new Row(name, "Empty", "var(--lv3)", "var(--lv5)", DatasetIcons.ForState(SystemState.Created), null);
+        }
+        catch
+        {
+            return new Row(name, "Unknown", "var(--lv3)", "var(--lv5)", DatasetIcons.ForState(SystemState.Created), null);
+        }
+    }
+
+    // ── Create dataset ──────────────────────────────────────────────────────
+
+    // Live on every keystroke so Create enables immediately (bind-Value alone commits on blur).
+    private void OnNewDatasetInput(ChangeEventArgs e) => _newDatasetName = e.Value?.ToString() ?? string.Empty;
+
+    private async Task OnNewDatasetKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CreateDataset();
+    }
+
+    private void CancelNewDataset()
+    {
+        _showNewDatasetForm = false;
+        _newDatasetName = string.Empty;
+        _createError = null;
+    }
+
+    private Task CreateDataset()
+    {
+        _createError = DatasetCreation.TryCreate(_newDatasetName, TeamId, out var name);
+        if (_createError != null) return Task.CompletedTask;
+        _newDatasetName = string.Empty;
+        _showNewDatasetForm = false;
+        // A new dataset's first step is the upload, which lives on its page.
+        NavigationManager.NavigateTo(TeamRoutes.Dataset(TeamName, name));
+        return Task.CompletedTask;
+    }
+}

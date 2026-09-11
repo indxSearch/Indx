@@ -1,0 +1,139 @@
+@* Port of indx-systm Breadcrumbs: page navigation where each step is a link and may carry an
+   independent context switcher (a dropdown beside the link). Clicking the label opens the
+   page; the caret swaps the context. Steps without an Href render as text. *@
+
+<nav aria-label="@AriaLabel" class="indx-breadcrumbs indx-breadcrumbs-@Size @Class">
+    <ol class="indx-breadcrumbs-list">
+        @{ var index = 0; var last = Items.Count - 1; }
+        @foreach (var item in Items)
+        {
+            var i = index++;
+            var current = i == last ? "page" : null;
+            var switcher = item.Switcher;
+            var enabled = switcher != null && !switcher.Disabled && (switcher.Options.Any() || switcher.Action != null);
+            <li class="indx-breadcrumbs-item" @key="item.Id">
+                @if (i > 0)
+                {
+                    <span class="indx-breadcrumbs-separator" aria-hidden="true">
+                        @if (Separator != null) { @Separator } else { <ChevronRight Size="14" Color="currentColor" /> }
+                    </span>
+                }
+                <div class="indx-breadcrumbs-step @(switcher != null ? "indx-breadcrumbs-switchable" : null)">
+                    @if (item.Href != null)
+                    {
+                        <a class="indx-breadcrumbs-label" href="@item.Href" aria-current="@current">
+                            @if (item.Icon != null) { <span class="indx-breadcrumbs-icon" aria-hidden="true">@item.Icon(_iconSize)</span> }
+                            <span class="indx-breadcrumbs-text">@item.Label</span>
+                        </a>
+                    }
+                    else
+                    {
+                        <span class="indx-breadcrumbs-label" aria-current="@current">
+                            @if (item.Icon != null) { <span class="indx-breadcrumbs-icon" aria-hidden="true">@item.Icon(_iconSize)</span> }
+                            <span class="indx-breadcrumbs-text">@item.Label</span>
+                        </span>
+                    }
+                    @if (switcher != null)
+                    {
+                        var open = _openId == item.Id;
+                        <button type="button" class="indx-breadcrumbs-trigger" aria-label="@($"{switcher.Label}: {item.Label}")"
+                                aria-haspopup="listbox" aria-expanded="@(open ? "true" : "false")"
+                                data-state="@(open ? "open" : "closed")" data-disabled="@(enabled ? null : "")"
+                                disabled="@(!enabled)" @onclick="() => Toggle(item.Id)" @onkeydown="OnKeyDown">
+                            <span class="indx-breadcrumbs-icon" aria-hidden="true"><Dropdown Size="14" Color="currentColor" /></span>
+                        </button>
+                        @if (open)
+                        {
+                            <div class="indx-breadcrumbs-backdrop" @onclick="Close"></div>
+                            <div class="indx-breadcrumbs-menu" role="listbox" aria-label="@switcher.Label">
+                                @foreach (var option in switcher.Options)
+                                {
+                                    var selected = option.Value == switcher.Value;
+                                    <Button Variant="ghost" Size="micro" role="option" aria-selected="@(selected ? "true" : "false")"
+                                            @onclick="() => Pick(switcher, option.Value)" style="width:100%; justify-content:space-between;">
+                                        <span class="indx-breadcrumbs-option">
+                                            @if (option.Icon is { } optIcon) { <span class="indx-breadcrumbs-icon" aria-hidden="true">@optIcon(14)</span> }
+                                            <span>@option.Label</span>
+                                        </span>
+                                        @if (selected) { <Check Size="12" /> }
+                                    </Button>
+                                }
+                                @if (switcher.Action is { } action)
+                                {
+                                    <div class="indx-breadcrumbs-menu-divider" role="separator"></div>
+                                    <Button Variant="ghost" Size="micro" @onclick="() => Run(action)" style="width:100%; justify-content:flex-start;">
+                                        <IconLeft><Plus Size="@context" Color="currentColor" /></IconLeft>
+                                        <ChildContent>@action.Label</ChildContent>
+                                    </Button>
+                                }
+                            </div>
+                        }
+                    }
+                </div>
+            </li>
+        }
+    </ol>
+</nav>
+
+@code {
+    /// <summary>One step of the trail. Mirrors indx-systm's <c>BreadcrumbItem</c>.</summary>
+    public sealed record BreadcrumbItem(string Id, string Label)
+    {
+        /// <summary>Where the label links to; without it the step renders as plain text.</summary>
+        public string? Href { get; init; }
+        /// <summary>Optional leading icon; receives the icon size (always 14).</summary>
+        public RenderFragment<int>? Icon { get; init; }
+        /// <summary>Supply a switcher to show an independent dropdown beside the page link.</summary>
+        public BreadcrumbSwitcher? Switcher { get; init; }
+    }
+
+    /// <summary>The context switcher of one step: which option is current, the options, and
+    /// what to do when another is picked (typically navigate).</summary>
+    public sealed record BreadcrumbSwitcher(string Label, string? Value, IReadOnlyList<SelectField.SelectOption> Options, Func<string, Task> OnValueChange)
+    {
+        public bool Disabled { get; init; }
+        /// <summary>Optional entry below the options — typically "New …" — that runs instead of
+        /// selecting. Keeps the switcher usable when there is nothing to switch to yet.</summary>
+        public BreadcrumbAction? Action { get; init; }
+    }
+
+    /// <summary>An action entry at the bottom of a switcher menu.</summary>
+    public sealed record BreadcrumbAction(string Label, Func<Task> OnSelect);
+
+    [Parameter, EditorRequired] public IReadOnlyList<BreadcrumbItem> Items { get; set; } = [];
+
+    /// <summary>"micro" | "default" — step height, font and icon gap.</summary>
+    [Parameter] public string Size { get; set; } = "default";
+
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Rendered between steps; defaults to a chevron.</summary>
+    [Parameter] public RenderFragment? Separator { get; set; }
+
+    [Parameter] public string AriaLabel { get; set; } = "Breadcrumb";
+
+    private string? _openId;
+    // Step icons are always 14px, whatever the size (the React port clones them to 14px).
+    private const int _iconSize = 14;
+
+    private void Toggle(string id) => _openId = _openId == id ? null : id;
+    private void Close() => _openId = null;
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") _openId = null;
+    }
+
+    private async Task Run(BreadcrumbAction action)
+    {
+        _openId = null;
+        await action.OnSelect();
+    }
+
+    private async Task Pick(BreadcrumbSwitcher switcher, string value)
+    {
+        _openId = null;
+        if (value != switcher.Value) await switcher.OnValueChange(value);
+    }
+
+}

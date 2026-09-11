@@ -41,6 +41,20 @@ namespace IndxCloudApi.Services
             return rows.Select(x => (x.t, x.Role)).ToList();
         }
 
+        /// <summary>The team the user last opened, or null when never set. Membership is not
+        /// checked here — <see cref="ActiveTeamState"/> does that against the live team list.</summary>
+        public async Task<Guid?> GetLastTeamIdAsync(string userId) =>
+            await db.Users.Where(u => u.Id == userId).Select(u => u.LastTeamId).FirstOrDefaultAsync();
+
+        /// <summary>Remember the team the user just opened. No-op when unchanged.</summary>
+        public async Task SetLastTeamAsync(string userId, Guid teamId)
+        {
+            var user = await db.Users.FirstOrDefaultAsync(u => u.Id == userId);
+            if (user == null || user.LastTeamId == teamId) return;
+            user.LastTeamId = teamId;
+            await db.SaveChangesAsync();
+        }
+
         public async Task<string?> GetRoleAsync(Guid teamId, string userId) =>
             (await db.TeamMembers.FirstOrDefaultAsync(m => m.TeamId == teamId && m.UserId == userId))?.Role;
 

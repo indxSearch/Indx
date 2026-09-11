@@ -1,0 +1,157 @@
+@* The console's header row: [team ▾] › [dataset ▾] (› Page) on the left, page actions on the
+   right. Labels link to the team / dataset page; each caret switches to a sibling or offers
+   "New …", which opens a small name dialog. Built on the systm Breadcrumbs; this only knows
+   the routes and the active team's lists. *@
+@using System.Security.Claims
+@using IndxCloudApi.Services
+@inject NavigationManager NavigationManager
+@inject ActiveTeamState ActiveTeam
+@inject TeamService TeamService
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@implements IDisposable
+
+<div class="indx-console-header">
+    <Breadcrumbs Items="_items" />
+    @if (Actions != null)
+    {
+        <div class="indx-console-actions">@Actions</div>
+    }
+</div>
+
+<Modal @bind-Open="_newTeamOpen" Title="New team" Description="A team owns datasets and the people who can work on them.">
+    <div class="indx-console-dialog">
+        <InputField Label="Team name" @bind-Value="_newTeamName" @oninput="e => _newTeamName = e.Value?.ToString() ?? string.Empty"
+                    @onkeydown="OnNewTeamKeyDown" Error="@_newTeamError" IsValid="@(_newTeamError == null)" />
+        <div class="indx-console-dialog-actions">
+            <Button Variant="ghost" Size="micro" @onclick="() => _newTeamOpen = false">Cancel</Button>
+            <Button Variant="primary" Size="micro" @onclick="CreateTeam" disabled="@string.IsNullOrWhiteSpace(_newTeamName)">Create team</Button>
+        </div>
+    </div>
+</Modal>
+
+<Modal @bind-Open="_newDatasetOpen" Title="New dataset" Description="A dataset holds your JSON documents and search index.">
+    <div class="indx-console-dialog">
+        <InputField Label="Dataset name" @bind-Value="_newDatasetName" @oninput="e => _newDatasetName = e.Value?.ToString() ?? string.Empty"
+                    @onkeydown="OnNewDatasetKeyDown" Error="@_newDatasetError" IsValid="@(_newDatasetError == null)" />
+        <div class="indx-console-dialog-actions">
+            <Button Variant="ghost" Size="micro" @onclick="() => _newDatasetOpen = false">Cancel</Button>
+            <Button Variant="primary" Size="micro" @onclick="CreateDataset" disabled="@string.IsNullOrWhiteSpace(_newDatasetName)">Create dataset</Button>
+        </div>
+    </div>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public string TeamName { get; set; } = "";
+    /// <summary>The open dataset, or null on team-level pages.</summary>
+    [Parameter] public string? Dataset { get; set; }
+    /// <summary>All datasets of the team, for the dataset crumb's switcher.</summary>
+    [Parameter] public IReadOnlyList<string> Siblings { get; set; } = [];
+    /// <summary>A trailing, unlinked step for a sub-page ("Settings").</summary>
+    [Parameter] public string? Page { get; set; }
+    /// <summary>Buttons shown at the right end of the header row.</summary>
+    [Parameter] public RenderFragment? Actions { get; set; }
+
+    private List<Breadcrumbs.BreadcrumbItem> _items = new();
+    private string _userId = "";
+
+    private bool _newTeamOpen;
+    private string _newTeamName = "";
+    private string? _newTeamError;
+
+    private bool _newDatasetOpen;
+    private string _newDatasetName = "";
+    private string? _newDatasetError;
+
+    private static readonly RenderFragment<int> IconTeam = size => @<UserGroup Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> IconDataset = size => @<Database Size="size" Color="currentColor" />;
+
+    protected override async Task OnInitializedAsync()
+    {
+        ActiveTeam.OnChange += OnTeamsChanged;
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+    }
+    protected override void OnParametersSet() => Build();
+    private async void OnTeamsChanged() { Build(); await InvokeAsync(StateHasChanged); }
+    public void Dispose() => ActiveTeam.OnChange -= OnTeamsChanged;
+
+    private void Build()
+    {
+        var teams = ActiveTeam.Teams.Select(t => new SelectField.SelectOption(t.Team.Name, t.Team.Name)).ToList();
+        _items = new()
+        {
+            new Breadcrumbs.BreadcrumbItem("team", TeamName)
+            {
+                Href = TeamRoutes.Team(TeamName),
+                Icon = IconTeam,
+                Switcher = new Breadcrumbs.BreadcrumbSwitcher("Switch team", TeamName, teams,
+                    name => { NavigationManager.NavigateTo(TeamRoutes.Team(name)); return Task.CompletedTask; })
+                { Action = new Breadcrumbs.BreadcrumbAction("New team…", OpenNewTeam) },
+            },
+        };
+        if (Dataset != null)
+        {
+            var datasets = Siblings.Select(d => new SelectField.SelectOption(d, d)).ToList();
+            _items.Add(new Breadcrumbs.BreadcrumbItem("dataset", Dataset)
+            {
+                Href = TeamRoutes.Dataset(TeamName, Dataset),
+                Icon = IconDataset,
+                Switcher = new Breadcrumbs.BreadcrumbSwitcher("Switch dataset", Dataset, datasets,
+                    name => { NavigationManager.NavigateTo(TeamRoutes.Dataset(TeamName, name)); return Task.CompletedTask; })
+                { Action = new Breadcrumbs.BreadcrumbAction("New dataset…", OpenNewDataset) },
+            });
+        }
+        if (Page != null) _items.Add(new Breadcrumbs.BreadcrumbItem("page", Page));
+    }
+
+    // ── New team ────────────────────────────────────────────────────────────
+
+    private Task OpenNewTeam()
+    {
+        _newTeamName = ""; _newTeamError = null; _newTeamOpen = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnNewTeamKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CreateTeam();
+    }
+
+    private async Task CreateTeam()
+    {
+        if (string.IsNullOrWhiteSpace(_newTeamName) || _userId.Length == 0) return;
+        _newTeamError = null;
+        try
+        {
+            var team = await TeamService.CreateTeamAsync(_newTeamName, _userId);
+            _newTeamOpen = false;
+            await ActiveTeam.ReloadAsync();
+            NavigationManager.NavigateTo(TeamRoutes.Team(team.Name));
+        }
+        catch (TeamService.TeamException ex) { _newTeamError = ex.Message; }
+    }
+
+    // ── New dataset ─────────────────────────────────────────────────────────
+
+    private Task OpenNewDataset()
+    {
+        _newDatasetName = ""; _newDatasetError = null; _newDatasetOpen = true;
+        return Task.CompletedTask;
+    }
+
+    private async Task OnNewDatasetKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CreateDataset();
+    }
+
+    private Task CreateDataset()
+    {
+        var team = ActiveTeam.Find(TeamName);
+        if (team == null) return Task.CompletedTask;
+        _newDatasetError = DatasetCreation.TryCreate(_newDatasetName, team.Value.Team.Id.ToString(), out var name);
+        if (_newDatasetError != null) return Task.CompletedTask;
+        _newDatasetOpen = false;
+        NavigationManager.NavigateTo(TeamRoutes.Dataset(TeamName, name));
+        return Task.CompletedTask;
+    }
+}

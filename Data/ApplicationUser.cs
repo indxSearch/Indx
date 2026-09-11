@@ -24,5 +24,10 @@ namespace IndxCloudApi.Data
         /// (see <see cref="Services.NotificationPreferences"/>). Absent entries fall back to
         /// defaults: in-app on; email per <see cref="EmailNotificationsEnabled"/>.</summary>
         public string? NotificationPreferences { get; set; }
+
+        /// <summary>The team whose page this user opened last; the console lands there on the
+        /// next visit. Validated against membership on read — a team the user has since left is
+        /// ignored, so a stale value can never leak another team's datasets.</summary>
+        public Guid? LastTeamId { get; set; }
     }
 }

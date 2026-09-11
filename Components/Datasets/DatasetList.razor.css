@@ -1,0 +1,98 @@
+.indx-datasets-heading {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-bottom: calc(var(--spacing) * 4);
+}
+
+.indx-datasets-heading h2 {
+    margin: 0;
+    flex: 1;
+}
+
+.indx-new-dataset {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.indx-new-dataset--below {
+    margin-top: 12px;
+}
+
+.indx-create-error {
+    color: var(--CSignal);
+    margin-top: 4px;
+    margin-bottom: 0;
+}
+
+.indx-empty-state {
+    margin-top: 40px;
+    max-width: 520px;
+}
+
+.indx-empty-intro {
+    color: var(--lv5);
+    margin-bottom: 20px;
+}
+
+.indx-empty-intro--tight {
+    margin-bottom: 8px;
+}
+
+.indx-empty-skill {
+    margin-top: 24px;
+}
+
+.indx-dataset-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 8px;
+}
+
+.indx-dataset-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 18px;
+    min-height: 96px;
+    padding: 14px;
+    border-radius: var(--radius);
+    background: var(--lv1);
+    color: inherit;
+    text-decoration: none;
+    font: var(--text-sm);
+}
+
+.indx-dataset-card:hover {
+    background: var(--lv2);
+}
+
+.indx-dataset-card-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    color: var(--lv7);
+}
+
+.indx-dataset-card-name {
+    font-weight: var(--med);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.indx-dataset-card-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.indx-dataset-card-count {
+    color: var(--lv5);
+    font: var(--text-xs);
+}

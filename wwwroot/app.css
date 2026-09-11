@@ -342,57 +342,9 @@ a.btn-danger:hover {
     margin-left: auto;
 }
 
-.team-switcher {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-
 /* Account icon button: square like the bell (neutralise .nav a's side padding). */
 .nav a.nav-bell {
     padding: 0;
-}
-
-.team-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 999;
-}
-
-/* Positioning + layout only — the Surface base supplies background, radius and padding. */
-.team-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    left: 0;
-    z-index: 1000;
-    min-width: 200px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-/* Right-aligned dropdown for a switcher sitting on the right side of the page. */
-.team-menu--right {
-    left: auto;
-    right: 0;
-}
-
-.team-menu-divider {
-    height: 1px;
-    background: var(--lv3);
-    margin: 4px 0;
-}
-
-/* Keep the ghost-item hover one level above the Surface base so it stays visible
-   (lv2 base + lv2 ghost-hover would be invisible in light) — aligns with SelectField. */
-.team-menu .indx-btn-ghost:hover {
-    background: var(--lv3) !important;
-}
-
-@media (prefers-color-scheme: dark) {
-    .team-menu .indx-btn-ghost:hover {
-        background: var(--lv2) !important;
-    }
 }
 
 .nav-bell {

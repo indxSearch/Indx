@@ -1,0 +1,163 @@
+/* Port of indx-systm Breadcrumbs.module.css. Step height and font come from the size class. */
+.indx-breadcrumbs {
+    box-sizing: border-box;
+    width: fit-content;
+    max-width: 100%;
+    padding-inline: 8px;
+    color: var(--lv7);
+    background: var(--lv1);
+    border-radius: var(--radius);
+}
+
+.indx-breadcrumbs-micro   { --step-height: 30px; --icon-gap: 7px;  font: var(--text-xs); }
+.indx-breadcrumbs-default { --step-height: 40px; --icon-gap: 10px; font: var(--text-sm); }
+
+.indx-breadcrumbs-list {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.indx-breadcrumbs-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.indx-breadcrumbs-separator {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: var(--lv4);
+    padding: 0 4px;
+}
+
+.indx-breadcrumbs-step {
+    position: relative;
+    display: inline-flex;
+    align-items: stretch;
+    min-width: 0;
+    max-width: 100%;
+    border-radius: var(--radius);
+}
+
+.indx-breadcrumbs-switchable .indx-breadcrumbs-label {
+    padding-inline-end: 36px;
+}
+
+.indx-breadcrumbs-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--icon-gap);
+    min-width: 0;
+    min-height: var(--step-height);
+    padding: 0 10px;
+    color: var(--lv6);
+    text-decoration: none;
+    border-radius: var(--radius);
+}
+
+.indx-breadcrumbs-label[aria-current='page'] {
+    color: var(--lv7);
+}
+
+.indx-breadcrumbs-text {
+    overflow-wrap: anywhere;
+}
+
+.indx-breadcrumbs-trigger {
+    all: unset;
+    box-sizing: border-box;
+    position: absolute;
+    inset-block: 4px;
+    inset-inline-end: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    border-radius: var(--radius);
+    color: var(--lv5);
+    cursor: pointer;
+}
+
+.indx-breadcrumbs-trigger:hover:not([data-disabled]),
+.indx-breadcrumbs-trigger[data-state='open'] {
+    background: var(--lv2);
+    color: var(--lv5);
+}
+
+.indx-breadcrumbs-trigger[data-disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.indx-breadcrumbs-trigger:focus-visible,
+a.indx-breadcrumbs-label:focus-visible {
+    outline: 2px solid var(--lv5);
+    outline-offset: 2px;
+}
+
+.indx-breadcrumbs-icon {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.indx-breadcrumbs-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+
+/* Popover: same borderless base as SelectField's menu, anchored to the step's end edge
+   (Radix align="end" in the React version). */
+.indx-breadcrumbs-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+}
+
+.indx-breadcrumbs-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 1001;
+    min-width: 180px;
+    max-height: 280px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    background: var(--lv2);
+    border-radius: var(--radius);
+    font: var(--text-sm);
+}
+
+.indx-breadcrumbs-menu-divider {
+    height: 1px;
+    background: var(--lv3);
+    margin: 4px 0;
+}
+
+.indx-breadcrumbs-menu ::deep .indx-btn-ghost:hover {
+    background: var(--lv3) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    .indx-breadcrumbs-menu {
+        background: var(--lv1);
+    }
+
+    .indx-breadcrumbs-menu ::deep .indx-btn-ghost:hover {
+        background: var(--lv2) !important;
+    }
+}

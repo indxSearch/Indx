@@ -1,0 +1,234 @@
+@page "/teams/{TeamName}/settings"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using IndxCloudApi.Data
+@using IndxCloudApi.Services
+@attribute [Authorize]
+@inherits TeamRouteBase
+@inject TeamService TeamService
+@inject UserManager<ApplicationUser> UserManager
+@inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
+@inject IEditionService Edition
+
+<PageTitle>Manage @(Team?.Name ?? "team")</PageTitle>
+
+@* Team settings: [team ▾] › Settings. Members and roles, rename, delete. Reached from the
+   "Manage team" button on the team page. *@
+
+@if (TeamResolved)
+{
+    <ConsoleBreadcrumb TeamName="@TeamName" Page="Settings" />
+
+    <h2 style="margin:0;">Manage team</h2>
+    <p style="color: var(--lv5); margin-top: 4px;">Who can access this team's datasets, and the team itself.</p>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <p style="color:var(--CSignal); font:var(--text-sm);">@_error</p>
+    }
+
+    @* ── Members ── *@
+    <h3 style="margin-top:28px; margin-bottom:12px;">Members</h3>
+    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <thead>
+            <tr style="border-bottom:1px solid var(--lv3); color:var(--lv5);">
+                <th style="text-align:left; padding:6px 12px; font-weight:500;">Email</th>
+                <th style="text-align:left; padding:6px 12px; font-weight:500;">Role</th>
+                <th style="padding:6px 12px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var m in _members)
+            {
+                <tr style="border-bottom:1px solid var(--lv2);">
+                    <td style="padding:8px 12px;">@m.Email</td>
+                    <td style="padding:8px 12px;">
+                        @if (_canAdmin && m.UserId != UserId)
+                        {
+                            <div style="width:130px;"><SelectField Size="micro" Value="@m.Role" ValueChanged="@(v => OnChangeRole(m.UserId, v))" Options="_roleOptions" /></div>
+                        }
+                        else
+                        {
+                            <Chip Color="var(--lv2)" TextColor="var(--lv6)">@m.Role</Chip>
+                        }
+                    </td>
+                    <td style="padding:8px 12px; text-align:right;">
+                        @if (m.UserId == UserId)
+                        {
+                            <Button Variant="ghost" Size="micro" @onclick="OnLeave">Leave</Button>
+                        }
+                        else if (_canAdmin)
+                        {
+                            <Button Variant="ghost" Size="micro" @onclick="() => OnRemove(m.UserId)">Remove</Button>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    @* ── Add member (Editor and above) ── *@
+    @if (_canAddMembers)
+    {
+        <h3 style="margin-top:28px; margin-bottom:12px;">Add a member</h3>
+        @if (_addableUsers.Count == 0)
+        {
+            <p style="color:var(--lv5);">Everyone with an account is already on this team.</p>
+        }
+        else
+        {
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <div style="width:240px;"><SelectField Size="micro" Placeholder="Select a user…" @bind-Value="_addUserId" Options="_userOptions" /></div>
+                <div style="width:130px;"><SelectField Size="micro" @bind-Value="_addRole" Options="_addRoleOptions" /></div>
+                <Button Variant="primary" Size="micro" disabled="@string.IsNullOrEmpty(_addUserId)" @onclick="OnAddMember">Add</Button>
+            </div>
+        }
+    }
+
+    @* ── Team settings (Admin) ── *@
+    @if (_canAdmin)
+    {
+        <h3 style="margin-top:32px; margin-bottom:12px;">Team settings</h3>
+        <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
+            <div style="width:220px;"><InputField @bind-Value="_renameInput" /></div>
+            <Button Variant="secondary" Size="micro" @onclick="OnRename">Rename</Button>
+        </div>
+        <ConfirmButton Label="Delete team" Prompt="@($"Delete \"{Team!.Name}\"? This can't be undone.")"
+                       ConfirmLabel="Yes, delete" Variant="primary" CancelVariant="ghost"
+                       Disabled="@(ActiveTeam.Teams.Count <= 1)" @bind-Open="_confirmDelete" OnConfirm="OnDelete">
+            @if (ActiveTeam.Teams.Count <= 1)
+            {
+                <span style="color:var(--lv4); font:var(--text-2xs);">You can't delete your only team.</span>
+            }
+        </ConfirmButton>
+    }
+}
+
+@code {
+    private readonly List<SelectField.SelectOption> _roleOptions =
+        TeamRoles.All.Select(r => new SelectField.SelectOption(r, r)).ToList();
+    private List<SelectField.SelectOption> _userOptions = new();
+    private List<SelectField.SelectOption> _addRoleOptions = new();
+
+    private bool _canAdmin;
+    private bool _canAddMembers;
+
+    private List<MemberRow> _members = new();
+    private List<UserRow> _addableUsers = new();
+    private string _addUserId = "";
+    private string _addRole = TeamRoles.Viewer;
+    private string _renameInput = "";
+    private bool _confirmDelete;
+    private string? _error;
+
+    private record MemberRow(string UserId, string Email, string Role);
+    private record UserRow(string Id, string Email);
+
+    protected override Task OnTeamResolvedAsync() => LoadAsync();
+    protected override Task OnActiveTeamChangedAsync() => LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        if (!TeamResolved) { _members.Clear(); _addableUsers.Clear(); return; }
+
+        _canAdmin = TeamRoles.CanAdmin(Role);
+        // Editor and above — and only when the plan allows more than one user.
+        _canAddMembers = TeamRoles.CanWrite(Role)
+            && Edition.IsEnabled(EditionFeature.MultipleUsers);
+        _renameInput = Team!.Name ?? "";
+        _confirmDelete = false;
+
+        var members = await TeamService.GetMembersAsync(Team!.Id);
+        var rows = new List<MemberRow>();
+        foreach (var m in members)
+        {
+            var u = await UserManager.FindByIdAsync(m.UserId);
+            rows.Add(new MemberRow(m.UserId, u?.Email ?? "(unknown)", m.Role));
+        }
+        _members = rows.OrderByDescending(r => TeamRoles.Rank(r.Role)).ThenBy(r => r.Email).ToList();
+
+        var memberIds = members.Select(m => m.UserId).ToHashSet();
+        var others = UserManager.Users.Where(u => !memberIds.Contains(u.Id)).OrderBy(u => u.Email).ToList();
+        _addableUsers = others.Select(u => new UserRow(u.Id, u.Email ?? "")).ToList();
+        _userOptions = _addableUsers.Select(u => new SelectField.SelectOption(u.Email, u.Id)).ToList();
+        _addRoleOptions = new List<SelectField.SelectOption>
+        {
+            new(TeamRoles.Viewer, TeamRoles.Viewer),
+            new(TeamRoles.Editor, TeamRoles.Editor),
+        };
+        if (_canAdmin) _addRoleOptions.Add(new(TeamRoles.Admin, TeamRoles.Admin));
+        _addUserId = "";
+    }
+
+
+    private async Task OnAddMember()
+    {
+        if (string.IsNullOrEmpty(_addUserId)) return;
+        _error = null;
+        try
+        {
+            await TeamService.AddMemberAsync(Team!.Id, _addUserId, _addRole);
+        }
+        catch (TeamService.TeamException ex) { _error = ex.Message; return; }
+
+        var added = await UserManager.FindByIdAsync(_addUserId);
+        if (!string.IsNullOrEmpty(added?.Email))
+        {
+            try
+            {
+                var instanceName = InstanceSettingsService.Load().InstanceName;
+                await EmailSender.SendEmailAsync(added.Email,
+                    EmailTemplates.Subject(instanceName, $"You've been added to team \"{Team!.Name}\""),
+                    EmailTemplates.Notice(instanceName,
+                        $"Added to {Team!.Name}",
+                        $"You have been added to the team <strong>{Team!.Name}</strong> as <strong>{_addRole}</strong>."));
+            }
+            catch { /* email failure is non-fatal */ }
+        }
+        await LoadAsync();
+    }
+
+    private async Task OnChangeRole(string userId, string? role)
+    {
+        if (string.IsNullOrEmpty(role)) return;
+        _error = null;
+        try { await TeamService.ChangeRoleAsync(Team!.Id, userId, role); }
+        catch (TeamService.TeamException ex) { _error = ex.Message; }
+        await LoadAsync();
+    }
+
+    private async Task OnRemove(string userId)
+    {
+        _error = null;
+        try { await TeamService.RemoveMemberAsync(Team!.Id, userId); }
+        catch (TeamService.TeamException ex) { _error = ex.Message; }
+        await LoadAsync();
+    }
+
+    private async Task OnLeave()
+    {
+        _error = null;
+        try { await TeamService.RemoveMemberAsync(Team!.Id, UserId); }
+        catch (TeamService.TeamException ex) { _error = ex.Message; return; }
+        await ActiveTeam.ReloadAsync(); // I left → active team falls back to another
+    }
+
+    private async Task OnRename()
+    {
+        if (string.IsNullOrWhiteSpace(_renameInput)) return;
+        _error = null;
+        try { await TeamService.RenameTeamAsync(Team!.Id, _renameInput); }
+        catch (TeamService.TeamException ex) { _error = ex.Message; return; }
+        await ActiveTeam.ReloadAsync();
+    }
+
+    private async Task OnDelete()
+    {
+        if (ActiveTeam.Teams.Count <= 1) { _error = "You can't delete your only team."; _confirmDelete = false; return; }
+        _error = null;
+        try { await TeamService.DeleteTeamAsync(Team!.Id); }
+        catch (TeamService.TeamException ex) { _error = ex.Message; _confirmDelete = false; return; }
+        await ActiveTeam.ReloadAsync();
+    }
+}

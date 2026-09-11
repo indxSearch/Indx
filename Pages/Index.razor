@@ -1,13 +1,52 @@
 @page "/"
+@page "/team"
 @page "/datasets/{Dataset}"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Security.Claims
+@inject NavigationManager NavigationManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject InstanceSettingsService InstanceSettingsService
+@inject ActiveTeamState ActiveTeam
 
 <PageTitle>Indx Cloud API</PageTitle>
 
-<DatasetConsole InitialDataset="@Dataset" />
+@if (_noTeam)
+{
+    <h1>Welcome</h1>
+    <p style="color: var(--lv5); margin-top: 24px;">You don't belong to a team yet. Ask a team admin to add you.</p>
+}
 
 @code {
-    /// <summary>Dataset to open, from /datasets/{name}. The console keeps the URL in step with
-    /// the selection so refresh and the back button land on the same dataset.</summary>
+    /// <summary>Legacy /datasets/{name} link: forwarded to the same dataset under the team.</summary>
     [Parameter] public string? Dataset { get; set; }
+
+    private bool _noTeam;
+
+    // "/" is a router, not a page: it lands on the team the user was in last (remembered on the
+    // user, validated against membership), else their first team. "/team" and "/datasets/x"
+    // are the pre-breadcrumb URLs and forward the same way.
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = authState.User;
+        if (user.Identity == null || !user.Identity.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/account/login", forceLoad: true);
+            return;
+        }
+        if (!InstanceSettingsService.Load().SetupComplete)
+        {
+            NavigationManager.NavigateTo("/account/setup/configure", forceLoad: true);
+            return;
+        }
+        var userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId)) { _noTeam = true; return; }
+
+        await ActiveTeam.EnsureInitializedAsync(userId);
+        var team = ActiveTeam.ActiveTeamName;
+        if (team == null) { _noTeam = true; return; }
+
+        var target = Dataset == null ? TeamRoutes.Team(team) : TeamRoutes.Dataset(team, Dataset);
+        NavigationManager.NavigateTo(target, replace: true);
+    }
 }
