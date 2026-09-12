@@ -1,6 +1,6 @@
 @* The header is the breadcrumb. Left: the Indx mark as the home link, with the instance name.
    Middle: whatever the current page put in HeaderState (the console's team › dataset trail),
-   else a label derived from the URL. Right: for admins an Instance menu (License, Users, All
+   else a label derived from the URL. Right: for admins an Admin menu (License, Users, All
    datasets, Settings), then notifications and a personal menu (Account, API keys, Docs,
    Swagger, Log out). Everything that is not "where am I" lives in those menus. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
@@ -31,7 +31,7 @@
         <AuthorizeView>
             <Authorized>
                 <AuthorizeView Roles="Admin" Context="admin">
-                    <NavDropdown Label="Instance" Icon="_iconInstance">
+                    <NavDropdown Label="Admin" Icon="_iconInstance">
                         @if (Edition.LicensingVisible)
                         {
                             <Button Variant="ghost" Size="micro" Href="account/license" IconLeft="_iconDoc" class="nav-menu-item">License</Button>
