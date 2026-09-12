@@ -24,6 +24,7 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> Delete = Of<Icons.Stop>();
         public static readonly RenderFragment<int> Boost = Of<Icons.Boost>();
         public static readonly RenderFragment<int> Synonym = Of<Icons.Synonym>();
+        public static readonly RenderFragment<int> Experimental = Of<Icons.LabExperiment>();
         public static readonly RenderFragment<int> Save = Of<Icons.Save>();
         public static readonly RenderFragment<int> WeightLow = Of<Icons.WeightLow>();
         public static readonly RenderFragment<int> WeightMedium = Of<Icons.WeightMedium>();
