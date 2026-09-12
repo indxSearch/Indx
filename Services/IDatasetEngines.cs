@@ -1,5 +1,5 @@
 using Indx.Api;
-using Indx.CloudApi;
+using Indx.Http;
 using IndxServer.Models;
 
 namespace IndxServer.Services
@@ -27,7 +27,7 @@ namespace IndxServer.Services
         SystemStatus? GetState(string dataSetName, string teamId);
         IndxServerInternalApi.KeepAliveInfo GetKeepAliveInfo(string dataSetName, string teamId);
         bool SetKeepAliveHrs(string dataSetName, string teamId, int keepAliveHrs);
-        ICloudSearchEngine? FindSearchEngine(string dataSetName, string teamId);
+        IServerSearchEngine? FindSearchEngine(string dataSetName, string teamId);
         void DisposeDataSetInstance(string dataSetName, string teamId);
         void TransferOwnership(string dataSetName, string currentTeamId, string newTeamId);
         /// <summary>Renames within the team. Null on success, else the message to show.</summary>
@@ -49,7 +49,7 @@ namespace IndxServer.Services
         string? ValidateExternalLoadForCustomKey(string dataSetName, string teamId, Stream jsonStream);
 
         // Search / synonyms
-        Result Search(CloudQuery query, string dataSetName, string teamId);
+        Result Search(QueryProxy query, string dataSetName, string teamId);
         SynonymList? GetSynonyms(string dataSetName, string teamId);
         bool SetSynonyms(string dataSetName, string teamId, SynonymList? list);
     }
@@ -63,7 +63,7 @@ namespace IndxServer.Services
         public SystemStatus? GetState(string d, string t) => M.GetState(d, t);
         public IndxServerInternalApi.KeepAliveInfo GetKeepAliveInfo(string d, string t) => M.GetKeepAliveInfo(d, t);
         public bool SetKeepAliveHrs(string d, string t, int hrs) => M.SetKeepAliveHrs(d, t, hrs);
-        public ICloudSearchEngine? FindSearchEngine(string d, string t) => M.FindSearchEngine(d, t);
+        public IServerSearchEngine? FindSearchEngine(string d, string t) => M.FindSearchEngine(d, t);
         public bool DeleteDataSet(string d, string t) => M.DeleteDataSet(d, t);
         public void DisposeDataSetInstance(string d, string t) => M.DisposeDataSetInstance(d, t);
         public void TransferOwnership(string d, string from, string to) => M.TransferOwnership(d, from, to);
@@ -81,7 +81,7 @@ namespace IndxServer.Services
         public string? SetKeyField(string d, string t, string field, out bool needsReload) => M.SetKeyField(d, t, field, out needsReload);
         public string? ValidateExternalLoadForCustomKey(string d, string t, Stream s) => M.ValidateExternalLoadForCustomKey(d, t, s);
 
-        public Result Search(CloudQuery q, string d, string t) => M.Search(q, d, t);
+        public Result Search(QueryProxy q, string d, string t) => M.Search(q, d, t);
         public SynonymList? GetSynonyms(string d, string t) => M.GetSynonyms(d, t);
         public bool SetSynonyms(string d, string t, SynonymList? l) => M.SetSynonyms(d, t, l);
     }

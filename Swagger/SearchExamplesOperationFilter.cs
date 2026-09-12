@@ -1,4 +1,4 @@
-using Indx.CloudApi;
+using Indx.Http;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
@@ -22,7 +22,7 @@ namespace IndxServer.Swagger
                 !context.ApiDescription.RelativePath?.StartsWith("api/Search/") == true)
                 return;
 
-            // Find the CloudQuery parameter in the request body
+            // Find the QueryProxy parameter in the request body
             var requestBody = operation.RequestBody;
             if (requestBody?.Content == null)
                 return;

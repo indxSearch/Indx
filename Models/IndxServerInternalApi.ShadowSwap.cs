@@ -14,7 +14,7 @@ namespace IndxServer.Models
     ///
     /// When a heavy mutation arrives on a dataset that is in <see cref="SystemState.Ready"/>,
     /// we build a fresh SearchEngine that shares the active instance's persistence, replay
-    /// the document state via <see cref="ICloudSearchEngine.LoadFromDatabaseSync"/>, apply
+    /// the document state via <see cref="IServerSearchEngine.LoadFromDatabaseSync"/>, apply
     /// the caller's mutation, re-index, and swap the new engine into the dictionary under
     /// <c>_dictionaryLock</c>. The previous engine is queued for disposal once its in-flight
     /// searches have drained (best-effort with a grace timeout).
@@ -54,7 +54,7 @@ namespace IndxServer.Models
         private TResult RunMutationOnShadow<TResult>(
             string dataSetName,
             string teamId,
-            Func<ICloudSearchEngine, TResult> mutation)
+            Func<IServerSearchEngine, TResult> mutation)
         {
             var key = MakeKey(dataSetName, teamId);
             if (!_shadowBuildsInProgress.TryAdd(key, DateTime.UtcNow))
@@ -64,7 +64,7 @@ namespace IndxServer.Models
             try
             {
                 SearchEngineInstance container;
-                ICloudSearchEngine original;
+                IServerSearchEngine original;
                 lock (_dictionaryLock)
                 {
                     if (!_instances.TryGetValue(key, out var found) || found?.theInstance == null)
@@ -89,7 +89,7 @@ namespace IndxServer.Models
                 // Atomic swap. The container reference returned by FindInstance keeps any
                 // already-routed searches pointing at the same SearchEngineInstance; only
                 // the inner theInstance pointer flips.
-                ICloudSearchEngine? swappedOut;
+                IServerSearchEngine? swappedOut;
                 lock (_dictionaryLock)
                 {
                     swappedOut = container.theInstance;
@@ -145,9 +145,9 @@ namespace IndxServer.Models
         internal TResult RunHeavyOnShadowIfReady<TResult>(
             string dataSetName,
             string teamId,
-            Func<ICloudSearchEngine, TResult> mutation)
+            Func<IServerSearchEngine, TResult> mutation)
         {
-            ICloudSearchEngine? matcher = FindSearchEngine(dataSetName, teamId);
+            IServerSearchEngine? matcher = FindSearchEngine(dataSetName, teamId);
             if (matcher == null)
                 throw new KeyNotFoundException($"non existing dataset name: {dataSetName}");
 
@@ -198,7 +198,7 @@ namespace IndxServer.Models
             try
             {
                 SearchEngineInstance container;
-                ICloudSearchEngine original;
+                IServerSearchEngine original;
                 lock (_dictionaryLock)
                 {
                     if (!_instances.TryGetValue(key, out var found) || found?.theInstance == null)
@@ -213,7 +213,7 @@ namespace IndxServer.Models
                     throw new InvalidOperationException(
                         $"Shadow indexing failed: {monitor.ErrorMessage ?? "unknown error"}");
 
-                ICloudSearchEngine? swappedOut;
+                IServerSearchEngine? swappedOut;
                 lock (_dictionaryLock)
                 {
                     swappedOut = container.theInstance;
@@ -274,7 +274,7 @@ namespace IndxServer.Models
         /// subsequent mutation writes.
         /// </summary>
         private SearchEngine BuildShadowFrom(
-            ICloudSearchEngine original,
+            IServerSearchEngine original,
             string dataSetName,
             string teamId,
             FieldProxy[]? fieldOverrides = null,
@@ -318,7 +318,7 @@ namespace IndxServer.Models
         /// is logged and we dispose anyway — pending searches will fail their next pool
         /// access and propagate the disposal to the caller.
         /// </summary>
-        private async Task DisposeAfterGraceAsync(ICloudSearchEngine engine, string dataSetName, string teamId)
+        private async Task DisposeAfterGraceAsync(IServerSearchEngine engine, string dataSetName, string teamId)
         {
             try
             {

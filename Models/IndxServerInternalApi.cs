@@ -1,5 +1,5 @@
 ﻿using Indx.Api;
-using Indx.CloudApi;
+using Indx.Http;
 using Indx.Embeddings;
 using Indx.Storage;
 namespace IndxServer.Models
@@ -14,7 +14,7 @@ namespace IndxServer.Models
     internal sealed partial class IndxServerInternalApi
     {
         #region Public Methods
-        public ICloudSearchEngine? FindSearchEngineForInit(string dataSetName, string teamId)
+        public IServerSearchEngine? FindSearchEngineForInit(string dataSetName, string teamId)
         {
             var matcher = FindInstance(dataSetName, teamId);
             if (matcher == null)
@@ -39,7 +39,7 @@ namespace IndxServer.Models
             _instances.Add(MakeKey(dataSetName, teamId), new SearchEngineInstance() { theInstance = newMatcher });
             return newMatcher;
         }
-        public ICloudSearchEngine? FindSearchEngine(string dataSetName, string teamId)
+        public IServerSearchEngine? FindSearchEngine(string dataSetName, string teamId)
         {
             return FindInstance(dataSetName, teamId);
         }
@@ -340,7 +340,7 @@ namespace IndxServer.Models
         /// Make sure to check for search readiness after a call
         /// to DoIndexAsync.
         /// </summary>
-        internal Result Search(Indx.CloudApi.CloudQuery cloudQuery, string dataSetName, string teamId)
+        internal Result Search(Indx.Http.QueryProxy cloudQuery, string dataSetName, string teamId)
         {
             try
             {
@@ -623,7 +623,7 @@ namespace IndxServer.Models
 
                 // Text search — fetch a larger pool to feed the merge
                 int poolSize = query.MaxNumberOfRecordsToReturn * 2;
-                var cloudQuery = new CloudQuery
+                var cloudQuery = new QueryProxy
                 {
                     Text = query.Text,
                     MaxNumberOfRecordsToReturn = poolSize,
@@ -1110,7 +1110,7 @@ namespace IndxServer.Models
         ///   <item>a field name → that field becomes the key.</item>
         /// </list>
         /// </summary>
-        private void ApplyDeclaredKeyField(ICloudSearchEngine instance, string dataSetName, string teamId)
+        private void ApplyDeclaredKeyField(IServerSearchEngine instance, string dataSetName, string teamId)
         {
             var declared = _metadataStore?.LoadKeyField(teamId, dataSetName);
             if (string.IsNullOrEmpty(declared)) return; // undeclared → engine default (id if present, else auto)
@@ -1125,7 +1125,7 @@ namespace IndxServer.Models
         /// present, else auto-generated) — the same thing it does for an undeclared key — so this is
         /// a warning for the caller to surface, not a failure.
         /// </summary>
-        private bool DeclaredKeyFieldIsMissing(ICloudSearchEngine instance, string dataSetName, string teamId, out string declared)
+        private bool DeclaredKeyFieldIsMissing(IServerSearchEngine instance, string dataSetName, string teamId, out string declared)
         {
             declared = _metadataStore?.LoadKeyField(teamId, dataSetName) ?? "";
             if (string.IsNullOrEmpty(declared) || declared == KeyFieldAutoSentinel) return false;
@@ -1305,7 +1305,7 @@ namespace IndxServer.Models
         /// a filter that cannot be honoured must not be silently dropped.
         /// </para>
         /// </summary>
-        private static Filter ResolveFilterOrThrow(ICloudSearchEngine engine, FilterProxy proxy)
+        private static Filter ResolveFilterOrThrow(IServerSearchEngine engine, FilterProxy proxy)
         {
             // An empty token never reaches a filter, and it does not merely fail to resolve: the
             // key parser yields an empty RPN list, which the derived-filter builder cannot handle.
@@ -1319,7 +1319,7 @@ namespace IndxServer.Models
             return filter;
         }
 
-        private Query FromCloudQuery2Query(CloudQuery cloudQuery, ICloudSearchEngine engine, string teamId, string dataSetName)
+        private Query FromCloudQuery2Query(QueryProxy cloudQuery, IServerSearchEngine engine, string teamId, string dataSetName)
         {
             Query query = new Query(cloudQuery.Text, cloudQuery.MaxNumberOfRecordsToReturn)
             {
@@ -1375,7 +1375,7 @@ namespace IndxServer.Models
         /// Returns the engine for a team-owned dataset, or null if the dataset doesn't exist.
         /// Authorization is the controller's responsibility (team membership) — this only resolves.
         /// </summary>
-        internal ICloudSearchEngine? ResolveEngine(string dataSetName, string teamId)
+        internal IServerSearchEngine? ResolveEngine(string dataSetName, string teamId)
         {
             var instance = GetOrCreateInstance(dataSetName, teamId);
             var engine = instance?.theInstance;
@@ -1438,7 +1438,7 @@ namespace IndxServer.Models
             return "Team:" + teamId + " dataSet:" + dataSetName + " ";
         }
 
-        private ICloudSearchEngine? FindInstance(string dataSetName, string teamId)
+        private IServerSearchEngine? FindInstance(string dataSetName, string teamId)
         {
             return GetOrCreateInstance(dataSetName, teamId)?.theInstance;
         }
@@ -1531,7 +1531,7 @@ namespace IndxServer.Models
         /// visible, and answer a search from an engine that looks empty: HTTP 200,
         /// no timeout, no records. x86 hides this; ARM64 does not.
         /// </summary>
-        internal volatile ICloudSearchEngine? theInstance;
+        internal volatile IServerSearchEngine? theInstance;
             // Identity, kept so the idle sweeper can call DisposeDataSetInstance (the dictionary key
             // teamId+dataSetName is a non-reversible concatenation).
             internal string DataSetName = string.Empty;

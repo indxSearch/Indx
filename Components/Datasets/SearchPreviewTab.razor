@@ -121,7 +121,7 @@ else
         if (engine == null) return;
         // EnableBoost so the preview reflects this dataset's saved boost rules (applied
         // server-side in FromCloudQuery2Query), matching what real searches return.
-        var query = new global::Indx.CloudApi.CloudQuery { Text = text, MaxNumberOfRecordsToReturn = 8, EnableBoost = true };
+        var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = 8, EnableBoost = true };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         var hits = new List<PreviewHit>();
         foreach (var record in result.Records)
@@ -146,7 +146,7 @@ else
         await Task.Yield();
 
         const int iterations = 100;
-        var query = new global::Indx.CloudApi.CloudQuery { Text = text, MaxNumberOfRecordsToReturn = 8 };
+        var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = 8 };
         var result = await Task.Run(() =>
         {
             // Warm-up: JIT, caches and the first-touch page faults are not what we're measuring.

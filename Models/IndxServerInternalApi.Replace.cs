@@ -72,7 +72,7 @@ namespace IndxServer.Models
                 // Atomic install. In-flight searches on the old engine keep working via the
                 // SearchEngineInstance indirection; only the inner pointer flips.
                 _replaceProgress[key] = new ReplaceProgress(ReplaceStep.Swapping, -1);
-                ICloudSearchEngine? swappedOut;
+                IServerSearchEngine? swappedOut;
                 lock (_dictionaryLock)
                 {
                     swappedOut = container.theInstance;

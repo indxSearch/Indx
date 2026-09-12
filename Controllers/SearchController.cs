@@ -1,6 +1,6 @@
 ﻿using Asp.Versioning;
 using Indx.Api;
-using Indx.CloudApi;
+using Indx.Http;
 using Indx.Core;
 using Indx.Storage;
 using Indx.Utilities;
@@ -54,7 +54,7 @@ namespace IndxServer.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             HttpContext.Request.EnableBuffering();
-            ICloudSearchEngine? matcher = IndxServerInternalApi.Manager.FindSearchEngineForInit(dataSetName, ctx.OwnerKey);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.FindSearchEngineForInit(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             var state = matcher.Status;
@@ -88,7 +88,7 @@ namespace IndxServer.Controllers
             var state = IndxServerInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
             if (state == null || state.InvalidDataSetName)
                 return ApiProblems.InvalidDatasetName(dataSetName);
-            ICloudSearchEngine? matcher = IndxServerInternalApi.Manager.FindSearchEngineForInit(dataSetName, ctx.OwnerKey);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.FindSearchEngineForInit(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             var df = DocumentFields.Analyze(jsonData, out string error2);
@@ -111,7 +111,7 @@ namespace IndxServer.Controllers
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
-            ICloudSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "CombineFilters", SystemState.Ready) is { } stateError)
@@ -142,7 +142,7 @@ namespace IndxServer.Controllers
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
-            ICloudSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "CreateBoost", SystemState.Ready) is { } stateError)
@@ -269,7 +269,7 @@ namespace IndxServer.Controllers
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
-            ICloudSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "CreateRangeFilter", SystemState.Ready) is { } stateError)
@@ -291,7 +291,7 @@ namespace IndxServer.Controllers
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
-            ICloudSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "CreateValueFilter", SystemState.Ready) is { } stateError)
@@ -415,7 +415,7 @@ namespace IndxServer.Controllers
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
-            ICloudSearchEngine? engine = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            IServerSearchEngine? engine = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (engine == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(engine, "GetJson", SystemState.Loaded, SystemState.Indexing, SystemState.Ready) is { } stateError)
@@ -470,7 +470,7 @@ namespace IndxServer.Controllers
         /// GetStatus will return the status of the dataSetName in the search engine.
         /// </summary>
         [HttpGet(DataSetRoute + "/status")]
-        public ActionResult<CloudSystemStatus> GetStatus(string teamName, string dataSetName)
+        public ActionResult<ServerSystemStatus> GetStatus(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
@@ -478,7 +478,7 @@ namespace IndxServer.Controllers
             if (status == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
 
-            return new CloudSystemStatus(status)
+            return new ServerSystemStatus(status)
             {
                 ShadowBuildInProgress = IndxServerInternalApi.Manager.IsShadowBuildInProgress(dataSetName, ctx.OwnerKey),
                 ShadowBuildStartedUtc = IndxServerInternalApi.Manager.ShadowBuildStartedUtc(dataSetName, ctx.OwnerKey),
@@ -755,7 +755,7 @@ namespace IndxServer.Controllers
         /// Search will validate the search query and return the search result.
         /// </summary>
         [HttpPost(DataSetRoute + "/search")]
-        public ActionResult<Indx.Api.Result> Search(string teamName, string dataSetName, [FromBody] CloudQuery query)
+        public ActionResult<Indx.Api.Result> Search(string teamName, string dataSetName, [FromBody] QueryProxy query)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
@@ -791,7 +791,7 @@ namespace IndxServer.Controllers
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
-            ICloudSearchEngine? matcher = IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             var df = matcher.DocumentFields;
@@ -870,7 +870,7 @@ namespace IndxServer.Controllers
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
-            ICloudSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             return matcher.GetFieldConfiguration();
@@ -888,7 +888,7 @@ namespace IndxServer.Controllers
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
-            ICloudSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
 
@@ -917,7 +917,7 @@ namespace IndxServer.Controllers
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
-            ICloudSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
 
@@ -1155,7 +1155,7 @@ namespace IndxServer.Controllers
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
-            ICloudSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             return Ok(new CountResponse(matcher.NumberOfFilters));
@@ -1229,8 +1229,8 @@ namespace IndxServer.Controllers
         /// Searches a single embedding field using approximate nearest-neighbour search.
         /// </summary>
         [HttpPost(DataSetRoute + "/search/vector")]
-        public ActionResult<Indx.CloudApi.EmbeddingResultEntry[]> VectorSearch(
-            string teamName, string dataSetName, [FromBody] Indx.CloudApi.VectorQueryProxy query)
+        public ActionResult<Indx.Http.EmbeddingResultEntry[]> VectorSearch(
+            string teamName, string dataSetName, [FromBody] Indx.Http.VectorQueryProxy query)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
@@ -1257,8 +1257,8 @@ namespace IndxServer.Controllers
         /// Combines text search with embedding nearest-neighbour search and blends scores.
         /// </summary>
         [HttpPost(DataSetRoute + "/search/hybrid")]
-        public ActionResult<Indx.CloudApi.EmbeddingResultEntry[]> HybridSearch(
-            string teamName, string dataSetName, [FromBody] Indx.CloudApi.HybridQueryProxy query)
+        public ActionResult<Indx.Http.EmbeddingResultEntry[]> HybridSearch(
+            string teamName, string dataSetName, [FromBody] Indx.Http.HybridQueryProxy query)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
@@ -1317,7 +1317,7 @@ namespace IndxServer.Controllers
         /// invalidArgument rather than the unknownFilter code that names the actual condition.
         /// </para>
         /// </summary>
-        private static Filter? ResolveFilter(ICloudSearchEngine engine, FilterProxy? proxy, string operand, out ActionResult? error)
+        private static Filter? ResolveFilter(IServerSearchEngine engine, FilterProxy? proxy, string operand, out ActionResult? error)
         {
             error = null;
             if (proxy == null || string.IsNullOrWhiteSpace(proxy.HashString))
@@ -1342,7 +1342,7 @@ namespace IndxServer.Controllers
             string dataSetName,
             string teamId,
             string operationName,
-            Func<ICloudSearchEngine, ActionResult> mutation,
+            Func<IServerSearchEngine, ActionResult> mutation,
             params SystemState[] allowed)
         {
             var engine = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, teamId);
@@ -1370,7 +1370,7 @@ namespace IndxServer.Controllers
         /// state and how to proceed. Call AFTER the null-resolve check and BEFORE using the engine, so
         /// non-existing datasets stay 400 and only a genuine wrong lifecycle state becomes 409.
         /// </summary>
-        private ActionResult? RequireState(ICloudSearchEngine engine, string operation, params SystemState[] allowed)
+        private ActionResult? RequireState(IServerSearchEngine engine, string operation, params SystemState[] allowed)
         {
             var status = engine.Status;
             if (allowed.Contains(status.SystemState))
@@ -1444,7 +1444,7 @@ namespace IndxServer.Controllers
         /// Returns false when the body carries no readable key — the engine then reports its
         /// own, more specific error.
         /// </summary>
-        private static bool TryReadBodyKey(ICloudSearchEngine engine, string jsonData, out long key)
+        private static bool TryReadBodyKey(IServerSearchEngine engine, string jsonData, out long key)
         {
             key = 0;
             var keyField = engine.DocumentFields?.NameOfDocumentKeyField;

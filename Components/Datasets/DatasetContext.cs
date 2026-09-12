@@ -67,7 +67,7 @@ namespace IndxServer.Components.Datasets
             }
         }
 
-        public ICloudSearchEngine? FindEngine() => Engines.FindSearchEngine(Name, TeamId);
+        public IServerSearchEngine? FindEngine() => Engines.FindSearchEngine(Name, TeamId);
 
         // ── Field configuration spine ─────────────────────────────────────────
         /// <summary>The configuration as the engine currently has it (baseline for dirty checks).</summary>

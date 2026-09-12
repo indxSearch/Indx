@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json.Nodes;
 using Indx.Api;
-using Indx.CloudApi;
+using Indx.Http;
 using IndxServer.Models;
 using IndxServer.Services;
 using ModelContextProtocol.Server;
@@ -143,7 +143,7 @@ namespace IndxServer.Mcp
             // serves it with facets on, so enable them regardless of what the agent asked for —
             // otherwise a filter-only call returns zero hits and looks like a trustworthy no-match.
             var isBrowse = string.IsNullOrWhiteSpace(query);
-            var cloudQuery = new CloudQuery
+            var cloudQuery = new QueryProxy
             {
                 Text = query ?? "",
                 MaxNumberOfRecordsToReturn = Math.Clamp(limit, 1, 100),
@@ -220,7 +220,7 @@ namespace IndxServer.Mcp
             return match.Team.Id.ToString();
         }
 
-        private static ICloudSearchEngine ResolveEngine(string dataset, string ownerKey)
+        private static IServerSearchEngine ResolveEngine(string dataset, string ownerKey)
         {
             var engine = IndxServerInternalApi.Manager.ResolveEngine(dataset, ownerKey); // auto-wakes if hibernated
             if (engine == null)
@@ -235,7 +235,7 @@ namespace IndxServer.Mcp
         {
             var sortable = fieldCfg.FirstOrDefault(f => f.Sortable == true)?.FieldName;
             if (sortable == null) return null; // no sortable field → can't enumerate; skip hints/sample
-            var q = new CloudQuery
+            var q = new QueryProxy
             {
                 Text = "",
                 MaxNumberOfRecordsToReturn = 1,
@@ -247,7 +247,7 @@ namespace IndxServer.Mcp
             return IndxServerInternalApi.Manager.Search(q, dataset, ownerKey);
         }
 
-        private static McpSearchResult ShapeResult(ICloudSearchEngine engine, Result res, string[]? fields)
+        private static McpSearchResult ShapeResult(IServerSearchEngine engine, Result res, string[]? fields)
         {
             var outp = new McpSearchResult();
             int bytes = 0;

@@ -1,5 +1,5 @@
 using Indx.Api;
-using Indx.CloudApi;
+using Indx.Http;
 using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
