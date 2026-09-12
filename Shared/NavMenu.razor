@@ -66,6 +66,7 @@
     private RenderFragment<int> _iconDatabase => size => @<Database Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconSliders  => size => @<SlidersHorizontal Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconKey      => size => @<Key Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconBell     => size => @<Bell Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconUser     => size => @<UserId Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconApi      => size => @<Api Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconBook     => size => @<Book Size="size" Color="currentColor" />;
@@ -108,7 +109,9 @@
         (string label, RenderFragment<int> icon) = path switch
         {
             var p when p.StartsWith("account/api-key") => ("API keys", _iconKey),
-            var p when p.StartsWith("account/manage") => ("Account", _iconUser),
+            var p when p.StartsWith("account/notifications") => ("Notifications", _iconBell),
+            var p when p.StartsWith("account/change-password") => ("Change password", _iconKey),
+            var p when p.StartsWith("account/") => ("Account", _iconUser),
             var p when p.StartsWith("admin") => ("Admin", _iconInstance),
             var p when p.StartsWith("swagger") => ("Swagger", _iconApi),
             _ => ("Datasets", _iconDatabase),
