@@ -1,18 +1,24 @@
-# IndxServer
+# Indx
 
 A self-hosted search service built on [Indx Search](https://indx.co). Blazor Server UI, HTTP API with JWT authentication, user management, and everything needed to run a multi-user search service on your own infrastructure.
 
 ## What's Included
 
-- Blazor Server web interface with admin panel
+- **Dashboard** — teams, datasets, field configuration with weight sliders, search preview,
+  status, boost rules, synonyms, options; plus an admin panel
 - **Teams** — datasets belong to teams; members join with per-team roles
-- HTTP API with JWT authentication and API key management
+- HTTP API with JWT authentication and API key management; errors are RFC 9457 problem
+  documents with a machine-readable `code`
+- **Dynamic data** — insert, update, delete, by key or by filter, with the index kept in sync
+- **Zero-downtime rebuilds** — Replace a dataset, or change its field configuration, on a
+  shadow engine while the old one keeps serving
+- **Keep-alive & hibernation** — pinned, timed or client-managed memory per dataset
 - **MCP server** at `/mcp` — connect AI agents (Claude, etc.) directly to your search data
 - User registration, login, and account management
 - Local accounts with optional Microsoft and Google OAuth
-- Server-side boost rules, facets, vector & hybrid search
+- Server-side boost rules with schedules, facets, coverage, vector & hybrid search
 - Per-dataset synonym lists (experimental) — query expansion at search time
-- Notifications system
+- Notifications, in-app and by email
 - SQLite databases — no external database required
 - Swagger UI at `/swagger`
 - Automatic database migrations on startup
@@ -56,7 +62,8 @@ Everything is organized around teams:
 - Create more teams to share datasets with colleagues. Members are invited with a
   per-team role: **Admin** (manage members, delete datasets), **Editor** (load,
   index, configure), or **Viewer** (search and read).
-- Datasets can be **transferred** between teams you belong to.
+- Datasets can be **renamed**, or **transferred** to another team you administer. Deleting a
+  team deletes its datasets with it (the dashboard asks you to type the team's name).
 - The HTTP API is team-scoped: every dataset route is
   `/api/teams/{team}/datasets/{dataset}/…`.
 
@@ -74,10 +81,20 @@ upload. **Export files that wrap the documents in a root object** — e.g.
 `{ "count": …, "products": [ … ] }`, as many systems export — are handled automatically:
 Indx finds the document array inside the envelope on its own, so upload the file as-is.
 
-**Over the API:** the same steps as endpoints — analyze, field configuration, load, index —
-plus **single-document operations** (`POST`/`PUT`/`PATCH`/`DELETE …/documents/{key}`) that
-keep the search index in sync incrementally, so pushing individual record changes from a
-source system needs no re-index. See `/swagger` for the full surface.
+**Over the API:** the same steps as endpoints — analyze, field configuration, load, index.
+See `/swagger` for the full surface.
+
+**Changing data afterwards:** `POST`/`PUT`/`PATCH`/`DELETE …/documents` and
+`…/documents/{key}` insert, update and delete documents one at a time or in batches, and
+`documents/delete-by-filter` / `documents/update-by-filter` act on everything a filter matches.
+The index follows immediately; no re-index. Batches are all-or-nothing. Fields that were not
+present at load time are stored but not indexed — use **Replace** to adopt them.
+
+**Replace** (`POST …/replace`, or the *Options* tab) swaps the whole dataset for a new JSON
+file with no downtime: the new documents load and index on a shadow engine while the old one
+keeps answering, then the two are swapped. Changing the **field configuration** of a loaded
+dataset rebuilds the same way. While a build runs, `GET status` reports
+`shadowBuildInProgress` and a second build is refused with `409 shadowBusy`.
 
 ## Synonyms (experimental)
 
@@ -279,5 +296,8 @@ dotnet test
 ## Related Projects
 
 - [`@indxsearch/intrface`](https://www.npmjs.com/package/@indxsearch/intrface) — React search UI components for IndxServer (with [`@indxsearch/systm`](https://www.npmjs.com/package/@indxsearch/systm) and [`@indxsearch/pixl`](https://www.npmjs.com/package/@indxsearch/pixl))
+- [`@indxsearch/indx-types`](https://www.npmjs.com/package/@indxsearch/indx-types) — TypeScript types for every request, response and error code
+- [Indx Search skill](https://skills.sh/indxsearch/skill-indx-search/indx-search) — teaches AI coding agents this API, including a v1 → v2 migration guide
 - [`IndxSearchLib`](https://www.nuget.org/packages/IndxSearchLib) — the embedded C# search engine this server is built on
 - [Documentation](https://v5.docs.indx.co) — guides, how-tos, and the full API reference
+- [Changelog](CHANGELOG.md) and [release notes](docs/release-notes/)
