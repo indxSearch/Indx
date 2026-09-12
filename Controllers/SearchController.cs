@@ -1074,9 +1074,11 @@ namespace IndxServer.Controllers
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
+            if (payload == null)
+                return ApiProblems.InvalidArgument("A request body with 'filter', 'fieldName' and 'value' is required.");
             return RunHeavy(dataSetName, ctx.OwnerKey, "UpdateFieldInFilter", engine =>
             {
-                var filter = ResolveFilter(engine, payload?.Filter, "filter", out var filterError);
+                var filter = ResolveFilter(engine, payload.Filter, "filter", out var filterError);
                 if (filter == null) return filterError!;
                 var count = engine.UpdateFieldInFilter(filter, payload.FieldName, UnwrapJsonElement(payload.Value)!, out string error2);
                 if (count == 0 && !string.IsNullOrEmpty(error2))
