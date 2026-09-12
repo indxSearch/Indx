@@ -1,12 +1,12 @@
 using Indx.Api;
 using Indx.CloudApi;
-using IndxCloudApi.Models;
+using IndxServer.Models;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
     /// <summary>
     /// The slice of the engine registry the dataset console uses, as an injectable service.
-    /// The production implementation forwards to the static <c>IndxCloudInternalApi.Manager</c>;
+    /// The production implementation forwards to the static <c>IndxServerInternalApi.Manager</c>;
     /// tests can substitute a fake so component behaviour can be exercised without an engine.
     /// Method names and semantics mirror the manager one-to-one.
     /// </summary>
@@ -25,7 +25,7 @@ namespace IndxCloudApi.Services
     {
         // Registry / lifecycle (GetTeamDataSets / DeleteDataSet come from ITeamDatasets)
         SystemStatus? GetState(string dataSetName, string teamId);
-        IndxCloudInternalApi.KeepAliveInfo GetKeepAliveInfo(string dataSetName, string teamId);
+        IndxServerInternalApi.KeepAliveInfo GetKeepAliveInfo(string dataSetName, string teamId);
         bool SetKeepAliveHrs(string dataSetName, string teamId, int keepAliveHrs);
         ICloudSearchEngine? FindSearchEngine(string dataSetName, string teamId);
         void DisposeDataSetInstance(string dataSetName, string teamId);
@@ -57,11 +57,11 @@ namespace IndxCloudApi.Services
     /// <summary>Forwards to the process-wide engine registry.</summary>
     internal sealed class ManagerDatasetEngines : IDatasetEngines
     {
-        private static IndxCloudInternalApi M => IndxCloudInternalApi.Manager;
+        private static IndxServerInternalApi M => IndxServerInternalApi.Manager;
 
         public List<string> GetTeamDataSets(string teamId) => M.GetTeamDataSets(teamId);
         public SystemStatus? GetState(string d, string t) => M.GetState(d, t);
-        public IndxCloudInternalApi.KeepAliveInfo GetKeepAliveInfo(string d, string t) => M.GetKeepAliveInfo(d, t);
+        public IndxServerInternalApi.KeepAliveInfo GetKeepAliveInfo(string d, string t) => M.GetKeepAliveInfo(d, t);
         public bool SetKeepAliveHrs(string d, string t, int hrs) => M.SetKeepAliveHrs(d, t, hrs);
         public ICloudSearchEngine? FindSearchEngine(string d, string t) => M.FindSearchEngine(d, t);
         public bool DeleteDataSet(string d, string t) => M.DeleteDataSet(d, t);

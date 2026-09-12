@@ -1,6 +1,6 @@
-using IndxCloudApi.Data;
+using IndxServer.Data;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
 #pragma warning disable 1591
     /// <summary>

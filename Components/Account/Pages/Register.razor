@@ -7,9 +7,9 @@
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.AspNetCore.Identity.UI.Services;
-@using IndxCloudApi.Data
-@using IndxCloudApi.Services
-@using IndxCloudApi.Components.Account.Shared
+@using IndxServer.Data
+@using IndxServer.Services
+@using IndxServer.Components.Account.Shared
 
 
 
@@ -21,8 +21,8 @@
 @inject NavigationManager NavigationManager
 @inject IdentityRedirectManager RedirectManager
 @inject RegistrationValidator RegistrationValidator
-@inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
-@inject IndxCloudApi.Services.UserProvisioningService UserProvisioning
+@inject IndxServer.Services.InstanceSettingsService InstanceSettingsService
+@inject IndxServer.Services.UserProvisioningService UserProvisioning
 
 
 <PageTitle>Register</PageTitle>
@@ -170,8 +170,8 @@ else
         if (user.Email != null)
         {
             var instanceName = InstanceSettingsService.Load().InstanceName;
-            await EmailSender.SendEmailAsync(user.Email, IndxCloudApi.Services.EmailTemplates.Subject(instanceName, "Please verify your email"),
-                IndxCloudApi.Services.EmailTemplates.VerifyEmail(instanceName, callbackUrl));
+            await EmailSender.SendEmailAsync(user.Email, IndxServer.Services.EmailTemplates.Subject(instanceName, "Please verify your email"),
+                IndxServer.Services.EmailTemplates.VerifyEmail(instanceName, callbackUrl));
         }
 
         if (InstanceSettingsService.Load().RequireEmailVerification)

@@ -1,7 +1,7 @@
 using System.Text.Json;
-using IndxCloudApi.Data;
+using IndxServer.Data;
 
-namespace IndxCloudApi.Services;
+namespace IndxServer.Services;
 
 /// <summary>Per-channel preference for one notification type. Null = use the default.</summary>
 internal sealed class NotificationChannelPref

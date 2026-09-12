@@ -1,7 +1,7 @@
 ﻿using Asp.Versioning;
-using IndxCloudApi.Data;
-using IndxCloudApi.Models;
-using IndxCloudApi.Services;
+using IndxServer.Data;
+using IndxServer.Models;
+using IndxServer.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Components.Authorization;
@@ -18,7 +18,7 @@ using System.Text;
 using System.Text.Json;
 using Indx.Utilities;
 
-namespace IndxCloudApi;
+namespace IndxServer;
 
 /// <summary>
 /// Main application entry point for Indx Cloud API
@@ -105,22 +105,22 @@ public class Program
         builder.Services.AddScoped<BrowserFiles>();
         builder.Services.AddSingleton<IDatasetEngines, ManagerDatasetEngines>();
         builder.Services.AddSingleton<ITeamDatasets>(sp => sp.GetRequiredService<IDatasetEngines>());
-        builder.Services.AddSingleton<IndxCloudApi.Services.BoostRuleStore>();
-        builder.Services.AddSingleton<IndxCloudApi.Services.DatasetMetadataStore>();
+        builder.Services.AddSingleton<IndxServer.Services.BoostRuleStore>();
+        builder.Services.AddSingleton<IndxServer.Services.DatasetMetadataStore>();
 
         // MCP server: read-only retrieval tools over /mcp (Streamable HTTP), behind JWT auth.
         builder.Services.AddHttpContextAccessor();
-        builder.Services.AddMcpServer().WithHttpTransport().WithTools<IndxCloudApi.Mcp.IndxMcpTools>();
+        builder.Services.AddMcpServer().WithHttpTransport().WithTools<IndxServer.Mcp.IndxMcpTools>();
 
-        builder.Services.AddScoped<IndxCloudApi.Services.NotificationService>();
-        builder.Services.AddScoped<IndxCloudApi.Services.TeamService>();
-        builder.Services.AddScoped<IndxCloudApi.Services.UserProvisioningService>();
-        builder.Services.AddScoped<IndxCloudApi.Services.ActiveTeamState>();
-        builder.Services.AddScoped<IndxCloudApi.Services.TeamContextResolver>();
-        builder.Services.AddScoped<IndxCloudApi.Services.DataMigrationService>();
-        builder.Services.AddHostedService<IndxCloudApi.Services.TokenExpiryNotificationJob>();
-        builder.Services.AddHostedService<IndxCloudApi.Services.BoostRuleExpiryNotificationJob>();
-        builder.Services.AddHostedService<IndxCloudApi.Services.DatasetIdleSweeper>();
+        builder.Services.AddScoped<IndxServer.Services.NotificationService>();
+        builder.Services.AddScoped<IndxServer.Services.TeamService>();
+        builder.Services.AddScoped<IndxServer.Services.UserProvisioningService>();
+        builder.Services.AddScoped<IndxServer.Services.ActiveTeamState>();
+        builder.Services.AddScoped<IndxServer.Services.TeamContextResolver>();
+        builder.Services.AddScoped<IndxServer.Services.DataMigrationService>();
+        builder.Services.AddHostedService<IndxServer.Services.TokenExpiryNotificationJob>();
+        builder.Services.AddHostedService<IndxServer.Services.BoostRuleExpiryNotificationJob>();
+        builder.Services.AddHostedService<IndxServer.Services.DatasetIdleSweeper>();
 
         var registrationMode = builder.Configuration["Registration:Mode"] ?? "Open";
         Console.WriteLine($"ℹ Registration mode: {registrationMode}");
@@ -224,7 +224,7 @@ public class Program
         // JWT Authentication for API
         var jwtkey = builder.Configuration["Jwt:Key"];
         var defaultKey = "your-secret-key-minimum-32-characters-change-in-production";
-        // Anchor the key file to the content root, NOT the process CWD. IndxCloudApi is launched
+        // Anchor the key file to the content root, NOT the process CWD. IndxServer is launched
         // many ways (various VS profiles, `dotnet run`, the published app) whose working directories
         // differ; a CWD-relative path silently resolves to the wrong place and the key isn't found.
         var jwtKeyFile = Path.Combine(builder.Environment.ContentRootPath, "IndxData", "jwt.key");
@@ -264,7 +264,7 @@ public class Program
             else
             {
                 // No configured key and no persisted file: generate and persist a strong one so a
-                // freshly downloaded / clean-deployed IndxCloudApi starts with zero configuration
+                // freshly downloaded / clean-deployed IndxServer starts with zero configuration
                 // (self-hosted customers don't have to set anything). The Marketplace managed app
                 // supplies Jwt:Key from Key Vault and so never reaches here.
                 Directory.CreateDirectory(Path.GetDirectoryName(jwtKeyFile)!);
@@ -328,14 +328,14 @@ public class Program
 
                     // Current security stamp, or "" when the user no longer exists. Cached; the
                     // password change/reset paths evict it (TokenValidationCache.EvictUser).
-                    var userKey = IndxCloudApi.Services.TokenValidationCache.UserKey(userId);
+                    var userKey = IndxServer.Services.TokenValidationCache.UserKey(userId);
                     if (!cache.TryGetValue(userKey, out string? currentStamp))
                     {
                         var userManager = context.HttpContext.RequestServices
                             .GetRequiredService<UserManager<ApplicationUser>>();
                         var user = await userManager.FindByIdAsync(userId);
                         currentStamp = user == null ? "" : (user.SecurityStamp ?? "");
-                        cache.Set(userKey, currentStamp, IndxCloudApi.Services.TokenValidationCache.CacheDuration);
+                        cache.Set(userKey, currentStamp, IndxServer.Services.TokenValidationCache.CacheDuration);
                     }
 
                     if (currentStamp == "") { context.Fail("User no longer exists."); return; }
@@ -344,7 +344,7 @@ public class Program
                     // reset rotates it, which retires every earlier login token at once. Named
                     // API keys deliberately omit the claim so integrations survive a password
                     // change — they are retired through revocation instead.
-                    var issuedStamp = context.Principal?.FindFirst(IndxCloudApi.Services.TokenValidationCache.SecurityStampClaim)?.Value;
+                    var issuedStamp = context.Principal?.FindFirst(IndxServer.Services.TokenValidationCache.SecurityStampClaim)?.Value;
                     if (issuedStamp != null && issuedStamp != currentStamp)
                     {
                         context.Fail("Token was issued before the password was last changed.");
@@ -354,13 +354,13 @@ public class Program
                     var jti = context.Principal?.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti)?.Value;
                     if (jti != null)
                     {
-                        var revokeCacheKey = IndxCloudApi.Services.TokenValidationCache.JtiKey(jti);
+                        var revokeCacheKey = IndxServer.Services.TokenValidationCache.JtiKey(jti);
                         if (!cache.TryGetValue(revokeCacheKey, out bool revoked))
                         {
                             var db = context.HttpContext.RequestServices
                                 .GetRequiredService<ApplicationDbContext>();
                             revoked = await db.ApiKeys.AnyAsync(k => k.Jti == jti && k.IsRevoked);
-                            cache.Set(revokeCacheKey, revoked, IndxCloudApi.Services.TokenValidationCache.CacheDuration);
+                            cache.Set(revokeCacheKey, revoked, IndxServer.Services.TokenValidationCache.CacheDuration);
                         }
                         if (revoked) context.Fail("Token has been revoked.");
                     }
@@ -450,20 +450,20 @@ public class Program
             // the doc empty when group names don't exactly match the doc name.
             c.DocInclusionPredicate((_, _) => true);
 
-            var filePath = Path.Combine(AppContext.BaseDirectory, "IndxCloudApi.xml");
+            var filePath = Path.Combine(AppContext.BaseDirectory, "IndxServer.xml");
             if (File.Exists(filePath))
             {
                 c.IncludeXmlComments(filePath);
             }
 
             // Add schema filter for proxy class examples
-            c.SchemaFilter<IndxCloudApi.Swagger.ProxySchemaFilter>();
+            c.SchemaFilter<IndxServer.Swagger.ProxySchemaFilter>();
 
             // Add operation filter for Search endpoint examples
-            c.OperationFilter<IndxCloudApi.Swagger.SearchExamplesOperationFilter>();
+            c.OperationFilter<IndxServer.Swagger.SearchExamplesOperationFilter>();
 
             // Add operation filter for SetSearchableFields endpoint examples
-            c.OperationFilter<IndxCloudApi.Swagger.SetSearchableFieldsExamplesOperationFilter>();
+            c.OperationFilter<IndxServer.Swagger.SetSearchableFieldsExamplesOperationFilter>();
 
             c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme()
             {
@@ -675,7 +675,7 @@ public class Program
                 // by design. Log the exception against the same traceId the caller is given.
                 var failure = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
                 context.RequestServices.GetRequiredService<ILoggerFactory>()
-                    .CreateLogger("IndxCloudApi.ApiErrors")
+                    .CreateLogger("IndxServer.ApiErrors")
                     .LogError(failure?.Error,
                         "Unhandled exception on {Method} {Path} (traceId {TraceId})",
                         context.Request.Method, context.Request.Path, context.TraceIdentifier);
@@ -785,7 +785,7 @@ public class Program
         app.Use(async (context, next) =>
         {
             if (context.Request.Path.StartsWithSegments("/mcp")
-                && !context.RequestServices.GetRequiredService<IndxCloudApi.Services.InstanceSettingsService>().Load().McpEnabled)
+                && !context.RequestServices.GetRequiredService<IndxServer.Services.InstanceSettingsService>().Load().McpEnabled)
             {
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
                 return;
@@ -880,7 +880,7 @@ public class Program
         try
         {
             var licensePath = builder.Configuration["Indx:LicenseFile"] ?? "";
-            IndxCloudInternalApi.StartUpSystem(searchConnectionString, licensePath);
+            IndxServerInternalApi.StartUpSystem(searchConnectionString, licensePath);
             Console.WriteLine($"✓ Search system initialized at: {searchDbPath}");
 
             // Ensure the DataSetAccess table exists for existing databases (idempotent).
@@ -895,13 +895,13 @@ public class Program
 
             // Per-dataset boost rules: ensure the cloud-owned table and wire the store (+ the
             // saturation ceiling) into the search path.
-            var boostStore = app.Services.GetRequiredService<IndxCloudApi.Services.BoostRuleStore>();
+            var boostStore = app.Services.GetRequiredService<IndxServer.Services.BoostRuleStore>();
             boostStore.EnsureTable();
-            var metadataStore = app.Services.GetRequiredService<IndxCloudApi.Services.DatasetMetadataStore>();
+            var metadataStore = app.Services.GetRequiredService<IndxServer.Services.DatasetMetadataStore>();
             metadataStore.EnsureTable();
             var boostCeiling = builder.Configuration.GetValue<int?>("Indx:BoostSaturationCeiling") ?? 6;
-            IndxCloudInternalApi.Manager.AttachBoostStore(boostStore, boostCeiling);
-            IndxCloudInternalApi.Manager.AttachMetadataStore(metadataStore);
+            IndxServerInternalApi.Manager.AttachBoostStore(boostStore, boostCeiling);
+            IndxServerInternalApi.Manager.AttachMetadataStore(metadataStore);
 
             // Detect license file for summary
             if (!string.IsNullOrWhiteSpace(licensePath) && File.Exists(licensePath))
@@ -986,7 +986,7 @@ public class Program
         // Reset static Manager on shutdown so a subsequent startup (e.g. test factories)
         // can call StartUpSystem again cleanly.
         var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
-        lifetime.ApplicationStopped.Register(IndxCloudInternalApi.Shutdown);
+        lifetime.ApplicationStopped.Register(IndxServerInternalApi.Shutdown);
 
         // Warm persisted datasets AFTER the server starts listening, on a background thread.
         // Inline warm-up used to block startup for minutes on a large store over Azure's SMB
@@ -999,7 +999,7 @@ public class Program
             {
                 try
                 {
-                    IndxCloudInternalApi.Manager.WarmUpPersistedDatasets();
+                    IndxServerInternalApi.Manager.WarmUpPersistedDatasets();
                 }
                 catch (Exception ex)
                 {

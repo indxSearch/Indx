@@ -1,10 +1,10 @@
 using System;
 using Indx.Api;
 
-namespace IndxCloudApi.Models
+namespace IndxServer.Models
 {
     /// <summary>
-    /// Thrown by <see cref="IndxCloudInternalApi"/> when a heavy mutation arrives for a
+    /// Thrown by <see cref="IndxServerInternalApi"/> when a heavy mutation arrives for a
     /// dataset that is busy — either a shadow build is already in progress, or the engine
     /// itself is mid-lifecycle. The controller maps this to HTTP 409 Conflict so the client
     /// can retry once the prior work completes.

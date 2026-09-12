@@ -1,12 +1,12 @@
 using System.Security.Claims;
 
-using IndxCloudApi.Data;
-using IndxCloudApi.Services;
+using IndxServer.Data;
+using IndxServer.Services;
 
 using Microsoft.AspNetCore.Components;
 using Microsoft.AspNetCore.Components.Authorization;
 
-namespace IndxCloudApi.Components.Shared
+namespace IndxServer.Components.Shared
 {
     /// <summary>
     /// Base for the console page. Resolves the team named in the URL against the signed-in

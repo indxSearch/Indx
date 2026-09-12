@@ -1,7 +1,7 @@
-using IndxCloudApi.Data;
+using IndxServer.Data;
 using Microsoft.AspNetCore.Identity;
 
-namespace IndxCloudApi.Components.Account
+namespace IndxServer.Components.Account
 {
     internal sealed class IdentityUserAccessor(UserManager<ApplicationUser> userManager, IdentityRedirectManager redirectManager)
     {

@@ -3,16 +3,16 @@ using System.Security.Claims;
 using System.Text.Json.Nodes;
 using Indx.Api;
 using Indx.CloudApi;
-using IndxCloudApi.Models;
-using IndxCloudApi.Services;
+using IndxServer.Models;
+using IndxServer.Services;
 using ModelContextProtocol.Server;
 
-namespace IndxCloudApi.Mcp
+namespace IndxServer.Mcp
 {
     /// <summary>
     /// Read-only MCP tools over the Indx search engine. Each call is authenticated by the bearer
     /// token (an API key) on the /mcp request; access is scoped to the caller's teams. Searches run
-    /// in-process through <see cref="IndxCloudInternalApi.Manager"/>, so the dataset's saved boost
+    /// in-process through <see cref="IndxServerInternalApi.Manager"/>, so the dataset's saved boost
     /// rules apply automatically, and hibernated datasets auto-wake (ResolveEngine).
     /// </summary>
     [McpServerToolType]
@@ -38,9 +38,9 @@ namespace IndxCloudApi.Mcp
             foreach (var (team, role) in await teams.GetTeamsForUserAsync(userId))
             {
                 var ownerKey = team.Id.ToString();
-                foreach (var ds in IndxCloudInternalApi.Manager.GetTeamDataSets(ownerKey))
+                foreach (var ds in IndxServerInternalApi.Manager.GetTeamDataSets(ownerKey))
                 {
-                    var ka = IndxCloudInternalApi.Manager.GetKeepAliveInfo(ds, ownerKey);
+                    var ka = IndxServerInternalApi.Manager.GetKeepAliveInfo(ds, ownerKey);
                     result.Add(new McpDatasetSummary
                     {
                         Team = team.Name,
@@ -65,7 +65,7 @@ namespace IndxCloudApi.Mcp
             var ownerKey = await ResolveOwnerKey(team);
             var engine = ResolveEngine(dataset, ownerKey);
 
-            var ka = IndxCloudInternalApi.Manager.GetKeepAliveInfo(dataset, ownerKey);
+            var ka = IndxServerInternalApi.Manager.GetKeepAliveInfo(dataset, ownerKey);
             var schema = new McpDatasetSchema
             {
                 Team = team,
@@ -167,7 +167,7 @@ namespace IndxCloudApi.Mcp
                     cloudQuery.Filter = new FilterProxy(combined.SerializedKey);
             }
 
-            var res = IndxCloudInternalApi.Manager.Search(cloudQuery, dataset, ownerKey);
+            var res = IndxServerInternalApi.Manager.Search(cloudQuery, dataset, ownerKey);
             return ShapeResult(engine, res, fields);
         }
 
@@ -194,9 +194,9 @@ namespace IndxCloudApi.Mcp
             [System.ComponentModel.Description("Dataset name.")] string dataset)
         {
             var ownerKey = await ResolveOwnerKey(team);
-            if (IndxCloudInternalApi.Manager.ResolveEngine(dataset, ownerKey) == null)
+            if (IndxServerInternalApi.Manager.ResolveEngine(dataset, ownerKey) == null)
                 throw new McpToolException($"Dataset '{dataset}' not found.");
-            var list = IndxCloudInternalApi.Manager.GetSynonyms(dataset, ownerKey);
+            var list = IndxServerInternalApi.Manager.GetSynonyms(dataset, ownerKey);
             // A bare null serialises to no content at all on the MCP wire, which agents read as an
             // empty (failed) response. Return an explicit, parseable "no list" object instead.
             return list == null
@@ -222,7 +222,7 @@ namespace IndxCloudApi.Mcp
 
         private static ICloudSearchEngine ResolveEngine(string dataset, string ownerKey)
         {
-            var engine = IndxCloudInternalApi.Manager.ResolveEngine(dataset, ownerKey); // auto-wakes if hibernated
+            var engine = IndxServerInternalApi.Manager.ResolveEngine(dataset, ownerKey); // auto-wakes if hibernated
             if (engine == null)
                 throw new McpToolException($"Dataset '{dataset}' not found.");
             if (engine.Status.SystemState != SystemState.Ready)
@@ -244,7 +244,7 @@ namespace IndxCloudApi.Mcp
                 EnableFacets = withFacets,
                 EnableCoverage = true,
             };
-            return IndxCloudInternalApi.Manager.Search(q, dataset, ownerKey);
+            return IndxServerInternalApi.Manager.Search(q, dataset, ownerKey);
         }
 
         private static McpSearchResult ShapeResult(ICloudSearchEngine engine, Result res, string[]? fields)

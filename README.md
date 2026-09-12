@@ -1,4 +1,4 @@
-# IndxCloudApi
+# IndxServer
 
 A self-hosted search service built on [Indx Search](https://indx.co). Blazor Server UI, HTTP API with JWT authentication, user management, and everything needed to run a multi-user search service on your own infrastructure.
 
@@ -27,7 +27,7 @@ A self-hosted search service built on [Indx Search](https://indx.co). Blazor Ser
 
 ```bash
 git clone https://github.com/indxSearch/IndxCloudApi
-cd IndxCloudApi
+cd IndxServer
 dotnet run
 ```
 
@@ -204,7 +204,7 @@ Indx__LicenseFile = /path/to/your.license
 
 ### Auto-fetch from the license portal
 
-Instead of placing the file manually, IndxCloudApi can pull its license straight from the Indx License Portal ([license.indx.co](https://license.indx.co)) on startup. On your portal license page, create a license token, then configure:
+Instead of placing the file manually, IndxServer can pull its license straight from the Indx License Portal ([license.indx.co](https://license.indx.co)) on startup. On your portal license page, create a license token, then configure:
 
 ```
 Indx__LicenseToken = <token from your portal license page>
@@ -278,6 +278,6 @@ dotnet test
 
 ## Related Projects
 
-- [`@indxsearch/intrface`](https://www.npmjs.com/package/@indxsearch/intrface) — React search UI components for IndxCloudApi (with [`@indxsearch/systm`](https://www.npmjs.com/package/@indxsearch/systm) and [`@indxsearch/pixl`](https://www.npmjs.com/package/@indxsearch/pixl))
+- [`@indxsearch/intrface`](https://www.npmjs.com/package/@indxsearch/intrface) — React search UI components for IndxServer (with [`@indxsearch/systm`](https://www.npmjs.com/package/@indxsearch/systm) and [`@indxsearch/pixl`](https://www.npmjs.com/package/@indxsearch/pixl))
 - [`IndxSearchLib`](https://www.nuget.org/packages/IndxSearchLib) — the embedded C# search engine this server is built on
 - [Documentation](https://v5.docs.indx.co) — guides, how-tos, and the full API reference

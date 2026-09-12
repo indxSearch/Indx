@@ -1,4 +1,4 @@
-namespace IndxCloudApi.Services;
+namespace IndxServer.Services;
 
 internal static class EmailTemplates
 {

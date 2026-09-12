@@ -7,7 +7,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace IndxCloudApi.Models
+namespace IndxServer.Models
 {
     /// <summary>
     /// Shadow-swap orchestration for heavy mutations.
@@ -23,7 +23,7 @@ namespace IndxCloudApi.Models
     /// build is in progress throws <see cref="ShadowBusyException"/>, which the controller
     /// maps to HTTP 409.
     /// </summary>
-    internal sealed partial class IndxCloudInternalApi
+    internal sealed partial class IndxServerInternalApi
     {
         private readonly ConcurrentDictionary<string, DateTime> _shadowBuildsInProgress = new();
         private readonly ConcurrentDictionary<string, ProcessMonitor> _shadowMonitors = new();

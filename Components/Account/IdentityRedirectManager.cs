@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using System.Diagnostics.CodeAnalysis;
 
-namespace IndxCloudApi.Components.Account
+namespace IndxServer.Components.Account
 {
     internal sealed class IdentityRedirectManager(NavigationManager navigationManager)
     {

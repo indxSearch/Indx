@@ -7,7 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace IndxCloudApi.Models
+namespace IndxServer.Models
 {
     /// <summary>Summary of how the new JSON's schema differed from the dataset's current field config.</summary>
     /// <param name="Added">Fields in the new JSON that were not previously configured (they load unconfigured).</param>
@@ -39,7 +39,7 @@ namespace IndxCloudApi.Models
     /// and are never touched here). Reuses the shadow-swap orchestration. State-transparent: works on
     /// a Ready, hibernated or idle-evicted dataset without ever reloading the old documents.
     /// </summary>
-    internal sealed partial class IndxCloudInternalApi
+    internal sealed partial class IndxServerInternalApi
     {
         /// <summary>
         /// Replaces all documents in the dataset with the contents of <paramref name="jsonStream"/>.

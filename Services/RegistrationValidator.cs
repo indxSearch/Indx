@@ -1,7 +1,7 @@
-using IndxCloudApi.Data;
+using IndxServer.Data;
 using Microsoft.AspNetCore.Identity;
 
-namespace IndxCloudApi.Services;
+namespace IndxServer.Services;
 
 internal class RegistrationValidator
 {

@@ -1,7 +1,7 @@
 @* Declared key field (document key / primary key). Cloud-owned (DatasetMetadataStore) since
    the lib doesn't persist the key-field name; applied to the engine before each external
    Load. See indx_dataset_primary_key.md. *@
-@using IndxCloudApi.Models
+@using IndxServer.Models
 @inject DatasetMetadataStore DatasetMeta
 
 <div class="key-row">
@@ -42,7 +42,7 @@
     [Parameter] public bool Editable { get; set; }
 
     private const string AutoKeyValue = "__auto__";
-    private static string KeyAutoSentinel => IndxCloudInternalApi.KeyFieldAutoSentinel;
+    private static string KeyAutoSentinel => IndxServerInternalApi.KeyFieldAutoSentinel;
 
     // Raw stored value: "" = undeclared (engine default), the sentinel = explicit auto-generated,
     // otherwise a field name.

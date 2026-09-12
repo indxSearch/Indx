@@ -1,6 +1,6 @@
 # Email Service Setup Guide
 
-This guide walks you through setting up email functionality for IndxCloudApi. The application supports three email providers:
+This guide walks you through setting up email functionality for IndxServer. The application supports three email providers:
 - **Console** (default) - Logs emails to console for development
 - **Azure Communication Services** (recommended) - Production-ready email service
 - **Custom** - Implement your own `IEmailSender`
@@ -156,7 +156,7 @@ Create a new file in `Services/YourEmailSender.cs`:
 ```csharp
 using Microsoft.AspNetCore.Identity.UI.Services;
 
-namespace IndxCloudApi.Services;
+namespace IndxServer.Services;
 
 public class YourEmailSender : IEmailSender
 {

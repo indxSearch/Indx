@@ -1,7 +1,7 @@
 @page "/admin/settings"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
-@using IndxCloudApi.Services
+@using IndxServer.Services
 @attribute [Authorize(Roles = "Admin")]
 @inject InstanceSettingsService SettingsService
 @inject ILogger<Settings> Logger

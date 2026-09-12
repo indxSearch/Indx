@@ -1,6 +1,6 @@
 using System;
 
-namespace IndxCloudApi.Models
+namespace IndxServer.Models
 {
     /// <summary>
     /// Thrown when a request references a filter token that the engine cannot resolve —

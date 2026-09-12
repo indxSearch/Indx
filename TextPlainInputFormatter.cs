@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Mvc.Formatters;
 using Microsoft.Net.Http.Headers;
 using System.Text;
-namespace IndxCloudApi
+namespace IndxServer
 {
     /// <summary>
     /// Class to ensure proper formatting for both json and plain text.

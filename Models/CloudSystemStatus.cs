@@ -1,6 +1,6 @@
 using Indx.Api;
 
-namespace IndxCloudApi.Models
+namespace IndxServer.Models
 {
     /// <summary>
     /// SystemStatus extended with cloud-layer fields that the core library has no knowledge of.

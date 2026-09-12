@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Identity.UI.Services;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
     /// <summary>
     /// Email sender that logs to console - for development/testing

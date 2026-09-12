@@ -1,4 +1,4 @@
-namespace IndxCloudApi.Services;
+namespace IndxServer.Services;
 
 /// <summary>
 /// Configuration options for user registration restrictions

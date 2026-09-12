@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Components;
 
-namespace IndxCloudApi.Components.Datasets
+namespace IndxServer.Components.Datasets
 {
     /// <summary>
     /// Base for the tab components under <see cref="DatasetPanel"/>: receives the cascaded

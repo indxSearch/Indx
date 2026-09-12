@@ -1,6 +1,6 @@
 // Indx Cloud API - Azure Managed Application main template
 //
-// Provisions a single-tenant deployment of IndxCloudApi for one customer.
+// Provisions a single-tenant deployment of IndxServer for one customer.
 // Resources are deployed into the customer's managed resource group.
 //
 // Compile to ARM JSON before packaging:
@@ -281,7 +281,7 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
 
     // JWT - sourced from Key Vault
     Jwt__Key: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=JwtKey)'
-    Jwt__Issuer: 'IndxCloudApi'
+    Jwt__Issuer: 'IndxServer'
 
     // Identity / registration
     Registration__Mode: registrationMode

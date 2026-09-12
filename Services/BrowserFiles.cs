@@ -1,6 +1,6 @@
 using Microsoft.JSInterop;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
     /// <summary>
     /// The browser-side file and clipboard helpers the pages need (backed by

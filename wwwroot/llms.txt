@@ -1,6 +1,6 @@
-# IndxCloudApi
+# IndxServer
 
-IndxCloudApi is a multi-user search service API built on Indx Search.
+IndxServer is a multi-user search service API built on Indx Search.
 Technology: .NET 9, JWT authentication, JSON document indexing
 Purpose: High-performance pattern matching + coverage-based search
 

@@ -6,7 +6,7 @@
 @using System.IdentityModel.Tokens.Jwt
 @using System.Security.Claims
 @using System.Text
-@using IndxCloudApi.Data
+@using IndxServer.Data
 @using Microsoft.EntityFrameworkCore
 @attribute [Authorize]
 @inject UserManager<ApplicationUser> UserManager
@@ -14,10 +14,10 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ApplicationDbContext Db
 @inject Microsoft.Extensions.Caching.Memory.IMemoryCache MemoryCache
-@inject IndxCloudApi.Services.BrowserFiles BrowserFiles
+@inject IndxServer.Services.BrowserFiles BrowserFiles
 @inject ILogger<ApiKey> Logger
 @inject NavigationManager Nav
-@inject IndxCloudApi.Services.InstanceSettingsService Settings
+@inject IndxServer.Services.InstanceSettingsService Settings
 
 <PageTitle>API Keys</PageTitle>
 
@@ -296,7 +296,7 @@ else
         key.IsRevoked = true;
         await Db.SaveChangesAsync();
         // Drop the cached "not revoked" verdict so the key stops working now, not in five minutes.
-        IndxCloudApi.Services.TokenValidationCache.EvictJti(MemoryCache, key.Jti);
+        IndxServer.Services.TokenValidationCache.EvictJti(MemoryCache, key.Jti);
         revokeConfirmId = null;
         await LoadKeys();
         Logger.LogInformation("API key {Id} revoked for user {UserId}", key.Id, key.UserId);

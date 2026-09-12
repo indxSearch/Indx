@@ -3,10 +3,10 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Indx.Api;
 using Indx.Storage;
-using IndxCloudApi.Models;
+using IndxServer.Models;
 using Microsoft.Data.Sqlite;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
     /// <summary>
     /// Cloud-owned persistence + apply for per-dataset boost rules. Stores the rule list as JSON
@@ -30,7 +30,7 @@ namespace IndxCloudApi.Services
 
         private static string Key(string teamId, string dataSetName) => $"{teamId}\0{dataSetName}";
 
-        private static string DbPath => IndxCloudInternalApi.SearchDbConnectionString;
+        private static string DbPath => IndxServerInternalApi.SearchDbConnectionString;
 
         // The search DB is created lazily by the engine (SqLiteManager) on the first dataset
         // operation. We must NEVER open a connection that would create the file first, or the

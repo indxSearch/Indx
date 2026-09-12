@@ -1,4 +1,4 @@
-// Browser-side helpers behind IndxCloudApi.Services.BrowserFiles.
+// Browser-side helpers behind IndxServer.Services.BrowserFiles.
 window.indxTriggerFileInput = function (id) {
     document.getElementById(id)?.click();
 };

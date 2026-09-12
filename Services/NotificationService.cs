@@ -1,9 +1,9 @@
-using IndxCloudApi.Data;
+using IndxServer.Data;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.EntityFrameworkCore;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
 #pragma warning disable 1591
     internal class NotificationService(

@@ -2,7 +2,7 @@
 using Indx.CloudApi;
 using Indx.Embeddings;
 using Indx.Storage;
-namespace IndxCloudApi.Models
+namespace IndxServer.Models
 {
     /// <summary>
     /// In-process registry of <see cref="SearchEngine"/> instances, keyed by the owning team.
@@ -11,7 +11,7 @@ namespace IndxCloudApi.Models
     /// datasets) is decided in the controllers via team membership, so this class no longer
     /// carries any per-user sharing/grantee logic — it just maps (dataSetName, teamId) to an engine.
     /// </summary>
-    internal sealed partial class IndxCloudInternalApi
+    internal sealed partial class IndxServerInternalApi
     {
         #region Public Methods
         public ICloudSearchEngine? FindSearchEngineForInit(string dataSetName, string teamId)
@@ -23,7 +23,7 @@ namespace IndxCloudApi.Models
                 return matcher;
             matcher.Dispose();
             _instances.Remove(MakeKey(dataSetName, teamId));
-            var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, dataSetName, teamId);
+            var persistence = new Persistence(IndxServerInternalApi.SearchDbConnectionString, dataSetName, teamId);
             // invariant; DataSetExists() == true
             int? configuration = persistence.ReadDataSetConfiguration();
             if (configuration == null)
@@ -46,14 +46,14 @@ namespace IndxCloudApi.Models
         #endregion Public Methods
 
         #region Internal Fields
-        internal const string logFileName = "IndxCloudApi.log";
+        internal const string logFileName = "IndxServer.log";
         #endregion Internal Fields
 
         #region Internal Properties
         // API will not get used before after program.cs has executed App.Run. It will however, call
-        // IndxCloudInternalAPI.StartUpSystem first, ensuring Manager cannot be null.
+        // IndxServerInternalAPI.StartUpSystem first, ensuring Manager cannot be null.
 
-        internal static IndxCloudInternalApi Manager
+        internal static IndxServerInternalApi Manager
         {
             get => _manager ?? throw new InvalidOperationException(
                 "Manager not initialized. Call StartUpSystem during startup.");
@@ -67,10 +67,10 @@ namespace IndxCloudApi.Models
         {
             if (_manager != null)  // Check the backing field directly
             {
-                throw new InvalidOperationException("IndxCloudInternalApi.StartUpSystem shall only be called once");
+                throw new InvalidOperationException("IndxServerInternalApi.StartUpSystem shall only be called once");
             }
             LicensePath = licensePath;
-            Manager = new IndxCloudInternalApi(dbConnectionString);
+            Manager = new IndxServerInternalApi(dbConnectionString);
             Manager.InitializeSystem();
         }
 
@@ -117,7 +117,7 @@ namespace IndxCloudApi.Models
 
             // Cold path: CreateOrOpen writes DefaultConfigurationNumber and nothing else can write
             // this column, so reaching here means a hand-edited or future-written row.
-            Indx.Utilities.FileLoggerFactory.Create<IndxCloudInternalApi>(logFileName).LogWarning(
+            Indx.Utilities.FileLoggerFactory.Create<IndxServerInternalApi>(logFileName).LogWarning(
                 "Dataset '{DataSet}' carries configuration {Configuration}, which is not supported; opening with the default.",
                 dataSetName, persisted);
             return ConfigurationParameters.Default;
@@ -175,7 +175,7 @@ namespace IndxCloudApi.Models
             }
             catch (System.Exception ex)
             {
-                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxCloudInternalApi.DoIndexAsync exception" + ex.ToString());
+                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxServerInternalApi.DoIndexAsync exception" + ex.ToString());
                 throw;
             }
         }
@@ -208,7 +208,7 @@ namespace IndxCloudApi.Models
             }
             catch (Exception ex)
             {
-                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxCloudInternalAPI.GetFields exception" + ex.ToString());
+                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxServerInternalAPI.GetFields exception" + ex.ToString());
                 throw;
             }
         }
@@ -225,7 +225,7 @@ namespace IndxCloudApi.Models
             }
             catch (System.Exception ex)
             {
-                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxCloudInternalAPI.GetState exception" + ex.ToString());
+                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxServerInternalAPI.GetState exception" + ex.ToString());
                 throw;
             }
         }
@@ -360,7 +360,7 @@ namespace IndxCloudApi.Models
             }
             catch (System.Exception ex)
             {
-                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxCloudInternalAPI.Search exception" + ex.ToString());
+                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxServerInternalAPI.Search exception" + ex.ToString());
                 throw;
             }
         }
@@ -606,7 +606,7 @@ namespace IndxCloudApi.Models
             }
             catch (Exception ex)
             {
-                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxCloudInternalApi.VectorSearch exception " + ex);
+                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxServerInternalApi.VectorSearch exception " + ex);
                 throw;
             }
         }
@@ -654,7 +654,7 @@ namespace IndxCloudApi.Models
             }
             catch (Exception ex)
             {
-                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxCloudInternalApi.HybridSearch exception " + ex);
+                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxServerInternalApi.HybridSearch exception " + ex);
                 throw;
             }
         }
@@ -852,7 +852,7 @@ namespace IndxCloudApi.Models
             }
             catch (System.Exception ex)
             {
-                _logger.LogError(ex, "IndxCloudInternalAPI.GetLicenseInfo exception");
+                _logger.LogError(ex, "IndxServerInternalAPI.GetLicenseInfo exception");
                 throw;
             }
         }
@@ -919,14 +919,14 @@ namespace IndxCloudApi.Models
         #region Private Fields
         private readonly object _dictionaryLock = new();
         private readonly Dictionary<string, SearchEngineInstance> _instances = [];
-        private readonly ILogger<IndxCloudInternalApi> _logger;
-        private static IndxCloudInternalApi? _manager;
+        private readonly ILogger<IndxServerInternalApi> _logger;
+        private static IndxServerInternalApi? _manager;
         #endregion Private Fields
 
         #region Private Constructors
-        private IndxCloudInternalApi(string searchDbConnectionString)
+        private IndxServerInternalApi(string searchDbConnectionString)
         {
-            _logger = Indx.Utilities.FileLoggerFactory.Create<IndxCloudInternalApi>(logFileName);
+            _logger = Indx.Utilities.FileLoggerFactory.Create<IndxServerInternalApi>(logFileName);
             SearchDbConnectionString = searchDbConnectionString;
         }
         #endregion Private Constructors
@@ -934,7 +934,7 @@ namespace IndxCloudApi.Models
         #region Private Methods
         private void InitializeSystem()
         {
-            const string tag = nameof(IndxCloudInternalApi) + "." + nameof(InitializeSystem);
+            const string tag = nameof(IndxServerInternalApi) + "." + nameof(InitializeSystem);
             _logger.Log(LogLevel.Information, $"{tag} starting up");
             if (string.IsNullOrEmpty(SearchDbConnectionString))
             {
@@ -966,7 +966,7 @@ namespace IndxCloudApi.Models
         /// </summary>
         internal void WarmUpPersistedDatasets()
         {
-            const string tag = nameof(IndxCloudInternalApi) + "." + nameof(WarmUpPersistedDatasets);
+            const string tag = nameof(IndxServerInternalApi) + "." + nameof(WarmUpPersistedDatasets);
             var sqLiteManager = new SqLiteManager(SearchDbConnectionString);
             if (!sqLiteManager.DatabaseExists())
                 return;

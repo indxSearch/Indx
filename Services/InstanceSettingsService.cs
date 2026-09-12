@@ -1,7 +1,7 @@
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 
-namespace IndxCloudApi.Services;
+namespace IndxServer.Services;
 
 internal class InstanceSettings
 {

@@ -1,15 +1,15 @@
-using IndxCloudApi.Models;
+using IndxServer.Models;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
 #pragma warning disable 1591
     /// <summary>
     /// Periodically disposes loaded search-engine instances whose idle time has passed their
     /// per-dataset <c>KeepAliveTimeHrs</c> countdown. Datasets pinned with <see cref="int.MaxValue"/>
     /// or opted out with <c>0</c> are never touched. The actual eviction logic lives in
-    /// <see cref="IndxCloudInternalApi.SweepIdleInstances"/>; this service just calls it on an
+    /// <see cref="IndxServerInternalApi.SweepIdleInstances"/>; this service just calls it on an
     /// interval (configurable via <c>DatasetSweep:IntervalMinutes</c>, default 5). An evicted dataset
-    /// is transparently re-loaded on its next request (see <see cref="IndxCloudInternalApi.ResolveEngine"/>).
+    /// is transparently re-loaded on its next request (see <see cref="IndxServerInternalApi.ResolveEngine"/>).
     /// </summary>
     internal class DatasetIdleSweeper(
         IConfiguration configuration,
@@ -35,7 +35,7 @@ namespace IndxCloudApi.Services
 
                 try
                 {
-                    int evicted = IndxCloudInternalApi.Manager.SweepIdleInstances();
+                    int evicted = IndxServerInternalApi.Manager.SweepIdleInstances();
                     if (evicted > 0)
                         logger.LogInformation("DatasetIdleSweeper evicted {Count} idle dataset instance(s)", evicted);
                 }

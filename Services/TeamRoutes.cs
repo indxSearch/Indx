@@ -1,4 +1,4 @@
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
     /// <summary>
     /// The console's URL scheme, in one place: a team page and a dataset page under it.

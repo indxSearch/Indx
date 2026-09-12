@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Identity;
 
-namespace IndxCloudApi.Data
+namespace IndxServer.Data
 {
     /// <summary>
     /// Application user entity extending ASP.NET Core Identity user.

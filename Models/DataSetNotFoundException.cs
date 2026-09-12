@@ -1,6 +1,6 @@
 using System;
 
-namespace IndxCloudApi.Models
+namespace IndxServer.Models
 {
     /// <summary>
     /// Thrown by internal operations that address a dataset which does not exist

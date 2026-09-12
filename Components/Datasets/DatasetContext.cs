@@ -1,10 +1,10 @@
 using Indx.Api;
 
-using IndxCloudApi.Data;
-using IndxCloudApi.Models;
-using IndxCloudApi.Services;
+using IndxServer.Data;
+using IndxServer.Models;
+using IndxServer.Services;
 
-namespace IndxCloudApi.Components.Datasets
+namespace IndxServer.Components.Datasets
 {
     /// <summary>
     /// Everything the dataset console knows about one dataset of the active team, shared by
@@ -38,7 +38,7 @@ namespace IndxCloudApi.Components.Datasets
 
         // ── Engine view ───────────────────────────────────────────────────────
         public SystemStatus? Status { get; set; }
-        internal IndxCloudInternalApi.KeepAliveInfo? KeepAlive { get; set; }
+        internal IndxServerInternalApi.KeepAliveInfo? KeepAlive { get; set; }
         /// <summary>True once <see cref="RefreshStatus"/> has succeeded at least once. Until then
         /// the engine state is unknown and nothing state-dependent (upload prompt, wake panel,
         /// tab nav) should render — an unknown state must not look like an empty dataset.</summary>

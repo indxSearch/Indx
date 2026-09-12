@@ -1,8 +1,8 @@
-using IndxCloudApi.Data;
-using IndxCloudApi.Models;
+using IndxServer.Data;
+using IndxServer.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
 #pragma warning disable 1591
     /// <summary>
@@ -36,7 +36,7 @@ namespace IndxCloudApi.Services
             var svc = scope.ServiceProvider.GetRequiredService<NotificationService>();
             var today = DateOnly.FromDateTime(DateTime.Today);
 
-            foreach (var (dataSetName, teamId) in IndxCloudInternalApi.Manager.GetAllDataSets())
+            foreach (var (dataSetName, teamId) in IndxServerInternalApi.Manager.GetAllDataSets())
             {
                 var expired = boostStore.Load(teamId, dataSetName)
                     .Where(r => r.Enabled && r.ActiveUntil is { } until && until < today)

@@ -1,7 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
-namespace IndxCloudApi.Data
+namespace IndxServer.Data
 {
 #pragma warning disable 1591
     public class ApiKey

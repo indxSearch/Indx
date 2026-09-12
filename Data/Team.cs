@@ -1,6 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 
-namespace IndxCloudApi.Data
+namespace IndxServer.Data
 {
 #pragma warning disable 1591
     /// <summary>

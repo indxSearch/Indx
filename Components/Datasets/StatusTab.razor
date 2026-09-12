@@ -2,7 +2,7 @@
    it; nothing here is editable (keep-alive is changed under Options). Licensing is instance-wide
    and lives on the License page; a limit breach still surfaces in the alert banner. *@
 @using Indx.Api
-@using IndxCloudApi.Models
+@using IndxServer.Models
 @inherits DatasetTabBase
 
 @if (!Active) { return; }
@@ -41,7 +41,7 @@
 }
 
 @code {
-    private static string KeepAliveLabel(IndxCloudInternalApi.KeepAliveInfo? ka)
+    private static string KeepAliveLabel(IndxServerInternalApi.KeepAliveInfo? ka)
     {
         if (ka == null) return "—";
         return ka.KeepAliveTimeHrs switch

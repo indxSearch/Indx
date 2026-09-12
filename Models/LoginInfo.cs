@@ -1,4 +1,4 @@
-﻿namespace IndxCloudApi.Models
+﻿namespace IndxServer.Models
 {
     /// <summary>
     /// Class to support JSON serialization of user credentials

@@ -1,4 +1,4 @@
-namespace IndxCloudApi.Models
+namespace IndxServer.Models
 {
     /// <summary>
     /// Body of POST /api/changePassword. Used to rotate the seeded admin's

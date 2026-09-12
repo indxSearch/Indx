@@ -1,4 +1,4 @@
-@inject IndxCloudApi.Services.NotificationService NotificationService
+@inject IndxServer.Services.NotificationService NotificationService
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager NavigationManager
 
@@ -77,7 +77,7 @@
     private bool _open;
     private int _unreadCount;
     private string? _userId;
-    private List<IndxCloudApi.Data.Notification> _notifications = [];
+    private List<IndxServer.Data.Notification> _notifications = [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -99,7 +99,7 @@
 
     private void Close() => _open = false;
 
-    private async Task MarkRead(IndxCloudApi.Data.Notification n)
+    private async Task MarkRead(IndxServer.Data.Notification n)
     {
         if (!n.IsRead && _userId != null)
         {

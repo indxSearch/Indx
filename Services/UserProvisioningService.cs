@@ -1,7 +1,7 @@
-using IndxCloudApi.Data;
+using IndxServer.Data;
 using Microsoft.AspNetCore.Identity;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
     /// <summary>
     /// Shared post-creation setup for a brand-new user, used by every registration path

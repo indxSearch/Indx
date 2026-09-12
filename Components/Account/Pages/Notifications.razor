@@ -1,8 +1,8 @@
 @page "/account/notifications"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
-@using IndxCloudApi.Data
-@using IndxCloudApi.Services
+@using IndxServer.Data
+@using IndxServer.Services
 @attribute [Authorize]
 @inject NotificationService NotificationService
 @inject AuthenticationStateProvider AuthState

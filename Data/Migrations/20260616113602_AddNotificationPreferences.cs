@@ -2,7 +2,7 @@
 
 #nullable disable
 
-namespace IndxCloudApi.Data.Migrations
+namespace IndxServer.Data.Migrations
 {
     /// <inheritdoc />
     public partial class AddNotificationPreferences : Migration

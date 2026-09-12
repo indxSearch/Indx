@@ -1,4 +1,4 @@
-namespace IndxCloudApi.Models
+namespace IndxServer.Models
 {
     /// <summary>
     /// Envelope for count-valued responses on the modern API surface

@@ -1,6 +1,6 @@
 # Indx Cloud API - Azure Marketplace package
 
-This folder holds the artifacts for shipping `IndxCloudApi` as an **Azure Managed Application** on the Azure Marketplace. Each customer purchase provisions one dedicated ASP.NET Core instance into the customer's subscription, locked into a managed resource group.
+This folder holds the artifacts for shipping `IndxServer` as an **Azure Managed Application** on the Azure Marketplace. Each customer purchase provisions one dedicated ASP.NET Core instance into the customer's subscription, locked into a managed resource group.
 
 Local `dotnet run` is unaffected - none of these files are referenced by the project build.
 
@@ -41,7 +41,7 @@ Plans differ by **features**, never by document/dataset capacity (there are no c
 The engine enforces a 100,000-document limit unless a valid `.license` is present (independent of edition/plan). The Managed package lifts it by **bundling a no-expiry Indx master license**, and the mechanism needs **no env var or bicep change** — it rides the existing build pipeline:
 
 - The master license is generated once via the Eziriz `LicenseGenerator` (`LicensedTo = "Indx Managed"`, no expiry) and placed at `IndxData/indx-managed.license`.
-- `IndxCloudApi.csproj` already publishes it: `<Content Include="IndxData\*.license" CopyToPublishDirectory="PreserveNewest" />`.
+- `IndxServer.csproj` already publishes it: `<Content Include="IndxData\*.license" CopyToPublishDirectory="PreserveNewest" />`.
 - The engine auto-detects `./IndxData/*.license` at startup → cap lifted. No `Indx:LicenseFile` setting required.
 - `*.license` is gitignored, so the file is **never committed** to the public repo. The Managed package build must have it present in `IndxData/` (developer machine, or CI pulling it from a secret); a clean public/self-host build has no license and runs at the 100K cap (self-hosters add their own free dev license from indx.co).
 
@@ -76,7 +76,7 @@ These steps happen once per publisher tenant, outside this folder:
 3. **Create the application definition** in your publisher tenant pointing at the uploaded zip. This is the resource that ties together the package, the publisher principal, and the access role:
    ```bash
    az managedapp definition create \
-     --name "IndxCloudApi" \
+     --name "IndxServer" \
      --location "westeurope" \
      --resource-group "indx-marketplace-rg" \
      --lock-level "ReadOnly" \
@@ -142,7 +142,7 @@ Bump the version, recompile, re-upload the zip, then update the application defi
 
 ```bash
 az managedapp definition update \
-  --name "IndxCloudApi" \
+  --name "IndxServer" \
   --resource-group "indx-marketplace-rg" \
   --package-file-uri "https://<your-storage>.blob.core.windows.net/packages/indxcloud-managed-app-1.1.0.zip"
 ```

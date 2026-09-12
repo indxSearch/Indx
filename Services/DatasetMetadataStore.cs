@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using Microsoft.Data.Sqlite;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
     /// <summary>
     /// Cloud-owned per-dataset metadata. Holds an owner-authored <c>Description</c> (used by the MCP
@@ -20,7 +20,7 @@ namespace IndxCloudApi.Services
         private readonly ConcurrentDictionary<string, string> _keyFieldCache = new();
 
         private static string Key(string teamId, string dataSetName) => $"{teamId}\0{dataSetName}";
-        private static string DbPath => IndxCloudApi.Models.IndxCloudInternalApi.SearchDbConnectionString;
+        private static string DbPath => IndxServer.Models.IndxServerInternalApi.SearchDbConnectionString;
         private static bool DbExists() => !string.IsNullOrEmpty(DbPath) && File.Exists(DbPath);
         private static SqliteConnection Connection() => new($"Data Source={DbPath}");
 

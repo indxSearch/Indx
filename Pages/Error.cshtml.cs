@@ -2,7 +2,7 @@
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using System.Diagnostics;
 
-namespace IndxCloudApi.Pages
+namespace IndxServer.Pages
 {
 #pragma warning disable 1591
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]

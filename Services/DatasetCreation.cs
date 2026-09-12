@@ -1,9 +1,9 @@
 using Indx.Storage;
 using Indx.Utilities;
 
-using IndxCloudApi.Models;
+using IndxServer.Models;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
     /// <summary>Creates an empty dataset for a team — shared by the team page's form and the
     /// breadcrumb's "New dataset…" so both validate and persist the same way.</summary>
@@ -17,9 +17,9 @@ namespace IndxCloudApi.Services
             if (!FileNameValidity.IsValid(name)) return "Invalid dataset name.";
             try
             {
-                var persistence = new Persistence(IndxCloudInternalApi.SearchDbConnectionString, name, teamId);
+                var persistence = new Persistence(IndxServerInternalApi.SearchDbConnectionString, name, teamId);
                 if (persistence.DataSetExists()) return $"Dataset '{name}' already exists.";
-                persistence.CreateOrOpenDataSet(IndxCloudInternalApi.DefaultConfigurationNumber);
+                persistence.CreateOrOpenDataSet(IndxServerInternalApi.DefaultConfigurationNumber);
                 return null;
             }
             catch (Exception ex)

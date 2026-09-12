@@ -2,7 +2,7 @@ using System.Globalization;
 using System.Text.Json.Serialization;
 using Indx.Api;
 
-namespace IndxCloudApi.Models
+namespace IndxServer.Models
 {
     /// <summary>How the conditions of a single boost rule are joined.</summary>
     public enum BoostJoin

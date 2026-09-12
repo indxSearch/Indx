@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
 #pragma warning disable 1591
     /// <summary>

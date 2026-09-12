@@ -1,7 +1,7 @@
 @* Dataset options for team admins: description (MCP context), keep-alive policy, manual
    hibernate, atomic Replace, transfer to another team, and the danger-zone delete. *@
 @using Indx.Api
-@using IndxCloudApi.Models
+@using IndxServer.Models
 @inherits DatasetTabBase
 @inject DatasetMetadataStore DatasetMeta
 
@@ -331,7 +331,7 @@
         _ => $"{hrs} h",
     };
 
-    private static string RemainingLabel(IndxCloudInternalApi.KeepAliveInfo? ka)
+    private static string RemainingLabel(IndxServerInternalApi.KeepAliveInfo? ka)
     {
         if (ka is null || ka.KeepAliveTimeHrs is int.MaxValue or 0) return "";
         if (!ka.Ready) return "(not loaded)";

@@ -2,15 +2,15 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
-@using IndxCloudApi.Data
+@using IndxServer.Data
 @attribute [Authorize(Roles = "Admin")]
 @inject UserManager<ApplicationUser> UserManager
 @inject ILogger<Users> Logger
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@inject IndxCloudApi.Services.InstanceSettingsService SettingsService
+@inject IndxServer.Services.InstanceSettingsService SettingsService
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject NavigationManager NavigationManager
-@inject IndxCloudApi.Services.IEditionService Edition
+@inject IndxServer.Services.IEditionService Edition
 
 <PageTitle>Admin — Users</PageTitle>
 
@@ -97,7 +97,7 @@ else
     </table>
 }
 
-@if (!Edition.IsEnabled(IndxCloudApi.Services.EditionFeature.MultipleUsers))
+@if (!Edition.IsEnabled(IndxServer.Services.EditionFeature.MultipleUsers))
 {
     <div style="margin-top: 48px;">
         <p style="color: var(--lv5); font: var(--text-xs);">
@@ -193,7 +193,7 @@ else if (_isInviteMode)
     private void LoadInvites()
     {
         var settings = SettingsService.Load();
-        _isInviteMode = settings.RegistrationMode == IndxCloudApi.Services.RegistrationMode.Invite;
+        _isInviteMode = settings.RegistrationMode == IndxServer.Services.RegistrationMode.Invite;
         _inviteEmails = [.. settings.AllowedEmails];
     }
 
@@ -218,8 +218,8 @@ else if (_isInviteMode)
         {
             await EmailSender.SendEmailAsync(
                 email,
-                IndxCloudApi.Services.EmailTemplates.Subject(instanceName, "You have been invited"),
-                IndxCloudApi.Services.EmailTemplates.Invite(instanceName, registerUrl));
+                IndxServer.Services.EmailTemplates.Subject(instanceName, "You have been invited"),
+                IndxServer.Services.EmailTemplates.Invite(instanceName, registerUrl));
             Logger.LogInformation("Invite sent to {Email}", email);
             _message = $"Invite sent to {email}.";
         }

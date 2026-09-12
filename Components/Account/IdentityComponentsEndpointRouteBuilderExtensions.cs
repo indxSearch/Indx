@@ -1,8 +1,8 @@
 using Indx.Storage;
-using IndxCloudApi.Components.Account.Pages;
-using IndxCloudApi.Components.Account.Pages.Manage;
-using IndxCloudApi.Data;
-using IndxCloudApi.Models;
+using IndxServer.Components.Account.Pages;
+using IndxServer.Components.Account.Pages.Manage;
+using IndxServer.Data;
+using IndxServer.Models;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Http.Extensions;

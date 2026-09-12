@@ -1,7 +1,7 @@
 using Microsoft.AspNetCore.Components;
 using Icons = Indx.Systm.Blazor.Icons;
 
-namespace IndxCloudApi.Components.Datasets
+namespace IndxServer.Components.Datasets
 {
     /// <summary>
     /// The pixl icons the dataset console passes to systm <c>Button</c>/<c>Chip</c> as

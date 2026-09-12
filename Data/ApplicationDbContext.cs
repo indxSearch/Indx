@@ -1,7 +1,7 @@
 ﻿using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
-namespace IndxCloudApi.Data
+namespace IndxServer.Data
 {
 #pragma warning disable 1591
     public class ApplicationDbContext : IdentityDbContext<ApplicationUser>

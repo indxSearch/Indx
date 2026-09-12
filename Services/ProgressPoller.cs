@@ -1,4 +1,4 @@
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
     /// <summary>
     /// The one polling loop the dataset console uses for anything that reports progress

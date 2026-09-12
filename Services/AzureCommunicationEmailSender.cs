@@ -2,7 +2,7 @@ using Azure;
 using Azure.Communication.Email;
 using Microsoft.AspNetCore.Identity.UI.Services;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
     /// <summary>
     /// Email sender using Azure Communication Services

@@ -3,7 +3,7 @@ using Microsoft.OpenApi.Any;
 using Microsoft.OpenApi.Models;
 using Swashbuckle.AspNetCore.SwaggerGen;
 
-namespace IndxCloudApi.Swagger
+namespace IndxServer.Swagger
 {
     /// <summary>
     /// Adds multiple named examples for the Search endpoint

@@ -2,12 +2,12 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
-@using IndxCloudApi.Data
-@using IndxCloudApi.Models
+@using IndxServer.Data
+@using IndxServer.Models
 @using Indx.Api
 @attribute [Authorize(Roles = "Admin")]
 @inject UserManager<ApplicationUser> UserManager
-@inject IndxCloudApi.Services.TeamService TeamService
+@inject IndxServer.Services.TeamService TeamService
 @inject ILogger<Datasets> Logger
 
 <PageTitle>Admin — Datasets</PageTitle>
@@ -210,12 +210,12 @@ else
         var teamMap = (await TeamService.GetAllAsync())
             .ToDictionary(t => t.Id.ToString(), t => t.Name);
 
-        var all = IndxCloudInternalApi.Manager.GetAllDataSets();
+        var all = IndxServerInternalApi.Manager.GetAllDataSets();
         var rows = all.Select(r =>
         {
             // In-memory status of the warmed engine (null if not currently instantiated).
-            var status = IndxCloudInternalApi.Manager.GetState(r.DataSetName, r.TeamId);
-            var ka = IndxCloudInternalApi.Manager.GetKeepAliveInfo(r.DataSetName, r.TeamId);
+            var status = IndxServerInternalApi.Manager.GetState(r.DataSetName, r.TeamId);
+            var ka = IndxServerInternalApi.Manager.GetKeepAliveInfo(r.DataSetName, r.TeamId);
             return new DatasetRow(
                 r.DataSetName, r.TeamId, teamMap.GetValueOrDefault(r.TeamId),
                 status?.SystemState, status?.DocumentCount ?? 0, status?.TimeOfLastIndexBuild,
@@ -254,7 +254,7 @@ else
                 break;
         }
 
-        var ok = IndxCloudInternalApi.Manager.SetKeepAliveHrs(dataSetName, teamId, hrs);
+        var ok = IndxServerInternalApi.Manager.SetKeepAliveHrs(dataSetName, teamId, hrs);
         if (ok)
         {
             Logger.LogInformation("Admin set KeepAliveTimeHrs={Hrs} for dataset {DataSetName} team {TeamId}", hrs, dataSetName, teamId);
@@ -272,7 +272,7 @@ else
     {
         _message = null; _errorMessage = null;
         _deleteConfirmKey = null;
-        var deleted = IndxCloudInternalApi.Manager.DeleteDataSet(dataSetName, teamId);
+        var deleted = IndxServerInternalApi.Manager.DeleteDataSet(dataSetName, teamId);
         if (deleted)
         {
             Logger.LogInformation("Admin deleted dataset {DataSetName} owned by team {TeamId}", dataSetName, teamId);

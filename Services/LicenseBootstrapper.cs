@@ -1,7 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
     /// <summary>
     /// Service that ensures a local .license file is present at startup,
@@ -289,7 +289,7 @@ namespace IndxCloudApi.Services
 
             // Write into ./IndxData alongside the SQLite databases, jwt.key, settings.json
             // and any uploaded *.license files. This is the SAME directory that
-            // IndxCloudInternalApi.GetLicensePath() scans, so a fetched license is actually
+            // IndxServerInternalApi.GetLicensePath() scans, so a fetched license is actually
             // picked up by the search engines. (On Azure App Service the working directory is
             // under the persistent /home mount, so ./IndxData survives restarts.) Earlier this
             // returned /home/data on Azure, which the engine never reads — leaving fetched

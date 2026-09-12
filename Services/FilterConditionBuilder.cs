@@ -1,6 +1,6 @@
 using Indx.Api;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
     /// <summary>
     /// Builds a single engine <see cref="Filter"/> from a declarative condition (exact value OR

@@ -1,6 +1,6 @@
 {
   "profiles": {
-    "IndxCloudApi": {
+    "IndxServer": {
       "commandName": "Project",
       "launchBrowser": true,
       "launchUrl": "Account/Login", 

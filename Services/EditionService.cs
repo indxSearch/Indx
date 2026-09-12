@@ -1,4 +1,4 @@
-namespace IndxCloudApi.Services;
+namespace IndxServer.Services;
 
 /// <summary>How this instance is deployed. Fixed at deploy time via Indx:Edition.</summary>
 public enum IndxEdition

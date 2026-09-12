@@ -4,13 +4,13 @@
 		<TargetFramework>net10.0</TargetFramework>
 		<Nullable>enable</Nullable>
 		<ImplicitUsings>enable</ImplicitUsings>
-		<UserSecretsId>aspnet-IndxCloudApi-753A8260-85A1-4678-9E16-CC33E76477FD</UserSecretsId>
+		<UserSecretsId>aspnet-IndxServer-753A8260-85A1-4678-9E16-CC33E76477FD</UserSecretsId>
 		<!-- Indx.Systm.Blazor lives INSIDE this folder so it rides the git-subtree split to the
 		     public repo, but it is its own project (referenced below) — keep its files out of
 		     this app's own compile/content globs or every component gets compiled twice. -->
 		<DefaultItemExcludes>$(DefaultItemExcludes);Indx.Systm.Blazor/**</DefaultItemExcludes>
 		<GenerateDocumentationFile>True</GenerateDocumentationFile>
-		<DocumentationFile>IndxCloudApi.xml</DocumentationFile>
+		<DocumentationFile>IndxServer.xml</DocumentationFile>
 
 		<!-- Versioning (Semantic Versioning: MAJOR.MINOR.PATCH-PRERELEASE) -->
 		<Version>2.0.0</Version>
@@ -21,7 +21,7 @@
 		<!-- License Information -->
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>
 		<Copyright>Copyright (c) 2026 Indx (Bionic AS)</Copyright>
-		<!-- 1591: keep doc generation on (Swagger reads IndxCloudApi.xml) but don't warn on every
+		<!-- 1591: keep doc generation on (Swagger reads IndxServer.xml) but don't warn on every
 		     public member lacking an XML comment — the MCP models, BoostRule, etc. are self-describing. -->
 		<NoWarn>$(NoWarn);MSTEST0001;BL0008;1591</NoWarn>
 	</PropertyGroup>
@@ -33,14 +33,14 @@
 	<!-- Internal services (LicenseBootstrapper, NotificationService, …) are exercised
 	     by the test project, which needs access to them. -->
 	<ItemGroup>
-		<InternalsVisibleTo Include="TestIndxCloudApi" />
+		<InternalsVisibleTo Include="TestIndxServer" />
 	</ItemGroup>
 
 	<ItemGroup>
 		<Content Include="IndxData\*.license" CopyToPublishDirectory="PreserveNewest" />
 	</ItemGroup>
 
-	<PropertyGroup Condition=" '$(RunConfiguration)' == 'IndxCloudApi' " />
+	<PropertyGroup Condition=" '$(RunConfiguration)' == 'IndxServer' " />
 
 	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
 	  <NoWarn>1701;1702;CA2254;CS1998;MSTEST0001;BL0008;1591</NoWarn>
@@ -91,7 +91,7 @@
 	<!-- ===== Indx engine reference selection =====
 	     Three modes, resolved into $(IndxReferenceMode):
 	       Source  - ProjectReference to ..\Indx (full IndxSolutions checkout). Default for us.
-	       NuGet   - obfuscated IndxSearchLib package. Default for the public IndxCloudApi repo.
+	       NuGet   - obfuscated IndxSearchLib package. Default for the public IndxServer repo.
 	       LocalDll- a local obfuscated Indx.dll next to this .csproj. Testing only; opt-in.
 	     Auto-detect: if the Indx source project is present we default to Source, otherwise NuGet.
 	     Override explicitly with:  -p:IndxFromNuGet=true   or   -p:IndxFromLocalDll=true  -->

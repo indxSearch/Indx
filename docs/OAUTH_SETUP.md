@@ -1,6 +1,6 @@
 # OAuth Setup Guide
 
-This guide walks you through setting up OAuth authentication with Microsoft and Google for IndxCloudApi.
+This guide walks you through setting up OAuth authentication with Microsoft and Google for IndxServer.
 
 ## Table of Contents
 - [Microsoft OAuth (Azure)](#microsoft-oauth-azure)
@@ -21,7 +21,7 @@ This guide walks you through setting up OAuth authentication with Microsoft and 
 2. Search for and select **App registrations**
 3. Click **+ New registration**
 4. Fill in the registration form:
-   - **Name**: `IndxCloudApi` (or your preferred name)
+   - **Name**: `IndxServer` (or your preferred name)
    - **Supported account types**: Choose based on your needs:
      - `Accounts in any organizational directory and personal Microsoft accounts` (most common)
    - **Redirect URI**:
@@ -39,7 +39,7 @@ After registration, you'll see the **Overview** page:
 
 1. In your app registration, navigate to **Certificates & secrets** (left sidebar)
 2. Click **+ New client secret**
-3. Add a description: `IndxCloudApi Development`
+3. Add a description: `IndxServer Development`
 4. Choose an expiration period (recommended: 180 days or 1 year)
 5. Click **Add**
 6. **IMPORTANT**: Copy the **Value** immediately - it won't be shown again
@@ -81,7 +81,7 @@ For basic authentication, the default permissions are sufficient. If you need ad
 1. Navigate to **APIs & Services** > **OAuth consent screen**
 2. Choose **External** as the user type
 3. Fill in the required fields:
-   - **App name**: `IndxCloudApi` (or your preferred name)
+   - **App name**: `IndxServer` (or your preferred name)
    - **User support email**: your email
    - **Developer contact information**: your email
 4. Click **Save and Continue** through the Scopes and Test Users screens
@@ -93,7 +93,7 @@ For basic authentication, the default permissions are sufficient. If you need ad
 2. Click **+ CREATE CREDENTIALS** > **OAuth client ID**
 3. Fill in the form:
    - **Application type**: Web application
-   - **Name**: `IndxCloudApi`
+   - **Name**: `IndxServer`
    - **Authorized redirect URIs**:
      - `https://localhost:5001/signin-google` (development)
      - `https://yourdomain.com/signin-google` (production)

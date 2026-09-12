@@ -2,11 +2,11 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
-@using IndxCloudApi.Data
-@using IndxCloudApi.Models
-@using IndxCloudApi.Services
+@using IndxServer.Data
+@using IndxServer.Models
+@using IndxServer.Services
 @attribute [Authorize(Roles = "Admin")]
-@inject IndxCloudApi.Services.TeamService TeamService
+@inject IndxServer.Services.TeamService TeamService
 @inject UserManager<ApplicationUser> UserManager
 
 <PageTitle>Admin — Teams</PageTitle>
@@ -85,7 +85,7 @@ else
     private async Task Load()
     {
         // Dataset owner key is the team id (as string); count per team.
-        var datasetCounts = IndxCloudInternalApi.Manager.GetAllDataSets()
+        var datasetCounts = IndxServerInternalApi.Manager.GetAllDataSets()
             .GroupBy(d => d.TeamId)
             .ToDictionary(g => g.Key, g => g.Count());
 

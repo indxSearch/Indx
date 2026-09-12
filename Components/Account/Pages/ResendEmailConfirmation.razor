@@ -6,12 +6,12 @@
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.AspNetCore.Identity.UI.Services
-@using IndxCloudApi.Data
+@using IndxServer.Data
 @inject UserManager<ApplicationUser> UserManager
 @inject IEmailSender EmailSender
 @inject NavigationManager NavigationManager
 @inject ILogger<ResendEmailConfirmation> Logger
-@inject IndxCloudApi.Services.InstanceSettingsService InstanceSettingsService
+@inject IndxServer.Services.InstanceSettingsService InstanceSettingsService
 
 <PageTitle>Resend email confirmation</PageTitle>
 
@@ -108,8 +108,8 @@ else
                     var instanceName = InstanceSettingsService.Load().InstanceName;
                     await EmailSender.SendEmailAsync(
                         Input.Email,
-                        IndxCloudApi.Services.EmailTemplates.Subject(instanceName, "Please verify your email"),
-                        IndxCloudApi.Services.EmailTemplates.ResendConfirmation(instanceName, callbackUrl));
+                        IndxServer.Services.EmailTemplates.Subject(instanceName, "Please verify your email"),
+                        IndxServer.Services.EmailTemplates.ResendConfirmation(instanceName, callbackUrl));
 
                     Logger.LogInformation("Resent confirmation email to {Email}", Input.Email);
                 }

@@ -1,6 +1,6 @@
-﻿using IndxCloudApi.Data;
-using IndxCloudApi.Models;
-using IndxCloudApi.Services;
+﻿using IndxServer.Data;
+using IndxServer.Models;
+using IndxServer.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
@@ -12,7 +12,7 @@ using System.Security.Claims;
 using System.Text;
 
 
-namespace IndxCloudApi.Controllers
+namespace IndxServer.Controllers
 {
     /// <summary>
     /// Endpoint to provide JWT bearer token based authentication

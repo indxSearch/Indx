@@ -1,8 +1,8 @@
-using IndxCloudApi.Data;
+using IndxServer.Data;
 using Indx.Storage;
 using Microsoft.EntityFrameworkCore;
 
-namespace IndxCloudApi.Services
+namespace IndxServer.Services
 {
 #pragma warning disable 1591
     /// <summary>
