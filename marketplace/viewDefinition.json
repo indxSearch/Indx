@@ -5,7 +5,7 @@
     {
       "kind": "Overview",
       "properties": {
-        "header": "Indx Cloud API",
+        "header": "Indx",
         "description": "A high-performance full-text search engine for JSON data. This managed application hosts a dedicated single-tenant instance for your organization.",
         "commands": [
           {

@@ -1,4 +1,4 @@
-// Indx Cloud API - Azure Managed Application main template
+// Indx - Azure Managed Application main template
 //
 // Provisions a single-tenant deployment of IndxServer for one customer.
 // Resources are deployed into the customer's managed resource group.

@@ -1,4 +1,4 @@
-# Indx Cloud API - Azure Marketplace package
+# Indx - Azure Marketplace package
 
 This folder holds the artifacts for shipping `IndxServer` as an **Azure Managed Application** on the Azure Marketplace. Each customer purchase provisions one dedicated ASP.NET Core instance into the customer's subscription, locked into a managed resource group.
 
@@ -80,7 +80,7 @@ These steps happen once per publisher tenant, outside this folder:
      --location "westeurope" \
      --resource-group "indx-marketplace-rg" \
      --lock-level "ReadOnly" \
-     --display-name "Indx Cloud API" \
+     --display-name "Indx" \
      --description "Single-tenant search engine for JSON data" \
      --authorizations "<publisher-principal-id>:8e3af657-a8ff-443c-a75c-2fe8c4bcb635" \
      --package-file-uri "https://<your-storage>.blob.core.windows.net/packages/indxcloud-managed-app.zip"

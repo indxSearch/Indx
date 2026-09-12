@@ -21,7 +21,7 @@ using Indx.Utilities;
 namespace IndxServer;
 
 /// <summary>
-/// Main application entry point for Indx Cloud API
+/// Main application entry point for Indx (IndxServer)
 /// </summary>
 public class Program
 {
@@ -441,7 +441,7 @@ public class Program
             c.SwaggerDoc("v2.0-beta", new OpenApiInfo
             {
                 Version = "2.0-beta",
-                Title = "Indx Cloud API",
+                Title = "Indx",
                 Description = "JWT Authenticated HTTP API for Indx Search"
             });
 
@@ -809,7 +809,7 @@ public class Program
         app.UseSwagger();
         app.UseSwaggerUI(c =>
         {
-            c.SwaggerEndpoint("/swagger/v2.0-beta/swagger.json", "Indx Cloud API v2.0-beta");
+            c.SwaggerEndpoint("/swagger/v2.0-beta/swagger.json", "Indx v2.0-beta");
             c.RoutePrefix = "swagger";
 
             // Auto-authenticate with JWT token if user is logged in
@@ -965,7 +965,7 @@ public class Program
         // Display startup summary
         Console.WriteLine();
         Console.WriteLine("╔═══════════════════════════════════════════════════════════╗");
-        Console.WriteLine("║                  Indx Cloud API Ready                     ║");
+        Console.WriteLine("║                        Indx Ready                         ║");
         Console.WriteLine("╠═══════════════════════════════════════════════════════════╣");
 
         var applicationUrl = builder.Configuration["ASPNETCORE_URLS"] ?? "https://localhost:5001";
