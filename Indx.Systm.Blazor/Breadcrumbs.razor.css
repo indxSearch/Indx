@@ -117,8 +117,10 @@ a.indx-breadcrumbs-label:focus-visible {
     min-width: 0;
 }
 
-/* Popover: same borderless base as SelectField's menu, anchored to the step's end edge
-   (Radix align="end" in the React version). */
+/* Popover: same borderless base as SelectField's menu. Anchored to the step's START edge and
+   opening rightward — the React version aligns to the end and lets Radix flip on collision;
+   without collision detection here, an end-anchored menu on the first step opens off the left
+   of the window. A breadcrumb sits at the left of the page, so rightward never collides. */
 .indx-breadcrumbs-backdrop {
     position: fixed;
     inset: 0;
@@ -128,7 +130,7 @@ a.indx-breadcrumbs-label:focus-visible {
 .indx-breadcrumbs-menu {
     position: absolute;
     top: calc(100% + 4px);
-    right: 0;
+    left: 0;
     z-index: 1001;
     min-width: 180px;
     max-height: 280px;
