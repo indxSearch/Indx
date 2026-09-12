@@ -38,7 +38,7 @@
 
 @if (_rows == null)
 {
-    <p>Loading...</p>
+    <p style="display:flex; align-items:center; gap:8px; color:var(--lv5);"><Spinner Size="14" /> Loading datasets…</p>
 }
 else if (_rows.Count == 0)
 {
@@ -211,16 +211,20 @@ else
             .ToDictionary(t => t.Id.ToString(), t => t.Name);
 
         var all = IndxServerInternalApi.Manager.GetAllDataSets();
-        var rows = all.Select(r =>
+        // Off the circuit thread: the record count is a COUNT(*) per dataset, and this page must
+        // never call GetState — that goes through ResolveEngine, which auto-loads a hibernated
+        // timed/pinned dataset, so listing the admin page used to load and index every dataset
+        // on disk before it could render. FindSearchEngine reads what is in memory only.
+        var rows = await Task.Run(() => all.Select(r =>
         {
-            // In-memory status of the warmed engine (null if not currently instantiated).
-            var status = IndxServerInternalApi.Manager.GetState(r.DataSetName, r.TeamId);
+            var engine = IndxServerInternalApi.Manager.FindSearchEngine(r.DataSetName, r.TeamId);
+            var status = engine is { IsDisposed: false } ? engine.Status : null;
             var ka = IndxServerInternalApi.Manager.GetKeepAliveInfo(r.DataSetName, r.TeamId);
             return new DatasetRow(
                 r.DataSetName, r.TeamId, teamMap.GetValueOrDefault(r.TeamId),
                 status?.SystemState, status?.DocumentCount ?? 0, status?.TimeOfLastIndexBuild,
                 ka.KeepAliveTimeHrs, ka.Ready, ka.Remaining, ka.RecordCount);
-        });
+        }).ToList());
         _rows = [.. rows.OrderBy(r => r.TeamName ?? r.TeamId).ThenBy(r => r.DataSetName)];
     }
 

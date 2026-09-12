@@ -5,6 +5,7 @@
 @using Indx.Api
 @inject IDatasetEngines Engines
 @inject NavigationManager NavigationManager
+@implements IDisposable
 
 <div class="indx-datasets-heading">
     <h2>Datasets</h2>
@@ -32,10 +33,17 @@ else
                     <span class="indx-dataset-card-name">@row.Name</span>
                 </span>
                 <span class="indx-dataset-card-foot">
-                    <Chip Size="small" Color="@row.ChipColor" TextColor="@row.ChipText" Icon="@row.Icon">@row.Label</Chip>
-                    @if (row.Count is { } n)
+                    @if (row.Pending)
                     {
-                        <span class="indx-dataset-card-count">@n.ToString("N0") @(n == 1 ? "document" : "documents")</span>
+                        <span class="indx-dataset-card-count"><Spinner Size="12" /></span>
+                    }
+                    else
+                    {
+                        <Chip Size="small" Color="@row.ChipColor" TextColor="@row.ChipText" Icon="@row.Icon">@row.Label</Chip>
+                        @if (row.Count is { } n)
+                        {
+                            <span class="indx-dataset-card-count">@n.ToString("N0") @(n == 1 ? "document" : "documents")</span>
+                        }
                     }
                 </span>
             </a>
@@ -79,7 +87,14 @@ else
 
     private bool CanCreate => TeamRoles.CanWrite(Role);
 
-    private sealed record Row(string Name, string Label, string ChipColor, string ChipText, RenderFragment<int>? Icon, int? Count);
+    private sealed record Row(string Name, string Label, string ChipColor, string ChipText, RenderFragment<int>? Icon, int? Count)
+    {
+        /// <summary>Status not read yet — the card shows the name and a spinner.</summary>
+        public bool Pending { get; init; }
+        public static Row PendingFor(string name) => new(name, "", "", "", null, null) { Pending = true };
+    }
+
+    private CancellationTokenSource? _describeCts;
 
     private List<Row> _rows = new();
     private string _newDatasetName = string.Empty;
@@ -97,21 +112,44 @@ else
         Reload();
     }
 
-    /// <summary>Re-read the team's datasets and their state.</summary>
+    /// <summary>Re-read the team's datasets: the names render at once, each card's state is
+    /// filled in off the circuit thread as it is read (a record count per dataset is a COUNT(*)
+    /// on disk — cheap, but not free on a large dataset, and never worth blocking the page for).</summary>
     public void Reload()
     {
         List<string> names;
         try { names = string.IsNullOrEmpty(TeamId) ? [] : Engines.GetTeamDataSets(TeamId); }
         catch { names = []; }
-        _rows = names.Select(Describe).ToList();
+        _rows = names.Select(Row.PendingFor).ToList();
+
+        _describeCts?.Cancel();
+        var cts = _describeCts = new CancellationTokenSource();
+        var teamId = TeamId;
+        _ = Task.Run(async () =>
+        {
+            foreach (var name in names)
+            {
+                if (cts.IsCancellationRequested) return;
+                var row = Describe(name, teamId);
+                await InvokeAsync(() =>
+                {
+                    if (cts.IsCancellationRequested) return;
+                    var i = _rows.FindIndex(r => r.Name == name);
+                    if (i >= 0) _rows[i] = row;
+                    StateHasChanged();
+                });
+            }
+        }, cts.Token);
     }
 
-    private Row Describe(string name)
+    public void Dispose() => _describeCts?.Cancel();
+
+    private Row Describe(string name, string teamId)
     {
         try
         {
-            var ka = Engines.GetKeepAliveInfo(name, TeamId);
-            var engine = Engines.FindSearchEngine(name, TeamId);
+            var ka = Engines.GetKeepAliveInfo(name, teamId);
+            var engine = Engines.FindSearchEngine(name, teamId);
             var state = engine is { IsDisposed: false } ? engine.Status.SystemState : (SystemState?)null;
             if (state == SystemState.Ready)
                 return new Row(name, "Ready", "var(--CTeal)", "#080809", DatasetIcons.ForState(SystemState.Ready), engine!.Status.DocumentCount);
