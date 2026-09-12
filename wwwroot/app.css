@@ -357,7 +357,6 @@ a.btn-danger:hover {
 }
 
 .nav-home:hover {
-    background: var(--lv2);
     text-decoration: none;
 }
 

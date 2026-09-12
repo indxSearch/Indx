@@ -1,8 +1,8 @@
 @* The header is the breadcrumb. Left: the Indx mark as the home link, with the instance name.
    Middle: whatever the current page put in HeaderState (the console's team › dataset trail),
-   else a label derived from the URL. Right: an Instance menu (License; Users, All datasets and
-   Settings for admins), notifications, and a personal menu (Account, API keys, Docs, Swagger,
-   Log out). Everything that is not "where am I" lives in those two menus. *@
+   else a label derived from the URL. Right: for admins an Instance menu (License, Users, All
+   datasets, Settings), then notifications and a personal menu (Account, API keys, Docs,
+   Swagger, Log out). Everything that is not "where am I" lives in those menus. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
 @inject NavigationManager NavigationManager
@@ -30,17 +30,17 @@
     <div class="nav-right">
         <AuthorizeView>
             <Authorized>
-                <NavDropdown Label="Instance" Icon="_iconInstance">
-                    @if (Edition.LicensingVisible)
-                    {
-                        <Button Variant="ghost" Size="micro" Href="account/license" IconLeft="_iconDoc" class="nav-menu-item">License</Button>
-                    }
-                    <AuthorizeView Roles="Admin" Context="admin">
+                <AuthorizeView Roles="Admin" Context="admin">
+                    <NavDropdown Label="Instance" Icon="_iconInstance">
+                        @if (Edition.LicensingVisible)
+                        {
+                            <Button Variant="ghost" Size="micro" Href="account/license" IconLeft="_iconDoc" class="nav-menu-item">License</Button>
+                        }
                         <Button Variant="ghost" Size="micro" Href="admin/users" IconLeft="_iconUsers" class="nav-menu-item">Users</Button>
                         <Button Variant="ghost" Size="micro" Href="admin/datasets" IconLeft="_iconDatabase" class="nav-menu-item">All datasets</Button>
                         <Button Variant="ghost" Size="micro" Href="admin/settings" IconLeft="_iconSliders" class="nav-menu-item">Settings</Button>
-                    </AuthorizeView>
-                </NavDropdown>
+                    </NavDropdown>
+                </AuthorizeView>
                 <NotificationPanel />
                 <NavDropdown Label="@ShortName(context.User.Identity?.Name)" Title="@context.User.Identity?.Name" Icon="_iconUser">
                     <Button Variant="ghost" Size="micro" Href="account/manage" IconLeft="_iconUser" class="nav-menu-item">Account</Button>
