@@ -4,10 +4,10 @@ using Microsoft.Data.Sqlite;
 namespace IndxServer.Services
 {
     /// <summary>
-    /// Cloud-owned per-dataset metadata. Holds an owner-authored <c>Description</c> (used by the MCP
+    /// Server-owned per-dataset metadata. Holds an owner-authored <c>Description</c> (used by the MCP
     /// <c>describe_dataset</c> tool to give agents domain context) and the declared <c>KeyField</c>
     /// (the JSON field whose value is the document's primary key — see <c>indx_dataset_primary_key.md</c>).
-    /// The lib does not persist the key-field name anywhere, so the cloud owns it and re-applies it
+    /// The lib does not persist the key-field name anywhere, so the server owns it and re-applies it
     /// before each external Load. Stored in its own table in indx.db — same pattern as
     /// <see cref="BoostRuleStore"/>, so the lib (SqLiteManager) is untouched. Keyed by
     /// (TeamId, DatasetName); cached in memory; writes invalidate the cache.

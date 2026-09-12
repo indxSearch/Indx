@@ -340,17 +340,17 @@ namespace IndxServer.Models
         /// Make sure to check for search readiness after a call
         /// to DoIndexAsync.
         /// </summary>
-        internal Result Search(Indx.Http.QueryProxy cloudQuery, string dataSetName, string teamId)
+        internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId)
         {
             try
             {
                 var engine = ResolveEngine(dataSetName, teamId);
                 // An empty / not-yet-indexed dataset has no DocumentFields, so building the query
-                // (FromCloudQuery2Query) would NullReference. Return an empty result instead —
+                // (FromQueryProxy) would NullReference. Return an empty result instead —
                 // "search works, just returns nothing" until documents are loaded and indexed.
                 if (engine == null || engine.DocumentFields == null)
                     return Result.MakeEmptyResult();
-                Query query = FromCloudQuery2Query(cloudQuery, engine, teamId, dataSetName);
+                Query query = FromQueryProxy(queryProxy, engine, teamId, dataSetName);
                 return engine.Search(query);
             }
             catch (UnknownFilterException)
@@ -623,7 +623,7 @@ namespace IndxServer.Models
 
                 // Text search — fetch a larger pool to feed the merge
                 int poolSize = query.MaxNumberOfRecordsToReturn * 2;
-                var cloudQuery = new QueryProxy
+                var queryProxy = new QueryProxy
                 {
                     Text = query.Text,
                     MaxNumberOfRecordsToReturn = poolSize,
@@ -632,7 +632,7 @@ namespace IndxServer.Models
                     EnableCoverage = false,
                     RemoveDuplicates = true
                 };
-                Query textQuery = FromCloudQuery2Query(cloudQuery, engine, teamId, dataSetName);
+                Query textQuery = FromQueryProxy(queryProxy, engine, teamId, dataSetName);
                 var textResult = engine.Search(textQuery);
 
                 // Embedding search — also fetch a larger pool
@@ -768,7 +768,7 @@ namespace IndxServer.Models
         /// <summary>
         /// Renames a dataset within its team. The pair (name, team) is the dataset's identity
         /// everywhere — the registry key, the engine's Persistence binding, four indx.db tables and
-        /// the two cloud-owned ones — so a rename is a key rewrite in each, in the same shape as
+        /// the two server-owned ones — so a rename is a key rewrite in each, in the same shape as
         /// <see cref="TransferOwnership"/>: dispose the engine, rewrite the rows, reload under the
         /// new key. Every client that addressed the dataset by the old name is broken by design;
         /// there is no alias. Returns the message to show on refusal, null on success.
@@ -1078,7 +1078,7 @@ namespace IndxServer.Models
             return proc.WorkingSet64 / (1024 * 1024);
         }
 
-        // Per-dataset boost rules (cloud-owned). Wired in once at startup; null until then.
+        // Per-dataset boost rules (server-owned). Wired in once at startup; null until then.
         private Services.BoostRuleStore? _boostStore;
         private int _boostCeiling = 6;
 
@@ -1089,7 +1089,7 @@ namespace IndxServer.Models
             _boostCeiling = saturationCeiling;
         }
 
-        // Per-dataset metadata incl. the declared key field (cloud-owned). Wired in once at startup.
+        // Per-dataset metadata incl. the declared key field (server-owned). Wired in once at startup.
         private Services.DatasetMetadataStore? _metadataStore;
 
         // Stored when the user explicitly chooses auto-generated keys even though a real key field is
@@ -1101,7 +1101,7 @@ namespace IndxServer.Models
         internal void AttachMetadataStore(Services.DatasetMetadataStore store) => _metadataStore = store;
 
         /// <summary>
-        /// Applies the dataset's cloud-declared key field to the engine's <see cref="DocumentFields"/>
+        /// Applies the dataset's server-declared key field to the engine's <see cref="DocumentFields"/>
         /// just before an external Load assigns and persists document keys. The lib does not persist the
         /// key-field name, so this re-establishes it on every fresh load (incl. replace).
         /// <list type="bullet">
@@ -1246,7 +1246,7 @@ namespace IndxServer.Models
         /// <summary>
         /// Declares <paramref name="fieldName"/> (empty = auto-generated) as the dataset's key field:
         /// validates it exists and is numeric (the engine key is a long; a non-numeric key would silently
-        /// collide via digit-stripping), persists the choice cloud-side, and applies it to the live engine.
+        /// collide via digit-stripping), persists the choice server-side, and applies it to the live engine.
         /// Returns null on success or an error message. <paramref name="needsReloadToReKey"/> is true when
         /// the dataset already holds loaded documents — their keys are frozen, so the new key field only
         /// takes effect on the next replace/reload.
@@ -1319,35 +1319,35 @@ namespace IndxServer.Models
             return filter;
         }
 
-        private Query FromCloudQuery2Query(QueryProxy cloudQuery, IServerSearchEngine engine, string teamId, string dataSetName)
+        private Query FromQueryProxy(QueryProxy queryProxy, IServerSearchEngine engine, string teamId, string dataSetName)
         {
-            Query query = new Query(cloudQuery.Text, cloudQuery.MaxNumberOfRecordsToReturn)
+            Query query = new Query(queryProxy.Text, queryProxy.MaxNumberOfRecordsToReturn)
             {
-                CoverageSetup = cloudQuery.CoverageSetup,
-                LogPrefix = cloudQuery.LogPrefix,
-                CoverageDepth = cloudQuery.CoverageDepth,
-                RemoveDuplicates = cloudQuery.RemoveDuplicates,
-                EnableBoost = cloudQuery.EnableBoost,
-                EnableCoverage = cloudQuery.EnableCoverage,
-                EnableFacets = cloudQuery.EnableFacets,
-                SortAscending = cloudQuery.SortAscending,
-                SortBy = cloudQuery.SortBy != null ? engine.DocumentFields.GetField(cloudQuery.SortBy) : null,
-                TimeOutLimitMilliseconds = cloudQuery.TimeOutLimitMilliseconds
+                CoverageSetup = queryProxy.CoverageSetup,
+                LogPrefix = queryProxy.LogPrefix,
+                CoverageDepth = queryProxy.CoverageDepth,
+                RemoveDuplicates = queryProxy.RemoveDuplicates,
+                EnableBoost = queryProxy.EnableBoost,
+                EnableCoverage = queryProxy.EnableCoverage,
+                EnableFacets = queryProxy.EnableFacets,
+                SortAscending = queryProxy.SortAscending,
+                SortBy = queryProxy.SortBy != null ? engine.DocumentFields.GetField(queryProxy.SortBy) : null,
+                TimeOutLimitMilliseconds = queryProxy.TimeOutLimitMilliseconds
             };
-            if (cloudQuery.FieldBoosts != null)
-                query.FieldBoosts = cloudQuery.FieldBoosts;
-            if (cloudQuery.Filter != null)
-                query.Filter = ResolveFilterOrThrow(engine, cloudQuery.Filter);
+            if (queryProxy.FieldBoosts != null)
+                query.FieldBoosts = queryProxy.FieldBoosts;
+            if (queryProxy.Filter != null)
+                query.Filter = ResolveFilterOrThrow(engine, queryProxy.Filter);
 
             // Client-supplied boosts (kept verbatim for backward compat) merged with the dataset's
             // stored, currently-active boost rules. Rules only apply when the query opts in via
             // EnableBoost — same flag the client already uses.
             var merged = new List<Boost>();
-            if (cloudQuery.Boosts != null)
-                foreach (var b in cloudQuery.Boosts)
+            if (queryProxy.Boosts != null)
+                foreach (var b in queryProxy.Boosts)
                     merged.Add(engine.CreateBoost(ResolveFilterOrThrow(engine, b.FilterProxy), b.BoostStrength));
 
-            if (cloudQuery.EnableBoost && _boostStore != null)
+            if (queryProxy.EnableBoost && _boostStore != null)
             {
                 var today = DateOnly.FromDateTime(DateTime.UtcNow);
                 var ruleBoosts = _boostStore.BuildActiveBoosts(engine, teamId, dataSetName, today)

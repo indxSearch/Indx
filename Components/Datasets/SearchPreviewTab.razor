@@ -120,7 +120,7 @@ else
         var engine = Ctx.FindEngine();
         if (engine == null) return;
         // EnableBoost so the preview reflects this dataset's saved boost rules (applied
-        // server-side in FromCloudQuery2Query), matching what real searches return.
+        // server-side in FromQueryProxy), matching what real searches return.
         var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = 8, EnableBoost = true };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         var hits = new List<PreviewHit>();

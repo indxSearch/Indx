@@ -9,7 +9,7 @@ using Microsoft.Data.Sqlite;
 namespace IndxServer.Services
 {
     /// <summary>
-    /// Cloud-owned persistence + apply for per-dataset boost rules. Stores the rule list as JSON
+    /// Server-owned persistence + apply for per-dataset boost rules. Stores the rule list as JSON
     /// in its own table (<c>DatasetBoostRules</c>) inside the search database (indx.db) — the same
     /// file the engine uses, but a table this layer owns, so the lib (SqLiteManager) is untouched.
     /// Keyed by (TeamId, DatasetName), mirroring the engine's DataSet table. Reads are cached in

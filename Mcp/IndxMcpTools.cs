@@ -143,7 +143,7 @@ namespace IndxServer.Mcp
             // serves it with facets on, so enable them regardless of what the agent asked for —
             // otherwise a filter-only call returns zero hits and looks like a trustworthy no-match.
             var isBrowse = string.IsNullOrWhiteSpace(query);
-            var cloudQuery = new QueryProxy
+            var queryProxy = new QueryProxy
             {
                 Text = query ?? "",
                 MaxNumberOfRecordsToReturn = Math.Clamp(limit, 1, 100),
@@ -164,10 +164,10 @@ namespace IndxServer.Mcp
                     combined = combined == null ? built : combined & built;
                 }
                 if (combined != null)
-                    cloudQuery.Filter = new FilterProxy(combined.SerializedKey);
+                    queryProxy.Filter = new FilterProxy(combined.SerializedKey);
             }
 
-            var res = IndxServerInternalApi.Manager.Search(cloudQuery, dataset, ownerKey);
+            var res = IndxServerInternalApi.Manager.Search(queryProxy, dataset, ownerKey);
             return ShapeResult(engine, res, fields);
         }
 

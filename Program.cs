@@ -893,7 +893,7 @@ public class Program
                 accessTableManager.EnsureSynonymSchema();
             }
 
-            // Per-dataset boost rules: ensure the cloud-owned table and wire the store (+ the
+            // Per-dataset boost rules: ensure the server-owned table and wire the store (+ the
             // saturation ceiling) into the search path.
             var boostStore = app.Services.GetRequiredService<IndxServer.Services.BoostRuleStore>();
             boostStore.EnsureTable();

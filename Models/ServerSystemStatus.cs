@@ -3,14 +3,14 @@ using Indx.Api;
 namespace IndxServer.Models
 {
     /// <summary>
-    /// SystemStatus extended with cloud-layer fields that the core library has no knowledge of.
+    /// SystemStatus extended with server-layer fields that the core library has no knowledge of.
     /// </summary>
     public class ServerSystemStatus : SystemStatus
     {
         /// <summary>For serialization.</summary>
         public ServerSystemStatus() { }
 
-        /// <summary>Copy from a core SystemStatus, then set cloud fields separately.</summary>
+        /// <summary>Copy from a core SystemStatus, then set server fields separately.</summary>
         public ServerSystemStatus(SystemStatus source) : base(source) { }
 
         /// <summary>True while a shadow-instance rebuild is in progress for this dataset.</summary>
