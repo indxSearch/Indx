@@ -20,7 +20,10 @@
 
     @if (fieldOpts.Count == 0)
     {
-        <p class="boost-warning">No filterable fields on this dataset — mark a field <strong>Filterable</strong> in Field configuration to build boost rules.</p>
+        <Alert Variant="warning">
+            <Title>No filterable fields on this dataset</Title>
+            <Description>Boost rules match on filterable fields. Mark a field <strong>Filterable</strong> under Field configuration, then come back here.</Description>
+        </Alert>
     }
     else
     {
@@ -120,7 +123,12 @@
                     @{ var badFields = rule.Conditions.Where(c => !string.IsNullOrEmpty(c.Field) && !FilterableFieldNames().Contains(c.Field)).Select(c => c.Field).Distinct().ToList(); }
                     @if (badFields.Count > 0)
                     {
-                        <p class="boost-warning boost-warning--rule">References non-filterable field(s): @string.Join(", ", badFields). This rule won't apply until fixed.</p>
+                        <div class="boost-rule-alert">
+                            <Alert Variant="warning">
+                                <Title>Rule not applied</Title>
+                                <Description>It references non-filterable field@(badFields.Count == 1 ? "" : "s") @string.Join(", ", badFields). Mark @(badFields.Count == 1 ? "it" : "them") Filterable under Field configuration, or edit the rule.</Description>
+                            </Alert>
+                        </div>
                     }
                 </div>
             }

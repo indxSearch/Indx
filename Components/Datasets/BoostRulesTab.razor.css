@@ -1,7 +1,6 @@
 .boost-tab { margin-top: 16px; }
 .boost-intro { color: var(--lv5); font: var(--text-sm); margin-bottom: 12px; }
-.boost-warning { color: var(--CWarning); font: var(--text-sm); }
-.boost-warning--rule { font: var(--text-xs); margin-top: 8px; margin-bottom: 0; }
+.boost-rule-alert { margin-top: 8px; }
 .boost-empty { color: var(--lv4); font: var(--text-sm); margin: 8px 0 12px; }
 .boost-summary { color: var(--lv6); font: var(--text-sm); margin: 0 0 12px; display: flex; gap: 14px; flex-wrap: wrap; }
 .boost-summary-expired { color: var(--CSignal); }
