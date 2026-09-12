@@ -416,7 +416,9 @@ a.btn-danger:hover {
     }
 }
 
-.nav-menu-item {
+/* Menu items are systm Buttons; styled from the container because a class attribute passed to
+   the component would replace its own classes (Blazor attribute splat), not merge with them. */
+.nav-dropdown-menu .indx-btn {
     width: 100%;
     justify-content: flex-start;
 }

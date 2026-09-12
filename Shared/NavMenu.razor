@@ -34,25 +34,25 @@
                     <NavDropdown Label="Admin" Icon="_iconInstance">
                         @if (Edition.LicensingVisible)
                         {
-                            <Button Variant="ghost" Size="micro" Href="account/license" IconLeft="_iconDoc" class="nav-menu-item">License</Button>
+                            <Button Variant="ghost" Size="micro" Href="account/license" IconLeft="_iconDoc" >License</Button>
                         }
-                        <Button Variant="ghost" Size="micro" Href="admin/users" IconLeft="_iconUsers" class="nav-menu-item">Users</Button>
-                        <Button Variant="ghost" Size="micro" Href="admin/datasets" IconLeft="_iconDatabase" class="nav-menu-item">All datasets</Button>
-                        <Button Variant="ghost" Size="micro" Href="admin/settings" IconLeft="_iconSliders" class="nav-menu-item">Settings</Button>
+                        <Button Variant="ghost" Size="micro" Href="admin/users" IconLeft="_iconUsers" >Users</Button>
+                        <Button Variant="ghost" Size="micro" Href="admin/datasets" IconLeft="_iconDatabase" >All datasets</Button>
+                        <Button Variant="ghost" Size="micro" Href="admin/settings" IconLeft="_iconSliders" >Settings</Button>
                     </NavDropdown>
                 </AuthorizeView>
                 <NotificationPanel />
                 <NavDropdown Label="@ShortName(context.User.Identity?.Name)" Title="@context.User.Identity?.Name" Icon="_iconUser">
-                    <Button Variant="ghost" Size="micro" Href="account/manage" IconLeft="_iconUser" class="nav-menu-item">Account</Button>
-                    <Button Variant="ghost" Size="micro" Href="account/api-key" IconLeft="_iconKey" class="nav-menu-item">API keys</Button>
+                    <Button Variant="ghost" Size="micro" Href="account/manage" IconLeft="_iconUser" >Account</Button>
+                    <Button Variant="ghost" Size="micro" Href="account/api-key" IconLeft="_iconKey" >API keys</Button>
                     <div class="nav-menu-divider"></div>
-                    <Button Variant="ghost" Size="micro" Href="https://v5.docs.indx.co" IconLeft="_iconBook" class="nav-menu-item">Docs ↗</Button>
-                    <Button Variant="ghost" Size="micro" Href="swagger" IconLeft="_iconApi" class="nav-menu-item">Swagger ↗</Button>
+                    <Button Variant="ghost" Size="micro" Href="https://v5.docs.indx.co" IconLeft="_iconBook" >Docs ↗</Button>
+                    <Button Variant="ghost" Size="micro" Href="swagger" IconLeft="_iconApi" >Swagger ↗</Button>
                     <div class="nav-menu-divider"></div>
                     <form method="post" action="account/logout" class="nav-menu-form">
                         <AntiforgeryToken />
                         <input type="hidden" name="returnUrl" value="" />
-                        <Button Type="submit" Variant="ghost" Size="micro" IconLeft="_iconLogout" class="nav-menu-item">Log out</Button>
+                        <Button Type="submit" Variant="ghost" Size="micro" IconLeft="_iconLogout" >Log out</Button>
                     </form>
                 </NavDropdown>
             </Authorized>
