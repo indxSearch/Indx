@@ -1,0 +1,77 @@
+@* Port of indx-systm NavigationMenu (a Radix navigation-menu wrapper in React). Compose with
+   NavigationMenuList, NavigationMenuItem, NavigationMenuTrigger, NavigationMenuContent and
+   NavigationMenuLink. One item is open at a time and every item's content renders into the
+   single shared viewport below the list, like Radix's. Click-driven: hover intent and the
+   viewport height animation of the React version are not reproduced. *@
+
+@implements IDisposable
+@inject NavigationManager Navigation
+
+<nav aria-label="@AriaLabel" class="indx-navmenu indx-navmenu-@Size @Class" @onkeydown="OnKeyDown">
+    <CascadingValue Value="this" IsFixed="true">
+        @ChildContent
+        @* The panel is rendered here, not where its Content sits, so it needs the cascade too. *@
+        @if (_openId != null && _contents.TryGetValue(_openId, out var content))
+        {
+            <div class="indx-navmenu-backdrop" @onclick="Close"></div>
+            <div class="indx-navmenu-viewport-position">
+                <div class="indx-navmenu-viewport" data-state="open">
+                    <div class="indx-navmenu-content">@content</div>
+                </div>
+            </div>
+        }
+    </CascadingValue>
+</nav>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>"micro" | "default" — control height, padding and font.</summary>
+    [Parameter] public string Size { get; set; } = "default";
+
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter] public string AriaLabel { get; set; } = "Main navigation";
+
+    private string? _openId;
+    private readonly Dictionary<string, RenderFragment> _contents = new();
+
+    internal bool IsOpen(string id) => _openId == id;
+
+    internal void Toggle(string id)
+    {
+        _openId = _openId == id ? null : id;
+        StateHasChanged();
+    }
+
+    internal void Close()
+    {
+        if (_openId == null) return;
+        _openId = null;
+        StateHasChanged();
+    }
+
+    internal void Register(string id, RenderFragment content) => _contents[id] = content;
+    internal void Unregister(string id) => _contents.Remove(id);
+
+    /// <summary>Whether <paramref name="href"/> is the current page — the React version's
+    /// <c>active</c> prop, resolved automatically here.</summary>
+    internal bool IsCurrent(string? href)
+    {
+        if (string.IsNullOrEmpty(href)) return false;
+        var current = Navigation.ToBaseRelativePath(Navigation.Uri).TrimEnd('/');
+        return current.Equals(href.TrimStart('/').TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Close();
+    }
+
+    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+        => _ = InvokeAsync(Close);
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+}

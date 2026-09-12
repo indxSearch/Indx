@@ -1,0 +1,19 @@
+@* Renders nothing in place: it hands its content to the NavigationMenu, which shows it in the
+   shared viewport while the owning item is open. *@
+
+@implements IDisposable
+
+@code {
+    [CascadingParameter] private NavigationMenu Menu { get; set; } = default!;
+    [CascadingParameter] private NavigationMenuItem Item { get; set; } = default!;
+
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (ChildContent != null) Menu.Register(Item.Id, ChildContent);
+        else Menu.Unregister(Item.Id);
+    }
+
+    public void Dispose() => Menu.Unregister(Item.Id);
+}

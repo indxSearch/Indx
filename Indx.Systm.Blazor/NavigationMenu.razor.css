@@ -1,0 +1,120 @@
+/* Port of indx-systm NavigationMenu.module.css. Children render inside this component's nav,
+   so their classes are reached through ::deep. */
+.indx-navmenu {
+    position: relative;
+    width: 100%;
+    color: var(--lv7);
+}
+
+.indx-navmenu-micro   { --control-height: 30px; --control-padding: 10px; --icon-gap: 7px;  font: var(--text-xs); }
+.indx-navmenu-default { --control-height: 40px; --control-padding: 15px; --icon-gap: 10px; font: var(--text-sm); }
+
+.indx-navmenu ::deep .indx-navmenu-list {
+    position: relative;
+    z-index: 1001;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    width: fit-content;
+    max-width: 100%;
+    gap: 2px;
+    padding: 0;
+    margin: 0;
+    list-style: none;
+}
+
+.indx-navmenu ::deep .indx-navmenu-item {
+    display: contents;
+}
+
+.indx-navmenu ::deep .indx-navmenu-control {
+    all: unset;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--icon-gap);
+    min-height: var(--control-height);
+    padding: 0 var(--control-padding);
+    font: inherit;
+    font-weight: var(--med);
+    color: var(--lv6);
+    border-radius: 0;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.indx-navmenu ::deep .indx-navmenu-control:hover:not(:disabled),
+.indx-navmenu ::deep .indx-navmenu-control[data-state='open'],
+.indx-navmenu ::deep .indx-navmenu-control[data-active] {
+    background: var(--lv2);
+    color: var(--lv7);
+}
+
+.indx-navmenu ::deep .indx-navmenu-control:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.indx-navmenu ::deep .indx-navmenu-control:focus-visible,
+.indx-navmenu ::deep .indx-navmenu-link:focus-visible {
+    outline: 2px solid var(--lv5);
+    outline-offset: -2px;
+}
+
+.indx-navmenu ::deep .indx-navmenu-icon,
+.indx-navmenu ::deep .indx-navmenu-caret {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.indx-navmenu ::deep .indx-navmenu-caret { color: var(--lv4); }
+
+.indx-navmenu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+}
+
+.indx-navmenu-viewport-position {
+    position: absolute;
+    inset-inline-start: 0;
+    top: 100%;
+    width: 100%;
+    padding-top: 4px;
+    z-index: 1002;
+    pointer-events: none;
+}
+
+.indx-navmenu-viewport {
+    position: relative;
+    width: min(560px, 100%);
+    max-height: min(480px, 70dvh);
+    overflow: auto;
+    background: var(--lv1);
+    border: 1px solid var(--lv3);
+    box-sizing: border-box;
+    border-radius: 0;
+    pointer-events: auto;
+}
+
+.indx-navmenu-content {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 8px;
+}
+
+.indx-navmenu ::deep .indx-navmenu-link {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 12px;
+    color: var(--lv6);
+    font: inherit;
+    text-decoration: none;
+    border-radius: 0;
+}
+
+.indx-navmenu ::deep .indx-navmenu-link:hover,
+.indx-navmenu ::deep .indx-navmenu-link[data-active] {
+    background: var(--lv2);
+    color: var(--lv7);
+}
