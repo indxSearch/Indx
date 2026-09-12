@@ -2,8 +2,8 @@
 @using Indx.Api
 @* Shared admin section header + tab bar. Pass the active tab's key via Active. *@
 <div style="margin-bottom: 24px;">
-    <h1>Indx Cloud API @_apiVersion</h1>
-    <p style="color: var(--lv5); margin-top: 4px;">Powered by Indx @_indxVersion</p>
+    <h1>Indx @_apiVersion</h1>
+    <p style="color: var(--lv5); margin-top: 4px;">Powered by Indx Core @_indxVersion</p>
 </div>
 <div style="display: flex; gap: 8px; margin-bottom: 40px; border-bottom: 1px solid var(--lv2); padding-bottom: 0;">
     @foreach (var tab in _tabs)

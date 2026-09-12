@@ -26,7 +26,7 @@ A self-hosted search service built on [Indx Search](https://indx.co). Blazor Ser
 ### Run Locally
 
 ```bash
-git clone https://github.com/indxSearch/IndxCloudApi
+git clone https://github.com/indxSearch/Indx
 cd IndxServer
 dotnet run
 ```

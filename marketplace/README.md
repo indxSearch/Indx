@@ -117,7 +117,7 @@ ARM Template Toolkit (`arm-ttk`) and the createUiDefinition Sandbox are the two 
 
 ## Pre-launch checklist
 
-App-side hardening (in `IndxCloudApi/Program.cs`) that must land before going live:
+App-side hardening (in `IndxServer/Program.cs`) that must land before going live:
 
 - [x] Refuse to start in `Production` if `Jwt:Key` equals the placeholder value.
 - [ ] Replace hardcoded `admin@indx.co` / `Admin123!@#` seed with `Identity:AdminEmail` / `Identity:AdminInitialPassword` config.
