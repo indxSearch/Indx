@@ -7,14 +7,13 @@
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject IEditionService Edition
 @inject InstanceSettingsService InstanceSettingsService
+@inject HeaderState Header
 @implements IDisposable
 
 <PageTitle>Manage @Team.Name</PageTitle>
 
 @* Team settings: [team ▾] › Settings. Members and roles, rename, delete. Reached from the
    "Manage team" button on the team page. Hosted by Pages/ConsolePage. *@
-
-<ConsoleBreadcrumb TeamName="@Team.Name" Page="Settings" />
 
 <div>
 
@@ -148,7 +147,15 @@
     private record UserRow(string Id, string Email);
 
     protected override void OnInitialized() => ActiveTeam.OnChange += OnActiveTeamChanged;
-    public void Dispose() => ActiveTeam.OnChange -= OnActiveTeamChanged;
+    public void Dispose() { ActiveTeam.OnChange -= OnActiveTeamChanged; Header.Clear(this); }
+
+    private void SetHeader() => Header.Set(this, b =>
+    {
+        b.OpenComponent<ConsoleBreadcrumb>(0);
+        b.AddAttribute(1, "TeamName", Team.Name);
+        b.AddAttribute(2, "Page", "Settings");
+        b.CloseComponent();
+    });
 
     // Membership or role changed (add/remove/role change go through ReloadAsync on some
     // paths); re-read. ConsolePage handles a team that disappeared or was renamed.
@@ -161,6 +168,7 @@
 
     protected override async Task OnParametersSetAsync()
     {
+        SetHeader();
         if (_loadedFor == Team.Id) return;
         _loadedFor = Team.Id;
         await LoadAsync();

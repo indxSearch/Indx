@@ -10,10 +10,7 @@
     display: flex;
     align-items: center;
     gap: calc(var(--spacing) * 2);
-    margin-top: 4px;
     margin-bottom: 30px;
-    padding-top: 16px;
-    border-top: 1px solid var(--lv2);
 }
 
 /* Count badge inside a nav button (expired boost rules). ::deep — it renders inside the systm Button. */

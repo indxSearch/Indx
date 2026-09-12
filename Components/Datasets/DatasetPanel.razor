@@ -101,6 +101,9 @@
     [Parameter] public EventCallback OnDatasetListChanged { get; set; }
     /// <summary>The dataset was renamed; the host navigates to the new name.</summary>
     [Parameter] public EventCallback<string> OnRenamed { get; set; }
+    /// <summary>Called once with the panel's context, so the host can render state (the header
+    /// breadcrumb's status chip) outside the panel.</summary>
+    [Parameter] public Action<DatasetContext>? OnContextCreated { get; set; }
 
     public DatasetContext Ctx { get; private set; } = default!;
 
@@ -113,6 +116,7 @@
         Ctx.Changed += OnCtxChanged;
         Ctx.DatasetListChanged += () => OnDatasetListChanged.InvokeAsync();
         Ctx.Renamed += newName => OnRenamed.InvokeAsync(newName);
+        OnContextCreated?.Invoke(Ctx);
     }
 
     protected override void OnParametersSet()

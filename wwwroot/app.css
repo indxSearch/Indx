@@ -334,42 +334,105 @@ a.btn-danger:hover {
     max-width: 560px;
 }
 
-/* Navigation */
+/* Navigation — the header is the breadcrumb. */
 .nav {
     display: flex;
     align-items: center;
     width: 100%;
-    gap: 10px;
+    gap: 14px;
     max-width: 1440px;
     margin: 0 auto;
+    min-height: 30px;
 }
 
-.nav-items {
-    display: flex;
+.nav-home {
+    display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    flex-shrink: 0;
+    color: var(--lv7);
+    text-decoration: none;
+    border-radius: var(--radius);
+    padding: 4px 6px 4px 2px;
+}
+
+.nav-home:hover {
+    background: var(--lv2);
+    text-decoration: none;
+}
+
+.nav-instance {
+    font: var(--text-xs);
+    font-weight: var(--med);
+    color: var(--lv5);
+    white-space: nowrap;
+}
+
+.nav-crumbs {
     flex: 1;
-}
-
-.nav-external-links {
+    min-width: 0;
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-left: calc(var(--spacing) * 4);
 }
 
 .nav-right {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     margin-left: auto;
+    flex-shrink: 0;
 }
 
-/* Account icon button: square like the bell (neutralise .nav a's side padding). */
-.nav a.nav-bell {
-    padding: 0;
+/* Header dropdowns (Instance, personal): trigger + right-anchored Surface of ghost buttons. */
+.nav-dropdown {
+    position: relative;
+    display: flex;
+    align-items: center;
 }
 
+.nav-dropdown-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+}
+
+.nav-dropdown-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 1000;
+    min-width: 200px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.nav-dropdown-menu .indx-btn-ghost:hover {
+    background: var(--lv3) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    .nav-dropdown-menu .indx-btn-ghost:hover {
+        background: var(--lv2) !important;
+    }
+}
+
+.nav-menu-item {
+    width: 100%;
+    justify-content: flex-start;
+}
+
+.nav-menu-form {
+    display: contents;
+}
+
+.nav-menu-divider {
+    height: 1px;
+    background: var(--lv3);
+    margin: 4px 0;
+}
+
+/* Notification bell: square, quiet, like a ghost button. */
 .nav-bell {
     display: flex;
     align-items: center;
@@ -389,57 +452,6 @@ a.btn-danger:hover {
     color: var(--lv8);
 }
 
-.nav a {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font: var(--text-xs);
-    font-weight: var(--med);
-    color: var(--lv5);
-    background: transparent;
-    border: none;
-    border-radius: var(--radius);
-    height: 30px;
-    padding: 0 10px;
-    text-decoration: none;
-    cursor: pointer;
-}
-
-.nav a:not(.indx-btn):hover {
-    background: var(--lv2);
-    color: var(--lv8);
-    text-decoration: none;
-}
-
-.nav-current-page {
-    display: none;
-}
-
-.nav-hamburger {
-    display: none;
-    align-items: center;
-    justify-content: center;
-    width: 30px;
-    height: 30px;
-    padding: 0;
-    background: transparent;
-    border: none;
-    border-radius: var(--radius);
-    color: var(--lv5);
-    cursor: pointer;
-}
-
-.nav-hamburger:hover {
-    background: var(--lv2);
-    color: var(--lv8);
-}
-
-.nav-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 99;
-}
-
 /* Mobile */
 @media (max-width: 768px) {
     .header {
@@ -447,55 +459,11 @@ a.btn-danger:hover {
     }
 
     .nav {
-        width: 100%;
+        gap: 8px;
     }
 
-    .nav-hamburger {
-        display: flex;
-    }
-
-    .nav-current-page {
-        display: inline-flex;
-        align-items: center;
-        gap: 6px;
-        flex: 1;
-        font: var(--text-xs);
-        font-weight: var(--med);
-        color: var(--lv6);
-    }
-
-    .nav-right {
-        margin-left: 0;
-    }
-
-    .nav-items {
+    .nav-instance {
         display: none;
-        position: fixed;
-        top: 48px;
-        left: 0;
-        right: 0;
-        flex-direction: column;
-        align-items: stretch;
-        gap: calc(var(--spacing) * 1);
-        padding: calc(var(--spacing) * 2);
-        background: var(--lv1);
-        border-bottom: 1px solid var(--lv2);
-        z-index: 100;
-    }
-
-    .nav-items.open {
-        display: flex;
-    }
-
-    .nav-external-links {
-        margin-left: 0;
-        padding-left: 0;
-        border-left: none;
-        padding-top: calc(var(--spacing) * 2);
-        border-top: 1px solid var(--lv2);
-        margin-top: calc(var(--spacing) * 1);
-        flex-direction: column;
-        align-items: stretch;
     }
 
     .content {

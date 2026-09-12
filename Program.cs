@@ -116,6 +116,7 @@ public class Program
         builder.Services.AddScoped<IndxServer.Services.TeamService>();
         builder.Services.AddScoped<IndxServer.Services.UserProvisioningService>();
         builder.Services.AddScoped<IndxServer.Services.ActiveTeamState>();
+        builder.Services.AddScoped<IndxServer.Services.HeaderState>();
         builder.Services.AddScoped<IndxServer.Services.TeamContextResolver>();
         builder.Services.AddScoped<IndxServer.Services.DataMigrationService>();
         builder.Services.AddHostedService<IndxServer.Services.TokenExpiryNotificationJob>();

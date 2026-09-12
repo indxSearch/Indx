@@ -1,7 +1,7 @@
-@* The console's header row: [team ▾] › [dataset ▾] (› Page) on the left, page actions on the
-   right. Labels link to the team / dataset page; each caret switches to a sibling or offers
-   "New …", which opens a small name dialog. Built on the systm Breadcrumbs; this only knows
-   the routes and the active team's lists. *@
+@* The console's trail: [team ▾] › [dataset ▾] (› Page), rendered INSIDE THE HEADER — the
+   pages hand it up through HeaderState. Labels link to the team / dataset page; each caret
+   switches to a sibling or offers "New …", which opens a small name dialog. Built on the systm
+   Breadcrumbs; this only knows the routes and the active team's lists. *@
 @using System.Security.Claims
 @using IndxServer.Services
 @inject NavigationManager NavigationManager
@@ -11,14 +11,10 @@
 @implements IDisposable
 
 <div class="indx-console-header">
-    <Breadcrumbs Items="_items" />
+    <Breadcrumbs Items="_items" Size="micro" />
     @if (Trailing != null)
     {
         <div class="indx-console-trailing">@Trailing</div>
-    }
-    @if (Actions != null)
-    {
-        <div class="indx-console-actions">@Actions</div>
     }
 </div>
 
@@ -54,8 +50,6 @@
     [Parameter] public string? Page { get; set; }
     /// <summary>Shown directly after the trail, left-aligned (the dataset's state chip).</summary>
     [Parameter] public RenderFragment? Trailing { get; set; }
-    /// <summary>Buttons shown at the right end of the header row.</summary>
-    [Parameter] public RenderFragment? Actions { get; set; }
 
     private List<Breadcrumbs.BreadcrumbItem> _items = new();
     private string _userId = "";

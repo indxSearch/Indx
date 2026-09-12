@@ -1,15 +1,16 @@
-@* The team page: [team ▾] with "Manage team" on the right, then the team's datasets as a grid.
-   Hosted by Pages/ConsolePage. *@
+@* The team page: the team's datasets as a grid, "Manage team" beside the heading. The
+   [team ▾] trail is in the header (HeaderState). Hosted by Pages/ConsolePage. *@
 
 <PageTitle>@TeamName</PageTitle>
 
-<ConsoleBreadcrumb TeamName="@TeamName">
-    <Actions>
-        <Button Variant="secondary" Size="micro" Href="@TeamRoutes.TeamSettings(TeamName)" IconLeft="_iconManage">Manage team</Button>
-    </Actions>
-</ConsoleBreadcrumb>
+@inject HeaderState Header
+@implements IDisposable
 
-<DatasetList TeamId="@TeamId" TeamName="@TeamName" Role="@Role" />
+<DatasetList TeamId="@TeamId" TeamName="@TeamName" Role="@Role">
+    <HeadingActions>
+        <Button Variant="secondary" Size="micro" Href="@TeamRoutes.TeamSettings(TeamName)" IconLeft="_iconManage">Manage team</Button>
+    </HeadingActions>
+</DatasetList>
 
 @code {
     [Parameter, EditorRequired] public string TeamName { get; set; } = "";
@@ -17,4 +18,13 @@
     [Parameter] public string? Role { get; set; }
 
     private static readonly RenderFragment<int> _iconManage = size => @<Users Size="size" Color="currentColor" />;
+
+    // The trail lives in the header; this page owns it while mounted.
+    protected override void OnParametersSet() => Header.Set(this, b =>
+    {
+        b.OpenComponent<ConsoleBreadcrumb>(0);
+        b.AddAttribute(1, "TeamName", TeamName);
+        b.CloseComponent();
+    });
+    public void Dispose() => Header.Clear(this);
 }

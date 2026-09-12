@@ -1,43 +1,60 @@
+@* The header is the breadcrumb. Left: the Indx mark as the home link, with the instance name.
+   Middle: whatever the current page put in HeaderState (the console's team › dataset trail),
+   else a label derived from the URL. Right: an Instance menu (License; Users, All datasets and
+   Settings for admins), notifications, and a personal menu (Account, API keys, Docs, Swagger,
+   Log out). Everything that is not "where am I" lives in those two menus. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
-@using System.Text.RegularExpressions
 @implements IDisposable
 @inject NavigationManager NavigationManager
 @inject IndxServer.Services.InstanceSettingsService InstanceSettingsService
 @inject IndxServer.Services.IEditionService Edition
+@inject IndxServer.Services.HeaderState Header
 
 <nav class="nav">
-    <span class="nav-current-page">
-        @CurrentPage.Icon(14)
-        @CurrentPage.Label
-    </span>
+    <a href="/" class="nav-home" title="@_instanceName">
+        <IndxLogo Size="21" Color="currentColor" />
+        <span class="nav-instance">@_instanceName</span>
+    </a>
 
-    <div class="nav-items @(_menuOpen ? "open" : "")">
-        <Button Href="/" Variant="@(_onConsole ? "primary" : "ghost")" Size="micro" IconLeft="_iconHome">Datasets</Button>
-        <AuthorizeView>
-            <Authorized>
-                <Button Href="account/api-key" Variant="@NavVariant("account/api-key")" Size="micro" IconLeft="_iconKey">API Key</Button>
-                @if (Edition.LicensingVisible)
-                {
-                    <Button Href="account/license" Variant="@NavVariant("account/license")" Size="micro" IconLeft="_iconDoc">License</Button>
-                }
-            </Authorized>
-        </AuthorizeView>
-        <AuthorizeView Roles="Admin">
-            <Button Href="admin/users" Variant="@NavVariant("Admin")" Size="micro" IconLeft="_iconAdmin">Admin</Button>
-        </AuthorizeView>
-        <div class="nav-external-links">
-            <Button Href="swagger" Variant="ghost" Size="micro" IconLeft="_iconApi">Swagger ↗</Button>
-            <Button Href="https://v5.docs.indx.co" Variant="ghost" Size="micro" IconLeft="_iconBook">Docs ↗</Button>
-        </div>
+    <div class="nav-crumbs">
+        @if (Header.Breadcrumb != null)
+        {
+            @Header.Breadcrumb
+        }
+        else
+        {
+            <Breadcrumbs Items="_pageCrumb" Size="micro" />
+        }
     </div>
 
     <div class="nav-right">
         <AuthorizeView>
             <Authorized>
+                <NavDropdown Label="Instance" Icon="_iconInstance">
+                    @if (Edition.LicensingVisible)
+                    {
+                        <Button Variant="ghost" Size="micro" Href="account/license" IconLeft="_iconDoc" class="nav-menu-item">License</Button>
+                    }
+                    <AuthorizeView Roles="Admin" Context="admin">
+                        <Button Variant="ghost" Size="micro" Href="admin/users" IconLeft="_iconUsers" class="nav-menu-item">Users</Button>
+                        <Button Variant="ghost" Size="micro" Href="admin/datasets" IconLeft="_iconDatabase" class="nav-menu-item">All datasets</Button>
+                        <Button Variant="ghost" Size="micro" Href="admin/settings" IconLeft="_iconSliders" class="nav-menu-item">Settings</Button>
+                    </AuthorizeView>
+                </NavDropdown>
                 <NotificationPanel />
-                <a href="account/manage" class="nav-bell" title="@context.User.Identity?.Name" aria-label="Account">
-                    <UserId Size="16" />
-                </a>
+                <NavDropdown Label="@ShortName(context.User.Identity?.Name)" Title="@context.User.Identity?.Name" Icon="_iconUser">
+                    <Button Variant="ghost" Size="micro" Href="account/manage" IconLeft="_iconUser" class="nav-menu-item">Account</Button>
+                    <Button Variant="ghost" Size="micro" Href="account/api-key" IconLeft="_iconKey" class="nav-menu-item">API keys</Button>
+                    <div class="nav-menu-divider"></div>
+                    <Button Variant="ghost" Size="micro" Href="https://v5.docs.indx.co" IconLeft="_iconBook" class="nav-menu-item">Docs ↗</Button>
+                    <Button Variant="ghost" Size="micro" Href="swagger" IconLeft="_iconApi" class="nav-menu-item">Swagger ↗</Button>
+                    <div class="nav-menu-divider"></div>
+                    <form method="post" action="account/logout" class="nav-menu-form">
+                        <AntiforgeryToken />
+                        <input type="hidden" name="returnUrl" value="" />
+                        <Button Type="submit" Variant="ghost" Size="micro" IconLeft="_iconLogout" class="nav-menu-item">Log out</Button>
+                    </form>
+                </NavDropdown>
             </Authorized>
             <NotAuthorized>
                 <Button Href="account/register" Variant="secondary" Size="micro">Register</Button>
@@ -45,93 +62,68 @@
             </NotAuthorized>
         </AuthorizeView>
     </div>
-
-    <button class="nav-hamburger" @onclick="ToggleMenu" aria-label="Menu">
-        @if (_menuOpen)
-        {
-            <XOrError Size="16" />
-        }
-        else
-        {
-            <Menu Size="16" />
-        }
-    </button>
-
-    @if (_menuOpen)
-    {
-        <div class="nav-backdrop" @onclick="CloseMenu"></div>
-    }
 </nav>
 
 @code {
-    private bool _menuOpen;
     private string _instanceName = "Indx";
+    private List<Breadcrumbs.BreadcrumbItem> _pageCrumb = new();
 
-    private RenderFragment<int> _iconHome  => size => @<Database Size="size" />;
-    private RenderFragment<int> _iconTeam  => size => @<UserGroup Size="size" />;
-    private RenderFragment<int> _iconKey   => size => @<Key Size="size" />;
-    private RenderFragment<int> _iconUser  => size => @<UserId Size="size" />;
-    private RenderFragment<int> _iconDoc   => size => @<DocumentOrFile Size="size" />;
-    private RenderFragment<int> _iconApi   => size => @<Api Size="size" />;
-    private RenderFragment<int> _iconBook  => size => @<Book Size="size" />;
-    private RenderFragment<int> _iconAdmin => size => @<Shield Size="size" />;
-    private RenderFragment<int> _iconBell  => size => @<Bell Size="size" />;
+    private RenderFragment<int> _iconInstance => size => @<Shield Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconUsers    => size => @<Users Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconDatabase => size => @<Database Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconSliders  => size => @<SlidersHorizontal Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconKey      => size => @<Key Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconUser     => size => @<UserId Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconDoc      => size => @<DocumentOrFile Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconApi      => size => @<Api Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconBook     => size => @<Book Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconLogout   => size => @<Logout Size="size" Color="currentColor" />;
 
     protected override void OnInitialized()
     {
         _instanceName = InstanceSettingsService.Load().InstanceName;
         NavigationManager.LocationChanged += OnLocationChanged;
+        Header.Changed += OnHeaderChanged;
+        _pageCrumb = PageCrumb();
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
-        _menuOpen = false;
+        _pageCrumb = PageCrumb();
         InvokeAsync(StateHasChanged);
     }
+
+    private void OnHeaderChanged() => _ = InvokeAsync(StateHasChanged);
 
     public void Dispose()
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
+        Header.Changed -= OnHeaderChanged;
     }
 
-    private void ToggleMenu() => _menuOpen = !_menuOpen;
-    private void CloseMenu() => _menuOpen = false;
-
-    private (string Label, RenderFragment<int> Icon) CurrentPage
+    private static string ShortName(string? name)
     {
-        get
+        if (string.IsNullOrEmpty(name)) return "Account";
+        var at = name.IndexOf('@');
+        return at > 0 ? name[..at] : name;
+    }
+
+    // Pages outside the console: one unlinked crumb naming the page. The console pages replace
+    // this through HeaderState with their own trail.
+    private List<Breadcrumbs.BreadcrumbItem> PageCrumb()
+    {
+        var path = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
+        (string label, RenderFragment<int> icon) = path switch
         {
-            var path = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
-            if (path == "") return ("Datasets", _iconHome);
-            if (Regex.IsMatch(path, "^teams/[^/]+/datasets/")) return ("Dataset", _iconHome);
-            if (path.StartsWith("teams/")) return ("Team", _iconTeam);
-            if (path.StartsWith("account/apikey")) return ("API Key", _iconKey);
-            if (path.StartsWith("account/license")) return ("License", _iconDoc);
-            if (path.StartsWith("team")) return ("Team", _iconTeam);
-            if (path.StartsWith("account/manage")) return ("Account", _iconUser);
-            if (path.StartsWith("swagger")) return ("Swagger", _iconApi);
-            if (path.StartsWith("admin")) return ("Admin", _iconAdmin);
-            return ("Datasets", _iconHome);
-        }
-    }
-
-    // "/" and every /teams/... page are the console; the Datasets item is active on all of them.
-    private bool _onConsole
-    {
-        get
-        {
-            var path = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/');
-            return path == "" || path.StartsWith("teams/", StringComparison.OrdinalIgnoreCase);
-        }
-    }
-
-    private string NavVariant(string href, bool exact = false)
-    {
-        var current = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/');
-        var target = href.Trim('/');
-        var isActive = exact
-            ? current.Equals(target, StringComparison.OrdinalIgnoreCase)
-            : current.StartsWith(target, StringComparison.OrdinalIgnoreCase) && target.Length > 0;
-        return isActive ? "primary" : "ghost";
+            var p when p.StartsWith("account/api-key") => ("API keys", _iconKey),
+            var p when p.StartsWith("account/license") => ("License", _iconDoc),
+            var p when p.StartsWith("account/manage") => ("Account", _iconUser),
+            var p when p.StartsWith("admin/users") => ("Users", _iconUsers),
+            var p when p.StartsWith("admin/datasets") => ("All datasets", _iconDatabase),
+            var p when p.StartsWith("admin") => ("Settings", _iconSliders),
+            var p when p.StartsWith("swagger") => ("Swagger", _iconApi),
+            _ => ("Datasets", _iconDatabase),
+        };
+        return [new Breadcrumbs.BreadcrumbItem("page", label) { Icon = icon }];
     }
 }

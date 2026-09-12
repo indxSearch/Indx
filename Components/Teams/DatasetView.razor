@@ -1,6 +1,8 @@
 @inject IDatasetEngines Engines
 @inject NavigationManager NavigationManager
 @inject ActiveTeamState ActiveTeam
+@inject HeaderState Header
+@implements IDisposable
 
 <PageTitle>@Dataset · @TeamName</PageTitle>
 
@@ -18,13 +20,8 @@
                       MyTeams="ActiveTeam.Teams"
                       Visible="true"
                       OnDatasetListChanged="OnDatasetListChanged"
-                      OnRenamed="OnRenamed">
-            <Header Context="ctx">
-                <ConsoleBreadcrumb TeamName="@TeamName" Dataset="@Dataset" Siblings="_siblings">
-                    <Trailing><DatasetStatus Ctx="ctx" /></Trailing>
-                </ConsoleBreadcrumb>
-            </Header>
-        </DatasetPanel>
+                      OnRenamed="OnRenamed"
+                      OnContextCreated="ctx => { _ctx = ctx; SetHeader(); }" />
     }
 </div>
 
@@ -37,14 +34,42 @@
     private List<string> _siblings = new();
     private bool _exists;
     private string? _loadedFor;
+    private DatasetContext? _ctx;
+
+    // The trail (and the dataset's state chip after it) live in the header; re-set whenever the
+    // siblings or the context change so the header re-renders.
+    private void SetHeader()
+    {
+        var ctx = _ctx;
+        Header.Set(this, b =>
+        {
+            b.OpenComponent<ConsoleBreadcrumb>(0);
+            b.AddAttribute(1, "TeamName", TeamName);
+            b.AddAttribute(2, "Dataset", Dataset);
+            b.AddAttribute(3, "Siblings", (IReadOnlyList<string>)_siblings);
+            if (ctx != null)
+            {
+                b.AddAttribute(4, "Trailing", (RenderFragment)(t =>
+                {
+                    t.OpenComponent<DatasetStatus>(0);
+                    t.AddAttribute(1, "Ctx", ctx);
+                    t.CloseComponent();
+                }));
+            }
+            b.CloseComponent();
+        });
+    }
+
+    public void Dispose() => Header.Clear(this);
 
     // Same instance, new dataset or team (crumb dropdowns, back/forward): re-read the list.
     // A dataset that is not in this team (typo, deleted, moved) goes back to the team's list
     // rather than rendering a page that looks like the dataset exists.
     protected override void OnParametersSet()
     {
-        if (_loadedFor != $"{TeamId}/{Dataset}") LoadSiblings();
-        if (!_exists) NavigationManager.NavigateTo(TeamRoutes.Team(TeamName), replace: true);
+        if (_loadedFor != $"{TeamId}/{Dataset}") { _ctx = null; LoadSiblings(); }
+        if (!_exists) { NavigationManager.NavigateTo(TeamRoutes.Team(TeamName), replace: true); return; }
+        SetHeader();
     }
 
     private void LoadSiblings()
