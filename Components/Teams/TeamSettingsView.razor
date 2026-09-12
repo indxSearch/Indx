@@ -23,7 +23,7 @@
 
     @if (!string.IsNullOrEmpty(_error))
     {
-        <p style="color:var(--CSignal); font:var(--text-sm);">@_error</p>
+        <div style="margin-bottom:12px;"><Alert Variant="destructive">@_error</Alert></div>
     }
 
     @* ── Members ── *@

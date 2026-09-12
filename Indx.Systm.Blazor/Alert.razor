@@ -1,0 +1,48 @@
+@* Port of indx-systm Alert: a callout that stays in the page for outcomes and conditions the
+   reader must not miss (not a toast). Title and Description are optional; an alert can be one
+   line via ChildContent alone. *@
+
+<div role="@ResolvedRole" class="indx-alert indx-alert-@Variant @Class">
+    @if (ResolvedIcon != null)
+    {
+        <span class="indx-alert-icon" aria-hidden="true">@ResolvedIcon(16)</span>
+    }
+    <div class="indx-alert-body">
+        @if (Title != null) { <div class="indx-alert-title">@Title</div> }
+        @if (Description != null) { <div class="indx-alert-description">@Description</div> }
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    /// <summary>"default" | "info" | "success" | "warning" | "destructive". Pick by what the
+    /// reader should do: destructive for errors and irreversible outcomes, warning for something
+    /// to look at, success for a finished action, info for a neutral notice.</summary>
+    [Parameter] public string Variant { get; set; } = "default";
+
+    /// <summary>Leading icon; defaults per variant (none for default and info). Set
+    /// <see cref="NoIcon"/> to suppress the default.</summary>
+    [Parameter] public RenderFragment<int>? Icon { get; set; }
+    [Parameter] public bool NoIcon { get; set; }
+
+    [Parameter] public RenderFragment? Title { get; set; }
+    [Parameter] public RenderFragment? Description { get; set; }
+    /// <summary>Free content, for a one-line alert or anything beyond title + description.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>"alert" or "status"; defaults to alert for warning/destructive, status otherwise.</summary>
+    [Parameter] public string? Role { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private static readonly RenderFragment<int> IconWarning = size => @<Warning Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> IconCheck = size => @<Check Size="size" Color="currentColor" />;
+
+    private RenderFragment<int>? ResolvedIcon => NoIcon ? null : Icon ?? Variant switch
+    {
+        "success" => IconCheck,
+        "warning" or "destructive" => IconWarning,
+        _ => null,
+    };
+
+    private string ResolvedRole => Role ?? (Variant is "warning" or "destructive" ? "alert" : "status");
+}

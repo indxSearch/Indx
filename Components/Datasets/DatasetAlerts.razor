@@ -7,17 +7,10 @@
 
 @if (Ctx.Status is { } status && status.SystemState == SystemState.Ready && Alerts(status) is { Count: > 0 } alerts)
 {
-    <div class="indx-dataset-alerts" role="alert">
-        @foreach (var (label, detail) in alerts)
+    <div class="indx-dataset-alerts">
+        @foreach (var (label, detail, variant) in alerts)
         {
-            <div class="indx-dataset-alert">
-                <span class="indx-dataset-alert-icon"><Warning Size="14" Color="currentColor" /></span>
-                <span class="indx-dataset-alert-label">@label</span>
-                @if (detail != null)
-                {
-                    <span class="indx-dataset-alert-detail">@detail</span>
-                }
-            </div>
+            <Alert Variant="@variant" Title="@Text(label)" Description="@(detail == null ? null : Text(detail))" />
         }
     </div>
 }
@@ -25,20 +18,23 @@
 @code {
     [Parameter, EditorRequired] public DatasetContext Ctx { get; set; } = default!;
 
+    private static RenderFragment Text(string text) => builder => builder.AddContent(0, text);
+
     protected override void OnInitialized() => Ctx.Changed += OnChanged;
     private void OnChanged() => _ = InvokeAsync(StateHasChanged);
     public void Dispose() => Ctx.Changed -= OnChanged;
 
-    private static List<(string Label, string? Detail)> Alerts(SystemStatus status)
+    // Destructive for what blocks or breaks; warning for what degrades quietly.
+    private static List<(string Label, string? Detail, string Variant)> Alerts(SystemStatus status)
     {
-        var list = new List<(string, string?)>();
+        var list = new List<(string, string?, string)>();
         if (status.LicenseInfo?.DocumentLimitExceeded == true)
-            list.Add(("License limit exceeded", $"{status.DocumentCount:N0} of {status.LicenseInfo.DocumentLimit:N0} documents"));
-        if (status.InvalidArgument) list.Add(("Invalid argument", null));
-        if (status.InvalidState) list.Add(("Invalid state", null));
-        if (status.TooLongSearchText) list.Add(("Too long search text", null));
-        if (status.IndexedTextTruncated) list.Add(("Indexed text truncated", null));
-        if (!string.IsNullOrEmpty(status.ErrorMessage)) list.Add(("Error", status.ErrorMessage));
+            list.Add(("License limit exceeded", $"{status.DocumentCount:N0} of {status.LicenseInfo.DocumentLimit:N0} documents. Searches still work; loading more does not.", "destructive"));
+        if (status.InvalidArgument) list.Add(("Invalid argument", "The last operation was rejected; see the server log.", "warning"));
+        if (status.InvalidState) list.Add(("Invalid state", "An operation was attempted in a state that does not allow it.", "warning"));
+        if (status.TooLongSearchText) list.Add(("Too long search text", "A query exceeded the search-text ceiling and was cut.", "warning"));
+        if (status.IndexedTextTruncated) list.Add(("Indexed text truncated", "Some documents exceed the indexed-text ceiling; the tail of those fields is not searchable.", "warning"));
+        if (!string.IsNullOrEmpty(status.ErrorMessage)) list.Add(("Error", status.ErrorMessage, "destructive"));
         return list;
     }
 }
