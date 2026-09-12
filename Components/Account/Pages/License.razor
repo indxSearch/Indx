@@ -1,10 +1,10 @@
-@page "/account/license"
+@page "/admin/license"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Components.Authorization
 @using Indx.Api
 @using IndxServer.Models
-@attribute [Authorize]
+@attribute [Authorize(Roles = "Admin")]
 @inject ILogger<License> Logger
 @inject Services.ILicenseBootstrapper Bootstrapper
 @inject Services.InstanceSettingsService InstanceSettingsService
@@ -12,6 +12,7 @@
 
 <PageTitle>License Information</PageTitle>
 
+<AdminNav Active="License" />
 <h2>Indx License Information</h2>
 
 @if (!Edition.LicensingVisible)

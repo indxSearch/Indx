@@ -1,21 +1,17 @@
 @using System.Reflection
 @using Indx.Api
-@* Shared admin section header + tab bar. Pass the active tab's key via Active. *@
-<div style="margin-bottom: 24px;">
-    <h1>Indx @_apiVersion</h1>
-    <p style="color: var(--lv5); margin-top: 4px;">Powered by Indx Core @_indxVersion</p>
-</div>
-<div style="display: flex; gap: 8px; margin-bottom: 40px; border-bottom: 1px solid var(--lv2); padding-bottom: 0;">
+@* The admin area: one page with tabs, the same tab bar the dataset page uses. The header's
+   trail reads "Admin"; this bar is the in-section navigation. Pass the active tab's key. *@
+<div class="admin-nav">
     @foreach (var tab in _tabs)
     {
-        var active = tab.Key == Active;
-        <a href="@tab.Href"
-           style="padding: 8px 14px; font-size: 13px; font-weight: 500; color: @(active ? "var(--lv6)" : "var(--lv5)"); text-decoration: none; border-bottom: 2px solid @(active ? "var(--lv6)" : "transparent"); margin-bottom: -1px;">@tab.Label</a>
+        <Button Variant="@(tab.Key == Active ? "primary" : "ghost")" Size="micro" Href="@tab.Href" IconLeft="@tab.Icon">@tab.Label</Button>
     }
+    <span class="admin-version" title="Server @_apiVersion · Core @_indxVersion">Indx @_apiVersion · Core @_indxVersion</span>
 </div>
 
 @code {
-    /// <summary>Key of the active tab: Users | Teams | Datasets | Settings | EmailPreview.</summary>
+    /// <summary>Key of the active tab: Users | Teams | Datasets | Settings | License | EmailPreview.</summary>
     [Parameter] public string Active { get; set; } = "";
 
     // Version banner (moved here from the Datasets page so it heads the admin area).
@@ -32,12 +28,21 @@
         return plusIndex > 0 ? version[..plusIndex] : version;
     }
 
-    private static readonly (string Key, string Label, string Href)[] _tabs =
+    private static RenderFragment<int> Of<T>() where T : IComponent => size => b =>
+    {
+        b.OpenComponent<T>(0);
+        b.AddAttribute(1, "Size", size);
+        b.AddAttribute(2, "Color", "currentColor");
+        b.CloseComponent();
+    };
+
+    private static readonly (string Key, string Label, string Href, RenderFragment<int> Icon)[] _tabs =
     [
-        ("Users", "Users", "/admin/users"),
-        ("Teams", "Teams", "/admin/teams"),
-        ("Datasets", "Datasets", "/admin/datasets"),
-        ("Settings", "Settings", "/admin/settings"),
-        ("EmailPreview", "Email Preview", "/admin/email-preview"),
+        ("Users", "Users", "/admin/users", Of<Users>()),
+        ("Teams", "Teams", "/admin/teams", Of<UserGroup>()),
+        ("Datasets", "Datasets", "/admin/datasets", Of<Database>()),
+        ("Settings", "Settings", "/admin/settings", Of<SlidersHorizontal>()),
+        ("License", "License", "/admin/license", Of<DocumentOrFile>()),
+        ("EmailPreview", "Email preview", "/admin/email-preview", Of<Bell>()),
     ];
 }

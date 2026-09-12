@@ -1,8 +1,8 @@
 @* The header is the breadcrumb. Left: the Indx mark as the home link, with the instance name.
    Middle: whatever the current page put in HeaderState (the console's team › dataset trail),
-   else a label derived from the URL. Right: for admins an Admin menu (License, Users, All
-   datasets, Settings), then notifications and a personal menu (Account, API keys, Docs,
-   Swagger, Log out). Everything that is not "where am I" lives in those menus. *@
+   else a label derived from the URL. Right: notifications and one personal menu (Account,
+   API keys, Admin for admins, Docs, Swagger, Log out). The menu only enters a section; the
+   admin area navigates with its own tab bar under the "Admin" crumb. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
 @inject NavigationManager NavigationManager
@@ -30,21 +30,14 @@
     <div class="nav-right">
         <AuthorizeView>
             <Authorized>
-                <AuthorizeView Roles="Admin" Context="admin">
-                    <NavDropdown Label="Admin" Icon="_iconInstance">
-                        @if (Edition.LicensingVisible)
-                        {
-                            <Button Variant="ghost" Size="micro" Href="account/license" IconLeft="_iconDoc" >License</Button>
-                        }
-                        <Button Variant="ghost" Size="micro" Href="admin/users" IconLeft="_iconUsers" >Users</Button>
-                        <Button Variant="ghost" Size="micro" Href="admin/datasets" IconLeft="_iconDatabase" >All datasets</Button>
-                        <Button Variant="ghost" Size="micro" Href="admin/settings" IconLeft="_iconSliders" >Settings</Button>
-                    </NavDropdown>
-                </AuthorizeView>
                 <NotificationPanel />
                 <NavDropdown Label="@ShortName(context.User.Identity?.Name)" Title="@context.User.Identity?.Name" Icon="_iconUser">
                     <Button Variant="ghost" Size="micro" Href="account/manage" IconLeft="_iconUser" >Account</Button>
                     <Button Variant="ghost" Size="micro" Href="account/api-key" IconLeft="_iconKey" >API keys</Button>
+                    <AuthorizeView Roles="Admin" Context="admin">
+                        <div class="nav-menu-divider"></div>
+                        <Button Variant="ghost" Size="micro" Href="admin" IconLeft="_iconInstance" >Admin</Button>
+                    </AuthorizeView>
                     <div class="nav-menu-divider"></div>
                     <Button Variant="ghost" Size="micro" Href="https://v5.docs.indx.co" IconLeft="_iconBook" >Docs ↗</Button>
                     <Button Variant="ghost" Size="micro" Href="swagger" IconLeft="_iconApi" >Swagger ↗</Button>
@@ -74,7 +67,6 @@
     private RenderFragment<int> _iconSliders  => size => @<SlidersHorizontal Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconKey      => size => @<Key Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconUser     => size => @<UserId Size="size" Color="currentColor" />;
-    private RenderFragment<int> _iconDoc      => size => @<DocumentOrFile Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconApi      => size => @<Api Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconBook     => size => @<Book Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconLogout   => size => @<Logout Size="size" Color="currentColor" />;
@@ -116,11 +108,8 @@
         (string label, RenderFragment<int> icon) = path switch
         {
             var p when p.StartsWith("account/api-key") => ("API keys", _iconKey),
-            var p when p.StartsWith("account/license") => ("License", _iconDoc),
             var p when p.StartsWith("account/manage") => ("Account", _iconUser),
-            var p when p.StartsWith("admin/users") => ("Users", _iconUsers),
-            var p when p.StartsWith("admin/datasets") => ("All datasets", _iconDatabase),
-            var p when p.StartsWith("admin") => ("Settings", _iconSliders),
+            var p when p.StartsWith("admin") => ("Admin", _iconInstance),
             var p when p.StartsWith("swagger") => ("Swagger", _iconApi),
             _ => ("Datasets", _iconDatabase),
         };

@@ -1,0 +1,13 @@
+.admin-nav {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing) * 2);
+    margin-bottom: 30px;
+}
+
+.admin-version {
+    margin-left: auto;
+    font: var(--text-xs);
+    color: var(--lv4);
+    white-space: nowrap;
+}
