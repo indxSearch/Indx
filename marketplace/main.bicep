@@ -281,7 +281,9 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
 
     // JWT - sourced from Key Vault
     Jwt__Key: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=JwtKey)'
-    Jwt__Issuer: 'IndxServer'
+    // Opaque identifier baked into every issued API key (iss claim); the product was renamed
+    // but this must stay, or every existing key is rejected.
+    Jwt__Issuer: 'IndxCloudApi'
 
     // Identity / registration
     Registration__Mode: registrationMode
