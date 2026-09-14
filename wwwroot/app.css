@@ -904,6 +904,19 @@ a.btn-danger:hover {
 }
 .indx-reconnect-actions:empty { display: none; }
 
+/* The overlay sits outside every component, so the Button component's scoped stylesheet does
+   not reach these <button>s. Restate the systm micro primary/secondary buttons here. */
+.indx-reconnect-actions button {
+    display: inline-flex; align-items: center; cursor: pointer; margin: 0;
+    border: none; border-radius: var(--radius); box-sizing: border-box;
+    -webkit-appearance: none; appearance: none;
+    font: var(--text-xs); font-weight: var(--med); height: 30px; padding: 0 10px; gap: 7px;
+}
+.indx-reconnect-actions .indx-btn-primary { background: var(--lv7); color: var(--lv1); }
+.indx-reconnect-actions .indx-btn-primary:hover { opacity: 0.8; }
+.indx-reconnect-actions .indx-btn-secondary { background: transparent; border: 1px solid var(--lv3); color: var(--lv6); }
+.indx-reconnect-actions .indx-btn-secondary:hover { border-color: var(--lv4); }
+
 /* State → message. Each span is hidden unless its state is active. */
 .indx-reconnect-reconnecting, .indx-reconnect-failed, .indx-reconnect-paused,
 .indx-reconnect-resume-failed, .indx-reconnect-rejected { display: none; }
