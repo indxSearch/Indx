@@ -6,11 +6,18 @@ using Microsoft.AspNetCore.RateLimiting;
 namespace IndxServer.Services
 {
     /// <summary>
-    /// Rate limiting for the endpoints anyone on the internet can hit without a token: API login,
-    /// and the dashboard's login / register / forgot-password / reset / resend-confirmation forms.
-    /// One fixed window per client IP; everything else passes through untouched (authenticated
-    /// traffic gets its own, per-API-key policy later). A rejection is an RFC 9457 problem with
-    /// <c>code: rateLimited</c> and a <c>Retry-After</c> header, like every other API error.
+    /// Two rate limits, one middleware:
+    /// <list type="bullet">
+    ///   <item><b>Auth</b> — the endpoints anyone can hit without a token (API login, the
+    ///   dashboard's login / register / forgot-password / reset / resend forms): a fixed window
+    ///   per client IP. On by default.</item>
+    ///   <item><b>Api</b> — authenticated /api and /mcp traffic: a token bucket per API key (the
+    ///   token's jti; a user with several keys is limited per key, so one runaway app does not
+    ///   starve their others). Off by default for self-host, where the ceiling is the hardware;
+    ///   the Managed App turns it on. Generous by design: it catches loops, not load.</item>
+    /// </list>
+    /// A rejection is an RFC 9457 problem with <c>code: rateLimited</c>, <c>retryAfterSeconds</c>
+    /// and a <c>Retry-After</c> header, like every other API error.
     ///
     /// <para>Behind a proxy (Azure App Service) the client IP arrives in X-Forwarded-For; set
     /// <c>ASPNETCORE_FORWARDEDHEADERS_ENABLED=true</c> there so <c>RemoteIpAddress</c> is the
@@ -41,6 +48,46 @@ namespace IndxServer.Services
             public int WindowSeconds { get; set; } = 60;
         }
 
+        public sealed class ApiOptions
+        {
+            public bool Enabled { get; set; } = false;
+            /// <summary>Sustained requests per second, per API key.</summary>
+            public int RequestsPerSecond { get; set; } = 50;
+            /// <summary>Burst allowance: how many requests a key can make at once before the
+            /// per-second rate applies.</summary>
+            public int Burst { get; set; } = 200;
+        }
+
+        /// <summary>The API surface a key calls: /api/* and the MCP endpoint, with a bearer token
+        /// present. Login is excluded (anonymous; it has the Auth window). The token is NOT
+        /// validated here — Bearer is authenticated in the authorization stage, after this
+        /// middleware — but the key only chooses a bucket: a bad token limits its own sender and
+        /// still gets its 401.</summary>
+        public static bool IsApiCall(HttpContext ctx) =>
+            (ctx.Request.Path.StartsWithSegments("/api") || ctx.Request.Path.StartsWithSegments("/mcp"))
+            && !ctx.Request.Path.Equals("/api/login", StringComparison.OrdinalIgnoreCase)
+            && BearerToken(ctx) != null;
+
+        private static string? BearerToken(HttpContext ctx)
+        {
+            var h = ctx.Request.Headers.Authorization.ToString();
+            return h.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) && h.Length > 7 ? h[7..].Trim() : null;
+        }
+
+        /// <summary>The limiting key: the token's jti (one per issued API key), else a digest of
+        /// the token itself, so distinct keys never share a bucket.</summary>
+        public static string ApiKeyOf(HttpContext ctx)
+        {
+            var token = BearerToken(ctx) ?? "";
+            try
+            {
+                var jwt = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(token);
+                if (!string.IsNullOrEmpty(jwt.Id)) return jwt.Id;
+            }
+            catch { /* not a JWT: fall through to the digest */ }
+            return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token)))[..16];
+        }
+
         public static bool IsAuthPost(HttpContext ctx) =>
             HttpMethods.IsPost(ctx.Request.Method) &&
             AuthPostPaths.Any(p => ctx.Request.Path.Equals(p, StringComparison.OrdinalIgnoreCase));
@@ -48,27 +95,43 @@ namespace IndxServer.Services
         public static IServiceCollection AddAuthRateLimiting(this IServiceCollection services, IConfiguration configuration)
         {
             var options = configuration.GetSection("RateLimits:Auth").Get<Options>() ?? new Options();
+            var api = configuration.GetSection("RateLimits:Api").Get<ApiOptions>() ?? new ApiOptions();
             services.AddSingleton(options);
+            services.AddSingleton(api);
             services.AddRateLimiter(limiter =>
             {
                 limiter.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
                 {
-                    if (!options.Enabled || !IsAuthPost(ctx))
-                        return RateLimitPartition.GetNoLimiter("none");
-                    var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-                    return RateLimitPartition.GetFixedWindowLimiter("auth:" + ip, _ => new FixedWindowRateLimiterOptions
+                    if (options.Enabled && IsAuthPost(ctx))
                     {
-                        PermitLimit = options.PermitLimit,
-                        Window = TimeSpan.FromSeconds(options.WindowSeconds),
-                        QueueLimit = 0,
-                    });
+                        var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                        return RateLimitPartition.GetFixedWindowLimiter("auth:" + ip, _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = options.PermitLimit,
+                            Window = TimeSpan.FromSeconds(options.WindowSeconds),
+                            QueueLimit = 0,
+                        });
+                    }
+                    if (api.Enabled && IsApiCall(ctx))
+                    {
+                        return RateLimitPartition.GetTokenBucketLimiter("key:" + ApiKeyOf(ctx), _ => new TokenBucketRateLimiterOptions
+                        {
+                            TokenLimit = Math.Max(api.Burst, api.RequestsPerSecond),
+                            TokensPerPeriod = api.RequestsPerSecond,
+                            ReplenishmentPeriod = TimeSpan.FromSeconds(1),
+                            QueueLimit = 0,
+                            AutoReplenishment = true,
+                        });
+                    }
+                    return RateLimitPartition.GetNoLimiter("none");
                 });
                 limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
                 limiter.OnRejected = async (context, ct) =>
                 {
                     var http = context.HttpContext;
+                    var isKey = IsApiCall(http) && !IsAuthPost(http);
                     var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var ra)
-                        ? (int)Math.Ceiling(ra.TotalSeconds) : options.WindowSeconds;
+                        ? Math.Max(1, (int)Math.Ceiling(ra.TotalSeconds)) : (isKey ? 1 : options.WindowSeconds);
                     http.Response.Headers.RetryAfter = retryAfter.ToString();
                     http.Response.StatusCode = StatusCodes.Status429TooManyRequests;
                     if (http.Request.Path.StartsWithSegments("/api"))
@@ -76,8 +139,10 @@ namespace IndxServer.Services
                         var problem = new ProblemDetails
                         {
                             Status = StatusCodes.Status429TooManyRequests,
-                            Title = "Too many attempts",
-                            Detail = $"Too many attempts from this address. Try again in {retryAfter} seconds.",
+                            Title = isKey ? "Rate limit exceeded" : "Too many attempts",
+                            Detail = isKey
+                                ? $"This API key exceeded {api.RequestsPerSecond} requests per second (burst {api.Burst}). Try again in {retryAfter} seconds."
+                                : $"Too many attempts from this address. Try again in {retryAfter} seconds.",
                             Extensions = { ["code"] = Code, ["retryAfterSeconds"] = retryAfter },
                         };
                         await http.Response.WriteAsJsonAsync(problem, options: null, contentType: "application/problem+json", ct);

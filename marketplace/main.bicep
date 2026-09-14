@@ -279,6 +279,11 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     // App Service fronts the app with a proxy; this makes RemoteIpAddress the real client, which
     // the per-IP auth rate limit and the request logs depend on.
     ASPNETCORE_FORWARDEDHEADERS_ENABLED: 'true'
+    // Per-API-key rate limit (token bucket). Off in the self-host defaults; on for managed
+    // instances. Plan tiers can vary the numbers later.
+    RateLimits__Api__Enabled: 'true'
+    RateLimits__Api__RequestsPerSecond: '50'
+    RateLimits__Api__Burst: '200'
     WEBSITES_ENABLE_APP_SERVICE_STORAGE: 'true'
 
     // Persistent SQLite paths (overrides ConnectionStringHelper default detection)

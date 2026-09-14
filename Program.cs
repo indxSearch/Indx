@@ -709,6 +709,9 @@ public class Program
             app.UseHttpsRedirection();
         app.UseStaticFiles();
         app.UseRouting();
+        // Before authentication on purpose: the per-API-key policy reads the bearer token's jti
+        // itself (Bearer is only validated in the authorization stage), and the per-IP window
+        // needs no principal at all.
         app.UseRateLimiter();
 
         app.UseCors("NewPolicy");
