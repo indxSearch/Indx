@@ -22,6 +22,8 @@ namespace IndxServer.Services
     /// </summary>
     public static class ApiProblems
     {
+        // 429 rateLimited is produced by the rate-limiter middleware (AuthRateLimiting.OnRejected),
+        // not here, since it fires before any controller runs; same document shape.
         /// <summary>Builds a ProblemDetails response with the given status and machine-readable code.</summary>
         public static ObjectResult Problem(int status, string code, string title, string detail)
         {

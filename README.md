@@ -191,6 +191,17 @@ Registration__AllowedDomains__0 = yourcompany.com
 Registration__AllowedDomains__1 = partner.com
 ```
 
+### Rate limiting
+
+The anonymous auth endpoints — `POST /api/login` and the dashboard's login, register,
+forgot-password, reset and resend-confirmation forms — are limited per client IP: 10 attempts
+per 60 seconds by default, together. Over the limit answers `429` with an RFC 9457 problem
+(`code: rateLimited`) and a `Retry-After` header. Configure under `RateLimits:Auth`
+(`Enabled`, `PermitLimit`, `WindowSeconds`). Authenticated API traffic is not limited.
+
+Behind a reverse proxy or App Service, set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` so the
+server sees the client's IP rather than the proxy's; otherwise every caller shares one window.
+
 ### Email Confirmation
 
 ```

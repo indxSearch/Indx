@@ -23,6 +23,7 @@ namespace IndxServer.Controllers
     // 401 invalidCredentials / userNotFound, 400 invalidArgument / passwordChangeFailed.
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status429TooManyRequests)]
     public class LoginController : ControllerBase
     {
         private readonly SignInManager<ApplicationUser> _signInManager;

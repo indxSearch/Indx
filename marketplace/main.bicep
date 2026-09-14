@@ -276,6 +276,9 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
   name: 'appsettings'
   properties: {
     ASPNETCORE_ENVIRONMENT: 'Production'
+    // App Service fronts the app with a proxy; this makes RemoteIpAddress the real client, which
+    // the per-IP auth rate limit and the request logs depend on.
+    ASPNETCORE_FORWARDEDHEADERS_ENABLED: 'true'
     WEBSITES_ENABLE_APP_SERVICE_STORAGE: 'true'
 
     // Persistent SQLite paths (overrides ConnectionStringHelper default detection)

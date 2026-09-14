@@ -605,6 +605,10 @@ public class Program
         if (!string.IsNullOrEmpty(builder.Configuration["APPLICATIONINSIGHTS_CONNECTION_STRING"]))
             builder.Services.AddApplicationInsightsTelemetry();
 
+        // Per-IP window on the anonymous auth endpoints (see AuthRateLimiting); applied by
+        // UseRateLimiter after routing so the path is known.
+        builder.Services.AddAuthRateLimiting(builder.Configuration);
+
         var app = builder.Build();
 
         // ============================================
@@ -705,6 +709,7 @@ public class Program
             app.UseHttpsRedirection();
         app.UseStaticFiles();
         app.UseRouting();
+        app.UseRateLimiter();
 
         app.UseCors("NewPolicy");
         app.UseAuthentication();
