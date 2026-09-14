@@ -1,12 +1,14 @@
+using System.Diagnostics.Metrics;
+using System.Net;
+using System.Net.Sockets;
 using System.Threading.RateLimiting;
 
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 
 namespace IndxServer.Services
 {
     /// <summary>
-    /// Four rate limits, one middleware. Two are per caller, two protect the instance from itself:
+    /// Three rate limits, one middleware, all per caller:
     /// <list type="bullet">
     ///   <item><b>Auth</b> — the endpoints anyone can hit without a token (API login, the
     ///   dashboard's login / register / forgot-password / reset / resend forms): a fixed window
@@ -15,20 +17,26 @@ namespace IndxServer.Services
     ///   token's jti; a user with several keys is limited per key, so one runaway app does not
     ///   starve their others). Off by default for self-host, where the ceiling is the hardware;
     ///   the Managed App turns it on. Generous by design: it catches loops, not load.</item>
-    ///   <item><b>Heavy</b> — an instance-wide cap on the operations that rebuild an index (load,
-    ///   replace, index, wake-up, analyze, field configuration and the batch document mutations
-    ///   that go through a shadow build). A small number may run at once; a few more wait in a
-    ///   queue; beyond that the request is rejected at once. Endpoints opt in with
-    ///   <c>[EnableRateLimiting(HeavyPolicy)]</c>. On by default.</item>
-    ///   <item><b>Search</b> — a bounded queue in front of the engine's search slots (one per
-    ///   core plus one, per dataset). Without it a saturated instance made every extra search
-    ///   wait its full timeout and then return an empty result; with it the overflow gets an
-    ///   immediate 429 so clients back off instead of piling up latency. On by default.</item>
+    ///   <item><b>Anon</b> — /api and /mcp traffic carrying no bearer token at all: a fixed window
+    ///   per client IP. Every one of these ends in 401, so a real client produces them only
+    ///   briefly (an expired token) while a bot scanning the API produces nothing else. On by
+    ///   default: unlike Api this is a defence, not a courtesy, and the traffic it bounds is
+    ///   worthless by construction. Preflight OPTIONS is excluded — it carries no Authorization
+    ///   header by definition, and a cross-origin page would otherwise spend the window on
+    ///   preflights before making a single real call.</item>
     /// </list>
-    /// The instance-wide caps count HTTP requests: work the dashboard starts, and the automatic
-    /// reload of a hibernated dataset on first use, run outside them.
     /// A rejection is an RFC 9457 problem with <c>code: rateLimited</c>, <c>retryAfterSeconds</c>
     /// and a <c>Retry-After</c> header, like every other API error.
+    ///
+    /// <para>There is deliberately no instance-wide cap here. Two existed briefly (Heavy and
+    /// Search, 14 Sep 2026) and were removed the same day: both counted requests in flight, which
+    /// is not what either was protecting. Heavy guarded memory, where two concurrent replaces of an
+    /// 8 GB dataset and two single-document inserts cost the same one permit each; Search
+    /// duplicated the engine's own <c>SearchContext</c> slot pool, but instance-wide rather than
+    /// per dataset, so it became the binding constraint the moment a second dataset existed.
+    /// Concurrency per dataset is already enforced where it belongs — <c>ShadowBusyException</c>
+    /// answers 409 for a dataset that is mid-rebuild, and the engine's slot pool bounds
+    /// searches.</para>
     ///
     /// <para>Behind a proxy (Azure App Service) the client IP arrives in X-Forwarded-For; set
     /// <c>ASPNETCORE_FORWARDEDHEADERS_ENABLED=true</c> there so <c>RemoteIpAddress</c> is the
@@ -37,10 +45,6 @@ namespace IndxServer.Services
     public static class AuthRateLimiting
     {
         public const string Code = "rateLimited";
-        /// <summary>Policy name for <c>[EnableRateLimiting]</c> on index-rebuilding endpoints.</summary>
-        public const string HeavyPolicy = "heavy";
-        /// <summary>Policy name for <c>[EnableRateLimiting]</c> on the search endpoints.</summary>
-        public const string SearchPolicy = "search";
 
         /// <summary>Paths that take credentials or trigger email from anyone. POST only: the GETs
         /// render forms and must stay reachable while a window is exhausted.</summary>
@@ -73,69 +77,14 @@ namespace IndxServer.Services
             public int Burst { get; set; } = 200;
         }
 
-        public sealed class HeavyOptions
+        public sealed class AnonOptions
         {
             public bool Enabled { get; set; } = true;
-            /// <summary>Heavy operations allowed to run at the same time, instance-wide.</summary>
-            public int MaxConcurrent { get; set; } = 2;
-            /// <summary>Requests allowed to wait for a free slot. The next one is rejected at once.</summary>
-            public int QueueLimit { get; set; } = 2;
-            /// <summary>Hint sent with the rejection; a rebuild takes a while, so a short retry is pointless.</summary>
-            public int RetryAfterSeconds { get; set; } = 10;
-        }
-
-        public sealed class SearchOptions
-        {
-            public bool Enabled { get; set; } = true;
-            /// <summary>Searches in flight at once, instance-wide. 0 means processor count + 1,
-            /// which matches the engine's per-dataset slot pool, so a search that gets past the
-            /// queue never has to wait for a slot.</summary>
-            public int MaxConcurrent { get; set; } = 0;
-            /// <summary>Searches allowed to wait for a slot before the next one is rejected.</summary>
-            public int QueueLimit { get; set; } = 100;
-
-            public int EffectiveMaxConcurrent => MaxConcurrent > 0 ? MaxConcurrent : Environment.ProcessorCount + 1;
-        }
-
-        /// <summary>A single instance-wide concurrency limiter with its own rejection text. The
-        /// middleware chains it after the global (per-caller) limiter for endpoints that name it.</summary>
-        private sealed class InstanceCapPolicy : IRateLimiterPolicy<string>
-        {
-            private readonly string _name;
-            private readonly bool _enabled;
-            private readonly int _permits, _queue, _retryAfter;
-            private readonly Func<int, string> _detail;
-
-            public InstanceCapPolicy(string name, bool enabled, int permits, int queue, int retryAfter, Func<int, string> detail)
-            {
-                _name = name; _enabled = enabled; _permits = permits; _queue = queue; _retryAfter = retryAfter; _detail = detail;
-            }
-
-            public RateLimitPartition<string> GetPartition(HttpContext httpContext)
-            {
-                if (!_enabled) return RateLimitPartition.GetNoLimiter("none");
-                return RateLimitPartition.GetConcurrencyLimiter(_name, _ => new ConcurrencyLimiterOptions
-                {
-                    PermitLimit = _permits,
-                    QueueLimit = _queue,
-                    QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
-                });
-            }
-
-            public Func<OnRejectedContext, CancellationToken, ValueTask>? OnRejected => async (context, ct) =>
-            {
-                var http = context.HttpContext;
-                http.Response.Headers.RetryAfter = _retryAfter.ToString();
-                http.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-                var problem = new ProblemDetails
-                {
-                    Status = StatusCodes.Status429TooManyRequests,
-                    Title = "Server busy",
-                    Detail = _detail(_retryAfter),
-                    Extensions = { ["code"] = Code, ["retryAfterSeconds"] = _retryAfter },
-                };
-                await http.Response.WriteAsJsonAsync(problem, options: null, contentType: "application/problem+json", ct);
-            };
+            /// <summary>Tokenless /api and /mcp requests per window, per client IP. Generous
+            /// enough for a client whose token expired mid-session and is retrying while it
+            /// refreshes; far below what a scanner produces.</summary>
+            public int PermitLimit { get; set; } = 30;
+            public int WindowSeconds { get; set; } = 60;
         }
 
         /// <summary>The API surface a key calls: /api/* and the MCP endpoint, with a bearer token
@@ -143,10 +92,32 @@ namespace IndxServer.Services
         /// validated here — Bearer is authenticated in the authorization stage, after this
         /// middleware — but the key only chooses a bucket: a bad token limits its own sender and
         /// still gets its 401.</summary>
-        public static bool IsApiCall(HttpContext ctx) =>
+        public static bool IsApiCall(HttpContext ctx) => IsApiPath(ctx) && BearerToken(ctx) != null;
+
+        /// <summary>The same surface with no bearer token, and not a CORS preflight. Bounded by
+        /// the Anon window rather than by key, since there is no key to bound it by.</summary>
+        public static bool IsAnonymousApiCall(HttpContext ctx) =>
+            IsApiPath(ctx) && BearerToken(ctx) == null && !HttpMethods.IsOptions(ctx.Request.Method);
+
+        private static bool IsApiPath(HttpContext ctx) =>
             (ctx.Request.Path.StartsWithSegments("/api") || ctx.Request.Path.StartsWithSegments("/mcp"))
-            && !ctx.Request.Path.Equals("/api/login", StringComparison.OrdinalIgnoreCase)
-            && BearerToken(ctx) != null;
+            && !ctx.Request.Path.Equals("/api/login", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>The client address used as a partition key. IPv6 is masked to its /64 prefix:
+        /// a routed /64 is what one subscriber is handed, so partitioning on the full address
+        /// gives a single caller 2^64 windows and bounds nothing.</summary>
+        public static string ClientIp(HttpContext ctx)
+        {
+            var ip = ctx.Connection.RemoteIpAddress;
+            if (ip is null) return "unknown";
+            if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
+            if (ip.AddressFamily != AddressFamily.InterNetworkV6) return ip.ToString();
+
+            Span<byte> bytes = stackalloc byte[16];
+            if (!ip.TryWriteBytes(bytes, out _)) return ip.ToString();
+            bytes[8..].Clear();
+            return new IPAddress(bytes).ToString() + "/64";
+        }
 
         private static string? BearerToken(HttpContext ctx)
         {
@@ -172,30 +143,59 @@ namespace IndxServer.Services
             HttpMethods.IsPost(ctx.Request.Method) &&
             AuthPostPaths.Any(p => ctx.Request.Path.Equals(p, StringComparison.OrdinalIgnoreCase));
 
+        /// <summary>Rejections, by limit. A Meter rather than a log counter so Application
+        /// Insights can chart it: "is the limiter doing anything" is otherwise unanswerable from
+        /// a running instance.</summary>
+        private static readonly Meter Meter = new("IndxServer.RateLimit");
+        private static readonly Counter<long> Rejections =
+            Meter.CreateCounter<long>("indx.ratelimit.rejections", unit: "{request}",
+                description: "Requests rejected with 429, tagged by which limit rejected them.");
+
+        private static int _proxyWarned;
+
+        /// <summary>Warns once per process if an IP-partitioned limit is live in Production while
+        /// the address we partition on is not a real client address. That is the silent
+        /// catastrophic case: behind App Service without ASPNETCORE_FORWARDEDHEADERS_ENABLED,
+        /// every caller on earth shares one window and the instance locks itself out.</summary>
+        private static void WarnOnceIfAddressLooksLikeAProxy(HttpContext ctx)
+        {
+            if (Volatile.Read(ref _proxyWarned) != 0) return;
+
+            var env = ctx.RequestServices.GetService<IHostEnvironment>();
+            if (env is null || !env.IsProduction()) return;
+
+            var ip = ctx.Connection.RemoteIpAddress;
+            var suspect = ip is null
+                || IPAddress.IsLoopback(ip)
+                || (ip.AddressFamily == AddressFamily.InterNetwork && ip.GetAddressBytes() is [10, ..] or [192, 168, ..] or [172, >= 16 and <= 31, ..]);
+            if (!suspect) return;
+
+            if (Interlocked.Exchange(ref _proxyWarned, 1) != 0) return;
+            ctx.RequestServices.GetRequiredService<ILoggerFactory>()
+                .CreateLogger("IndxServer.RateLimit")
+                .LogWarning(
+                    "Per-address rate limits are partitioning on {Address}, which is not a public client address. " +
+                    "Behind a reverse proxy or Azure App Service set ASPNETCORE_FORWARDEDHEADERS_ENABLED=true, " +
+                    "or every caller shares one window.",
+                    ip?.ToString() ?? "(none)");
+        }
+
         public static IServiceCollection AddAuthRateLimiting(this IServiceCollection services, IConfiguration configuration)
         {
             var options = configuration.GetSection("RateLimits:Auth").Get<Options>() ?? new Options();
             var api = configuration.GetSection("RateLimits:Api").Get<ApiOptions>() ?? new ApiOptions();
-            var heavy = configuration.GetSection("RateLimits:Heavy").Get<HeavyOptions>() ?? new HeavyOptions();
-            var search = configuration.GetSection("RateLimits:Search").Get<SearchOptions>() ?? new SearchOptions();
+            var anon = configuration.GetSection("RateLimits:Anon").Get<AnonOptions>() ?? new AnonOptions();
             services.AddSingleton(options);
             services.AddSingleton(api);
-            services.AddSingleton(heavy);
-            services.AddSingleton(search);
+            services.AddSingleton(anon);
             services.AddRateLimiter(limiter =>
             {
-                limiter.AddPolicy(HeavyPolicy, new InstanceCapPolicy(HeavyPolicy, heavy.Enabled,
-                    Math.Max(1, heavy.MaxConcurrent), Math.Max(0, heavy.QueueLimit), Math.Max(1, heavy.RetryAfterSeconds),
-                    retry => $"The server is already running {Math.Max(1, heavy.MaxConcurrent)} heavy operations (loads, replaces, index builds). Try again in {retry} seconds."));
-                limiter.AddPolicy(SearchPolicy, new InstanceCapPolicy(SearchPolicy, search.Enabled,
-                    search.EffectiveMaxConcurrent, Math.Max(0, search.QueueLimit), 1,
-                    retry => $"Search capacity is saturated: {search.EffectiveMaxConcurrent} searches in flight and {Math.Max(0, search.QueueLimit)} waiting. Try again in {retry} second."));
                 limiter.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
                 {
                     if (options.Enabled && IsAuthPost(ctx))
                     {
-                        var ip = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-                        return RateLimitPartition.GetFixedWindowLimiter("auth:" + ip, _ => new FixedWindowRateLimiterOptions
+                        WarnOnceIfAddressLooksLikeAProxy(ctx);
+                        return RateLimitPartition.GetFixedWindowLimiter("auth:" + ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
                         {
                             PermitLimit = options.PermitLimit,
                             Window = TimeSpan.FromSeconds(options.WindowSeconds),
@@ -213,6 +213,16 @@ namespace IndxServer.Services
                             AutoReplenishment = true,
                         });
                     }
+                    if (anon.Enabled && IsAnonymousApiCall(ctx))
+                    {
+                        WarnOnceIfAddressLooksLikeAProxy(ctx);
+                        return RateLimitPartition.GetFixedWindowLimiter("anon:" + ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
+                        {
+                            PermitLimit = anon.PermitLimit,
+                            Window = TimeSpan.FromSeconds(anon.WindowSeconds),
+                            QueueLimit = 0,
+                        });
+                    }
                     return RateLimitPartition.GetNoLimiter("none");
                 });
                 limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
@@ -220,8 +230,23 @@ namespace IndxServer.Services
                 {
                     var http = context.HttpContext;
                     var isKey = IsApiCall(http) && !IsAuthPost(http);
+                    var isAnon = !isKey && !IsAuthPost(http) && IsAnonymousApiCall(http);
+                    // Both limiters report RetryAfter on a failed lease; the fallback is for a
+                    // limiter type that does not, and must name the window that actually rejected.
+                    var fallback = isKey ? 1 : isAnon ? anon.WindowSeconds : options.WindowSeconds;
                     var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var ra)
-                        ? Math.Max(1, (int)Math.Ceiling(ra.TotalSeconds)) : (isKey ? 1 : options.WindowSeconds);
+                        ? Math.Max(1, (int)Math.Ceiling(ra.TotalSeconds)) : fallback;
+
+                    // Which limit fired, and against whom. Without this a running instance cannot
+                    // answer "is it rejecting anything" or "are we turning away a real customer".
+                    var limit = isKey ? "api" : isAnon ? "anon" : "auth";
+                    var partition = isKey ? "key:" + ApiKeyOf(http) : ClientIp(http);
+                    Rejections.Add(1, new KeyValuePair<string, object?>("limit", limit));
+                    http.RequestServices.GetRequiredService<ILoggerFactory>()
+                        .CreateLogger("IndxServer.RateLimit")
+                        .LogWarning("Rate limit {Limit} rejected {Method} {Path} for {Partition}; Retry-After {RetryAfter}s",
+                            limit, http.Request.Method, http.Request.Path, partition, retryAfter);
+
                     http.Response.Headers.RetryAfter = retryAfter.ToString();
                     http.Response.StatusCode = StatusCodes.Status429TooManyRequests;
                     if (http.Request.Path.StartsWithSegments("/api"))
@@ -232,6 +257,8 @@ namespace IndxServer.Services
                             Title = isKey ? "Rate limit exceeded" : "Too many attempts",
                             Detail = isKey
                                 ? $"This API key exceeded {api.RequestsPerSecond} requests per second (burst {api.Burst}). Try again in {retryAfter} seconds."
+                                : isAnon
+                                ? $"Too many requests from this address without a valid bearer token. Authenticate first; try again in {retryAfter} seconds."
                                 : $"Too many attempts from this address. Try again in {retryAfter} seconds.",
                             Extensions = { ["code"] = Code, ["retryAfterSeconds"] = retryAfter },
                         };

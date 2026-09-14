@@ -709,12 +709,18 @@ public class Program
             app.UseHttpsRedirection();
         app.UseStaticFiles();
         app.UseRouting();
+
+        // CORS before the limiter, not after: a 429 short-circuits the pipeline, so a limiter
+        // placed first means UseCors never runs on a rejection and the response carries no
+        // Access-Control-Allow-Origin. A browser then reports an opaque network error, and the
+        // rateLimited code and retryAfterSeconds the client was given to read are unreachable.
+        app.UseCors("NewPolicy");
+
         // Before authentication on purpose: the per-API-key policy reads the bearer token's jti
         // itself (Bearer is only validated in the authorization stage), and the per-IP window
         // needs no principal at all.
         app.UseRateLimiter();
 
-        app.UseCors("NewPolicy");
         app.UseAuthentication();
 
         // Password-change gate: a token carrying the must_change_password claim is

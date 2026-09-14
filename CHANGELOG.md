@@ -68,11 +68,10 @@ in the AI skill.
   login tokens are retired on password change.
 - Cross-origin requests are denied in Production until CORS is configured.
 - `IndxData/settings.json` is runtime state and is no longer shipped.
-- **Rate limiting**, all answering `429` with `code: rateLimited`, `retryAfterSeconds` and a
-  `Retry-After` header: the anonymous auth endpoints per client IP (on by default); authenticated
-  API traffic per API key (`RateLimits:Api`, off by default, on for managed instances); an
-  instance-wide cap on concurrent heavy operations (`RateLimits:Heavy`); and a bounded search
-  queue that rejects overflow at once instead of waiting out the timeout (`RateLimits:Search`).
+- **Rate limiting**, both limits answering `429` with `code: rateLimited`, `retryAfterSeconds` and
+  a `Retry-After` header: the anonymous auth endpoints per client IP (`RateLimits:Auth`, on by
+  default) and authenticated API traffic per API key (`RateLimits:Api`, off by default, on for
+  managed instances).
 
 ### Fixed
 

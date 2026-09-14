@@ -10,7 +10,6 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.AspNetCore.RateLimiting;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
@@ -50,7 +49,6 @@ namespace IndxServer.Controllers
         /// As Analyze but handles a stream as input text.
         /// </summary>
         [HttpPost(DataSetRoute + "/analyze")]
-        [EnableRateLimiting(AuthRateLimiting.HeavyPolicy)]
         public async Task<ActionResult<SystemStatus>> AnalyzeStreamAsync(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -81,7 +79,6 @@ namespace IndxServer.Controllers
         /// </summary>
         [RequestSizeLimit(2_000_000_000)]
         [HttpPost(DataSetRoute + "/analyze/text")]
-        [EnableRateLimiting(AuthRateLimiting.HeavyPolicy)]
         public ActionResult<SystemStatus> AnalyzeString(string teamName, string dataSetName, [FromBody] string jsonData)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -347,7 +344,6 @@ namespace IndxServer.Controllers
         /// Deletes documents from the dataset by their keys.
         /// </summary>
         [HttpDelete(DataSetRoute + "/documents")]
-        [EnableRateLimiting(AuthRateLimiting.HeavyPolicy)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult DeleteJsonRecords(string teamName, string dataSetName, [FromBody] long[] documentKeys)
         {
@@ -537,7 +533,6 @@ namespace IndxServer.Controllers
         /// IndexDataSet will start indexing of the loaded documents.
         /// </summary>
         [HttpPost(DataSetRoute + "/index")]
-        [EnableRateLimiting(AuthRateLimiting.HeavyPolicy)]
         [ProducesResponseType(typeof(SystemStatus), StatusCodes.Status202Accepted)]
         public IActionResult IndexDataSet(string teamName, string dataSetName)
         {
@@ -617,7 +612,6 @@ namespace IndxServer.Controllers
         /// Inserts new JSON records into the dataset.
         /// </summary>
         [HttpPost(DataSetRoute + "/documents")]
-        [EnableRateLimiting(AuthRateLimiting.HeavyPolicy)]
         [ProducesResponseType(StatusCodes.Status201Created)]
         public ActionResult InsertJsonRecords(string teamName, string dataSetName, [FromBody] string[] jsonRecords)
         {
@@ -638,7 +632,6 @@ namespace IndxServer.Controllers
         /// Loads the jsonData into search engine from the database.
         /// </summary>
         [HttpPost(DataSetRoute + "/load/from-database")]
-        [EnableRateLimiting(AuthRateLimiting.HeavyPolicy)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public async Task<ActionResult> LoadFromDatabaseAsync(string teamName, string dataSetName)
         {
@@ -661,7 +654,6 @@ namespace IndxServer.Controllers
         /// Loads the jsonData into search engine as a stream.
         /// </summary>
         [HttpPost(DataSetRoute + "/load")]
-        [EnableRateLimiting(AuthRateLimiting.HeavyPolicy)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult LoadStreamAsync(string teamName, string dataSetName)
         {
@@ -699,7 +691,6 @@ namespace IndxServer.Controllers
         /// </summary>
         [RequestSizeLimit(2_000_000_000)]
         [HttpPost(DataSetRoute + "/replace")]
-        [EnableRateLimiting(AuthRateLimiting.HeavyPolicy)]
         public ActionResult<ReplaceSchemaChange> Replace(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -736,7 +727,6 @@ namespace IndxServer.Controllers
         /// </summary>
         [RequestSizeLimit(2_000_000_000)]
         [HttpPost(DataSetRoute + "/load/text")]
-        [EnableRateLimiting(AuthRateLimiting.HeavyPolicy)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult LoadString(string teamName, string dataSetName, [FromBody] string jsonData)
         {
@@ -765,7 +755,6 @@ namespace IndxServer.Controllers
         /// Search will validate the search query and return the search result.
         /// </summary>
         [HttpPost(DataSetRoute + "/search")]
-        [EnableRateLimiting(AuthRateLimiting.SearchPolicy)]
         public ActionResult<Indx.Api.Result> Search(string teamName, string dataSetName, [FromBody] QueryProxy query)
         {
             var ctx = ResolveTeam(teamName, out var error);
@@ -795,7 +784,6 @@ namespace IndxServer.Controllers
         /// any value (including false) = overwrite.
         /// </summary>
         [HttpPut(DataSetRoute + "/fields/configuration")]
-        [EnableRateLimiting(AuthRateLimiting.HeavyPolicy)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult SetFieldConfiguration(string teamName, string dataSetName, [FromBody] FieldProxy[] fields)
         {
@@ -977,7 +965,6 @@ namespace IndxServer.Controllers
         /// Updates existing JSON records in the dataset.
         /// </summary>
         [HttpPut(DataSetRoute + "/documents")]
-        [EnableRateLimiting(AuthRateLimiting.HeavyPolicy)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult UpdateJsonRecords(string teamName, string dataSetName, [FromBody] string[] jsonRecords)
         {
@@ -1060,7 +1047,6 @@ namespace IndxServer.Controllers
         /// Deletes all documents matching the given filter.
         /// </summary>
         [HttpPost(DataSetRoute + "/documents/delete-by-filter")]
-        [EnableRateLimiting(AuthRateLimiting.HeavyPolicy)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult DeleteRecordsInFilter(string teamName, string dataSetName, [FromBody] FilterProxy filterProxy)
         {
@@ -1082,7 +1068,6 @@ namespace IndxServer.Controllers
         /// Updates a field on all documents matching the given filter. Returns the number of updated documents.
         /// </summary>
         [HttpPost(DataSetRoute + "/documents/update-by-filter")]
-        [EnableRateLimiting(AuthRateLimiting.HeavyPolicy)]
         public ActionResult<CountResponse> UpdateFieldInFilter(string teamName, string dataSetName, [FromBody] FilterFieldUpdateProxy payload)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -1204,7 +1189,6 @@ namespace IndxServer.Controllers
         /// Wakes up a hibernated dataset, restoring it from the persisted state.
         /// </summary>
         [HttpPost(DataSetRoute + "/wakeup")]
-        [EnableRateLimiting(AuthRateLimiting.HeavyPolicy)]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult WakeUp(string teamName, string dataSetName)
         {
@@ -1247,7 +1231,6 @@ namespace IndxServer.Controllers
         /// Searches a single embedding field using approximate nearest-neighbour search.
         /// </summary>
         [HttpPost(DataSetRoute + "/search/vector")]
-        [EnableRateLimiting(AuthRateLimiting.SearchPolicy)]
         public ActionResult<Indx.Http.EmbeddingResultEntry[]> VectorSearch(
             string teamName, string dataSetName, [FromBody] Indx.Http.VectorQueryProxy query)
         {
@@ -1276,7 +1259,6 @@ namespace IndxServer.Controllers
         /// Combines text search with embedding nearest-neighbour search and blends scores.
         /// </summary>
         [HttpPost(DataSetRoute + "/search/hybrid")]
-        [EnableRateLimiting(AuthRateLimiting.SearchPolicy)]
         public ActionResult<Indx.Http.EmbeddingResultEntry[]> HybridSearch(
             string teamName, string dataSetName, [FromBody] Indx.Http.HybridQueryProxy query)
         {

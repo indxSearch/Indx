@@ -205,20 +205,18 @@ own hardware the ceiling is the hardware — and on for managed instances. Each 
 bucket, so one runaway integration does not throttle a user's other keys. Over the limit is
 the same `429 rateLimited` with `Retry-After`.
 
-Two more limits protect the instance from itself and are **on by default**:
+`/api` and `/mcp` requests carrying **no bearer token** are limited per client IP too,
+`RateLimits:Anon` (`Enabled`, `PermitLimit`, `WindowSeconds`) — 30 per 60 seconds by default,
+**on**. They all end in `401`, so a working client makes them only while a token is being
+refreshed, whereas a scanner makes nothing else. CORS preflight (`OPTIONS`) is excluded.
 
-- `RateLimits:Heavy` caps how many index-rebuilding requests run at once — load, replace,
-  index, wake-up, analyze, field configuration and the batch document endpoints.
-  `MaxConcurrent` (2) run, `QueueLimit` (2) more wait for a slot, the rest get `429` at once
-  with `Retry-After: RetryAfterSeconds` (10). It counts API requests; work started from the
-  dashboard runs outside it.
-- `RateLimits:Search` puts a bounded queue in front of the search endpoints. `MaxConcurrent`
-  (0 = processor count + 1, the engine's own slot pool) searches run, `QueueLimit` (100) wait,
-  and the overflow gets an immediate `429` instead of waiting out its timeout for an empty
-  result. Overload then degrades fast and visibly rather than as rising latency.
+All three limits answer the same `429 rateLimited` problem, so a client needs one handler: wait
+`retryAfterSeconds` and retry. Rejections are logged (`IndxServer.RateLimit`) and counted
+(`indx.ratelimit.rejections`, tagged by limit).
 
-Every limit answers the same `429 rateLimited` problem, so a client needs one handler: wait
-`retryAfterSeconds` and retry.
+There is no instance-wide cap on how much work may run at once. Concurrency is bounded where
+it is actually known: a dataset that is mid-rebuild answers `409` (`ShadowBusyException`), and
+the engine holds its own slot pool per dataset.
 
 Behind a reverse proxy or App Service, set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` so the
 server sees the client's IP rather than the proxy's; otherwise every caller shares one window.
