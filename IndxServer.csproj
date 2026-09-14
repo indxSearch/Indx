@@ -110,9 +110,13 @@
 	  <ProjectReference Include="..\Indx\Indx.csproj" />
 	</ItemGroup>
 
-	<!-- Obfuscated NuGet package -->
+	<!-- Obfuscated NuGet package. The version is a property so the packaging pipeline can point
+	     a build at the package it just made (-p:IndxSearchLibVersion=… with a local feed). -->
+	<PropertyGroup>
+	  <IndxSearchLibVersion Condition="'$(IndxSearchLibVersion)' == ''">5.0.0-beta5</IndxSearchLibVersion>
+	</PropertyGroup>
 	<ItemGroup Condition="'$(IndxReferenceMode)' == 'NuGet'">
-	  <PackageReference Include="IndxSearchLib" Version="5.0.0-beta5" />
+	  <PackageReference Include="IndxSearchLib" Version="$(IndxSearchLibVersion)" />
 	</ItemGroup>
 
 	<!-- Local obfuscated DLL (testing only, opt-in: -p:IndxFromLocalDll=true).
