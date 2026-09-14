@@ -284,6 +284,8 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     RateLimits__Api__Enabled: 'true'
     RateLimits__Api__RequestsPerSecond: '50'
     RateLimits__Api__Burst: '200'
+    // RateLimits__Heavy and RateLimits__Search are on in appsettings.json with instance-sized
+    // defaults; override here per plan tier if a SKU needs a larger heavy-operation cap.
     WEBSITES_ENABLE_APP_SERVICE_STORAGE: 'true'
 
     // Persistent SQLite paths (overrides ConnectionStringHelper default detection)
