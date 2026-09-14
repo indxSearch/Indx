@@ -250,6 +250,9 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
     siteConfig: {
       linuxFxVersion: 'DOTNETCORE|10.0'
       alwaysOn: true
+      // The dashboard is Blazor Server over SignalR; without WebSockets it falls back to long
+      // polling (slow, and a 90 s GET /_blazor in every log line).
+      webSocketsEnabled: true
       ftpsState: 'Disabled'
       http20Enabled: true
       minTlsVersion: '1.2'
