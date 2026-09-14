@@ -238,6 +238,10 @@ The download endpoint is **hardcoded** to the Indx portal (`https://license.indx
 1. Create an App Service with **.NET 10** Linux runtime
 2. Deploy via zip deploy, GitHub Actions, or Visual Studio publish
 3. Set `ASPNETCORE_ENVIRONMENT = Production` in Application Settings
+4. **Turn on Web sockets** (Configuration → General settings, or
+   `az webapp config set --web-sockets-enabled true`). The dashboard is Blazor Server and
+   talks over SignalR; without WebSockets it falls back to long polling, which is slow and
+   shows up as a `GET /_blazor` taking 90 s in every IIS log line.
 
 The app creates its SQLite databases in `./IndxData/` on first run. This directory persists across redeployments.
 
