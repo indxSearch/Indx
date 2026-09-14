@@ -98,3 +98,10 @@
     opacity: 0.5;
     cursor: not-allowed;
 }
+
+/* Loading state: disabled for input, but shown at full strength — the spinner is the signal,
+   and a half-faded spinner reads as "off" rather than "working". */
+.indx-btn[aria-busy="true"] {
+    opacity: 1;
+    cursor: progress;
+}

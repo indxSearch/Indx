@@ -128,8 +128,8 @@
                 <p class="syn-error syn-error--modal">@_modalError</p>
             }
             <div class="syn-modal-actions">
-                <Button Variant="secondary" Size="micro" @onclick="@(() => _modalOpen = false)">Cancel</Button>
-                <Button Variant="primary" Size="micro" @onclick="SaveModalAsync">Save</Button>
+                <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="@(() => _modalOpen = false)">Cancel</Button>
+                <Button Variant="primary" Size="micro" Loading="@_saving" @onclick="SaveModalAsync">Save</Button>
             </div>
         </div>
     </Modal>
@@ -255,8 +255,11 @@
         _modalOpen = true;
     }
 
+    private bool _saving; // the modal's Save is applying to the live engine
+
     private async Task SaveModalAsync()
     {
+        if (_saving) return;
         _modalError = null;
         var terms = SplitTerms(_modalTerms);
         if (terms.Length == 0) { _modalError = "Enter at least one synonym."; return; }
@@ -269,10 +272,15 @@
         entry.Terms = terms;
         if (_modalTarget == null) _list.Entries.Add(entry);
 
-        if (await PushAsync())
-            _modalOpen = false;
-        else
-            _modalError = "Failed to save.";
+        _saving = true;
+        try
+        {
+            if (await PushAsync())
+                _modalOpen = false;
+            else
+                _modalError = "Failed to save.";
+        }
+        finally { _saving = false; }
     }
 
     private async Task DeleteEntryAsync(SynonymEntry entry)

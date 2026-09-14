@@ -22,8 +22,8 @@
         @if (_descEdit != _descSaved)
         {
             <div class="opt-row opt-row--top">
-                <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" @onclick="SaveDescriptionAsync">Save description</Button>
-                <Button Variant="ghost" Size="micro" @onclick="() => _descEdit = _descSaved">Cancel</Button>
+                <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_descSaving" @onclick="SaveDescriptionAsync">Save description</Button>
+                <Button Variant="ghost" Size="micro" Disabled="@_descSaving" @onclick="() => _descEdit = _descSaved">Cancel</Button>
             </div>
         }
     }
@@ -66,7 +66,7 @@
         @if (ka?.KeepAliveTimeHrs == 0)
         {
             <div class="opt-row opt-row--top10">
-                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Hibernate" @onclick="HibernateAsync" disabled="@_hibernating">
+                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Hibernate" @onclick="HibernateAsync" Loading="@_hibernating">
                     @(_hibernating ? "Hibernating…" : "Hibernate now")
                 </Button>
                 <span class="opt-muted">Unloads from memory; data stays on disk. Wake it from the Field configuration tab.</span>
@@ -176,8 +176,8 @@
             else
             {
                 <span class="opt-danger-text">Rename "@Ctx.Name" to "@_renameInput.Trim()"? Clients using the old name will break.</span>
-                <Button Variant="primary" Size="micro" disabled="@_renaming" @onclick="RenameAsync">@(_renaming ? "Renaming…" : "Confirm rename")</Button>
-                <Button Variant="ghost" Size="micro" disabled="@_renaming" @onclick="() => _renameConfirm = false">Cancel</Button>
+                <Button Variant="primary" Size="micro" Loading="@_renaming" @onclick="RenameAsync">@(_renaming ? "Renaming…" : "Confirm rename")</Button>
+                <Button Variant="ghost" Size="micro" Disabled="@_renaming" @onclick="() => _renameConfirm = false">Cancel</Button>
             }
         </div>
         @if (!string.IsNullOrEmpty(_renameError))
@@ -214,8 +214,8 @@
         {
             <div class="opt-row">
                 <span class="opt-danger-text">Move "@Ctx.Name" to the selected team? This team loses access.</span>
-                <Button Variant="primary" Size="micro" @onclick="TransferAsync">Confirm transfer</Button>
-                <Button Variant="ghost" Size="micro" @onclick="() => _transferConfirm = false">Cancel</Button>
+                <Button Variant="primary" Size="micro" Loading="@_transferring" @onclick="TransferAsync">@(_transferring ? "Transferring…" : "Confirm transfer")</Button>
+                <Button Variant="ghost" Size="micro" Disabled="@_transferring" @onclick="() => _transferConfirm = false">Cancel</Button>
             </div>
         }
         @if (!string.IsNullOrEmpty(_transferError))
@@ -302,6 +302,7 @@
     // Transfer
     private string _transferTargetTeamId = "";
     private bool _transferConfirm;
+    private bool _transferring;
     private string? _transferError;
 
     protected override void OnParametersSet()
@@ -315,11 +316,19 @@
 
     // ── Description ──────────────────────────────────────────────────────────
 
+    private bool _descSaving;
+
     private async Task SaveDescriptionAsync()
     {
-        var text = _descEdit ?? "";
-        await Task.Run(() => DatasetMeta.Save(Ctx.TeamId, Ctx.Name, text));
-        _descSaved = text;
+        if (_descSaving) return;
+        _descSaving = true;
+        try
+        {
+            var text = _descEdit ?? "";
+            await Task.Run(() => DatasetMeta.Save(Ctx.TeamId, Ctx.Name, text));
+            _descSaved = text;
+        }
+        finally { _descSaving = false; }
     }
 
     // ── Keep-alive ───────────────────────────────────────────────────────────
@@ -553,7 +562,9 @@
     private async Task TransferAsync()
     {
         _transferError = null;
-        if (string.IsNullOrEmpty(_transferTargetTeamId)) return;
+        if (string.IsNullOrEmpty(_transferTargetTeamId) || _transferring) return;
+        _transferring = true;
+        await Render();
         try
         {
             // TransferOwnership evicts the source engine (can be slow) — run off the circuit.
@@ -563,8 +574,11 @@
         catch (Exception ex)
         {
             _transferError = $"Transfer failed: {ex.Message}";
+            _transferring = false;
+            await Render();
             return;
         }
+        _transferring = false;
         _transferTargetTeamId = "";
         _transferConfirm = false;
         await Ctx.NotifyDatasetListChangedAsync(); // dataset now belongs to another team — drops off this view

@@ -1,12 +1,14 @@
 @if (!string.IsNullOrEmpty(Href))
 {
-    @if (Disabled)
+    @if (Disabled || Loading)
     {
         <span class="@_classes"
               aria-disabled="true"
+              aria-busy="@(Loading ? "true" : null)"
               tabindex="-1"
               @attributes="DisabledAttributes">
-            @if (IconLeft != null) { @IconLeft(_iconSize) }
+            @if (Loading) { <Spinner Size="@_iconSize" /> }
+            else if (IconLeft != null) { @IconLeft(_iconSize) }
             @ChildContent
             @if (IconRight != null) { <span class="indx-btn-icon-right">@IconRight(_iconSize)</span> }
         </span>
@@ -16,7 +18,8 @@
         <a class="@_classes"
            href="@Href"
            @attributes="AdditionalAttributes">
-            @if (IconLeft != null) { @IconLeft(_iconSize) }
+            @if (Loading) { <Spinner Size="@_iconSize" /> }
+            else if (IconLeft != null) { @IconLeft(_iconSize) }
             @ChildContent
             @if (IconRight != null) { <span class="indx-btn-icon-right">@IconRight(_iconSize)</span> }
         </a>
@@ -26,9 +29,11 @@ else
 {
     <button class="@_classes"
             type="@Type"
-            disabled="@Disabled"
+            disabled="@(Disabled || Loading)"
+            aria-busy="@(Loading ? "true" : null)"
             @attributes="AdditionalAttributes">
-        @if (IconLeft != null) { @IconLeft(_iconSize) }
+        @if (Loading) { <Spinner Size="@_iconSize" /> }
+        else if (IconLeft != null) { @IconLeft(_iconSize) }
         @ChildContent
         @if (IconRight != null) { <span class="indx-btn-icon-right">@IconRight(_iconSize)</span> }
     </button>
@@ -41,6 +46,10 @@ else
     [Parameter] public string? Href { get; set; }
     [Parameter] public string Type { get; set; } = "button";
     [Parameter] public bool Disabled { get; set; }
+    /// <summary>The action behind this button is in progress: a <see cref="Spinner"/> takes the
+    /// left-icon slot and the button is disabled until it clears. Every button that starts work
+    /// the user has to wait for sets this, so a slow operation never reads as a dead click.</summary>
+    [Parameter] public bool Loading { get; set; }
     [Parameter] public RenderFragment<int>? IconLeft { get; set; }
     [Parameter] public RenderFragment<int>? IconRight { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }

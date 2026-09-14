@@ -81,12 +81,12 @@ else
                         {
                             @if (u.Id != _currentUserId && (_users?.Count(r => r.IsAdmin) ?? 0) > 1)
                             {
-                                <Button Variant="ghost" Size="micro" @onclick="() => DemoteUser(u.Id)">Remove Admin</Button>
+                                <Button Variant="ghost" Size="micro" Loading="@(_roleBusyId == u.Id)" @onclick="() => DemoteUser(u.Id)">Remove Admin</Button>
                             }
                         }
                         else
                         {
-                            <Button Variant="ghost" Size="micro" @onclick="() => PromoteUser(u.Id)">Make Admin</Button>
+                            <Button Variant="ghost" Size="micro" Loading="@(_roleBusyId == u.Id)" @onclick="() => PromoteUser(u.Id)">Make Admin</Button>
                         }
                         <ConfirmButton Label="" Title="Delete user" Icon="_iconDelete" ConfirmLabel="Confirm Delete" CancelVariant="ghost"
                                        Open="@(_deleteConfirmId == u.Id)" OpenChanged="v => _deleteConfirmId = v ? u.Id : null"
@@ -152,9 +152,9 @@ else if (_isInviteMode)
                        @bind="_inviteEmailInput"
                        style="width: 220px;" />
                 <Button Variant="primary" Size="micro"
-                        Disabled="@(!IsValidEmail(_inviteEmailInput))"
-                        @onclick="AddInviteAsync">Add</Button>
-                <Button Variant="ghost" Size="micro"
+                        Disabled="@(!IsValidEmail(_inviteEmailInput))" Loading="@_inviting"
+                        @onclick="AddInviteAsync">@(_inviting ? "Sending…" : "Add")</Button>
+                <Button Variant="ghost" Size="micro" Disabled="@_inviting"
                         @onclick="() => { _showAddInvite = false; _inviteEmailInput = string.Empty; _inviteError = null; }">Cancel</Button>
             </div>
             @if (!string.IsNullOrEmpty(_inviteError))
@@ -179,6 +179,8 @@ else if (_isInviteMode)
     private List<string> _inviteEmails = [];
     private string _inviteEmailInput = "";
     private bool _showAddInvite;
+    private bool _inviting;
+    private string? _roleBusyId;
     private string? _inviteError;
 
     private record UserRow(string Id, string? Email, bool IsAdmin, bool EmailConfirmed);
@@ -200,6 +202,7 @@ else if (_isInviteMode)
 
     private async Task AddInviteAsync()
     {
+        if (_inviting) return;
         var email = _inviteEmailInput.Trim();
         if (!IsValidEmail(email)) return;
         if (_inviteEmails.Any(e => e.Equals(email, StringComparison.OrdinalIgnoreCase)))
@@ -208,11 +211,12 @@ else if (_isInviteMode)
             return;
         }
         _inviteEmails.Add(email);
-        _inviteEmailInput = string.Empty;
-        _showAddInvite = false;
         _inviteError = null;
         PersistInvites();
 
+        // Sending the email is the slow part (an SMTP/ACS round trip); keep the row up with a
+        // spinner until it is done rather than collapsing it while nothing seems to happen.
+        _inviting = true;
         var instanceName = SettingsService.Load().InstanceName;
         var registerUrl = NavigationManager.ToAbsoluteUri("/account/register").ToString();
         try
@@ -228,6 +232,12 @@ else if (_isInviteMode)
         {
             Logger.LogError(ex, "Failed to send invite email to {Email}", email);
             _message = $"{email} added to invite list, but the email could not be sent.";
+        }
+        finally
+        {
+            _inviting = false;
+            _inviteEmailInput = string.Empty;
+            _showAddInvite = false;
         }
     }
 
@@ -261,13 +271,19 @@ else if (_isInviteMode)
 
     private async Task PromoteUser(string userId)
     {
+        if (_roleBusyId != null) return;
         _message = null; _errorMessage = null;
-        var user = await UserManager.FindByIdAsync(userId);
-        if (user == null) return;
-        await UserManager.AddToRoleAsync(user, "Admin");
-        Logger.LogInformation("Promoted {Email} to Admin", user.Email);
-        _message = $"{user.Email} is now an Admin.";
-        await LoadUsers();
+        _roleBusyId = userId;
+        try
+        {
+            var user = await UserManager.FindByIdAsync(userId);
+            if (user == null) return;
+            await UserManager.AddToRoleAsync(user, "Admin");
+            Logger.LogInformation("Promoted {Email} to Admin", user.Email);
+            _message = $"{user.Email} is now an Admin.";
+            await LoadUsers();
+        }
+        finally { _roleBusyId = null; }
     }
 
     private async Task DemoteUser(string userId)
@@ -287,12 +303,18 @@ else if (_isInviteMode)
             return;
         }
 
-        var user = await UserManager.FindByIdAsync(userId);
-        if (user == null) return;
-        await UserManager.RemoveFromRoleAsync(user, "Admin");
-        Logger.LogInformation("Removed Admin from {Email}", user.Email);
-        _message = $"{user.Email} is now a Member.";
-        await LoadUsers();
+        if (_roleBusyId != null) return;
+        _roleBusyId = userId;
+        try
+        {
+            var user = await UserManager.FindByIdAsync(userId);
+            if (user == null) return;
+            await UserManager.RemoveFromRoleAsync(user, "Admin");
+            Logger.LogInformation("Removed Admin from {Email}", user.Email);
+            _message = $"{user.Email} is now a Member.";
+            await LoadUsers();
+        }
+        finally { _roleBusyId = null; }
     }
 
     private async Task DeleteUser(string userId)

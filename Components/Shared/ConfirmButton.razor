@@ -9,14 +9,14 @@
         {
             <span class="indx-confirm-prompt">@Prompt</span>
         }
-        <Button Variant="@Variant" Size="@Size" Disabled="@Disabled" @onclick="Confirm">@ConfirmLabel</Button>
-        <Button Variant="@CancelVariant" Size="@Size" @onclick="() => SetOpen(false)">Cancel</Button>
+        <Button Variant="@Variant" Size="@Size" Disabled="@Disabled" Loading="@_busy" @onclick="Confirm">@ConfirmLabel</Button>
+        <Button Variant="@CancelVariant" Size="@Size" Disabled="@_busy" @onclick="() => SetOpen(false)">Cancel</Button>
     </div>
 }
 else
 {
     <div class="indx-confirm-row">
-        <Button Variant="@TriggerVariant" Size="@Size" IconLeft="@Icon" Disabled="@Disabled" title="@Title" @onclick="() => SetOpen(true)">@Label</Button>
+        <Button Variant="@TriggerVariant" Size="@Size" IconLeft="@Icon" Disabled="@Disabled" Loading="@_busy" title="@Title" @onclick="() => SetOpen(true)">@Label</Button>
         @ChildContent
     </div>
 }
@@ -48,9 +48,17 @@ else
         await OpenChanged.InvokeAsync(value);
     }
 
+    // True while OnConfirm runs. The confirm row stays up with a spinner; a parent that owns
+    // Open and closes it inside its handler gets the spinner on the trigger instead — either
+    // way a slow delete never reads as a dead click.
+    private bool _busy;
+
     private async Task Confirm()
     {
-        await SetOpen(false);
-        await OnConfirm.InvokeAsync();
+        if (_busy) return;
+        _busy = true;
+        try { await OnConfirm.InvokeAsync(); }
+        finally { _busy = false; }
+        if (Open) await SetOpen(false);
     }
 }

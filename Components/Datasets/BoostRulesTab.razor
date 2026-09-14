@@ -157,8 +157,8 @@
         @if (IsDirty)
         {
             <div class="boost-actions">
-                <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" @onclick="SaveAsync">Save boost rules</Button>
-                <Button Variant="secondary" Size="micro" @onclick="Cancel">Cancel</Button>
+                <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save boost rules</Button>
+                <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
             </div>
         }
     }
@@ -279,8 +279,11 @@
 
     private bool IsDirty => _loaded && JsonSerializer.Serialize(_rules, JsonOpts) != _savedJson;
 
+    private bool _saving;
+
     private async Task SaveAsync()
     {
+        if (_saving) return;
         _error = null;
         foreach (var r in _rules)
         {
@@ -297,8 +300,13 @@
             }
         }
         var rules = _rules;
-        await Task.Run(() => BoostStore.Save(Ctx.TeamId, Ctx.Name, rules));
-        _savedJson = JsonSerializer.Serialize(rules, JsonOpts);
+        _saving = true;
+        try
+        {
+            await Task.Run(() => BoostStore.Save(Ctx.TeamId, Ctx.Name, rules));
+            _savedJson = JsonSerializer.Serialize(rules, JsonOpts);
+        }
+        finally { _saving = false; }
         Ctx.NotifyChanged(); // the panel's nav badge (expired count) reads the store
     }
 

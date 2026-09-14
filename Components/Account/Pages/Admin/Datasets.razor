@@ -275,8 +275,9 @@ else
     private async Task DeleteDataset(string dataSetName, string teamId)
     {
         _message = null; _errorMessage = null;
+        // Engine disposal can take seconds; off the circuit, or the spinner cannot paint.
+        var deleted = await Task.Run(() => IndxServerInternalApi.Manager.DeleteDataSet(dataSetName, teamId));
         _deleteConfirmKey = null;
-        var deleted = IndxServerInternalApi.Manager.DeleteDataSet(dataSetName, teamId);
         if (deleted)
         {
             Logger.LogInformation("Admin deleted dataset {DataSetName} owned by team {TeamId}", dataSetName, teamId);
