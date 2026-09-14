@@ -4,6 +4,7 @@
 <PageTitle>@TeamName</PageTitle>
 
 @inject HeaderState Header
+@inject NavigationManager NavigationManager
 @implements IDisposable
 
 <DatasetList TeamId="@TeamId" TeamName="@TeamName" Role="@Role">
@@ -26,5 +27,5 @@
         b.AddAttribute(1, "TeamName", TeamName);
         b.CloseComponent();
     });
-    public void Dispose() => Header.Clear(this);
+    public void Dispose() => Header.Clear(this, keepIf: NavigationManager.ToBaseRelativePath(NavigationManager.Uri).StartsWith("teams/", StringComparison.OrdinalIgnoreCase));
 }

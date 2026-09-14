@@ -8,6 +8,7 @@
 @inject IEditionService Edition
 @inject InstanceSettingsService InstanceSettingsService
 @inject HeaderState Header
+@inject NavigationManager NavigationManager
 @implements IDisposable
 
 <PageTitle>Manage @Team.Name</PageTitle>
@@ -147,7 +148,7 @@
     private record UserRow(string Id, string Email);
 
     protected override void OnInitialized() => ActiveTeam.OnChange += OnActiveTeamChanged;
-    public void Dispose() { ActiveTeam.OnChange -= OnActiveTeamChanged; Header.Clear(this); }
+    public void Dispose() { ActiveTeam.OnChange -= OnActiveTeamChanged; Header.Clear(this, keepIf: NavigationManager.ToBaseRelativePath(NavigationManager.Uri).StartsWith("teams/", StringComparison.OrdinalIgnoreCase)); }
 
     private void SetHeader() => Header.Set(this, b =>
     {

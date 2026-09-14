@@ -23,10 +23,14 @@ namespace IndxServer.Services
             Changed?.Invoke();
         }
 
-        public void Clear(object owner)
+        /// <summary>Drop the owner's trail. <paramref name="keepIf"/> lets a console page being
+        /// torn down leave its trail up while the URL is still a console URL, so the header does
+        /// not flash the fallback while the next page resolves; the next Set replaces it.</summary>
+        public void Clear(object owner, bool keepIf = false)
         {
             if (!ReferenceEquals(_owner, owner)) return;
             _owner = null;
+            if (keepIf) return;
             Breadcrumb = null;
             Changed?.Invoke();
         }

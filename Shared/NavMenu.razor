@@ -101,11 +101,32 @@
         return at > 0 ? name[..at] : name;
     }
 
-    // Pages outside the console: one unlinked crumb naming the page. The console pages replace
-    // this through HeaderState with their own trail.
+    // The fallback trail when no page has set one. For console URLs it is read off the URL —
+    // team › dataset, linked but without switchers — so the hop between console pages (the
+    // island is rebuilt, and the new page sets its trail only after resolving the team) shows
+    // the right names in the gap rather than a placeholder. Other pages get one unlinked crumb.
     private List<Breadcrumbs.BreadcrumbItem> PageCrumb()
     {
         var path = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
+        var seg = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (seg.Length >= 2 && seg[0] == "teams")
+        {
+            var team = Uri.UnescapeDataString(seg[1]);
+            var items = new List<Breadcrumbs.BreadcrumbItem>
+            {
+                new("team", team) { Href = TeamRoutes.Team(team), Icon = _iconUsers },
+            };
+            if (seg.Length >= 4 && seg[2] == "datasets")
+            {
+                var dataset = Uri.UnescapeDataString(seg[3]);
+                items.Add(new("dataset", dataset) { Href = TeamRoutes.Dataset(team, dataset), Icon = _iconDatabase });
+            }
+            else if (seg.Length >= 3 && seg[2] == "settings")
+            {
+                items.Add(new("page", "Settings"));
+            }
+            return items;
+        }
         (string label, RenderFragment<int> icon) = path switch
         {
             var p when p.StartsWith("account/api-key") => ("API keys", _iconKey),
