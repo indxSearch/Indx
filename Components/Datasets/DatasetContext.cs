@@ -35,6 +35,8 @@ namespace IndxServer.Components.Datasets
         public bool IsAdmin => TeamRoles.CanAdmin(Role);
         public bool IsEditor => TeamRoles.CanWrite(Role);
         public IReadOnlyList<(Team Team, string Role)> MyTeams { get; set; }
+        /// <summary>The owning team's name, for URLs; null only if the caller's team list is stale.</summary>
+        public string? TeamName => MyTeams.FirstOrDefault(t => t.Team.Id.ToString() == TeamId).Team?.Name;
 
         // ── Engine view ───────────────────────────────────────────────────────
         public SystemStatus? Status { get; set; }

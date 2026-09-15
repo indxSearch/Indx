@@ -1,5 +1,6 @@
 @* Dataset options for team admins: description (MCP context), keep-alive policy, manual
-   hibernate, atomic Replace, transfer to another team, and the danger-zone delete. *@
+   hibernate, atomic Replace, download of the data, transfer to another team, and the
+   danger-zone delete. *@
 @using Indx.Api
 @using IndxServer.Models
 @inherits DatasetTabBase
@@ -155,6 +156,24 @@
         {
             <p class="opt-error opt-error--6">@_replaceError</p>
         }
+    }
+
+    @* ── Download data (any member; a plain link, so the browser streams the file itself) ── *@
+    @if (Ctx.TeamName is { } teamName)
+    {
+        <h3 class="indx-section-heading">Download data</h3>
+        <p class="indx-section-help">
+            Every document in the dataset as one JSON file, ordered by document key — the records as they were loaded or last updated, including fields that are not configured. Field configuration and boost rules are exported from their own tabs.
+        </p>
+        <div class="opt-row">
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Download"
+                    Href="@($"api/teams/{Uri.EscapeDataString(teamName)}/datasets/{Uri.EscapeDataString(Ctx.Name)}/export")"
+                    download="@($"{Ctx.Name}.json")">Download data as JSON</Button>
+            @if (Ctx.Status is { } status)
+            {
+                <span class="opt-muted opt-tabular">@status.DocumentCount.ToString("N0") documents</span>
+            }
+        </div>
     }
 
     @* ── Rename ── *@
