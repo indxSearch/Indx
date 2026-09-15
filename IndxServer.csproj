@@ -127,7 +127,7 @@
 	    <HintPath>Indx.dll</HintPath>
 	  </Reference>
 	  <PackageReference Include="NLog.Extensions.Logging" Version="6.0.0" />
-	  <PackageReference Include="HNSW" Version="26.1.63669" />
+	  <PackageReference Include="HNSW" Version="26.6.1848" />
 	  <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.3" />
 	  <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.0" />
 	</ItemGroup>
