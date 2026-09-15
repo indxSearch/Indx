@@ -1,0 +1,41 @@
+/* API keys. One column; sections spaced by the shared heading rhythm, no borders or shadows. */
+.key-page { max-width: 880px; }
+.key-intro { color: var(--lv5); font: var(--text-sm); max-width: 640px; margin-bottom: calc(var(--spacing) * 6); }
+.key-muted { color: var(--lv5); }
+.key-expired { color: var(--CSignal); }
+
+::deep .key-reveal { margin-bottom: calc(var(--spacing) * 4); }
+.key-reveal-scope { display: block; margin-bottom: 8px; }
+.key-token {
+    display: block;
+    padding: 10px 12px;
+    background: var(--lv0);
+    border-radius: var(--radius);
+    font: 12px/1.5 'IBM Plex Mono', 'SF Mono', monospace;
+    color: var(--lv8);
+    overflow-wrap: anywhere;
+    user-select: all;
+}
+.key-reveal-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+
+.key-table-wrap { overflow-x: auto; }
+.key-scope { color: var(--lv6); }
+.key-actions { text-align: right; white-space: nowrap; }
+::deep .key-legacy { margin-top: calc(var(--spacing) * 3); }
+
+::deep .key-form { max-width: 520px; display: flex; flex-direction: column; gap: 18px; padding: 20px; }
+.key-field { display: flex; flex-direction: column; gap: 6px; }
+.key-label { font: var(--text-xs); color: var(--lv6); }
+.key-help { margin: 0; font: var(--text-xs); color: var(--lv5); }
+.key-radios { display: flex; gap: 20px; flex-wrap: wrap; }
+.key-datasets { display: flex; flex-direction: column; gap: 6px; padding: 8px 0 0 2px; }
+.key-form-actions { display: flex; gap: 8px; }
+
+.key-code {
+    margin: 0 0 calc(var(--spacing) * 3);
+    padding: 14px 16px;
+    background: var(--lv1);
+    border-radius: var(--radius);
+    font: 12px/1.6 'IBM Plex Mono', 'SF Mono', monospace;
+    overflow-x: auto;
+}

@@ -104,6 +104,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// CombineFilters will combine two filters using AND or OR operation.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/filters/combine")]
         public ActionResult<FilterProxy> CombineFilters(string teamName, string dataSetName, [FromBody] CombinedFilterProxy combineFilters)
         {
@@ -135,6 +136,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// CreateBoost will create a Boost setup which may be passed to any search.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/boosts/from-filter")]
         public ActionResult<BoostProxy> CreateBoost(string teamName, string dataSetName, [FromBody] BoostProxy boost)
         {
@@ -159,6 +161,7 @@ namespace IndxServer.Controllers
         /// Returns the dataset's persisted boost rules (server-side ranking rules applied when a
         /// search sets enableBoost). Config, not state-gated — available even when not Ready.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/boosts")]
         public ActionResult<BoostRule[]> GetBoostRules(string teamName, string dataSetName)
         {
@@ -240,18 +243,24 @@ namespace IndxServer.Controllers
         /// reaches anything.
         /// </para>
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpPut(DataSetRoute)]
         [ProducesResponseType(StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status200OK)]
         public IActionResult CreateOrOpen(string teamName, string dataSetName)
         {
-            var ctx = ResolveTeam(teamName, out var error, write: true);
+            // Opening a dataset that exists changes nothing, so it needs only read access; creating
+            // one needs write. Every published @indxsearch/intrface calls this PUT when a search box
+            // starts, so requiring write here meant every intrface front-end had to ship an Editor
+            // or Admin credential to the browser — and no Search or Read key could run one.
+            var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
             using var persistence = new Persistence(IndxServerInternalApi.SearchDbConnectionString, dataSetName, ctx.OwnerKey);
             if (persistence.DataSetExists())
                 return Ok();
+            if (ResolveTeam(teamName, out error, write: true) == null) return error!;
             // Still writes 400. The column is kept for the serialized configuration it will hold, and
             // until then ResolveConfiguration reads 400 as ConfigurationParameters.Default — so this
             // and that have to keep agreeing. ConfigurationResolutionTests asserts they do.
@@ -262,6 +271,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// CreateRangeFilter will create a RangeFilter which may be passed to any search.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/filters/range")]
         public ActionResult<FilterProxy> CreateRangeFilter(string teamName, string dataSetName, [FromBody] RangeFilterProxy rangeFilter)
         {
@@ -284,6 +294,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// CreateValueFilter will create a ValueFilter which may be passed to any search.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/filters/value")]
         public ActionResult<FilterProxy> CreateValueFilter(string teamName, string dataSetName, [FromBody] ValueFilterProxy valueFilter)
         {
@@ -371,6 +382,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// GetAllFields will return the fields found during analyze.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/fields")]
         public ActionResult<string[]> GetAllFields(string teamName, string dataSetName)
         {
@@ -384,6 +396,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// GetFacetableFields will return the array of facetable field names.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpGet(DataSetRoute + "/fields/facetable")]
         public ActionResult<string[]> GetFacetableFields(string teamName, string dataSetName)
         {
@@ -397,6 +410,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// GetFilterableFields will return the array of filterable field names.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpGet(DataSetRoute + "/fields/filterable")]
         public ActionResult<string[]> GetFilterableFields(string teamName, string dataSetName)
         {
@@ -410,6 +424,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// Returns the raw json records as string[] for the keys.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/documents/lookup")]
         public ActionResult<string[]> GetJson(string teamName, string dataSetName, [FromBody] long[] keys)
         {
@@ -429,6 +444,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// Returns the number of JSON records in the database for the given dataset.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/documents/count")]
         public ActionResult<CountResponse> GetNumberOfJsonRecordsInDb(string teamName, string dataSetName)
         {
@@ -443,6 +459,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// GetSearchableFields will return the array of searchable field names.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpGet(DataSetRoute + "/fields/searchable")]
         public ActionResult<string[]> GetSearchableFields(string teamName, string dataSetName)
         {
@@ -456,6 +473,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// GetSortableFields will return the array of sortable field names.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpGet(DataSetRoute + "/fields/sortable")]
         public ActionResult<string[]> GetSortableFields(string teamName, string dataSetName)
         {
@@ -469,6 +487,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// GetStatus will return the status of the dataSetName in the search engine.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpGet(DataSetRoute + "/status")]
         public ActionResult<ServerSystemStatus> GetStatus(string teamName, string dataSetName)
         {
@@ -488,6 +507,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// GetWordIndexingFields will return the array of word-indexing field names.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/fields/word-indexing")]
         public ActionResult<string[]> GetWordIndexingFields(string teamName, string dataSetName)
         {
@@ -502,6 +522,7 @@ namespace IndxServer.Controllers
         /// Returns all datasets the current user can reach via team membership, across every team
         /// they belong to. Each entry carries the owning team name and the caller's role on it.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Read, FiltersToKeyScope = true)]
         [HttpGet("me/datasets")]
         public async Task<ActionResult<DataSetListDto[]>> GetMyDataSets()
         {
@@ -509,11 +530,15 @@ namespace IndxServer.Controllers
             if (string.IsNullOrEmpty(userId))
                 return Unauthorized();
 
+            // A scoped key sees only its own team, and only the datasets it names.
+            var scope = ApiKeyScope.For(HttpContext);
             var result = new List<DataSetListDto>();
             foreach (var (team, role) in await teams.GetTeamsForUserAsync(userId))
             {
+                if (scope != null && !scope.AllowsTeam(team.Id)) continue;
                 foreach (var name in IndxServerInternalApi.Manager.GetTeamDataSets(team.Id.ToString()))
-                    result.Add(new DataSetListDto(name, team.Name, role));
+                    if (scope == null || scope.AllowsDataset(name))
+                        result.Add(new DataSetListDto(name, team.Name, role));
             }
             return result.ToArray();
         }
@@ -521,12 +546,16 @@ namespace IndxServer.Controllers
         /// <summary>
         /// Lists the datasets owned by a single team.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet("teams/{teamName}/datasets")]
         public ActionResult<string[]> GetTeamDataSets(string teamName)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
-            return IndxServerInternalApi.Manager.GetTeamDataSets(ctx.OwnerKey).ToArray();
+            var scope = ApiKeyScope.For(HttpContext);
+            return IndxServerInternalApi.Manager.GetTeamDataSets(ctx.OwnerKey)
+                .Where(name => scope == null || scope.AllowsDataset(name))
+                .ToArray();
         }
 
         /// <summary>
@@ -754,6 +783,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// Search will validate the search query and return the search result.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/search")]
         public ActionResult<Indx.Api.Result> Search(string teamName, string dataSetName, [FromBody] QueryProxy query)
         {
@@ -865,6 +895,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// GetFieldConfiguration returns the full configuration of every field in the dataset.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/fields/configuration")]
         public ActionResult<FieldProxy[]> GetFieldConfiguration(string teamName, string dataSetName)
         {
@@ -882,6 +913,7 @@ namespace IndxServer.Controllers
         /// entry's terms appended to the query text before scoring.
         /// <para>One list per dataset — there is no name to supply, and no other dataset is affected.</para>
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/synonyms")]
         [ProducesResponseType(typeof(SynonymList), StatusCodes.Status200OK)]
         public ActionResult<SynonymList?> GetSynonymList(string teamName, string dataSetName)
@@ -932,6 +964,7 @@ namespace IndxServer.Controllers
         /// document (the primary key). Empty string means none is declared (the engine auto-generates
         /// keys). Required, when set, to be a numeric field.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/fields/key")]
         public ActionResult<string> GetKeyField(string teamName, string dataSetName)
         {
@@ -1150,6 +1183,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// Returns the number of filters currently registered in the filter cache.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/filters/count")]
         public ActionResult<CountResponse> GetNumberOfFilters(string teamName, string dataSetName)
         {
@@ -1230,6 +1264,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// Searches a single embedding field using approximate nearest-neighbour search.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/search/vector")]
         public ActionResult<Indx.Http.EmbeddingResultEntry[]> VectorSearch(
             string teamName, string dataSetName, [FromBody] Indx.Http.VectorQueryProxy query)
@@ -1258,6 +1293,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// Combines text search with embedding nearest-neighbour search and blends scores.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/search/hybrid")]
         public ActionResult<Indx.Http.EmbeddingResultEntry[]> HybridSearch(
             string teamName, string dataSetName, [FromBody] Indx.Http.HybridQueryProxy query)
@@ -1301,8 +1337,16 @@ namespace IndxServer.Controllers
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userId)) { error = Unauthorized(); return null; }
 
-            var ctx = resolver.Resolve(teamName, userId);
+            // A scoped key's team is checked inside Resolve, on the team row it loads anyway.
+            var keyScope = ApiKeyScope.For(HttpContext);
+            var ctx = resolver.Resolve(teamName, userId, keyScope);
             if (ctx == null) { error = ApiProblems.TeamNotFound(teamName); return null; }
+            // ApiKeyScopeFilter has already held a scoped key to its datasets and each action's
+            // declared level. Checked again here for every write and admin operation, so a write
+            // action marked with too low a KeyAccess level still cannot be reached by a Search or
+            // Read key.
+            if ((write || admin) && keyScope is { } scope && !scope.AllowsLevel(ApiKeyLevel.Full))
+            { error = ApiProblems.InsufficientKeyScope(ApiKeyLevel.Full); return null; }
             if (admin && !TeamRoles.CanAdmin(ctx.Role)) { error = ApiProblems.InsufficientRole("Admin"); return null; }
             if (write && !TeamRoles.CanWrite(ctx.Role)) { error = ApiProblems.InsufficientRole("Editor"); return null; }
             return ctx;

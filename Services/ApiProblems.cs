@@ -62,6 +62,16 @@ namespace IndxServer.Services
             Problem(StatusCodes.Status403Forbidden, "insufficientRole", "Insufficient team role",
                 $"This operation requires the {requiredRole} role in the team.");
 
+        /// <summary>
+        /// The request's API key is scoped below what the operation needs (a Search key calling a
+        /// write, say). Distinct from insufficientRole: the user may hold the role, the key does not.
+        /// </summary>
+        public static ObjectResult InsufficientKeyScope(ApiKeyLevel required) =>
+            Problem(StatusCodes.Status403Forbidden, "insufficientKeyScope", "API key scope too narrow",
+                required == ApiKeyLevel.Full
+                    ? "This operation needs an API key with Full access. Keys limited to Search or Read cannot make it."
+                    : $"This operation needs an API key with at least {ApiKeyScope.Describe(required)} access.");
+
         public static ObjectResult InvalidDatasetName(string dataSetName) =>
             Problem(StatusCodes.Status400BadRequest, "invalidDatasetName", "Invalid dataset name",
                 $"'{dataSetName}' is not a valid dataset name.");

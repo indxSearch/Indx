@@ -32,6 +32,7 @@ namespace IndxServer.Controllers
         /// is Ready, hibernated or idle-evicted. Any team member may export. Field configuration and
         /// boost rules are separate exports.
         /// </summary>
+        [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet("teams/{teamName}/datasets/{dataSetName}/export")]
         [Produces("application/json")]
         [ProducesResponseType(StatusCodes.Status200OK)]
@@ -41,7 +42,7 @@ namespace IndxServer.Controllers
             if (string.IsNullOrEmpty(userId)) return Unauthorized();
 
             // Non-members get the same 404 as a team that does not exist, as everywhere else.
-            var ctx = resolver.Resolve(teamName, userId);
+            var ctx = resolver.Resolve(teamName, userId, ApiKeyScope.For(HttpContext));
             if (ctx == null) return ApiProblems.TeamNotFound(teamName);
             if (!FileNameValidity.IsValid(dataSetName)) return ApiProblems.InvalidDatasetName(dataSetName);
             if (!DatasetExport.Exists(ctx.OwnerKey, dataSetName)) return ApiProblems.DatasetNotFound(dataSetName);

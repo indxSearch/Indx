@@ -2,17 +2,15 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
-@using Microsoft.IdentityModel.Tokens
-@using System.IdentityModel.Tokens.Jwt
-@using System.Security.Claims
-@using System.Text
+@using System.Text.Json
 @using IndxServer.Data
-@using Microsoft.EntityFrameworkCore
+@using IndxServer.Models
 @attribute [Authorize]
 @inject UserManager<ApplicationUser> UserManager
-@inject IConfiguration Configuration
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject ApplicationDbContext Db
+@inject IndxServer.Services.ApiKeyService Keys
+@inject IndxServer.Services.TeamService Teams
 @inject Microsoft.Extensions.Caching.Memory.IMemoryCache MemoryCache
 @inject IndxServer.Services.BrowserFiles BrowserFiles
 @inject ILogger<ApiKey> Logger
@@ -21,335 +19,361 @@
 
 <PageTitle>API Keys</PageTitle>
 
-<h2>API Keys</h2>
-<p style="color:var(--lv5); margin-bottom: 32px;">
-    API keys authenticate your requests to the Indx API. Each key is shown only once at creation — store it securely.
-</p>
+<div class="key-page">
+    <h2>API keys</h2>
+    <p class="key-intro">
+        An API key authenticates requests to the Indx API. Every key is limited to one team, optionally to some of its
+        datasets, and to a level of access. It is shown only once, when it is created.
+    </p>
 
-@if (!string.IsNullOrEmpty(errorMessage))
-{
-    <div style="padding: 16px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255,66,56,0.08); margin-bottom: 24px;">
-        @errorMessage
-    </div>
-}
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <Alert Variant="destructive">
+            <Description>@_error</Description>
+        </Alert>
+    }
 
-@* ── NEW KEY REVEAL ── *@
-@if (newlyCreatedToken != null)
-{
-    <div style="padding: 20px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114,245,198,0.08); margin-bottom: 32px;">
-        <strong>Key created — copy it now. You won't be able to see it again.</strong>
-        <div style="display:flex; gap:10px; margin-top:12px;">
-            <textarea style="flex:1; padding:10px; border:1px solid var(--lv3); border-radius:var(--radius); background:var(--lv0); color:var(--lv8); font-family:monospace; font-size:11px;"
-                      rows="5" readonly>@newlyCreatedToken</textarea>
-            <Button Variant="secondary" Size="micro" @onclick="CopyNewToken">Copy</Button>
+    @* ── New key reveal ── *@
+    @if (_created != null)
+    {
+        <Alert Variant="success" Class="key-reveal">
+            <Title>Key created — copy it now. It will not be shown again.</Title>
+            <Description>
+                <span class="key-reveal-scope">@IndxServer.Services.ApiKeyService.DescribeScope(_created.Record, TeamName(_created.Record.TeamId))</span>
+                <code class="key-token">@_created.Token</code>
+                <span class="key-reveal-actions">
+                    <Button Variant="secondary" Size="micro" @onclick="CopyNewToken">@(_copied ? "Copied" : "Copy key")</Button>
+                    @if (_created.Record.Level == nameof(IndxServer.Services.ApiKeyLevel.Search))
+                    {
+                        <span class="key-muted">Safe to use in a browser: it can search the datasets above and nothing else.</span>
+                    }
+                    else
+                    {
+                        <span class="key-muted">Keep this key on a server. Anyone who has it can @(_created.Record.Level == "Read" ? "read and download these datasets" : "change and delete these datasets").</span>
+                    }
+                </span>
+            </Description>
+        </Alert>
+    }
+
+    @* ── Existing keys ── *@
+    <h3 class="indx-section-heading">Your keys</h3>
+    @if (_keys.Count == 0)
+    {
+        <p class="key-muted">No API keys yet.</p>
+    }
+    else
+    {
+        <div class="key-table-wrap">
+            <table class="indx-table">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Access</th>
+                        <th>Created</th>
+                        <th>Expires</th>
+                        <th>Status</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var key in _keys)
+                    {
+                        var expired = key.ExpiresAt < DateTime.UtcNow;
+                        <tr>
+                            <td>@key.Name</td>
+                            <td class="key-scope">@IndxServer.Services.ApiKeyService.DescribeScope(key, TeamName(key.TeamId))</td>
+                            <td class="key-muted">@key.CreatedAt.ToString("yyyy-MM-dd")</td>
+                            <td class="@(expired ? "key-expired" : "key-muted")">@key.ExpiresAt.ToString("yyyy-MM-dd")</td>
+                            <td>
+                                @if (key.IsRevoked) { <Chip Color="var(--lv3)" TextColor="var(--lv5)">Revoked</Chip> }
+                                else if (expired) { <Chip Color="var(--lv3)" TextColor="var(--lv5)">Expired</Chip> }
+                                else if (key.TeamId == null) { <Chip Color="var(--CWarning)" TextColor="#080809">Unscoped</Chip> }
+                                else { <Chip Color="var(--CTeal)" TextColor="#080809">Active</Chip> }
+                            </td>
+                            <td class="key-actions">
+                                @if (!key.IsRevoked && !expired)
+                                {
+                                    <ConfirmButton Label="Revoke" Prompt="Requests with this key fail at once." ConfirmLabel="Yes, revoke" OnConfirm="() => Revoke(key.Id)" />
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
         </div>
-        @if (!string.IsNullOrEmpty(copyMessage))
+        @if (_keys.Any(k => k.TeamId == null && !k.IsRevoked && k.ExpiresAt >= DateTime.UtcNow))
         {
-            <p style="margin-top:8px; color:var(--CTeal); font-size:13px;">@copyMessage</p>
+            <Alert Variant="warning" Class="key-legacy">
+                <Title>Unscoped keys reach every team you belong to</Title>
+                <Description>Keys created before access levels existed are not limited to a team, a dataset or a level. Replace them with scoped keys and revoke the old ones — especially any key used in a website.</Description>
+            </Alert>
         }
-    </div>
-}
+    }
 
-@* ── EXISTING KEYS TABLE ── *@
-@if (existingKeys.Count > 0)
-{
-    <table style="width:100%; border-collapse:collapse; margin-bottom:32px; font-size:13px;">
-        <thead>
-            <tr style="border-bottom:1px solid var(--lv3); color:var(--lv5);">
-                <th style="text-align:left; padding:8px 12px; font-weight:500;">Name</th>
-                <th style="text-align:left; padding:8px 12px; font-weight:500;">Key prefix</th>
-                <th style="text-align:left; padding:8px 12px; font-weight:500;">Created</th>
-                <th style="text-align:left; padding:8px 12px; font-weight:500;">Expires</th>
-                <th style="text-align:left; padding:8px 12px; font-weight:500;">Status</th>
-                <th style="padding:8px 12px;"></th>
-            </tr>
-        </thead>
-        <tbody>
-            @foreach (var key in existingKeys)
-            {
-                var expired = key.ExpiresAt < DateTime.UtcNow;
-                <tr style="border-bottom:1px solid var(--lv2);">
-                    <td style="padding:10px 12px;">@key.Name</td>
-                    <td style="padding:10px 12px; font-family:monospace; color:var(--lv6);">@key.KeyPrefix…</td>
-                    <td style="padding:10px 12px; color:var(--lv5);">@key.CreatedAt.ToString("yyyy-MM-dd")</td>
-                    <td style="padding:10px 12px; color:@(expired ? "var(--CSignal)" : "var(--lv5)");">
-                        @key.ExpiresAt.ToString("yyyy-MM-dd")
-                        @if (expired) { <span> (expired)</span> }
-                    </td>
-                    <td style="padding:10px 12px;">
-                        @if (key.IsRevoked)
-                        {
-                            <Chip Color="var(--lv3)" TextColor="var(--lv5)">Revoked</Chip>
-                        }
-                        else if (expired)
-                        {
-                            <Chip Color="var(--lv3)" TextColor="var(--lv5)">Expired</Chip>
-                        }
-                        else
-                        {
-                            <Chip Color="var(--CTeal)" TextColor="#080809">Active</Chip>
-                        }
-                    </td>
-                    <td style="padding:10px 12px; text-align:right;">
-                        @if (!key.IsRevoked && !expired)
-                        {
-                            <Button Variant="ghost" Size="micro" @onclick="() => ConfirmRevoke(key.Id)">Revoke</Button>
-                        }
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </table>
-}
-else if (newlyCreatedToken == null)
-{
-    <p style="color:var(--lv5); margin-bottom:32px;">No API keys yet.</p>
-}
+    @* ── Create ── *@
+    <h3 class="indx-section-heading">Create a key</h3>
+    @if (_teams.Count == 0)
+    {
+        <p class="key-muted">You are not a member of any team yet, so there is nothing a key could reach.</p>
+    }
+    else if (!_showCreate)
+    {
+        <Button Variant="primary" Size="micro" @onclick="OpenCreate">New API key</Button>
+    }
+    else
+    {
+        <Surface Class="key-form">
+            <div class="key-field">
+                <InputField Label="Name" placeholder="e.g. Docs site search, Nightly import" @bind-Value="_name" />
+            </div>
 
-@* ── REVOKE CONFIRMATION ── *@
-@if (revokeConfirmId.HasValue)
-{
-    <div style="padding:16px; border:1px solid var(--CWarning); border-radius:var(--radius); background:rgba(255,178,41,0.08); margin-bottom:24px; display:flex; align-items:center; gap:16px;">
-        <span>Revoke this key? Any requests using it will immediately fail.</span>
-        <Button Variant="danger" Size="micro" @onclick="ExecuteRevoke">Yes, revoke</Button>
-        <Button Variant="secondary" Size="micro" @onclick="() => revokeConfirmId = null">Cancel</Button>
-    </div>
-}
+            <div class="key-field">
+                <SelectField Label="Team" Value="@_teamId" ValueChanged="OnTeamChanged" Options="TeamOptions" />
+            </div>
 
-@* ── CREATE FORM ── *@
-@if (!showCreateForm)
-{
-    <Button Variant="primary" Size="micro" @onclick="() => showCreateForm = true">New API key</Button>
-}
-else
-{
-    <div style="border:1px solid var(--lv3); border-radius:var(--radius); padding:24px; max-width:480px; margin-bottom:32px;">
-        <h3 style="margin-top:0;">Create API key</h3>
+            <div class="key-field">
+                <SelectField Label="Access" Value="@_level.ToString()" ValueChanged="OnLevelChanged" Options="LevelOptions" />
+                <p class="key-help">@LevelHelp(_level)</p>
+            </div>
 
-        <label style="display:block; margin-bottom:6px; font-size:13px;">Name</label>
-        <input style="width:100%; padding:10px; border:1px solid var(--lv3); border-radius:var(--radius); background:var(--lv0); color:var(--lv8); font-size:13px; box-sizing:border-box; margin-bottom:16px;"
-               placeholder="e.g. Production, CI/CD"
-               @bind="newKeyName" />
+            <div class="key-field">
+                <span class="key-label">Datasets</span>
+                <div class="key-radios">
+                    <RadioButton Id="key-ds-all" Name="key-datasets" Value="all" Label="All datasets in the team" Checked="@(!_limitDatasets)" CheckedChanged="@(_ => _limitDatasets = false)" />
+                    <RadioButton Id="key-ds-some" Name="key-datasets" Value="some" Label="Only these datasets" Checked="@_limitDatasets" CheckedChanged="@(_ => _limitDatasets = true)" />
+                </div>
+                @if (_limitDatasets)
+                {
+                    @if (_teamDatasets.Count == 0)
+                    {
+                        <p class="key-help">This team has no datasets yet.</p>
+                    }
+                    else
+                    {
+                        <div class="key-datasets">
+                            @foreach (var ds in _teamDatasets)
+                            {
+                                <Checkbox Id="@($"key-ds-{ds}")" Label="@ds" Checked="@_selected.Contains(ds)" CheckedChanged="@(v => ToggleDataset(ds, v))" />
+                            }
+                        </div>
+                    }
+                }
+                else if (_level != IndxServer.Services.ApiKeyLevel.Full)
+                {
+                    <p class="key-help">A key for a website is safer limited to the datasets that site searches — including ones created later is what "all" means.</p>
+                }
+            </div>
 
-        <label style="display:block; margin-bottom:6px; font-size:13px;">Expiration</label>
-        <div style="margin-bottom:20px;">
-            <SelectField Value="@selectedExpirationDays.ToString()"
-                         ValueChanged="@(v => { if (int.TryParse(v, out var d)) selectedExpirationDays = d; })"
-                         Options="_expirationOptions" />
-        </div>
+            <div class="key-field">
+                <SelectField Label="Expires after" Value="@_days.ToString()" ValueChanged="@(v => { if (int.TryParse(v, out var d)) _days = d; })" Options="ExpirationOptions" />
+            </div>
 
-        <div style="display:flex; gap:10px;">
-            <Button Variant="primary" Size="micro" @onclick="CreateKey" Disabled="@isCreating">
-                @(isCreating ? "Creating…" : "Create")
-            </Button>
-            <Button Variant="secondary" Size="micro" @onclick='() => { showCreateForm = false; newKeyName = ""; }'>Cancel</Button>
-        </div>
-    </div>
-}
+            <div class="key-form-actions">
+                <Button Variant="primary" Size="micro" Loading="@_creating" Disabled="@(_limitDatasets && _selected.Count == 0)" @onclick="Create">Create key</Button>
+                <Button Variant="ghost" Size="micro" Disabled="@_creating" @onclick="() => _showCreate = false">Cancel</Button>
+            </div>
+        </Surface>
+    }
 
-@* ── USAGE EXAMPLES (shown after creation) ── *@
-@if (newlyCreatedToken != null)
-{
-    <div style="margin-top:32px;">
-        <h3>How to use this key</h3>
+    @* ── Using a key ── *@
+    @if (_created != null && _created.Record.TeamId is { } createdTeam)
+    {
+        var team = TeamName(createdTeam) ?? "your-team";
+        var dataset = _created.Record.Datasets is { } json ? (JsonSerializer.Deserialize<string[]>(json)?.FirstOrDefault() ?? "your-dataset") : "your-dataset";
+        var baseUrl = Nav.BaseUri.TrimEnd('/');
+        <h3 class="indx-section-heading">Using this key</h3>
+        <p class="indx-section-help">Send it as a Bearer token. A search, with cURL:</p>
+        <pre class="key-code"><code>curl -X POST "@baseUrl/api/teams/@team/datasets/@dataset/search" \
+     -H "Authorization: Bearer &lt;key&gt;" \
+     -H "Content-Type: application/json" \
+     -d '{"text": "your query", "maxNumberOfRecordsToReturn": 10}'</code></pre>
+        @if (_created.Record.Level == nameof(IndxServer.Services.ApiKeyLevel.Search))
+        {
+            <p class="indx-section-help">In a React front-end with <code>@("@")indxsearch/intrface</code>:</p>
+            <pre class="key-code"><code>&lt;SearchProvider url="@baseUrl" preAuthenticatedToken="&lt;key&gt;" team="@team" dataset="@dataset"&gt;</code></pre>
+        }
+        <Button Href="/swagger" Variant="secondary" Size="micro">API reference</Button>
+    }
 
-        <h4>cURL</h4>
-        <pre style="padding:15px; background:var(--lv1); border:1px solid var(--lv3); border-radius:var(--radius); overflow-x:auto; font-family:monospace; font-size:11px; margin:10px 0 24px;"><code>curl -X PUT "https://localhost:5001/api/teams/myTeam/datasets/myDataset?configuration=Production" \
-     -H "Authorization: Bearer @newlyCreatedToken"</code></pre>
-
-        <h4>JavaScript / Fetch</h4>
-        <pre style="padding:15px; background:var(--lv1); border:1px solid var(--lv3); border-radius:var(--radius); overflow-x:auto; font-family:monospace; font-size:11px; margin:10px 0 24px;"><code>fetch('https://localhost:5001/api/teams/myTeam/datasets/myDataset?configuration=Production', {
-  method: 'PUT',
-  headers: { 'Authorization': 'Bearer @newlyCreatedToken' }
-})</code></pre>
-
-        <h4>C# HttpClient</h4>
-        <pre style="padding:15px; background:var(--lv1); border:1px solid var(--lv3); border-radius:var(--radius); overflow-x:auto; font-family:monospace; font-size:11px; margin:10px 0 24px;"><code>client.DefaultRequestHeaders.Authorization =
-    new AuthenticationHeaderValue("Bearer", "@newlyCreatedToken");</code></pre>
-
-        <h4>Python</h4>
-        <pre style="padding:15px; background:var(--lv1); border:1px solid var(--lv3); border-radius:var(--radius); overflow-x:auto; font-family:monospace; font-size:11px; margin:10px 0;"><code>headers = { 'Authorization': f'Bearer @newlyCreatedToken' }</code></pre>
-
-        <div style="margin-top:24px;">
-            <Button Href="/swagger" Variant="secondary" Size="micro">View API docs</Button>
-        </div>
-    </div>
-}
-
-@* ── MCP / AI agents ── *@
-@{
-    var mcpEnabled = Settings.Load().McpEnabled;
-    var mcpUrl = Nav.BaseUri.TrimEnd('/') + "/mcp";
-}
-@if (mcpEnabled)
-{
-    <div style="margin-top:32px; padding: 16px 20px; border: 1px solid var(--lv2); border-radius: var(--radius); background: var(--lv1);">
-        <strong>Use with AI agents (MCP)</strong>
-        <p style="color:var(--lv5); font:var(--text-sm); margin:8px 0 0;">
-            Connect your agent to <code>@mcpUrl</code> and authenticate with any API key above as a <strong>Bearer</strong> token.
+    @{
+        var mcpEnabled = Settings.Load().McpEnabled;
+        var mcpUrl = Nav.BaseUri.TrimEnd('/') + "/mcp";
+    }
+    @if (mcpEnabled)
+    {
+        <h3 class="indx-section-heading">AI agents (MCP)</h3>
+        <p class="indx-section-help">
+            Connect an agent to <code>@mcpUrl</code> with a key as a Bearer token. The agent sees only what the key reaches:
+            a Search key can search and fetch documents; describing datasets and reading synonyms needs Read.
         </p>
-    </div>
-}
+    }
+</div>
 
 @code {
-    private List<Data.ApiKey> existingKeys = new();
-    private string? newlyCreatedToken;
-    private string? copyMessage;
-    private string? errorMessage;
-    private bool showCreateForm = false;
-    private bool isCreating = false;
-    private string newKeyName = "";
-    private int selectedExpirationDays = 90;
-    private readonly List<SelectField.SelectOption> _expirationOptions = new()
+    private List<Data.ApiKey> _keys = new();
+    private List<(Team Team, string Role)> _teams = new();
+    private IndxServer.Services.ApiKeyService.Created? _created;
+    private string? _error;
+    private bool _copied;
+    private bool _showCreate;
+    private bool _creating;
+    private string? _userId;
+
+    private string? _name;
+    private string? _teamId;
+    private IndxServer.Services.ApiKeyLevel _level = IndxServer.Services.ApiKeyLevel.Search;
+    private bool _limitDatasets = true;
+    private readonly HashSet<string> _selected = new(StringComparer.Ordinal);
+    private List<string> _teamDatasets = new();
+    private int _days = 90;
+
+    private static readonly List<SelectField.SelectOption> ExpirationOptions = new()
     {
         new("30 days", "30"),
         new("90 days (recommended)", "90"),
         new("180 days", "180"),
         new("1 year", "365"),
     };
-    private int? revokeConfirmId;
-    private string? currentUserId;
+
+    private IEnumerable<SelectField.SelectOption> TeamOptions =>
+        _teams.Select(t => new SelectField.SelectOption($"{t.Team.Name} ({t.Role})", t.Team.Id.ToString()));
+
+    private IEnumerable<SelectField.SelectOption> LevelOptions
+    {
+        get
+        {
+            yield return new("Search only — for websites and apps", nameof(IndxServer.Services.ApiKeyLevel.Search));
+            yield return new("Read only — for exports, reporting, agents", nameof(IndxServer.Services.ApiKeyLevel.Read));
+            if (CurrentRole is { } role && TeamRoles.CanWrite(role))
+                yield return new("Full access — for your own servers", nameof(IndxServer.Services.ApiKeyLevel.Full));
+        }
+    }
+
+    private string? CurrentRole => _teams.FirstOrDefault(t => t.Team.Id.ToString() == _teamId).Role;
+
+    private static string LevelHelp(IndxServer.Services.ApiKeyLevel level) => level switch
+    {
+        IndxServer.Services.ApiKeyLevel.Search =>
+            "Search, vector and hybrid search, fetching result documents, filters, and the field lists a filter panel reads. Nothing else — safe to put in a browser.",
+        IndxServer.Services.ApiKeyLevel.Read =>
+            "Everything Search can do, plus every other read: export, field configuration, synonyms, boost rules and counts. Keep it on a server.",
+        _ =>
+            "Everything your role in the team allows, including loading, changing and deleting data. Keep it on a server.",
+    };
 
     protected override async Task OnInitializedAsync()
     {
         var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        var appUser = await UserManager.GetUserAsync(authState.User);
-        if (appUser == null) return;
-        currentUserId = appUser.Id;
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user == null) return;
+        _userId = user.Id;
+        _teams = await Teams.GetTeamsForUserAsync(user.Id);
         await LoadKeys();
     }
 
     private async Task LoadKeys()
     {
-        if (currentUserId == null) return;
-        existingKeys = await Db.ApiKeys
-            .Where(k => k.UserId == currentUserId)
-            .OrderByDescending(k => k.CreatedAt)
-            .ToListAsync();
+        if (_userId != null)
+            _keys = await Keys.ListAsync(_userId);
     }
 
-    private async Task CreateKey()
+    private string? TeamName(Guid? teamId) =>
+        teamId == null ? null : _teams.FirstOrDefault(t => t.Team.Id == teamId).Team?.Name;
+
+    private void OpenCreate()
     {
-        if (string.IsNullOrWhiteSpace(newKeyName))
-        {
-            errorMessage = "Please enter a name for this key.";
-            return;
-        }
+        _error = null;
+        _name = null;
+        _level = IndxServer.Services.ApiKeyLevel.Search;
+        _limitDatasets = true;
+        _selected.Clear();
+        _days = 90;
+        OnTeamChanged(_teams[0].Team.Id.ToString());
+        _showCreate = true;
+    }
 
-        isCreating = true;
-        errorMessage = null;
-        newlyCreatedToken = null;
-        StateHasChanged();
+    private void OnTeamChanged(string? teamId)
+    {
+        _teamId = teamId;
+        _selected.Clear();
+        _teamDatasets = Guid.TryParse(teamId, out var id)
+            ? IndxServerInternalApi.Manager.GetTeamDataSets(id.ToString()).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList()
+            : new();
+        // A Viewer cannot hold a Full key; drop back rather than offer an option that fails.
+        if (_level == IndxServer.Services.ApiKeyLevel.Full && !(CurrentRole is { } role && TeamRoles.CanWrite(role)))
+            _level = IndxServer.Services.ApiKeyLevel.Read;
+    }
 
+    private void OnLevelChanged(string? value)
+    {
+        if (Enum.TryParse<IndxServer.Services.ApiKeyLevel>(value, out var level))
+            _level = level;
+    }
+
+    private void ToggleDataset(string name, bool on)
+    {
+        if (on) _selected.Add(name); else _selected.Remove(name);
+    }
+
+    private async Task Create()
+    {
+        _error = null;
+        _creating = true;
         try
         {
             var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-            var appUser = await UserManager.GetUserAsync(authState.User);
-            if (appUser == null) { errorMessage = "User not found."; return; }
+            var user = await UserManager.GetUserAsync(authState.User);
+            if (user == null) { _error = "Your account could not be found."; return; }
+            if (!Guid.TryParse(_teamId, out var teamId)) { _error = "Choose a team."; return; }
 
-            var jti = Guid.NewGuid().ToString();
-            var token = GenerateJwtToken(appUser, selectedExpirationDays, jti);
-
-            var record = new Data.ApiKey
-            {
-                UserId = appUser.Id,
-                Name = newKeyName.Trim(),
-                KeyPrefix = token[..Math.Min(24, token.Length)],
-                Jti = jti,
-                CreatedAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow.AddDays(selectedExpirationDays),
-                IsRevoked = false
-            };
-
-            Db.ApiKeys.Add(record);
-            await Db.SaveChangesAsync();
-
-            newlyCreatedToken = token;
-            showCreateForm = false;
-            newKeyName = "";
+            _created = await Keys.CreateAsync(user, _name ?? "", _days, _level, teamId, _limitDatasets ? _selected.ToArray() : null);
+            _copied = false;
+            _showCreate = false;
             await LoadKeys();
-            Logger.LogInformation("API key created for user {UserId}, expires {Expires}", appUser.Id, record.ExpiresAt);
+            Logger.LogInformation("API key {Id} created for user {UserId}: {Level}, team {TeamId}, expires {Expires}",
+                _created.Record.Id, user.Id, _created.Record.Level, teamId, _created.Record.ExpiresAt);
+        }
+        catch (ArgumentException ex)
+        {
+            _error = ex.Message;
         }
         catch (Exception ex)
         {
-            errorMessage = "Failed to create key.";
+            _error = "The key could not be created.";
             Logger.LogError(ex, "Error creating API key");
         }
         finally
         {
-            isCreating = false;
-            StateHasChanged();
+            _creating = false;
         }
     }
 
-    private void ConfirmRevoke(int id)
+    private async Task Revoke(int id)
     {
-        revokeConfirmId = id;
-    }
-
-    private async Task ExecuteRevoke()
-    {
-        if (revokeConfirmId == null) return;
-        var key = existingKeys.FirstOrDefault(k => k.Id == revokeConfirmId);
-        if (key == null || key.UserId != currentUserId) return;
-
-        key.IsRevoked = true;
+        var key = _keys.FirstOrDefault(k => k.Id == id);
+        if (key == null || key.UserId != _userId) return;
+        var row = await Db.ApiKeys.FindAsync(id);
+        if (row == null || row.UserId != _userId) return;
+        row.IsRevoked = true;
         await Db.SaveChangesAsync();
         // Drop the cached "not revoked" verdict so the key stops working now, not in five minutes.
-        IndxServer.Services.TokenValidationCache.EvictJti(MemoryCache, key.Jti);
-        revokeConfirmId = null;
+        IndxServer.Services.TokenValidationCache.EvictJti(MemoryCache, row.Jti);
         await LoadKeys();
-        Logger.LogInformation("API key {Id} revoked for user {UserId}", key.Id, key.UserId);
-    }
-
-    private string GenerateJwtToken(ApplicationUser user, int expirationDays, string jti)
-    {
-        var jwtKey = Configuration["Jwt:Key"]
-            ?? throw new InvalidOperationException("JWT Key is not configured");
-
-        var securityKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey));
-        var credentials = new SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256);
-
-        var claims = new List<Claim>
-        {
-            new Claim(ClaimTypes.Email, user.Email ?? ""),
-            new Claim(ClaimTypes.NameIdentifier, user.Id),
-            new Claim(ClaimTypes.Name, user.UserName ?? user.Email ?? ""),
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email ?? ""),
-            new Claim(JwtRegisteredClaimNames.Jti, jti)
-        };
-
-        var roles = UserManager.GetRolesAsync(user).Result;
-        foreach (var role in roles)
-            claims.Add(new Claim(ClaimTypes.Role, role));
-
-        var token = new JwtSecurityToken(
-            issuer: Configuration["Jwt:Issuer"],
-            audience: Configuration["Jwt:Audience"],
-            claims: claims,
-            expires: DateTime.UtcNow.AddDays(expirationDays),
-            signingCredentials: credentials);
-
-        return new JwtSecurityTokenHandler().WriteToken(token);
+        Logger.LogInformation("API key {Id} revoked for user {UserId}", id, _userId);
     }
 
     private async Task CopyNewToken()
     {
-        if (string.IsNullOrEmpty(newlyCreatedToken)) return;
+        if (_created == null) return;
         try
         {
-            await BrowserFiles.CopyToClipboardAsync(newlyCreatedToken);
-            copyMessage = "Copied to clipboard";
-            StateHasChanged();
-            await Task.Delay(3000);
-            copyMessage = null;
-            StateHasChanged();
+            await BrowserFiles.CopyToClipboardAsync(_created.Token);
+            _copied = true;
         }
         catch
         {
-            copyMessage = "Copy failed — please select and copy manually.";
-            StateHasChanged();
+            _error = "Copy failed — select the key and copy it manually.";
         }
     }
 }

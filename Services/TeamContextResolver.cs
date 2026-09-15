@@ -35,14 +35,21 @@ namespace IndxServer.Services
             return new TeamContext(team.Id, team.Name, role);
         }
 
-        /// <summary>Synchronous resolve for the MVC request path (SQLite is a sync provider).</summary>
-        public TeamContext? Resolve(string teamName, string userId)
+        /// <summary>
+        /// Synchronous resolve for the MVC request path (SQLite is a sync provider). A scoped API
+        /// key resolves only its own team; any other gives the same null as a team the user is not
+        /// in. The key's scope is a required argument on purpose — pass null only for a principal
+        /// that has none (<see cref="ApiKeyScope.For"/> returns that).
+        /// </summary>
+        public TeamContext? Resolve(string teamName, string userId, ApiKeyScope? keyScope)
         {
             if (string.IsNullOrWhiteSpace(teamName) || string.IsNullOrWhiteSpace(userId))
                 return null;
 
             var team = teams.GetByName(teamName);
             if (team == null)
+                return null;
+            if (keyScope != null && !keyScope.AllowsTeam(team.Id))
                 return null;
 
             var role = teams.GetRole(team.Id, userId);

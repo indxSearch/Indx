@@ -35,6 +35,10 @@ namespace IndxServer.Data
             // the source of truth and the AddTeams migration stays purely additive.
             builder.Entity<ApiKey>()
                 .HasIndex(k => k.Jti);
+            // Existing keys predate scopes and keep full access.
+            builder.Entity<ApiKey>()
+                .Property(k => k.Level)
+                .HasDefaultValue("Full");
             builder.Entity<Notification>()
                 .HasIndex(n => n.UserId);
             builder.Entity<Notification>()

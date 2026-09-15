@@ -21,6 +21,20 @@ namespace IndxServer.Data
         [Required, MaxLength(36)]
         public string Jti { get; set; } = "";
 
+        /// <summary>
+        /// <c>Search</c>, <c>Read</c> or <c>Full</c> (<see cref="IndxServer.Services.ApiKeyLevel"/>).
+        /// Keys created before scopes existed are <c>Full</c> with no team, and are not limited
+        /// beyond their owner's team roles. Display only: the enforced copy is signed into the JWT.
+        /// </summary>
+        [Required, MaxLength(10)]
+        public string Level { get; set; } = "Full";
+
+        /// <summary>The one team the key reaches; null only on keys created before scopes existed.</summary>
+        public Guid? TeamId { get; set; }
+
+        /// <summary>JSON array of the dataset names the key reaches; null means every dataset in the team.</summary>
+        public string? Datasets { get; set; }
+
         public DateTime CreatedAt { get; set; }
         public DateTime ExpiresAt { get; set; }
         public bool IsRevoked { get; set; }

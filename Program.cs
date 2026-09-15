@@ -118,6 +118,7 @@ public class Program
         builder.Services.AddScoped<IndxServer.Services.ActiveTeamState>();
         builder.Services.AddScoped<IndxServer.Services.HeaderState>();
         builder.Services.AddScoped<IndxServer.Services.TeamContextResolver>();
+        builder.Services.AddScoped<IndxServer.Services.ApiKeyService>();
         builder.Services.AddScoped<IndxServer.Services.DataMigrationService>();
         builder.Services.AddHostedService<IndxServer.Services.TokenExpiryNotificationJob>();
         builder.Services.AddHostedService<IndxServer.Services.BoostRuleExpiryNotificationJob>();
@@ -497,6 +498,8 @@ public class Program
         builder.Services.AddControllers(options =>
         {
             options.InputFormatters.Add(new TextPlainInputFormatter());
+            // Scoped API keys: team, dataset and level limits on every action (Services/ApiKeyScope.cs).
+            options.Filters.Add<IndxServer.Services.ApiKeyScopeFilter>();
         })
         .AddJsonOptions(options =>
         {

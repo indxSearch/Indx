@@ -34,12 +34,15 @@ namespace IndxServer.Mcp
         public async Task<McpDatasetSummary[]> ListDatasets()
         {
             var userId = RequireUserId();
+            var scope = Scope();
             var result = new List<McpDatasetSummary>();
             foreach (var (team, role) in await teams.GetTeamsForUserAsync(userId))
             {
+                if (scope != null && !scope.AllowsTeam(team.Id)) continue;
                 var ownerKey = team.Id.ToString();
                 foreach (var ds in IndxServerInternalApi.Manager.GetTeamDataSets(ownerKey))
                 {
+                    if (scope != null && !scope.AllowsDataset(ds)) continue;
                     var ka = IndxServerInternalApi.Manager.GetKeepAliveInfo(ds, ownerKey);
                     result.Add(new McpDatasetSummary
                     {
@@ -62,7 +65,7 @@ namespace IndxServer.Mcp
             [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
             [System.ComponentModel.Description("Dataset name.")] string dataset)
         {
-            var ownerKey = await ResolveOwnerKey(team);
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Read);
             var engine = ResolveEngine(dataset, ownerKey);
 
             var ka = IndxServerInternalApi.Manager.GetKeepAliveInfo(dataset, ownerKey);
@@ -136,7 +139,7 @@ namespace IndxServer.Mcp
             [System.ComponentModel.Description("Set true to include broad fuzzy/pattern matches (lower precision). Default false = near-exact only.")] bool broaden = false,
             [System.ComponentModel.Description("Set true to also return facet counts (for facetable fields) to refine the next query.")] bool facets = false)
         {
-            var ownerKey = await ResolveOwnerKey(team);
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Search);
             var engine = ResolveEngine(dataset, ownerKey);
 
             // An empty query is a browse: "everything matching the filters". The engine only
@@ -178,7 +181,7 @@ namespace IndxServer.Mcp
             [System.ComponentModel.Description("Dataset name.")] string dataset,
             [System.ComponentModel.Description("Document key (from a search hit).")] long key)
         {
-            var ownerKey = await ResolveOwnerKey(team);
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Search);
             var engine = ResolveEngine(dataset, ownerKey);
             return ParseJson(engine.GetJsonDataOfKey(key));
         }
@@ -193,7 +196,7 @@ namespace IndxServer.Mcp
             [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
             [System.ComponentModel.Description("Dataset name.")] string dataset)
         {
-            var ownerKey = await ResolveOwnerKey(team);
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Read);
             if (IndxServerInternalApi.Manager.ResolveEngine(dataset, ownerKey) == null)
                 throw new McpToolException($"Dataset '{dataset}' not found.");
             var list = IndxServerInternalApi.Manager.GetSynonyms(dataset, ownerKey);
@@ -210,13 +213,26 @@ namespace IndxServer.Mcp
             http.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? throw new McpToolException("Not authenticated.");
 
-        private async Task<string> ResolveOwnerKey(string team)
+        private ApiKeyScope? Scope() => ApiKeyScope.FromPrincipal(http.HttpContext?.User);
+
+        /// <summary>
+        /// The team's owner key, after the same checks the HTTP API applies: membership, then a scoped
+        /// key's team, datasets and level (ApiKeyScopeFilter does this for MVC; MCP tools are not MVC
+        /// actions, so every tool comes through here). A key outside its scope gets the not-found
+        /// answer rather than a different one, so it cannot probe for teams or datasets.
+        /// </summary>
+        private async Task<string> ResolveOwnerKey(string team, string dataset, ApiKeyLevel required)
         {
             var userId = RequireUserId();
             var match = (await teams.GetTeamsForUserAsync(userId))
                 .FirstOrDefault(t => string.Equals(t.Team.Name, team, StringComparison.OrdinalIgnoreCase));
-            if (match.Team == null)
+            var scope = Scope();
+            if (match.Team == null || (scope != null && !scope.AllowsTeam(match.Team.Id)))
                 throw new McpToolException($"Team '{team}' not found or not accessible.");
+            if (scope != null && !scope.AllowsDataset(dataset))
+                throw new McpToolException($"Dataset '{dataset}' not found.");
+            if (scope != null && !scope.AllowsLevel(required))
+                throw new McpToolException($"This API key is limited to {ApiKeyScope.Describe(scope.Level)}; this tool needs at least {ApiKeyScope.Describe(required)}.");
             return match.Team.Id.ToString();
         }
 
@@ -303,5 +319,10 @@ namespace IndxServer.Mcp
     }
 
     /// <summary>An error surfaced to the MCP client as a tool failure with a clean message.</summary>
-    public sealed class McpToolException(string message) : Exception(message);
+    /// <summary>
+    /// A tool error the agent should read. Deriving from McpException is what makes the SDK pass
+    /// the message to the client; a plain Exception reaches the agent only as "An error occurred
+    /// invoking 'tool'", which hid every not-found, not-ready and key-scope reason.
+    /// </summary>
+    public sealed class McpToolException(string message) : ModelContextProtocol.McpException(message);
 }
