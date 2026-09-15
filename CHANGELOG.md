@@ -18,7 +18,7 @@ in the AI skill.
 - **Team-scoped routes.** Every dataset operation lives under
   `/api/teams/{team}/datasets/{dataset}/…`. The 47 v1 route aliases are gone.
 - **Errors are RFC 9457 problem documents** (`application/problem+json`) with a machine-readable
-  `code`: `invalidArgument`, `unknownFilter`, `datasetNotFound`, `insufficientRole`,
+  `code`: `invalidArgument`, `unknownFilter`, `datasetNotFound`, `insufficientRole`, `insufficientKeyScope`,
   `invalidState` (with `currentState`, `allowedStates`, `retryable` and a `Retry-After` header
   while loading or indexing), `shadowBusy`. Switch on `code`, not the status.
 - **A filter token the server cannot honour is a 400 `unknownFilter`**, never a silently
@@ -44,7 +44,17 @@ in the AI skill.
   disabled rules are visible; editors and admins are notified when a rule expires.
 - **Replace** a dataset's documents atomically with live step-by-step progress, cancellable
   during transfer; reports lost field roles and a missing declared key field.
-- **MCP server** at `/mcp` for AI agents: search, browse, describe dataset, get synonyms.
+- **API key access levels.** A new key is limited to one team, optionally to some of its datasets,
+  and to **Search only** (what a search front-end needs — safe in a browser), **Read only** or
+  **Full access**. A key never exceeds its owner's team role. Outside its team or datasets a key
+  gets the same `404` as a missing one; above its level, `403 insufficientKeyScope`. Keys created
+  earlier keep working unscoped and are labelled **Unscoped** — replace them, and use a Search only
+  key for anything that ships to a browser (including `@indxsearch/intrface`).
+- **Download a dataset:** `GET …/datasets/{dataset}/export` streams every document as one JSON
+  array ordered by key, and **Options → Download data** in the dashboard. Works on hibernated
+  datasets; needs Read access.
+- **MCP server** at `/mcp` for AI agents: search, browse, describe dataset, get synonyms. Tools
+  honour the API key's access level, and tool errors now tell the agent why.
 - **Export-envelope detection**: an upload that is one document wrapping the real array gets a
   warning instead of a one-document dataset.
 - **Error-state datasets** get a recovery panel.
@@ -60,6 +70,10 @@ in the AI skill.
 - Deleting a team deletes its datasets; deleting a dataset can no longer leave a stale engine
   behind for a dataset re-created under the same name.
 - Lower-case kebab-case UI routes (`/account/api-key`, `/admin/settings`, `/teams/{team}`).
+- **Opening an existing dataset** (`PUT …/datasets/{dataset}`) needs only read access; creating one
+  still needs Editor or Admin. Search front-ends run on a Search only key and a Viewer's key.
+- A dataset's last refused operation shows under **Status → Last error**, with Clear, instead of a
+  banner that could not be dismissed.
 
 ### Security
 
@@ -71,10 +85,17 @@ in the AI skill.
 - **Rate limiting**, both limits answering `429` with `code: rateLimited`, `retryAfterSeconds` and
   a `Retry-After` header: the anonymous auth endpoints per client IP (`RateLimits:Auth`, on by
   default) and authenticated API traffic per API key (`RateLimits:Api`, off by default, on for
-  managed instances).
+  managed instances). A request with an invalid bearer token counts against the anonymous
+  window; a made-up `Authorization` header no longer escapes it.
 
 ### Fixed
 
+- **Search ranking** (IndxSearchLib 5.0.0-RC150926): common text fragments no longer push unrelated
+  documents to the top score — the cause of hundreds of ties and the real match buried, most
+  visible with long searchable text and natural-language queries; term frequency, field length
+  and `bM25b` now affect scores.
+- **Vector and hybrid search:** building an embedding index no longer runs out of memory (it grew
+  with the fourth power of the document count; now a fixed 12 MB cache plus the vectors).
 - A 500's underlying exception is logged.
 - The search preview finds nested fields by name.
 - In-flight searches are drained before hibernate or dispose.
