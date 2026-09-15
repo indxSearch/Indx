@@ -71,6 +71,24 @@ namespace IndxServer.Components.Datasets
 
         public IServerSearchEngine? FindEngine() => Engines.FindSearchEngine(Name, TeamId);
 
+        /// <summary>
+        /// Clears the engine's last error message — on a Ready dataset, the last call the engine
+        /// refused. The message is written by the engine and never reset by it, so without this it
+        /// stays until a newer error replaces it. Only on Ready: in Error state the message is the
+        /// reason the dataset is broken, and clearing it would hide that.
+        /// </summary>
+        public void ClearErrorMessage()
+        {
+            if (EngineState != SystemState.Ready) return;
+            // Outside Indexing the engine's Status getter returns its live status object, so this is
+            // the write that sticks; Status here is normally that same object, cleared for the view.
+            if (FindEngine()?.Status is { SystemState: SystemState.Ready } live)
+                live.ErrorMessage = string.Empty;
+            if (Status != null)
+                Status.ErrorMessage = string.Empty;
+            NotifyChanged();
+        }
+
         // ── Field configuration spine ─────────────────────────────────────────
         /// <summary>The configuration as the engine currently has it (baseline for dirty checks).</summary>
         public FieldProxy[]? SavedFields { get; private set; }

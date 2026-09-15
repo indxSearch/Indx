@@ -21,3 +21,10 @@
 }
 
 .status-alert { color: var(--CSignal); }
+
+/* Last error: the message itself, then one quiet line saying what it is. */
+.status-last-error-text { display: block; overflow-wrap: anywhere; }
+.status-last-error-help { display: block; margin-top: 4px; color: var(--lv5); }
+/* Heading with its action on the same line; the heading keeps its own margins. */
+.status-heading-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; margin-bottom: 6px; }
+.status-heading-row .status-heading { margin: 0; }

@@ -1,6 +1,7 @@
-@* Diagnostics for a Ready dataset: counts, timings, keep-alive. Everyone on the team can read
-   it; nothing here is editable (keep-alive is changed under Options). Licensing is instance-wide
-   and lives on the License page; a limit breach still surfaces in the alert banner. *@
+@* Diagnostics for a Ready dataset: counts, timings, keep-alive, and the engine's last error.
+   Everyone on the team can read it; the only action is clearing the last error, for editors
+   (keep-alive is changed under Options). Licensing is instance-wide and lives on the License
+   page; a limit breach still surfaces in the alert banner. *@
 @using Indx.Api
 @using IndxServer.Models
 @inherits DatasetTabBase
@@ -11,7 +12,24 @@
 {
     var ka = Ctx.KeepAlive;
     <div class="status-tab">
-        <h3 class="status-heading">Index</h3>
+        @if (!string.IsNullOrEmpty(status.ErrorMessage))
+        {
+            <div class="status-heading-row">
+                <h3 class="status-heading">Last error</h3>
+                @if (Ctx.IsEditor)
+                {
+                    <Button Variant="ghost" Size="micro" @onclick="ClearError">Clear</Button>
+                }
+            </div>
+            <Alert Variant="warning">
+                <Description>
+                    <span class="status-last-error-text">@status.ErrorMessage</span>
+                    <span class="status-last-error-help">The last operation the engine refused. It stays until it is cleared or a newer error replaces it; the dataset itself is unaffected.</span>
+                </Description>
+            </Alert>
+        }
+
+        <h3 class="status-heading@(string.IsNullOrEmpty(status.ErrorMessage) ? "" : " status-heading--section")">Index</h3>
         <table class="status-table">
             <tbody>
                 <tr>
@@ -41,6 +59,9 @@
 }
 
 @code {
+    // ClearErrorMessage raises Changed, which re-renders this tab and the rest of the panel.
+    private void ClearError() => Ctx.ClearErrorMessage();
+
     private static string KeepAliveLabel(IndxServerInternalApi.KeepAliveInfo? ka)
     {
         if (ka == null) return "—";
