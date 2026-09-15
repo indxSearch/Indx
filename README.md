@@ -205,10 +205,12 @@ own hardware the ceiling is the hardware — and on for managed instances. Each 
 bucket, so one runaway integration does not throttle a user's other keys. Over the limit is
 the same `429 rateLimited` with `Retry-After`.
 
-`/api` and `/mcp` requests carrying **no bearer token** are limited per client IP too,
-`RateLimits:Anon` (`Enabled`, `PermitLimit`, `WindowSeconds`) — 30 per 60 seconds by default,
-**on**. They all end in `401`, so a working client makes them only while a token is being
-refreshed, whereas a scanner makes nothing else. CORS preflight (`OPTIONS`) is excluded.
+`/api` and `/mcp` requests with **no bearer token that validates** — none at all, forged, or
+expired — are limited per client IP too, `RateLimits:Anon` (`Enabled`, `PermitLimit`,
+`WindowSeconds`) — 30 per 60 seconds by default, **on**. They all end in `401`, so a working
+client makes them only while a token is being refreshed, whereas a scanner makes nothing else.
+Sending a junk `Authorization` header is not a way out of this window. CORS preflight (`OPTIONS`)
+is excluded.
 
 All three limits answer the same `429 rateLimited` problem, so a client needs one handler: wait
 `retryAfterSeconds` and retry. Rejections are logged (`IndxServer.RateLimit`) and counted

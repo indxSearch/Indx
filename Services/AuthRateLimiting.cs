@@ -17,13 +17,15 @@ namespace IndxServer.Services
     ///   token's jti; a user with several keys is limited per key, so one runaway app does not
     ///   starve their others). Off by default for self-host, where the ceiling is the hardware;
     ///   the Managed App turns it on. Generous by design: it catches loops, not load.</item>
-    ///   <item><b>Anon</b> — /api and /mcp traffic carrying no bearer token at all: a fixed window
-    ///   per client IP. Every one of these ends in 401, so a real client produces them only
-    ///   briefly (an expired token) while a bot scanning the API produces nothing else. On by
-    ///   default: unlike Api this is a defence, not a courtesy, and the traffic it bounds is
-    ///   worthless by construction. Preflight OPTIONS is excluded — it carries no Authorization
-    ///   header by definition, and a cross-origin page would otherwise spend the window on
-    ///   preflights before making a single real call.</item>
+    ///   <item><b>Anon</b> — /api and /mcp traffic with no bearer token <b>that validates</b>: a
+    ///   fixed window per client IP. Every one of these ends in 401, so a real client produces
+    ///   them only briefly (an expired token) while a bot scanning the API produces nothing else.
+    ///   On by default: unlike Api this is a defence, not a courtesy, and the traffic it bounds is
+    ///   worthless by construction. A forged or expired token counts here, not as a key — see
+    ///   <see cref="BearerIdentity"/> for why that distinction is the whole point. Preflight
+    ///   OPTIONS is excluded — it carries no Authorization header by definition, and a
+    ///   cross-origin page would otherwise spend the window on preflights before making a single
+    ///   real call.</item>
     /// </list>
     /// A rejection is an RFC 9457 problem with <c>code: rateLimited</c>, <c>retryAfterSeconds</c>
     /// and a <c>Retry-After</c> header, like every other API error.
@@ -87,17 +89,44 @@ namespace IndxServer.Services
             public int WindowSeconds { get; set; } = 60;
         }
 
-        /// <summary>The API surface a key calls: /api/* and the MCP endpoint, with a bearer token
-        /// present. Login is excluded (anonymous; it has the Auth window). The token is NOT
-        /// validated here — Bearer is authenticated in the authorization stage, after this
-        /// middleware — but the key only chooses a bucket: a bad token limits its own sender and
-        /// still gets its 401.</summary>
-        public static bool IsApiCall(HttpContext ctx) => IsApiPath(ctx) && BearerToken(ctx) != null;
+        /// <summary>Says once, at startup, when a configured value does not mean what it looks
+        /// like. The bucket size is <c>Math.Max(Burst, RequestsPerSecond)</c>, so a Burst below
+        /// the per-second rate is silently raised to it: the operator's number is in the file and
+        /// has no effect. Honouring it literally would be worse — the bucket would cap each
+        /// replenishment and the effective rate would become the Burst — so the behaviour stays
+        /// and the silence goes.</summary>
+        private sealed class ConfigurationWarnings(ApiOptions api, ILoggerFactory loggers) : IHostedService
+        {
+            public Task StartAsync(CancellationToken cancellationToken)
+            {
+                if (api.Burst < api.RequestsPerSecond)
+                    loggers.CreateLogger("IndxServer.RateLimit").LogWarning(
+                        "RateLimits:Api:Burst ({Burst}) is below RequestsPerSecond ({Rate}); the bucket holds " +
+                        "{Effective} and the configured Burst has no effect. Set Burst to at least RequestsPerSecond.",
+                        api.Burst, api.RequestsPerSecond, Math.Max(api.Burst, api.RequestsPerSecond));
+                return Task.CompletedTask;
+            }
 
-        /// <summary>The same surface with no bearer token, and not a CORS preflight. Bounded by
-        /// the Anon window rather than by key, since there is no key to bound it by.</summary>
+            public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+        }
+
+        /// <summary>The API surface a key calls: /api/* and the MCP endpoint, carrying a bearer
+        /// token that <b>passed validation</b>. Login is excluded (anonymous; it has the Auth
+        /// window).
+        ///
+        /// <para>Validity is what decides the bucket, not the mere presence of a header. When this
+        /// asked only whether an Authorization header existed, <c>Bearer anything</c> was enough to
+        /// leave the Anon window and land in a per-token bucket that a fresh garbage token reset
+        /// every time — measured at 40 requests, 40 rejections by the auth stage, and not one 429.
+        /// <see cref="BearerIdentity"/> resolves the token before the limiter so this can ask the
+        /// real question.</para></summary>
+        public static bool IsApiCall(HttpContext ctx) => IsApiPath(ctx) && BearerIdentity.Principal(ctx) != null;
+
+        /// <summary>The same surface without a caller the server recognises — no token, or one
+        /// that failed validation — and not a CORS preflight. Bounded by the Anon window, since
+        /// there is no trustworthy key to bound it by.</summary>
         public static bool IsAnonymousApiCall(HttpContext ctx) =>
-            IsApiPath(ctx) && BearerToken(ctx) == null && !HttpMethods.IsOptions(ctx.Request.Method);
+            IsApiPath(ctx) && BearerIdentity.Principal(ctx) == null && !HttpMethods.IsOptions(ctx.Request.Method);
 
         private static bool IsApiPath(HttpContext ctx) =>
             (ctx.Request.Path.StartsWithSegments("/api") || ctx.Request.Path.StartsWithSegments("/mcp"))
@@ -119,23 +148,19 @@ namespace IndxServer.Services
             return new IPAddress(bytes).ToString() + "/64";
         }
 
-        private static string? BearerToken(HttpContext ctx)
-        {
-            var h = ctx.Request.Headers.Authorization.ToString();
-            return h.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) && h.Length > 7 ? h[7..].Trim() : null;
-        }
-
-        /// <summary>The limiting key: the token's jti (one per issued API key), else a digest of
-        /// the token itself, so distinct keys never share a bucket.</summary>
+        /// <summary>The limiting key for a validated caller: the token's jti, which is one per
+        /// issued credential — a dashboard API key for its whole life, a login token for its 24
+        /// hours. Tokens predating the jti claim fall back to a digest of the token itself, which
+        /// is equally stable per token; the digest is used rather than the token so a credential
+        /// never becomes a partition key or reaches a log line.
+        ///
+        /// <para>Only ever called for a request whose token validated, so the value cannot be
+        /// chosen by the caller.</para></summary>
         public static string ApiKeyOf(HttpContext ctx)
         {
-            var token = BearerToken(ctx) ?? "";
-            try
-            {
-                var jwt = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler().ReadJwtToken(token);
-                if (!string.IsNullOrEmpty(jwt.Id)) return jwt.Id;
-            }
-            catch { /* not a JWT: fall through to the digest */ }
+            var jti = BearerIdentity.ValidatedJti(ctx);
+            if (!string.IsNullOrEmpty(jti)) return jti;
+            var token = BearerIdentity.Token(ctx) ?? "";
             return Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token)))[..16];
         }
 
@@ -188,6 +213,7 @@ namespace IndxServer.Services
             services.AddSingleton(options);
             services.AddSingleton(api);
             services.AddSingleton(anon);
+            services.AddHostedService(sp => new ConfigurationWarnings(api, sp.GetRequiredService<ILoggerFactory>()));
             services.AddRateLimiter(limiter =>
             {
                 limiter.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
@@ -249,7 +275,11 @@ namespace IndxServer.Services
 
                     http.Response.Headers.RetryAfter = retryAfter.ToString();
                     http.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-                    if (http.Request.Path.StartsWithSegments("/api"))
+                    // The plain-text branch below exists for the dashboard's HTML form posts.
+                    // /mcp is an API surface and must get the problem document like /api — it fell
+                    // into the form branch, answering an MCP client with "Too many attempts from
+                    // this address" even when it was the key limit that fired.
+                    if (http.Request.Path.StartsWithSegments("/api") || http.Request.Path.StartsWithSegments("/mcp"))
                     {
                         var problem = new ProblemDetails
                         {

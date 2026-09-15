@@ -716,9 +716,15 @@ public class Program
         // rateLimited code and retryAfterSeconds the client was given to read are unreachable.
         app.UseCors("NewPolicy");
 
-        // Before authentication on purpose: the per-API-key policy reads the bearer token's jti
-        // itself (Bearer is only validated in the authorization stage), and the per-IP window
-        // needs no principal at all.
+        // Resolve the bearer token once, before the limiter, so the limiter can ask whether the
+        // caller is real rather than whether a header is present. Without it, Authorization:
+        // Bearer <anything> left the anonymous window and landed in a per-token bucket a fresh
+        // garbage token reset every time — an unlimited path for exactly the traffic the
+        // anonymous window exists to bound.
+        app.UseBearerIdentity();
+
+        // Before authentication on purpose: the per-key policy partitions on the validated jti
+        // that UseBearerIdentity just resolved, and the per-IP windows need no principal at all.
         app.UseRateLimiter();
 
         app.UseAuthentication();
@@ -728,21 +734,15 @@ public class Program
         // Any other path returns 403 so callers cannot do useful work on the
         // deployment-time initial credentials.
         //
-        // The default authentication scheme is the Identity cookie. JWT bearer is
-        // only triggered lazily by [Authorize] endpoints, so this middleware has
-        // to authenticate the bearer scheme explicitly to inspect the claim.
+        // The default authentication scheme is the Identity cookie, so ctx.User is not populated
+        // from a bearer token here — JWT bearer is only triggered lazily by [Authorize]. The
+        // bearer principal comes from UseBearerIdentity above, which already validated it; this
+        // used to repeat that AuthenticateAsync call and pay for a second validation per request.
         app.Use(async (context, next) =>
         {
             var principal = context.User;
-            if (principal?.Identity?.IsAuthenticated != true
-                && context.Request.Headers.ContainsKey("Authorization"))
-            {
-                var bearer = await context.AuthenticateAsync(JwtBearerDefaults.AuthenticationScheme);
-                if (bearer.Succeeded && bearer.Principal != null)
-                {
-                    principal = bearer.Principal;
-                }
-            }
+            if (principal?.Identity?.IsAuthenticated != true)
+                principal = IndxServer.Services.BearerIdentity.Principal(context) ?? principal;
 
             if (principal?.HasClaim("must_change_password", "true") == true)
             {
