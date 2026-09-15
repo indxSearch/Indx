@@ -124,13 +124,29 @@ large list to production. Behavior may still change.
 
 The server exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` (Streamable HTTP). Point an MCP-capable client — Claude Code, Claude Desktop, or any other — at it with a bearer token, and the agent gets read-only retrieval tools over your datasets: search, field info, status, synonym lists.
 
-- Same JWT tokens and team permissions as the rest of the API
+- Same API keys and team permissions as the rest of the API. A **Search only** key lets the agent
+  list, search and fetch documents; `describe_dataset` and `get_synonyms` need **Read only**
 - Read-only by design — agents can search, not mutate
 - Admins can disable it instance-wide under **Instance Settings** (no restart needed)
 
 ## API Access
 
-1. Log in and open **API Key** in the menu to generate a bearer token
+1. Log in and open **API keys** in the account menu. A key is limited to one team, optionally to
+   some of its datasets, and to an access level:
+
+   | Level | Can do | Use it for |
+   |---|---|---|
+   | **Search only** | Search (text, vector, hybrid), fetch result documents, build filters, read field lists and status | Websites and apps — safe in a browser |
+   | **Read only** | Every read, including export, field configuration and synonyms | Exports, reporting, AI agents — keep it on a server |
+   | **Full access** | Everything your team role allows, including loading and deleting data | Your own servers and pipelines |
+
+   A key never exceeds your role in the team, and cannot be changed after it is created. Outside its
+   team or datasets it gets `404`; above its level, `403 insufficientKeyScope`.
+
+   **Anything that runs in a browser — including [`@indxsearch/intrface`](https://github.com/indxSearch/indx-react)
+   — ships its key to every visitor. Use a Search only key limited to the datasets that page searches.**
+   Keys created before access levels existed show as **Unscoped** and reach every team you belong
+   to: replace them and revoke the old ones.
 2. Every dataset operation is scoped to a team and dataset:
 
 ```bash
