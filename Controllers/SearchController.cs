@@ -849,6 +849,14 @@ namespace IndxServer.Controllers
                 {
                     return ApiProblems.ShadowBusy(ex.Message);
                 }
+                // A value the engine refuses — a negative weight, a BM25b outside [0, 1], a
+                // negative BM25k1. That is the caller's mistake, so it is a 400 with the reason,
+                // not the 500 the global handler would otherwise produce. A 500 tells the caller
+                // we broke and logs it as our incident, when the fix is on their side.
+                catch (ArgumentException ex)
+                {
+                    return ApiProblems.InvalidArgument(ex.Message);
+                }
                 catch (InvalidOperationException ex)
                 {
                     return ApiProblems.OperationFailed(ex.Message);
@@ -856,9 +864,16 @@ namespace IndxServer.Controllers
             }
 
             // Inline: only query-time flags changed, or engine is not yet Ready.
-            var failed = matcher.SetFieldConfiguration(fields);
-            if (failed != null)
-                return ApiProblems.InvalidArgument($"Field '{failed}' does not exist in this dataset.");
+            try
+            {
+                var failed = matcher.SetFieldConfiguration(fields);
+                if (failed != null)
+                    return ApiProblems.InvalidArgument($"Field '{failed}' does not exist in this dataset.");
+            }
+            catch (ArgumentException ex)
+            {
+                return ApiProblems.InvalidArgument(ex.Message);
+            }
             return NoContent();
         }
 
@@ -866,7 +881,19 @@ namespace IndxServer.Controllers
         [HttpPut(DataSetRoute + "/fields/searchable")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult SetSearchableFields(string teamName, string dataSetName, [FromBody] (string Name, float Weight)[] fields)
-            => SetFieldFlag(teamName, dataSetName, fields.Select(f => f.Name), (f, t) => { f.Searchable = true; f.Weight = fields.First(x => x.Name == t).Weight; });
+        {
+            // Checked here rather than left to the Field.Weight setter, for two reasons: the
+            // setter throws, which SetFieldFlag would turn into a 500; and SetFieldFlag applies
+            // field by field, so a throw partway through would leave the earlier fields already
+            // changed. Refusing the whole call up front keeps it all-or-nothing.
+            foreach (var f in fields)
+                if (f.Weight < 0f)
+                    return ApiProblems.InvalidArgument(
+                        $"Weight for field '{f.Name}' is {f.Weight}; a field weight cannot be negative.");
+
+            return SetFieldFlag(teamName, dataSetName, fields.Select(f => f.Name),
+                (f, t) => { f.Searchable = true; f.Weight = fields.First(x => x.Name == t).Weight; });
+        }
 
         /// <summary>Sets the Filterable property on the specified fields.</summary>
         [HttpPut(DataSetRoute + "/fields/filterable")]
