@@ -7,21 +7,20 @@ A self-hosted search service built on [Indx Search](https://indx.co). Blazor Ser
 - **Dashboard** — teams, datasets, field configuration with weight sliders, search preview,
   status, boost rules, synonyms, options; plus an admin panel
 - **Teams** — datasets belong to teams; members join with per-team roles
-- HTTP API with JWT authentication and API key management; errors are RFC 9457 problem
+- **HTTP API** — JWT authentication and API key management; errors are RFC 9457 problem
   documents with a machine-readable `code`
 - **Dynamic data** — insert, update, delete, by key or by filter, with the index kept in sync
-- **Zero-downtime rebuilds** — Replace a dataset, or change its field configuration, on a
+- **Zero-downtime rebuilds** — replace a dataset, or change its field configuration, on a
   shadow engine while the old one keeps serving
 - **Keep-alive & hibernation** — pinned, timed or client-managed memory per dataset
-- **MCP server** at `/mcp` — connect AI agents (Claude, etc.) directly to your search data
-- User registration, login, and account management
-- Local accounts with optional Microsoft and Google OAuth
-- Server-side boost rules with schedules, facets, coverage, vector & hybrid search
-- Per-dataset synonym lists (experimental) — query expansion at search time
-- Notifications, in-app and by email
-- SQLite databases — no external database required
-- Swagger UI at `/swagger`
-- Automatic database migrations on startup
+- **MCP server** — connect AI agents (Claude, etc.) directly to your search data, at `/mcp`
+- **Accounts** — registration, login and account management; local passwords, with optional
+  Microsoft and Google sign-in
+- **Relevance** — server-side boost rules with schedules, facets, coverage, vector and hybrid search
+- **Synonyms** — per-dataset lists (experimental); query expansion at search time
+- **Notifications** — in the app and by email
+- **SQLite storage** — no external database required, and migrations run on startup
+- **Swagger UI** — the whole API, browsable at `/swagger`
 
 ## Quick Start
 
@@ -124,10 +123,10 @@ large list to production. Behavior may still change.
 
 The server exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` (Streamable HTTP). Point an MCP-capable client — Claude Code, Claude Desktop, or any other — at it with a bearer token, and the agent gets read-only retrieval tools over your datasets: search, field info, status, synonym lists.
 
-- Same API keys and team permissions as the rest of the API. A **Search only** key lets the agent
-  list, search and fetch documents; `describe_dataset` and `get_synonyms` need **Read only**
-- Read-only by design — agents can search, not mutate
-- Admins can disable it instance-wide under **Instance Settings** (no restart needed)
+- **Same keys and permissions** as the rest of the API. A Search only key lets the agent list,
+  search and fetch documents; `describe_dataset` and `get_synonyms` need Read only
+- **Read-only by design** — agents can search, not mutate
+- **Switched off instance-wide** by an admin under Instance Settings, with no restart
 
 ## API Access
 
