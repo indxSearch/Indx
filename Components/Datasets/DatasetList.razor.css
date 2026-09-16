@@ -50,9 +50,11 @@
     margin-top: 24px;
 }
 
+/* 260px rather than 220px puts five cards on a row where six used to fit. Six left the footer too
+   narrow for a state chip and a document count side by side, so they crowded each other. */
 .indx-dataset-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
     gap: 8px;
 }
 
@@ -97,7 +99,11 @@
     flex-wrap: wrap;
 }
 
+/* The count keeps its width and never breaks mid-number, so a long dataset state chip pushes it
+   onto the next line rather than squeezing into it. */
 .indx-dataset-card-count {
     color: var(--lv5);
     font: var(--text-xs);
+    white-space: nowrap;
+    flex-shrink: 0;
 }
