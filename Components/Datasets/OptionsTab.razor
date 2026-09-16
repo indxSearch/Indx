@@ -261,6 +261,11 @@
         {
             <p class="opt-muted">Cannot delete while an operation is in progress.</p>
         }
+        @* A delete that fails closes its dialog like a delete that worked, so say what happened. *@
+        @if (!string.IsNullOrEmpty(Ctx.OperationError))
+        {
+            <p class="opt-error">@Ctx.OperationError</p>
+        }
     }
 </div>
 
@@ -588,6 +593,19 @@
         {
             // TransferOwnership evicts the source engine (can be slow) — run off the circuit.
             var target = _transferTargetTeamId;
+
+            // (Name, team) is the dataset's primary key, so a target team that already has this
+            // name fails on the constraint mid-transaction and surfaces as raw SQL. Rename
+            // pre-checks its target; do the same here, while the dataset is still untouched.
+            var taken = await Task.Run(() => Ctx.Engines.GetTeamDataSets(target));
+            if (taken.Any(n => string.Equals(n, Ctx.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                _transferError = $"That team already has a dataset called '{Ctx.Name}'. Rename one of them first.";
+                _transferring = false;   // there is no finally here; the success path clears it below
+                await Render();
+                return;
+            }
+
             await Task.Run(() => Ctx.Engines.TransferOwnership(Ctx.Name, Ctx.TeamId, target));
         }
         catch (Exception ex)

@@ -1315,6 +1315,21 @@ namespace IndxServer.Controllers
             {
                 return ApiProblems.UnknownFilter(ex.Message);
             }
+            catch (UnknownEmbeddingFieldException ex)
+            {
+                return ApiProblems.InvalidArgument(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                // Wrong vector length for this field's index — the message names both lengths.
+                return ApiProblems.InvalidArgument(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // The field is embeddable but its index was never built: no document carried a
+                // vector for it. A caller mistake, not a server fault.
+                return ApiProblems.InvalidArgument(ex.Message);
+            }
         }
 
         /// <summary>
@@ -1343,6 +1358,21 @@ namespace IndxServer.Controllers
             catch (UnknownFilterException ex)
             {
                 return ApiProblems.UnknownFilter(ex.Message);
+            }
+            catch (UnknownEmbeddingFieldException ex)
+            {
+                return ApiProblems.InvalidArgument(ex.Message);
+            }
+            catch (ArgumentException ex)
+            {
+                // Wrong vector length for this field's index — the message names both lengths.
+                return ApiProblems.InvalidArgument(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // The field is embeddable but its index was never built: no document carried a
+                // vector for it. A caller mistake, not a server fault.
+                return ApiProblems.InvalidArgument(ex.Message);
             }
         }
 

@@ -805,7 +805,18 @@ public class Program
             if (context.Request.Path.StartsWithSegments("/mcp")
                 && !context.RequestServices.GetRequiredService<IndxServer.Services.InstanceSettingsService>().Load().McpEnabled)
             {
+                // A bare 404 reads to an agent as a wrong URL or a server without MCP at all. Say
+                // which it is, in the same problem+json shape as every other error in the API.
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
+                context.Response.ContentType = "application/problem+json";
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    type = "about:blank",
+                    title = "MCP disabled",
+                    status = 404,
+                    detail = "The MCP endpoint is switched off on this instance. An administrator can enable it under Instance Settings.",
+                    code = "mcpDisabled",
+                });
                 return;
             }
             await next();

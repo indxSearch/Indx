@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
 @using IndxServer.Data
+@using Microsoft.EntityFrameworkCore
 @attribute [Authorize(Roles = "Admin")]
 @inject UserManager<ApplicationUser> UserManager
 @inject ILogger<Users> Logger
@@ -12,6 +13,7 @@
 @inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject NavigationManager NavigationManager
 @inject IndxServer.Services.IEditionService Edition
+@inject IndxServer.Data.ApplicationDbContext Db
 
 <PageTitle>Admin — Users</PageTitle>
 
@@ -324,6 +326,24 @@ else if (_isInviteMode)
         var user = await UserManager.FindByIdAsync(userId);
         if (user == null) return;
         var email = user.Email;
+
+        // Team membership cascades on the user row, so deleting the only Admin of a team leaves
+        // that team alive with its datasets and nobody who can reach them — and /admin/teams is
+        // read-only, so there is no way back. Removing a member already refuses this; deleting a
+        // user must too. Add another Admin first.
+        var orphaned = await Db.TeamMembers
+            .Where(m => m.UserId == userId && m.Role == TeamRoles.Admin)
+            .Where(m => !Db.TeamMembers.Any(other =>
+                other.TeamId == m.TeamId && other.UserId != userId && other.Role == TeamRoles.Admin))
+            .Join(Db.Teams, m => m.TeamId, t => t.Id, (m, t) => t.Name)
+            .ToListAsync();
+        if (orphaned.Count > 0)
+        {
+            _errorMessage = $"{email} is the only admin of {string.Join(", ", orphaned)}. "
+                          + "Add another admin to those teams first, or delete them.";
+            return;
+        }
+
         var result = await UserManager.DeleteAsync(user);
         if (result.Succeeded)
         {

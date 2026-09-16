@@ -258,15 +258,23 @@ namespace IndxServer.Components.Datasets
             {
                 var ok = await Task.Run(() => Engines.DeleteDataSet(Name, TeamId));
                 DeleteConfirmOpen = false;
-                if (!ok) return false;
+                if (!ok)
+                {
+                    // The dataset is still there and the dialog just closed: without this the
+                    // user is left to guess whether anything happened.
+                    OperationError = $"Could not delete '{Name}'. It is still here; see the server log for why.";
+                    NotifyChanged();
+                    return false;
+                }
                 SetBufferedFile(null);
                 await NotifyDatasetListChangedAsync();
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error deleting dataset: {ex.Message}");
+                OperationError = $"Could not delete '{Name}': {ex.Message}";
                 DeleteConfirmOpen = false;
+                NotifyChanged();
                 return false;
             }
         }

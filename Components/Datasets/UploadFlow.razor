@@ -28,17 +28,25 @@
             @(state switch { SystemState.Indexing => "Indexing in progress…", SystemState.Loaded => "Data loaded — waiting for indexing.", _ => "Loading in progress…" })
         </p>
     </div>
-    @* Recovery escape hatch: a dataset can get stuck in a non-Ready state (e.g. an
-       interrupted load). A team admin can always delete it to recover. *@
-    @if (Ctx.IsAdmin)
-    {
-        <div class="up-top8">
-            <ConfirmButton Label="Delete dataset" Icon="DatasetIcons.Delete" Prompt="Delete this dataset?" ConfirmLabel="Yes, Delete"
-                           Open="@Ctx.DeleteConfirmOpen" OpenChanged="SetDeleteConfirm" OnConfirm="Ctx.DeleteAsync">
-                <span class="up-hint">Stuck here? Delete to recover.</span>
-            </ConfirmButton>
-        </div>
-    }
+    @* Recovery escape hatches: a dataset can get stuck in a non-Ready state — an interrupted
+       load, or an index that failed in a way that never moves the state on. The tab nav is hidden
+       while pending, so Options is out of reach and these are the only way out. Replace builds a
+       new engine and swaps it in without needing this one, and export reads the stored documents
+       regardless of state, so both work here exactly as they do on the Error panel. *@
+    <div class="up-top8 up-actions">
+        @if (Ctx.TeamName is { } pendingTeamName)
+        {
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Download"
+                    Href="@($"api/teams/{Uri.EscapeDataString(pendingTeamName)}/datasets/{Uri.EscapeDataString(Ctx.Name)}/export")"
+                    download="@($"{Ctx.Name}.json")">Download data as JSON</Button>
+        }
+        @if (Ctx.IsAdmin)
+        {
+            <ConfirmButton Label="Delete dataset" Icon="DatasetIcons.Delete" Prompt="Delete this dataset?" ConfirmLabel="Yes, Delete" TriggerVariant="ghost"
+                           Open="@Ctx.DeleteConfirmOpen" OpenChanged="SetDeleteConfirm" OnConfirm="Ctx.DeleteAsync" />
+        }
+    </div>
+    <p class="up-hint up-top4">Stuck here? Download the data, then delete to recover.</p>
 }
 
 @* ── Engine error (e.g. OutOfMemory during load/index): this engine is dead and no other panel
@@ -400,7 +408,9 @@
             await Render();
 
             if (!indexMonitor.Succeeded)
-                Console.WriteLine($"Index failed: {indexMonitor.ErrorMessage}");
+                Ctx.OperationError = string.IsNullOrEmpty(indexMonitor.ErrorMessage)
+                    ? "Indexing failed. See the server log for details."
+                    : $"Indexing failed: {indexMonitor.ErrorMessage}";
 
             Ctx.RefreshFieldsFromEngine();
         }

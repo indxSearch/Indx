@@ -8,6 +8,7 @@
 @using Microsoft.AspNetCore.Authorization
 @attribute [Authorize]
 @inherits TeamRouteBase
+@inject IndxServer.Services.TeamService TeamService
 @implements IDisposable
 
 @* The whole console is ONE routed component on purpose. The router runs in static SSR and
@@ -21,8 +22,20 @@
 
 @if (NoTeam)
 {
+    @* Without a team the breadcrumb is never rendered, and the breadcrumb is where "New team…"
+       lives — so this page was a dead end for anyone who left or was removed from their last
+       team. Offer the same action here. *@
     <h1>Welcome</h1>
-    <p style="color: var(--lv5); margin-top: 24px;">You don't belong to a team yet. Ask a team admin to add you.</p>
+    <p style="color: var(--lv5); margin-top: 24px;">
+        You don't belong to a team yet. Create one, or ask a team admin to add you to theirs.
+    </p>
+    <div style="display:flex; align-items:center; gap:8px; margin-top:16px;">
+        <InputField Label="Team name" @bind-Value="_newTeamName"
+                    @oninput="e => _newTeamName = e.Value?.ToString() ?? string.Empty"
+                    @onkeydown="OnNewTeamKeyDown" Error="@_newTeamError" IsValid="@(_newTeamError == null)" />
+        <Button Variant="primary" Size="micro" @onclick="CreateTeam"
+                disabled="@string.IsNullOrWhiteSpace(_newTeamName)">Create team</Button>
+    </div>
 }
 else if (TeamResolved)
 {
@@ -45,6 +58,28 @@ else if (TeamResolved)
 }
 
 @code {
+    // ── Create the first team (see the NoTeam branch above) ──────────────────
+    private string _newTeamName = "";
+    private string? _newTeamError;
+
+    private async Task OnNewTeamKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CreateTeam();
+    }
+
+    private async Task CreateTeam()
+    {
+        if (string.IsNullOrWhiteSpace(_newTeamName) || UserId.Length == 0) return;
+        _newTeamError = null;
+        try
+        {
+            var team = await TeamService.CreateTeamAsync(_newTeamName, UserId);
+            await ActiveTeam.ReloadAsync();
+            NavigationManager.NavigateTo(TeamRoutes.Team(team.Name));
+        }
+        catch (TeamService.TeamException ex) { _newTeamError = ex.Message; }
+    }
+
     /// <summary>The open dataset. Under /datasets/{x} (legacy) it is forwarded to the team.</summary>
     [Parameter] public string? Dataset { get; set; }
 

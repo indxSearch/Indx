@@ -593,7 +593,7 @@ namespace IndxServer.Models
                 if (engine == null)
                     return [];
                 if (!engine.EmbeddingFields.TryGetValue(query.FieldName, out var index))
-                    return [];
+                    throw new UnknownEmbeddingFieldException(query.FieldName, engine.EmbeddingFields.Keys);
                 Filter? filter = query.Filter != null
                     ? ResolveFilterOrThrow(engine, query.Filter)
                     : null;
@@ -602,6 +602,13 @@ namespace IndxServer.Models
             }
             catch (UnknownFilterException)
             {
+                throw;
+            }
+            catch (Exception ex) when (ex is UnknownEmbeddingFieldException or ArgumentException or InvalidOperationException)
+            {
+                // Caller mistakes (unknown field, wrong vector length, a field whose index was
+                // never built because no document carried a vector). The controller turns these
+                // into 400s; logging them as server exceptions would be noise.
                 throw;
             }
             catch (Exception ex)
@@ -619,7 +626,7 @@ namespace IndxServer.Models
                 if (engine == null)
                     return [];
                 if (!engine.EmbeddingFields.TryGetValue(query.EmbeddingField, out var index))
-                    return [];
+                    throw new UnknownEmbeddingFieldException(query.EmbeddingField, engine.EmbeddingFields.Keys);
 
                 // Text search — fetch a larger pool to feed the merge
                 int poolSize = query.MaxNumberOfRecordsToReturn * 2;
@@ -651,6 +658,10 @@ namespace IndxServer.Models
             catch (UnknownFilterException)
             {
                 throw;
+            }
+            catch (Exception ex) when (ex is UnknownEmbeddingFieldException or ArgumentException or InvalidOperationException)
+            {
+                throw; // caller mistake — see the note in VectorSearch
             }
             catch (Exception ex)
             {
