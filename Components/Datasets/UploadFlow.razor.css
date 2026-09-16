@@ -16,3 +16,12 @@
 .up-error { color: var(--CSignal); margin-top: 4px; }
 .up-error--wide { margin: 4px 0 8px; max-width: 680px; }
 .up-error-text { color: var(--CSignal); }
+
+/* The Error panel's escapes sit on one row: download, replace, and delete last. They wrap on a
+   narrow window rather than pushing delete off the edge. */
+.up-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}

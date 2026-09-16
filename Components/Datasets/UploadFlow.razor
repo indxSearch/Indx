@@ -41,9 +41,12 @@
     }
 }
 
-@* ── Engine error (e.g. OutOfMemory during load/index): the engine is dead and no other
-   panel matches this state. Surface the error and give the admin the escape: delete works
-   regardless of engine state. ── *@
+@* ── Engine error (e.g. OutOfMemory during load/index): this engine is dead and no other panel
+   matches the state. The *dataset* is not dead, though, and saying so is the point of this panel:
+   Replace builds a new engine from a new file and swaps it in without ever touching this one, and
+   Export reads the stored documents straight from the database, so it works here too. Both live on
+   the Options tab, which an admin can reach in this state. Delete is the last resort, not the
+   first offer. ── *@
 @if (state == SystemState.Error)
 {
     <div class="indx-field-config-saving up-top16">
@@ -51,21 +54,34 @@
             The search engine hit an unrecoverable error@(string.IsNullOrEmpty(status?.ErrorMessage) ? "." : $": {status!.ErrorMessage}")
         </p>
         <p class="up-help up-top4">
-            This often means the server ran out of memory while loading or indexing.
-            The dataset cannot recover on its own — delete it, then retry with a
-            smaller dataset or on a larger instance.
+            This often means the server ran out of memory while loading or indexing. The engine
+            cannot recover, but the dataset can: <strong>Replace</strong> rebuilds it from a new
+            JSON file on a fresh engine, keeping this dataset's name, API keys, boost rules,
+            synonyms and keep-alive policy. If the error was memory, use a smaller file or a larger
+            instance. The stored documents are still readable, so download them first if you need
+            them.
         </p>
     </div>
-    @if (Ctx.IsAdmin)
-    {
-        <div class="up-top8">
-            <ConfirmButton Label="Delete dataset" Icon="DatasetIcons.Delete" Prompt="Delete this dataset?" ConfirmLabel="Yes, Delete" TriggerVariant="danger"
+    <div class="up-top8 up-actions">
+        @if (Ctx.TeamName is { } errorTeamName)
+        {
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Download"
+                    Href="@($"api/teams/{Uri.EscapeDataString(errorTeamName)}/datasets/{Uri.EscapeDataString(Ctx.Name)}/export")"
+                    download="@($"{Ctx.Name}.json")">Download data as JSON</Button>
+        }
+        @if (Ctx.IsEditor)
+        {
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Sliders" @onclick="GoToReplace">Replace data…</Button>
+        }
+        @if (Ctx.IsAdmin)
+        {
+            <ConfirmButton Label="Delete dataset" Icon="DatasetIcons.Delete" Prompt="Delete this dataset?" ConfirmLabel="Yes, Delete" TriggerVariant="ghost"
                            Open="@Ctx.DeleteConfirmOpen" OpenChanged="SetDeleteConfirm" OnConfirm="Ctx.DeleteAsync" />
-        </div>
-    }
-    else
+        }
+    </div>
+    @if (!Ctx.IsEditor)
     {
-        <p class="up-hint up-top8">A team admin can delete this dataset to recover.</p>
+        <p class="up-hint up-top8">An editor can replace the data to rebuild it; a team admin can delete it.</p>
     }
 }
 
@@ -188,6 +204,13 @@
     private bool _showAdvanced;
     private bool _searchableTouched;
     private FieldConfigToolbar? _toolbar;
+
+    /// <summary>Opens the Options tab, where Replace lives — reachable in the Error state.</summary>
+    private void GoToReplace()
+    {
+        Ctx.ActiveTab = "options";
+        Ctx.NotifyChanged();
+    }
 
     private void SetDeleteConfirm(bool open)
     {
