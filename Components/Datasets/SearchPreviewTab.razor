@@ -54,7 +54,7 @@
                     }
                 </div>
                 <div class="indx-perf-toolbar">
-                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Speedometer"
+                    <Button Variant="ghost" Size="micro" IconLeft="@(_perfRunning ? DatasetIcons.SpeedometerRunning : DatasetIcons.Speedometer)"
                             disabled="@_perfRunning"
                             @onclick="RunPerfTest">
                         @(_perfRunning ? "Running…" : "Run performance benchmark")

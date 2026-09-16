@@ -30,6 +30,17 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> WeightMedium = Of<Icons.WeightMedium>();
         public static readonly RenderFragment<int> WeightHigh = Of<Icons.WeightHigh>();
         public static readonly RenderFragment<int> Speedometer = Of<Icons.Speedometer>();
+
+        /// <summary>The speedometer as a running spinner — the benchmark button swaps to this
+        /// while a run is in progress, so the icon itself says "measuring".</summary>
+        public static readonly RenderFragment<int> SpeedometerRunning = size => builder =>
+        {
+            builder.OpenComponent<Indx.Systm.Blazor.Spinner>(0);
+            builder.AddAttribute(1, "Name", "speedometer");
+            builder.AddAttribute(2, "Size", size);
+            builder.AddAttribute(3, "AriaLabel", "Running benchmark");
+            builder.CloseComponent();
+        };
         public static readonly RenderFragment<int> Status = Of<Icons.Status>();
         public static readonly RenderFragment<int> Download = Of<Icons.Download>();
         public static readonly RenderFragment<int> DynamicJson = Of<Icons.DynamicJsonField>();
