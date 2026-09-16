@@ -50,7 +50,9 @@
 
     private string TabId(TabItem item) => $"{_id}-tab-{item.Value}";
 
-    private int _iconSize => Size == "large" ? 16 : Size == "micro" ? 12 : 14;
+    /// <summary>Icon width per tab size, in the pixl grid's multiples of 7 (a 7×5 icon at 14 is
+    /// 14×10). Large tabs carry the icon at pixl's own default, 21; smaller tabs step down one.</summary>
+    private int _iconSize => Size == "large" ? 21 : 14;
 
     private bool IsTabStop(TabItem item) =>
         Active == item.Value ||
