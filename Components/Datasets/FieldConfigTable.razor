@@ -29,30 +29,45 @@
             </tr>
         </thead>
         <tbody>
-            @foreach (var field in Fields.Where(f => ShowUnused || !IsUnused(f)))
+            @foreach (var row in RenderRows())
             {
-                <tr title="@(!Editable ? "Read-only — editor access is required to change field configuration" : null)">
+                var field = row.Field;
+                <tr class="@(row.IsContainer ? "indx-group-row" : null)"
+                    title="@(!Editable && !row.IsContainer ? "Read-only. Editor access is required to change field configuration." : null)">
                     <td>
-                        <div class="indx-cell-inner">
+                        <div class="indx-cell-inner" style="@(row.Depth > 0 ? $"padding-left:{row.Depth * 18}px" : null)">
                             <span>@field.FieldName</span>
-                            @if (field.FieldType != null)
-                            {
-                                @* The type badge carries the detail: hovering it shows a sample of what
-                                   the field holds and whether it is optional. A field with neither gets
-                                   a plain badge and no hover. *@
-                                <span class="indx-cell-value indx-sample-tip">@FieldTypeLabel(field.FieldType, field.IsArray)@if (DatasetIcons.ForFieldType(field.FieldType, field.IsArray) is { } typeIcon) { @typeIcon(14) }<span class="indx-field-pop">
-                                            @if (field.SampleValue is { } sample)
-                                            {
-                                                <span class="indx-field-pop-value">@sample</span>
-                                            }
-                                            @if (PopoverFlags(field) is { } flags)
-                                            {
-                                                <span class="indx-field-pop-flag">@flags</span>
-                                            }
-                                        </span></span>
-                            }
+                            @* The type badge carries the detail: hovering it shows a sample of what the
+                               field holds, or for a container the nested fields its data lives on. *@
+                            <span class="indx-cell-value indx-sample-tip @(HasNoValue(field) ? "indx-cell-value-faint" : null)">@FieldTypeLabel(field)@if (TypeIcon(field) is { } typeIcon) { @typeIcon(14) }<span class="indx-field-pop">
+                                        @if (IsContainer(field))
+                                        {
+                                            <span class="indx-field-pop-value">@NestedNames(field)</span>
+                                        }
+                                        else if (field.SampleValue is { } sample)
+                                        {
+                                            <span class="indx-field-pop-value">@sample</span>
+                                        }
+                                        else if (HasNoValue(field))
+                                        {
+                                            <span class="indx-field-pop-note">No value read for this field in the dataset. It can still be configured, so a record added later that carries it is indexed.</span>
+                                        }
+                                        @if (PopoverFlags(field) is { } flags)
+                                        {
+                                            <span class="indx-field-pop-flag">@flags</span>
+                                        }
+                                    </span></span>
                         </div>
                     </td>
+                    @if (row.IsContainer)
+                    {
+                        @* A container holds no value of its own, so every capability here would be
+                           an inert control. Ticking Searchable on it indexes nothing: the text lives
+                           on the nested fields below, and those are what can be configured. *@
+                        <td colspan="@TrailingColumnCount" class="indx-group-note">Configured on the nested fields below</td>
+                    }
+                    else
+                    {
                     <td class="indx-table-check"><Checkbox Checked="@(field.Searchable == true)" CheckedChanged="@(v => Set(() => { field.Searchable = v; SearchableTouched = true; }))" Disabled="@(!Editable)" /></td>
                     <td class="indx-table-check"><Checkbox Checked="@(field.Filterable == true)" CheckedChanged="@(v => Set(() => field.Filterable = v))" Disabled="@(!Editable)" /></td>
                     <td class="indx-table-check"><Checkbox Checked="@(field.Facetable == true)" CheckedChanged="@(v => Set(() => field.Facetable = v))" Disabled="@(!Editable)" /></td>
@@ -94,6 +109,7 @@
                                    @onchange="@(e => Set(() => field.BM25k1 = ParseFloat(e.Value?.ToString())))" />
                         </td>
                     }
+                    }
                 </tr>
             }
         </tbody>
@@ -102,6 +118,112 @@
 
 @code {
     [Parameter, EditorRequired] public FieldProxy[] Fields { get; set; } = [];
+
+    // Names that are the parent of at least one other field, e.g. "series" when "series.title"
+    // exists. Analyze flattens nested JSON onto dotted names and registers the parent itself with
+    // no type and no value, so without this a container row shows no type badge at all. Rebuilt
+    // whenever the field list changes; a set beats scanning every row against every other row.
+    private HashSet<string> _containers = new(StringComparer.Ordinal);
+    private FieldProxy[]? _containersBuiltFor;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_containersBuiltFor, Fields)) return;
+        _containersBuiltFor = Fields;
+        _containers = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var f in Fields)
+        {
+            // Add every ancestor, so "a.b.c" marks both "a.b" and "a" as containers.
+            var dot = f.FieldName.LastIndexOf('.');
+            while (dot > 0)
+            {
+                _containers.Add(f.FieldName[..dot]);
+                dot = f.FieldName.LastIndexOf('.', dot - 1);
+            }
+        }
+    }
+
+    private bool IsContainer(FieldProxy f) => _containers.Contains(f.FieldName);
+
+    /// <summary>One table row: the field, how deep its dotted name sits, and whether it is a
+    /// container rather than something configurable.</summary>
+    private sealed record FieldRow(FieldProxy Field, int Depth, bool IsContainer);
+
+    /// <summary>
+    /// The rows to render, with every nested field placed directly under its container. Analyze
+    /// returns the flattened names in its own order and puts a container wherever it first saw one,
+    /// which for gyldendal-sanity is after all its children, so the list has to be rebuilt rather
+    /// than filtered.
+    /// <para>A container is emitted only when at least one of its children is visible, so hiding
+    /// unused fields cannot leave an empty group behind. It is also synthesized when absent from
+    /// the field list: Analyze registers a parent name only if some document carried it as a
+    /// scalar or null, so most nested data has children with no parent field at all.</para>
+    /// </summary>
+    private List<FieldRow> RenderRows()
+    {
+        var byName = new Dictionary<string, FieldProxy>(StringComparer.Ordinal);
+        foreach (var f in Fields) byName[f.FieldName] = f;
+
+        var rows = new List<FieldRow>(Fields.Length);
+        var emitted = new HashSet<string>(StringComparer.Ordinal);
+
+        foreach (var f in Fields)
+        {
+            if (IsContainer(f)) continue;               // emitted above its children, not in place
+            if (!ShowUnused && IsUnused(f)) continue;
+
+            foreach (var ancestor in Ancestors(f.FieldName))
+            {
+                if (!emitted.Add(ancestor)) continue;
+                var parent = byName.TryGetValue(ancestor, out var existing)
+                    ? existing
+                    : new FieldProxy { FieldName = ancestor };
+                rows.Add(new FieldRow(parent, Depth(ancestor), true));
+            }
+
+            rows.Add(new FieldRow(f, Depth(f.FieldName), false));
+            emitted.Add(f.FieldName);
+        }
+        return rows;
+    }
+
+    /// <summary>"a.b.c" yields "a" then "a.b", outermost first, so a group opens before it nests.</summary>
+    private static IEnumerable<string> Ancestors(string name)
+    {
+        var dot = name.IndexOf('.');
+        while (dot > 0)
+        {
+            yield return name[..dot];
+            dot = name.IndexOf('.', dot + 1);
+        }
+    }
+
+    private static int Depth(string name)
+    {
+        var depth = 0;
+        foreach (var ch in name) if (ch == '.') depth++;
+        return depth;
+    }
+
+    /// <summary>Columns after the first, for the container row's spanning cell.</summary>
+    private int TrailingColumnCount => ShowAdvanced ? 11 : 5;
+
+    /// <summary>The badge icon: the type's own icon, the nested-object icon for a container, and
+    /// none when the type is genuinely unknown.</summary>
+    private RenderFragment<int>? TypeIcon(FieldProxy f) =>
+        f.FieldType != null ? DatasetIcons.ForFieldType(f.FieldType, f.IsArray)
+        : IsContainer(f) ? DatasetIcons.NestedObjectType
+        : null;
+
+    /// <summary>The nested field names under a container, with the shared prefix removed:
+    /// "series" gives "partNumber, title". This is where a container's data actually lives.</summary>
+    private string NestedNames(FieldProxy f)
+    {
+        var prefix = f.FieldName + ".";
+        return string.Join(", ", Fields
+            .Where(o => o.FieldName.StartsWith(prefix, StringComparison.Ordinal))
+            .Select(o => o.FieldName[prefix.Length..]));
+    }
     [Parameter] public bool Editable { get; set; } = true;
     /// <summary>Also list fields with no capability ticked.</summary>
     [Parameter] public bool ShowUnused { get; set; }
@@ -136,17 +258,32 @@
 
     /// <summary>The flag line under the sample, or null when the field needs neither flag.
     /// "Blank" means Analyze found no value anywhere, so there is nothing to sample; "Optional"
-    /// means it found the field missing or empty in at least one document. A field can be both.</summary>
-    private static string? PopoverFlags(FieldProxy f)
+    /// means it found the field missing or empty in at least one document. A field can be both.
+    /// <para>A container is never "Blank": holding no value of its own is what it is, not a gap
+    /// in the data, and its nested fields are listed instead.</para></summary>
+    private string? PopoverFlags(FieldProxy f)
     {
         var parts = new List<string>(2);
-        if (f.SampleValue == null) parts.Add("Blank");
+        // "Blank" means the type is known but no usable value was ever read, which is worth saying.
+        // A container has no value of its own, and a field with no value at all says so in full
+        // above, so neither needs the flag as well.
+        if (f.SampleValue == null && !IsContainer(f) && !HasNoValue(f)) parts.Add("Blank");
         if (f.Optional == true) parts.Add("Optional");
         return parts.Count == 0 ? null : string.Join(" · ", parts);
     }
 
-    private static string? FieldTypeLabel(string? type, bool? isArray) =>
-        type == null ? null : isArray == true ? $"Array ({type}s)" : type;
+    /// <summary>"String", "Array (Strings)", "Object" for a field whose value is the nested fields
+    /// under it, and "No value" for one that never carried a value in any analyzed document, which
+    /// is why Analyze could not learn a type for it.</summary>
+    private string FieldTypeLabel(FieldProxy f) =>
+        f.FieldType == null
+            ? (IsContainer(f) ? "Object" : "No value")
+            : f.IsArray == true ? $"Array ({f.FieldType}s)" : f.FieldType;
+
+    /// <summary>True when Analyze never saw a value for this field, so it has no type. Such a
+    /// field is still configurable on purpose: ticking Searchable prepares it, and a record
+    /// inserted later that does carry the field is indexed and found.</summary>
+    private bool HasNoValue(FieldProxy f) => f.FieldType == null && !IsContainer(f);
 
     // The simple-mode weight slider (0.5-3.0, step 0.25) only renders values it can show
     // truthfully; anything off-grid or out of range (advanced mode, imported configs, the

@@ -5,12 +5,6 @@
 @media (max-width: 1440px) {
     .indx-table-wrap {
         overflow-x: auto;
-        /* Room for the hover panel on the last rows. The wrap's height is auto, so in-flow content
-           can never overflow it vertically, but an absolutely positioned panel can, and because
-           overflow-x is auto here the computed overflow-y is auto too. Without this the panel put a
-           vertical scrollbar on the table. The panel is vertically centred and height-capped, so
-           the most it can reach past a row is half its height. */
-        padding-bottom: 56px;
     }
 
     .indx-table thead {
@@ -79,6 +73,18 @@
     text-align: center;
 }
 
+/* A container row opens a group: its nested fields follow, indented. It carries no controls,
+   because it holds no value of its own and every capability on it would be inert. It is styled
+   like every other row on purpose; the indent under it is what shows the grouping, and a tinted
+   header band would read as a section of the table rather than as a field. The class stays as a
+   hook for tests and for anything that needs to find these rows. */
+
+.indx-group-note {
+    font: var(--text-xs);
+    font-weight: var(--book);
+    color: var(--lv4);
+}
+
 /* Column header tooltips */
 .indx-th-tip {
     position: relative;
@@ -111,16 +117,14 @@
 }
 
 /* Hover panel on the type badge, showing a sample of the field's content and its flags.
-   Three constraints shape it, all from sitting in a table body cell rather than in the header:
+   Two constraints shape it, both from sitting in a table body cell rather than in the header:
 
-   1. It opens to the right and vertically centred. Centred halves how far it can reach past a
-      row, which is what keeps the wrap's padding-bottom small.
-   2. It is display:none when hidden, never opacity:0. An opacity:0 box is still laid out and
+   1. It is display:none when hidden, never opacity:0. An opacity:0 box is still laid out and
       still counts toward the scroll container's overflow, which put a scrollbar on the table
       permanently without anyone hovering. That rules out a fade, and a fade is not worth a
       scrollbar.
-   3. Its height is capped (see the value rule below) so the padding that absorbs the overhang is
-      a known number rather than a guess. */
+   2. It opens to the right, centred on its row, except on the last rows where it opens upward.
+      See the nth-last-child rule below for why. */
 .indx-sample-tip {
     position: relative;
     cursor: help;
@@ -157,9 +161,20 @@
     display: flex;
 }
 
-/* Capped at three lines so the panel has a known maximum height. That is what makes the wrap's
-   padding-bottom above a fixed number rather than a guess: a 160-character sample would otherwise
-   run to five or six lines and reach further past the last row than the padding allows. */
+/* The last rows open the panel upward instead of centring it. Below 1440px the wrap sets
+   overflow-x:auto, which makes the computed overflow-y auto as well, so anything reaching past the
+   final row adds scroll height and shows a scrollbar. Overflow above a scroll container's origin
+   is not scrollable, so growing upward costs nothing, and the panel lands over the rows above
+   rather than below the table. This replaces padding on the wrap, which worked but left a gap
+   under the table whether or not anyone hovered. */
+.indx-table tbody tr:nth-last-child(-n + 2) .indx-field-pop {
+    top: auto;
+    bottom: -6px;
+    transform: none;
+}
+
+/* Capped at three lines to keep the panel a readable size. A 160-character sample would otherwise
+   run to five or six lines, which reads as a wall rather than as a sample. */
 .indx-field-pop-value {
     font: var(--text-sm);
     font-weight: var(--book);
@@ -168,6 +183,15 @@
     line-clamp: 3;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+
+/* The same muted role as .indx-group-note, but a tone that works on this panel: the note sits on
+   the table background where lv4 reads as secondary, while the panel's ground is lv5, and lv4 on
+   lv5 is almost the same tone. lv3 is the equivalent step down from the panel's own text colour. */
+.indx-field-pop-note {
+    font: var(--text-xs);
+    font-weight: var(--book);
+    color: var(--lv3);
 }
 
 .indx-field-pop-flag {
@@ -191,4 +215,11 @@
     font-weight: var(--book);
     color: var(--lv5);
     white-space: nowrap;
+}
+
+/* A field Analyze found no value for reads a step fainter than a detected type, the same tone as
+   .indx-group-note. Both say the row is real but there is nothing behind it to configure against
+   yet. lv4 is the fainter of the two in both themes, since the scale inverts. */
+.indx-cell-value-faint {
+    color: var(--lv4);
 }

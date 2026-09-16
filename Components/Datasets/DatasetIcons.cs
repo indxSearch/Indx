@@ -58,6 +58,7 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> NumberType = Of<Icons.NumberType>("var(--lv7)");
         public static readonly RenderFragment<int> BoolType = Of<Icons.BoolType>("var(--lv7)");
         public static readonly RenderFragment<int> ArrayType = Of<Icons.ArrayType>("var(--lv7)");
+        public static readonly RenderFragment<int> NestedObjectType = Of<Icons.NestedObject>("var(--lv7)");
 
         public static RenderFragment<int>? ForFieldType(string? type, bool? isArray) =>
             isArray == true ? ArrayType : type switch
