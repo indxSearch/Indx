@@ -45,6 +45,15 @@
     margin-bottom: -1px;
     cursor: pointer;
     white-space: nowrap;
+    gap: 6px;
+}
+
+/* The icon is the label's companion, not a second element: same colour, same baseline, and it
+   takes no part in the tab's height. */
+.indx-tab-icon {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
 }
 
 .indx-tab-micro {

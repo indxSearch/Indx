@@ -18,6 +18,10 @@
                 tabindex="@(IsTabStop(item) ? "0" : "-1")"
                 @onclick="() => OnClick(item.Value)"
                 @onkeydown="(args) => OnKeyDown(item, args)">
+            @if (item.Icon != null)
+            {
+                <span class="indx-tab-icon" aria-hidden="true">@item.Icon(_iconSize)</span>
+            }
             @item.Label
         </button>
     }
@@ -45,6 +49,8 @@
     private string _id => Id ?? _generatedId;
 
     private string TabId(TabItem item) => $"{_id}-tab-{item.Value}";
+
+    private int _iconSize => Size == "large" ? 16 : Size == "micro" ? 12 : 14;
 
     private bool IsTabStop(TabItem item) =>
         Active == item.Value ||
@@ -124,5 +130,10 @@
         }
     }
 
-    public record TabItem(string Label, string Value);
+    /// <summary>
+    /// A tab. <paramref name="Icon"/> is optional and takes the size the tab wants, matching how
+    /// Button and Chip take their icons; it inherits the tab's colour through currentColor, so a
+    /// selected tab's icon follows its label.
+    /// </summary>
+    public record TabItem(string Label, string Value, RenderFragment<int>? Icon = null);
 }
