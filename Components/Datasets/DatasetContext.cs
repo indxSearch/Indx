@@ -163,6 +163,7 @@ namespace IndxServer.Components.Datasets
             FieldName = f.FieldName,
             FieldType = f.FieldType,
             IsArray = f.IsArray,
+            SampleValue = f.SampleValue,
             Searchable = f.Searchable ?? false,
             Filterable = f.Filterable ?? false,
             Facetable = f.Facetable ?? false,

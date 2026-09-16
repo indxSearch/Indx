@@ -104,6 +104,50 @@
     opacity: 1;
 }
 
+/* Sample-value tooltip on the type badge. Two differences from the column-header tips above, both
+   forced by where it sits — in a table body cell rather than in the header:
+
+   1. It opens to the RIGHT, vertically centred, not downward. Under 1440px .indx-table-wrap sets
+      overflow-x:auto, which makes the computed overflow-y 'auto' too, so anything extending past
+      the last row adds scroll height. Opening sideways keeps it inside the table's own width.
+   2. It is display:none when hidden, not opacity:0. An opacity:0 pseudo-element is still laid out
+      and still counts toward that scroll container's overflow — which put a scrollbar on the table
+      permanently, without anyone hovering. That rules out a fade; a tooltip is not worth a
+      scrollbar. */
+.indx-sample-tip {
+    position: relative;
+    cursor: help;
+}
+
+.indx-sample-tip::after {
+    content: attr(data-tooltip);
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: calc(100% + 8px);
+    transform: translateY(-50%);
+    /* lv5 rather than the lv7 the column-header tips use: this one carries sampled data and is on
+       screen while reading a table, so it should sit back. No border — the tone separates it from
+       the row, in keeping with the design's no-elevation rule. lv1 on lv5 clears AA in both themes
+       (the scale inverts, so this stays an inverted chip either way). */
+    background: var(--lv5);
+    color: var(--lv1);
+    font: var(--text-xs);
+    font-weight: var(--book);
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    white-space: normal;
+    overflow-wrap: anywhere;
+    width: 260px;
+    z-index: 100;
+    pointer-events: none;
+    line-height: 1.4;
+}
+
+.indx-sample-tip:hover::after {
+    display: block;
+}
+
 .indx-cell-inner {
     display: flex;
     align-items: center;

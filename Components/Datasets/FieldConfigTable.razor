@@ -37,7 +37,11 @@
                             <span>@field.FieldName</span>
                             @if (field.FieldType != null)
                             {
-                                <span class="indx-cell-value">@FieldTypeLabel(field.FieldType, field.IsArray)@if (DatasetIcons.ForFieldType(field.FieldType, field.IsArray) is { } typeIcon) { @typeIcon(14) }</span>
+                                @* The type badge carries the sample: hovering it shows what this field
+                                   actually holds, taken from the first document Analyze saw it in.
+                                   Fields with no sample (absent or null there) keep a plain badge. *@
+                                <span class="indx-cell-value @(field.SampleValue == null ? null : "indx-sample-tip")"
+                                      data-tooltip="@field.SampleValue">@FieldTypeLabel(field.FieldType, field.IsArray)@if (DatasetIcons.ForFieldType(field.FieldType, field.IsArray) is { } typeIcon) { @typeIcon(14) }</span>
                             }
                         </div>
                     </td>
