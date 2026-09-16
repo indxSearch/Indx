@@ -5,6 +5,12 @@
 @media (max-width: 1440px) {
     .indx-table-wrap {
         overflow-x: auto;
+        /* Room for the hover panel on the last rows. The wrap's height is auto, so in-flow content
+           can never overflow it vertically, but an absolutely positioned panel can, and because
+           overflow-x is auto here the computed overflow-y is auto too. Without this the panel put a
+           vertical scrollbar on the table. The panel is vertically centred and height-capped, so
+           the most it can reach past a row is half its height. */
+        padding-bottom: 56px;
     }
 
     .indx-table thead {
@@ -104,48 +110,70 @@
     opacity: 1;
 }
 
-/* Sample-value tooltip on the type badge. Two differences from the column-header tips above, both
-   forced by where it sits — in a table body cell rather than in the header:
+/* Hover panel on the type badge, showing a sample of the field's content and its flags.
+   Three constraints shape it, all from sitting in a table body cell rather than in the header:
 
-   1. It opens to the RIGHT, vertically centred, not downward. Under 1440px .indx-table-wrap sets
-      overflow-x:auto, which makes the computed overflow-y 'auto' too, so anything extending past
-      the last row adds scroll height. Opening sideways keeps it inside the table's own width.
-   2. It is display:none when hidden, not opacity:0. An opacity:0 pseudo-element is still laid out
-      and still counts toward that scroll container's overflow — which put a scrollbar on the table
-      permanently, without anyone hovering. That rules out a fade; a tooltip is not worth a
-      scrollbar. */
+   1. It opens to the right and vertically centred. Centred halves how far it can reach past a
+      row, which is what keeps the wrap's padding-bottom small.
+   2. It is display:none when hidden, never opacity:0. An opacity:0 box is still laid out and
+      still counts toward the scroll container's overflow, which put a scrollbar on the table
+      permanently without anyone hovering. That rules out a fade, and a fade is not worth a
+      scrollbar.
+   3. Its height is capped (see the value rule below) so the padding that absorbs the overhang is
+      a known number rather than a guess. */
 .indx-sample-tip {
     position: relative;
     cursor: help;
 }
 
-.indx-sample-tip::after {
-    content: attr(data-tooltip);
+/* A real element rather than a ::after: the panel holds a value and a flag line, and a single
+   attr() string cannot carry both. */
+.indx-field-pop {
     display: none;
     position: absolute;
     top: 50%;
     left: calc(100% + 8px);
     transform: translateY(-50%);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
     /* lv5 rather than the lv7 the column-header tips use: this one carries sampled data and is on
-       screen while reading a table, so it should sit back. No border — the tone separates it from
-       the row, in keeping with the design's no-elevation rule. lv1 on lv5 clears AA in both themes
-       (the scale inverts, so this stays an inverted chip either way). */
+       screen while reading a table, so it should sit back. No border, the tone separates it from
+       the row, in keeping with the design's no-elevation rule. lv1 on lv5 clears AA in both
+       themes (the scale inverts, so this stays an inverted chip either way). */
     background: var(--lv5);
     color: var(--lv1);
-    font: var(--text-xs);
-    font-weight: var(--book);
-    padding: 6px 10px;
+    padding: 7px 10px;
     border-radius: var(--radius);
+    text-align: left;
     white-space: normal;
     overflow-wrap: anywhere;
-    width: 260px;
+    width: 280px;
     z-index: 100;
     pointer-events: none;
-    line-height: 1.4;
 }
 
-.indx-sample-tip:hover::after {
-    display: block;
+.indx-sample-tip:hover .indx-field-pop {
+    display: flex;
+}
+
+/* Capped at three lines so the panel has a known maximum height. That is what makes the wrap's
+   padding-bottom above a fixed number rather than a guess: a 160-character sample would otherwise
+   run to five or six lines and reach further past the last row than the padding allows. */
+.indx-field-pop-value {
+    font: var(--text-sm);
+    font-weight: var(--book);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.indx-field-pop-flag {
+    font: var(--text-xs);
+    font-weight: var(--med);
+    color: var(--lv3);
 }
 
 .indx-cell-inner {

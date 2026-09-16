@@ -37,11 +37,19 @@
                             <span>@field.FieldName</span>
                             @if (field.FieldType != null)
                             {
-                                @* The type badge carries the sample: hovering it shows what this field
-                                   actually holds, taken from the first document Analyze saw it in.
-                                   Fields with no sample (absent or null there) keep a plain badge. *@
-                                <span class="indx-cell-value @(field.SampleValue == null ? null : "indx-sample-tip")"
-                                      data-tooltip="@field.SampleValue">@FieldTypeLabel(field.FieldType, field.IsArray)@if (DatasetIcons.ForFieldType(field.FieldType, field.IsArray) is { } typeIcon) { @typeIcon(14) }</span>
+                                @* The type badge carries the detail: hovering it shows a sample of what
+                                   the field holds and whether it is optional. A field with neither gets
+                                   a plain badge and no hover. *@
+                                <span class="indx-cell-value indx-sample-tip">@FieldTypeLabel(field.FieldType, field.IsArray)@if (DatasetIcons.ForFieldType(field.FieldType, field.IsArray) is { } typeIcon) { @typeIcon(14) }<span class="indx-field-pop">
+                                            @if (field.SampleValue is { } sample)
+                                            {
+                                                <span class="indx-field-pop-value">@sample</span>
+                                            }
+                                            @if (PopoverFlags(field) is { } flags)
+                                            {
+                                                <span class="indx-field-pop-flag">@flags</span>
+                                            }
+                                        </span></span>
                             }
                         </div>
                     </td>
@@ -124,6 +132,17 @@
     {
         if (string.IsNullOrWhiteSpace(s)) return null;
         return float.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var f) ? f : null;
+    }
+
+    /// <summary>The flag line under the sample, or null when the field needs neither flag.
+    /// "Blank" means Analyze found no value anywhere, so there is nothing to sample; "Optional"
+    /// means it found the field missing or empty in at least one document. A field can be both.</summary>
+    private static string? PopoverFlags(FieldProxy f)
+    {
+        var parts = new List<string>(2);
+        if (f.SampleValue == null) parts.Add("Blank");
+        if (f.Optional == true) parts.Add("Optional");
+        return parts.Count == 0 ? null : string.Join(" · ", parts);
     }
 
     private static string? FieldTypeLabel(string? type, bool? isArray) =>
