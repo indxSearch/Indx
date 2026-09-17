@@ -126,13 +126,17 @@ The server exposes a [Model Context Protocol](https://modelcontextprotocol.io) e
 - **Querying**: `list_datasets`, `describe_dataset`, `search`, `get_document`, `get_synonyms`
 - **Setting up**: `get_status` (state, document count, scoring mode, errors, and what to do next),
   `get_field_configuration` (every field including the ones switched off, with weights, BM25
-  parameters and a sample of the real content)
+  parameters and a sample of the real content), and `set_field_configuration` (apply capability
+  flags, weights and BM25 parameters; rebuilds on a shadow engine so live searches keep working)
 
 Paired with the [Indx agent skill](https://github.com/indxSearch/skill-indx-search), an agent can read the documentation and inspect your live instance at the same time, which is most of what setting up a dataset takes.
 
 - **Same keys and permissions** as the rest of the API. A Search only key lets the agent list,
-  search and fetch documents; `describe_dataset` and `get_synonyms` need Read only
-- **Read-only by design**: agents can search, not mutate
+  search and fetch documents; `describe_dataset`, `get_synonyms`, `get_status` and
+  `get_field_configuration` need Read; `set_field_configuration` needs Full
+- **Read-only except field configuration.** Everything an agent can change is configuration, and
+  only with a Full key. There is no tool that inserts, updates or deletes a document, and none
+  that drops a dataset
 - **Switched off instance-wide** by an admin under Instance Settings, with no restart
 
 ## API Access

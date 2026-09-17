@@ -314,6 +314,91 @@ namespace IndxServer.Mcp
             };
         }
 
+        // ── Configuration (write) ─────────────────────────────────────────────
+        // The only tool here that mutates. It needs a Full key, and it changes what the /mcp
+        // endpoint promises, so the read-only claim in the README is now "read-only except this".
+
+        [McpServerTool(Name = "set_field_configuration", UseStructuredContent = false,
+                       ReadOnly = false, Destructive = false, Idempotent = true)]
+        [System.ComponentModel.Description("Configure a dataset's fields: which are searchable, filterable, facetable or sortable, " +
+                     "and their relevance weight and BM25 parameters. Requires a Full API key. Only the properties you set are " +
+                     "changed; anything omitted is left alone. Call get_field_configuration first to see the current state and " +
+                     "what the fields actually contain. If a change requires rebuilding the index this returns immediately and " +
+                     "the rebuild runs in the background, so poll get_status until the state is Ready.")]
+        public async Task<JsonObject> SetFieldConfigurationTool(
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset,
+            [System.ComponentModel.Description("The fields to change. Each needs 'field' (the name); every other property is optional " +
+                         "and omitting it leaves that setting untouched. Weight is a float (1.0 is neutral, higher means more " +
+                         "relevant); bm25b must be within [0, 1] and bm25k1 must not be negative, or the whole call is refused.")]
+            McpFieldSetting[] fields)
+        {
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Full);
+            if (fields is not { Length: > 0 })
+                throw new McpToolException("No fields given. Pass at least one field to change.");
+
+            var engine = IndxServerInternalApi.Manager.FindSearchEngine(dataset, ownerKey)
+                ?? throw new McpToolException($"Dataset '{dataset}' not found.");
+            var df = engine.DocumentFields
+                ?? throw new McpToolException("The dataset has not been analyzed yet, so there are no fields to configure.");
+
+            // Name-check the whole batch before applying any of it. The engine validates values the
+            // same way, so a rejected call leaves the configuration exactly as it was.
+            var unknown = fields.Where(f => df.GetField(f.Field) == null).Select(f => f.Field).ToArray();
+            if (unknown.Length > 0)
+                throw new McpToolException(
+                    $"Unknown field(s): {string.Join(", ", unknown)}. Call get_field_configuration for the field names this dataset has.");
+
+            var proxies = fields.Select(f => f.ToProxy()).ToArray();
+            bool needsReindex = df.RequiresReindex(proxies);
+
+            try
+            {
+                if (needsReindex && engine.Status.SystemState == SystemState.Ready)
+                {
+                    // Rebuild on a shadow engine so live searches keep being served, exactly as the
+                    // console and the HTTP route do.
+                    IndxServerInternalApi.Manager.RunFieldConfigurationOnShadow(dataset, ownerKey, proxies);
+                    return new JsonObject
+                    {
+                        ["applied"] = true,
+                        ["reindexing"] = true,
+                        ["changedFields"] = new JsonArray(fields.Select(f => (JsonNode?)f.Field).ToArray()),
+                        ["nextStep"] = "The index is rebuilding in the background on a shadow engine; searches keep working on the " +
+                                       "old one until it swaps in. Poll get_status until state is Ready.",
+                    };
+                }
+
+                var failed = engine.SetFieldConfiguration(proxies);
+                if (failed != null)
+                    throw new McpToolException($"Field '{failed}' does not exist in this dataset.");
+            }
+            catch (ShadowBusyException ex)
+            {
+                throw new McpToolException($"A rebuild is already running for this dataset: {ex.Message}");
+            }
+            // A value the engine refuses: a negative weight, a BM25b outside [0, 1], a negative
+            // BM25k1. The caller's mistake, so report the reason rather than failing opaquely.
+            catch (ArgumentException ex)
+            {
+                throw new McpToolException(ex.Message);
+            }
+            catch (InvalidOperationException ex)
+            {
+                throw new McpToolException(ex.Message);
+            }
+
+            return new JsonObject
+            {
+                ["applied"] = true,
+                ["reindexing"] = false,
+                ["changedFields"] = new JsonArray(fields.Select(f => (JsonNode?)f.Field).ToArray()),
+                ["nextStep"] = engine.Status.SystemState == SystemState.Ready
+                    ? "Applied. No rebuild was needed, so the change is live now."
+                    : "Applied. The dataset still needs load and index before it can be searched; poll get_status.",
+            };
+        }
+
         // ── Helpers ───────────────────────────────────────────────────────────
 
         private string RequireUserId() =>

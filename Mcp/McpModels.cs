@@ -88,4 +88,49 @@ namespace IndxServer.Mcp
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Note { get; set; }
     }
+
+    /// <summary>
+    /// One field's requested settings for <c>set_field_configuration</c>. Every property but
+    /// <see cref="Field"/> is nullable and means "leave this alone" when omitted, which is the
+    /// same replace-semantics the HTTP route uses: passing <c>false</c> switches something off,
+    /// passing nothing does not.
+    /// </summary>
+    public sealed class McpFieldSetting
+    {
+        /// <summary>The field name, exactly as get_field_configuration reports it.</summary>
+        public string Field { get; set; } = string.Empty;
+
+        /// <summary>Include this field's text when matching a query.</summary>
+        public bool? Searchable { get; set; }
+
+        /// <summary>Allow filters on this field.</summary>
+        public bool? Filterable { get; set; }
+
+        /// <summary>Allow facet counts on this field.</summary>
+        public bool? Facetable { get; set; }
+
+        /// <summary>Allow sorting by this field.</summary>
+        public bool? Sortable { get; set; }
+
+        /// <summary>Relevance weight. 1.0 is neutral; higher means matches here count for more.</summary>
+        public float? Weight { get; set; }
+
+        /// <summary>BM25 length normalisation, within [0, 1].</summary>
+        public float? BM25b { get; set; }
+
+        /// <summary>BM25 term saturation, not negative.</summary>
+        public float? BM25k1 { get; set; }
+
+        internal Indx.Api.FieldProxy ToProxy() => new()
+        {
+            FieldName = Field,
+            Searchable = Searchable,
+            Filterable = Filterable,
+            Facetable = Facetable,
+            Sortable = Sortable,
+            Weight = Weight,
+            BM25b = BM25b,
+            BM25k1 = BM25k1,
+        };
+    }
 }
