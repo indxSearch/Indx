@@ -160,6 +160,22 @@ else
                 return new Row(name, state.ToString()!, "var(--CWarning)", "#080809", DatasetIcons.ForState(state.Value), null);
             if (state == SystemState.Error)
                 return new Row(name, "Error", "var(--CSignal)", "var(--lv0)", DatasetIcons.ForState(SystemState.Error), null);
+            // Only SystemState.Hibernated is hibernated. Created (0) is a live engine that has not
+            // loaded yet, which is what every dataset looks like while WarmUpPersistedDatasets works
+            // through the list after a restart; labelling that "Hibernated" told the reader the
+            // opposite of what was happening, since nothing was going to wake it on demand because
+            // it was already being woken.
+            if (state == SystemState.Hibernated)
+                return new Row(name, "Hibernated", "var(--CLightBlue)", "#080809", DatasetIcons.Hibernate, ka.RecordCount);
+            if (state == SystemState.Created && ka.RecordCount > 0)
+                // Created with data on disk means the engine shell is registered but not loaded.
+                // Which of the two reasons decides the label: a keep-alive of 0 is "the client
+                // loads this itself", so nothing is coming and it stays here; anything else means
+                // startup warm-up has not reached it yet and it is on its way up.
+                return ka.KeepAliveTimeHrs == 0
+                    ? new Row(name, "Not loaded", "var(--lv3)", "var(--lv5)", DatasetIcons.Hibernate, ka.RecordCount)
+                    : new Row(name, "Waking", "var(--CWarning)", "#080809", DatasetIcons.ForState(SystemState.Loading), ka.RecordCount);
+            // No live instance at all, but data on disk: asleep until something asks for it.
             if (ka.RecordCount > 0)
                 return new Row(name, "Hibernated", "var(--CLightBlue)", "#080809", DatasetIcons.Hibernate, ka.RecordCount);
             return new Row(name, "Empty", "var(--lv3)", "var(--lv5)", DatasetIcons.ForState(SystemState.Created), null);
