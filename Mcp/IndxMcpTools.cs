@@ -30,7 +30,9 @@ namespace IndxServer.Mcp
         // ── Tools ─────────────────────────────────────────────────────────────
 
         [McpServerTool(Name = "list_datasets", UseStructuredContent = false, ReadOnly = true)]
-        [System.ComponentModel.Description("List the search datasets the caller can access, with team, role, document count and state.")]
+        [System.ComponentModel.Description("START HERE. Lists the datasets this API key can reach, each with its team name, document count and state. " +
+                     "Every other tool needs the team and dataset pair from this list. A dataset whose state is not Ready " +
+                     "cannot be searched yet.")]
         public async Task<McpDatasetSummary[]> ListDatasets()
         {
             var userId = RequireUserId();
@@ -58,9 +60,12 @@ namespace IndxServer.Mcp
         }
 
         [McpServerTool(Name = "describe_dataset", UseStructuredContent = false, ReadOnly = true)]
-        [System.ComponentModel.Description("Describe a dataset's queryable surface: configured fields (with capabilities), value hints " +
-                     "(distinct values for facetable fields, numeric ranges), an owner description, and a sample document. " +
-                     "Call this before search to know which fields you can search/filter/sort on and what values are valid.")]
+        [System.ComponentModel.Description("CALL THIS BEFORE SEARCHING. Reports the fields you can search, filter, facet and sort on, the real values " +
+                     "those fields hold (distinct values for facetable fields, min and max for numeric ones), an owner-written " +
+                     "description, and one sample document. Use it so you filter with values that exist instead of guessing: " +
+                     "a filter naming a field that is not filterable, or a value that never occurs, returns nothing. " +
+                     "Fields the owner has not made searchable, filterable, facetable or sortable are not listed, " +
+                     "because they cannot be used in a query.")]
         public async Task<McpDatasetSchema> DescribeDataset(
             [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
             [System.ComponentModel.Description("Dataset name.")] string dataset)
@@ -124,7 +129,8 @@ namespace IndxServer.Mcp
         }
 
         [McpServerTool(Name = "search", UseStructuredContent = false, ReadOnly = true)]
-        [System.ComponentModel.Description("Search a dataset and return ranked documents with relevance scores. Matching is precise by " +
+        [System.ComponentModel.Description("Search a dataset and return ranked documents with relevance scores. Call describe_dataset first so you " +
+                     "know the field names and the values that exist. An empty result is meaningful here: matching is precise by " +
                      "default (near-exact only, incl. typo tolerance) — an empty result means nothing matches well, " +
                      "which is a trustworthy 'not found' (don't retry with looser wording unless you set broaden=true). " +
                      "Saved boost rules are applied. Use filters for structured constraints on filterable fields " +
@@ -132,12 +138,17 @@ namespace IndxServer.Mcp
         public async Task<McpSearchResult> Search(
             [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
             [System.ComponentModel.Description("Dataset name.")] string dataset,
-            [System.ComponentModel.Description("Free-text query. Matches searchable fields.")] string query,
-            [System.ComponentModel.Description("Structured constraints (AND-combined). Each: {field, value} for exact match, or {field, min, max} for a numeric range. Fields must be filterable.")] McpFilter[]? filters = null,
-            [System.ComponentModel.Description("Max documents to return (default 10).")] int limit = DefaultLimit,
+            [System.ComponentModel.Description("What to search for, in the user's own words. Matched against every searchable field; do not add field names, " +
+                         "operators or quotes, and do not stem or normalise the words yourself.")] string query,
+            [System.ComponentModel.Description("Constraints combined with AND. Each is {field, value} for an exact match or {field, min, max} for a numeric range. " +
+                         "The field must be one describe_dataset lists as filterable, and the value should be one it reports; " +
+                         "an unknown field is an error and an unseen value simply matches nothing.")] McpFilter[]? filters = null,
+            [System.ComponentModel.Description("How many documents to return. Default 10, maximum 100. Ask for what you will actually read.")] int limit = DefaultLimit,
             [System.ComponentModel.Description("If set, return only these top-level fields from each document.")] string[]? fields = null,
-            [System.ComponentModel.Description("Set true to include broad fuzzy/pattern matches (lower precision). Default false = near-exact only.")] bool broaden = false,
-            [System.ComponentModel.Description("Set true to also return facet counts (for facetable fields) to refine the next query.")] bool facets = false)
+            [System.ComponentModel.Description("Set true to include looser character-pattern matches. Default false, which is near-exact. Worth one retry when a " +
+                         "query you expected to match returns nothing; it trades precision for recall, so prefer the default.")] bool broaden = false,
+            [System.ComponentModel.Description("Set true to also return counts per value for facetable fields. Use them to offer the user a way to narrow the " +
+                         "search, or to pick the filter for your next call.")] bool facets = false)
         {
             var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Search);
             var engine = ResolveEngine(dataset, ownerKey);
@@ -163,7 +174,8 @@ namespace IndxServer.Mcp
                 {
                     var built = FilterConditionBuilder.Build(engine, c.Field, c.Value, c.Min, c.Max);
                     if (built == null)
-                        throw new McpToolException($"Filter field '{c.Field}' is not filterable, or the condition is empty.");
+                        throw new McpToolException($"Filter field '{c.Field}' is not filterable, or the condition is empty. " +
+                            "Call describe_dataset for the fields that can be filtered and the values they hold.");
                     combined = combined == null ? built : combined & built;
                 }
                 if (combined != null)
@@ -175,11 +187,12 @@ namespace IndxServer.Mcp
         }
 
         [McpServerTool(Name = "get_document", UseStructuredContent = false, ReadOnly = true)]
-        [System.ComponentModel.Description("Fetch the full JSON document for a specific document key in a dataset.")]
+        [System.ComponentModel.Description("Fetch one document in full, by the key a search hit reported. Use it when a search result is truncated or omits " +
+                     "fields you need; it does not search, so the key has to come from search first.")]
         public async Task<JsonNode?> GetDocument(
             [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
             [System.ComponentModel.Description("Dataset name.")] string dataset,
-            [System.ComponentModel.Description("Document key (from a search hit).")] long key)
+            [System.ComponentModel.Description("The document key, taken from a search hit. Keys are not guessable: search first.")] long key)
         {
             var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Search);
             var engine = ResolveEngine(dataset, ownerKey);
@@ -198,7 +211,8 @@ namespace IndxServer.Mcp
         {
             var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Read);
             if (IndxServerInternalApi.Manager.ResolveEngine(dataset, ownerKey) == null)
-                throw new McpToolException($"Dataset '{dataset}' not found.");
+                throw new McpToolException($"Dataset '{dataset}' not found, or this API key cannot reach it. " +
+                    "Call list_datasets for the datasets available to this key.");
             var list = IndxServerInternalApi.Manager.GetSynonyms(dataset, ownerKey);
             // A bare null serialises to no content at all on the MCP wire, which agents read as an
             // empty (failed) response. Return an explicit, parseable "no list" object instead.
@@ -223,7 +237,8 @@ namespace IndxServer.Mcp
         {
             var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Read);
             var status = IndxServerInternalApi.Manager.GetState(dataset, ownerKey)
-                ?? throw new McpToolException($"Dataset '{dataset}' not found.");
+                ?? throw new McpToolException($"Dataset '{dataset}' not found, or this API key cannot reach it. " +
+                    "Call list_datasets for the datasets available to this key.");
 
             var o = new JsonObject
             {
@@ -274,7 +289,8 @@ namespace IndxServer.Mcp
         {
             var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Read);
             var engine = IndxServerInternalApi.Manager.ResolveEngine(dataset, ownerKey)
-                ?? throw new McpToolException($"Dataset '{dataset}' not found.");
+                ?? throw new McpToolException($"Dataset '{dataset}' not found, or this API key cannot reach it. " +
+                    "Call list_datasets for the datasets available to this key.");
             var cfg = engine.GetFieldConfiguration();
 
             var fields = new JsonArray();
@@ -338,7 +354,8 @@ namespace IndxServer.Mcp
                 throw new McpToolException("No fields given. Pass at least one field to change.");
 
             var engine = IndxServerInternalApi.Manager.FindSearchEngine(dataset, ownerKey)
-                ?? throw new McpToolException($"Dataset '{dataset}' not found.");
+                ?? throw new McpToolException($"Dataset '{dataset}' not found, or this API key cannot reach it. " +
+                    "Call list_datasets for the datasets available to this key.");
             var df = engine.DocumentFields
                 ?? throw new McpToolException("The dataset has not been analyzed yet, so there are no fields to configure.");
 
@@ -420,11 +437,14 @@ namespace IndxServer.Mcp
                 .FirstOrDefault(t => string.Equals(t.Team.Name, team, StringComparison.OrdinalIgnoreCase));
             var scope = Scope();
             if (match.Team == null || (scope != null && !scope.AllowsTeam(match.Team.Id)))
-                throw new McpToolException($"Team '{team}' not found or not accessible.");
+                throw new McpToolException($"Team '{team}' not found, or this API key cannot reach it. " +
+                    "Call list_datasets for the team and dataset names this key can use.");
             if (scope != null && !scope.AllowsDataset(dataset))
-                throw new McpToolException($"Dataset '{dataset}' not found.");
+                throw new McpToolException($"Dataset '{dataset}' not found, or this API key cannot reach it. " +
+                    "Call list_datasets for the datasets available to this key.");
             if (scope != null && !scope.AllowsLevel(required))
-                throw new McpToolException($"This API key is limited to {ApiKeyScope.Describe(scope.Level)}; this tool needs at least {ApiKeyScope.Describe(required)}.");
+                throw new McpToolException($"This API key is limited to {ApiKeyScope.Describe(scope.Level)}; this tool needs at least " +
+                    $"{ApiKeyScope.Describe(required)}. Ask whoever issued the key, or use the tools the key does reach.");
             return match.Team.Id.ToString();
         }
 
@@ -432,9 +452,11 @@ namespace IndxServer.Mcp
         {
             var engine = IndxServerInternalApi.Manager.ResolveEngine(dataset, ownerKey); // auto-wakes if hibernated
             if (engine == null)
-                throw new McpToolException($"Dataset '{dataset}' not found.");
+                throw new McpToolException($"Dataset '{dataset}' not found, or this API key cannot reach it. " +
+                    "Call list_datasets for the datasets available to this key.");
             if (engine.Status.SystemState != SystemState.Ready)
-                throw new McpToolException($"Dataset '{dataset}' is not ready (state: {engine.Status.SystemState}).");
+                throw new McpToolException($"Dataset '{dataset}' is not ready (state: {engine.Status.SystemState}), so it cannot " +
+                    "be searched yet. list_datasets shows which datasets are Ready.");
             return engine;
         }
 
