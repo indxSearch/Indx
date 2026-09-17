@@ -49,6 +49,7 @@
         Header.Set(this, b =>
         {
             b.OpenComponent<ConsoleBreadcrumb>(0);
+            b.SetKey("dataset:" + TeamName + "/" + Dataset); // see TeamView.SetHeader for why
             b.AddAttribute(1, "TeamName", TeamName);
             b.AddAttribute(2, "Dataset", Dataset);
             b.AddAttribute(3, "Siblings", (IReadOnlyList<string>)_siblings);

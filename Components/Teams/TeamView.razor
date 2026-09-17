@@ -24,6 +24,12 @@
     protected override void OnParametersSet() => Header.Set(this, b =>
     {
         b.OpenComponent<ConsoleBreadcrumb>(0);
+        // Keyed by trail shape. NavMenu renders whichever fragment is set at the same position,
+        // and both views open a ConsoleBreadcrumb there, so without a key Blazor keeps the instance
+        // the dataset page created and only writes the parameters this fragment supplies. Omitted
+        // parameters are not reset, so Dataset, Siblings and the state chip survived the hop back
+        // to the team page. A different key disposes that instance and builds a clean one.
+        b.SetKey("team:" + TeamName);
         b.AddAttribute(1, "TeamName", TeamName);
         b.CloseComponent();
     });
