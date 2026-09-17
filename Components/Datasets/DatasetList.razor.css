@@ -107,11 +107,3 @@
     white-space: nowrap;
     flex-shrink: 0;
 }
-
-/* Progress bar on a card that is loading, indexing or rebuilding. It takes the place of the
-   document count, which is not known or not final while the work runs. */
-.indx-dataset-card-progress {
-    display: block;
-    width: 100%;
-    margin-top: 4px;
-}

@@ -40,12 +40,8 @@ else
                     }
                     else
                     {
-                        <Chip Size="small" Color="@row.ChipColor" TextColor="@row.ChipText" Icon="@row.Icon">@row.Label</Chip>
-                        @if (row.Percent is { } pct)
-                        {
-                            <span class="indx-dataset-card-progress"><ProgressBar Value="@pct" ShowLabel="true" /></span>
-                        }
-                        else if (row.Count is { } n)
+                        <Chip Size="small" Color="@row.ChipColor" TextColor="@row.ChipText" Icon="@row.Icon">@row.ChipLabel</Chip>
+                        @if (row.Count is { } n)
                         {
                             <span class="indx-dataset-card-count">@n.ToString("N0") @(n == 1 ? "document" : "documents")</span>
                         }
@@ -96,6 +92,10 @@ else
 
     private sealed record Row(string Name, string Label, string ChipColor, string ChipText, RenderFragment<int>? Icon, int? Count, int? Percent = null)
     {
+        /// <summary>"Indexing 42%" while there is progress to report, otherwise just the state.
+        /// A percentage only appears once the monitor has one, so the chip does not flash 0%.</summary>
+        public string ChipLabel => Percent is > 0 and { } pct ? $"{Label} {pct}%" : Label;
+
         /// <summary>Status not read yet — the card shows the name and a spinner.</summary>
         public bool Pending { get; init; }
         public static Row PendingFor(string name) => new(name, "", "", "", null, null) { Pending = true };
@@ -187,8 +187,11 @@ else
             {
                 // A Ready dataset can still be rebuilding on a shadow engine while it keeps serving.
                 var rebuilding = Engines.GetProgressPercent(name, teamId);
+                // The count stays: a rebuild runs on a shadow engine while this one keeps serving, so
+                // the documents it reports are real and still being searched.
                 return rebuilding is { } pct
-                    ? new Row(name, "Rebuilding", "var(--CWarning)", "#080809", DatasetIcons.ForState(SystemState.Indexing), null, pct)
+                    ? new Row(name, "Rebuilding", "var(--CWarning)", "#080809", DatasetIcons.ForState(SystemState.Indexing),
+                              engine!.Status.DocumentCount, pct)
                     : new Row(name, "Ready", "var(--CTeal)", "#080809", DatasetIcons.ForState(SystemState.Ready), engine!.Status.DocumentCount);
             }
             if (state is SystemState.Loading or SystemState.Loaded or SystemState.Indexing)
