@@ -345,24 +345,33 @@ namespace IndxServer.Mcp
             if (string.IsNullOrWhiteSpace(query))
                 findings.Add("The query text is empty. An empty query matches nothing unless it is sorted by a sortable field.");
 
-            // Mirror the `search` tool's semantics exactly, including coverage with pattern matches
-            // off. A bare QueryProxy is more permissive, so it would diagnose a different query than
-            // the one the caller actually ran: "zzzzqqqq" finds two documents by character-pattern
-            // similarity under the defaults, and none under these.
-            var probe = new QueryProxy
-            {
-                Text = query ?? "",
-                MaxNumberOfRecordsToReturn = DefaultLimit,
-                EnableCoverage = true,
-                CoverageSetup = new CoverageSetup { IncludePatternMatches = false },
-                EnableBoost = true,
-            };
-            var result = IndxServerInternalApi.Manager.Search(probe, dataset, ownerKey);
-            var hits = result?.Records?.Length ?? 0;
+            // Two searches, because there are two different answers and the caller is usually asking
+            // about the one this tool is NOT running. The `search` tool here turns pattern matches
+            // off: an agent does not typo, and no result is more useful to it than a fuzzy guess.
+            // A human-facing search box goes through the HTTP API, where QueryProxy.CoverageSetup
+            // is null and IncludePatternMatches therefore defaults to true. So "it finds nothing"
+            // from a person and from an agent are not the same claim, and reporting one count would
+            // answer about a query nobody ran.
+            int Run(bool patternMatches) =>
+                IndxServerInternalApi.Manager.Search(new QueryProxy
+                {
+                    Text = query ?? "",
+                    MaxNumberOfRecordsToReturn = DefaultLimit,
+                    EnableCoverage = true,
+                    CoverageSetup = new CoverageSetup { IncludePatternMatches = patternMatches },
+                    EnableBoost = true,
+                }, dataset, ownerKey)?.Records?.Length ?? 0;
 
-            if (hits == 0)
-                findings.Add("Retrying with pattern matches on (the `broaden` option on the search tool) may find " +
-                             "near misses: this check uses the same near-exact semantics as search.");
+            var hits = Run(false);            // what the MCP search tool would return
+            var hitsBroad = Run(true);        // what an HTTP client returns unless it says otherwise
+
+            if (hits == 0 && hitsBroad > 0)
+                findings.Add($"Strict matching finds nothing, but pattern matching finds {hitsBroad}. " +
+                             "The text does not match closely, only by character-pattern similarity. A search box on the " +
+                             "HTTP API gets these hits by default; the MCP search tool does not, because it disables " +
+                             "pattern matches deliberately. Pass broaden=true to search to see them.");
+            else if (hits == 0 && hitsBroad == 0)
+                findings.Add("Neither strict nor pattern matching finds anything, so this is not a matching-strictness problem.");
 
             // The engine reports a refused query on Status rather than on the Result, and a
             // Result can come back empty with no Reason at all: a fieldBoosts key naming a
@@ -376,7 +385,7 @@ namespace IndxServer.Mcp
                     findings.Add($"The engine reported: {after.ErrorMessage}");
             }
 
-            if (hits == 0 && findings.Count == 0)
+            if (hits == 0 && hitsBroad == 0 && findings.Count == 1)
                 findings.Add("The dataset is healthy and the query was accepted, so this is genuinely no match. " +
                              "Try a shorter or differently spelled query, and check with get_field_configuration that the field holding this text is searchable.");
 
@@ -384,6 +393,7 @@ namespace IndxServer.Mcp
             {
                 ["query"] = query,
                 ["hitCount"] = hits,
+                ["hitCountWithPatternMatches"] = hitsBroad,
                 ["documentCount"] = status.DocumentCount,
                 ["searchableFields"] = new JsonArray(cfg.Where(f => f.Searchable == true)
                     .Select(f => (JsonNode?)f.FieldName).ToArray()),
