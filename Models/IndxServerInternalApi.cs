@@ -1,4 +1,5 @@
-﻿using Indx.Api;
+﻿using System.Collections.Concurrent;
+using Indx.Api;
 using Indx.Http;
 using Indx.Embeddings;
 using Indx.Storage;
@@ -157,8 +158,27 @@ namespace IndxServer.Models
         /// to perform the actual indexing. Use the GetState method
         /// to monitor progress and readiness for Search.
         /// </summary>
+        /// <summary>Monitors of loads and index builds that are running right now, so the console can
+        /// show progress for them. <see cref="_shadowMonitors"/> does the same for shadow rebuilds;
+        /// this covers the first-time load and index, whose monitors used to be created, used and
+        /// dropped inside the call, leaving a dataset sitting on "Indexing" with nothing to report.
+        /// An entry lives only for the duration of the operation.</summary>
+        private readonly ConcurrentDictionary<string, ProcessMonitor> _activeMonitors = new();
+
+        /// <summary>Progress of whatever is running for this dataset, 0-100, or null when nothing is.
+        /// Covers a load, an index build and a shadow rebuild; the caller does not need to know
+        /// which.</summary>
+        internal int? GetProgressPercent(string dataSetName, string teamId)
+        {
+            var key = MakeKey(dataSetName, teamId);
+            if (_activeMonitors.TryGetValue(key, out var m)) return m.ProgressPercent;
+            if (_shadowMonitors.TryGetValue(key, out var sm)) return sm.ProgressPercent;
+            return null;
+        }
+
         internal bool DoIndex(string dataSetName, string teamId)
         {
+            var monitorKey = MakeKey(dataSetName, teamId);
             try
             {
                 var pm = new ProcessMonitor();
@@ -166,6 +186,7 @@ namespace IndxServer.Models
                 if (engine != null && (engine.Status.SystemState == SystemState.Loaded
                     || engine.Status.SystemState == SystemState.Ready))
                 {
+                    _activeMonitors[monitorKey] = pm;
                     engine.Index(monitor: pm);
                     pm.WaitForCompletion();
                     return true;
@@ -177,6 +198,10 @@ namespace IndxServer.Models
             {
                 _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxServerInternalApi.DoIndexAsync exception" + ex.ToString());
                 throw;
+            }
+            finally
+            {
+                _activeMonitors.TryRemove(monitorKey, out _);
             }
         }
 
@@ -281,7 +306,18 @@ namespace IndxServer.Models
             if (instance == null)
                 return false;
             ApplyDeclaredKeyField(instance, dataSetName, teamId);
-            instance.Load(jsonData, pm);
+            // Published so the console can report this load's progress; the caller owns the monitor
+            // and waits on it, so the entry is cleared once the load returns.
+            var monitorKey = MakeKey(dataSetName, teamId);
+            _activeMonitors[monitorKey] = pm;
+            try
+            {
+                instance.Load(jsonData, pm);
+            }
+            finally
+            {
+                _activeMonitors.TryRemove(monitorKey, out _);
+            }
             return true;
         }
 

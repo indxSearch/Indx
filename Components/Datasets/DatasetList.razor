@@ -41,7 +41,11 @@ else
                     else
                     {
                         <Chip Size="small" Color="@row.ChipColor" TextColor="@row.ChipText" Icon="@row.Icon">@row.Label</Chip>
-                        @if (row.Count is { } n)
+                        @if (row.Percent is { } pct)
+                        {
+                            <span class="indx-dataset-card-progress"><ProgressBar Value="@pct" ShowLabel="true" /></span>
+                        }
+                        else if (row.Count is { } n)
                         {
                             <span class="indx-dataset-card-count">@n.ToString("N0") @(n == 1 ? "document" : "documents")</span>
                         }
@@ -90,7 +94,7 @@ else
 
     private bool CanCreate => TeamRoles.CanWrite(Role);
 
-    private sealed record Row(string Name, string Label, string ChipColor, string ChipText, RenderFragment<int>? Icon, int? Count)
+    private sealed record Row(string Name, string Label, string ChipColor, string ChipText, RenderFragment<int>? Icon, int? Count, int? Percent = null)
     {
         /// <summary>Status not read yet — the card shows the name and a spinner.</summary>
         public bool Pending { get; init; }
@@ -142,10 +146,35 @@ else
                     StateHasChanged();
                 });
             }
+
+            // Keep the moving ones moving. The loop re-describes only the rows that were in a
+            // transient state and stops as soon as none are, so a settled team page costs nothing:
+            // no timer runs once everything is Ready, Hibernated or Empty.
+            await ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(600),
+                tick: () =>
+                {
+                    if (cts.IsCancellationRequested) return false;
+                    bool stillMoving = false;
+                    for (var i = 0; i < _rows.Count; i++)
+                    {
+                        if (!IsTransient(_rows[i])) continue;
+                        _rows[i] = Describe(_rows[i].Name, teamId);
+                        stillMoving |= IsTransient(_rows[i]);
+                    }
+                    return stillMoving;
+                },
+                render: () => InvokeAsync(StateHasChanged),
+                ct: cts.Token);
         }, cts.Token);
     }
 
     public void Dispose() => _describeCts?.Cancel();
+
+    /// <summary>A row that is still going to change on its own: something is loading, indexing or
+    /// rebuilding, or warm-up has not reached it yet. Only these are re-read while the page is
+    /// open; anything else is settled until the user acts.</summary>
+    private static bool IsTransient(Row row) =>
+        row.Percent is not null || row.Label is "Loading" or "Loaded" or "Indexing" or "Waking";
 
     private Row Describe(string name, string teamId)
     {
@@ -155,9 +184,16 @@ else
             var engine = Engines.FindSearchEngine(name, teamId);
             var state = engine is { IsDisposed: false } ? engine.Status.SystemState : (SystemState?)null;
             if (state == SystemState.Ready)
-                return new Row(name, "Ready", "var(--CTeal)", "#080809", DatasetIcons.ForState(SystemState.Ready), engine!.Status.DocumentCount);
+            {
+                // A Ready dataset can still be rebuilding on a shadow engine while it keeps serving.
+                var rebuilding = Engines.GetProgressPercent(name, teamId);
+                return rebuilding is { } pct
+                    ? new Row(name, "Rebuilding", "var(--CWarning)", "#080809", DatasetIcons.ForState(SystemState.Indexing), null, pct)
+                    : new Row(name, "Ready", "var(--CTeal)", "#080809", DatasetIcons.ForState(SystemState.Ready), engine!.Status.DocumentCount);
+            }
             if (state is SystemState.Loading or SystemState.Loaded or SystemState.Indexing)
-                return new Row(name, state.ToString()!, "var(--CWarning)", "#080809", DatasetIcons.ForState(state.Value), null);
+                return new Row(name, state.ToString()!, "var(--CWarning)", "#080809", DatasetIcons.ForState(state.Value), null,
+                               Engines.GetProgressPercent(name, teamId));
             if (state == SystemState.Error)
                 return new Row(name, "Error", "var(--CSignal)", "var(--lv0)", DatasetIcons.ForState(SystemState.Error), null);
             // Only SystemState.Hibernated is hibernated. Created (0) is a live engine that has not
