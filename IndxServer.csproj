@@ -37,6 +37,14 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<!-- The Web SDK's default content glob includes **/*.json, which swept the running
+		     instance's IndxData/settings.json into the publish output. Deploying then wrote
+		     the developer's copy over the server's: registration mode, instance name and the
+		     pending-invite list (RegistrationMode.Invite keeps invites in AllowedEmails) all
+		     reset, and LicenseToken/Plan nulled. IndxData is runtime state, never build
+		     output; the license is the one file that ships. -->
+		<Content Remove="IndxData\**" />
+		<None Remove="IndxData\**" />
 		<Content Include="IndxData\*.license" CopyToPublishDirectory="PreserveNewest" />
 	</ItemGroup>
 
