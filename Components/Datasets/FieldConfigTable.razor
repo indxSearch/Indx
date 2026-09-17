@@ -36,7 +36,7 @@
                     title="@(!Editable && !row.IsContainer ? "Read-only. Editor access is required to change field configuration." : null)">
                     <td>
                         <div class="indx-cell-inner" style="@(row.Depth > 0 ? $"padding-left:{row.Depth * 18}px" : null)">
-                            <span>@field.FieldName</span>
+                            <span>@if (ParentPath(field.FieldName) is { } parentPath) { <span class="indx-field-path">@parentPath</span> }@LeafName(field.FieldName)</span>
                             @* The type badge carries the detail: hovering it shows a sample of what the
                                field holds, or for a container the nested fields its data lives on. *@
                             <span class="indx-cell-value indx-sample-tip @(HasNoValue(field) ? "indx-cell-value-faint" : null)">@FieldTypeLabel(field)@if (TypeIcon(field) is { } typeIcon) { @typeIcon(14) }<span class="indx-field-pop">
@@ -199,6 +199,22 @@
             yield return name[..dot];
             dot = name.IndexOf('.', dot + 1);
         }
+    }
+
+    /// <summary>The dotted path up to and including the last dot ("cover.asset.metadata." for
+    /// "cover.asset.metadata.dimensions"), or null for a top-level name. Rendered dimmed so the
+    /// leaf, which is what the row configures, is what the eye lands on. The row is already
+    /// indented under its container; this keeps the full name readable without it competing.</summary>
+    private static string? ParentPath(string name)
+    {
+        var dot = name.LastIndexOf('.');
+        return dot > 0 ? name[..(dot + 1)] : null;
+    }
+
+    private static string LeafName(string name)
+    {
+        var dot = name.LastIndexOf('.');
+        return dot > 0 ? name[(dot + 1)..] : name;
     }
 
     private static int Depth(string name)

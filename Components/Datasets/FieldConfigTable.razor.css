@@ -85,6 +85,14 @@
     color: var(--lv4);
 }
 
+/* The parent path of a nested name ("cover.asset.metadata." before "dimensions") reads a step
+   fainter than the leaf, so the part the row configures stands out and the path is there when
+   needed. Same tone as .indx-cell-value, the type badge next to it. */
+.indx-field-path {
+    color: var(--lv5);
+    font-weight: var(--book);
+}
+
 /* Column header tooltips */
 .indx-th-tip {
     position: relative;
