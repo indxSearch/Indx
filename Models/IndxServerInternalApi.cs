@@ -165,6 +165,29 @@ namespace IndxServer.Models
         /// An entry lives only for the duration of the operation.</summary>
         private readonly ConcurrentDictionary<string, ProcessMonitor> _activeMonitors = new();
 
+        /// <summary>Publishes <paramref name="monitor"/> as this dataset's running operation until the
+        /// returned scope is disposed. Every path that loads or indexes goes through here, so
+        /// "is something working on this dataset right now" has one answer: warm-up at startup, a
+        /// wake-on-demand, a first-time load, an index build.</summary>
+        private IDisposable TrackMonitor(string dataSetName, string teamId, ProcessMonitor monitor)
+        {
+            var key = MakeKey(dataSetName, teamId);
+            _activeMonitors[key] = monitor;
+            return new MonitorScope(_activeMonitors, key);
+        }
+
+        private sealed class MonitorScope(ConcurrentDictionary<string, ProcessMonitor> map, string key) : IDisposable
+        {
+            public void Dispose() => map.TryRemove(key, out _);
+        }
+
+        /// <summary>True while a load or index is running for this dataset. A dataset with rows on
+        /// disk and no live engine is asleep; one with something working on it is on its way up, and
+        /// the console needs to tell those apart.</summary>
+        internal bool IsWorkInProgress(string dataSetName, string teamId)
+            => _activeMonitors.ContainsKey(MakeKey(dataSetName, teamId))
+               || _shadowMonitors.ContainsKey(MakeKey(dataSetName, teamId));
+
         /// <summary>Progress of whatever is running for this dataset, 0-100, or null when nothing is.
         /// Covers a load, an index build and a shadow rebuild; the caller does not need to know
         /// which.</summary>
@@ -845,8 +868,11 @@ namespace IndxServer.Models
             if (wasReady && instance?.Persistence != null && instance.Persistence.NumberOfJsonRecords() > 0)
             {
                 var loadMonitor = new ProcessMonitor();
-                instance.LoadFromDatabaseSync(loadMonitor);
-                loadMonitor.WaitForCompletion();
+                using (TrackMonitor(dataSetName, teamId, loadMonitor))
+                {
+                    instance.LoadFromDatabaseSync(loadMonitor);
+                    loadMonitor.WaitForCompletion();
+                }
                 var indexMonitor = new ProcessMonitor();
                 instance.Index(monitor: indexMonitor);
                 indexMonitor.WaitForCompletion();
@@ -867,8 +893,11 @@ namespace IndxServer.Models
             if (instance?.Persistence != null && instance.Persistence.NumberOfJsonRecords() > 0)
             {
                 var loadMonitor = new ProcessMonitor();
-                instance.LoadFromDatabaseSync(loadMonitor);
-                loadMonitor.WaitForCompletion();
+                using (TrackMonitor(dataSetName, newTeamId, loadMonitor))
+                {
+                    instance.LoadFromDatabaseSync(loadMonitor);
+                    loadMonitor.WaitForCompletion();
+                }
                 var indexMonitor = new ProcessMonitor();
                 instance.Index(monitor: indexMonitor);
                 indexMonitor.WaitForCompletion();
@@ -1081,6 +1110,7 @@ namespace IndxServer.Models
 
                         _logger.LogInformation($"{tag} [{i}/{total}] loading '{dataSet}' team {teamId}: {records} records, workingSet {beforeMb} MB");
                         var monitor = new ProcessMonitor { TimeoutSeconds = 600 };
+                        using var warmUpScope = TrackMonitor(dataSet, teamId, monitor);
                         engine.LoadFromDatabaseSync(monitor);
                         if (!monitor.WaitForCompletion())
                         {
@@ -1453,6 +1483,7 @@ namespace IndxServer.Models
                         // left the state at Indexing) into a permanently bricked
                         // dataset with a growing pile of blocked request threads.
                         var loadMonitor = new ProcessMonitor { TimeoutSeconds = 600 };
+                        using var wakeScope = TrackMonitor(dataSetName, teamId, loadMonitor);
                         engine.LoadFromDatabaseSync(loadMonitor);
                         bool loaded = loadMonitor.WaitForCompletion();
 

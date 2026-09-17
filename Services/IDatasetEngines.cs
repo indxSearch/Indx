@@ -48,6 +48,9 @@ namespace IndxServer.Services
         /// <summary>Progress of a running load, index build or shadow rebuild, 0-100, or null when
         /// nothing is running for this dataset.</summary>
         int? GetProgressPercent(string dataSetName, string teamId);
+
+        /// <summary>True while something is loading or indexing this dataset.</summary>
+        bool IsWorkInProgress(string dataSetName, string teamId);
         string[] GetKeyFieldCandidates(string dataSetName, string teamId);
         string? SetKeyField(string dataSetName, string teamId, string fieldName, out bool needsReloadToReKey);
         string? ValidateExternalLoadForCustomKey(string dataSetName, string teamId, Stream jsonStream);
@@ -82,6 +85,7 @@ namespace IndxServer.Services
         public void RunFieldConfigurationOnShadow(string d, string t, FieldProxy[] f) => M.RunFieldConfigurationOnShadow(d, t, f);
         public int GetShadowBuildPercent(string d, string t) => M.GetShadowBuildPercent(d, t);
         public int? GetProgressPercent(string d, string t) => M.GetProgressPercent(d, t);
+        public bool IsWorkInProgress(string d, string t) => M.IsWorkInProgress(d, t);
         public string[] GetKeyFieldCandidates(string d, string t) => M.GetKeyFieldCandidates(d, t);
         public string? SetKeyField(string d, string t, string field, out bool needsReload) => M.SetKeyField(d, t, field, out needsReload);
         public string? ValidateExternalLoadForCustomKey(string d, string t, Stream s) => M.ValidateExternalLoadForCustomKey(d, t, s);
