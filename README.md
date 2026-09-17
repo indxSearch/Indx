@@ -32,7 +32,7 @@ A self-hosted search service built on [Indx Search](https://indx.co). Blazor Ser
 
 ```bash
 git clone https://github.com/indxSearch/Indx
-cd IndxServer
+cd Indx
 dotnet run
 ```
 
