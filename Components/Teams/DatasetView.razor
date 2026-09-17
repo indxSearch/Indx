@@ -40,7 +40,11 @@
     // siblings or the context change so the header re-renders.
     private void SetHeader()
     {
-        if (_disposed) return;
+        // Disposal is not a tight enough test on its own. OnContextCreated can land in the window
+        // after TeamView has set the team's trail and before this view is disposed, and _disposed
+        // is still false there. What settles it is the URL: if it no longer names this dataset,
+        // this view is on its way out and must not claim the header.
+        if (_disposed || !IsCurrentDataset()) return;
         var ctx = _ctx;
         Header.Set(this, b =>
         {
@@ -67,6 +71,15 @@
     /// ownership unconditionally (only Clear checks the owner), so that late call replaced the
     /// team's trail with this dataset's, chip and all, on a page the dataset is not on.</summary>
     private bool _disposed;
+
+    /// <summary>Whether the address bar still points at this dataset. Covers both the team-scoped
+    /// route and the legacy /datasets/{name} one.</summary>
+    private bool IsCurrentDataset()
+    {
+        var path = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).TrimEnd('/');
+        return path.EndsWith($"/datasets/{Dataset}", StringComparison.OrdinalIgnoreCase)
+               || path.Equals($"datasets/{Dataset}", StringComparison.OrdinalIgnoreCase);
+    }
 
     public void Dispose()
     {

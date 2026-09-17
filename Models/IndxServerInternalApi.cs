@@ -181,12 +181,22 @@ namespace IndxServer.Models
             public void Dispose() => map.TryRemove(key, out _);
         }
 
+        /// <summary>Datasets startup warm-up still intends to load. Warm-up works through its list one
+        /// at a time, so at any moment only one of them holds a monitor; without this the rest read as
+        /// hibernated, which is the opposite of true. An entry is removed when warm-up reaches the
+        /// dataset, so the set empties as the queue drains.</summary>
+        private readonly ConcurrentDictionary<string, byte> _warmUpPending = new();
+
         /// <summary>True while a load or index is running for this dataset. A dataset with rows on
         /// disk and no live engine is asleep; one with something working on it is on its way up, and
         /// the console needs to tell those apart.</summary>
         internal bool IsWorkInProgress(string dataSetName, string teamId)
-            => _activeMonitors.ContainsKey(MakeKey(dataSetName, teamId))
-               || _shadowMonitors.ContainsKey(MakeKey(dataSetName, teamId));
+        {
+            var key = MakeKey(dataSetName, teamId);
+            return _activeMonitors.ContainsKey(key)
+                   || _shadowMonitors.ContainsKey(key)
+                   || _warmUpPending.ContainsKey(key);
+        }
 
         /// <summary>Progress of whatever is running for this dataset, 0-100, or null when nothing is.
         /// Covers a load, an index build and a shadow rebuild; the caller does not need to know
@@ -1054,6 +1064,10 @@ namespace IndxServer.Models
                     .Select(dataSet => (teamId, dataSet)))
                 .ToList();
             var total = work.Count;
+            // Claim the whole queue up front. Everything on it is on its way up, whether or not
+            // warm-up has reached it yet.
+            foreach (var (teamId, dataSet) in work)
+                _warmUpPending[MakeKey(dataSet, teamId)] = 0;
             _logger.LogInformation($"{tag} warming up {total} dataset(s) across {owners.Count} team(s), workingSet {WorkingSetMb()} MB");
 
             var overallSw = System.Diagnostics.Stopwatch.StartNew();
@@ -1065,6 +1079,9 @@ namespace IndxServer.Models
                 // must not abort the warm-up of everything behind it in the list.
                 try
                 {
+                    // Off the queue: from here it either holds a monitor or it has finished, and a
+                    // dataset warm-up skips or fails must not stay "on its way up" forever.
+                    _warmUpPending.TryRemove(MakeKey(dataSet, teamId), out _);
                     var wrapper = GetOrCreateInstance(dataSet, teamId);
                     var engine = wrapper?.theInstance;
                     if (wrapper == null || engine == null)
