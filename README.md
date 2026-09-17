@@ -121,7 +121,15 @@ large list to production. Behavior may still change.
 
 ## MCP: connect AI agents
 
-The server exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` (Streamable HTTP). Point an MCP-capable client at it with a bearer token, whether Claude Code, Claude Desktop, or any other, and the agent gets read-only retrieval tools over your datasets: search, field info, status, synonym lists.
+The server exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` (Streamable HTTP). Point an MCP-capable client at it with a bearer token, whether Claude Code, Claude Desktop, or any other, and the agent gets read-only tools over your datasets, for both querying and setting one up:
+
+- **Querying**: `list_datasets`, `describe_dataset`, `search`, `get_document`, `get_synonyms`
+- **Setting up**: `get_status` (state, document count, scoring mode, errors, and what to do next),
+  `get_field_configuration` (every field including the ones switched off, with weights, BM25
+  parameters and a sample of the real content), and `diagnose_search` (why a search returned
+  nothing: not indexed, no searchable field, query refused, or a genuine no-match)
+
+Paired with the [Indx agent skill](https://github.com/indxSearch/skill-indx-search), an agent can read the documentation and inspect your live instance at the same time, which is most of what setting up a dataset takes.
 
 - **Same keys and permissions** as the rest of the API. A Search only key lets the agent list,
   search and fetch documents; `describe_dataset` and `get_synonyms` need Read only
