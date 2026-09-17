@@ -40,6 +40,7 @@
     // siblings or the context change so the header re-renders.
     private void SetHeader()
     {
+        if (_disposed) return;
         var ctx = _ctx;
         Header.Set(this, b =>
         {
@@ -60,7 +61,18 @@
         });
     }
 
-    public void Dispose() => Header.Clear(this, keepIf: NavigationManager.ToBaseRelativePath(NavigationManager.Uri).StartsWith("teams/", StringComparison.OrdinalIgnoreCase));
+    /// <summary>Set once this view is torn down, so a callback that arrives afterwards cannot put
+    /// the trail back. OnContextCreated fires when the panel finishes building its context, which
+    /// can land after the user has already navigated to the team page: HeaderState.Set takes
+    /// ownership unconditionally (only Clear checks the owner), so that late call replaced the
+    /// team's trail with this dataset's, chip and all, on a page the dataset is not on.</summary>
+    private bool _disposed;
+
+    public void Dispose()
+    {
+        _disposed = true;
+        Header.Clear(this, keepIf: NavigationManager.ToBaseRelativePath(NavigationManager.Uri).StartsWith("teams/", StringComparison.OrdinalIgnoreCase));
+    }
 
     // Same instance, new dataset or team (crumb dropdowns, back/forward): re-read the list.
     // A dataset that is not in this team (typo, deleted, moved) goes back to the team's list

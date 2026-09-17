@@ -16,6 +16,10 @@ namespace IndxServer.Services
 
         public event Action? Changed;
 
+        /// <summary>Claim the header for <paramref name="owner"/>. Note the asymmetry with
+        /// <see cref="Clear"/>: this takes ownership unconditionally, so a page that is being torn
+        /// down and calls Set from a late callback will take the trail back from the page that
+        /// replaced it. A caller that can Set asynchronously has to check it is still alive first.</summary>
         public void Set(object owner, RenderFragment? breadcrumb)
         {
             _owner = owner;
