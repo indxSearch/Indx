@@ -129,6 +129,11 @@
   16.6667% { opacity: 0; }
   100% { opacity: 0; }
 }
+@keyframes indx-spinner-7 {
+  0% { opacity: 1; }
+  14.2857% { opacity: 0; }
+  100% { opacity: 0; }
+}
 @keyframes indx-spinner-8 {
   0% { opacity: 1; }
   12.5% { opacity: 0; }
