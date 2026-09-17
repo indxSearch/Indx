@@ -115,14 +115,9 @@ else
         Reload();
     }
 
-    /// <summary>Re-read the team's datasets: the names render at once, and the states are filled
-    /// in off the circuit thread in one go.
-    /// <para>Read every card before rendering any, rather than rendering each as it arrives. Each
-    /// InvokeAsync is a render and a round trip to the browser, so per-card updates cost one trip
-    /// per dataset, in sequence, before the page settles. The reads themselves are cheap (a COUNT(*)
-    /// measured at 3 ms over 29k rows); the round trips are not, and they are worse when the App
-    /// Service has no WebSockets and Blazor has fallen back to long polling. Cards now appear
-    /// together instead of trickling in, which is what the spinner is for.</para></summary>
+    /// <summary>Re-read the team's datasets: the names render at once, each card's state is
+    /// filled in off the circuit thread as it is read (a record count per dataset is a COUNT(*)
+    /// on disk — cheap, but not free on a large dataset, and never worth blocking the page for).</summary>
     public void Reload()
     {
         List<string> names;
@@ -135,22 +130,18 @@ else
         var teamId = TeamId;
         _ = Task.Run(async () =>
         {
-            var described = new List<Row>(names.Count);
             foreach (var name in names)
             {
                 if (cts.IsCancellationRequested) return;
-                described.Add(Describe(name, teamId));
+                var row = Describe(name, teamId);
+                await InvokeAsync(() =>
+                {
+                    if (cts.IsCancellationRequested) return;
+                    var i = _rows.FindIndex(r => r.Name == name);
+                    if (i >= 0) _rows[i] = row;
+                    StateHasChanged();
+                });
             }
-
-            await InvokeAsync(() =>
-            {
-                if (cts.IsCancellationRequested) return;
-                // Replacing the list wholesale keeps this correct if the team changed while we
-                // were reading: a cancelled token has already returned, and _rows belongs to
-                // whichever Reload ran last.
-                _rows = described;
-                StateHasChanged();
-            });
         }, cts.Token);
     }
 
