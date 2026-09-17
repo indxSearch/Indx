@@ -126,11 +126,7 @@ The server exposes a [Model Context Protocol](https://modelcontextprotocol.io) e
 - **Querying**: `list_datasets`, `describe_dataset`, `search`, `get_document`, `get_synonyms`
 - **Setting up**: `get_status` (state, document count, scoring mode, errors, and what to do next),
   `get_field_configuration` (every field including the ones switched off, with weights, BM25
-  parameters and a sample of the real content), and `diagnose_search` (why a search returned
-  nothing: not indexed, no searchable field, query refused, matching too strict, or a genuine
-  no-match). It reports strict and pattern-matching hit counts separately, because the MCP
-  search tool disables pattern matches while an HTTP client gets them by default, so "finds
-  nothing" means different things for an agent and for a search box
+  parameters and a sample of the real content)
 
 Paired with the [Indx agent skill](https://github.com/indxSearch/skill-indx-search), an agent can read the documentation and inspect your live instance at the same time, which is most of what setting up a dataset takes.
 
