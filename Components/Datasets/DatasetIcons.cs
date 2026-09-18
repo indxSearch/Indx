@@ -59,6 +59,8 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> BoolType = Of<Icons.BoolType>("var(--lv7)");
         public static readonly RenderFragment<int> ArrayType = Of<Icons.ArrayType>("var(--lv7)");
         public static readonly RenderFragment<int> NestedObjectType = Of<Icons.NestedObject>("var(--lv7)");
+        /// <summary>The badge icon for a field Analyze never read a value for, so it has no type.</summary>
+        public static readonly RenderFragment<int> NoValueType = Of<Icons.Stop>("var(--lv7)");
 
         public static RenderFragment<int>? ForFieldType(string? type, bool? isArray) =>
             isArray == true ? ArrayType : type switch

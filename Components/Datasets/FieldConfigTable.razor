@@ -33,7 +33,7 @@
             {
                 var field = row.Field;
                 <tr class="@(row.IsContainer ? "indx-group-row" : null)"
-                    title="@(!Editable && !row.IsContainer ? "Read-only. Editor access is required to change field configuration." : null)">
+                    title="@(!Editable && !row.IsContainer && !HasNoValue(field) ? "Read-only. Editor access is required to change field configuration." : null)">
                     <td>
                         <div class="indx-cell-inner" style="@(row.Depth > 0 ? $"padding-left:{row.Depth * 18}px" : null)">
                             <span>@if (ParentPath(field.FieldName) is { } parentPath) { <span class="indx-field-path">@parentPath</span> }@LeafName(field.FieldName)</span>
@@ -50,7 +50,7 @@
                                         }
                                         else if (HasNoValue(field))
                                         {
-                                            <span class="indx-field-pop-note">No value read for this field in the dataset. It can still be configured, so a record added later that carries it is indexed.</span>
+                                            <span class="indx-field-pop-note">No value read for this field in the dataset, so its type is unknown and it cannot be configured. Load data that carries a value for it and analyze again.</span>
                                         }
                                         @if (PopoverFlags(field) is { } flags)
                                         {
@@ -65,6 +65,14 @@
                            an inert control. Ticking Searchable on it indexes nothing: the text lives
                            on the nested fields below, and those are what can be configured. *@
                         <td colspan="@TrailingColumnCount" class="indx-group-note">Configured on the nested fields below</td>
+                    }
+                    else if (HasNoValue(field))
+                    {
+                        @* A field that was null in every record has no type, and a field with no
+                           type is not configurable (decided Sep 2026, with the library refusing it
+                           on its side). The row stays so the user can see the field exists, and the
+                           badge popover says why. *@
+                        <td colspan="@TrailingColumnCount" class="indx-group-note">Not configurable</td>
                     }
                     else
                     {
@@ -228,11 +236,11 @@
     private int TrailingColumnCount => ShowAdvanced ? 11 : 5;
 
     /// <summary>The badge icon: the type's own icon, the nested-object icon for a container, and
-    /// none when the type is genuinely unknown.</summary>
+    /// the stop icon for a field with no value, which has no type and cannot be configured.</summary>
     private RenderFragment<int>? TypeIcon(FieldProxy f) =>
         f.FieldType != null ? DatasetIcons.ForFieldType(f.FieldType, f.IsArray)
         : IsContainer(f) ? DatasetIcons.NestedObjectType
-        : null;
+        : DatasetIcons.NoValueType;
 
     /// <summary>The nested field names under a container, with the shared prefix removed:
     /// "series" gives "partNumber, title". This is where a container's data actually lives.</summary>
@@ -319,8 +327,8 @@
             : f.IsArray == true ? $"Array ({f.FieldType}s)" : f.FieldType;
 
     /// <summary>True when Analyze never saw a value for this field, so it has no type. Such a
-    /// field is still configurable on purpose: ticking Searchable prepares it, and a record
-    /// inserted later that does carry the field is indexed and found.</summary>
+    /// field is not configurable: without a type there is nothing to index or filter on, and
+    /// the row renders a note in place of its controls, like a container.</summary>
     private bool HasNoValue(FieldProxy f) => f.FieldType == null && !IsContainer(f);
 
     // The simple-mode weight slider (0.5-3.0, step 0.25) only renders values it can show
