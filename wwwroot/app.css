@@ -766,9 +766,13 @@ a.btn-danger:hover {
 }
 
 /* ── Field configuration toolbar / progress (dataset console) ── */
-.indx-field-config-import-warning {
-    font: var(--text-xs);
-    color: var(--CWarning);
+/* The import outcome, above the field configuration. */
+.indx-field-config-import-alert {
+    margin-top: 8px;
+}
+
+.indx-field-config-import-alert-actions {
+    margin-top: 8px;
 }
 
 .indx-table-wrap {

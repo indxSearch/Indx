@@ -5,6 +5,23 @@
 @using Indx.Api
 @inject BrowserFiles Files
 
+@* The outcome of an import sits above the whole field configuration, where it cannot be missed
+   and has room for field names. It stays until dismissed or the next import. *@
+@if (_importWarning != null)
+{
+    <div class="indx-field-config-import-alert">
+        <Alert Variant="@(_importFailed ? "destructive" : "warning")">
+            <Title>@(_importFailed ? "Import failed" : _nothingImported ? "Nothing was imported" : "Imported, with some fields skipped")</Title>
+            <Description>@_importWarning</Description>
+            <ChildContent>
+                <div class="indx-field-config-import-alert-actions">
+                    <Button Variant="ghost" Size="micro" @onclick="() => _importWarning = null">Dismiss</Button>
+                </div>
+            </ChildContent>
+        </Alert>
+    </div>
+}
+
 <div class="indx-field-config-toolbar indx-field-config-toolbar--split">
     <div class="indx-field-config-toolbar-group">
         @if (ExportFirst)
@@ -15,10 +32,6 @@
         {
             <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
             <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)">Import field configuration</Button>
-            @if (_importWarning != null)
-            {
-                <span class="indx-field-config-import-warning">@_importWarning</span>
-            }
         }
     </div>
     <div class="indx-field-config-toolbar-group indx-field-config-toolbar-group--wide">
@@ -43,6 +56,8 @@
 
     private string ImportInputId => $"fieldconfig-import{IdSuffix}-{Ctx.Name}";
     private string? _importWarning;
+    private bool _importFailed;      // the file could not be read at all
+    private bool _nothingImported;   // it was read, but no field took its configuration
 
     public async Task ExportAsync()
     {
@@ -55,6 +70,8 @@
     private async Task ImportAsync(InputFileChangeEventArgs e)
     {
         _importWarning = null;
+        _importFailed = false;
+        _nothingImported = false;
         try
         {
             using var stream = e.File.OpenReadStream(maxAllowedSize: 1_000_000);
@@ -64,43 +81,22 @@
             if (imported == null || imported.Length == 0)
             {
                 _importWarning = "Invalid or empty configuration file.";
+                _importFailed = true;
                 return;
             }
             var current = Ctx.EditedFields;
             if (current == null) return;
 
-            var currentByName = current.ToDictionary(f => f.FieldName);
-            int matched = 0, unmatched = 0;
-            foreach (var imp in imported)
-            {
-                if (currentByName.TryGetValue(imp.FieldName, out var existing))
-                {
-                    existing.Searchable = imp.Searchable;
-                    existing.Filterable = imp.Filterable;
-                    existing.Facetable = imp.Facetable;
-                    existing.Sortable = imp.Sortable;
-                    existing.WordIndexing = imp.WordIndexing;
-                    existing.Embeddable = imp.Embeddable;
-                    existing.PreloadFilters = imp.PreloadFilters;
-                    existing.HighResolution = imp.HighResolution;
-                    existing.Weight = imp.Weight;
-                    existing.BM25b = imp.BM25b;
-                    existing.BM25k1 = imp.BM25k1;
-                    matched++;
-                }
-                else unmatched++;
-            }
-
-            if (matched == 0)
-                _importWarning = "No matching fields found. This config may be for a different dataset.";
-            else if (unmatched > imported.Length / 3)
-                _importWarning = $"{matched} field(s) applied, {unmatched} not found in this dataset and were skipped.";
+            var result = FieldConfigImport.Merge(current, imported);
+            _importWarning = FieldConfigImport.Describe(result, imported.Length);
+            _nothingImported = result.Matched == 0;
 
             await OnImported.InvokeAsync();
         }
         catch (Exception ex)
         {
-            _importWarning = $"Failed to import: {ex.Message}";
+            _importWarning = ex.Message;
+            _importFailed = true;
         }
     }
 }
