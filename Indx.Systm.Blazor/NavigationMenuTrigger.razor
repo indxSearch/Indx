@@ -3,9 +3,9 @@
 <button type="button" class="indx-navmenu-control @Class" disabled="@Disabled"
         aria-haspopup="true" aria-expanded="@(_open ? "true" : "false")" data-state="@(_open ? "open" : "closed")"
         @onclick="OnClick">
-    @if (Icon != null) { <span class="indx-navmenu-icon" aria-hidden="true">@Icon(14)</span> }
+    @if (Icon != null) { <span class="indx-navmenu-icon" aria-hidden="true">@Icon(Menu.IconSize)</span> }
     @ChildContent
-    <span class="indx-navmenu-caret" aria-hidden="true"><ChevronDown Size="14" Color="currentColor" /></span>
+    <span class="indx-navmenu-caret" aria-hidden="true"><ChevronDown Size="@Menu.IconSize" Color="currentColor" /></span>
 </button>
 
 @code {
@@ -13,7 +13,7 @@
     [CascadingParameter] private NavigationMenuItem Item { get; set; } = default!;
 
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    /// <summary>Optional leading icon; receives the icon size (always 14).</summary>
+    /// <summary>Optional leading icon; receives the icon size, 14 or 21 at Size="large".</summary>
     [Parameter] public RenderFragment<int>? Icon { get; set; }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public string? Class { get; set; }

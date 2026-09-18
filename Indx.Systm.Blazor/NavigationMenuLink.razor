@@ -5,7 +5,7 @@
 <a href="@Href" class="@(Variant == "navigation" ? "indx-navmenu-control" : "indx-navmenu-link") @Class"
    data-active="@(_active ? "" : null)" aria-current="@(_active ? "page" : null)"
    target="@Target" @onclick="OnClick">
-    @if (Icon != null && Variant == "navigation") { <span class="indx-navmenu-icon" aria-hidden="true">@Icon(14)</span> }
+    @if (Icon != null && Variant == "navigation") { <span class="indx-navmenu-icon" aria-hidden="true">@Icon(Menu.IconSize)</span> }
     @ChildContent
 </a>
 
@@ -16,7 +16,7 @@
     [Parameter, EditorRequired] public string? Href { get; set; }
     /// <summary>"navigation" for a direct link in the top-level list; "panel" (default) inside a content panel.</summary>
     [Parameter] public string Variant { get; set; } = "panel";
-    /// <summary>Optional leading icon for the navigation variant; receives the icon size (always 14).</summary>
+    /// <summary>Optional leading icon for the navigation variant; receives the icon size, 14 or 21 at Size="large".</summary>
     [Parameter] public RenderFragment<int>? Icon { get; set; }
     /// <summary>Force the active state; null resolves it from the current URL.</summary>
     [Parameter] public bool? Active { get; set; }

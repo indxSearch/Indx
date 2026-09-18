@@ -7,7 +7,8 @@
 @implements IDisposable
 @inject NavigationManager Navigation
 
-<nav aria-label="@AriaLabel" class="indx-navmenu indx-navmenu-@Size @Class" @onkeydown="OnKeyDown">
+<nav aria-label="@AriaLabel" class="indx-navmenu indx-navmenu-@Size @(Align == "end" ? "indx-navmenu-align-end" : null) @Class"
+     data-orientation="@Orientation" style="@_style" @onkeydown="OnKeyDown">
     <CascadingValue Value="this" IsFixed="true">
         @ChildContent
         @* The panel is rendered here, not where its Content sits, so it needs the cascade too. *@
@@ -26,8 +27,27 @@
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    /// <summary>"micro" | "default" — control height, padding and font.</summary>
+    /// <summary>"micro" | "default" | "large" — control height, padding and font. "large"
+    /// matches Button Size="large", with 21px icons.</summary>
     [Parameter] public string Size { get; set; } = "default";
+
+    /// <summary>"start" | "end". "end" pins the list and the shared panel to the end edge, for a
+    /// menu at the right of a header so the panel stays on screen. In vertical orientation it
+    /// also aligns the items.</summary>
+    [Parameter] public string Align { get; set; } = "start";
+
+    /// <summary>"horizontal" | "vertical". Vertical stacks the items, each control filling the
+    /// row, for a mobile menu.</summary>
+    [Parameter] public string Orientation { get; set; } = "horizontal";
+
+    /// <summary>Width of the shared panel as a CSS length. Defaults to 560px, capped at the
+    /// menu's width.</summary>
+    [Parameter] public string? PanelWidth { get; set; }
+
+    /// <summary>Icon size for triggers and navigation links at the current Size, matching Button.</summary>
+    internal int IconSize => Size == "large" ? 21 : 14;
+
+    private string? _style => PanelWidth == null ? null : $"--panel-width: {PanelWidth}";
 
     [Parameter] public string? Class { get; set; }
 

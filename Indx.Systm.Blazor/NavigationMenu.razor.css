@@ -8,6 +8,7 @@
 
 .indx-navmenu-micro   { --control-height: 30px; --control-padding: 10px; --icon-gap: 7px;  font: var(--text-xs); }
 .indx-navmenu-default { --control-height: 40px; --control-padding: 15px; --icon-gap: 10px; font: var(--text-sm); }
+.indx-navmenu-large   { --control-height: 50px; --control-padding: 20px; --icon-gap: 10px; font: var(--text-base); }
 
 .indx-navmenu ::deep .indx-navmenu-list {
     position: relative;
@@ -22,6 +23,15 @@
     margin: 0;
     list-style: none;
 }
+
+/* Align="end": the list hugs the end edge, so the panel below it does too. */
+.indx-navmenu-align-end ::deep .indx-navmenu-list { margin-inline-start: auto; }
+
+/* Orientation="vertical": items stack, each control fills the row. For a mobile menu. Align
+   decides which side the text sits on. */
+.indx-navmenu[data-orientation='vertical'] ::deep .indx-navmenu-list { flex-direction: column; align-items: stretch; width: 100%; }
+.indx-navmenu[data-orientation='vertical'] ::deep .indx-navmenu-control { justify-content: flex-start; }
+.indx-navmenu-align-end[data-orientation='vertical'] ::deep .indx-navmenu-control { justify-content: flex-end; }
 
 .indx-navmenu ::deep .indx-navmenu-item {
     display: contents;
@@ -84,9 +94,11 @@
     pointer-events: none;
 }
 
+.indx-navmenu-align-end .indx-navmenu-viewport-position { display: flex; justify-content: flex-end; }
+
 .indx-navmenu-viewport {
     position: relative;
-    width: min(560px, 100%);
+    width: min(var(--panel-width, 560px), 100%);
     max-height: min(480px, 70dvh);
     overflow: auto;
     background: var(--lv1);
