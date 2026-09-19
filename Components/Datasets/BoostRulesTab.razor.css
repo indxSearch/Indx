@@ -32,7 +32,34 @@
 .boost-date-label { color: var(--lv5); font: var(--text-xs); display: block; margin-bottom: 2px; }
 .boost-hint { color: var(--lv4); font: var(--text-xs); display: block; margin-top: 4px; }
 .boost-toolbar { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
-.boost-spacer { flex: 1; }
 .boost-note { color: var(--lv5); font: var(--text-xs); margin-top: 8px; }
 .boost-error { color: var(--CSignal); font: var(--text-sm); margin-top: 10px; }
-.boost-actions { display: flex; gap: 8px; margin-top: 16px; }
+/* The action row: Save / Cancel on the left once something changed, import and export always on
+   the right. The same arrangement as under the field configuration. It wraps as two groups. */
+.boost-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-top: 16px; }
+.boost-actions-group { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+
+/* A narrow screen. Nothing here is hidden or moved to another place, the rows are only told
+   where to break, so that they break the same way every time:
+     head       [switch] [name ..........] [delete]   then   Strength: [select] [status]
+     condition  [field ..............] [delete]       then   between [min] and [max]
+   The children are reordered with `order`, since the delete buttons come last in the markup.
+   ::deep because the switch, the buttons and the chip are other components' elements. */
+@media (max-width: 768px) {
+    .boost-rule { padding: 12px; }
+
+    .boost-rule-head { flex-wrap: wrap; }
+    .boost-rule-head ::deep > * { order: 4; }
+    .boost-rule-head ::deep > :first-child { order: 1; }
+    .boost-rule-head ::deep > .boost-grow { order: 2; flex: 1 1 calc(100% - 110px); min-width: 0; }
+    .boost-rule-head ::deep > :last-child { order: 3; }
+
+    .boost-condition ::deep > * { order: 3; }
+    .boost-condition ::deep > .boost-w190 { order: 1; flex: 1 1 calc(100% - 50px); width: auto; min-width: 0; }
+    .boost-condition ::deep > .indx-btn { order: 2; }
+    .boost-condition ::deep > .boost-value { flex: 1 1 120px; min-width: 0; }
+
+    /* Two date pickers side by side when they fit, stacked when they do not, never past the card. */
+    .boost-dates { flex-wrap: wrap; gap: 12px 20px; }
+    .boost-dates > div { flex: 1 1 140px; min-width: 0; }
+}

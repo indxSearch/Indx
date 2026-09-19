@@ -136,13 +136,6 @@
 
         <div class="boost-toolbar">
             <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="AddRule">Add boost rule</Button>
-            <div class="boost-spacer"></div>
-            <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
-            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)">Import from json</Button>
-            @if (_rules.Count > 0)
-            {
-                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="ExportAsync">Export as json</Button>
-            }
         </div>
         @if (!string.IsNullOrEmpty(_importNote))
         {
@@ -154,13 +147,23 @@
             <p class="boost-error">@_error</p>
         }
 
-        @if (IsDirty)
-        {
-            <div class="boost-actions">
-                <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save boost rules</Button>
-                <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
+        <div class="boost-actions">
+            <div class="boost-actions-group">
+                @if (IsDirty)
+                {
+                    <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save boost rules</Button>
+                    <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
+                }
             </div>
-        }
+            <div class="boost-actions-group">
+                @if (_rules.Count > 0)
+                {
+                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="ExportAsync">Export as json</Button>
+                }
+                <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
+                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)">Import from json</Button>
+            </div>
+        </div>
     }
 </div>
 
