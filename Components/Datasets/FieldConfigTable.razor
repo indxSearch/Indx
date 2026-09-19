@@ -13,22 +13,22 @@
         <thead>
             <tr>
                 <th>Field and type</th>
-                <th><span class="indx-th-tip" data-tooltip="Included in full-text search. At least one field must be searchable.">Searchable</span></th>
-                <th><span class="indx-th-tip" data-tooltip="Can be used to filter results by exact value or range.">Filterable</span></th>
-                <th><span class="indx-th-tip" data-tooltip="Field values are counted and returned as facets for building filter UI.">Facetable</span></th>
-                <th><span class="indx-th-tip" data-tooltip="Results can be sorted by this field's value.">Sortable</span></th>
+                <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Included in full-text search. At least one field must be searchable.">Searchable</span></th>
+                <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Can be used to filter results by exact value or range.">Filterable</span></th>
+                <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Field values are counted and returned as facets for building filter UI.">Facetable</span></th>
+                <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Results can be sorted by this field's value.">Sortable</span></th>
                 @if (ShowAdvanced)
                 {
-                    <th><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
-                    <th><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
-                    <th><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
-                    <th><span class="indx-th-tip" data-tooltip="Sharper matching for run-together or split-word queries. Coverage already matches these; high resolution improves precision — recommended only for key fields such as titles.">HighResolution</span></th>
+                    <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
+                    <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
+                    <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
+                    <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Sharper matching for run-together or split-word queries. Coverage already matches these; high resolution improves precision — recommended only for key fields such as titles.">HighResolution</span></th>
                 }
-                <th><span class="indx-th-tip" data-tooltip="Relevance weight for this field (recommended range 0.5–3.0). Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0.">Weight</span></th>
+                <th class="@(ShowAdvanced ? "indx-col-num" : "indx-col-weight")"><span class="indx-th-tip" data-tooltip="Relevance weight for this field (recommended range 0.5–3.0). Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0.">Weight</span></th>
                 @if (ShowAdvanced)
                 {
-                    <th><span class="indx-th-tip" data-tooltip="BM25F length normalisation (0–1). Higher values penalise longer fields more. Activates BM25F multi-field scoring.">BM25b</span></th>
-                    <th><span class="indx-th-tip" data-tooltip="BM25F term saturation factor. Higher values give more weight to repeated terms in this field.">BM25k1</span></th>
+                    <th class="indx-col-num"><span class="indx-th-tip" data-tooltip="BM25F length normalisation (0–1). Higher values penalise longer fields more. Activates BM25F multi-field scoring.">BM25b</span></th>
+                    <th class="indx-col-num"><span class="indx-th-tip" data-tooltip="BM25F term saturation factor. Higher values give more weight to repeated terms in this field.">BM25k1</span></th>
                 }
             </tr>
         </thead>

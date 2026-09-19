@@ -31,8 +31,10 @@
         <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="@(() => OpenModal(null))">Create new</Button>
         @if (_list != null && _list.Entries.Count > 0)
         {
-            <input class="indx-text-input syn-filter" placeholder="Filter entries"
-                   value="@_filter" @oninput="e => _filter = e.Value?.ToString() ?? string.Empty" />
+            <div class="syn-filter">
+                <SearchField Size="micro" Placeholder="Filter entries" Value="@_filter"
+                             ValueChanged="@(v => _filter = v ?? string.Empty)" aria-label="Filter entries" />
+            </div>
             <span class="syn-count">@matched.Count of @_list.Entries.Count entries</span>
         }
         <div class="syn-spacer"></div>

@@ -78,6 +78,26 @@
     text-align: center;
 }
 
+/* Every column but the first has a set width, so the first one takes whatever is left. Without
+   this the automatic table layout shares the width out by content, and the whole table shifts
+   whenever the rows change: toggling unused fields, typing in the filter, or a long nested name
+   scrolling into the list. The widths fit the longest header (HighResolution) and the controls:
+   a checkbox, the weight slider with its value, a number box. */
+.indx-col-check {
+    width: 130px;
+    white-space: nowrap;
+}
+
+.indx-col-weight {
+    width: 190px;
+    white-space: nowrap;
+}
+
+.indx-col-num {
+    width: 110px;
+    white-space: nowrap;
+}
+
 /* A container row opens a group: its nested fields follow, indented. It carries no controls,
    because it holds no value of its own and every capability on it would be inert. It is styled
    like every other row on purpose; the indent under it is what shows the grouping, and a tinted

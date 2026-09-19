@@ -15,7 +15,8 @@
     margin-bottom: 12px;
     flex-wrap: wrap;
 }
-.syn-filter { max-width: 220px; }
+/* Same box and same size as the field configuration filter. */
+.syn-filter { flex: 0 1 220px; min-width: 140px; }
 .syn-count { color: var(--lv4); font: var(--text-xs); white-space: nowrap; }
 .syn-spacer { flex: 1; }
 
