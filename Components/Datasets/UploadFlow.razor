@@ -62,7 +62,20 @@
    Export reads the stored documents straight from the database, so it works here too. Both live on
    the Options tab, which an admin can reach in this state. Delete is the last resort, not the
    first offer. ── *@
-@if (state == SystemState.Error)
+@* A failed first load is an Error state too, but a different situation: nothing was stored, the
+   uploaded file is still held, and the engine accepts another load. So it gets its own alert
+   (the reason, then what to change on this page) instead of the generic one below, whose talk
+   of memory, Replace and stored documents does not apply. *@
+@if (state == SystemState.Error && Ctx.IsAnalyzed && Ctx.LoadFailure is { } loadFailure)
+{
+    <div class="up-alert up-top16">
+        <Alert Variant="destructive">
+            <Title>@loadFailure.Title</Title>
+            <Description>@loadFailure.Advice</Description>
+        </Alert>
+    </div>
+}
+else if (state == SystemState.Error)
 {
     <div class="up-alert up-top16">
         <Alert Variant="destructive">
@@ -272,6 +285,7 @@ else if (Ctx.IsLoadIndexing)
         var file = _selectedFile;
         _selectedFile = null;
         Ctx.OperationError = null;
+        Ctx.LoadFailure = null;
         Ctx.IsUploading = true;
         Ctx.UploadProgress = 0;
         _uploadCts = new CancellationTokenSource();
@@ -362,12 +376,38 @@ else if (Ctx.IsLoadIndexing)
 
     // ── Load & Index ─────────────────────────────────────────────────────────
 
+    /// <summary>The alert for a failed load: the engine's reason, then what to change here.</summary>
+    private LoadFailure DescribeLoadFailure(string? raw)
+    {
+        const string nothingStored = "Nothing was stored, and the uploaded file is still here.";
+        const string retry = "then press Load and Index again.";
+        raw = string.IsNullOrEmpty(raw) ? "the engine gave no reason" : raw;
+
+        // A declared key field already gets full guidance from the server.
+        var described = Ctx.Engines.DescribeLoadFailure(Ctx.Name, Ctx.TeamId, raw);
+        if (described != raw)
+            return new LoadFailure("Load failed", $"{described} {nothingStored} Change the Document key below, {retry}");
+
+        if (raw.Contains("duplicate document key", StringComparison.OrdinalIgnoreCase))
+        {
+            var keyField = Ctx.FindEngine()?.DocumentFields?.NameOfDocumentKeyField;
+            var named = string.IsNullOrEmpty(keyField) ? "the key field" : $"the key field '{keyField}'";
+            return new LoadFailure($"Load failed: {raw}",
+                $"More than one document has the same value in {named}, and a key must be unique. {nothingStored} " +
+                $"Set Document key below to a field that is unique on every document, or to Auto-generated, {retry}");
+        }
+
+        return new LoadFailure($"Load failed: {raw}",
+            $"{nothingStored} If the cause is in the configuration below, change it, {retry} Otherwise delete this dataset and upload a corrected file.");
+    }
+
     private void StartLoadAndIndex()
     {
         if (!Ctx.HasSearchable) return;
         var ms = Ctx.BufferedFile;
         if (ms == null) return;
         Ctx.OperationError = null; // clear any prior load error before retrying
+        Ctx.LoadFailure = null;
 
         // Apply field configuration before Load so MakeSearchEngines sees the correct searchable set
         if (Ctx.EditedFields is { } edited)
@@ -409,7 +449,7 @@ else if (Ctx.IsLoadIndexing)
 
             if (!loadMonitor.Succeeded)
             {
-                Ctx.OperationError = "Load failed: " + Ctx.Engines.DescribeLoadFailure(Ctx.Name, Ctx.TeamId, loadMonitor.ErrorMessage);
+                Ctx.LoadFailure = DescribeLoadFailure(loadMonitor.ErrorMessage);
                 return;
             }
 

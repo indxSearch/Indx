@@ -222,6 +222,12 @@ namespace IndxServer.Components.Datasets
         /// <summary>Error from the last upload, load &amp; index, or wake — shown in the fields tab.</summary>
         public string? OperationError { get; set; }
 
+        /// <summary>The last Load and Index failed while the uploaded file is still held, so the
+        /// same file can be loaded again once the cause is fixed. Null otherwise. Kept apart from
+        /// <see cref="OperationError"/> because it replaces the generic engine-error alert rather
+        /// than adding a line to the page.</summary>
+        public LoadFailure? LoadFailure { get; set; }
+
         /// <summary>What the last field configuration import had to say, or null. It lives here
         /// because the import buttons sit under the table while the alert sits above it, in a
         /// different component. Cleared by Dismiss and by the next import.</summary>
@@ -319,6 +325,10 @@ namespace IndxServer.Components.Datasets
             SetBufferedFile(null);
         }
     }
+
+    /// <param name="Title">What went wrong, in the engine's words.</param>
+    /// <param name="Advice">What to do about it on this page.</param>
+    public sealed record LoadFailure(string Title, string Advice);
 
     /// <param name="Message">What to tell the user.</param>
     /// <param name="Failed">The file could not be read at all.</param>
