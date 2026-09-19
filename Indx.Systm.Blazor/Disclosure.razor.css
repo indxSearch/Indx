@@ -1,0 +1,46 @@
+/* Port of indx-systm Disclosure.module.css. */
+.indx-disclosure {
+    border: 0.5px solid var(--lv3);
+    background: var(--lv0);
+    min-width: 0;
+}
+
+.indx-disclosure-trigger {
+    all: unset;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 40px;
+    padding: 8px 15px;
+    font: var(--text-sm);
+    color: var(--lv7);
+    cursor: pointer;
+}
+
+.indx-disclosure-trigger:hover {
+    background: var(--lv1);
+}
+
+/* Inside, since a list of these sits edge to edge and an outer ring would be cut by its neighbour. */
+.indx-disclosure-trigger:focus-visible {
+    outline: 2px solid var(--lv5);
+    outline-offset: -2px;
+}
+
+.indx-disclosure-summary {
+    flex: 1;
+    min-width: 0;
+}
+
+.indx-disclosure-chevron {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: var(--lv5);
+}
+
+.indx-disclosure-content {
+    border-top: 0.5px solid var(--lv3);
+}

@@ -108,6 +108,65 @@
 .indx-input-border-bottom.indx-input-error { border-bottom-color: var(--CSignal); }
 .indx-input-border-bottom.indx-input-error:focus { border-bottom-color: var(--CSignal); }
 
+/* Table — port of indx-systm Table.module.css. Global, not scoped, because rows and cells are
+   children of the Table component and are often plain tr / td with attributes of their own. */
+.indx-table {
+    width: 100%;
+    border-collapse: collapse;
+    font: var(--text-sm);
+    background-color: var(--lv0);
+}
+.indx-table-caption {
+    caption-side: top;
+    text-align: left;
+    padding: 10px 15px;
+    font: var(--text-sm);
+    font-weight: var(--med);
+    color: var(--lv7);
+}
+.indx-table th,
+.indx-table td {
+    text-align: left;
+    padding: 0 15px;
+    height: 40px;
+    border: 0.5px solid var(--lv3);
+}
+.indx-table thead tr { background-color: var(--lv2); }
+.indx-table tbody tr { background-color: transparent; }
+.indx-table tbody td { font-weight: var(--reg); }
+.indx-table-cell-inner { display: flex; align-items: center; justify-content: space-between; }
+.indx-table-cell-label { min-width: 50%; flex-shrink: 0; }
+.indx-table-cell-content { display: flex; align-items: center; gap: 8px; }
+.indx-table-value { font: var(--text-xs); font-weight: var(--book); color: var(--lv5); }
+.indx-table-icon { display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; color: var(--lv6); }
+
+/* Scrollable: the frame scrolls sideways, the page does not. */
+.indx-table-scroll { overflow-x: auto; max-width: 100%; }
+.indx-table-scroll:focus-visible { outline: 2px solid var(--lv5); outline-offset: 2px; }
+
+/* StickyFirstColumn: the first cell of every row stays at the frame's left edge. It needs an
+   opaque background, or the scrolling cells show through it. Collapsed borders do not travel
+   with a sticky cell, so the line on its right edge is drawn by a pseudo-element. No shadow:
+   the line is what separates it, as everywhere else in the system. */
+.indx-table-sticky-first th:first-child,
+.indx-table-sticky-first td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background-color: var(--lv0);
+}
+.indx-table-sticky-first thead th:first-child { z-index: 2; background-color: var(--lv2); }
+.indx-table-sticky-first th:first-child::after,
+.indx-table-sticky-first td:first-child::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: -0.5px;
+    width: 1px;
+    background: var(--lv3);
+}
+
 /* ── Spinner keyframes (generated) ── */
 @keyframes indx-spinner-2 {
   0% { opacity: 1; }

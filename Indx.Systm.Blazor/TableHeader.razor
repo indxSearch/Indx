@@ -1,0 +1,8 @@
+@* Port of indx-systm TableHeader: the header row. Put th cells (or TableCell IsHeader) inside. *@
+<thead>
+    <tr class="indx-table-header-row">@ChildContent</tr>
+</thead>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

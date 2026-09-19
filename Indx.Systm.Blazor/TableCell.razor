@@ -1,0 +1,35 @@
+@* Port of indx-systm TableCell. With a Label the cell lays out label and content at opposite
+   ends; without one it is a plain cell. IsHeader renders a th, with Scope for col or row. *@
+@if (IsHeader)
+{
+    <th scope="@Scope" class="@Class" @attributes="AdditionalAttributes">@Inner</th>
+}
+else
+{
+    <td class="@Class" @attributes="AdditionalAttributes">@Inner</td>
+}
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool IsHeader { get; set; }
+    /// <summary>"col" | "row", for a header cell.</summary>
+    [Parameter] public string? Scope { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private RenderFragment Inner => __builder =>
+    {
+        @if (Label != null)
+        {
+            <div class="indx-table-cell-inner">
+                <span class="indx-table-cell-label">@Label</span>
+                @if (ChildContent != null) { <div class="indx-table-cell-content">@ChildContent</div> }
+            </div>
+        }
+        else
+        {
+            @ChildContent
+        }
+    };
+}

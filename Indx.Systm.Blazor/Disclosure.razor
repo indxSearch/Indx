@@ -1,0 +1,44 @@
+@* Port of indx-systm Disclosure: one row that opens to show more. A button with aria-expanded
+   and the section it controls. For a list where each item has detail worth hiding, such as
+   settings per field on a narrow screen. Stack several for an accordion; each keeps its own
+   state, so more than one can be open. The section is rendered only while open, so a long list
+   of closed rows stays light. *@
+
+<div class="indx-disclosure @Class" data-state="@(_isOpen ? "open" : "closed")">
+    <button type="button" class="indx-disclosure-trigger" aria-expanded="@(_isOpen ? "true" : "false")"
+            aria-controls="@(_isOpen ? _contentId : null)" @onclick="Toggle">
+        <span class="indx-disclosure-summary">@Summary</span>
+        <span class="indx-disclosure-chevron" aria-hidden="true">
+            @if (_isOpen) { <ChevronDown Size="14" Color="currentColor" /> } else { <ChevronRight Size="14" Color="currentColor" /> }
+        </span>
+    </button>
+    @if (_isOpen)
+    {
+        <div id="@_contentId" class="indx-disclosure-content">@ChildContent</div>
+    }
+</div>
+
+@code {
+    /// <summary>What the closed row shows. It sits inside the button that opens the section, so
+    /// keep it to text and icons: no links, inputs or buttons of its own.</summary>
+    [Parameter, EditorRequired] public RenderFragment Summary { get; set; } = default!;
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>Controlled state, with OpenChanged (@bind-Open). Leave both out and the component
+    /// keeps its own, starting from DefaultOpen.</summary>
+    [Parameter] public bool? Open { get; set; }
+    [Parameter] public EventCallback<bool?> OpenChanged { get; set; }
+    [Parameter] public bool DefaultOpen { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private bool? _own;
+    private readonly string _contentId = $"indx-disclosure-{Guid.NewGuid():N}";
+    private bool _isOpen => Open ?? _own ?? DefaultOpen;
+
+    private async Task Toggle()
+    {
+        var next = !_isOpen;
+        if (Open is null) _own = next;
+        await OpenChanged.InvokeAsync(next);
+    }
+}

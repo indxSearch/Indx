@@ -1,0 +1,43 @@
+@* Port of indx-systm Table. Rows and cells go in as children: use TableHeader, TableRow and
+   TableCell, or plain thead / tr / td where a row needs attributes of its own. The styles are
+   global (indx-systm.css, .indx-table), so both forms look the same. *@
+
+@if (Scrollable)
+{
+    <div class="indx-table-scroll @WrapperClass" role="region" aria-label="@(AriaLabel ?? Caption)" tabindex="0">
+        @TableElement
+    </div>
+}
+else
+{
+    @TableElement
+}
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Caption { get; set; }
+    /// <summary>Names the table for assistive technology. Give this or a Caption.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    /// <summary>Put the table in a frame that scrolls sideways when the table is wider than the
+    /// space it has, so a wide table never makes the page scroll. The frame is focusable, so it
+    /// can be scrolled from the keyboard.</summary>
+    [Parameter] public bool Scrollable { get; set; }
+
+    /// <summary>With Scrollable: keep the first column in place while the rest scrolls under it,
+    /// so the reader always knows which row they are on. Give that column a sensible width, since
+    /// it takes its share of a narrow screen for good.</summary>
+    [Parameter] public bool StickyFirstColumn { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+    /// <summary>Extra class on the scrolling frame (Scrollable only).</summary>
+    [Parameter] public string? WrapperClass { get; set; }
+
+    private RenderFragment TableElement => __builder =>
+    {
+        <table class="indx-table @(Scrollable && StickyFirstColumn ? "indx-table-sticky-first" : null) @Class" aria-label="@AriaLabel">
+            @if (Caption != null) { <caption class="indx-table-caption">@Caption</caption> }
+            @ChildContent
+        </table>
+    };
+}
