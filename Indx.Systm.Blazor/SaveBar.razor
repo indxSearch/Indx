@@ -1,0 +1,37 @@
+@* Port of indx-systm SaveBar: the Save / Cancel row of a page that edits a working copy. It
+   sits after the content it concludes and sticks to the bottom of the window while that content
+   is taller than the screen, so the way out of an edit is always in reach. Render it only while
+   there is something to save (Visible), which is also how the page says "this one needs Save".
+
+   ChildContent is the actions, primary first. Message names what is pending. Aside is for the
+   page's secondary file actions (export, import), pushed to the end. *@
+
+@if (Visible)
+{
+    <div class="indx-savebar @Class" role="region" aria-label="@AriaLabel">
+        <div class="indx-savebar-main">
+            @ChildContent
+            @if (!string.IsNullOrEmpty(Message))
+            {
+                <span class="indx-savebar-message">@Message</span>
+            }
+        </div>
+        @if (Aside != null)
+        {
+            <div class="indx-savebar-aside">@Aside</div>
+        }
+    </div>
+}
+
+@code {
+    /// <summary>Render at all. Bind to the page's dirty flag; defaults to true.</summary>
+    [Parameter] public bool Visible { get; set; } = true;
+    /// <summary>Short status next to the actions, e.g. "Unsaved changes".</summary>
+    [Parameter] public string? Message { get; set; }
+    /// <summary>The actions, primary first.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Secondary actions at the end of the bar.</summary>
+    [Parameter] public RenderFragment? Aside { get; set; }
+    [Parameter] public string AriaLabel { get; set; } = "Unsaved changes";
+    [Parameter] public string? Class { get; set; }
+}

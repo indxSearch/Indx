@@ -1,0 +1,29 @@
+/* Port of indx-systm SaveBar.module.css. Sticks to the bottom of the window. Its own page-tone
+   background is all that separates it from the content scrolling under it: no border, no shadow. */
+.indx-savebar {
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-top: 8px;
+    padding: 10px 0;
+    background: var(--savebar-bg, var(--lv0));
+}
+
+/* Each group wraps as a unit, never inside itself. */
+.indx-savebar-main,
+.indx-savebar-aside {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.indx-savebar-message {
+    font: var(--text-xs);
+    color: var(--lv5);
+}
