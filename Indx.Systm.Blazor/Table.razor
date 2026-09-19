@@ -4,7 +4,8 @@
 
 @if (Scrollable)
 {
-    <div class="indx-table-scroll @WrapperClass" role="region" aria-label="@(AriaLabel ?? Caption)" tabindex="0">
+    <div class="indx-table-scroll @(BleedEnd != null ? "indx-table-bleed-end" : null) @WrapperClass"
+         style="@(BleedEnd != null ? $"--table-bleed: {BleedEnd}" : null)" role="region" aria-label="@(AriaLabel ?? Caption)" tabindex="0">
         @TableElement
     </div>
 }
@@ -28,6 +29,14 @@ else
     /// so the reader always knows which row they are on. Give that column a sensible width, since
     /// it takes its share of a narrow screen for good.</summary>
     [Parameter] public bool StickyFirstColumn { get; set; }
+
+    /// <summary>With Scrollable: how far the frame reaches past its box on the end side, into
+    /// the gutter there, as a CSS length. A table that has to scroll then runs to the edge of the
+    /// screen instead of stopping at the page margin, and stops scrolling when its end meets that
+    /// edge. The start side stays put, so the table
+    /// lines up with the page and a pinned first column stays where it is. Set it to the width
+    /// of the gutter beside the table.</summary>
+    [Parameter] public string? BleedEnd { get; set; }
 
     [Parameter] public string? Class { get; set; }
     /// <summary>Extra class on the scrolling frame (Scrollable only).</summary>
