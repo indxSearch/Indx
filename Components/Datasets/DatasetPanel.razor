@@ -30,7 +30,7 @@
                 @{
                     var engineState = Ctx.EngineState;
                     var isReady = engineState == SystemState.Ready;
-                    var showNav = isReady || (Ctx.IsAnalyzed && !Ctx.IsLoadIndexing && Ctx.IsEditor) || (engineState == SystemState.Error && Ctx.IsAdmin);
+                    var showNav = isReady || (Ctx.IsAnalyzed && !Ctx.IsLoadIndexing && Ctx.IsEditor) || (engineState == SystemState.Error && Ctx.IsAdmin && !Ctx.IsLoadIndexing);
                     var tab = Ctx.ActiveTab;
                     // Not Ready and not Error: the not-yet tabs are shown disabled.
                     var pending = !isReady && engineState != SystemState.Error;

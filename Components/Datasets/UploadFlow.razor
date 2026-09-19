@@ -66,7 +66,15 @@
    uploaded file is still held, and the engine accepts another load. So it gets its own alert
    (the reason, then what to change on this page) instead of the generic one below, whose talk
    of memory, Replace and stored documents does not apply. *@
-@if (state == SystemState.Error && Ctx.IsAnalyzed && Ctx.LoadFailure is { } loadFailure)
+@* Neither error panel renders while this page's own load or index is still running. The engine's
+   status object is live, so it reads Error the instant a load fails, which is before this page
+   has finished the step and knows why. For that moment the generic alert used to flash, only to
+   be replaced by the specific one. The progress view owns the screen until the step ends, and
+   the reason is set in the same render that ends it. *@
+@if (Ctx.IsLoadIndexing)
+{
+}
+else if (state == SystemState.Error && Ctx.IsAnalyzed && Ctx.LoadFailure is { } loadFailure)
 {
     <div class="up-alert up-top16">
         <Alert Variant="destructive">
@@ -442,16 +450,16 @@ else if (Ctx.IsLoadIndexing)
 
             var pollTask = PollMonitor(loadMonitor, v => Ctx.LoadProgress = v, pollCts.Token);
             await loadTask;
+            // Before anything renders again: the failure and the end of the progress view must
+            // reach the screen together (EndProgress, in the finally below).
+            if (!loadMonitor.Succeeded)
+                Ctx.LoadFailure = DescribeLoadFailure(loadMonitor.ErrorMessage);
             pollCts.Cancel();
             try { await pollTask; } catch { }
+            if (!loadMonitor.Succeeded)
+                return;
             Ctx.LoadProgress = loadMonitor.ProgressPercent;
             await Render();
-
-            if (!loadMonitor.Succeeded)
-            {
-                Ctx.LoadFailure = DescribeLoadFailure(loadMonitor.ErrorMessage);
-                return;
-            }
 
             // Release the buffer — no longer needed
             Ctx.TakeBufferedFile();
