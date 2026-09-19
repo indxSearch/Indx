@@ -16,15 +16,11 @@
 
 @if (!string.IsNullOrEmpty(_successMessage))
 {
-    <div style="padding: 14px 18px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114,245,198,0.08); margin-bottom: 24px;">
-        @_successMessage
-    </div>
+    <div style="max-width: 520px; margin-bottom: 24px;"><Alert Variant="success">@_successMessage</Alert></div>
 }
 @if (!string.IsNullOrEmpty(_errorMessage))
 {
-    <div style="padding: 14px 18px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255,66,56,0.08); margin-bottom: 24px;">
-        @_errorMessage
-    </div>
+    <div style="max-width: 520px; margin-bottom: 24px;"><Alert Variant="destructive">@_errorMessage</Alert></div>
 }
 
 <div style="max-width: 520px;">
@@ -87,7 +83,11 @@
         }
     </div>
 
-    <Button Variant="primary" Size="default" @onclick="Save">Save Settings</Button>
+    @* The page action pattern (app.css): Save then Cancel, only while something changed. *@
+    <SaveBar Visible="@IsDirty" Message="Unsaved changes">
+        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" @onclick="Save">Save</Button>
+        <Button Variant="secondary" Size="micro" @onclick="Cancel">Cancel</Button>
+    </SaveBar>
 
 </div>
 
@@ -109,7 +109,22 @@
         new("Closed — no new registrations", "Closed"),
     ];
 
-    protected override void OnInitialized()
+    // What the page last loaded or saved, to tell whether there is anything to save.
+    private (string, bool, bool, bool, string, string) _saved;
+    private (string, bool, bool, bool, string, string) Current =>
+        (_instanceName, _requireEmailVerification, _allowUserSelfDeletion, _mcpEnabled, _registrationMode, _allowedDomainsText);
+    private bool IsDirty => Current != _saved;
+
+    protected override void OnInitialized() => LoadFromSettings();
+
+    private void Cancel()
+    {
+        _successMessage = null;
+        _errorMessage = null;
+        LoadFromSettings();
+    }
+
+    private void LoadFromSettings()
     {
         var settings = SettingsService.Load();
         _instanceName = settings.InstanceName;
@@ -118,6 +133,7 @@
         _mcpEnabled = settings.McpEnabled;
         _registrationMode = settings.RegistrationMode.ToString();
         _allowedDomainsText = string.Join("\n", settings.AllowedDomains);
+        _saved = Current;
     }
 
     private void OnModeChanged(string? value)
@@ -151,6 +167,7 @@
             settings.RegistrationMode = mode;
             settings.AllowedDomains = domains;
             SettingsService.Save(settings);
+            _saved = Current;
 
             _successMessage = "Settings saved.";
         }

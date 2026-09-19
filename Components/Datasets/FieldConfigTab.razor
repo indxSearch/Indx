@@ -27,20 +27,18 @@ else if (Ctx.EditedFields is { } fields)
 {
     <FieldConfigTable Fields="fields" Editable="@Ctx.IsEditor" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced" Filter="@_filter"
                       @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged" />
-    @* The action row: Save / Cancel appear on the left once something changed, export and import
-       are always on the right. The document key follows below. *@
-    <div class="indx-field-config-actions">
-        <div class="indx-field-config-toolbar-group">
-            @if (Ctx.IsEditor && Ctx.IsDirty)
-            {
-                <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" @onclick="Save" disabled="@(!Ctx.HasSearchable)">Save</Button>
-                <Button Variant="secondary" Size="micro" @onclick="Cancel">Cancel</Button>
-                @if (_searchableTouched && !Ctx.HasSearchable)
-                {
-                    <span class="indx-field-config-error">At least one field must be searchable</span>
-                }
-            }
-        </div>
+    @* The page action pattern (app.css): Save / Cancel in a bar that appears once something
+       changed and sticks to the window bottom, since this table is often taller than the screen.
+       Export and import close the page. The document key follows below. *@
+    <SaveBar Visible="@(Ctx.IsEditor && Ctx.IsDirty)" Message="Unsaved changes">
+        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" @onclick="Save" disabled="@(!Ctx.HasSearchable)">Save</Button>
+        <Button Variant="secondary" Size="micro" @onclick="Cancel">Cancel</Button>
+        @if (_searchableTouched && !Ctx.HasSearchable)
+        {
+            <span class="indx-field-config-error">At least one field must be searchable</span>
+        }
+    </SaveBar>
+    <div class="indx-file-actions">
         <FieldConfigFileActions CanImport="@Ctx.IsEditor" IdSuffix="-ready" OnImported="StateHasChanged" />
     </div>
     <KeyFieldRow Editable="@Ctx.IsEditor" />

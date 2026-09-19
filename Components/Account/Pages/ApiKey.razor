@@ -26,7 +26,7 @@
         datasets, and to a level of access. It is shown only once, when it is created.
     </p>
 
-    @if (!string.IsNullOrEmpty(_error))
+    @if (!string.IsNullOrEmpty(_error) && !_showCreate)
     {
         <Alert Variant="destructive">
             <Description>@_error</Description>
@@ -58,6 +58,21 @@
 
     @* ── Existing keys ── *@
     <h3 class="indx-section-heading">Your keys</h3>
+    @* The page action pattern (app.css): the primary "New …" on top of the list it adds to. *@
+    @if (_teams.Count == 0)
+    {
+        <p class="key-muted">You are not a member of any team yet, so there is nothing a key could reach.</p>
+    }
+    else
+    {
+        <div class="indx-list-toolbar">
+            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenCreate">New API key</Button>
+            @if (_keys.Count > 0)
+            {
+                <span class="indx-list-toolbar-end">@_keys.Count key@(_keys.Count == 1 ? "" : "s")</span>
+            }
+        </div>
+    }
     @if (_keys.Count == 0)
     {
         <p class="key-muted">No API keys yet.</p>
@@ -114,18 +129,8 @@
     }
 
     @* ── Create ── *@
-    <h3 class="indx-section-heading">Create a key</h3>
-    @if (_teams.Count == 0)
-    {
-        <p class="key-muted">You are not a member of any team yet, so there is nothing a key could reach.</p>
-    }
-    else if (!_showCreate)
-    {
-        <Button Variant="primary" Size="micro" @onclick="OpenCreate">New API key</Button>
-    }
-    else
-    {
-        <Surface Class="key-form">
+    <Modal @bind-Open="_showCreate" Title="New API key" Description="The key is shown once, right after it is created.">
+        <div class="key-form">
             <div class="key-field">
                 <InputField Label="Name" placeholder="e.g. Docs site search, Nightly import" @bind-Value="_name" />
             </div>
@@ -171,12 +176,16 @@
                 <SelectField Label="Expires after" Value="@_days.ToString()" ValueChanged="@(v => { if (int.TryParse(v, out var d)) _days = d; })" Options="ExpirationOptions" />
             </div>
 
-            <div class="key-form-actions">
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <Alert Variant="destructive"><Description>@_error</Description></Alert>
+            }
+            <div class="indx-form-actions">
                 <Button Variant="primary" Size="micro" Loading="@_creating" Disabled="@(_limitDatasets && _selected.Count == 0)" @onclick="Create">Create key</Button>
-                <Button Variant="ghost" Size="micro" Disabled="@_creating" @onclick="() => _showCreate = false">Cancel</Button>
+                <Button Variant="secondary" Size="micro" Disabled="@_creating" @onclick="() => _showCreate = false">Cancel</Button>
             </div>
-        </Surface>
-    }
+        </div>
+    </Modal>
 
     @* ── Using a key ── *@
     @if (_created != null && _created.Record.TeamId is { } createdTeam)

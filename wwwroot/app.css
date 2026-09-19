@@ -837,6 +837,47 @@ a.btn-danger:hover {
 
 /* The action row under the table: Save / Cancel (or Load and Index) on the left, export and
    import on the right. It wraps as two groups, never inside one. */
+/* ── Page action pattern ─────────────────────────────────────────────────────────────────────
+   One layout for every page that lists things or edits them:
+     top     .indx-list-toolbar   primary "New …" first, then the filter; the count sits at the end
+     bottom  <SaveBar>            Save then Cancel, only while there are changes, sticky
+     bottom  .indx-file-actions   export, import and whole-list actions, at the end of the row
+   Creating happens in a Modal whose buttons are .indx-form-actions: primary first, then Cancel. */
+.indx-list-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.indx-list-toolbar-filter { flex: 0 1 220px; min-width: 140px; }
+.indx-list-toolbar-end {
+    margin-left: auto;
+    color: var(--lv4);
+    font: var(--text-xs);
+    white-space: nowrap;
+}
+.indx-file-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0 16px;
+}
+.indx-form-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.indx-modal-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: min(380px, 80vw);
+}
+
 .indx-field-config-actions {
     display: flex;
     align-items: center;

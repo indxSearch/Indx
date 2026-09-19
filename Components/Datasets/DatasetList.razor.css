@@ -10,26 +10,9 @@
     flex: 1;
 }
 
-.indx-new-dataset {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-    flex-wrap: wrap;
-}
-
-.indx-new-dataset ::deep .indx-input-wrapper,
-.indx-new-dataset ::deep input {
-    max-width: 300px;
-}
-
-.indx-new-dataset--below {
-    margin-top: 24px;
-}
-
 .indx-create-error {
     color: var(--CSignal);
-    margin-top: 4px;
-    margin-bottom: 0;
+    margin: 0;
 }
 
 .indx-empty-state {

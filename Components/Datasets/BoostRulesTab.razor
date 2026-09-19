@@ -27,6 +27,14 @@
     }
     else
     {
+        @* A new rule lands at the top of the list, next to the button that made it. *@
+        <div class="indx-list-toolbar">
+            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="AddRule">New boost rule</Button>
+            @if (_rules.Count > 0)
+            {
+                <span class="indx-list-toolbar-end">@_rules.Count rule@(_rules.Count == 1 ? "" : "s")</span>
+            }
+        </div>
         @if (_rules.Count == 0)
         {
             <p class="boost-empty">No boost rules yet.</p>
@@ -134,9 +142,6 @@
             }
         </div>
 
-        <div class="boost-toolbar">
-            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="AddRule">Add boost rule</Button>
-        </div>
         @if (!string.IsNullOrEmpty(_importNote))
         {
             <p class="boost-note">@_importNote</p>
@@ -147,22 +152,17 @@
             <p class="boost-error">@_error</p>
         }
 
-        <div class="boost-actions">
-            <div class="boost-actions-group">
-                @if (IsDirty)
-                {
-                    <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save boost rules</Button>
-                    <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
-                }
-            </div>
-            <div class="boost-actions-group">
-                @if (_rules.Count > 0)
-                {
-                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="ExportAsync">Export as json</Button>
-                }
-                <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
-                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)">Import from json</Button>
-            </div>
+        <SaveBar Visible="@IsDirty" Message="Unsaved changes">
+            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save</Button>
+            <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
+        </SaveBar>
+        <div class="indx-file-actions">
+            @if (_rules.Count > 0)
+            {
+                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="ExportAsync">Export as json</Button>
+            }
+            <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
+            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)">Import from json</Button>
         </div>
     }
 </div>
@@ -254,7 +254,7 @@
     {
         _error = null;
         var first = FilterableFieldNames().FirstOrDefault() ?? "";
-        _rules.Add(new BoostRule { Name = "New rule", Conditions = new() { NewCondition(first) } });
+        _rules.Insert(0, new BoostRule { Name = "New rule", Conditions = new() { NewCondition(first) } });
     }
 
     private static BoostStrength ParseStrength(string? v) => Enum.TryParse<BoostStrength>(v, out var s) ? s : BoostStrength.Med;

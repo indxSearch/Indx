@@ -27,24 +27,15 @@
         var visible = matched.Take(RenderCap).ToList();
     }
 
-    <div class="syn-toolbar">
-        <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="@(() => OpenModal(null))">Create new</Button>
+    <div class="indx-list-toolbar">
+        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="@(() => OpenModal(null))">New synonym</Button>
         @if (_list != null && _list.Entries.Count > 0)
         {
-            <div class="syn-filter">
+            <div class="indx-list-toolbar-filter">
                 <SearchField Size="micro" Placeholder="Filter entries" Value="@_filter"
                              ValueChanged="@(v => _filter = v ?? string.Empty)" aria-label="Filter entries" />
             </div>
-            <span class="syn-count">@matched.Count of @_list.Entries.Count entries</span>
-        }
-        <div class="syn-spacer"></div>
-        <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
-        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)">Import from json</Button>
-        @if (_list != null)
-        {
-            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="ExportAsync">Export as json</Button>
-            <ConfirmButton Label="Remove list" Icon="DatasetIcons.Delete" Prompt="Remove the whole list?"
-                           ConfirmLabel="Remove" Variant="primary" OnConfirm="RemoveListAsync" />
+            <span class="indx-list-toolbar-end">@matched.Count of @_list.Entries.Count entries</span>
         }
     </div>
 
@@ -106,6 +97,18 @@
         <p class="syn-error">@_error</p>
     }
 
+    @* Whole-list actions close the page, where field configuration and boost rules keep theirs. *@
+    <div class="indx-file-actions">
+        <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
+        @if (_list != null)
+        {
+            <ConfirmButton Label="Remove list" Icon="DatasetIcons.Delete" Prompt="Remove the whole list?"
+                           ConfirmLabel="Remove" Variant="primary" OnConfirm="RemoveListAsync" />
+            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="ExportAsync">Export as json</Button>
+        }
+        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)">Import from json</Button>
+    </div>
+
     <Modal @bind-Open="_modalOpen" Title="@(_modalTarget == null ? "New synonym entry" : "Edit synonym entry")">
         <div class="syn-modal">
             <div>
@@ -129,9 +132,9 @@
             {
                 <p class="syn-error syn-error--modal">@_modalError</p>
             }
-            <div class="syn-modal-actions">
-                <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="@(() => _modalOpen = false)">Cancel</Button>
+            <div class="indx-form-actions">
                 <Button Variant="primary" Size="micro" Loading="@_saving" @onclick="SaveModalAsync">Save</Button>
+                <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="@(() => _modalOpen = false)">Cancel</Button>
             </div>
         </div>
     </Modal>

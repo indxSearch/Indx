@@ -116,6 +116,15 @@ else if (_isInviteMode)
             Invited addresses can register once. They are removed automatically after the account is created.
         </p>
 
+        @* The page action pattern (app.css): the primary add on top of the list it adds to. *@
+        <div class="indx-list-toolbar">
+            <Button Variant="primary" Size="micro" IconLeft="_iconUserPlus" @onclick="OpenInvite">Invite user</Button>
+            @if (_inviteEmails.Count > 0)
+            {
+                <span class="indx-list-toolbar-end">@_inviteEmails.Count pending</span>
+            }
+        </div>
+
         @if (_inviteEmails.Count > 0)
         {
             <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px;">
@@ -140,30 +149,23 @@ else if (_isInviteMode)
             <p style="color: var(--lv4); font-size: 13px; margin-bottom: 16px;">No pending invites.</p>
         }
 
-        @if (!_showAddInvite)
-        {
-            <Button Variant="secondary" Size="micro" IconLeft="_iconUserPlus" @onclick="() => { _showAddInvite = true; _inviteError = null; }">
-                Invite a user
-            </Button>
-        }
-        else
-        {
-            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px;">
-                <input class="indx-input"
-                       placeholder="Email address"
-                       @bind="_inviteEmailInput"
-                       style="width: 220px;" />
-                <Button Variant="primary" Size="micro"
-                        Disabled="@(!IsValidEmail(_inviteEmailInput))" Loading="@_inviting"
-                        @onclick="AddInviteAsync">@(_inviting ? "Sending…" : "Add")</Button>
-                <Button Variant="ghost" Size="micro" Disabled="@_inviting"
-                        @onclick="() => { _showAddInvite = false; _inviteEmailInput = string.Empty; _inviteError = null; }">Cancel</Button>
+        <Modal Open="_showAddInvite" OpenChanged="@(open => { if (!open && !_inviting) CloseInvite(); })" Title="Invite user"
+               Description="They get an email with a link to register. The invite can be used once.">
+            <div class="indx-modal-form">
+                <InputField Label="Email address" placeholder="name@example.com" @bind-Value="_inviteEmailInput"
+                            @oninput="@(e => _inviteEmailInput = e.Value?.ToString() ?? string.Empty)" />
+                @if (!string.IsNullOrEmpty(_inviteError))
+                {
+                    <Alert Variant="destructive">@_inviteError</Alert>
+                }
+                <div class="indx-form-actions">
+                    <Button Variant="primary" Size="micro"
+                            Disabled="@(!IsValidEmail(_inviteEmailInput))" Loading="@_inviting"
+                            @onclick="AddInviteAsync">@(_inviting ? "Sending…" : "Send invite")</Button>
+                    <Button Variant="secondary" Size="micro" Disabled="@_inviting" @onclick="CloseInvite">Cancel</Button>
+                </div>
             </div>
-            @if (!string.IsNullOrEmpty(_inviteError))
-            {
-                <p style="color: var(--CSignal); font: var(--text-xs); margin-top: 4px;">@_inviteError</p>
-            }
-        }
+        </Modal>
     </div>
 }
 
@@ -200,6 +202,20 @@ else if (_isInviteMode)
         var settings = SettingsService.Load();
         _isInviteMode = settings.RegistrationMode == IndxServer.Services.RegistrationMode.Invite;
         _inviteEmails = [.. settings.AllowedEmails];
+    }
+
+    private void OpenInvite()
+    {
+        _inviteError = null;
+        _inviteEmailInput = string.Empty;
+        _showAddInvite = true;
+    }
+
+    private void CloseInvite()
+    {
+        _showAddInvite = false;
+        _inviteEmailInput = string.Empty;
+        _inviteError = null;
     }
 
     private async Task AddInviteAsync()

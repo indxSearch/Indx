@@ -9,6 +9,12 @@
 
 <div class="indx-datasets-heading">
     <h2>Datasets</h2>
+    @* The page action pattern (app.css): the primary "New …" leads the actions on top. The empty
+       state carries the button itself, as its call to action, so it is not repeated here. *@
+    @if (CanCreate && _rows.Count > 0)
+    {
+        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset">New dataset</Button>
+    }
     @HeadingActions
 </div>
 
@@ -16,7 +22,10 @@
 {
     <div class="indx-empty-state">
         <p class="indx-empty-intro">A dataset holds your JSON documents and search index. Create one here to get started.</p>
-        @NewDataset
+        @if (CanCreate)
+        {
+            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset">New dataset</Button>
+        }
         <div class="indx-empty-skill">
             <p class="indx-empty-intro indx-empty-intro--tight">Using an LLM to set up your search? Get the skill.</p>
             <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Agent" Href="https://www.skills.sh/indxsearch/skill-indx-search/indx-search">Indx Agent Skill ↗</Button>
@@ -50,38 +59,25 @@ else
             </a>
         }
     </div>
-    @NewDataset
 }
 
-@code {
-    // "New dataset" — the same control below the grid and in the empty state (above the skill
-    // hint), expanding into the name form in place.
-    private RenderFragment NewDataset => __builder =>
-    {
-        @if (CanCreate)
+<Modal Open="_showNewDatasetForm" OpenChanged="@(open => { if (!open) CancelNewDataset(); })" Title="New dataset"
+       Description="Name it now; the JSON upload is the first step on its page.">
+    <div class="indx-modal-form">
+        <InputField Label="Dataset name" placeholder="e.g. products" @bind-Value="_newDatasetName"
+                    @oninput="OnNewDatasetInput" @onkeydown="OnNewDatasetKeyDown" />
+        @if (!string.IsNullOrEmpty(_createError))
         {
-            <div>
-            <div class="indx-new-dataset indx-new-dataset--below">
-                @if (_showNewDatasetForm)
-                {
-                    <InputField placeholder="Dataset name" @bind-Value="_newDatasetName"
-                                @oninput="OnNewDatasetInput" @onkeydown="OnNewDatasetKeyDown" />
-                    <Button Variant="primary" Size="micro" @onclick="CreateDataset" disabled="@string.IsNullOrWhiteSpace(_newDatasetName)">Create</Button>
-                    <Button Variant="secondary" Size="micro" @onclick="CancelNewDataset">Cancel</Button>
-                }
-                else
-                {
-                    <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="() => _showNewDatasetForm = true">New dataset</Button>
-                }
-            </div>
-            @if (!string.IsNullOrEmpty(_createError))
-            {
-                <p class="indx-create-error">@_createError</p>
-            }
-            </div>
+            <p class="indx-create-error">@_createError</p>
         }
-    };
+        <div class="indx-form-actions">
+            <Button Variant="primary" Size="micro" @onclick="CreateDataset" disabled="@string.IsNullOrWhiteSpace(_newDatasetName)">Create</Button>
+            <Button Variant="secondary" Size="micro" @onclick="CancelNewDataset">Cancel</Button>
+        </div>
+    </div>
+</Modal>
 
+@code {
     [Parameter, EditorRequired] public string TeamId { get; set; } = "";
     [Parameter, EditorRequired] public string TeamName { get; set; } = "";
     [Parameter] public string? Role { get; set; }
@@ -190,8 +186,7 @@ else
                 // The count stays: a rebuild runs on a shadow engine while this one keeps serving, so
                 // the documents it reports are real and still being searched.
                 return rebuilding is { } pct
-                    ? new Row(name, "Rebuilding", "var(--CWarning)", "#080809", DatasetIcons.ForState(SystemState.Indexing),
-                              engine!.Status.DocumentCount, pct)
+                    ? new Row(name, "Rebuilding", "var(--CWarning)", "#080809", DatasetIcons.ForState(SystemState.Indexing), engine!.Status.DocumentCount, pct)
                     : new Row(name, "Ready", "var(--CTeal)", "#080809", DatasetIcons.ForState(SystemState.Ready), engine!.Status.DocumentCount);
             }
             // A wake being cancelled leaves its engine in Error (load) or Loaded (index) until it is
@@ -210,8 +205,7 @@ else
             // actively loading it. Ask for that directly rather than inferring it from the state.
             if (ka.RecordCount > 0)
                 return Engines.IsWorkInProgress(name, teamId)
-                    ? new Row(name, "Waking", "var(--CWarning)", "#080809", DatasetIcons.ForState(SystemState.Loading),
-                              ka.RecordCount, Engines.GetProgressPercent(name, teamId))
+                    ? new Row(name, "Waking", "var(--CWarning)", "#080809", DatasetIcons.ForState(SystemState.Loading), ka.RecordCount, Engines.GetProgressPercent(name, teamId))
                     : new Row(name, "Hibernated", "var(--CLightBlue)", "#080809", DatasetIcons.Hibernate, ka.RecordCount);
             return new Row(name, "Empty", "var(--lv3)", "var(--lv5)", DatasetIcons.ForState(SystemState.Created), null);
         }
@@ -229,6 +223,12 @@ else
     private async Task OnNewDatasetKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter") await CreateDataset();
+    }
+
+    private void OpenNewDataset()
+    {
+        _createError = null;
+        _showNewDatasetForm = true;
     }
 
     private void CancelNewDataset()

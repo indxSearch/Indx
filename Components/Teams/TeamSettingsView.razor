@@ -21,13 +21,21 @@
     <h2 class="indx-section-heading indx-section-heading--first">Manage team</h2>
     <p class="indx-section-help">Who can access this team's datasets, and the team itself.</p>
 
-    @if (!string.IsNullOrEmpty(_error))
+    @if (!string.IsNullOrEmpty(_error) && !_showAddMember)
     {
         <div style="margin-bottom:12px;"><Alert Variant="destructive">@_error</Alert></div>
     }
 
     @* ── Members ── *@
     <h3 class="indx-section-heading">Members</h3>
+    @* The page action pattern (app.css): the primary add on top of the list it adds to. *@
+    <div class="indx-list-toolbar">
+        @if (_canAddMembers)
+        {
+            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenAddMember">Add member</Button>
+        }
+        <span class="indx-list-toolbar-end">@_members.Count member@(_members.Count == 1 ? "" : "s")</span>
+    </div>
     <table style="width:100%; border-collapse:collapse; font-size:13px;">
         <thead>
             <tr style="border-bottom:1px solid var(--lv3); color:var(--lv5);">
@@ -67,22 +75,27 @@
     </table>
 
     @* ── Add member (Editor and above) ── *@
-    @if (_canAddMembers)
-    {
-        <h3 class="indx-section-heading">Add a member</h3>
-        @if (_addableUsers.Count == 0)
-        {
-            <p style="color:var(--lv5);">Everyone with an account is already on this team.</p>
-        }
-        else
-        {
-            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                <div style="width:240px;"><SelectField Size="micro" Placeholder="Select a user…" @bind-Value="_addUserId" Options="_userOptions" /></div>
-                <div style="width:130px;"><SelectField Size="micro" @bind-Value="_addRole" Options="_addRoleOptions" /></div>
+    <Modal @bind-Open="_showAddMember" Title="Add member" Description="@($"Anyone with an account on this instance can be added to {Team.Name}.")">
+        <div class="indx-modal-form">
+            @if (_addableUsers.Count == 0)
+            {
+                <p style="color:var(--lv5); margin:0;">Everyone with an account is already on this team.</p>
+            }
+            else
+            {
+                <SelectField Size="micro" Label="User" Placeholder="Select a user…" @bind-Value="_addUserId" Options="_userOptions" />
+                <SelectField Size="micro" Label="Role" @bind-Value="_addRole" Options="_addRoleOptions" />
+            }
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <Alert Variant="destructive">@_error</Alert>
+            }
+            <div class="indx-form-actions">
                 <Button Variant="primary" Size="micro" Disabled="@string.IsNullOrEmpty(_addUserId)" Loading="@(_busy == "add")" @onclick="OnAddMember">Add</Button>
+                <Button Variant="secondary" Size="micro" Disabled="@(_busy == "add")" @onclick="() => _showAddMember = false">Cancel</Button>
             </div>
-        }
-    }
+        </div>
+    </Modal>
 
     @* ── Team settings (Admin) ── *@
     @if (_canAdmin)
@@ -220,6 +233,15 @@
         finally { _busy = null; }
     }
 
+    private bool _showAddMember;
+
+    private void OpenAddMember()
+    {
+        _error = null;
+        _addUserId = "";
+        _showAddMember = true;
+    }
+
     private Task OnAddMember() => RunBusy("add", AddMemberAsync);
 
     private async Task AddMemberAsync()
@@ -246,6 +268,7 @@
             }
             catch { /* email failure is non-fatal */ }
         }
+        _showAddMember = false;
         await LoadAsync();
     }
 

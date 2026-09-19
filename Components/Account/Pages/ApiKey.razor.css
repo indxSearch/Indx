@@ -26,13 +26,12 @@
 .key-actions { text-align: right; white-space: nowrap; }
 ::deep .key-legacy { margin-top: calc(var(--spacing) * 3); }
 
-::deep .key-form { max-width: 520px; display: flex; flex-direction: column; gap: 18px; padding: 20px; }
+.key-form { display: flex; flex-direction: column; gap: 18px; }
 .key-field { display: flex; flex-direction: column; gap: 6px; }
 .key-label { font: var(--text-xs); color: var(--lv6); }
 .key-help { margin: 0; font: var(--text-xs); color: var(--lv5); }
 .key-radios { display: flex; gap: 20px; flex-wrap: wrap; }
 .key-datasets { display: flex; flex-direction: column; gap: 6px; padding: 8px 0 0 2px; }
-.key-form-actions { display: flex; gap: 8px; }
 
 .key-code {
     margin: 0 0 calc(var(--spacing) * 3);

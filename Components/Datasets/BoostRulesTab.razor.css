@@ -31,13 +31,8 @@
 .boost-dates { display: flex; gap: 20px; margin-top: 8px; }
 .boost-date-label { color: var(--lv5); font: var(--text-xs); display: block; margin-bottom: 2px; }
 .boost-hint { color: var(--lv4); font: var(--text-xs); display: block; margin-top: 4px; }
-.boost-toolbar { display: flex; align-items: center; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 .boost-note { color: var(--lv5); font: var(--text-xs); margin-top: 8px; }
 .boost-error { color: var(--CSignal); font: var(--text-sm); margin-top: 10px; }
-/* The action row: Save / Cancel on the left once something changed, import and export always on
-   the right. The same arrangement as under the field configuration. It wraps as two groups. */
-.boost-actions { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; margin-top: 16px; }
-.boost-actions-group { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 
 /* A narrow screen. Nothing here is hidden or moved to another place, the rows are only told
    where to break, so that they break the same way every time:
