@@ -11,11 +11,12 @@
 
 <p style="color: var(--lv5); margin-bottom: 20px; font-size: 14px;">Live preview of all transactional emails. Instance name and styling reflect current settings.</p>
 
-<div style="display:flex; align-items:center; gap:8px; margin-bottom:32px;">
+<div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:32px;">
     <span style="font-size:13px; color:var(--lv5);">Preview mode:</span>
     <Button Variant="@(_dark ? "ghost" : "secondary")" Size="micro" @onclick="() => SetDark(false)">Light</Button>
     <Button Variant="@(_dark ? "secondary" : "ghost")" Size="micro" @onclick="() => SetDark(true)">Dark</Button>
-    <span style="font-size:12px; color:var(--lv4); margin-left:8px;">
+    @* Wide enough a basis that it takes its own line on a phone instead of a thin column. *@
+    <span style="font-size:12px; color:var(--lv4); flex:1 1 260px;">
         Dark mode simulates a dark-mode email client (clients that support <code>prefers-color-scheme</code>).
     </span>
 </div>

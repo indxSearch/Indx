@@ -1,0 +1,8 @@
+/* Cells keep to one line, so the row height stays even and a narrow screen scrolls the table
+   sideways instead of stacking every value into a tall column. ::deep: the table element is
+   systm Table's. */
+::deep .admin-datasets-table th,
+::deep .admin-datasets-table td {
+    white-space: nowrap;
+    font-size: 13px;
+}

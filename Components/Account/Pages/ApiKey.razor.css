@@ -18,7 +18,10 @@
 }
 .key-reveal-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
 
-.key-table-wrap { overflow-x: auto; }
+/* The frame is systm Table's. Every cell keeps to one line except the access description, which
+   may take two but never gets squeezed below a readable width. */
+.key-table-wrap td, .key-table-wrap th { white-space: nowrap; }
+.key-table-wrap .key-scope { white-space: normal; min-width: 200px; }
 .key-scope { color: var(--lv6); }
 .key-actions { text-align: right; white-space: nowrap; }
 ::deep .key-legacy { margin-top: calc(var(--spacing) * 3); }

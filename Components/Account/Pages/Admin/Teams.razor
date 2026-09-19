@@ -35,12 +35,13 @@ else
     @foreach (var row in _rows)
     {
         <div style="border: 1px solid var(--lv3); border-radius: var(--radius); background: var(--lv0); margin-bottom: 12px;">
-            <div style="display: flex; align-items: center; gap: 16px; padding: 12px 16px; border-bottom: 1px solid var(--lv2);">
-                <span style="font-family: monospace; color: var(--lv6); font-weight: 500;">@row.Name</span>
-                <span style="color: var(--lv5); font-size: 12px;">
+            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; padding: 12px 16px; border-bottom: 1px solid var(--lv2);">
+                @* The name never breaks mid-word; on a narrow screen the line wraps between its three parts. *@
+                <span style="font-family: monospace; color: var(--lv6); font-weight: 500; white-space: nowrap;">@row.Name</span>
+                <span style="color: var(--lv5); font-size: 12px; white-space: nowrap;">
                     @row.Members.Count member@(row.Members.Count == 1 ? "" : "s") · @row.DatasetCount dataset@(row.DatasetCount == 1 ? "" : "s")
                 </span>
-                <span style="margin-left: auto; color: var(--lv5); font-size: 12px;">created @row.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</span>
+                <span style="margin-left: auto; color: var(--lv5); font-size: 12px; white-space: nowrap;">created @row.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</span>
             </div>
 
             <div style="padding: 4px 16px 8px;">

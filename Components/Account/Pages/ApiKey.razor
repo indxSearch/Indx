@@ -64,8 +64,10 @@
     }
     else
     {
+        @* systm Table: scrolls inside its own frame with the key name pinned. Squeezed into a phone's
+           width the columns wrapped each value onto three or four lines. *@
         <div class="key-table-wrap">
-            <table class="indx-table">
+            <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" AriaLabel="Your API keys">
                 <thead>
                     <tr>
                         <th>Name</th>
@@ -73,7 +75,7 @@
                         <th>Created</th>
                         <th>Expires</th>
                         <th>Status</th>
-                        <th></th>
+                        <th aria-label="Actions"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -100,7 +102,7 @@
                         </tr>
                     }
                 </tbody>
-            </table>
+            </Table>
         </div>
         @if (_keys.Any(k => k.TeamId == null && !k.IsRevoked && k.ExpiresAt >= DateTime.UtcNow))
         {
