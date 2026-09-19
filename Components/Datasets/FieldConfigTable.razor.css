@@ -2,17 +2,33 @@
     margin-bottom: 12px;
 }
 
-/* The frame is systm Table's. Above 1440px the table always fits, so the frame is switched off
-   there: a scrolling frame would become the header row's sticky container and stop it from
-   sticking to the page. Below that the header is static, for the same reason. */
-@media (min-width: 1441px) {
-    .indx-fields-table ::deep .indx-table-scroll {
+/* The frame is systm Table's: it scrolls sideways inside itself, so the table can never push
+   the page wider. It is switched off only where the table is sure to fit, because a scrolling
+   frame becomes the header row's sticky container and stops it from sticking to the page. Where
+   that is depends on the mode, since the columns have set widths (below):
+     simple    710px of columns + a field column of 300px + the page gutters  ->  1100px
+     advanced 1150px of columns + a field column of 270px + the page gutters  ->  1500px
+   Below those the header is static, for the same reason. */
+@media (min-width: 1100px) {
+    .indx-fields-table:not(.indx-fields-table--advanced) ::deep .indx-table-scroll {
         overflow-x: visible;
     }
 }
 
-@media (max-width: 1440px) {
-    .indx-table thead {
+@media (min-width: 1500px) {
+    .indx-fields-table--advanced ::deep .indx-table-scroll {
+        overflow-x: visible;
+    }
+}
+
+@media (max-width: 1099px) {
+    .indx-fields-table .indx-table thead {
+        position: static;
+    }
+}
+
+@media (max-width: 1499px) {
+    .indx-fields-table--advanced .indx-table thead {
         position: static;
     }
 }
@@ -93,8 +109,25 @@
     white-space: nowrap;
 }
 
+/* Advanced mode has eleven columns after the first, so it runs tighter: less cell padding, and
+   widths cut to what each header needs. 4 x 100 + 4 x 120 + 3 x 90 = 1150px, which leaves the
+   field column room inside the page width. At the simple widths it came to 1370px, more than the
+   page can ever give it. */
+.indx-fields-table--advanced .indx-table th,
+.indx-fields-table--advanced .indx-table td {
+    padding: 0 10px;
+}
+
+.indx-fields-table--advanced .indx-col-check {
+    width: 100px;
+}
+
+.indx-fields-table--advanced .indx-col-check-wide {
+    width: 120px;
+}
+
 .indx-col-num {
-    width: 110px;
+    width: 90px;
     white-space: nowrap;
 }
 
@@ -140,13 +173,24 @@
     width: 200px;
     z-index: 100;
     pointer-events: none;
-    opacity: 0;
-    transition: opacity 0.15s ease;
+    /* display:none when hidden, never opacity:0, for the reason spelled out at the type badge's
+       panel below: an invisible box is still laid out and still counts toward the scroll frame's
+       overflow. The last column's tip is 200px wide on a 90px column, so it added 44px of empty
+       scroll past the table's right edge. */
+    display: none;
     line-height: 1.4;
 }
 
 .indx-th-tip:hover::after {
-    opacity: 1;
+    display: block;
+}
+
+/* The last column's tip opens leftward from the column's right edge. Centred, it would reach
+   past the table while shown and give the frame a scrollbar for as long as the pointer rests. */
+th:last-child .indx-th-tip::after {
+    left: auto;
+    right: 0;
+    transform: none;
 }
 
 /* Hover panel on the type badge, showing a sample of the field's content and its flags.
@@ -248,7 +292,7 @@
     min-width: 6ch;
 }
 
-/* Three renderings by width. Wide: the plain table. Between 769px and 1440px: the same table in
+/* Three renderings by width. Wide: the plain table. Narrower than it fits: the same table in
    a scrolling frame with the field column pinned, and that column kept modest. 768px and under:
    the table gives way to the list of rows that open, since no amount of pinning makes twelve
    columns readable on a phone. */

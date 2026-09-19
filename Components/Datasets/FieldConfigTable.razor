@@ -8,8 +8,10 @@
 
 @* systm Table: the frame scrolls sideways and the field column stays pinned, so on a narrow
    screen the reader always knows which field a checkbox belongs to. *@
-<div class="indx-fields-table">
-    <Table Scrollable StickyFirstColumn AriaLabel="Field configuration">
+<div class="indx-fields-table @(ShowAdvanced ? "indx-fields-table--advanced" : null)">
+    @* The table reaches the right edge of the screen when it has to scroll: the page gutter plus
+       the 5px the dataset panel's surface adds. The left side stays at the page margin. *@
+    <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Field configuration">
         <thead>
             <tr>
                 <th>Field and type</th>
@@ -19,10 +21,10 @@
                 <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Results can be sorted by this field's value.">Sortable</span></th>
                 @if (ShowAdvanced)
                 {
-                    <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
-                    <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
-                    <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
-                    <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Sharper matching for run-together or split-word queries. Coverage already matches these; high resolution improves precision — recommended only for key fields such as titles.">HighResolution</span></th>
+                    <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
+                    <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
+                    <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
+                    <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Sharper matching for run-together or split-word queries. Coverage already matches these; high resolution improves precision — recommended only for key fields such as titles.">HighResolution</span></th>
                 }
                 <th class="@(ShowAdvanced ? "indx-col-num" : "indx-col-weight")"><span class="indx-th-tip" data-tooltip="Relevance weight for this field (recommended range 0.5–3.0). Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0.">Weight</span></th>
                 @if (ShowAdvanced)

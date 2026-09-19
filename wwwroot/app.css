@@ -303,13 +303,20 @@ a.btn-danger:hover {
     border-bottom: 1px solid var(--lv2);
 }
 
+/* How wide the page gets before it stops growing and centres. One value for the header and the
+   content, so they stay aligned. 1680px: wide enough that the field configuration's advanced
+   columns have room on a large monitor, short of the point where a text line gets tiring. */
+:root {
+    --page-max: 1680px;
+}
+
 .content {
     /* The page gutter, named so that a bar which scrolls sideways can reach out into it (systm
        Tabs, Bleed) by exactly this much. */
     --page-gutter: calc(var(--spacing) * 8);
     flex: 1;
     padding: var(--page-gutter);
-    max-width: 1440px;
+    max-width: var(--page-max);
     width: 100%;
     margin: 0 auto;
 }
@@ -343,7 +350,7 @@ a.btn-danger:hover {
     align-items: center;
     width: 100%;
     gap: 14px;
-    max-width: 1440px;
+    max-width: var(--page-max);
     margin: 0 auto;
     min-height: 30px;
 }

@@ -33,7 +33,7 @@ else if (Ctx.EditedFields is { } fields)
         <div class="indx-field-config-toolbar-group">
             @if (Ctx.IsEditor && Ctx.IsDirty)
             {
-                <Button Variant="primary" Size="micro" @onclick="Save" disabled="@(!Ctx.HasSearchable)">Save</Button>
+                <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" @onclick="Save" disabled="@(!Ctx.HasSearchable)">Save</Button>
                 <Button Variant="secondary" Size="micro" @onclick="Cancel">Cancel</Button>
                 @if (_searchableTouched && !Ctx.HasSearchable)
                 {
