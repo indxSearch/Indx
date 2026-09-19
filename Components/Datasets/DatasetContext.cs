@@ -213,6 +213,11 @@ namespace IndxServer.Components.Datasets
         public int ShadowBuildPercent { get; set; }
         /// <summary>Error from the last upload, load &amp; index, or wake — shown in the fields tab.</summary>
         public string? OperationError { get; set; }
+
+        /// <summary>What the last field configuration import had to say, or null. It lives here
+        /// because the import buttons sit under the table while the alert sits above it, in a
+        /// different component. Cleared by Dismiss and by the next import.</summary>
+        public FieldImportOutcome? FieldImportOutcome { get; set; }
         public bool IsBusy => IsUploading || IsLoadIndexing || IsSaving;
 
         // ── UI state shared between tabs ──────────────────────────────────────
@@ -306,4 +311,9 @@ namespace IndxServer.Components.Datasets
             SetBufferedFile(null);
         }
     }
+
+    /// <param name="Message">What to tell the user.</param>
+    /// <param name="Failed">The file could not be read at all.</param>
+    /// <param name="NothingImported">It was read, but no field took its configuration.</param>
+    public sealed record FieldImportOutcome(string Message, bool Failed, bool NothingImported);
 }

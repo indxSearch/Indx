@@ -8,8 +8,7 @@
 
 @if (!Ctx.IsSaving)
 {
-    <FieldConfigToolbar ExportFirst CanImport="@Ctx.IsEditor" IdSuffix="-ready"
-                        @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced" OnImported="StateHasChanged" />
+    <FieldConfigToolbar @bind-Filter="_filter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced" />
 }
 
 @if (!string.IsNullOrEmpty(_saveError))
@@ -26,25 +25,32 @@
 }
 else if (Ctx.EditedFields is { } fields)
 {
-    <FieldConfigTable Fields="fields" Editable="@Ctx.IsEditor" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced"
+    <FieldConfigTable Fields="fields" Editable="@Ctx.IsEditor" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced" Filter="@_filter"
                       @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged" />
-    <KeyFieldRow Editable="@Ctx.IsEditor" />
-    @if (Ctx.IsEditor && Ctx.IsDirty)
-    {
-        <div class="indx-field-config-toolbar">
-            <Button Variant="primary" Size="micro" @onclick="Save" disabled="@(!Ctx.HasSearchable)">Save</Button>
-            <Button Variant="secondary" Size="micro" @onclick="Cancel">Cancel</Button>
-            @if (_searchableTouched && !Ctx.HasSearchable)
+    @* The action row: Save / Cancel appear on the left once something changed, export and import
+       are always on the right. The document key follows below. *@
+    <div class="indx-field-config-actions">
+        <div class="indx-field-config-toolbar-group">
+            @if (Ctx.IsEditor && Ctx.IsDirty)
             {
-                <span class="indx-field-config-error">At least one field must be searchable</span>
+                <Button Variant="primary" Size="micro" @onclick="Save" disabled="@(!Ctx.HasSearchable)">Save</Button>
+                <Button Variant="secondary" Size="micro" @onclick="Cancel">Cancel</Button>
+                @if (_searchableTouched && !Ctx.HasSearchable)
+                {
+                    <span class="indx-field-config-error">At least one field must be searchable</span>
+                }
             }
         </div>
-    }
+        <FieldConfigFileActions CanImport="@Ctx.IsEditor" IdSuffix="-ready" OnImported="StateHasChanged" />
+    </div>
+    <KeyFieldRow Editable="@Ctx.IsEditor" />
 }
 
 @code {
 
     private bool _showUnused;
+
+    private string? _filter;
     private bool _showAdvanced;
     private bool _searchableTouched;
     private string? _saveError;

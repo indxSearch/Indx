@@ -1,21 +1,17 @@
-@* Import / export of the field configuration as JSON plus the two view toggles. Shared by the
-   analyzed-upload view and the Ready view; import merges by field name into the context's
-   working copy. *@
-@using System.Text.Json
-@using Indx.Api
-@inject BrowserFiles Files
+@* The row above the field configuration: the field name filter and the two view toggles. Shared
+   by the analyzed-upload view and the Ready view. Export and import live under the table
+   (FieldConfigFileActions); what an import had to say is shown here, above the table, where it
+   cannot be missed and has room for field names. It stays until dismissed or the next import. *@
 
-@* The outcome of an import sits above the whole field configuration, where it cannot be missed
-   and has room for field names. It stays until dismissed or the next import. *@
-@if (_importWarning != null)
+@if (Ctx.FieldImportOutcome is { } outcome)
 {
     <div class="indx-field-config-import-alert">
-        <Alert Variant="@(_importFailed ? "destructive" : "warning")">
-            <Title>@(_importFailed ? "Import failed" : _nothingImported ? "Nothing was imported" : "Imported, with some fields skipped")</Title>
-            <Description>@_importWarning</Description>
+        <Alert Variant="@(outcome.Failed ? "destructive" : "warning")">
+            <Title>@(outcome.Failed ? "Import failed" : outcome.NothingImported ? "Nothing was imported" : "Imported, with some fields skipped")</Title>
+            <Description>@outcome.Message</Description>
             <ChildContent>
                 <div class="indx-field-config-import-alert-actions">
-                    <Button Variant="ghost" Size="micro" @onclick="() => _importWarning = null">Dismiss</Button>
+                    <Button Variant="ghost" Size="micro" @onclick="() => Ctx.FieldImportOutcome = null">Dismiss</Button>
                 </div>
             </ChildContent>
         </Alert>
@@ -23,16 +19,8 @@
 }
 
 <div class="indx-field-config-toolbar indx-field-config-toolbar--split">
-    <div class="indx-field-config-toolbar-group">
-        @if (ExportFirst)
-        {
-            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="ExportAsync">Export field configuration as json</Button>
-        }
-        @if (CanImport)
-        {
-            <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
-            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)">Import field configuration</Button>
-        }
+    <div class="indx-field-config-filter">
+        <SearchField Size="micro" Placeholder="Filter fields" Value="@Filter" ValueChanged="FilterChanged" aria-label="Filter fields by name" />
     </div>
     <div class="indx-field-config-toolbar-group indx-field-config-toolbar-group--wide">
         <ToggleSwitch Checked="@ShowUnused" CheckedChanged="ShowUnusedChanged" Label="Show unused fields" Elevated />
@@ -42,61 +30,12 @@
 
 @code {
     [CascadingParameter] public DatasetContext Ctx { get; set; } = default!;
-    [Parameter] public bool CanImport { get; set; } = true;
-    /// <summary>Ready view lists Export before Import; the analyzed view keeps Export next to the Load button.</summary>
-    [Parameter] public bool ExportFirst { get; set; }
+    /// <summary>The field name filter. The toolbar only holds the box; the owner passes the text
+    /// on to the table.</summary>
+    [Parameter] public string? Filter { get; set; }
+    [Parameter] public EventCallback<string?> FilterChanged { get; set; }
     [Parameter] public bool ShowUnused { get; set; }
     [Parameter] public EventCallback<bool> ShowUnusedChanged { get; set; }
     [Parameter] public bool ShowAdvanced { get; set; }
     [Parameter] public EventCallback<bool> ShowAdvancedChanged { get; set; }
-    /// <summary>Raised after an import changed the working copy.</summary>
-    [Parameter] public EventCallback OnImported { get; set; }
-    /// <summary>Distinguishes the two InputFile ids when both views exist for one dataset.</summary>
-    [Parameter] public string IdSuffix { get; set; } = "";
-
-    private string ImportInputId => $"fieldconfig-import{IdSuffix}-{Ctx.Name}";
-    private string? _importWarning;
-    private bool _importFailed;      // the file could not be read at all
-    private bool _nothingImported;   // it was read, but no field took its configuration
-
-    public async Task ExportAsync()
-    {
-        var fields = Ctx.EditedFields;
-        if (fields == null) return;
-        var json = JsonSerializer.Serialize(fields, new JsonSerializerOptions { WriteIndented = true });
-        await Files.DownloadAsync($"{Ctx.Name}-field-config.json", json);
-    }
-
-    private async Task ImportAsync(InputFileChangeEventArgs e)
-    {
-        _importWarning = null;
-        _importFailed = false;
-        _nothingImported = false;
-        try
-        {
-            using var stream = e.File.OpenReadStream(maxAllowedSize: 1_000_000);
-            using var reader = new StreamReader(stream);
-            var json = await reader.ReadToEndAsync();
-            var imported = JsonSerializer.Deserialize<FieldProxy[]>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
-            if (imported == null || imported.Length == 0)
-            {
-                _importWarning = "Invalid or empty configuration file.";
-                _importFailed = true;
-                return;
-            }
-            var current = Ctx.EditedFields;
-            if (current == null) return;
-
-            var result = FieldConfigImport.Merge(current, imported);
-            _importWarning = FieldConfigImport.Describe(result, imported.Length);
-            _nothingImported = result.Matched == 0;
-
-            await OnImported.InvokeAsync();
-        }
-        catch (Exception ex)
-        {
-            _importWarning = ex.Message;
-            _importFailed = true;
-        }
-    }
 }

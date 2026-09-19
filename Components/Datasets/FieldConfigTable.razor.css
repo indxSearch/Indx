@@ -1,12 +1,17 @@
-.indx-table-wrap {
+.indx-fields-table {
     margin-bottom: 12px;
 }
 
-@media (max-width: 1440px) {
-    .indx-table-wrap {
-        overflow-x: auto;
+/* The frame is systm Table's. Above 1440px the table always fits, so the frame is switched off
+   there: a scrolling frame would become the header row's sticky container and stop it from
+   sticking to the page. Below that the header is static, for the same reason. */
+@media (min-width: 1441px) {
+    .indx-fields-table ::deep .indx-table-scroll {
+        overflow-x: visible;
     }
+}
 
+@media (max-width: 1440px) {
     .indx-table thead {
         position: static;
     }
@@ -213,7 +218,127 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+    min-width: 0;
+    padding-left: calc(var(--depth, 0) * var(--indent, 18px));
 }
+
+/* The field name: systm Truncate, start side. It may shrink, but never to nothing. */
+.indx-cell-inner ::deep .indx-field-name {
+    flex: 0 1 auto;
+    min-width: 6ch;
+}
+
+/* Three renderings by width. Wide: the plain table. Between 769px and 1440px: the same table in
+   a scrolling frame with the field column pinned, and that column kept modest. 768px and under:
+   the table gives way to the list of rows that open, since no amount of pinning makes twelve
+   columns readable on a phone. */
+.indx-fields-cards {
+    display: none;
+}
+
+@media (max-width: 1100px) {
+    .indx-table td:first-child,
+    .indx-table th:first-child {
+        max-width: 220px;
+    }
+}
+
+@media (max-width: 768px) {
+    .indx-fields-table {
+        display: none;
+    }
+
+    .indx-fields-cards {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 12px;
+    }
+}
+
+/* One field. Nested fields step in a little under their container's heading. Neighbours share
+   a border, so the list reads as one surface. */
+.indx-field-card {
+    margin-left: calc(var(--depth, 0) * 8px);
+    min-width: 0;
+}
+
+.indx-field-card + .indx-field-card {
+    margin-top: -0.5px;
+}
+
+.indx-field-card-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 40px;
+    padding: 0 15px;
+    font: var(--text-sm);
+    border: 0.5px solid var(--lv3);
+    background: var(--lv1);
+    min-width: 0;
+}
+
+.indx-field-card-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.indx-field-card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.indx-field-card-state {
+    font: var(--text-xs);
+    font-weight: var(--book);
+    color: var(--lv5);
+}
+
+.indx-field-card-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 15px;
+    font: var(--text-xs);
+    font-weight: var(--book);
+    color: var(--lv5);
+}
+
+/* What the hover popover shows on a wide screen, in reach of a finger here. */
+.indx-field-card-sample {
+    color: var(--lv6);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+
+/* The settings table inside an open row: the label column needs less than systm's default half,
+   and the weight slider wants the room. */
+.indx-field-card ::deep .indx-table-cell-label {
+    min-width: 0;
+}
+
+.indx-field-card ::deep .indx-table td {
+    padding: 0 12px;
+}
+
+.indx-field-card ::deep .indx-weight-slider {
+    min-width: 150px;
+}
+
+.indx-fields-empty {
+    font: var(--text-xs);
+    color: var(--lv4);
+    padding: 12px 0;
+}
+
 
 .indx-cell-value {
     display: inline-flex;

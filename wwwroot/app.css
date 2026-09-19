@@ -736,21 +736,8 @@ a.btn-danger:hover {
 /* Chip styling now lives with the component: Indx.Systm.Blazor/Chip.razor.css */
 
 /* ── Data tables (dataset console: field configuration, synonyms) ── */
-.indx-table {
-    width: 100%;
-    border-collapse: collapse;
-    font: var(--text-sm);
-    background-color: var(--lv0);
-}
-
-.indx-table th,
-.indx-table td {
-    text-align: left;
-    padding: 0 15px;
-    height: 40px;
-    border: 0.5px solid var(--lv3);
-}
-
+/* The table base styles live in systm (indx-systm.css, .indx-table). What stays here is the
+   console's own choice: a header row that sticks to the top of the page while it scrolls. */
 .indx-table thead {
     position: sticky;
     top: 0;
@@ -763,14 +750,6 @@ a.btn-danger:hover {
 }
 
 .indx-table thead th {
-    font-weight: var(--reg);
-}
-
-.indx-table tbody tr {
-    background-color: transparent;
-}
-
-.indx-table tbody td {
     font-weight: var(--reg);
 }
 
@@ -848,6 +827,33 @@ a.btn-danger:hover {
 }
 
 .indx-field-config-toolbar-group--wide { gap: 16px; }
+
+/* The action row under the table: Save / Cancel (or Load and Index) on the left, export and
+   import on the right. It wraps as two groups, never inside one. */
+.indx-field-config-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin: 8px 0 16px;
+}
+
+/* The field name filter sits left of the toggles, and takes a full line of its own when the
+   toolbar wraps. */
+.indx-field-config-filter { flex: 0 1 220px; min-width: 140px; }
+
+/* Nothing in the toolbar breaks mid-label. On a narrow screen the two file buttons use their
+   short names (the full ones are in the tooltips) and the toggles wrap as whole items. */
+.indx-field-config-toolbar-group { white-space: nowrap; }
+.indx-fc-short { display: none; }
+
+@media (max-width: 768px) {
+    .indx-fc-long { display: none; }
+    .indx-fc-short { display: inline; }
+    .indx-field-config-toolbar-group--wide { flex-wrap: wrap; gap: 8px 16px; }
+    .indx-field-config-filter { flex: 1 1 100%; order: -1; }
+}
 
 /* ── Plain text input (dataset console) ── */
 .indx-text-input {

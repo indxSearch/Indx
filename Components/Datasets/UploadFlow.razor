@@ -166,24 +166,26 @@
 @* ── Analyzed: configure + Load and Index ── *@
 @if (state != SystemState.Ready && Ctx.IsAnalyzed && !Ctx.IsUploading && !Ctx.IsLoadIndexing && Ctx.EditedFields is { } editedFields)
 {
-    <FieldConfigToolbar @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced" OnImported="StateHasChanged" @ref="_toolbar" />
+    <FieldConfigToolbar @bind-Filter="_fieldFilter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced" />
     @if (!string.IsNullOrEmpty(Ctx.OperationError))
     {
         <p class="up-error up-error--wide">@Ctx.OperationError</p>
     }
-    <FieldConfigTable Fields="editedFields" Editable="true" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced"
+    <FieldConfigTable Fields="editedFields" Editable="true" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced" Filter="@_fieldFilter"
                       @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged" />
-    <KeyFieldRow Editable="@Ctx.IsEditor" />
-    <div class="indx-field-config-toolbar">
-        <Button Variant="primary" Size="micro" @onclick="StartLoadAndIndex" disabled="@(!Ctx.HasSearchable)">
-            Load and Index
-        </Button>
-        @if (_searchableTouched && !Ctx.HasSearchable)
-        {
-            <span class="indx-field-config-error">At least one field must be searchable</span>
-        }
-        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="() => _toolbar!.ExportAsync()">Export field configuration as json</Button>
+    <div class="indx-field-config-actions">
+        <div class="indx-field-config-toolbar-group">
+            <Button Variant="primary" Size="micro" @onclick="StartLoadAndIndex" disabled="@(!Ctx.HasSearchable)">
+                Load and Index
+            </Button>
+            @if (_searchableTouched && !Ctx.HasSearchable)
+            {
+                <span class="indx-field-config-error">At least one field must be searchable</span>
+            }
+        </div>
+        <FieldConfigFileActions OnImported="StateHasChanged" />
     </div>
+    <KeyFieldRow Editable="@Ctx.IsEditor" />
 }
 
 @* ── Load & Index progress (also used by Wake) ── *@
@@ -209,9 +211,9 @@
     private IBrowserFile? _selectedFile;
     private CancellationTokenSource? _uploadCts;
     private bool _showUnused;
+    private string? _fieldFilter;
     private bool _showAdvanced;
     private bool _searchableTouched;
-    private FieldConfigToolbar? _toolbar;
 
     /// <summary>Opens the Options tab, where Replace lives — reachable in the Error state.</summary>
     private void GoToReplace()
