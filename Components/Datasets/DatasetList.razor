@@ -49,7 +49,7 @@ else
                     }
                     else
                     {
-                        <Chip Size="small" Color="@row.ChipColor" TextColor="@row.ChipText" Icon="@row.Icon">@row.ChipLabel</Chip>
+                        <Chip Size="small" Color="@row.Chip.Color" TextColor="@row.Chip.TextColor" Icon="@row.Chip.Icon">@row.ChipLabel</Chip>
                         @if (row.Count is { } n)
                         {
                             <span class="indx-dataset-card-count">@n.ToString("N0") @(n == 1 ? "document" : "documents")</span>
@@ -86,7 +86,7 @@ else
 
     private bool CanCreate => TeamRoles.CanWrite(Role);
 
-    private sealed record Row(string Name, string Label, string ChipColor, string ChipText, RenderFragment<int>? Icon, int? Count, int? Percent = null)
+    private sealed record Row(string Name, string Label, DatasetStateChip Chip, int? Count, int? Percent = null)
     {
         /// <summary>"Indexing 42%" while there is progress to report, otherwise just the state.
         /// A percentage only appears once the monitor has one, so the chip does not flash 0%.</summary>
@@ -94,7 +94,7 @@ else
 
         /// <summary>Status not read yet — the card shows the name and a spinner.</summary>
         public bool Pending { get; init; }
-        public static Row PendingFor(string name) => new(name, "", "", "", null, null) { Pending = true };
+        public static Row PendingFor(string name) => new(name, "", DatasetStateChip.Empty, null) { Pending = true };
     }
 
     private CancellationTokenSource? _describeCts;
@@ -186,18 +186,18 @@ else
                 // The count stays: a rebuild runs on a shadow engine while this one keeps serving, so
                 // the documents it reports are real and still being searched.
                 return rebuilding is { } pct
-                    ? new Row(name, "Rebuilding", "var(--CWarning)", "#080809", DatasetIcons.ForState(SystemState.Indexing), engine!.Status.DocumentCount, pct)
-                    : new Row(name, "Ready", "var(--CTeal)", "#080809", DatasetIcons.ForState(SystemState.Ready), engine!.Status.DocumentCount);
+                    ? new Row(name, "Rebuilding", DatasetStateChip.Working(SystemState.Indexing), engine!.Status.DocumentCount, pct)
+                    : new Row(name, "Ready", DatasetStateChip.For(SystemState.Ready), engine!.Status.DocumentCount);
             }
             // A wake being cancelled leaves its engine in Error (load) or Loaded (index) until it is
             // disposed a moment later. Asked first, so neither is reported as the dataset's state.
             if (Engines.GetWakeProgress(name, teamId) is { Cancelling: true })
-                return new Row(name, "Hibernating", "var(--CLightBlue)", "#080809", DatasetIcons.Hibernate, ka.RecordCount);
+                return new Row(name, "Hibernating", DatasetStateChip.Hibernated, ka.RecordCount);
             if (state is SystemState.Loading or SystemState.Loaded or SystemState.Indexing)
-                return new Row(name, state.ToString()!, "var(--CWarning)", "#080809", DatasetIcons.ForState(state.Value), null,
+                return new Row(name, state.ToString()!, DatasetStateChip.For(state.Value), null,
                                Engines.GetProgressPercent(name, teamId));
             if (state == SystemState.Error)
-                return new Row(name, "Error", "var(--CSignal)", "var(--lv0)", DatasetIcons.ForState(SystemState.Error), null);
+                return new Row(name, "Error", DatasetStateChip.For(SystemState.Error), null);
             // Data on disk and not loaded is hibernated, whatever the keep-alive policy says: that
             // is what the word means to the reader, and the engine shell being registered or not is
             // an implementation detail. The one case that is genuinely different is a dataset
@@ -205,13 +205,13 @@ else
             // actively loading it. Ask for that directly rather than inferring it from the state.
             if (ka.RecordCount > 0)
                 return Engines.IsWorkInProgress(name, teamId)
-                    ? new Row(name, "Waking", "var(--CWarning)", "#080809", DatasetIcons.ForState(SystemState.Loading), ka.RecordCount, Engines.GetProgressPercent(name, teamId))
-                    : new Row(name, "Hibernated", "var(--CLightBlue)", "#080809", DatasetIcons.Hibernate, ka.RecordCount);
-            return new Row(name, "Empty", "var(--lv3)", "var(--lv5)", DatasetIcons.ForState(SystemState.Created), null);
+                    ? new Row(name, "Waking", DatasetStateChip.Working(), ka.RecordCount, Engines.GetProgressPercent(name, teamId))
+                    : new Row(name, "Hibernated", DatasetStateChip.Hibernated, ka.RecordCount);
+            return new Row(name, "Empty", DatasetStateChip.Empty, null);
         }
         catch
         {
-            return new Row(name, "Unknown", "var(--lv3)", "var(--lv5)", DatasetIcons.ForState(SystemState.Created), null);
+            return new Row(name, "Unknown", DatasetStateChip.Empty, null);
         }
     }
 

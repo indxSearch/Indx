@@ -73,7 +73,8 @@ else
                         }
                         else
                         {
-                            <Chip Size="large" Color="@StateColor(row.DisplayState.Value)" TextColor="#080809" Icon="@StateChipIcon(row.DisplayState.Value)">@row.DisplayState.Value.ToString()</Chip>
+                            var chip = DatasetStateChip.For(row.DisplayState.Value);
+                            <Chip Size="large" Color="@chip.Color" TextColor="@chip.TextColor" Icon="@chip.Icon">@row.DisplayState.Value.ToString()</Chip>
                         }
                     </td>
                     <td style="text-align: right; color: var(--lv5); font-variant-numeric: tabular-nums;">
@@ -122,23 +123,6 @@ else
 @code {
     private RenderFragment<int> _iconDelete  => size => @<Delete Size="size" />;
     private RenderFragment<int> _iconRefresh => size => @<Refresh Size="size" />;
-    private RenderFragment<int> _iconFlag => size => @<Flag Size="size" />;
-    private RenderFragment<int> _iconTrolley => size => @<Trolley Size="size" />;
-    private RenderFragment<int> _iconHourGlass => size => @<HourGlass Size="size" />;
-    private RenderFragment<int> _iconWarning => size => @<Warning Size="size" />;
-    private RenderFragment<int> _iconHibernate => size => @<Hibernate Size="size" />;
-    private RenderFragment<int> _iconEmpty => size => @<Empty Size="size" />;
-
-    private RenderFragment<int>? StateChipIcon(SystemState state) => state switch
-    {
-        SystemState.Ready => _iconFlag,
-        SystemState.Loading => _iconTrolley,
-        SystemState.Indexing => _iconHourGlass,
-        SystemState.Error => _iconWarning,
-        SystemState.Created => _iconEmpty,
-        SystemState.Hibernated => _iconHibernate,
-        _ => null,
-    };
 
     private record DatasetRow(
         string DataSetName, string TeamId, string? TeamName,
@@ -179,15 +163,6 @@ else
             return rem.TotalHours >= 1 ? $"~{(int)rem.TotalHours}h {rem.Minutes}m left" : $"~{rem.Minutes}m left";
         return "";
     }
-
-    private static string StateColor(SystemState state) => state switch
-    {
-        SystemState.Ready => "var(--CTeal)",
-        SystemState.Loaded => "var(--CLightBlue)",
-        SystemState.Created => "var(--lv3)",
-        SystemState.Hibernated => "var(--CLightBlue)",
-        _ => "var(--CWarning)",
-    };
 
     private List<DatasetRow>? _rows;
     private string? _message;

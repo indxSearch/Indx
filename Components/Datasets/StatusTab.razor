@@ -34,7 +34,8 @@
             <tbody>
                 <tr>
                     <td>State</td>
-                    <td><Chip Size="large" Color="@DatasetStatus.ChipColor(status.SystemState)" TextColor="@DatasetStatus.ChipTextColor(status.SystemState)" Icon="@DatasetIcons.ForState(status.SystemState)">@status.SystemState</Chip></td>
+                    @{ var stateChip = DatasetStateChip.For(status.SystemState); }
+                    <td><Chip Size="large" Color="@stateChip.Color" TextColor="@stateChip.TextColor" Icon="@stateChip.Icon">@status.SystemState</Chip></td>
                 </tr>
                 <tr><td>Documents</td><td>@status.DocumentCount.ToString("N0")</td></tr>
                 <tr><td>Records on disk</td><td>@((ka?.RecordCount ?? 0).ToString("N0"))</td></tr>

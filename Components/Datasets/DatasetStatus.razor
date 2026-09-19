@@ -15,15 +15,16 @@
         <div class="indx-dataset-status">
             @if (Ctx.IsCancellingWake)
             {
-                <Chip Size="large" Color="var(--CLightBlue)" TextColor="#080809" Icon="DatasetIcons.Hibernate">Hibernating</Chip>
+                <Chip Size="large" Color="@DatasetStateChip.Hibernated.Color" TextColor="@DatasetStateChip.Hibernated.TextColor" Icon="DatasetIcons.Hibernate">Hibernating</Chip>
             }
             else if (Ctx.IsHibernated)
             {
-                <Chip Size="large" Color="var(--CLightBlue)" TextColor="#080809" Icon="DatasetIcons.Hibernate">Hibernated</Chip>
+                <Chip Size="large" Color="@DatasetStateChip.Hibernated.Color" TextColor="@DatasetStateChip.Hibernated.TextColor" Icon="DatasetIcons.Hibernate">Hibernated</Chip>
             }
             else if (!ready)
             {
-                <Chip Size="large" Color="@ChipColor(state)" TextColor="@ChipTextColor(state)" Icon="@DatasetIcons.ForState(state)">@state</Chip>
+                var chip = DatasetStateChip.For(state);
+                <Chip Size="large" Color="@chip.Color" TextColor="@chip.TextColor" Icon="@chip.Icon">@state</Chip>
             }
             @if (Ctx.IsSaving && ready)
             {
@@ -39,20 +40,4 @@
     protected override void OnInitialized() => Ctx.Changed += OnChanged;
     private void OnChanged() => _ = InvokeAsync(StateHasChanged);
     public void Dispose() => Ctx.Changed -= OnChanged;
-
-    public static string ChipColor(SystemState state) => state switch
-    {
-        SystemState.Ready => "var(--CTeal)",
-        SystemState.Loading => "var(--CLightBlue)",
-        SystemState.Indexing => "var(--CWarning)",
-        SystemState.Error => "var(--CSignal)",
-        _ => "var(--lv3)",
-    };
-
-    public static string ChipTextColor(SystemState state) => state switch
-    {
-        SystemState.Error => "var(--lv0)",
-        SystemState.Ready or SystemState.Loading or SystemState.Indexing => "#080809",
-        _ => "var(--lv5)",
-    };
 }
