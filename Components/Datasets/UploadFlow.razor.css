@@ -1,10 +1,3 @@
-.up-warning {
-    border-left: 3px solid var(--CWarning);
-    background: var(--lv1);
-    padding: 10px 14px;
-    margin-top: 16px;
-}
-.up-warning p { font: var(--text-sm); color: var(--lv6); margin: 0; }
 .up-top4 { margin-top: 4px; }
 .up-top8 { margin-top: 8px; }
 .up-top16 { margin-top: 16px; }
@@ -13,9 +6,11 @@
 .up-narrow { max-width: 560px; }
 .up-hint { font: var(--text-xs); color: var(--lv4); }
 .up-help { font: var(--text-xs); color: var(--lv5); }
+/* Events the reader must not miss (engine error, a cancelled wake being disposed, the analyze
+   warning) are systm Alerts; this only keeps them to a readable line length. */
+.up-alert { max-width: 680px; }
 .up-error { color: var(--CSignal); margin-top: 4px; }
 .up-error--wide { margin: 4px 0 8px; max-width: 680px; }
-.up-error-text { color: var(--CSignal); }
 
 /* The Error panel's escapes sit on one row: download, replace, and delete last. They wrap on a
    narrow window rather than pushing delete off the edge. */

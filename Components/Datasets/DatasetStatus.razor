@@ -13,7 +13,11 @@
     @if (!ready || Ctx.IsSaving)
     {
         <div class="indx-dataset-status">
-            @if (Ctx.IsHibernated)
+            @if (Ctx.IsCancellingWake)
+            {
+                <Chip Size="large" Color="var(--CLightBlue)" TextColor="#080809" Icon="DatasetIcons.Hibernate">Hibernating</Chip>
+            }
+            else if (Ctx.IsHibernated)
             {
                 <Chip Size="large" Color="var(--CLightBlue)" TextColor="#080809" Icon="DatasetIcons.Hibernate">Hibernated</Chip>
             }

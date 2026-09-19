@@ -49,8 +49,25 @@ namespace IndxServer.Services
         /// nothing is running for this dataset.</summary>
         int? GetProgressPercent(string dataSetName, string teamId);
 
+        /// <summary>Publishes a monitor the console drives itself (the index build after an upload)
+        /// as this dataset's progress until the returned scope is disposed, so a page reopened
+        /// mid-build shows the same percentage.</summary>
+        IDisposable TrackProgress(string dataSetName, string teamId, ProcessMonitor monitor);
+
         /// <summary>True while something is loading or indexing this dataset.</summary>
         bool IsWorkInProgress(string dataSetName, string teamId);
+
+        // Wake from hibernation. The server owns the operation, so every page visit sees the
+        // same progress and any of them can cancel it.
+        /// <summary>Starts (or joins) the wake of a hibernated dataset. False when it does not exist.</summary>
+        bool StartWake(string dataSetName, string teamId);
+        /// <summary>Progress of the running wake, or null when none is running.</summary>
+        WakeProgress? GetWakeProgress(string dataSetName, string teamId);
+        /// <summary>Why the last wake failed, or null.</summary>
+        string? GetWakeError(string dataSetName, string teamId);
+        /// <summary>Stops the running wake and returns the dataset to hibernation.</summary>
+        Task CancelWakeAsync(string dataSetName, string teamId);
+
         string[] GetKeyFieldCandidates(string dataSetName, string teamId);
         string? SetKeyField(string dataSetName, string teamId, string fieldName, out bool needsReloadToReKey);
         string? ValidateExternalLoadForCustomKey(string dataSetName, string teamId, Stream jsonStream);
@@ -85,7 +102,12 @@ namespace IndxServer.Services
         public void RunFieldConfigurationOnShadow(string d, string t, FieldProxy[] f) => M.RunFieldConfigurationOnShadow(d, t, f);
         public int GetShadowBuildPercent(string d, string t) => M.GetShadowBuildPercent(d, t);
         public int? GetProgressPercent(string d, string t) => M.GetProgressPercent(d, t);
+        public IDisposable TrackProgress(string d, string t, ProcessMonitor m) => M.TrackMonitor(d, t, m);
         public bool IsWorkInProgress(string d, string t) => M.IsWorkInProgress(d, t);
+        public bool StartWake(string d, string t) => M.StartWake(d, t);
+        public WakeProgress? GetWakeProgress(string d, string t) => M.GetWakeProgress(d, t);
+        public string? GetWakeError(string d, string t) => M.GetWakeError(d, t);
+        public Task CancelWakeAsync(string d, string t) => M.CancelWakeAsync(d, t);
         public string[] GetKeyFieldCandidates(string d, string t) => M.GetKeyFieldCandidates(d, t);
         public string? SetKeyField(string d, string t, string field, out bool needsReload) => M.SetKeyField(d, t, field, out needsReload);
         public string? ValidateExternalLoadForCustomKey(string d, string t, Stream s) => M.ValidateExternalLoadForCustomKey(d, t, s);

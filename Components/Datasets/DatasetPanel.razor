@@ -170,7 +170,8 @@
             {
                 Ctx.RefreshStatus();
                 if (Ctx.EngineState == SystemState.Ready) Ctx.EnsureFieldsLoaded();
-                return Ctx.IsTransitional;
+                // Once the upload flow has attached to a wake it polls for itself, faster.
+                return Ctx.IsTransitional && !Ctx.IsLoadIndexing;
             },
             () => InvokeAsync(() => { StateHasChanged(); Ctx.NotifyChanged(); }),
             cts.Token).ContinueWith(_ =>

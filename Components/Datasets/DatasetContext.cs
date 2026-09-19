@@ -45,7 +45,11 @@ namespace IndxServer.Components.Datasets
         /// the engine state is unknown and nothing state-dependent (upload prompt, wake panel,
         /// tab nav) should render — an unknown state must not look like an empty dataset.</summary>
         public bool HasStatus => Status != null && KeepAlive != null;
-        public SystemState EngineState => Status?.SystemState ?? SystemState.Created;
+        /// <remarks>While a wake is being cancelled this reads Created, not the engine. The engine's
+        /// status object is live, and a cancelled load parks it in Error (a cancelled index in
+        /// Loaded) for the moment before it is disposed. That is the debris of a teardown the user
+        /// asked for, and showing it made a successful cancel flash an error screen.</remarks>
+        public SystemState EngineState => IsCancellingWake ? SystemState.Created : Status?.SystemState ?? SystemState.Created;
         /// <summary>A Created engine with records persisted on disk is hibernated (manual datasets
         /// stay this way until woken; timed/pinned wake themselves on access), not an empty dataset.</summary>
         public bool IsHibernated => EngineState == SystemState.Created && (KeepAlive?.RecordCount ?? 0) > 0;
@@ -208,6 +212,10 @@ namespace IndxServer.Components.Datasets
         public int LoadProgress { get; set; }
         public int IndexProgress { get; set; }
         public bool IsIndexingPhase { get; set; }
+        /// <summary>The progress bars are showing a wake the server is running (as opposed to this
+        /// page's own upload load). Only a wake can be cancelled back to hibernation.</summary>
+        public bool IsWaking { get; set; }
+        public bool IsCancellingWake { get; set; }
         /// <summary>A field-configuration save is rebuilding the index on a shadow engine.</summary>
         public bool IsSaving { get; set; }
         public int ShadowBuildPercent { get; set; }

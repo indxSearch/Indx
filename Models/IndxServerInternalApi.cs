@@ -169,7 +169,7 @@ namespace IndxServer.Models
         /// returned scope is disposed. Every path that loads or indexes goes through here, so
         /// "is something working on this dataset right now" has one answer: warm-up at startup, a
         /// wake-on-demand, a first-time load, an index build.</summary>
-        private IDisposable TrackMonitor(string dataSetName, string teamId, ProcessMonitor monitor)
+        internal IDisposable TrackMonitor(string dataSetName, string teamId, ProcessMonitor monitor)
         {
             var key = MakeKey(dataSetName, teamId);
             _activeMonitors[key] = monitor;
@@ -194,6 +194,7 @@ namespace IndxServer.Models
         {
             var key = MakeKey(dataSetName, teamId);
             return _activeMonitors.ContainsKey(key)
+                   || _wakes.ContainsKey(key) // covers the gap between a wake's load and its index build
                    || _shadowMonitors.ContainsKey(key)
                    || _warmUpPending.ContainsKey(key);
         }
@@ -400,7 +401,12 @@ namespace IndxServer.Models
             var pm = new ProcessMonitor();
             // Run on thread-pool so MemoryStream reads (which complete synchronously) don't
             // block the Blazor server thread and freeze the UI on large files.
-            var task = Task.Run(async () => await instance.LoadAsync(jsonData, pm));
+            // Tracked, so a page that is reopened mid-load can show the percentage.
+            var task = Task.Run(async () =>
+            {
+                using (TrackMonitor(dataSetName, teamId, pm))
+                    await instance.LoadAsync(jsonData, pm);
+            });
             return (task, pm);
         }
 

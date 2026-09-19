@@ -15,8 +15,8 @@
 
 @if (Ctx.AnalyzeWarning is { } analyzeWarning)
 {
-    <div class="up-warning">
-        <p>@analyzeWarning</p>
+    <div class="up-alert up-top16">
+        <Alert Variant="warning">@analyzeWarning</Alert>
     </div>
 }
 
@@ -25,8 +25,15 @@
 {
     <div class="indx-field-config-saving up-top16">
         <p class="indx-field-config-saving-label">
-            @(state switch { SystemState.Indexing => "Indexing in progress…", SystemState.Loaded => "Data loaded — waiting for indexing.", _ => "Loading in progress…" })
+            @(state switch { SystemState.Indexing => "Indexing in progress…", SystemState.Loaded => "Data loaded, waiting for indexing.", _ => "Loading in progress…" })
         </p>
+        @* Work the server is tracking (startup warm-up, a load from the API, a build started on
+           another visit to this page) reports its percentage here. A console wake does not land
+           on this panel at all: it re-attaches to the full progress view below. *@
+        @if (Ctx.Engines.GetProgressPercent(Ctx.Name, Ctx.TeamId) is { } pendingPercent)
+        {
+            <ProgressBar Value="pendingPercent" ShowLabel FulfilledColor />
+        }
     </div>
     @* Recovery escape hatches: a dataset can get stuck in a non-Ready state — an interrupted
        load, or an index that failed in a way that never moves the state on. The tab nav is hidden
@@ -57,18 +64,18 @@
    first offer. ── *@
 @if (state == SystemState.Error)
 {
-    <div class="indx-field-config-saving up-top16">
-        <p class="indx-field-config-saving-label up-error-text">
-            The search engine hit an unrecoverable error@(string.IsNullOrEmpty(status?.ErrorMessage) ? "." : $": {status!.ErrorMessage}")
-        </p>
-        <p class="up-help up-top4">
-            This often means the server ran out of memory while loading or indexing. The engine
-            cannot recover, but the dataset can: <strong>Replace</strong> rebuilds it from a new
-            JSON file on a fresh engine, keeping this dataset's name, API keys, boost rules,
-            synonyms and keep-alive policy. If the error was memory, use a smaller file or a larger
-            instance. The stored documents are still readable, so download them first if you need
-            them.
-        </p>
+    <div class="up-alert up-top16">
+        <Alert Variant="destructive">
+            <Title>The search engine hit an unrecoverable error@(string.IsNullOrEmpty(status?.ErrorMessage) ? "." : $": {status!.ErrorMessage}")</Title>
+            <Description>
+                This often means the server ran out of memory while loading or indexing. The engine
+                cannot recover, but the dataset can: <strong>Replace</strong> rebuilds it from a new
+                JSON file on a fresh engine, keeping this dataset's name, API keys, boost rules,
+                synonyms and keep-alive policy. If the error was memory, use a smaller file or a larger
+                instance. The stored documents are still readable, so download them first if you need
+                them.
+            </Description>
+        </Alert>
     </div>
     <div class="up-top8 up-actions">
         @if (Ctx.TeamName is { } errorTeamName)
@@ -189,7 +196,18 @@
 }
 
 @* ── Load & Index progress (also used by Wake) ── *@
-@if (Ctx.IsLoadIndexing)
+@* ── Cancelled wake, engine being disposed. Its own step: the bars describe work that has
+   stopped, and the engine underneath is mid-teardown, so neither is worth showing. ── *@
+@if (Ctx.IsLoadIndexing && Ctx.IsCancellingWake)
+{
+    <div class="up-alert up-top16">
+        <Alert Variant="info">
+            <Title>Returning to hibernation…</Title>
+            <Description>The wake was cancelled. Releasing memory; the stored documents are untouched.</Description>
+        </Alert>
+    </div>
+}
+else if (Ctx.IsLoadIndexing)
 {
     <div class="indx-field-config-saving">
         <ProgressBar Value="Ctx.LoadProgress" ShowLabel FulfilledColor />
@@ -200,6 +218,16 @@
         <div class="indx-field-config-saving">
             <ProgressBar Value="Ctx.IndexProgress" ShowLabel FulfilledColor />
             <p class="indx-field-config-saving-label">Indexing…</p>
+        </div>
+    }
+    @* A wake reads the store and writes nothing, so stopping it is safe at any point: the engine
+       is dropped and the dataset is hibernated again, as if the button had never been pressed. *@
+    @if (Ctx.IsWaking && Ctx.IsEditor)
+    {
+        <div class="up-top8 up-actions">
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Hibernate" @onclick="CancelWakeAsync">
+                Cancel and return to hibernation
+            </Button>
         </div>
     }
 }
@@ -401,6 +429,7 @@
 
             await Task.Run(() =>
             {
+                using var tracked = Ctx.Engines.TrackProgress(Ctx.Name, Ctx.TeamId, indexMonitor);
                 Ctx.FindEngine()?.Index(monitor: indexMonitor);
                 indexMonitor.WaitForCompletion();
             });
@@ -427,68 +456,110 @@
 
     // ── Wake a hibernated dataset (load + index from the store, no upload) ───
 
+    // The server owns the wake (IndxServerInternalApi.Wake.cs); this page only attaches to it.
+    // That is what makes leaving and coming back show the same bars, and what lets any visit
+    // cancel it.
+
+    private CancellationTokenSource? _wakePollCts;
+
     private void StartWake()
     {
         Ctx.OperationError = null;
-        BeginProgress(); // reuses the Load/Index progress bars
-        _ = RunWakeAsync();
+        if (!Ctx.Engines.StartWake(Ctx.Name, Ctx.TeamId))
+        {
+            Ctx.OperationError = "Wake failed: dataset not found";
+            Ctx.NotifyChanged();
+            return;
+        }
+        if (!TryAttachToWake())
+        {
+            // Over before we could look: something else had already brought the engine up.
+            Ctx.RefreshStatus();
+            Ctx.NotifyChanged();
+        }
     }
 
-    private async Task RunWakeAsync()
+    /// <summary>A page opened (or re-opened) while a wake is running picks it up here. Subscribed
+    /// ahead of the base class so the attach happens before the render the same notification
+    /// triggers: the returning visitor never sees the plain "in progress" panel first.</summary>
+    protected override void OnInitialized()
     {
-        var pollCts = new CancellationTokenSource();
+        Ctx.Changed += AttachToRunningWake;
+        base.OnInitialized();
+        // The usual case: the panel already knows the status by the time this tab is created.
+        AttachToRunningWake();
+    }
+
+    protected override void OnAfterRender(bool firstRender) => AttachToRunningWake();
+
+    private void AttachToRunningWake()
+    {
+        // Whatever the engine state: a page opened mid-cancel finds an engine in Error or Loaded,
+        // and must attach all the same rather than present that as the dataset's condition.
+        if (Active && Ctx.HasStatus && !Ctx.IsLoadIndexing && !Ctx.IsUploading)
+            TryAttachToWake();
+    }
+
+    private bool TryAttachToWake()
+    {
+        if (_wakePollCts != null) return true;
+        if (Ctx.Engines.GetWakeProgress(Ctx.Name, Ctx.TeamId) is not { } progress) return false;
+
+        _wakePollCts = new CancellationTokenSource();
+        Ctx.IsWaking = true;
+        BeginProgress(); // reuses the Load/Index progress bars
+        ApplyWakeProgress(progress);
+        _ = FollowWakeAsync(_wakePollCts.Token);
+        return true;
+    }
+
+    private void ApplyWakeProgress(WakeProgress progress)
+    {
+        Ctx.LoadProgress = progress.LoadPercent;
+        Ctx.IndexProgress = progress.IndexPercent;
+        Ctx.IsIndexingPhase = progress.Indexing;
+        Ctx.IsCancellingWake = progress.Cancelling;
+    }
+
+    private async Task FollowWakeAsync(CancellationToken ct)
+    {
+        await ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(150),
+            () =>
+            {
+                if (Ctx.Engines.GetWakeProgress(Ctx.Name, Ctx.TeamId) is not { } progress) return false;
+                ApplyWakeProgress(progress);
+                return true;
+            },
+            Render, ct);
+        if (ct.IsCancellationRequested) return; // the page went away; the wake carries on without it
+
+        _wakePollCts?.Dispose();
+        _wakePollCts = null;
+        Ctx.OperationError = Ctx.Engines.GetWakeError(Ctx.Name, Ctx.TeamId);
         try
         {
-            // Phase 1: rehydrate documents from the SQLite store (data is already persisted).
-            // LoadFromDatabaseSync is the same path the startup warmup / lazy-reload use.
-            var loadMonitor = new ProcessMonitor();
-            var pollTask = PollMonitor(loadMonitor, v => Ctx.LoadProgress = v, pollCts.Token);
-            await Task.Run(() =>
-            {
-                var eng = Ctx.FindEngine();
-                if (eng == null) { loadMonitor.MarkFinished(); return; }
-                eng.LoadFromDatabaseSync(loadMonitor);
-                loadMonitor.WaitForCompletion();
-            });
-            pollCts.Cancel();
-            try { await pollTask; } catch { }
-            Ctx.LoadProgress = loadMonitor.ProgressPercent;
-            await Render();
-
-            if (!loadMonitor.Succeeded)
-            {
-                Ctx.OperationError = $"Wake failed: {loadMonitor.ErrorMessage ?? "could not load from store"}";
-                return;
-            }
-
-            // Phase 2: rebuild the inverted index.
-            Ctx.LoadProgress = 100;
-            Ctx.IndexProgress = 0;
-            Ctx.IsIndexingPhase = true;
-            await Render();
-
-            var indexMonitor = new ProcessMonitor();
-            pollCts = new CancellationTokenSource();
-            pollTask = PollMonitor(indexMonitor, v => Ctx.IndexProgress = v, pollCts.Token);
-            await Task.Run(() =>
-            {
-                Ctx.FindEngine()?.Index(monitor: indexMonitor);
-                indexMonitor.WaitForCompletion();
-            });
-            pollCts.Cancel();
-            try { await pollTask; } catch { }
-            Ctx.IndexProgress = indexMonitor.ProgressPercent;
-            await Render();
-
-            Ctx.RefreshFieldsFromEngine();
+            // Status first, flags after: the cancelling flag is what masks the torn-down engine,
+            // so it must outlive the last reference to that engine's status.
+            Ctx.RefreshStatus();
+            Ctx.IsWaking = false;
+            Ctx.IsCancellingWake = false;
+            if (Ctx.EngineState == SystemState.Ready) Ctx.RefreshFieldsFromEngine();
         }
         catch (ObjectDisposedException) { }
         finally
         {
-            pollCts.Cancel();
-            pollCts.Dispose();
-            await EndProgress();
+            Ctx.IsWaking = false;
+            Ctx.IsCancellingWake = false;
         }
+        await EndProgress();
+    }
+
+    private async Task CancelWakeAsync()
+    {
+        Ctx.IsCancellingWake = true;
+        await Render();
+        // The follower above notices the wake is gone and puts the hibernated panel back.
+        await Ctx.Engines.CancelWakeAsync(Ctx.Name, Ctx.TeamId);
     }
 
     // ── Shared progress plumbing ─────────────────────────────────────────────
@@ -521,6 +592,8 @@
     public override void Dispose()
     {
         base.Dispose();
+        Ctx.Changed -= AttachToRunningWake;
+        _wakePollCts?.Cancel();
         _uploadCts?.Cancel();
         _uploadCts?.Dispose();
     }

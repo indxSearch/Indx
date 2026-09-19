@@ -174,7 +174,7 @@ else
     /// rebuilding, or warm-up has not reached it yet. Only these are re-read while the page is
     /// open; anything else is settled until the user acts.</summary>
     private static bool IsTransient(Row row) =>
-        row.Percent is not null || row.Label is "Loading" or "Loaded" or "Indexing" or "Waking";
+        row.Percent is not null || row.Label is "Loading" or "Loaded" or "Indexing" or "Waking" or "Hibernating";
 
     private Row Describe(string name, string teamId)
     {
@@ -194,6 +194,10 @@ else
                               engine!.Status.DocumentCount, pct)
                     : new Row(name, "Ready", "var(--CTeal)", "#080809", DatasetIcons.ForState(SystemState.Ready), engine!.Status.DocumentCount);
             }
+            // A wake being cancelled leaves its engine in Error (load) or Loaded (index) until it is
+            // disposed a moment later. Asked first, so neither is reported as the dataset's state.
+            if (Engines.GetWakeProgress(name, teamId) is { Cancelling: true })
+                return new Row(name, "Hibernating", "var(--CLightBlue)", "#080809", DatasetIcons.Hibernate, ka.RecordCount);
             if (state is SystemState.Loading or SystemState.Loaded or SystemState.Indexing)
                 return new Row(name, state.ToString()!, "var(--CWarning)", "#080809", DatasetIcons.ForState(state.Value), null,
                                Engines.GetProgressPercent(name, teamId));
