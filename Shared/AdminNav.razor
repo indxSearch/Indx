@@ -1,12 +1,13 @@
 @using System.Reflection
 @using Indx.Api
-@* The admin area: one page with tabs, the same tab bar the dataset page uses. The header's
-   trail reads "Admin"; this bar is the in-section navigation. Pass the active tab's key. *@
+@* The admin area: the same tab bar the dataset page uses (systm Tabs, button variant), here in
+   link mode since each section is its own route. The header's trail reads "Admin"; this bar is
+   the in-section navigation. Pass the active tab's key. The bar stays on one line and scrolls
+   sideways when it does not fit; the version text drops to its own line below it. *@
 <div class="admin-nav">
-    @foreach (var tab in _tabs)
-    {
-        <Button Variant="@(tab.Key == Active ? "primary" : "ghost")" Size="micro" Href="@tab.Href" IconLeft="@tab.Icon">@tab.Label</Button>
-    }
+    <div class="admin-nav-tabs">
+        <Tabs Items="_items" Active="@Active" Size="micro" Variant="button" Scrollable Bleed="var(--page-gutter)" AriaLabel="Admin sections" />
+    </div>
     <span class="admin-version" title="Server @_apiVersion · Core @_indxVersion">Indx @_apiVersion · Core @_indxVersion</span>
 </div>
 
@@ -36,13 +37,13 @@
         b.CloseComponent();
     };
 
-    private static readonly (string Key, string Label, string Href, RenderFragment<int> Icon)[] _tabs =
+    private static readonly Tabs.TabItem[] _items =
     [
-        ("Users", "Users", "/admin/users", Of<Users>()),
-        ("Teams", "Teams", "/admin/teams", Of<UserGroup>()),
-        ("Datasets", "Datasets", "/admin/datasets", Of<Database>()),
-        ("Settings", "Settings", "/admin/settings", Of<SlidersHorizontal>()),
-        ("License", "License", "/admin/license", Of<DocumentOrFile>()),
-        ("EmailPreview", "Email preview", "/admin/email-preview", Of<Bell>()),
+        new("Users", "Users", Of<Users>(), Href: "/admin/users"),
+        new("Teams", "Teams", Of<UserGroup>(), Href: "/admin/teams"),
+        new("Datasets", "Datasets", Of<Database>(), Href: "/admin/datasets"),
+        new("Settings", "Settings", Of<SlidersHorizontal>(), Href: "/admin/settings"),
+        new("License", "License", Of<DocumentOrFile>(), Href: "/admin/license"),
+        new("Email preview", "EmailPreview", Of<Bell>(), Href: "/admin/email-preview"),
     ];
 }

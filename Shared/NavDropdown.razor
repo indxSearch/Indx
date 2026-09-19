@@ -1,10 +1,12 @@
 @* A header menu: a ghost trigger and a right-anchored Surface of ghost buttons — the same
-   pattern the breadcrumb switchers use. Close on backdrop click, Escape, or navigation. *@
+   pattern the breadcrumb switchers use. Close on backdrop click, Escape, or navigation.
+   The label sits in its own span so a narrow header can hide it and keep icon plus caret; the
+   aria-label carries the name when it does. *@
 @inject NavigationManager NavigationManager
 @implements IDisposable
 
 <div class="nav-dropdown">
-    <Button Variant="ghost" Size="micro" IconLeft="@Icon" IconRight="@_caret" title="@Title" aria-haspopup="menu" aria-expanded="@(_open ? "true" : "false")" @onclick="() => _open = !_open" @onkeydown="OnKeyDown">@Label</Button>
+    <Button Variant="ghost" Size="micro" IconLeft="@Icon" IconRight="@_caret" title="@Title" aria-label="@(Title ?? Label)" aria-haspopup="menu" aria-expanded="@(_open ? "true" : "false")" @onclick="() => _open = !_open" @onkeydown="OnKeyDown"><span class="nav-dropdown-label">@Label</span></Button>
     @if (_open)
     {
         <div class="nav-dropdown-backdrop" @onclick="() => _open = false"></div>

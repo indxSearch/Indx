@@ -41,36 +41,10 @@
                        built index are disabled (with the reason) until the dataset is Ready, so
                        the bar keeps its shape from the first upload onward. Error shows only what
                        can act on it. Role rules hide, never disable: disabled means "not yet". *@
-                    <nav class="indx-dataset-nav">
-                        @if (isReady || pending)
-                        {
-                            @NavTab("status", "Status", DatasetIcons.Status, isReady)
-                        }
-                        @NavTab("fields", "Field configuration", DatasetIcons.Fields, true)
-                        @if (isReady || pending)
-                        {
-                            @NavTab("search", "Search preview", DatasetIcons.Search, isReady)
-                        }
-                        @if ((isReady || pending) && Ctx.IsEditor)
-                        {
-                            @if (isReady && ExpiredBoostRules() is > 0 and var expired)
-                            {
-                                <Button Variant="@NavVariant("boosts")" Size="micro" IconLeft="DatasetIcons.Boost" @onclick="@(() => SelectTab("boosts"))">
-                                    Boost rules
-                                    <span class="indx-nav-badge" title="@expired expired boost rule(s) — no longer applying">@expired</span>
-                                </Button>
-                            }
-                            else
-                            {
-                                @NavTab("boosts", "Boost rules", DatasetIcons.Boost, isReady)
-                            }
-                            @NavTab("synonyms", "Synonyms", DatasetIcons.Synonym, isReady)
-                        }
-                        @if (Ctx.IsAdmin)
-                        {
-                            @NavTab("options", "Options", DatasetIcons.Sliders, true)
-                        }
-                    </nav>
+                    <div class="indx-dataset-nav">
+                        <Tabs Items="NavItems(isReady, pending)" Active="@tab" ActiveChanged="@(v => SelectTab(v ?? tab))"
+                              Size="micro" Variant="button" Scrollable Bleed="calc(var(--page-gutter) + 5px)" />
+                    </div>
                 }
 
                 @* ── Tabs. All stay mounted so edit state survives switching; only the active one renders. ── *@
@@ -149,24 +123,31 @@
         Ctx.ActiveTab = tab;
     }
 
-    private string NavVariant(string tab) => Ctx.ActiveTab == tab ? "primary" : "ghost";
-
     private const string NotYet = "Available after the index is built";
 
-    /// <summary>One tab button; disabled with a tooltip when it needs a Ready engine.</summary>
-    private RenderFragment NavTab(string tab, string label, RenderFragment<int> icon, bool enabled) => __builder =>
+    /// <summary>The tab bar. One line at any width: systm Tabs scrolls sideways when it does not
+    /// fit, so the labels never wrap and the page never scrolls horizontally. A tab that needs a
+    /// Ready engine is disabled with the reason; role rules leave a tab out instead.</summary>
+    private List<Tabs.TabItem> NavItems(bool isReady, bool pending)
     {
-        if (enabled)
+        var items = new List<Tabs.TabItem>(6);
+        Tabs.TabItem Tab(string value, string label, RenderFragment<int> icon, bool enabled, string? badge = null, string? badgeTitle = null) =>
+            new(label, value, icon, Disabled: !enabled, Title: enabled ? null : NotYet, Badge: badge, BadgeTitle: badgeTitle);
+
+        if (isReady || pending) items.Add(Tab("status", "Status", DatasetIcons.Status, isReady));
+        items.Add(Tab("fields", "Field configuration", DatasetIcons.Fields, true));
+        if (isReady || pending) items.Add(Tab("search", "Search preview", DatasetIcons.Search, isReady));
+        if ((isReady || pending) && Ctx.IsEditor)
         {
-            <Button Variant="@NavVariant(tab)" Size="micro" IconLeft="@icon" @onclick="@(() => SelectTab(tab))">@label</Button>
+            var expired = isReady ? ExpiredBoostRules() : 0;
+            items.Add(Tab("boosts", "Boost rules", DatasetIcons.Boost, isReady,
+                expired > 0 ? expired.ToString() : null,
+                expired > 0 ? $"{expired} expired boost rule(s), no longer applying" : null));
+            items.Add(Tab("synonyms", "Synonyms", DatasetIcons.Synonym, isReady));
         }
-        else
-        {
-            <Tooltip Content="@NotYet" Position="bottom">
-                <Button Variant="ghost" Size="micro" IconLeft="@icon" Disabled="true">@label</Button>
-            </Tooltip>
-        }
-    };
+        if (Ctx.IsAdmin) items.Add(Tab("options", "Options", DatasetIcons.Sliders, true));
+        return items;
+    }
 
     /// <summary>Enabled rules whose window has closed — the ones an editor most needs to notice,
     /// since they look live until someone opens the tab. The store caches, so this is cheap.</summary>

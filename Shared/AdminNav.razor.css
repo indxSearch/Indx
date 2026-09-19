@@ -1,8 +1,18 @@
+/* The tab bar and the version text share a row when there is room. When there is not, the row
+   wraps: the bar takes a full line, where it can shrink (min-width: 0) and scroll sideways, and
+   the version text drops below it. Nothing here can push the page wider than the screen. */
 .admin-nav {
     display: flex;
     align-items: center;
-    gap: calc(var(--spacing) * 2);
+    flex-wrap: wrap;
+    gap: 8px calc(var(--spacing) * 2);
     margin-bottom: 30px;
+}
+
+.admin-nav-tabs {
+    flex: 0 1 auto;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .admin-version {
@@ -10,4 +20,7 @@
     font: var(--text-xs);
     color: var(--lv4);
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
 }

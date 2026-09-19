@@ -304,8 +304,11 @@ a.btn-danger:hover {
 }
 
 .content {
+    /* The page gutter, named so that a bar which scrolls sideways can reach out into it (systm
+       Tabs, Bleed) by exactly this much. */
+    --page-gutter: calc(var(--spacing) * 8);
     flex: 1;
-    padding: calc(var(--spacing) * 8);
+    padding: var(--page-gutter);
     max-width: 1440px;
     width: 100%;
     margin: 0 auto;
@@ -467,8 +470,14 @@ a.btn-danger:hover {
         display: none;
     }
 
+    /* The personal menu keeps its icon and caret. The space goes to the trail, which needs it
+       for the dataset name. The button's aria-label still names it. */
+    .nav-dropdown-label {
+        display: none;
+    }
+
     .content {
-        padding: calc(var(--spacing) * 3);
+        --page-gutter: calc(var(--spacing) * 3);
     }
 }
 
