@@ -185,6 +185,36 @@
     background: var(--lv3);
 }
 
+/* The left edge is drawn the same way, and the cells' own left border is removed. With
+   collapsed borders half of the table's outer border lies outside the first cell, so the cell
+   starts a quarter of a pixel in from the frame's edge. Pinning pulls it to the true edge as
+   soon as scrolling starts, which showed as the whole table nudging sideways. Without that
+   border the cell starts at the edge, stays there, and the drawn line is its only left border.
+   One device pixel, like the 0.5px borders around it: 1px on a standard screen, 0.5px on a
+   dense one. */
+.indx-table-sticky-first th:first-child,
+.indx-table-sticky-first td:first-child {
+    border-left: 0;
+}
+
+.indx-table-sticky-first th:first-child::before,
+.indx-table-sticky-first td:first-child::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 1px;
+    background: var(--lv3);
+}
+
+@media (min-resolution: 2dppx) {
+    .indx-table-sticky-first th:first-child::before,
+    .indx-table-sticky-first td:first-child::before {
+        width: 0.5px;
+    }
+}
+
 /* ── Spinner keyframes (generated) ── */
 @keyframes indx-spinner-2 {
   0% { opacity: 1; }
