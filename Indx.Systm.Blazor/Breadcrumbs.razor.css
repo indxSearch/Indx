@@ -163,3 +163,26 @@ a.indx-breadcrumbs-label:focus-visible {
         background: var(--lv2) !important;
     }
 }
+
+/* Overflow="truncate": one line, sized by the space the trail is given rather than by a
+   breakpoint. Ancestors shrink long before the current page does and every label ellipsizes.
+   Each step needs an explicit floor: the step and the label carry min-width: 0 so that they can
+   shrink at all, and the switcher is absolutely positioned, so nothing else holds a collapsed
+   ancestor open and its switcher would drift over whatever sits before the trail. A step with
+   an icon may lose its text entirely, a step without one keeps a few characters, and the
+   current page always does. Same numbers as indx-systm Breadcrumbs.module.css. */
+.indx-breadcrumbs-truncate { min-width: 0; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-list { flex-wrap: nowrap; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-item {
+    --sep: 0px; --lead: 0px; --end: 10px; --text-min: 4ch;
+    flex: 0 1 auto;
+    min-width: calc(var(--sep) + 10px + var(--lead) + var(--text-min) + var(--end));
+}
+.indx-breadcrumbs-truncate .indx-breadcrumbs-item:not(:first-child) { --sep: 28px; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-item:has(.indx-breadcrumbs-switchable) { --end: 36px; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-item:has(.indx-breadcrumbs-label > .indx-breadcrumbs-icon) { --lead: calc(14px + var(--icon-gap)); --text-min: 0px; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-item.indx-breadcrumbs-item:last-child { --text-min: 6ch; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-item:not(:last-child) { flex-shrink: 1000; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-step { flex: 0 1 auto; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-label { overflow: hidden; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }

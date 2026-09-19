@@ -2,7 +2,7 @@
    independent context switcher (a dropdown beside the link). Clicking the label opens the
    page; the caret swaps the context. Steps without an Href render as text. *@
 
-<nav aria-label="@AriaLabel" class="indx-breadcrumbs indx-breadcrumbs-@Size @Class">
+<nav aria-label="@AriaLabel" class="indx-breadcrumbs indx-breadcrumbs-@Size @(_truncate ? "indx-breadcrumbs-truncate" : null) @Class">
     <ol class="indx-breadcrumbs-list">
         @{ var index = 0; var last = Items.Count - 1; }
         @foreach (var item in Items)
@@ -21,14 +21,14 @@
                 <div class="indx-breadcrumbs-step @(switcher != null ? "indx-breadcrumbs-switchable" : null)">
                     @if (item.Href != null)
                     {
-                        <a class="indx-breadcrumbs-label" href="@item.Href" aria-current="@current">
+                        <a class="indx-breadcrumbs-label" href="@item.Href" title="@(_truncate ? item.Label : null)" aria-current="@current">
                             @if (item.Icon != null) { <span class="indx-breadcrumbs-icon" aria-hidden="true">@item.Icon(_iconSize)</span> }
                             <span class="indx-breadcrumbs-text">@item.Label</span>
                         </a>
                     }
                     else
                     {
-                        <span class="indx-breadcrumbs-label" aria-current="@current">
+                        <span class="indx-breadcrumbs-label" title="@(_truncate ? item.Label : null)" aria-current="@current">
                             @if (item.Icon != null) { <span class="indx-breadcrumbs-icon" aria-hidden="true">@item.Icon(_iconSize)</span> }
                             <span class="indx-breadcrumbs-text">@item.Label</span>
                         </span>
@@ -104,6 +104,14 @@
 
     /// <summary>"micro" | "default" — step height, font and icon gap.</summary>
     [Parameter] public string Size { get; set; } = "default";
+
+    /// <summary>"wrap" | "truncate" — what happens when the trail does not fit. "wrap" (default)
+    /// breaks onto more lines, for a trail in the page. "truncate" keeps one line, for a header:
+    /// labels ellipsize, ancestors give way before the current page, and a step with an icon
+    /// collapses to the icon and its switcher. The full label stays in the DOM and the tooltip.</summary>
+    [Parameter] public string Overflow { get; set; } = "wrap";
+
+    private bool _truncate => Overflow == "truncate";
 
     [Parameter] public string? Class { get; set; }
 

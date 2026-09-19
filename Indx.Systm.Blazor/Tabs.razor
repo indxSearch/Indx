@@ -3,27 +3,46 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-<div class="indx-tabs @(Scrollable ? "indx-tabs-scrollable" : "")"
-     role="tablist"
+@* Two modes, decided by the items. Plain items are tabs: a tablist whose tabs switch a view in
+   place, with arrow-key navigation. Items with an Href are links to separate pages: a nav of
+   anchors with aria-current, where the browser's own link behaviour (open in new tab, the Tab
+   key) is the right one. Both share the look, the variants and the scrolling. *@
+<div class="indx-tabs @(Variant == "button" ? "indx-tabs-button" : "") @(Scrollable ? "indx-tabs-scrollable" : "") @(_bleeds ? "indx-tabs-bleed" : "")"
+     style="@(_bleeds ? $"--tabs-bleed: {Bleed}" : null)"
+     role="@(_links ? "navigation" : "tablist")"
+     aria-label="@AriaLabel"
      @ref="_listEl">
     @foreach (var item in _items)
     {
         var selected = Active == item.Value;
-        <button class="indx-tab indx-tab-@Size @(Active == item.Value ? "indx-tab-active" : "")"
-                id="@TabId(item)"
-                role="tab"
-                type="button"
-                aria-selected="@selected"
-                aria-controls="@PanelIdProvider?.Invoke(item)"
-                tabindex="@(IsTabStop(item) ? "0" : "-1")"
-                @onclick="() => OnClick(item.Value)"
-                @onkeydown="(args) => OnKeyDown(item, args)">
-            @if (item.Icon != null)
-            {
-                <span class="indx-tab-icon" aria-hidden="true">@item.Icon(_iconSize)</span>
-            }
-            @item.Label
-        </button>
+        var css = $"indx-tab indx-tab-{Size} {(selected ? "indx-tab-active" : "")}";
+        if (item.Href != null)
+        {
+            <a class="@css"
+               id="@TabId(item)"
+               href="@(item.Disabled ? null : item.Href)"
+               aria-current="@(selected ? "page" : null)"
+               aria-disabled="@(item.Disabled ? "true" : null)"
+               title="@item.Title">
+                @TabContent(item)
+            </a>
+        }
+        else
+        {
+            <button class="@css"
+                    id="@TabId(item)"
+                    role="tab"
+                    type="button"
+                    aria-selected="@selected"
+                    aria-controls="@PanelIdProvider?.Invoke(item)"
+                    aria-disabled="@(item.Disabled ? "true" : null)"
+                    title="@item.Title"
+                    tabindex="@(IsTabStop(item) ? "0" : "-1")"
+                    @onclick="() => OnClick(item)"
+                    @onkeydown="(args) => OnKeyDown(item, args)">
+                @TabContent(item)
+            </button>
+        }
     }
 </div>
 
@@ -32,8 +51,33 @@
     [Parameter] public string? Active { get; set; }
     [Parameter] public EventCallback<string?> ActiveChanged { get; set; }
     [Parameter] public string Size { get; set; } = "default";
+
+    /// <summary>"underline" (default) marks the active tab with a rule under it. "button" fills it
+    /// like a primary Button and leaves the rest as ghost buttons, for a bar that reads as a set
+    /// of views rather than as a page's sections.</summary>
+    [Parameter] public string Variant { get; set; } = "underline";
+
     [Parameter] public string? Id { get; set; }
     [Parameter] public Func<TabItem, string?>? PanelIdProvider { get; set; }
+
+    /// <summary>Names the bar for assistive technology. Needed in link mode, where the bar is a
+    /// navigation landmark; optional for a tablist.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    private bool _links => _items.Any(i => i.Href != null);
+
+    private RenderFragment TabContent(TabItem item) => __builder =>
+    {
+        @if (item.Icon != null)
+        {
+            <span class="indx-tab-icon" aria-hidden="true">@item.Icon(_iconSize)</span>
+        }
+        @item.Label
+        @if (item.Badge != null)
+        {
+            <span class="indx-tab-badge" title="@item.BadgeTitle">@item.Badge</span>
+        }
+    };
 
     /// <summary>
     /// When the tabs don't fit, scroll horizontally instead of clipping. The edges fade to hint there's
@@ -41,6 +85,14 @@
     /// you've scrolled right. Opt-in — leave off for a small, fixed set of tabs.
     /// </summary>
     [Parameter] public bool Scrollable { get; set; }
+
+    /// <summary>With Scrollable: how far the bar reaches out of its box into the gutter on each
+    /// side, as a CSS length. The edge fade then lives in the gutter and stays put, and the tabs
+    /// scroll out into it. Set it to the width of the gutter the bar sits in, for example the page
+    /// padding. Without it the fade slides in over the bar's own edges.</summary>
+    [Parameter] public string? Bleed { get; set; }
+
+    private bool _bleeds => Scrollable && !string.IsNullOrEmpty(Bleed);
 
     private ElementReference _listEl;
     private IJSObjectReference? _module;
@@ -58,9 +110,23 @@
         Active == item.Value ||
         (!_items.Any(candidate => candidate.Value == Active) && _items.FirstOrDefault() == item);
 
-    private async Task OnClick(string value)
+    private async Task OnClick(TabItem item)
     {
-        await ActiveChanged.InvokeAsync(value);
+        if (item.Disabled) return;
+        await ActiveChanged.InvokeAsync(item.Value);
+    }
+
+    /// <summary>The next enabled tab from <paramref name="from"/> in <paramref name="step"/>
+    /// direction, wrapping; null when every tab is disabled.</summary>
+    private int? NextEnabled(int from, int step)
+    {
+        var count = _items.Count;
+        for (var n = 1; n <= count; n++)
+        {
+            var i = ((from + step * n) % count + count) % count;
+            if (!_items[i].Disabled) return i;
+        }
+        return null;
     }
 
     private async Task OnKeyDown(TabItem current, KeyboardEventArgs args)
@@ -70,10 +136,10 @@
 
         int? nextIndex = args.Key switch
         {
-            "ArrowLeft" => (currentIndex - 1 + _items.Count) % _items.Count,
-            "ArrowRight" => (currentIndex + 1) % _items.Count,
-            "Home" => 0,
-            "End" => _items.Count - 1,
+            "ArrowLeft" => NextEnabled(currentIndex, -1),
+            "ArrowRight" => NextEnabled(currentIndex, 1),
+            "Home" => NextEnabled(-1, 1),
+            "End" => NextEnabled(_items.Count, -1),
             _ => null,
         };
 
@@ -116,7 +182,17 @@
             // Tabs may have changed (e.g. a dataset added/removed) — recompute the fade edges.
             await _module.InvokeVoidAsync("refresh", _listEl);
         }
+
+        // A deep link or a change made elsewhere can select a tab that is scrolled out of sight.
+        if (Scrollable && _module is not null && _revealed != Active)
+        {
+            _revealed = Active;
+            var active = _items.FirstOrDefault(i => i.Value == Active);
+            if (active != null) await _module.InvokeVoidAsync("reveal", _listEl, TabId(active));
+        }
     }
+
+    private string? _revealed;
 
     public async ValueTask DisposeAsync()
     {
@@ -137,5 +213,15 @@
     /// Button and Chip take their icons; it inherits the tab's colour through currentColor, so a
     /// selected tab's icon follows its label.
     /// </summary>
-    public record TabItem(string Label, string Value, RenderFragment<int>? Icon = null);
+    /// <param name="Disabled">Not available yet. The tab keeps its place and stays focusable, but
+    /// cannot be selected and arrow keys skip it. Rendered with aria-disabled, not the disabled
+    /// attribute, so that <paramref name="Title"/> still shows why on hover and focus.</param>
+    /// <param name="Title">Tooltip. With Disabled, say why.</param>
+    /// <param name="Badge">A small count or marker after the label, in the signal colour.</param>
+    /// <param name="BadgeTitle">Tooltip for the badge.</param>
+    /// <param name="Href">Makes the item a link to a separate page. The bar then renders as a nav
+    /// of anchors, and the active item carries aria-current="page".</param>
+    public record TabItem(string Label, string Value, RenderFragment<int>? Icon = null,
+        bool Disabled = false, string? Title = null, string? Badge = null, string? BadgeTitle = null,
+        string? Href = null);
 }

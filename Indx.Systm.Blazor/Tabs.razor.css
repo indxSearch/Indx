@@ -5,25 +5,21 @@
 }
 
 /* Scrollable variant: overflow scrolls horizontally instead of clipping. The scrollbar is hidden
-   and the edges fade (mask) to hint there's more — no shadows. The fade is scroll-aware: each edge
-   only fades when there's content scrolled off it (data-overflow-start / -end set from JS), so there
-   is no left fade at rest. */
+   and the edges fade (mask) to hint there's more — no shadows. The fade is a gradient of fixed width and slope that sits outside the frame at rest and
+   slides in as content scrolls off that edge: --tabs-fade-start / -end (set from the scroll
+   handler) is how far it has come in, the distance scrolled, capped at 32px. Because the
+   slope never changes, a small scroll shows the soft tail of the gradient, not a whole ramp
+   squeezed into a few pixels. The gradient is 48px wide and only comes in 32px, so the edge
+   dims the content without erasing it. The stops follow an ease curve, since a linear ramp
+   reads as a hard edge. */
 .indx-tabs-scrollable {
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none; /* Firefox */
     --tabs-fade-start: 0px;
     --tabs-fade-end: 0px;
-    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--tabs-fade-start), #000 calc(100% - var(--tabs-fade-end)), transparent 100%);
-    mask-image: linear-gradient(to right, transparent 0, #000 var(--tabs-fade-start), #000 calc(100% - var(--tabs-fade-end)), transparent 100%);
-}
-
-.indx-tabs-scrollable[data-overflow-start] {
-    --tabs-fade-start: 22px;
-}
-
-.indx-tabs-scrollable[data-overflow-end] {
-    --tabs-fade-end: 22px;
+    -webkit-mask-image: linear-gradient(to right, transparent calc(var(--tabs-fade-start) - 48px), rgb(0 0 0 / 0.26) calc(var(--tabs-fade-start) - 36px), rgb(0 0 0 / 0.6) calc(var(--tabs-fade-start) - 24px), rgb(0 0 0 / 0.87) calc(var(--tabs-fade-start) - 12px), #000 var(--tabs-fade-start), #000 calc(100% - var(--tabs-fade-end)), rgb(0 0 0 / 0.87) calc(100% - var(--tabs-fade-end) + 12px), rgb(0 0 0 / 0.6) calc(100% - var(--tabs-fade-end) + 24px), rgb(0 0 0 / 0.26) calc(100% - var(--tabs-fade-end) + 36px), transparent calc(100% - var(--tabs-fade-end) + 48px));
+    mask-image: linear-gradient(to right, transparent calc(var(--tabs-fade-start) - 48px), rgb(0 0 0 / 0.26) calc(var(--tabs-fade-start) - 36px), rgb(0 0 0 / 0.6) calc(var(--tabs-fade-start) - 24px), rgb(0 0 0 / 0.87) calc(var(--tabs-fade-start) - 12px), #000 var(--tabs-fade-start), #000 calc(100% - var(--tabs-fade-end)), rgb(0 0 0 / 0.87) calc(100% - var(--tabs-fade-end) + 12px), rgb(0 0 0 / 0.6) calc(100% - var(--tabs-fade-end) + 24px), rgb(0 0 0 / 0.26) calc(100% - var(--tabs-fade-end) + 36px), transparent calc(100% - var(--tabs-fade-end) + 48px));
 }
 
 .indx-tabs-scrollable::-webkit-scrollbar {
@@ -35,6 +31,8 @@
 }
 
 .indx-tab {
+    box-sizing: border-box;
+    text-decoration: none;
     display: inline-flex;
     align-items: center;
     font-weight: var(--med);
@@ -78,7 +76,69 @@
     color: var(--lv7);
 }
 
+/* Not available yet: keeps its place and its tooltip, takes no clicks. */
+.indx-tab[aria-disabled='true'],
+.indx-tab[aria-disabled='true']:hover {
+    color: var(--lv5);
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.indx-tab-badge {
+    display: inline-block;
+    padding: 0 5px;
+    font: var(--text-2xs);
+    font-weight: var(--med);
+    line-height: 14px;
+    color: var(--lv0);
+    background: var(--CSignal);
+    border-radius: var(--radius);
+}
+
 .indx-tab-active {
     color: var(--lv7);
     border-bottom-color: var(--lv7);
+}
+
+/* Variant="button": the active tab is filled like a primary Button, the rest are ghost buttons.
+   No rule under the bar, and a gap between tabs since they no longer share one. */
+.indx-tabs-button {
+    border-bottom: none;
+    gap: 8px;
+}
+
+.indx-tabs-button .indx-tab {
+    border-bottom: none;
+    margin-bottom: 0;
+    border-radius: var(--radius);
+    gap: 7px;
+}
+
+.indx-tabs-button .indx-tab:hover:not([aria-disabled='true']):not(.indx-tab-active) {
+    background: var(--lv2);
+}
+
+.indx-tabs-button .indx-tab-active,
+.indx-tabs-button .indx-tab-active:hover {
+    color: var(--lv1);
+    background: var(--lv7);
+}
+
+/* The list clips its overflow, so an outline drawn outside the tab would be cut off. */
+.indx-tabs-button .indx-tab:focus-visible {
+    outline: 2px solid var(--lv5);
+    outline-offset: -2px;
+}
+
+/* bleed: the bar reaches out of its box into the gutter beside it, by --tabs-bleed on each side,
+   and the fade lives there, fixed. At rest the tabs sit where they always did, since the same
+   amount comes back as padding, and the gutter is empty, so nothing looks faded. Scrolling moves
+   the tabs out into the gutter, where they fade away. The tabs move into the fade, the fade
+   never moves onto the tabs. Set it to the width of the gutter the bar sits in. */
+.indx-tabs-scrollable.indx-tabs-bleed {
+    margin-inline: calc(-1 * var(--tabs-bleed));
+    padding-inline: var(--tabs-bleed);
+    scroll-padding-inline: var(--tabs-bleed);
+    -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--tabs-bleed), #000 calc(100% - var(--tabs-bleed)), transparent 100%);
+    mask-image: linear-gradient(to right, transparent 0, #000 var(--tabs-bleed), #000 calc(100% - var(--tabs-bleed)), transparent 100%);
 }
