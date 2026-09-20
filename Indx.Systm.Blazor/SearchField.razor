@@ -1,5 +1,6 @@
-@* Ported from the React @indxsearch/systm SearchField. Search-as-you-type friendly:
-   binds Value on every keystroke (oninput). *@
+@* Ported from the React @indxsearch/systm SearchField. Search-as-you-type friendly: reports
+   Value on every keystroke (oninput), and does not write the typed text back into the box, so
+   a slow handler cannot eat keystrokes (see LiveInputState). *@
 <div class="searchfield @SizeClass">
     @if (!string.IsNullOrEmpty(Label))
     {
@@ -11,20 +12,22 @@
             <span class="icon" aria-hidden="true"><Indx.Systm.Blazor.Icons.Search Size="@_iconSize" Color="currentColor" /></span>
         }
         <input id="@_id"
+               @key="_live.Key"
+               @ref="_input"
                type="search"
                class="input @(HasError ? "error" : "")"
-               value="@Value"
+               value="@_live.Rendered"
                placeholder="@Placeholder"
                disabled="@Disabled"
                autocomplete="off"
                @oninput="OnInput"
                aria-invalid="@(HasError ? "true" : "false")"
                @attributes="AdditionalAttributes" />
-        @if (RightContent is not null || (Clearable && !string.IsNullOrEmpty(Value)))
+        @if (RightContent is not null || (Clearable && !string.IsNullOrEmpty(_live.Text)))
         {
             <div class="right">
                 @RightContent
-                @if (Clearable && !string.IsNullOrEmpty(Value))
+                @if (Clearable && !string.IsNullOrEmpty(_live.Text))
                 {
                     <Button Variant="ghost" Size="micro" @onclick="Clear">Clear</Button>
                 }
@@ -59,15 +62,49 @@
     private int _iconSize => Size == "micro" ? 14 : 21;
     private string SizeClass => Size == "micro" ? "size-micro" : "size-default";
 
+    private readonly LiveInputState _live = new();
+    private ElementReference _input;
+    private string? _lastParameter;
+    private bool _initialized;
+    private bool _focusAfterRender;
+
+    protected override void OnParametersSet()
+    {
+        if (!_initialized)
+        {
+            _initialized = true;
+            _lastParameter = Value;
+            _live.Set(Value);
+            return;
+        }
+        // Only a Value the parent actually changed counts. A parent that echoes the typed text
+        // back (two-way binding) is not changing anything, and one that never binds Value at
+        // all keeps passing the same null; neither may reset the box.
+        if (string.Equals(Value, _lastParameter, StringComparison.Ordinal)) return;
+        _lastParameter = Value;
+        _live.Set(Value);
+    }
+
     private async Task OnInput(ChangeEventArgs e)
     {
-        Value = e.Value?.ToString();
-        await ValueChanged.InvokeAsync(Value);
+        var text = e.Value?.ToString();
+        _live.Typed(text);
+        _lastParameter = text; // the echo of this from a two-way binding is not an outside change
+        await ValueChanged.InvokeAsync(text);
     }
 
     private async Task Clear()
     {
-        Value = "";
-        await ValueChanged.InvokeAsync(Value);
+        // Replaces the element, so put the caret back where the user was working.
+        _focusAfterRender = _live.Set("");
+        _lastParameter = "";
+        await ValueChanged.InvokeAsync("");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusAfterRender) return;
+        _focusAfterRender = false;
+        try { await _input.FocusAsync(); } catch { /* prerender or a disposed circuit */ }
     }
 }

@@ -19,11 +19,16 @@
         }
         <div class="indx-search-field-wrap">
             <span class="indx-search-field-icon"><Search Size="16" /></span>
+            @* The box is not written back to while the text comes from typing: a search takes
+               long enough that the answer to one keystroke would overwrite the next
+               (LiveInputState). *@
             <input class="indx-search-field-input"
+                   @key="_box.Key"
+                   @ref="_boxElement"
                    type="search"
                    placeholder="@($"Search {Ctx.Name}")"
-                   value="@_text"
-                   @oninput="@(e => RunQuickSearch(e.Value?.ToString() ?? string.Empty))" />
+                   value="@_box.Rendered"
+                   @oninput="@(e => OnTyped(e.Value?.ToString() ?? string.Empty))" />
             @if (!string.IsNullOrEmpty(_text))
             {
                 <div class="indx-search-clear">
@@ -101,11 +106,39 @@ else
         _perf = null;
     }
 
+    private readonly LiveInputState _box = new(string.Empty);
+    private ElementReference _boxElement;
+    private bool _focusBox;
+    private bool _wasActive;
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        // The tab renders nothing while inactive, so coming back creates the box anew.
+        if (Active && !_wasActive) _box.Sync();
+        _wasActive = Active;
+    }
+
+    private void OnTyped(string text)
+    {
+        _box.Typed(text);
+        RunQuickSearch(text);
+    }
+
     private void Clear()
     {
+        _focusBox = _box.Set(string.Empty);
         _text = string.Empty;
         _results = null;
         _perf = null;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        if (!_focusBox) return;
+        _focusBox = false;
+        try { await _boxElement.FocusAsync(); } catch { /* a disposed circuit */ }
     }
 
     private void RunQuickSearch(string text)
