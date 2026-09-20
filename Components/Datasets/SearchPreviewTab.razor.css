@@ -198,23 +198,22 @@
    Fixed height, scrolling inside itself: whatever a search does to the facets, the page below
    and above stays where it is.
 
-   A plain --lv1 ground with a --lv2 hairline, no shadow: one step off the page tone, enough to read as
+   A plain --lv1 ground with the search box's own hairline (0.5px --lv3), no shadow: one step off the page tone, enough to read as
    a base. The caption is the brightest thing on it (--lv7); the chips are a step darker than
    the ground (--lv2), since the page tone would vanish against --lv1.
 
    The caption mirrors the search field. That box is 0.5px border + 5px padding around a 40px
    row whose icon sits 7px inside a 1px transparent border and whose text starts 35px in. This
-   base has a 1px border, so its padding is 4.5px to land on the same 5.5px; the row is built
-   the same way. */
+   base has the same border and padding, and its row is built the same way. */
 .indx-facets {
     margin-top: var(--preview-gap);
     background: var(--lv1);
-    border: 1px solid var(--lv2);
+    border: 0.5px solid var(--lv3);
     color: var(--lv7);
     box-sizing: border-box;
     height: var(--facets-stacked);
-    /* 1px border + 4.5px = the search box's 0.5px border + 5px, so the caption still lines up */
-    padding: 4.5px;
+    /* the same hairline and padding as the search box, so the caption lines up with its field */
+    padding: 5px;
     display: flex;
     flex-direction: column;
 }
