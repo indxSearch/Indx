@@ -88,11 +88,12 @@ else if (Ctx.EditedFields is { } fields)
                 var engine = Ctx.FindEngine();
                 if (engine == null) return;
                 var df = engine.DocumentFields;
-                bool needsReindex = df?.RequiresReindex(edited) ?? false;
+                // Also for a field getting its first role: see FieldConfigurationChange.
+                bool needsReindex = df != null && FieldConfigurationChange.NeedsRebuild(df, edited);
                 if (needsReindex && engine.Status.SystemState == SystemState.Ready)
                     Ctx.Engines.RunFieldConfigurationOnShadow(Ctx.Name, Ctx.TeamId, edited);
                 else
-                    engine.SetFieldConfiguration(edited);
+                    FieldConfigurationChange.ApplyInPlace(engine, edited);
             });
 
             Ctx.RefreshFieldsFromEngine();

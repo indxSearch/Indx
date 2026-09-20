@@ -367,7 +367,8 @@ namespace IndxServer.Mcp
                     $"Unknown field(s): {string.Join(", ", unknown)}. Call get_field_configuration for the field names this dataset has.");
 
             var proxies = fields.Select(f => f.ToProxy()).ToArray();
-            bool needsReindex = df.RequiresReindex(proxies);
+            // Also for a field getting its first role: see FieldConfigurationChange.
+            bool needsReindex = IndxServer.Services.FieldConfigurationChange.NeedsRebuild(df, proxies);
 
             try
             {
@@ -386,7 +387,7 @@ namespace IndxServer.Mcp
                     };
                 }
 
-                var failed = engine.SetFieldConfiguration(proxies);
+                var failed = IndxServer.Services.FieldConfigurationChange.ApplyInPlace(engine, proxies);
                 if (failed != null)
                     throw new McpToolException($"Field '{failed}' does not exist in this dataset.");
             }

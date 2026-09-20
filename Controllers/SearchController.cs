@@ -832,7 +832,8 @@ namespace IndxServer.Controllers
             // searches, route via the shadow-swap path so live searches are not blocked. The
             // override is applied between Init and Load on the shadow so MakeSearchEngines builds
             // _indexableFields against the new Searchable set.
-            bool needsReindex = df.RequiresReindex(fields);
+            // Also for a field getting its first role: see FieldConfigurationChange.
+            bool needsReindex = IndxServer.Services.FieldConfigurationChange.NeedsRebuild(df, fields);
             if (needsReindex && matcher.Status.SystemState == SystemState.Ready)
             {
                 foreach (var cfg in fields)
@@ -866,7 +867,7 @@ namespace IndxServer.Controllers
             // Inline: only query-time flags changed, or engine is not yet Ready.
             try
             {
-                var failed = matcher.SetFieldConfiguration(fields);
+                var failed = IndxServer.Services.FieldConfigurationChange.ApplyInPlace(matcher, fields);
                 if (failed != null)
                     return ApiProblems.InvalidArgument($"Field '{failed}' does not exist in this dataset.");
             }
