@@ -1,114 +1,112 @@
-/* Override the font family to use FunktionalGrotesk */
-:root {
-  --font-family: 'FunktionalGrotesk', 'Inter', sans-serif;
-}
+/* The two faces of the Blazor design system.
 
-/* Light */
+   FunktionalGrotesk is the Indx brand font. It is a paid font that may not be distributed, and
+   this folder ships inside every IndxServer download and is pushed to the public repository. So
+   only these rules are tracked, NEVER the files. The files are dropped into the host app's own
+   wwwroot/fonts/ (gitignored) on the machines that build Indx's own deployments. The browser
+   only requests a face it actually needs; where the file is missing that request 404s and the
+   text renders in Geist, which is what a self-hosted install gets.
+
+   The paths climb out of _content/Indx.Systm.Blazor/fonts/ to the host app's root, so they also
+   hold when the app is served under a sub-path.
+
+   --font-family is set in indx-systm.css and only there. When this file set it as well, the
+   later link won and the apps rendered the fallback while shipping the paid font to everyone. */
+
 @font-face {
   font-family: 'FunktionalGrotesk';
-  src: url('./FunktionalGrotesk-Light.woff2') format('woff2');
+  src: url('../../../fonts/FunktionalGrotesk-Light.woff2') format('woff2');
   font-weight: 300;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'FunktionalGrotesk';
-  src: url('./FunktionalGrotesk-LightItalic.woff2') format('woff2');
+  src: url('../../../fonts/FunktionalGrotesk-LightItalic.woff2') format('woff2');
   font-weight: 300;
   font-style: italic;
   font-display: swap;
 }
-
-/* Book */
 @font-face {
   font-family: 'FunktionalGrotesk';
-  src: url('./FunktionalGrotesk-Book.woff2') format('woff2');
+  src: url('../../../fonts/FunktionalGrotesk-Book.woff2') format('woff2');
   font-weight: 350;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'FunktionalGrotesk';
-  src: url('./FunktionalGrotesk-BookItalic.woff2') format('woff2');
+  src: url('../../../fonts/FunktionalGrotesk-BookItalic.woff2') format('woff2');
   font-weight: 350;
   font-style: italic;
   font-display: swap;
 }
-
-/* Regular */
 @font-face {
   font-family: 'FunktionalGrotesk';
-  src: url('./FunktionalGrotesk-Regular.woff2') format('woff2');
+  src: url('../../../fonts/FunktionalGrotesk-Regular.woff2') format('woff2');
   font-weight: 400;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'FunktionalGrotesk';
-  src: url('./FunktionalGrotesk-RegularItalic.woff2') format('woff2');
+  src: url('../../../fonts/FunktionalGrotesk-RegularItalic.woff2') format('woff2');
   font-weight: 400;
   font-style: italic;
   font-display: swap;
 }
-
-/* Medium */
 @font-face {
   font-family: 'FunktionalGrotesk';
-  src: url('./FunktionalGrotesk-Medium.woff2') format('woff2');
+  src: url('../../../fonts/FunktionalGrotesk-Medium.woff2') format('woff2');
   font-weight: 500;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'FunktionalGrotesk';
-  src: url('./FunktionalGrotesk-MediumItalic.woff2') format('woff2');
+  src: url('../../../fonts/FunktionalGrotesk-MediumItalic.woff2') format('woff2');
   font-weight: 500;
   font-style: italic;
   font-display: swap;
 }
-
-/* Semibold */
 @font-face {
   font-family: 'FunktionalGrotesk';
-  src: url('./FunktionalGrotesk-Semibold.woff2') format('woff2');
+  src: url('../../../fonts/FunktionalGrotesk-Semibold.woff2') format('woff2');
   font-weight: 600;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'FunktionalGrotesk';
-  src: url('./FunktionalGrotesk-SemiboldItalic.woff2') format('woff2');
+  src: url('../../../fonts/FunktionalGrotesk-SemiboldItalic.woff2') format('woff2');
   font-weight: 600;
   font-style: italic;
   font-display: swap;
 }
-
-/* Bold */
 @font-face {
   font-family: 'FunktionalGrotesk';
-  src: url('./FunktionalGrotesk-Bold.woff2') format('woff2');
+  src: url('../../../fonts/FunktionalGrotesk-Bold.woff2') format('woff2');
   font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
 @font-face {
   font-family: 'FunktionalGrotesk';
-  src: url('./FunktionalGrotesk-BoldItalic.woff2') format('woff2');
+  src: url('../../../fonts/FunktionalGrotesk-BoldItalic.woff2') format('woff2');
   font-weight: 700;
   font-style: italic;
   font-display: swap;
 }
 
-/* Inter (fallback family) */
+/* Geist: the fallback, and the actual typeface of any install without the files above. Open
+   source (SIL OFL, Geist-OFL.txt beside this file), so it is tracked and shipped. One variable
+   file covers every weight the design uses, including the 350 of nearly all text; the Inter
+   files it replaced held only 400 and 500, so every self-hosted install rendered heavier than
+   designed. Chosen over Inter as the closer match to the brand font. */
 @font-face {
-  font-family: 'Inter';
-  src: url('./Inter-Regular.woff2') format('woff2');
-  font-weight: 400;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Inter';
-  src: url('./Inter-Medium.woff2') format('woff2');
-  font-weight: 500;
+  font-family: 'Geist';
+  src: url('./Geist-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
   font-display: swap;
 }

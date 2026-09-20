@@ -1,7 +1,7 @@
 /* Systm Design Tokens — single source of truth for all Blazor apps.
-   Pair with fonts/fonts.css (FunktionalGrotesk + Inter @font-face).
-   The fonts.css overrides --font-family to FunktionalGrotesk, so link it
-   after this file (or in either order — the cascade resolves the var). */
+   Pair with fonts/fonts.css, which holds the @font-face rules and sets no variables.
+   --font-family is set here and only here. Two files setting it on :root is how the Blazor apps
+   ended up rendering the fallback while shipping a paid font: equal specificity, so the later link won. */
 
 :root {
     --spacing: 5px;
@@ -28,7 +28,9 @@
     --CConfirmed: var(--CPureBlue);
 
     /* FONT FAMILY */
-    --font-family: 'Inter', sans-serif;
+    /* The brand font where its files are present, Geist everywhere else (see fonts/fonts.css).
+       Arial is the last resort should the Geist file itself fail to load. */
+    --font-family: 'FunktionalGrotesk', 'Geist', Arial, sans-serif;
 
     /* TEXT — line-height tuned per scale: looser for body (wraps to multiple lines),
        tighter for large display sizes. Controls (buttons/inputs) use fixed heights with
