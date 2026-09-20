@@ -39,9 +39,9 @@
                 </tr>
                 <tr><td>Documents</td><td>@status.DocumentCount.ToString("N0")</td></tr>
                 <tr><td>Records on disk</td><td>@((ka?.RecordCount ?? 0).ToString("N0"))</td></tr>
-                <tr><td>Last index build</td><td>@TimeAgo(status.TimeOfLastIndexBuild)</td></tr>
+                <tr><td>Last index build</td><td><TimeAgo Value="status.TimeOfLastIndexBuild" /></td></tr>
                 <tr><td>Seconds to index</td><td>@status.SecondsToIndex.ToString("0.##")s</td></tr>
-                <tr><td>Instance created</td><td>@TimeAgo(status.TimeOfInstanceCreation)</td></tr>
+                <tr><td>Instance created</td><td><TimeAgo Value="status.TimeOfInstanceCreation" /></td></tr>
             </tbody>
         </table>
 
@@ -52,7 +52,7 @@
                 <tr><td>Keep-alive</td><td>@KeepAliveLabel(ka)</td></tr>
                 @if (ka?.LastUsedUtc is { } used)
                 {
-                    <tr><td>Last used</td><td>@TimeAgo(used.LocalDateTime)</td></tr>
+                    <tr><td>Last used</td><td><TimeAgo At="used" /></td></tr>
                 }
             </tbody>
         </table>
@@ -75,15 +75,4 @@
         };
     }
 
-    public static string TimeAgo(DateTime dt)
-    {
-        if (dt == default) return "—";
-        var age = DateTime.Now - dt;
-        if (age.TotalSeconds < 60) return "just now";
-        if (age.TotalMinutes < 60) return $"{(int)age.TotalMinutes}m ago";
-        if (age.TotalHours < 24) return $"{(int)age.TotalHours}h ago";
-        if (age.TotalDays < 30) return $"{(int)age.TotalDays}d ago";
-        if (age.TotalDays < 365) return $"{(int)(age.TotalDays / 30)}mo ago";
-        return $"{(int)(age.TotalDays / 365)}y ago";
-    }
 }

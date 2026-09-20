@@ -81,7 +81,7 @@ else
                         @(row.DisplayState is null ? "—" : row.DisplayCount.ToString("N0"))
                     </td>
                     <td style="color: var(--lv5);">
-                        @(row.LastIndexed is { } t && t > DateTime.MinValue ? t.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "—")
+                        <TimeAgo Value="row.LastIndexed" TooltipPosition="left" />
                     </td>
                     <td style="color: var(--lv5);">
                         @if (_editKey == row.Key)

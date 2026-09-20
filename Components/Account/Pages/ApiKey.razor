@@ -100,8 +100,8 @@
                         <tr>
                             <td>@key.Name</td>
                             <td class="key-scope">@IndxServer.Services.ApiKeyService.DescribeScope(key, TeamName(key.TeamId))</td>
-                            <td class="key-muted">@key.CreatedAt.ToString("yyyy-MM-dd")</td>
-                            <td class="@(expired ? "key-expired" : "key-muted")">@key.ExpiresAt.ToString("yyyy-MM-dd")</td>
+                            <td class="key-muted"><TimeAgo Value="key.CreatedAt" TooltipPosition="left" /></td>
+                            <td class="@(expired ? "key-expired" : "key-muted")"><TimeAgo Value="key.ExpiresAt" TooltipPosition="left" /></td>
                             <td>
                                 @if (key.IsRevoked) { <Chip Color="var(--lv3)" TextColor="var(--lv5)">Revoked</Chip> }
                                 else if (expired) { <Chip Color="var(--lv3)" TextColor="var(--lv5)">Expired</Chip> }

@@ -41,7 +41,7 @@ else
                 <span style="color: var(--lv5); font-size: 12px; white-space: nowrap;">
                     @row.Members.Count member@(row.Members.Count == 1 ? "" : "s") · @row.DatasetCount dataset@(row.DatasetCount == 1 ? "" : "s")
                 </span>
-                <span style="margin-left: auto; color: var(--lv5); font-size: 12px; white-space: nowrap;">created @row.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd")</span>
+                <span style="margin-left: auto; color: var(--lv5); font-size: 12px; white-space: nowrap;">created <TimeAgo Value="row.CreatedAt" TooltipPosition="left" /></span>
             </div>
 
             <div style="padding: 4px 16px 8px;">

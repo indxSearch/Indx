@@ -1,0 +1,36 @@
+@* A timestamp as a person would say it ("5 minutes ago", "in 3 days"), with the exact time in a
+   tooltip. Use this wherever the console shows when something happened or will happen; do not
+   print a formatted DateTime. Renders Empty for a missing or default value.
+
+   The text is computed when the component renders, so it is as fresh as the page around it. *@
+@using IndxServer.Services
+
+@if (Instant is { } at)
+{
+    <Tooltip Content="@RelativeTime.Exact(at)" Position="@TooltipPosition">
+        <time datetime="@at.UtcDateTime.ToString("o")" class="@Class">@RelativeTime.Format(at, Now.GetUtcNow())</time>
+    </Tooltip>
+}
+else
+{
+    <span class="@Class">@Empty</span>
+}
+
+@code {
+    /// <summary>The moment, as a DateTime. Unspecified kind is read as UTC (database values).</summary>
+    [Parameter] public DateTime? Value { get; set; }
+    /// <summary>The moment, as a DateTimeOffset. Wins over <see cref="Value"/>.</summary>
+    [Parameter] public DateTimeOffset? At { get; set; }
+    /// <summary>Shown when there is no moment to show.</summary>
+    [Parameter] public string Empty { get; set; } = "—";
+    /// <summary>"top" | "bottom" | "left" | "right". Inside a scrolling table frame a vertical
+    /// tooltip is clipped on the first or last row; use a horizontal one there.</summary>
+    [Parameter] public string TooltipPosition { get; set; } = "top";
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Replaceable clock, for tests.</summary>
+    public static TimeProvider Now { get; set; } = TimeProvider.System;
+
+    private DateTimeOffset? Instant =>
+        At ?? (Value is { } v && v != default && v > DateTime.MinValue.AddDays(1) ? RelativeTime.ToInstant(v) : null);
+}

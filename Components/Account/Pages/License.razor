@@ -160,7 +160,7 @@ else if (licenseInfo != null)
                                 }
                                 else
                                 {
-                                    <span>@licenseInfo.ExpirationDate.ToString("yyyy-MM-dd")</span>
+                                    <TimeAgo Value="licenseInfo.ExpirationDate" />
                                 }
                             </td>
                         </tr>
@@ -185,7 +185,7 @@ else if (licenseInfo != null)
                                     @if (autoFetch.FileExists)
                                     {
                                         <span style="color: var(--lv5); margin-left: 8px; font-size: 12px;">
-                                            · last fetched @(autoFetch.LastWriteUtc?.ToLocalTime().ToString("yyyy-MM-dd HH:mm")) (@FormatBytes(autoFetch.FileBytes))
+                                            · last fetched <TimeAgo Value="autoFetch.LastWriteUtc" /> (@FormatBytes(autoFetch.FileBytes))
                                         </span>
                                     }
                                 }
