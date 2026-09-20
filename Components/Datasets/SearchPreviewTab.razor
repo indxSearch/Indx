@@ -10,6 +10,10 @@
 
 @if (Ctx.EngineState == SystemState.Ready)
 {
+    @* Box and facets: stacked, or side by side once this area is wide enough (a container query
+       in the CSS, so it follows the room the preview has, not the window). *@
+    <div class="indx-search-layout">
+    <div class="indx-search-grid">
     <div class="indx-search-panel">
         @if (string.IsNullOrEmpty(_text))
         {
@@ -76,6 +80,57 @@
             }
         }
     </div>
+
+    @* ── Facets: a glance, not a filter panel (that is what indx-react is for). The base has a
+       fixed height and scrolls inside itself, so facets arriving, changing or vanishing never
+       move the page. With an empty box it shows the whole dataset's facets. The base is a
+       plain --lv1 ground with a --lv2 hairline; the chips sit a step darker on it. ── *@
+    <div class="indx-facets-cell">
+    <div class="indx-facets">
+        @* Built like the search field above, measure for measure, so icon and heading sit at
+           the same distance from the base's edges as the magnifier and the text do from the box's. *@
+        <div class="indx-facets-caption">
+            <span class="indx-facets-caption-icon"><Indx.Systm.Blazor.Icons.Filter Size="16" Color="currentColor" /></span>
+            <span class="indx-facets-caption-text">Facets</span>
+        </div>
+        <div class="indx-facets-body">
+            @if (!HasFacetableFields)
+            {
+                <p class="indx-facets-note">No facetable fields. Mark a field <strong>Facetable</strong> under Field configuration to see its values here.</p>
+            }
+            else if (_facets == null)
+            {
+                @* Nothing counted yet (first visit, or the documents were just replaced). *@
+                <p class="indx-facets-note">Counting…</p>
+            }
+            else if (_facets.Count == 0)
+            {
+                <p class="indx-facets-note">No facets for this search.</p>
+            }
+            else
+            {
+                @foreach (var row in _facets)
+                {
+                    <div class="indx-facet-row">
+                        <span class="indx-facet-field" title="@row.Field">@row.Field</span>
+                        <span class="indx-facet-values">
+                            @foreach (var value in row.Values)
+                            {
+                                <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span class="indx-facet-value" title="@value.Key">@value.Key</span><span class="indx-facet-count">@value.Value.ToString("N0")</span></Chip>
+                            }
+                            @if (row.MoreValues > 0)
+                            {
+                                <span class="indx-facet-more">+@row.MoreValues.ToString("N0") more</span>
+                            }
+                        </span>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+    </div>
+    </div>
+    </div>
 }
 else
 {
@@ -103,6 +158,9 @@ else
     private void Invalidate()
     {
         _searches.Begin(); // a search still running was made against the old documents
+        _facetRuns.Begin();
+        _facets = null;
+        _facetsFor = null;
         _results = null;
         _perf = null;
     }
@@ -116,7 +174,11 @@ else
     {
         base.OnParametersSet();
         // The tab renders nothing while inactive, so coming back creates the box anew.
-        if (Active && !_wasActive) _box.Sync();
+        if (Active && !_wasActive)
+        {
+            _box.Sync();
+            if (_facetsFor != _text) _ = RunFacetsAsync(_text, immediately: true);
+        }
         _wasActive = Active;
     }
 
@@ -129,6 +191,7 @@ else
     private void Clear()
     {
         _searches.Begin(); // a search still running must not bring its hits back
+        _ = RunFacetsAsync(string.Empty, immediately: true);
         _focusBox = _box.Set(string.Empty);
         _text = string.Empty;
         _results = null;
@@ -145,6 +208,10 @@ else
 
     private readonly LatestOnly _searches = new();
 
+    /// <summary>More than fits without scrolling on purpose: the hit list scrolls inside the box,
+    /// so a tall screen shows more of them and a short one loses nothing.</summary>
+    private const int PreviewHits = 24;
+
     /// <summary>One search per keystroke, the newest answer wins (see LatestOnly). The search
     /// runs off the circuit, so the next keystroke is not kept waiting behind it; a result that
     /// has been overtaken by then is dropped. When the preview grows facets, the facet query is
@@ -154,6 +221,7 @@ else
         var ticket = _searches.Begin();
         _text = text;
         _perf = null;
+        _ = RunFacetsAsync(text);
         if (string.IsNullOrWhiteSpace(text))
         {
             _results = null;
@@ -164,13 +232,57 @@ else
         if (hits != null) _results = hits;
     }
 
+    // ── Facets ───────────────────────────────────────────────────────────────
+
+    private readonly LatestOnly _facetRuns = new();
+    private IReadOnlyList<FacetPreview.Row>? _facets;
+    private string? _facetsFor;      // the text the shown facets belong to
+    private static readonly TimeSpan FacetDelay = TimeSpan.FromMilliseconds(350);
+
+    private bool HasFacetableFields => Ctx.SavedFields?.Any(f => f.Facetable == true) == true;
+
+    /// <summary>The facet query is the expensive half of a search, so it waits until typing
+    /// pauses, as indx-intrface does; the hits above stay immediate. Until the new counts arrive
+    /// the previous ones stay on screen, which in a fixed-height base moves nothing.</summary>
+    private async Task RunFacetsAsync(string text, bool immediately = false)
+    {
+        if (!HasFacetableFields) return;
+        var ticket = _facetRuns.Begin();
+        try
+        {
+            if (!immediately) await Task.Delay(FacetDelay);
+            if (!_facetRuns.IsCurrent(ticket)) return;
+            var rows = await Task.Run(() => SearchFacets(text));
+            if (!_facetRuns.IsCurrent(ticket)) return;
+            _facets = rows ?? [];
+            _facetsFor = text;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
+        {
+            // A glance that fails must not take the circuit down with it.
+            Console.WriteLine($"[SearchPreview] facets failed for {Ctx.Name}: {ex.Message}");
+            if (_facetRuns.IsCurrent(ticket)) { _facets = []; _ = InvokeAsync(StateHasChanged); }
+        }
+    }
+
+    private IReadOnlyList<FacetPreview.Row>? SearchFacets(string text)
+    {
+        // Empty text with facets enabled is a valid query: the whole dataset's counts.
+        var query = new global::Indx.Http.QueryProxy { Text = text ?? string.Empty, MaxNumberOfRecordsToReturn = 1, EnableFacets = true };
+        var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
+        var order = Ctx.SavedFields?.Where(f => f.Facetable == true).Select(f => f.FieldName ?? "");
+        return FacetPreview.Build(result.Facets, order);
+    }
+
     private List<PreviewHit>? Search(string text)
     {
         var engine = Ctx.FindEngine();
         if (engine == null) return null;
         // EnableBoost so the preview reflects this dataset's saved boost rules (applied
         // server-side in FromQueryProxy), matching what real searches return.
-        var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = 8, EnableBoost = true };
+        var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = PreviewHits, EnableBoost = true };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         var hits = new List<PreviewHit>();
         foreach (var record in result.Records)

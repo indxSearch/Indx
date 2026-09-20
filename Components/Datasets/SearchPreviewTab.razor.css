@@ -1,12 +1,44 @@
+/* The search box and the facets base. Stacked by default; side by side when THIS area is at
+   least 900px wide, which is why it is a container query and not a media query: the preview
+   sits inside a page with its own gutters and maximum width. */
+.indx-search-layout {
+    container-type: inline-size;
+    margin-top: 20px;
+
+    /* The height the preview may use: what is left of the window below the point where it
+       starts. That point is --preview-top plus the page gutter down the dataset page (header, gutter,
+       breadcrumb row, tab bar, the margin above): 166px on a desktop, measured rather than
+       derived, because those elements belong to other components. Below the preview come the
+       surface's bottom padding and the gutter again. If something pushes the preview down (an
+       alert above the tabs, a breadcrumb that wraps on a phone), the page scrolls by that much
+       and nothing breaks.
+
+       Both layouts are sized from this, so the box has ONE height whether it holds nothing,
+       one hit or twenty-four. The hits scroll inside it. A box that grows with its hits jumps
+       on the first keystroke and pushes the page into scrolling. */
+    --preview-top: 126px;
+    --preview-room: calc(100dvh - var(--preview-top) - 2 * var(--page-gutter, 40px) - var(--spacing, 5px));
+    --facets-stacked: 196px;
+    --preview-gap: 8px;
+}
+
+/* Under 768px the page tightens more than its gutter (measured: the preview starts at 126px
+   with a 15px gutter, so 111px of fixed chrome above it instead of 126px). */
+@media (max-width: 768px) {
+    .indx-search-layout { --preview-top: 111px; }
+}
+
 .indx-search-panel {
     position: relative;
     overflow: hidden;
-    margin-top: 20px;
+    display: flex;
+    flex-direction: column;
     background: var(--lv0);
     border: 0.5px solid var(--lv3);
     padding: 5px;
-    min-height: 350px;
     box-sizing: border-box;
+    /* Stacked: the room, less the facets base under it. Never so short that it is useless. */
+    height: max(300px, calc(var(--preview-room) - var(--facets-stacked) - var(--preview-gap)));
 }
 
 .indx-search-bg-logo {
@@ -41,6 +73,10 @@
     align-items: center;
     width: 100%;
     height: 40px;
+    /* The box is a fixed-height column. Without this the field is a shrinkable row: once the
+       hits overflow the box, the shortfall is taken from every row, and the input got 8px
+       shorter the moment a character was typed. Only the hit list may give way. */
+    flex: 0 0 40px;
     border: 1px solid transparent;
     border-radius: 1px;
     box-sizing: border-box;
@@ -111,17 +147,25 @@
 }
 
 .indx-search-empty {
+    flex: 0 0 auto;
     font: var(--text-sm);
     color: var(--lv4);
     margin-top: 8px;
 }
 
+/* The hits scroll inside the box and take what is left of its fixed height. */
 .indx-search-results {
     margin-top: 8px;
     display: flex;
     flex-direction: column;
     gap: 1px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-color: var(--lv3) transparent;
 }
+.indx-search-result-item { flex: 0 0 auto; }
+.indx-perf-toolbar { flex: 0 0 auto; }
 
 .indx-search-result-item {
     display: flex;
@@ -149,3 +193,115 @@
 .indx-search-not-ready { color: var(--lv5); margin-top: 16px; }
 
 .indx-perf-sep { margin: 0 6px; color: var(--lv4); }
+
+/* ── Facets base ─────────────────────────────────────────────────────────────────────────────
+   Fixed height, scrolling inside itself: whatever a search does to the facets, the page below
+   and above stays where it is.
+
+   A plain --lv1 ground with a --lv2 hairline, no shadow: one step off the page tone, enough to read as
+   a base. The caption is the brightest thing on it (--lv7); the chips are a step darker than
+   the ground (--lv2), since the page tone would vanish against --lv1.
+
+   The caption mirrors the search field. That box is 0.5px border + 5px padding around a 40px
+   row whose icon sits 7px inside a 1px transparent border and whose text starts 35px in. This
+   base has a 1px border, so its padding is 4.5px to land on the same 5.5px; the row is built
+   the same way. */
+.indx-facets {
+    margin-top: var(--preview-gap);
+    background: var(--lv1);
+    border: 1px solid var(--lv2);
+    color: var(--lv7);
+    box-sizing: border-box;
+    height: var(--facets-stacked);
+    /* 1px border + 4.5px = the search box's 0.5px border + 5px, so the caption still lines up */
+    padding: 4.5px;
+    display: flex;
+    flex-direction: column;
+}
+
+.indx-facets-caption {
+    flex: 0 0 auto;
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 40px;
+    border: 1px solid transparent;
+    box-sizing: border-box;
+}
+.indx-facets-caption-icon {
+    position: absolute;
+    left: 7px;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    color: var(--lv7);
+}
+.indx-facets-caption-text {
+    padding-left: 35px;
+    font: var(--text-base);
+    color: var(--lv7);
+}
+
+/* The rows start flush with the caption icon's left edge: the icon sits 1px border + 7px in,
+   so 8px here. The same on the right. */
+.indx-facets-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 2px 8px 8px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    scrollbar-color: var(--lv4) transparent;
+}
+
+.indx-facets-note { margin: 0; font: var(--text-xs); color: var(--lv5); }
+.indx-facets-note strong { color: var(--lv7); font-weight: var(--med); }
+
+.indx-facet-row { display: flex; align-items: baseline; gap: 10px; }
+.indx-facet-field {
+    flex: 0 0 120px;
+    font: var(--text-xs);
+    color: var(--lv5);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.indx-facet-values { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.indx-facet-value {
+    display: inline-block;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+.indx-facet-count { margin-left: 6px; color: var(--lv5); font-variant-numeric: tabular-nums; }
+.indx-facet-more { font: var(--text-xs); color: var(--lv5); white-space: nowrap; margin-left: 2px; }
+
+/* On a phone the field name goes above its values, which then get the full width. */
+@media (max-width: 768px) {
+    .indx-facet-row { flex-direction: column; gap: 3px; }
+    .indx-facet-field { flex: 0 0 auto; }
+    .indx-facet-value { max-width: 150px; }
+}
+
+/* ── Wide: facets to the right of the box, both the full height of the room ──────────────────
+   The base is laid over its stretched cell absolutely, so its content cannot make the row
+   taller. In a narrow column the field name goes above its chips. */
+@container (min-width: 900px) {
+    /* The grid is an inner element: a container query cannot restyle its own container. */
+    .indx-search-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: var(--preview-gap);
+        align-items: stretch;
+        height: max(350px, var(--preview-room));
+    }
+    .indx-search-panel { min-height: 0; height: 100%; }
+    .indx-facets-cell { position: relative; min-height: 0; }
+    .indx-facets { position: absolute; inset: 0; height: auto; margin-top: 0; }
+    .indx-facet-row { flex-direction: column; gap: 3px; }
+    .indx-facet-field { flex: 0 0 auto; }
+    .indx-facet-value { max-width: 190px; }
+}
