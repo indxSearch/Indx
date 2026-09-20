@@ -102,6 +102,7 @@ else
 
     private void Invalidate()
     {
+        _searches.Begin(); // a search still running was made against the old documents
         _results = null;
         _perf = null;
     }
@@ -119,14 +120,15 @@ else
         _wasActive = Active;
     }
 
-    private void OnTyped(string text)
+    private Task OnTyped(string text)
     {
         _box.Typed(text);
-        RunQuickSearch(text);
+        return RunQuickSearchAsync(text);
     }
 
     private void Clear()
     {
+        _searches.Begin(); // a search still running must not bring its hits back
         _focusBox = _box.Set(string.Empty);
         _text = string.Empty;
         _results = null;
@@ -141,8 +143,15 @@ else
         try { await _boxElement.FocusAsync(); } catch { /* a disposed circuit */ }
     }
 
-    private void RunQuickSearch(string text)
+    private readonly LatestOnly _searches = new();
+
+    /// <summary>One search per keystroke, the newest answer wins (see LatestOnly). The search
+    /// runs off the circuit, so the next keystroke is not kept waiting behind it; a result that
+    /// has been overtaken by then is dropped. When the preview grows facets, the facet query is
+    /// the part to debounce, as indx-intrface does: this text search stays immediate.</summary>
+    private async Task RunQuickSearchAsync(string text)
     {
+        var ticket = _searches.Begin();
         _text = text;
         _perf = null;
         if (string.IsNullOrWhiteSpace(text))
@@ -150,8 +159,15 @@ else
             _results = null;
             return;
         }
+        var hits = await Task.Run(() => Search(text));
+        if (!_searches.IsCurrent(ticket)) return; // a newer keystroke, Clear or Replace overtook this one
+        if (hits != null) _results = hits;
+    }
+
+    private List<PreviewHit>? Search(string text)
+    {
         var engine = Ctx.FindEngine();
-        if (engine == null) return;
+        if (engine == null) return null;
         // EnableBoost so the preview reflects this dataset's saved boost rules (applied
         // server-side in FromQueryProxy), matching what real searches return.
         var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = 8, EnableBoost = true };
@@ -166,7 +182,7 @@ else
                 catch { }
             }
         }
-        _results = hits;
+        return hits;
     }
 
     private async Task RunPerfTest()
