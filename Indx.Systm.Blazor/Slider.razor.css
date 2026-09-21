@@ -63,6 +63,12 @@
     padding: 0;
     background: transparent;
     outline: none;
+    /* No shadows, anywhere in the design. This is the native range control, and mobile browsers
+       decorate it (iOS Safari draws a soft shadow under the thumb), so it is said explicitly
+       here and on both thumb pseudo-elements. The React Slider draws its own thumb and never
+       had one. */
+    box-shadow: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .indx-slider-input::-webkit-slider-runnable-track {
@@ -84,6 +90,7 @@
     border: none;
     border-radius: 1px;
     background-color: var(--lv7);
+    box-shadow: none;
     cursor: grab;
 }
 
@@ -93,6 +100,7 @@
     border: none;
     border-radius: 1px;
     background-color: var(--lv7);
+    box-shadow: none;
     cursor: grab;
 }
 
