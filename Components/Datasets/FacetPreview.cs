@@ -19,6 +19,8 @@ namespace IndxServer.Components.Datasets
         /// <param name="facets">As returned on <c>Result.Facets</c>; null when no field is facetable.</param>
         /// <param name="fieldOrder">The order to list fields in (the field configuration's). Fields
         /// it does not name follow, alphabetically.</param>
+        /// <param name="valuesPerField">How many values to keep per field; the rest are counted in
+        /// <see cref="Row.MoreValues"/>.</param>
         public static IReadOnlyList<Row> Build(
             IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? facets,
             IEnumerable<string>? fieldOrder = null,
