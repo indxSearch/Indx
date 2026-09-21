@@ -3,6 +3,22 @@
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    @* iOS Safari zooms the page whenever a form field with a font under 16px takes focus, and
+       stays zoomed. The console's micro fields (the field filter, the synonym filter, selects)
+       are 11 to 13px by design, and the filters matter most on a phone. Since iOS 10 Safari
+       ignores maximum-scale for pinch-zoom, so this costs the user nothing, but it still
+       honours it for that focus zoom. iOS only: Android Chrome would take it literally and
+       block pinch-zoom altogether. Same approach as indx-docs (src/main.tsx). Inline and in
+       the head, so it is in place before the first field can be touched. *@
+    <script>
+        (function () {
+            var ios = /iP(hone|ad|od)/.test(navigator.platform)
+                || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+            if (!ios) return;
+            var viewport = document.querySelector('meta[name="viewport"]');
+            if (viewport) viewport.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=1.0');
+        })();
+    </script>
     <base href="/" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" media="(prefers-color-scheme: light)" />
     <link rel="icon" href="favicon_dark.svg" type="image/svg+xml" media="(prefers-color-scheme: dark)" />
@@ -57,5 +73,6 @@
 
     <script src="_framework/blazor.web.js"></script>
     <script src="js/browser-files.js"></script>
+    <script src="js/fill-viewport.js"></script>
 </body>
 </html>
