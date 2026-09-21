@@ -6,27 +6,25 @@
     margin-top: 20px;
 
     /* The height the preview may use: what is left of the window below the point where it
-       starts. That point is --preview-top plus the page gutter down the dataset page (header, gutter,
-       breadcrumb row, tab bar, the margin above): 166px on a desktop, measured rather than
-       derived, because those elements belong to other components. Below the preview come the
-       surface's bottom padding and the gutter again. If something pushes the preview down (an
-       alert above the tabs, a breadcrumb that wraps on a phone), the page scrolls by that much
-       and nothing breaks.
+       starts. js/fill-viewport.js measures that point and keeps it in --fill-top, because what
+       sits above belongs to other components and changes with the screen: on a phone the
+       breadcrumb row wraps onto a second line, and a number written in here then left the page
+       scrolling over nothing by exactly that row. Below the preview come the surface's bottom
+       padding and the page gutter.
+
+       Until the script has run (and if it never does) the fallback is the desktop measurement:
+       126px of chrome plus the gutter.
 
        Both layouts are sized from this, so the box has ONE height whether it holds nothing,
        one hit or twenty-four. The hits scroll inside it. A box that grows with its hits jumps
        on the first keystroke and pushes the page into scrolling. */
-    --preview-top: 126px;
-    --preview-room: calc(100dvh - var(--preview-top) - 2 * var(--page-gutter, 40px) - var(--spacing, 5px));
+    --preview-room: calc(100dvh - var(--fill-top, calc(126px + var(--page-gutter, 40px)))
+                         - var(--page-gutter, 40px) - var(--spacing, 5px));
     --facets-stacked: 196px;
     --preview-gap: 8px;
 }
 
-/* Under 768px the page tightens more than its gutter (measured: the preview starts at 126px
-   with a 15px gutter, so 111px of fixed chrome above it instead of 126px). */
-@media (max-width: 768px) {
-    .indx-search-layout { --preview-top: 111px; }
-}
+
 
 .indx-search-panel {
     position: relative;
