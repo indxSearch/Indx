@@ -59,7 +59,7 @@
                                         }
                                         else if (HasNoValue(field))
                                         {
-                                            <span class="indx-field-pop-note">No value read for this field in the dataset, so its type is unknown and it cannot be configured. Load data that carries a value for it and analyze again.</span>
+                                            <span class="indx-field-pop-note">No value read for this field in the dataset, so its type is unknown. Filterable and Sortable need a type and are not offered; Searchable and Facetable are, and ticking them prepares the field for records that do carry a value. Load data that carries one and analyze again to get the rest.</span>
                                         }
                                         @if (PopoverFlags(field) is { } flags)
                                         {
@@ -204,14 +204,15 @@
     /// <summary>One capability: its label, whether it belongs to the advanced set, and how to
     /// read and write it. Both renderings walk this list, in column order, so a capability added
     /// here appears in both.</summary>
-    private sealed record Cap(string Label, bool Advanced, Func<FieldProxy, bool?> Get, Action<FieldProxy, bool> Put, bool IsSearchable = false);
+    private sealed record Cap(string Label, bool Advanced, Func<FieldProxy, bool?> Get, Action<FieldProxy, bool> Put,
+        bool IsSearchable = false, bool NeedsType = false);
 
     private static readonly Cap[] Caps =
     [
         new("Searchable", false, f => f.Searchable, (f, v) => f.Searchable = v, IsSearchable: true),
-        new("Filterable", false, f => f.Filterable, (f, v) => f.Filterable = v),
+        new("Filterable", false, f => f.Filterable, (f, v) => f.Filterable = v, NeedsType: true),
         new("Facetable", false, f => f.Facetable, (f, v) => f.Facetable = v),
-        new("Sortable", false, f => f.Sortable, (f, v) => f.Sortable = v),
+        new("Sortable", false, f => f.Sortable, (f, v) => f.Sortable = v, NeedsType: true),
         new("WordIndexing", true, f => f.WordIndexing, (f, v) => f.WordIndexing = v),
         new("Embeddable", true, f => f.Embeddable, (f, v) => f.Embeddable = v),
         new("PreloadFilters", true, f => f.PreloadFilters, (f, v) => f.PreloadFilters = v),
@@ -220,10 +221,22 @@
 
     private Cap[] VisibleCaps => ShowAdvanced ? Caps : Caps.Where(c => !c.Advanced).ToArray();
 
+    /// <summary>Filterable and Sortable are the only roles that read Field.Type, and a field that
+    /// was null in every analyzed document has none, so the engine refuses them. Disabled per column
+    /// rather than per row: Searchable and Facetable never read the type and stay available, and the
+    /// reason ticking Searchable is still offered is that it prepares the field - a record inserted
+    /// later that does carry a value is indexed and found. The title sits on a wrapper because a
+    /// disabled control does not raise the hover.</summary>
     private RenderFragment CapBox(FieldProxy field, Cap cap) => __builder =>
     {
-        <Checkbox Checked="@(cap.Get(field) == true)" Disabled="@(!Editable)" aria-label="@($"{cap.Label}: {field.FieldName}")"
-                  CheckedChanged="@(v => Set(() => { cap.Put(field, v); if (cap.IsSearchable) SearchableTouched = true; }))" />
+        // FieldType == null, not HasNoValue: that excludes containers, and a container is untyped
+        // too - its data lives on the nested fields under it - so the engine refuses these two on
+        // it for the same reason.
+        var refused = cap.NeedsType && field.FieldType == null;
+        <span title="@(refused ? $"{field.FieldName} has no type in this dataset, so it cannot be {cap.Label}. Those two are the only roles that need one." : null)">
+            <Checkbox Checked="@(cap.Get(field) == true)" Disabled="@(!Editable || refused)" aria-label="@($"{cap.Label}: {field.FieldName}")"
+                      CheckedChanged="@(v => Set(() => { cap.Put(field, v); if (cap.IsSearchable) SearchableTouched = true; }))" />
+        </span>
     };
 
     /// <summary>The field name: dimmed parent path, then the leaf, giving way from the left.</summary>
