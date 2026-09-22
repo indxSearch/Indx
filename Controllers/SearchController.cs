@@ -805,6 +805,16 @@ namespace IndxServer.Controllers
             {
                 return ApiProblems.UnknownFilter(ex.Message);
             }
+            // PrepareSorting throws ArgumentException("invalid type") for a SortBy field whose type
+            // is not one it can compare. Reaching it takes a field that is Sortable and untyped, which
+            // the Field setters now refuse and Deserialize strips, and Search nulls a SortBy that is
+            // not Sortable before sorting runs - so this is a guard, not a live path. It is here
+            // because the cost of being wrong is asymmetric: a caller mistake logged as our incident
+            // costs us an alert and tells them nothing. Same mapping fields/configuration already uses.
+            catch (ArgumentException ex)
+            {
+                return ApiProblems.InvalidArgument(ex.Message);
+            }
         }
 
         /// <summary>
