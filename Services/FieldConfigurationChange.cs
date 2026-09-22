@@ -6,80 +6,50 @@ namespace IndxServer.Services
     /// Whether a field configuration change can be applied to the live engine, or has to go
     /// through a rebuild on a shadow engine.
     ///
-    /// The library's <see cref="DocumentFields.RequiresReindex"/> answers for the inverted index:
-    /// Searchable, WordIndexing, Embeddable and the BM25 parameters need a rebuild; Filterable,
-    /// Facetable and Sortable "take effect at query time". That last part is only true for a
-    /// field that already had a role when the data was loaded. A document keeps a position index
-    /// for the fields in use at that moment and for no others, so a field getting its FIRST role
-    /// has no positions in any live document: the flag is set, and facets stay empty, filters
-    /// match nothing, with no error. This was found on Millum, where two fields were made
-    /// Facetable after a wake and never produced a facet.
+    /// This class used to answer that itself, because the library did not. It carried two
+    /// predicates of its own — one for a field getting its first role, whose documents hold no
+    /// positions for it, and one for any Facetable change, because DocumentFields cached its
+    /// facetable field list on first use and cleared it only in Dispose. Both were found on
+    /// Millum, where two fields were made Facetable after a wake and never produced a facet.
     ///
-    /// Such a change is therefore sent through the shadow as well. The shadow is a clone, and it
-    /// rebuilds the positions for newly used fields (the fix in LoadFromClonedDocuments; without
-    /// that fix the shadow has the same gap). See Notes/Jens/clone-drops-newly-used-fields.
+    /// The library answers for both now, so both are gone:
     ///
-    /// Two more things the library leaves to the caller on the in-place path, both found the same
-    /// evening:
+    /// - <see cref="DocumentFields.RequiresReindex"/> reports a first role, and Index() rebuilds
+    ///   the positions for a field that came into use since Load.
+    /// - SetFieldConfiguration invalidates the cached field lists and the empty-search cache, so a
+    ///   Facetable flag set on a live engine is seen at once — for a text search and for the empty
+    ///   faceted search a facet panel makes, which were two separate caches and two separate fixes.
+    /// - <see cref="DocumentFields.RequiresReload"/> reports the six flags only a Load can consume.
+    ///   That one is in here for a harder reason than the others: applied in place, such a change
+    ///   returns the live engine to Created, which would leave the dataset not Ready with no way
+    ///   back until the next reload. The shadow applies it between Init and Load on a fresh engine,
+    ///   where it is simply correct.
     ///
-    /// - ANY change to Facetable needs the rebuild, first role or not. DocumentFields caches its
-    ///   facetable field list on first use and never refreshes it, and the facet code reads that
-    ///   list, so a Facetable flag set on a live engine is not seen. A clone starts with a fresh
-    ///   DocumentFields and so a fresh list.
-    /// - Filterable, Facetable, Sortable and Weight are plain properties on Field; only Searchable
-    ///   raises the change notification that persists the configuration. So a change applied in
-    ///   place was never written to the store and was gone after the next reload.
-    ///   <see cref="ApplyInPlace"/> saves it explicitly.
+    /// What is left is the question, asked of the library, and the one thing the library still
+    /// leaves to the caller: Filterable, Facetable and Sortable are plain properties on Field, so
+    /// only a Searchable or Sortable change raises the notification that persists the
+    /// configuration. <see cref="ApplyInPlace"/> saves it explicitly.
     ///
-    /// Known limit: "in use" is read from the flags. A field whose flag was set inline by an
-    /// older build has the flag and still no positions, and no later save will notice. A reload
-    /// from the store (hibernate and wake) repairs that.
+    /// Dropping the Facetable rebuild is the one with a number on it: RunFieldConfigurationOnShadow
+    /// is synchronous and all three callers block on it, so ticking one Facetable box on a dataset
+    /// the size of Millum was a ~16-second request, linear in document count, with a second full
+    /// copy of the store and index resident while it ran. It is a flag write now.
     /// </summary>
     public static class FieldConfigurationChange
     {
-        /// <remarks>RequiresReload is in here for a harder reason than the others: a change it names
-        /// puts the live engine back into Created, because only a Load can apply it. Applied in place
-        /// that would leave the dataset not Ready with no way back until the next reload. The shadow
-        /// applies it between Init and Load on a fresh engine, where it is simply correct.</remarks>
+        /// <summary>True when the change cannot be applied to the live engine as it stands.</summary>
         public static bool NeedsRebuild(DocumentFields current, FieldProxy[] proposed) =>
-            current.RequiresReindex(proposed) || current.RequiresReload(proposed)
-            || ChangesFacetable(current, proposed) || BringsNewFieldIntoUse(current, proposed);
-
-        /// <summary>True when the proposal turns Facetable on or off for any field.</summary>
-        public static bool ChangesFacetable(DocumentFields current, FieldProxy[] proposed) =>
-            proposed.Any(cfg => cfg.FieldName != null && cfg.Facetable is { } wanted
-                                && current.GetField(cfg.FieldName) is { } f && f.Facetable != wanted);
+            current.RequiresReindex(proposed) || current.RequiresReload(proposed);
 
         /// <summary>Applies a change that needs no rebuild to the live engine, and saves it: the
-        /// library only persists by itself when Searchable changes. Returns the name of a field
-        /// that does not exist, or null.</summary>
+        /// library only persists by itself when Searchable or Sortable changes. Returns the name of
+        /// a field that does not exist, or null.</summary>
         public static string? ApplyInPlace(IServerSearchEngine engine, FieldProxy[] proposed)
         {
             var unknown = engine.SetFieldConfiguration(proposed);
             if (unknown == null && engine.DocumentFields is { } fields)
                 engine.Persistence?.SaveDocumentFields(fields.GetSerialized());
             return unknown;
-        }
-
-        /// <summary>True when the proposal gives a role to a field that has none now.</summary>
-        public static bool BringsNewFieldIntoUse(DocumentFields current, FieldProxy[] proposed)
-        {
-            foreach (var cfg in proposed)
-            {
-                var f = cfg.FieldName == null ? null : current.GetField(cfg.FieldName);
-                if (f == null) continue;
-
-                // Mirrors DocumentFields.GetUsedFields, which decides what a load keeps positions for.
-                bool usedNow = f.Searchable || f.Filterable || f.Facetable || f.Sortable
-                               || f.PreloadFilters || f.WordIndexing
-                               || f.Name == current.NameOfDocumentKeyField;
-                if (usedNow) continue;
-
-                bool usedAfter = (cfg.Searchable ?? false) || (cfg.Filterable ?? false) || (cfg.Facetable ?? false)
-                                 || (cfg.Sortable ?? false) || (cfg.PreloadFilters ?? false) || (cfg.WordIndexing ?? false);
-                if (usedAfter) return true;
-            }
-            return false;
         }
     }
 }
