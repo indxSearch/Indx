@@ -37,8 +37,13 @@ namespace IndxServer.Services
     /// </summary>
     public static class FieldConfigurationChange
     {
+        /// <remarks>RequiresReload is in here for a harder reason than the others: a change it names
+        /// puts the live engine back into Created, because only a Load can apply it. Applied in place
+        /// that would leave the dataset not Ready with no way back until the next reload. The shadow
+        /// applies it between Init and Load on a fresh engine, where it is simply correct.</remarks>
         public static bool NeedsRebuild(DocumentFields current, FieldProxy[] proposed) =>
-            current.RequiresReindex(proposed) || ChangesFacetable(current, proposed) || BringsNewFieldIntoUse(current, proposed);
+            current.RequiresReindex(proposed) || current.RequiresReload(proposed)
+            || ChangesFacetable(current, proposed) || BringsNewFieldIntoUse(current, proposed);
 
         /// <summary>True when the proposal turns Facetable on or off for any field.</summary>
         public static bool ChangesFacetable(DocumentFields current, FieldProxy[] proposed) =>
