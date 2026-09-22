@@ -900,7 +900,7 @@ namespace IndxServer.Controllers
         [HttpPut(DataSetRoute + "/fields/filterable")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult SetFilterableFields(string teamName, string dataSetName, [FromBody] string[] fields)
-            => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.Filterable = true);
+            => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.Filterable = true, nameof(Indx.Api.Field.Filterable));
 
         /// <summary>Sets the Facetable property on the specified fields.</summary>
         [HttpPut(DataSetRoute + "/fields/facetable")]
@@ -912,7 +912,7 @@ namespace IndxServer.Controllers
         [HttpPut(DataSetRoute + "/fields/sortable")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult SetSortableFields(string teamName, string dataSetName, [FromBody] string[] fields)
-            => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.Sortable = true);
+            => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.Sortable = true, nameof(Indx.Api.Field.Sortable));
 
         /// <summary>Sets the WordIndexing property on the specified fields.</summary>
         [HttpPut(DataSetRoute + "/fields/word-indexing")]
@@ -1520,7 +1520,7 @@ namespace IndxServer.Controllers
         };
 
         /// <summary>Shared body for the legacy Set*Fields helpers — resolve, validate, mutate each field.</summary>
-        private IActionResult SetFieldFlag(string teamName, string dataSetName, IEnumerable<string> fieldNames, Action<Indx.Api.Field, string> apply)
+        private IActionResult SetFieldFlag(string teamName, string dataSetName, IEnumerable<string> fieldNames, Action<Indx.Api.Field, string> apply, string? roleNeedingType = null)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
@@ -1532,6 +1532,17 @@ namespace IndxServer.Controllers
             var df = matcher.DocumentFields;
             if (df == null)
                 return ApiProblems.InvalidArgument("The dataset has not been analyzed yet, so there are no fields to configure.");
+            // Filterable and Sortable are the only roles that read Field.Type, and a field that was
+            // null in every analyzed document has none. Refused up front for the same two reasons the
+            // weight check above gives: the Field setter throws, which this method would turn into a
+            // 500, and it applies field by field, so a throw partway through would leave the earlier
+            // fields already changed.
+            if (roleNeedingType != null)
+                foreach (var name in fieldNames)
+                    if (df.GetField(name) is { Type: System.Text.Json.JsonValueKind.Null })
+                        return ApiProblems.InvalidArgument(
+                            $"Field '{name}' has no type: it was null in every analyzed document, so it "
+                            + $"cannot be made {roleNeedingType}. Searchable and Facetable do not need a type.");
             foreach (var name in fieldNames)
             {
                 var f = df.GetField(name);
