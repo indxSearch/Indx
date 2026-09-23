@@ -238,6 +238,17 @@ th:last-child .indx-th-tip::after {
     display: flex;
 }
 
+/* The panel lives in the first column, which StickyFirstColumn pins with z-index 1. A z-index on a
+   positioned element makes a stacking context, so the panel's own z-index only ranks it inside its
+   cell: against the next row's first cell, which is another z-index 1 painted later in document
+   order, the whole cell loses and the row below covers the panel. Raising the hovered cell instead
+   ranks the cells against each other, which is where the contest actually is. 3 clears the header
+   cell's 2 as well, so a panel opening upward from the last rows is not clipped by the header
+   either. Only while hovered, so the pinned column keeps its usual order the rest of the time. */
+td:first-child:hover {
+    z-index: 3;
+}
+
 /* The last rows open the panel upward instead of centring it. Below 1440px the wrap sets
    overflow-x:auto, which makes the computed overflow-y auto as well, so anything reaching past the
    final row adds scroll height and shows a scrollbar. Overflow above a scroll container's origin
