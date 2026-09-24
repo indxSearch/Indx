@@ -25,7 +25,10 @@ namespace IndxServer.Monitor
     {
         // Phase per dataset key as of the previous tick. Only this class touches it, and Collect
         // is called from one timer, so no synchronisation is needed.
-        private readonly Dictionary<string, string> _lastPhase = [];
+        // Keyed by the team id, because a rename must not read as one dataset disappearing and
+        // another appearing. The label is carried alongside so a deleted dataset, which is no
+        // longer in the snapshot, can still be named by its team rather than by a GUID.
+        private readonly Dictionary<string, (string Phase, string Label)> _lastSeen = [];
         private bool _first = true;
 
         // Searches, accumulated rather than summed. SystemStatus.SearchCounter is per engine and
@@ -61,10 +64,7 @@ namespace IndxServer.Monitor
 
             lines.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
 
-            var events = DetectTransitions(lines, now);
-            CountSearches(lines);
-            return new MonitorSnapshot(now, lines, ReadProcess(), ReadFilters(), events,
-                                       _searchesTotal, RatePerMinute(now));
+            return Build(lines, now);
         }
 
         private static DatasetLine ReadOne(string dataSetName, string teamId, string? teamName)
@@ -107,8 +107,9 @@ namespace IndxServer.Monitor
             foreach (var line in lines)
             {
                 seen.Add(line.Key);
-                bool known = _lastPhase.TryGetValue(line.Key, out var previous);
-                _lastPhase[line.Key] = line.Phase;
+                bool known = _lastSeen.TryGetValue(line.Key, out var previous);
+                string label = $"{line.TeamLabel}/{line.DataSetName}";
+                _lastSeen[line.Key] = (line.Phase, label);
 
                 // The first tick establishes the baseline; reporting every dataset as "appeared"
                 // would fill the pane with noise at startup.
@@ -116,16 +117,17 @@ namespace IndxServer.Monitor
                     continue;
 
                 if (!known)
-                    events.Add(new MonitorEvent(now, "system", $"{line.Key} appeared ({line.Phase})"));
-                else if (previous != line.Phase)
-                    events.Add(new MonitorEvent(now, "system", $"{line.Key} {previous} → {line.Phase}"));
+                    events.Add(new MonitorEvent(now, "system", $"{label} appeared ({line.Phase})"));
+                else if (previous.Phase != line.Phase)
+                    events.Add(new MonitorEvent(now, "system", $"{label} {previous.Phase} → {line.Phase}"));
             }
 
-            foreach (var goneKey in _lastPhase.Keys.Where(k => !seen.Contains(k)).ToList())
+            foreach (var goneKey in _lastSeen.Keys.Where(k => !seen.Contains(k)).ToList())
             {
-                _lastPhase.Remove(goneKey);
+                string label = _lastSeen[goneKey].Label;
+                _lastSeen.Remove(goneKey);
                 if (!_first)
-                    events.Add(new MonitorEvent(now, "system", $"{goneKey} deleted"));
+                    events.Add(new MonitorEvent(now, "system", $"{label} deleted"));
             }
 
             _first = false;
@@ -138,13 +140,16 @@ namespace IndxServer.Monitor
         /// and counting it once as a spike would be a lie. A counter that went down means the
         /// engine was reloaded, so everything it now reports is new.
         /// </summary>
-        /// <summary>Exposed for tests: one tick's worth of counting, returning the running total.
-        /// The accumulation is the part with the reset rule in it, and it cannot be reached through
-        /// Collect without a live registry.</summary>
-        internal long CountForTest(IEnumerable<DatasetLine> lines)
+        /// <summary>Everything a tick does once the registry has been read. Exposed for tests:
+        /// the transition and counting rules are where the thinking is, and neither can be
+        /// reached through <see cref="Collect"/> without a live registry.</summary>
+        internal MonitorSnapshot Build(IReadOnlyList<DatasetLine> lines, DateTimeOffset now)
         {
-            CountSearches(lines.ToList());
-            return _searchesTotal;
+            var ordered = lines.ToList();
+            var events = DetectTransitions(ordered, now);
+            CountSearches(ordered);
+            return new MonitorSnapshot(now, ordered, ReadProcess(), ReadFilters(), events,
+                                       _searchesTotal, RatePerMinute(now));
         }
 
         private void CountSearches(List<DatasetLine> lines)
