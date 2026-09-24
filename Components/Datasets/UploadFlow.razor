@@ -255,14 +255,17 @@ else if (Ctx.IsLoadIndexing)
     }
 }
 
-@* The file input lives outside every state block, hidden, because the browser reads the chosen
-   file through this element for the whole upload. Inside the "needs upload" block it was removed
-   from the DOM the moment IsUploading flipped, and the upload only worked because the first read
-   was issued before that render landed; anything that delayed the read by a round-trip broke it
-   with "Cannot read properties of null (_blazorFilesById)". The label pairs with it by id, so it
-   does not need to be next to it. Gated on IsEditor and nothing else: that is who the input is
-   for, and unlike the engine state it does not change underneath a running upload. *@
-@if (Ctx.IsEditor)
+@* The file input sits outside the block that draws the upload panel, because the browser reads
+   the chosen file through this element for the whole upload and that block is hidden the moment
+   IsUploading flips. It used to be inside, and the upload only worked because the first read was
+   issued before that render landed; anything that delayed the read by a round-trip broke it with
+   "Cannot read properties of null (_blazorFilesById)".
+
+   The condition is that block's, minus the one term that moves during an upload. Everything left
+   holds still across the read: the engine stays Created until Init runs, IsAnalyzed flips after
+   it, and load/index is later still. The label pairs with the input by id, so it does not need to
+   be next to it. *@
+@if (state == SystemState.Created && !Ctx.IsAnalyzed && !Ctx.IsLoadIndexing && Ctx.IsEditor && !Ctx.IsHibernated)
 {
     <InputFile OnChange="OnFileSelected" accept=".json" style="display:none" id="@FileInputId" />
 }
