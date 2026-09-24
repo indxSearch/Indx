@@ -878,15 +878,6 @@ a.btn-danger:hover {
     min-width: min(380px, 80vw);
 }
 
-.indx-field-config-actions {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 8px 16px;
-    margin: 8px 0 16px;
-}
-
 /* The field name filter sits left of the toggles, and takes a full line of its own when the
    toolbar wraps. */
 .indx-field-config-filter { flex: 0 1 220px; min-width: 140px; }

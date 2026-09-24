@@ -124,8 +124,9 @@ namespace IndxServer.Monitor
                 var logProvider = new MonitorLoggerProvider();
                 builder.Logging.ClearProviders();
                 builder.Logging.AddProvider(logProvider);
-                builder.Services.AddSingleton<IMonitorRenderer>(
-                    _ => new TuiRenderer(options.StatusInterval, logProvider));
+                builder.Services.AddSingleton<IMonitorRenderer>(sp =>
+                    new TuiRenderer(options.StatusInterval, logProvider,
+                        () => sp.GetRequiredService<IHostApplicationLifetime>().StopApplication()));
             }
             else
             {

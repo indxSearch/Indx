@@ -201,16 +201,19 @@ else if (state == SystemState.Error)
     }
     <FieldConfigTable Fields="editedFields" Editable="true" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced" Filter="@_fieldFilter"
                       @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged" />
-    <div class="indx-field-config-actions">
-        <div class="indx-field-config-toolbar-group">
-            <Button Variant="primary" Size="micro" @onclick="StartLoadAndIndex" disabled="@(!Ctx.HasSearchable)">
-                Load and Index
-            </Button>
-            @if (_searchableTouched && !Ctx.HasSearchable)
-            {
-                <span class="indx-field-config-error">At least one field must be searchable</span>
-            }
-        </div>
+    @* Same layout as the Ready field configuration (FieldConfigTab): the way forward in a
+       SaveBar that sticks to the window bottom, since the table is often taller than the screen.
+       Always visible, because until Load and Index there is no dataset to leave unchanged. *@
+    <SaveBar AriaLabel="Load and index">
+        <Button Variant="primary" Size="micro" @onclick="StartLoadAndIndex" disabled="@(!Ctx.HasSearchable)">
+            Load and Index
+        </Button>
+        @if (_searchableTouched && !Ctx.HasSearchable)
+        {
+            <span class="indx-field-config-error">At least one field must be searchable</span>
+        }
+    </SaveBar>
+    <div class="indx-file-actions">
         <FieldConfigFileActions OnImported="StateHasChanged" />
     </div>
     <KeyFieldRow Editable="@Ctx.IsEditor" />

@@ -13,7 +13,9 @@ namespace IndxServer.Monitor
     /// <para>If the terminal turns out not to support a full-screen application, this falls back to
     /// the piped renderer rather than failing: the server was started to serve, not to draw.</para>
     /// </summary>
-    internal sealed class TuiRenderer(TimeSpan fallbackStatusInterval, MonitorLoggerProvider? logProvider = null)
+    internal sealed class TuiRenderer(TimeSpan fallbackStatusInterval,
+                                     MonitorLoggerProvider? logProvider = null,
+                                     Action? requestShutdown = null)
         : IMonitorRenderer, IMonitorLogSink
     {
         private const int MaxEvents = 500;
@@ -44,7 +46,8 @@ namespace IndxServer.Monitor
                 Console.OutputEncoding = System.Text.Encoding.UTF8;
                 using IApplication app = Application.Create().Init();
                 _app = app;
-                using var window = new MonitorWindow(app, ReadLatest, ReadEvents);
+                using var window = new MonitorWindow(app, ReadLatest, ReadEvents,
+                                                    requestShutdown ?? (() => { }));
                 // Only now does the console belong to the screen. Until this point log lines --
                 // including whatever went wrong during startup -- print normally.
                 logProvider?.AttachTo(this);

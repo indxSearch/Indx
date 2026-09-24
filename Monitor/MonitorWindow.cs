@@ -39,6 +39,7 @@ namespace IndxServer.Monitor
         private readonly IApplication _app;
         private readonly Func<MonitorSnapshot?> _readLatest;
         private readonly Func<IReadOnlyList<MonitorEvent>> _readEvents;
+        private readonly Action _requestShutdown;
 
         private readonly Label _header = new();
         private readonly Label _filters = new();
@@ -59,11 +60,13 @@ namespace IndxServer.Monitor
 
         internal MonitorWindow(IApplication app,
                                Func<MonitorSnapshot?> readLatest,
-                               Func<IReadOnlyList<MonitorEvent>> readEvents)
+                               Func<IReadOnlyList<MonitorEvent>> readEvents,
+                               Action requestShutdown)
         {
             _app = app;
             _readLatest = readLatest;
             _readEvents = readEvents;
+            _requestShutdown = requestShutdown;
 
             Title = "indx monitor";
 
@@ -120,6 +123,7 @@ namespace IndxServer.Monitor
                 // Detach, not quit: Ctrl+C still stops the server, and an operator who wants the
                 // console back must not have to kill the process to get it.
                 new Shortcut(Key.Q.WithCtrl, "Detach monitor", () => _app.RequestStop()),
+                new Shortcut(Key.F10, "Shut down server", ConfirmShutdown),
             ]);
 
             foreach (var table in new[] { _datasets, _events }) ShowSelection(table);
@@ -244,15 +248,26 @@ namespace IndxServer.Monitor
             if (signature != _renderedDatasets)
             {
                 _renderedDatasets = signature;
+                // Which dataset was selected, by key rather than by row: the table is replaced
+                // roughly every second (the "used" column counts in seconds), and a row index
+                // would not survive a dataset being created or deleted either.
+                string? selected = SelectedDatasetKey();
                 _rows = snapshot.Datasets;
                 _datasets.Table = new DataTableSource(table);
+                RestoreDatasetSelection(selected);
                 _datasets.SetNeedsDraw();
             }
 
             if (events.Count != _renderedEventCount)
             {
+                // Events render newest first, so N new ones push the selected line N rows down.
+                // Shifting by that keeps the eye on the line it was reading. The buffer drops
+                // its oldest when full, which is the bottom of this view and moves nothing above.
+                int row = ShiftEventSelection(_events.Value?.SelectedCell.Y ?? -1,
+                                              _renderedEventCount, events.Count);
                 _renderedEventCount = events.Count;
                 ShowEvents(events);
+                if (row >= 0) SelectRow(_events, row, events.Count);
                 _events.SetNeedsDraw();
             }
 
@@ -385,6 +400,83 @@ namespace IndxServer.Monitor
             }
 
             _events.Table = new DataTableSource(table);
+        }
+
+        /// <summary>
+        /// Where a selected event line moves to when new events arrive. They render newest first,
+        /// so N new ones push the selection N rows down and the eye stays on the line it was
+        /// reading. The buffer drops its oldest when full, which is the bottom of this view and
+        /// moves nothing above it. Returns -1 when there is nothing to move.
+        /// </summary>
+        internal static int ShiftEventSelection(int selectedRow, int previousCount, int newCount)
+        {
+            if (selectedRow < 0 || previousCount < 0) return -1;   // nothing selected, or first draw
+            int arrived = newCount - previousCount;
+            if (arrived <= 0) return -1;                            // only the cap dropping old ones
+            return Math.Clamp(selectedRow + arrived, 0, Math.Max(0, newCount - 1));
+        }
+
+        private string? SelectedDatasetKey()
+        {
+            int row = _datasets.Value?.SelectedCell.Y ?? -1;
+            return row >= 0 && row < _rows.Count ? _rows[row].Key : null;
+        }
+
+        private void RestoreDatasetSelection(string? key)
+        {
+            if (key is null) return;
+            int row = -1;
+            for (int i = 0; i < _rows.Count; i++)
+                if (_rows[i].Key == key) { row = i; break; }
+            if (row >= 0) SelectRow(_datasets, row, _rows.Count);
+        }
+
+        private static void SelectRow(TableView table, int row, int rowCount)
+        {
+            if (rowCount <= 0) return;
+            row = Math.Clamp(row, 0, rowCount - 1);
+            if (table.Value?.SelectedCell.Y == row) return;
+            int column = table.Value?.SelectedCell.X ?? 0;
+            table.Value = new TableSelection(new System.Drawing.Point(column, row));
+        }
+
+        /// <summary>
+        /// The one action the monitor offers, and it stops the server, so it asks first and Cancel
+        /// is what Enter does. Detaching the screen (Ctrl+Q) and stopping the process are two very
+        /// different things and the wording has to keep them apart.
+        /// </summary>
+        private void ConfirmShutdown()
+        {
+            var dialog = new Dialog { Title = "Shut down server", Width = 62, Height = 10 };
+
+            string[] lines =
+            [
+                "Stop this Indx server?",
+                "",
+                "Loaded datasets are dropped from memory and any search in",
+                "flight is cut off. Data on disk is kept, and the datasets",
+                "load again on the next start.",
+            ];
+            for (int i = 0; i < lines.Length; i++)
+                dialog.Add(new Label { X = 2, Y = 1 + i, Text = lines[i], HotKeySpecifier = NoHotKey });
+
+            var cancel = new Button { Text = "Cancel", IsDefault = true };
+            cancel.Accepting += (_, e) => { e.Handled = true; _app.RequestStop(dialog); };
+
+            var confirm = new Button { Text = "Shut down" };
+            confirm.Accepting += (_, e) =>
+            {
+                e.Handled = true;
+                _app.RequestStop(dialog);
+                // The host stops, which cancels the monitor's own token, which brings the screen
+                // down: no need to close it here, and closing it first would hide the shutdown.
+                _requestShutdown();
+            };
+
+            dialog.AddButton(cancel);
+            dialog.AddButton(confirm);
+            _app.Run(dialog);
+            dialog.Dispose();
         }
 
         private static string Short(TimeSpan span)
