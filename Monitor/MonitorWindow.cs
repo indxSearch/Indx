@@ -65,7 +65,8 @@ namespace IndxServer.Monitor
         internal MonitorWindow(IApplication app,
                                Func<MonitorSnapshot?> readLatest,
                                Func<IReadOnlyList<MonitorEvent>> readEvents,
-                               Action requestShutdown)
+                               Action requestShutdown,
+                               string? webUrl = null)
         {
             _app = app;
             _readLatest = readLatest;
@@ -80,6 +81,18 @@ namespace IndxServer.Monitor
             var logo = new PixlIconView { X = 3, Y = 1, Icon = "IndxLogo" };
             int textLeft = 3 + PixlIcon.Width + 3;
             var heading = new Label { X = textLeft, Y = 1, Text = "indx monitor", HotKeySpecifier = NoHotKey };
+
+            // Where the browser console lives. The startup banner prints it and this screen then
+            // covers the banner with the alternate buffer, so without this the address is gone the
+            // moment the monitor appears. Right-aligned on the title row, out of the way of the
+            // figures below it.
+            var address = new Label
+            {
+                X = textLeft, Y = 1, Width = Dim.Fill(PixlIcon.Width + 5), Height = 1,
+                TextAlignment = Alignment.End,
+                HotKeySpecifier = NoHotKey,
+                Text = webUrl is { Length: > 0 } ? $"web interface  {webUrl}" : "",
+            };
             _header.X = textLeft; _header.Y = 2; _header.Width = Dim.Fill(PixlIcon.Width + 5); _header.Height = 1;
             _filters.X = textLeft; _filters.Y = 3; _filters.Width = Dim.Fill(PixlIcon.Width + 5); _filters.Height = 1;
             // Labels swallow '_' as a hotkey marker, and these show data.
@@ -132,7 +145,7 @@ namespace IndxServer.Monitor
 
             foreach (var table in new[] { _datasets, _events }) ShowSelection(table);
 
-            Add(logo, heading, _header, _filters, _stateIcon, _datasetsFrame, eventsFrame, status);
+            Add(logo, heading, address, _header, _filters, _stateIcon, _datasetsFrame, eventsFrame, status);
             _datasetsFrame.FrameChanged += (_, _) => KeepDividerInBounds();
 
             Refresh();

@@ -1,3 +1,6 @@
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+
 namespace IndxServer.Monitor
 {
     /// <summary>
@@ -13,6 +16,7 @@ namespace IndxServer.Monitor
         MonitorOptions options,
         IMonitorRenderer renderer,
         IHostApplicationLifetime lifetime,
+        IServer server,
         IServiceScopeFactory scopes,
         ILogger<MonitorHostedService> logger) : BackgroundService
     {
@@ -35,7 +39,7 @@ namespace IndxServer.Monitor
             logger.LogInformation("Indx monitor starting in {Mode} mode, status every {Seconds:F0}s",
                 options.Mode, options.StatusInterval.TotalSeconds);
 
-            renderer.Start();
+            renderer.Start(WebUrl());
 
             using var timer = new PeriodicTimer(options.PollInterval);
             int consecutiveFailures = 0;
@@ -64,6 +68,42 @@ namespace IndxServer.Monitor
 
             try { renderer.Stop(); }
             catch (Exception ex) { logger.LogWarning(ex, "Indx monitor renderer failed to stop cleanly"); }
+        }
+
+        /// <summary>
+        /// Where the browser console is served, for the screen to show: the startup banner prints
+        /// it and the screen then covers the banner, so without this the address is gone the
+        /// moment the monitor appears.
+        ///
+        /// <para>Read from the server rather than from configuration, because configuration is
+        /// what was asked for and this is what was bound — they differ on <c>--urls</c>, on a
+        /// port clash, and on port 0. Only valid after ApplicationStarted, which is where this
+        /// is called.</para>
+        /// </summary>
+        private string? WebUrl()
+        {
+            try { return PickAddress(server.Features.Get<IServerAddressesFeature>()?.Addresses); }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// One address out of what Kestrel bound, preferring https. A wildcard host is what the
+        /// server listens on, not somewhere anyone can point a browser, so it becomes localhost.
+        /// </summary>
+        internal static string? PickAddress(IEnumerable<string>? addresses)
+        {
+            var all = addresses?.Where(a => !string.IsNullOrWhiteSpace(a)).ToList();
+            if (all is not { Count: > 0 })
+                return null;
+
+            var chosen = all.FirstOrDefault(a => a.StartsWith("https:", StringComparison.OrdinalIgnoreCase))
+                         ?? all[0];
+
+            return chosen.Replace("://0.0.0.0", "://localhost")
+                         .Replace("://[::]", "://localhost")
+                         .Replace("://+", "://localhost")
+                         .Replace("://*", "://localhost")
+                         .TrimEnd('/');
         }
 
         /// <summary>True when the application finished starting; false when it stopped first,

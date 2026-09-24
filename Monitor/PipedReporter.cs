@@ -20,7 +20,9 @@ namespace IndxServer.Monitor
         private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
         private DateTimeOffset _lastStatus = DateTimeOffset.MinValue;
 
-        public void Start() { }
+        // Nothing to do: the startup banner has already printed the address, and nothing here
+        // covers it up.
+        public void Start(string? webUrl) { }
 
         public void Render(MonitorSnapshot snapshot)
         {
