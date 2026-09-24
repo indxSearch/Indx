@@ -4,8 +4,12 @@
    FieldConfigTab takes over. *@
 @using Indx.Api
 @using IndxServer.Models
+@using IndxServer.Services
+@using Microsoft.AspNetCore.Components.Routing
 
 @inherits DatasetTabBase
+@inject NavigationManager Nav
+@inject BrowserFiles Browser
 @if (!Active || !Ctx.HasStatus) { return; }
 
 @{
@@ -256,6 +260,19 @@ else if (Ctx.IsLoadIndexing)
     }
 }
 
+@* Leaving cancels an upload in flight, so say so rather than losing the file silently. Only the
+   upload is at risk: load and index run on the server and a reopened page reattaches to them. *@
+<Modal Open="@(_pendingNavigation != null)" OpenChanged="@(open => { if (!open) StayOnPage(); })"
+       Title="Upload in progress"
+       Description="The file is still being sent from this browser. Leaving this page cancels it, and nothing is kept.">
+    <div class="indx-modal-form">
+        <div class="indx-form-actions">
+            <Button Variant="primary" Size="micro" @onclick="StayOnPage">Stay on this page</Button>
+            <Button Variant="secondary" Size="micro" @onclick="LeaveAndCancelAsync">Leave and cancel upload</Button>
+        </div>
+    </div>
+</Modal>
+
 @code {
 
     private string FileInputId => $"fileinput-{Ctx.Name}";
@@ -266,6 +283,53 @@ else if (Ctx.IsLoadIndexing)
     private string? _fieldFilter;
     private bool _showAdvanced;
     private bool _searchableTouched;
+
+    // ── Leaving mid-upload ───────────────────────────────────────────────────
+    // Two different exits need two different mechanisms: Blazor's handler sees in-app navigation
+    // and never fires for a closed tab or a reload, where only beforeunload reaches.
+    private IDisposable? _navGuard;
+    private string? _pendingNavigation;
+    private bool _leaving;
+
+    /// <summary>
+    /// Stops in-app navigation while the browser is still sending the file, and asks. Returns
+    /// without preventing anything the rest of the time, including once the user has chosen to
+    /// leave, so the second navigation goes through.
+    /// </summary>
+    private ValueTask OnLocationChanging(LocationChangingContext context)
+    {
+        if (!Ctx.IsUploading || _leaving)
+            return ValueTask.CompletedTask;
+
+        context.PreventNavigation();
+        _pendingNavigation = context.TargetLocation;
+        StateHasChanged();
+        return ValueTask.CompletedTask;
+    }
+
+    private void StayOnPage() => _pendingNavigation = null;
+
+    private async Task LeaveAndCancelAsync()
+    {
+        var target = _pendingNavigation;
+        _pendingNavigation = null;
+        _leaving = true;
+        CancelUpload();
+        await SetLeaveWarningAsync(false);
+        if (target != null)
+            Nav.NavigateTo(target);
+    }
+
+    /// <summary>The browser prompt is a nicety, and the circuit may already be gone when this
+    /// runs on the way out; never let it become the error the user sees.</summary>
+    private async Task SetLeaveWarningAsync(bool on)
+    {
+        // InvalidOperationException covers ObjectDisposedException, which derives from it, and is
+        // what a disconnected circuit throws.
+        try { await Browser.SetLeaveWarningAsync(on); }
+        catch (JSException) { }
+        catch (InvalidOperationException) { }
+    }
 
     /// <summary>Opens the Options tab, where Replace lives — reachable in the Error state.</summary>
     private void GoToReplace()
@@ -301,6 +365,7 @@ else if (Ctx.IsLoadIndexing)
         Ctx.UploadProgress = 0;
         _uploadCts = new CancellationTokenSource();
         Ctx.NotifyChanged();
+        await SetLeaveWarningAsync(true);
 
         FileStream? fs = null;
         try
@@ -380,6 +445,8 @@ else if (Ctx.IsLoadIndexing)
             _uploadCts = null;
             Ctx.IsUploading = false;
             Ctx.IsAnalyzing = false;
+            // Whatever ended it — success, failure or cancel — the page is safe to leave again.
+            await SetLeaveWarningAsync(false);
             Ctx.RefreshStatus();
             await Render();
         }
@@ -541,7 +608,15 @@ else if (Ctx.IsLoadIndexing)
         AttachToRunningWake();
     }
 
-    protected override void OnAfterRender(bool firstRender) => AttachToRunningWake();
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // Registered here rather than in OnInitialized: taking a navigation lock needs an
+        // initialised NavigationManager, which a static or prerendered pass does not have, and a
+        // lock would do nothing there anyway. An upload can only start once the page is
+        // interactive, which is exactly when OnAfterRender first runs.
+        _navGuard ??= Nav.RegisterLocationChangingHandler(OnLocationChanging);
+        AttachToRunningWake();
+    }
 
     private void AttachToRunningWake()
     {
@@ -643,6 +718,7 @@ else if (Ctx.IsLoadIndexing)
     public override void Dispose()
     {
         base.Dispose();
+        _navGuard?.Dispose();
         Ctx.Changed -= AttachToRunningWake;
         _wakePollCts?.Cancel();
         _uploadCts?.Cancel();

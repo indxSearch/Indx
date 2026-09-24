@@ -36,3 +36,19 @@ window.copyToClipboard = function (text) {
         return Promise.reject(error);
     }
 };
+
+// The browser's own "Leave site?" prompt, armed only while a file is being sent from this page.
+// Those bytes travel browser → circuit → server, so leaving loses them. Load and index are
+// server-owned and survive a reopened page, which is why this is not armed for them.
+let indxLeaveHandler = null;
+window.indxSetLeaveWarning = function (on) {
+    if (on && !indxLeaveHandler) {
+        // Browsers ignore custom text here and show their own wording; preventDefault plus a
+        // returnValue is what still arms it across all of them.
+        indxLeaveHandler = function (e) { e.preventDefault(); e.returnValue = ''; };
+        window.addEventListener('beforeunload', indxLeaveHandler);
+    } else if (!on && indxLeaveHandler) {
+        window.removeEventListener('beforeunload', indxLeaveHandler);
+        indxLeaveHandler = null;
+    }
+};
