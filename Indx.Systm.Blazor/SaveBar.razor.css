@@ -3,16 +3,21 @@
    covers stays visible along the edges rather than being cut off by a full-width band. The
    background is very slightly see-through with a light blur behind it: enough to read the bar
    against a busy table, and enough to show that something continues underneath. A browser without
-   backdrop-filter gets the plain page tone, which is what this was before. No border, no shadow. */
+   backdrop-filter gets the plain page tone, which is what this was before. No border, no shadow.
+   The panel is only as wide as its buttons and hugs the start edge, so the table it sticks over
+   is covered at one end rather than across its whole width. With nothing to spread, the aside
+   sits after the message rather than at the far edge.
+   */
 .indx-savebar {
     position: sticky;
     bottom: var(--savebar-gap, 8px);
     z-index: 5;
     display: flex;
     align-items: center;
-    justify-content: space-between;
     flex-wrap: wrap;
     gap: 8px 16px;
+    width: fit-content;
+    max-width: 100%;
     margin: 8px var(--savebar-gap, 8px) var(--savebar-gap, 8px);
     padding: 10px 12px;
     border-radius: var(--radius);
