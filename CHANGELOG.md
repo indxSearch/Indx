@@ -104,6 +104,9 @@ in the AI skill.
   whole text, so `knut h` puts Knut Hamsun above Knut Faldbakken; words in order anywhere in a
   document count as in order; and a document's score no longer depends on which others the search
   met first.
+- **Filters** (IndxSearchLib 5.0.0-RC240926): a combined filter used right after a reload or a first
+  field role no longer answers with the result from before it; a filtered search that overlapped a
+  filter load can no longer run unfiltered.
 - **Search ranking** (IndxSearchLib 5.0.0-RC150926): common text fragments no longer push unrelated
   documents to the top score — the cause of hundreds of ties and the real match buried, most
   visible with long searchable text and natural-language queries; term frequency, field length
