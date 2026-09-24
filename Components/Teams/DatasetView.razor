@@ -77,9 +77,10 @@
     /// route and the legacy /datasets/{name} one.</summary>
     private bool IsCurrentDataset()
     {
-        var path = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).TrimEnd('/');
-        return path.EndsWith($"/datasets/{Dataset}", StringComparison.OrdinalIgnoreCase)
-               || path.Equals($"datasets/{Dataset}", StringComparison.OrdinalIgnoreCase);
+        // Through TeamRoutes, which decodes: the URL is escaped and Dataset is not, so comparing
+        // them directly fails for every name that escapes to something else.
+        var onScreen = TeamRoutes.DatasetFromPath(NavigationManager.ToBaseRelativePath(NavigationManager.Uri));
+        return string.Equals(onScreen, Dataset, StringComparison.OrdinalIgnoreCase);
     }
 
     public void Dispose()
