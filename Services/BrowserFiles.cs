@@ -16,14 +16,6 @@ namespace IndxServer.Services
         public ValueTask TriggerFileInputAsync(string elementId)
             => js.InvokeVoidAsync("indxTriggerFileInput", elementId);
 
-        /// <summary>
-        /// Arms or disarms the browser's own "Leave site?" prompt. Covers closing the tab,
-        /// reloading and typing a new address, none of which reach Blazor's own navigation
-        /// handler. In-app navigation is guarded separately, with a real dialog.
-        /// </summary>
-        public ValueTask SetLeaveWarningAsync(bool on)
-            => js.InvokeVoidAsync("indxSetLeaveWarning", on);
-
         public ValueTask CopyToClipboardAsync(string text)
             => js.InvokeVoidAsync("copyToClipboard", text);
     }
