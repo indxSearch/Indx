@@ -9,9 +9,18 @@ patch can pick up a newer core without changing the HTTP contract.
 
 ## [2.0.0-beta] - Unreleased
 
-Runs on IndxSearchLib 5.0.0-RC150926. First public release of the v2 server; v1 users should read
+Runs on IndxSearchLib 5.0.0-RC240926. First public release of the v2 server; v1 users should read
 the [v1 → v2 migration guide](https://github.com/indxSearch/skill-indx-search/blob/main/references/migration-v4-to-v5.md)
 in the AI skill.
+
+### Added
+
+- **Terminal monitor.** Start the server from a terminal and it shows a live view of the instance
+  there: dataset states, document counts, idle-eviction countdowns, process and native memory, and
+  an event stream. `Ctrl+Q` detaches it and leaves the server running, `F10` shuts the server down
+  after a confirmation. Where stdout is redirected (Azure log stream, `docker logs`, systemd) it
+  prints a periodic status block instead, which is opt-in via `Indx:Monitor:Enabled`. Turn it off
+  entirely with `--no-monitor`. See the README.
 
 ### Breaking
 

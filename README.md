@@ -38,6 +38,8 @@ dotnet run
 
 Open `https://localhost:5001`. The first visit walks you through a short setup: create the admin account, name your team, and pick instance settings. Done in under a minute.
 
+The terminal you started it from now shows a live [monitor](#terminal-monitor) of the instance.
+
 Works immediately with no configuration:
 - Local username/password accounts
 - SQLite databases auto-created in `./IndxData/`
@@ -339,6 +341,61 @@ A background sweeper frees idle *Timed* datasets; the next access transparently 
 > This is a *deep* hibernate: the in-memory engine is disposed and rebuilt from `indx.db` on wake, which is the right model when storage is the source of truth. It is distinct from the core library's lighter `Hibernate`/`WakeUp` (which keeps documents resident in RAM and only drops the index).
 
 Over the HTTP API, the per-dataset `Hibernate`, `WakeUp`, and `LoadFromDatabase` operations control loading. See the [API reference](https://v5.docs.indx.co).
+
+## Terminal monitor
+
+Start the server from a terminal and it shows a live view of the instance in that terminal, with
+no browser and no login. It is meant for the moment something looks wrong: what each dataset is
+doing right now, what the process is using, and what just happened.
+
+```
+ ⬛ indx monitor      datasets 5 (3 loaded)   docs 1,712,004   heap 412MB   ws 3,102MB   native 412 blk
+```
+
+The dataset table shows state, document count, records on disk, how long since each was last used,
+and its idle-eviction countdown. Below it, an event stream carries dataset state changes, idle
+sweeps, background jobs and anything the server logs while the monitor is up. Datasets are coloured
+by state, with the same colours and icons as the chips in the web UI.
+
+| Key | Does |
+|---|---|
+| `Ctrl+Q` | Detach the monitor. **The server keeps running.** |
+| `Ctrl+C` | Stop the server, as usual |
+| `F10` | Shut down the server, after a confirmation |
+
+Drag the divider between the two panes to resize them. Where you leave it is remembered in
+`~/.indx/monitor.layout.json`.
+
+### When there is no terminal
+
+Azure log stream, `docker logs` and the systemd journal are pipes, not terminals: they cannot show
+a full-screen application. There the monitor prints a compact status block instead, appended every
+30 seconds, alongside events as they happen. This is **off by default**, because adding a status
+block to everyone's container logs uninvited is not a friendly default and log volume often costs
+money. Turn it on where you want it:
+
+```jsonc
+{
+  "Indx": {
+    "Monitor": {
+      "Enabled": true,       // required when stdout is redirected; ignored otherwise
+      "StatusSeconds": 30    // how often the status block is printed
+    }
+  }
+}
+```
+
+### Turning it off
+
+`Indx:Monitor:Enabled=false`, or start with `--no-monitor`. Use this if you run the server by hand
+on a machine where you would rather keep the plain startup log:
+
+```bash
+dotnet run --no-monitor
+```
+
+A startup that fails never draws the monitor, so an error such as a port already in use is printed
+the way it always was.
 
 ## Local Development
 
