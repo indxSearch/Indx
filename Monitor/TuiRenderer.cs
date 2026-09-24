@@ -49,6 +49,7 @@ namespace IndxServer.Monitor
                 // including whatever went wrong during startup -- print normally.
                 logProvider?.AttachTo(this);
                 app.Run(window);
+                window.SaveLayout();
             }
             catch (Exception ex)
             {

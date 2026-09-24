@@ -98,6 +98,13 @@
 		<ProjectReference Include="Indx.Systm.Blazor\Indx.Systm.Blazor.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<!-- The pixl icons for the terminal monitor, straight from the Blazor port: no copies to go
+		     stale. PixlIcon.cs reads the SVG path out of each and rasterises it. The folder is in
+		     DefaultItemExcludes above, so this explicit item is the only thing that picks them up. -->
+		<EmbeddedResource Include="Indx.Systm.Blazor\Icons\*.razor" LogicalName="pixl/%(Filename)%(Extension)" />
+	</ItemGroup>
+
 	<!-- ===== Indx engine reference selection =====
 	     Three modes, resolved into $(IndxReferenceMode):
 	       Source  - ProjectReference to ..\Indx (full IndxSolutions checkout). Default for us.
