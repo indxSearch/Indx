@@ -53,6 +53,7 @@ namespace IndxServer.Monitor
         private IReadOnlyList<DatasetLine> _rows = [];
         private DateTimeOffset _renderedAt = DateTimeOffset.MinValue;
         private int _renderedEventCount = -1;
+        private string _renderedDatasets = "";
 
         internal MonitorWindow(IApplication app,
                                Func<MonitorSnapshot?> readLatest,
@@ -198,11 +199,35 @@ namespace IndxServer.Monitor
             if (snapshot.TakenUtc == _renderedAt && events.Count == _renderedEventCount)
                 return;
             _renderedAt = snapshot.TakenUtc;
-            _renderedEventCount = events.Count;
 
+            // The header carries the clock and the counters, so it changes on every tick.
             ShowHeader(snapshot);
-            ShowDatasets(snapshot);
-            ShowEvents(events);
+
+            // The tables do not. Rebuilding one replaces its source, which costs a redraw and
+            // takes the selection with it, so each is rebuilt only when its content actually
+            // differs -- which for datasets is rarely, and that is what lets a row stay selected.
+            var (table, signature) = BuildDatasetTable(snapshot);
+            if (signature != _renderedDatasets)
+            {
+                _renderedDatasets = signature;
+                _rows = snapshot.Datasets;
+                _datasets.Table = new DataTableSource(table);
+                _datasets.SetNeedsDraw();
+            }
+
+            if (events.Count != _renderedEventCount)
+            {
+                _renderedEventCount = events.Count;
+                ShowEvents(events);
+                _events.SetNeedsDraw();
+            }
+
+            // Assigning TableView.Table does not itself ask for a repaint, and neither pane is
+            // otherwise redrawn until a key or the mouse forces it -- which looked like a monitor
+            // that refreshed every few seconds at random.
+            _header.SetNeedsDraw();
+            _filters.SetNeedsDraw();
+            _stateIcon.SetNeedsDraw();
         }
 
         private void ShowHeader(MonitorSnapshot s)
@@ -265,10 +290,14 @@ namespace IndxServer.Monitor
             };
         }
 
-        private void ShowDatasets(MonitorSnapshot s)
+        /// <summary>
+        /// The dataset table, and a signature of exactly what it would show. Taking the signature
+        /// from the rendered cells rather than from the data means it changes when and only when
+        /// the screen would differ -- including the "used" column ticking through its seconds, and
+        /// not including the parts of a timestamp that never reach a column.
+        /// </summary>
+        internal static (DataTable Table, string Signature) BuildDatasetTable(MonitorSnapshot s)
         {
-            _rows = s.Datasets;
-
             var table = new DataTable();
             table.Columns.Add("dataset");
             table.Columns.Add("team");
@@ -278,6 +307,7 @@ namespace IndxServer.Monitor
             table.Columns.Add("used");
             table.Columns.Add("note");
 
+            var signature = new StringBuilder();
             foreach (var d in s.Datasets)
             {
                 string note = d.ProgressPercent is { } percent ? $"{percent}%" : "";
@@ -285,17 +315,25 @@ namespace IndxServer.Monitor
                 else if (d.IndexedTextTruncated) note = "text truncated";
                 else if (d.KeepAliveRemaining is { } remaining) note = $"evict in {Short(remaining)}";
 
-                table.Rows.Add(
+                object[] cells =
+                [
                     d.DataSetName,
                     d.TeamId.Length > 8 ? d.TeamId[..8] : d.TeamId,
                     d.Phase,
                     d.DocumentCount > 0 ? d.DocumentCount.ToString("N0") : "",
                     d.RecordsOnDisk > 0 ? d.RecordsOnDisk.ToString("N0") : "",
                     d.LastUsedUtc is { } used && d.State is not null ? Short(s.TakenUtc - used) : "",
-                    note);
+                    note,
+                ];
+                table.Rows.Add(cells);
+
+                foreach (var cell in cells) signature.Append(cell).Append('\u0001');
+                // The row colour is not a cell, and a dataset can change colour without any
+                // column changing -- Ready to Error keeps its counts.
+                signature.Append(Appearance(d).Icon).Append('\u0002');
             }
 
-            _datasets.Table = new DataTableSource(table);
+            return (table, signature.ToString());
         }
 
         private void ShowEvents(IReadOnlyList<MonitorEvent> events)
