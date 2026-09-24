@@ -12,6 +12,7 @@ namespace IndxServer.Monitor
     internal sealed class MonitorHostedService(
         MonitorOptions options,
         IMonitorRenderer renderer,
+        IHostApplicationLifetime lifetime,
         ILogger<MonitorHostedService> logger) : BackgroundService
     {
         private const int MaxConsecutiveFailures = 5;
@@ -20,6 +21,14 @@ namespace IndxServer.Monitor
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             if (options.Mode == MonitorMode.Off)
+                return;
+
+            // Nothing is drawn until the server is actually listening. A startup that fails --
+            // the port already in use is the one that found this -- must leave the console alone
+            // so its error is readable, and ApplicationStarted is the signal that says startup
+            // got all the way through. Relying on hosted-service registration order instead would
+            // be guessing about a race.
+            if (!await WaitForApplicationStartedAsync(stoppingToken))
                 return;
 
             logger.LogInformation("Indx monitor starting in {Mode} mode, status every {Seconds:F0}s",
@@ -56,6 +65,29 @@ namespace IndxServer.Monitor
             catch (Exception ex) { logger.LogWarning(ex, "Indx monitor renderer failed to stop cleanly"); }
         }
 
+        /// <summary>True when the application finished starting; false when it stopped first,
+        /// which is what a failed startup looks like from here.</summary>
+        private async Task<bool> WaitForApplicationStartedAsync(CancellationToken stoppingToken)
+        {
+            if (lifetime.ApplicationStarted.IsCancellationRequested)
+                return true;
+
+            var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var onStarted = lifetime.ApplicationStarted.Register(() => started.TrySetResult());
+            using var onStopping = lifetime.ApplicationStopping.Register(() => started.TrySetCanceled());
+            using var onStopped = stoppingToken.Register(() => started.TrySetCanceled());
+
+            try
+            {
+                await started.Task;
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+        }
+
         private static async Task<bool> SafeWaitAsync(PeriodicTimer timer, CancellationToken token)
         {
             try { return await timer.WaitForNextTickAsync(token); }
@@ -85,8 +117,14 @@ namespace IndxServer.Monitor
 
             if (options.Mode == MonitorMode.Interactive)
             {
+                // Not ClearProviders() alone: that leaves a failed startup with nowhere to print.
+                // This provider IS the console logger until the screen is up, then becomes the
+                // event pane, then is the console logger again once it comes down.
+                var logProvider = new MonitorLoggerProvider();
                 builder.Logging.ClearProviders();
-                builder.Services.AddSingleton<IMonitorRenderer>(_ => new TuiRenderer(options.StatusInterval));
+                builder.Logging.AddProvider(logProvider);
+                builder.Services.AddSingleton<IMonitorRenderer>(
+                    _ => new TuiRenderer(options.StatusInterval, logProvider));
             }
             else
             {

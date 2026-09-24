@@ -13,7 +13,8 @@ namespace IndxServer.Monitor
     /// <para>If the terminal turns out not to support a full-screen application, this falls back to
     /// the piped renderer rather than failing: the server was started to serve, not to draw.</para>
     /// </summary>
-    internal sealed class TuiRenderer(TimeSpan fallbackStatusInterval) : IMonitorRenderer
+    internal sealed class TuiRenderer(TimeSpan fallbackStatusInterval, MonitorLoggerProvider? logProvider = null)
+        : IMonitorRenderer, IMonitorLogSink
     {
         private const int MaxEvents = 500;
 
@@ -44,6 +45,9 @@ namespace IndxServer.Monitor
                 using IApplication app = Application.Create().Init();
                 _app = app;
                 using var window = new MonitorWindow(app, ReadLatest, ReadEvents);
+                // Only now does the console belong to the screen. Until this point log lines --
+                // including whatever went wrong during startup -- print normally.
+                logProvider?.AttachTo(this);
                 app.Run(window);
             }
             catch (Exception ex)
@@ -59,6 +63,8 @@ namespace IndxServer.Monitor
             }
             finally
             {
+                // Hand the console back before shutdown, so the host's stopping messages are seen.
+                logProvider?.Detach();
                 _app = null;
             }
         }
@@ -92,6 +98,17 @@ namespace IndxServer.Monitor
             // and cannot hold shutdown open.
             try { _app?.RequestStop(); } catch { /* the screen is already down */ }
             _thread?.Join(TimeSpan.FromSeconds(2));
+        }
+
+        /// <summary>A log line, once the screen owns the console.</summary>
+        public void Add(MonitorEvent entry)
+        {
+            lock (_eventLock)
+            {
+                _events.Add(entry);
+                if (_events.Count > MaxEvents)
+                    _events.RemoveRange(0, _events.Count - MaxEvents);
+            }
         }
 
         private MonitorSnapshot? ReadLatest() => Volatile.Read(ref _latest);
