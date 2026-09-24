@@ -90,6 +90,11 @@ in the AI skill.
 
 ### Fixed
 
+- **Coverage ranking** (IndxSearchLib 5.0.0-RC240926): a search containing æ, ø, å or another
+  folded character fully matches documents with the same word; a query being typed ranks by its
+  whole text, so `knut h` puts Knut Hamsun above Knut Faldbakken; words in order anywhere in a
+  document count as in order; and a document's score no longer depends on which others the search
+  met first.
 - **Search ranking** (IndxSearchLib 5.0.0-RC150926): common text fragments no longer push unrelated
   documents to the top score — the cause of hundreds of ties and the real match buried, most
   visible with long searchable text and natural-language queries; term frequency, field length
