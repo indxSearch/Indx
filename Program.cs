@@ -1,4 +1,5 @@
 ﻿using Asp.Versioning;
+using IndxServer.Monitor;
 using IndxServer.Data;
 using IndxServer.Models;
 using IndxServer.Services;
@@ -610,6 +611,12 @@ public class Program
 
         // Health checks for App Service / Container probes and the managed-app dashboard.
         builder.Services.AddHealthChecks();
+
+        // Terminal monitor: a live view of datasets and process health, in the console the server
+        // was started from. On by default when a terminal is attached, opt-in when stdout is
+        // redirected (Azure log stream, docker logs, systemd). --no-monitor turns it off.
+        // See Notes/terminal-monitor-ideas.md.
+        builder.Services.AddIndxMonitor(builder.Configuration, args);
 
         // License bootstrapper: downloads the .license file from the Indx portal (hardcoded URL)
         // using a configured license token. No-op when no token is configured.
