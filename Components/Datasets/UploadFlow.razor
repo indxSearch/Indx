@@ -146,7 +146,6 @@ else if (state == SystemState.Error)
     {
         <p class="up-intro">Upload a JSON file to configure and index this dataset.</p>
         <div class="up-row up-top8">
-            <InputFile OnChange="OnFileSelected" accept=".json" style="display:none" id="@FileInputId" />
             <label for="@FileInputId" class="indx-upload-label">
                 <Json Size="14" />
                 @if (_selectedFile != null)
@@ -260,6 +259,18 @@ else if (Ctx.IsLoadIndexing)
     }
 }
 
+@* The file input lives outside every state block, hidden, because the browser reads the chosen
+   file through this element for the whole upload. Inside the "needs upload" block it was removed
+   from the DOM the moment IsUploading flipped, and the upload only worked because the first read
+   was issued before that render landed; anything that delayed the read by a round-trip broke it
+   with "Cannot read properties of null (_blazorFilesById)". The label pairs with it by id, so it
+   does not need to be next to it. Gated on IsEditor and nothing else: that is who the input is
+   for, and unlike the engine state it does not change underneath a running upload. *@
+@if (Ctx.IsEditor)
+{
+    <InputFile OnChange="OnFileSelected" accept=".json" style="display:none" id="@FileInputId" />
+}
+
 @* Leaving cancels an upload in flight, so say so rather than losing the file silently. Only the
    upload is at risk: load and index run on the server and a reopened page reattaches to them. *@
 <Modal Open="@(_pendingNavigation != null)" OpenChanged="@(open => { if (!open) StayOnPage(); })"
@@ -290,6 +301,7 @@ else if (Ctx.IsLoadIndexing)
     private IDisposable? _navGuard;
     private string? _pendingNavigation;
     private bool _leaving;
+    private bool _warningArmed;
 
     /// <summary>
     /// Stops in-app navigation while the browser is still sending the file, and asks. Returns
@@ -315,6 +327,8 @@ else if (Ctx.IsLoadIndexing)
         _pendingNavigation = null;
         _leaving = true;
         CancelUpload();
+        // Navigating away disposes this component, so no later render will disarm it.
+        _warningArmed = false;
         await SetLeaveWarningAsync(false);
         if (target != null)
             Nav.NavigateTo(target);
@@ -365,7 +379,6 @@ else if (Ctx.IsLoadIndexing)
         Ctx.UploadProgress = 0;
         _uploadCts = new CancellationTokenSource();
         Ctx.NotifyChanged();
-        await SetLeaveWarningAsync(true);
 
         FileStream? fs = null;
         try
@@ -445,8 +458,6 @@ else if (Ctx.IsLoadIndexing)
             _uploadCts = null;
             Ctx.IsUploading = false;
             Ctx.IsAnalyzing = false;
-            // Whatever ended it — success, failure or cancel — the page is safe to leave again.
-            await SetLeaveWarningAsync(false);
             Ctx.RefreshStatus();
             await Render();
         }
@@ -608,14 +619,26 @@ else if (Ctx.IsLoadIndexing)
         AttachToRunningWake();
     }
 
-    protected override void OnAfterRender(bool firstRender)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         // Registered here rather than in OnInitialized: taking a navigation lock needs an
         // initialised NavigationManager, which a static or prerendered pass does not have, and a
         // lock would do nothing there anyway. An upload can only start once the page is
-        // interactive, which is exactly when OnAfterRender first runs.
+        // interactive, which is exactly when this first runs.
         _navGuard ??= Nav.RegisterLocationChangingHandler(OnLocationChanging);
         AttachToRunningWake();
+
+        // The browser prompt is armed from the render cycle and never from StartUploadAsync.
+        // Awaiting JS interop there breaks the upload: the file input is inside a block guarded by
+        // !IsUploading, so the render that follows NotifyChanged removes it from the DOM, and a
+        // SignalR round-trip is long enough for that to land before OpenReadStream runs — the
+        // browser then fails the read with "Cannot read properties of null (_blazorFilesById)".
+        // By here the render has happened either way, so there is nothing left to race.
+        if (Ctx.IsUploading != _warningArmed)
+        {
+            _warningArmed = Ctx.IsUploading;
+            await SetLeaveWarningAsync(_warningArmed);
+        }
     }
 
     private void AttachToRunningWake()
