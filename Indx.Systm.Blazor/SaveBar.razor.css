@@ -1,17 +1,28 @@
-/* Port of indx-systm SaveBar.module.css. Sticks to the bottom of the window. Its own page-tone
-   background is all that separates it from the content scrolling under it: no border, no shadow. */
+/* Port of indx-systm SaveBar.module.css. */
+/* Sticks to the bottom of the window as a panel with a gap on three sides, so the content it
+   covers stays visible along the edges rather than being cut off by a full-width band. The
+   background is very slightly see-through with a light blur behind it: enough to read the bar
+   against a busy table, and enough to show that something continues underneath. A browser without
+   backdrop-filter gets the plain page tone, which is what this was before. No border, no shadow. */
 .indx-savebar {
     position: sticky;
-    bottom: 0;
+    bottom: var(--savebar-gap, 8px);
     z-index: 5;
     display: flex;
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 8px 16px;
-    margin-top: 8px;
-    padding: 10px 0;
-    background: var(--savebar-bg, var(--lv0));
+    margin: 8px var(--savebar-gap, 8px) var(--savebar-gap, 8px);
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    background: var(--savebar-bg, color-mix(in srgb, var(--lv0) 88%, transparent));
+    -webkit-backdrop-filter: blur(3px);
+    backdrop-filter: blur(3px);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .indx-savebar { background: var(--savebar-bg, var(--lv0)); }
 }
 
 /* Each group wraps as a unit, never inside itself. */
