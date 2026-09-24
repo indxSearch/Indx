@@ -21,7 +21,7 @@ namespace IndxServer.Monitor
     /// lifecycle lines. Deriving them from the polling this class already does covers that without
     /// touching the registry at all.</para>
     /// </summary>
-    internal sealed class MonitorCollector
+    internal sealed class MonitorCollector(TeamNames? teamNames = null)
     {
         // Phase per dataset key as of the previous tick. Only this class touches it, and Collect
         // is called from one timer, so no synchronisation is needed.
@@ -42,9 +42,13 @@ namespace IndxServer.Monitor
                 return MonitorSnapshot.Empty(now);
             }
 
+            // One identity-database read for the whole table, and usually not even that.
+            var names = teamNames?.Resolve(all.Select(r => r.TeamId), now)
+                        ?? new Dictionary<string, string>();
+
             var lines = new List<DatasetLine>(all.Count);
             foreach (var (dataSetName, teamId) in all)
-                lines.Add(ReadOne(dataSetName, teamId));
+                lines.Add(ReadOne(dataSetName, teamId, names.GetValueOrDefault(teamId)));
 
             lines.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
 
@@ -52,7 +56,7 @@ namespace IndxServer.Monitor
             return new MonitorSnapshot(now, lines, ReadProcess(), ReadFilters(), events);
         }
 
-        private static DatasetLine ReadOne(string dataSetName, string teamId)
+        private static DatasetLine ReadOne(string dataSetName, string teamId, string? teamName)
         {
             var manager = IndxServerInternalApi.Manager;
 
@@ -69,6 +73,7 @@ namespace IndxServer.Monitor
             return new DatasetLine(
                 DataSetName: dataSetName,
                 TeamId: teamId,
+                TeamName: teamName,
                 State: status?.SystemState,
                 Hibernated: hibernated,
                 DocumentCount: status?.DocumentCount ?? 0,

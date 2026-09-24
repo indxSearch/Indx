@@ -71,7 +71,7 @@ namespace IndxServer.Monitor
         private static string DescribeDataset(DatasetLine d, DateTimeOffset now)
         {
             var sb = new StringBuilder();
-            sb.Append(Inv, $"{Truncate(d.DataSetName, 20),-20} {Truncate(d.TeamId, 8),-8} {d.Phase,-11}");
+            sb.Append(Inv, $"{Truncate(d.DataSetName, 20),-20} {Truncate(d.TeamLabel, 12),-12} {d.Phase,-11}");
 
             if (d.ProgressPercent is { } percent && d.State is SystemState.Loading or SystemState.Indexing)
             {

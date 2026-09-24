@@ -11,6 +11,7 @@ namespace IndxServer.Monitor
     internal sealed record DatasetLine(
         string DataSetName,
         string TeamId,
+        string? TeamName,
         SystemState? State,
         bool Hibernated,
         int DocumentCount,
@@ -24,8 +25,15 @@ namespace IndxServer.Monitor
         bool IndexedTextTruncated,
         string? ErrorMessage)
     {
-        /// <summary>Stable identity across ticks, for transition detection.</summary>
+        /// <summary>Stable identity across ticks, for transition detection. The id, not the
+        /// name: a rename must not read as a dataset appearing and another disappearing.</summary>
         internal string Key => TeamId + "/" + DataSetName;
+
+        /// <summary>What to put in a "team" column: the name when it is known, else the id, cut
+        /// short because a GUID is all column and no information.</summary>
+        internal string TeamLabel =>
+            !string.IsNullOrEmpty(TeamName) ? TeamName
+            : TeamId.Length > 8 ? TeamId[..8] : TeamId;
 
         /// <summary>
         /// The one word shown in a table and compared between ticks to raise a transition event.

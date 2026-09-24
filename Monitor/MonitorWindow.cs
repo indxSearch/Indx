@@ -49,6 +49,8 @@ namespace IndxServer.Monitor
 
         private readonly MonitorLayout _layout = MonitorLayout.Load();
         private bool _dragged;
+        private bool _initialised;
+        private int _appliedHeight = -1;
 
         private IReadOnlyList<DatasetLine> _rows = [];
         private DateTimeOffset _renderedAt = DateTimeOffset.MinValue;
@@ -85,7 +87,9 @@ namespace IndxServer.Monitor
             {
                 Title = "Datasets",
                 X = 0, Y = HeaderHeight, Width = Dim.Fill(),
-                Height = Dim.Func(_ => DatasetsHeight()),
+                // An absolute height, not a Dim.Func: a drag sets an absolute height too, and
+                // anything that rewrites Height on a timer is fighting the drag for it.
+                Height = Dim.Absolute(_layout.DatasetsHeight ?? 10),
                 Arrangement = ViewArrangement.BottomResizable,
             };
             _datasets.X = 0; _datasets.Y = 0; _datasets.Width = Dim.Fill(); _datasets.Height = Dim.Fill();
@@ -121,10 +125,10 @@ namespace IndxServer.Monitor
             foreach (var table in new[] { _datasets, _events }) ShowSelection(table);
 
             Add(logo, heading, _header, _filters, _stateIcon, _datasetsFrame, eventsFrame, status);
-            _datasetsFrame.FrameChanged += (_, _) => TakeDraggedHeight();
+            _datasetsFrame.FrameChanged += (_, _) => KeepDividerInBounds();
 
             Refresh();
-            _app.AddTimeout(TimeSpan.FromMilliseconds(250), () => { TakeDraggedHeight(); Refresh(); return true; });
+            _app.AddTimeout(TimeSpan.FromMilliseconds(250), () => { KeepDividerInBounds(); Refresh(); return true; });
         }
 
         /// <summary>
@@ -151,30 +155,60 @@ namespace IndxServer.Monitor
 
         // ── The draggable divider ────────────────────────────────────────────
 
-        /// <summary>The height Datasets gets: what was dragged, or half the room, kept within what
-        /// leaves Events its minimum. Clamping on every read is what makes a dragged height meet a
-        /// smaller terminal gracefully and come back when it grows again.</summary>
-        private int DatasetsHeight()
+        /// <summary>
+        /// Keeps the divider inside what leaves both panes a usable height, and notices where a
+        /// drag left it.
+        ///
+        /// <para>The first version rewrote <c>Height</c> to a <c>Dim.Func</c> on every tick, the
+        /// way the workbench does for its vertical border. That is why the divider showed a drag
+        /// cursor and would not move: a drag sets an absolute height, and a quarter of a second
+        /// later this put the calculated one back. Now <c>Height</c> is only ever written when the
+        /// value is genuinely out of bounds — a terminal that got shorter — so a drag is left
+        /// alone and simply read afterwards.</para>
+        /// </summary>
+        private void KeepDividerInBounds()
         {
-            int available = Math.Max(MinDatasets + MinEvents, Viewport.Height - HeaderHeight - 1);
-            int want = _layout.DatasetsHeight ?? available / 2;
-            return Math.Clamp(want, MinDatasets, available - MinEvents);
-        }
+            if (_datasetsFrame.Height is not DimAbsolute current)
+                return;
 
-        /// <summary>A drag sets an absolute height. That number becomes what the user asked for,
-        /// and the pane goes back to the calculated height. Called from the timer too, because the
-        /// height a drag ends on does not always come with a frame change.</summary>
-        private void TakeDraggedHeight()
-        {
-            if (_datasetsFrame.Height is DimAbsolute h)
+            int available = Viewport.Height - HeaderHeight - 1;   // the status bar keeps a row
+            if (available < MinDatasets + MinEvents)
+                return;   // too small to split sensibly; leave whatever is there
+
+            // The built-in split, once the terminal size is actually known. Doing this at
+            // construction would divide a viewport that is still zero.
+            if (!_initialised)
             {
-                int available = Math.Max(MinDatasets + MinEvents, Viewport.Height - HeaderHeight - 1);
-                _layout.DatasetsHeight = Math.Clamp(h.Size, MinDatasets, available - MinEvents);
-                _datasetsFrame.Height = Dim.Func(_ => DatasetsHeight());
+                _initialised = true;
+                if (_layout.DatasetsHeight is null)
+                {
+                    Apply(available / 2);
+                    return;
+                }
+            }
+
+            int clamped = Math.Clamp(current.Size, MinDatasets, available - MinEvents);
+            if (clamped != current.Size)
+            {
+                Apply(clamped);
+                return;
+            }
+
+            // Anything we did not put there ourselves came from a drag.
+            if (current.Size != _appliedHeight)
+            {
+                _appliedHeight = current.Size;
+                _layout.DatasetsHeight = current.Size;
                 _dragged = true;
             }
-            // A Func height does not tell the pane below it that its answer changed.
-            if (_dragged) { SetNeedsLayout(); SetNeedsDraw(); }
+
+            void Apply(int height)
+            {
+                _appliedHeight = height;
+                _datasetsFrame.Height = Dim.Absolute(height);
+                SetNeedsLayout();
+                SetNeedsDraw();
+            }
         }
 
         /// <summary>Only once something was dragged: a pane on its built-in split keeps following
@@ -318,7 +352,7 @@ namespace IndxServer.Monitor
                 object[] cells =
                 [
                     d.DataSetName,
-                    d.TeamId.Length > 8 ? d.TeamId[..8] : d.TeamId,
+                    d.TeamLabel,
                     d.Phase,
                     d.DocumentCount > 0 ? d.DocumentCount.ToString("N0") : "",
                     d.RecordsOnDisk > 0 ? d.RecordsOnDisk.ToString("N0") : "",

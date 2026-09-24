@@ -13,10 +13,11 @@ namespace IndxServer.Monitor
         MonitorOptions options,
         IMonitorRenderer renderer,
         IHostApplicationLifetime lifetime,
+        IServiceScopeFactory scopes,
         ILogger<MonitorHostedService> logger) : BackgroundService
     {
         private const int MaxConsecutiveFailures = 5;
-        private readonly MonitorCollector _collector = new();
+        private readonly MonitorCollector _collector = new(new TeamNames(scopes));
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
