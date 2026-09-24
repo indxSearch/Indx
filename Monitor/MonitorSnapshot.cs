@@ -1,3 +1,4 @@
+using System.Globalization;
 using Indx.Api;
 
 namespace IndxServer.Monitor
@@ -72,7 +73,34 @@ namespace IndxServer.Monitor
         long RpnScanDocumentsVisited,
         long FieldFilterUpdates,
         long DerivedRecomputes,
-        long DerivedRebuilds);
+        long DerivedRebuilds)
+    {
+        /// <summary>
+        /// One line, and deliberately not three counts.
+        ///
+        /// <para><c>srch</c> is left out: route 1 is the lazy load inside Search, and over HTTP the
+        /// filter is already resolved before Search runs, so on a server it is structurally zero
+        /// and spends a column saying nothing. It is the in-process route, which is why IndxSoak
+        /// needs --cloud-shape to reach route 2 at all.</para>
+        ///
+        /// <para><c>scan</c> appears only when it has fired, because it should never fire: it is
+        /// FilterBuilder's fallback for an operand the key route was meant to have loaded, and it
+        /// consults no posting index. The documents-walked figure sits next to it because the
+        /// number of scans understates the cost on a large corpus; the walk is the cost.</para>
+        /// </summary>
+        internal string Describe()
+        {
+            // Invariant throughout the monitor: the piped block goes into logs that anyone reads,
+            // and a figure should not change shape with the server's locale.
+            var inv = CultureInfo.InvariantCulture;
+            string scan = RpnScanLoads > 0
+                ? string.Create(inv, $"   scan {RpnScanLoads:N0} ({RpnScanDocumentsVisited:N0} docs walked)")
+                : "";
+            return string.Create(inv, $"filters  key {KeyResolutionLoads:N0}{scan}   ")
+                 + string.Create(inv, $"upkeep field {FieldFilterUpdates:N0} / derived {DerivedRecomputes:N0} ")
+                 + string.Create(inv, $"/ rebuilds {DerivedRebuilds:N0}");
+        }
+    }
 
     /// <summary>Something worth a line in the stream. Stage one raises these from state
     /// transitions the collector notices between ticks; later stages add actors.</summary>
@@ -86,8 +114,18 @@ namespace IndxServer.Monitor
         IReadOnlyList<DatasetLine> Datasets,
         ProcessLine Process,
         FilterLine Filters,
-        IReadOnlyList<MonitorEvent> NewEvents)
+        IReadOnlyList<MonitorEvent> NewEvents,
+        long SearchesTotal = 0,
+        double SearchesPerMinute = 0)
     {
+        /// <summary>Searches counted since the monitor started, and the recent rate. Not
+        /// <c>SearchCounter</c> summed: that is per engine and restarts at zero when a dataset is
+        /// evicted and reloaded, so the sum would fall. See <c>MonitorCollector</c>.</summary>
+        internal string DescribeSearches() =>
+            SearchesPerMinute >= 0.05
+                ? string.Create(CultureInfo.InvariantCulture, $"searches {SearchesTotal:N0} ({SearchesPerMinute:N0}/min)")
+                : string.Create(CultureInfo.InvariantCulture, $"searches {SearchesTotal:N0}");
+
         internal int TotalDocuments => Datasets.Sum(d => d.DocumentCount);
         internal int LoadedCount => Datasets.Count(d => d.Ready);
 

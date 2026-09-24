@@ -46,7 +46,7 @@ namespace IndxServer.Monitor
             var p = s.Process;
 
             sb.Append(Inv, $"[indx {Clock(s.TakenUtc)}] datasets {s.Datasets.Count} ({s.LoadedCount} loaded)  ");
-            sb.Append(Inv, $"docs {s.TotalDocuments,12:N0}  heap {p.GcHeapMb,6:N0}MB  ");
+            sb.Append(Inv, $"docs {s.TotalDocuments,12:N0}  {s.DescribeSearches()}  heap {p.GcHeapMb,6:N0}MB  ");
             // Process.PrivateMemorySize64 is 0 on Unix, which is where this actually runs in a
             // container. A confident "priv 0MB" is worse than no column, so it is only shown where
             // the platform reports it.
@@ -55,12 +55,7 @@ namespace IndxServer.Monitor
             sb.Append(Inv, $"ws {p.WorkingSetMb,7:N0}MB  gc {p.Gen0}/{p.Gen1}/{p.Gen2}  ");
             sb.AppendLine(Inv, $"nat {p.NativeBlocks,6:N0} ({p.NativePoolMb:N0}MB pooled)");
 
-            var f = s.Filters;
-            // scan should be 0: it is a sequential full-corpus walk with no posting index.
-            sb.AppendLine(Inv, $"           filters: srch={f.SearchPathLoads,8:N0} key={f.KeyResolutionLoads,8:N0} " +
-                               $"scan={f.RpnScanLoads,6:N0} ({f.RpnScanDocumentsVisited,12:N0} docs walked)  " +
-                               $"upkeep field={f.FieldFilterUpdates,7:N0} derived={f.DerivedRecomputes,7:N0} " +
-                               $"rebuilds={f.DerivedRebuilds,5:N0}");
+            sb.AppendLine("           " + s.Filters.Describe());
 
             foreach (var d in s.Datasets)
                 sb.AppendLine("           " + DescribeDataset(d, s.TakenUtc));

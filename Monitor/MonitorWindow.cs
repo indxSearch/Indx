@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using System.Text;
 using Indx.Api;
 using Terminal.Gui.App;
@@ -30,6 +31,9 @@ namespace IndxServer.Monitor
                                       Slate = new(0x4A, 0x4A, 0x50);
 
         private static readonly Rune NoHotKey = (Rune)0xFFFF;
+        /// <summary>Invariant throughout, so a figure looks the same in the terminal, in a piped
+        /// log and in a screenshot someone pastes into an issue.</summary>
+        private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
         /// <summary>Rows taken by the header: air, three rows of logo, air.</summary>
         private const int HeaderHeight = 5;
@@ -284,18 +288,14 @@ namespace IndxServer.Monitor
             var p = s.Process;
             // PrivateMemorySize64 is 0 on Unix, where this runs in a container; a confident 0MB
             // would be worse than leaving the column out.
-            string priv = p.PrivateMb > 0 ? $"   priv {p.PrivateMb:N0}MB" : "";
+            string priv = p.PrivateMb > 0 ? string.Create(Inv, $"   priv {p.PrivateMb:N0}MB") : "";
             _header.Text =
-                $"{s.TakenUtc.UtcDateTime:HH:mm:ss}   datasets {s.Datasets.Count} ({s.LoadedCount} loaded)   " +
-                $"docs {s.TotalDocuments:N0}   heap {p.GcHeapMb:N0}MB{priv}   ws {p.WorkingSetMb:N0}MB   " +
-                $"gc {p.Gen0}/{p.Gen1}/{p.Gen2}   native {p.NativeBlocks:N0} blk";
+                string.Create(Inv, $"{s.TakenUtc.UtcDateTime:HH:mm:ss}   datasets {s.Datasets.Count} ({s.LoadedCount} loaded)   ") +
+                string.Create(Inv, $"docs {s.TotalDocuments:N0}   {s.DescribeSearches()}   ") +
+                string.Create(Inv, $"heap {p.GcHeapMb:N0}MB{priv}   ws {p.WorkingSetMb:N0}MB   ") +
+                string.Create(Inv, $"gc {p.Gen0}/{p.Gen1}/{p.Gen2}   native {p.NativeBlocks:N0} blk");
 
-            var f = s.Filters;
-            // scan is the alarm: a sequential full-corpus walk with no posting index.
-            _filters.Text =
-                $"filters  srch {f.SearchPathLoads:N0}   key {f.KeyResolutionLoads:N0}   " +
-                $"scan {f.RpnScanLoads:N0}   upkeep field {f.FieldFilterUpdates:N0} / " +
-                $"derived {f.DerivedRecomputes:N0} / rebuilds {f.DerivedRebuilds:N0}";
+            _filters.Text = s.Filters.Describe();
 
             // The header icon reports the instance, so it shows the most notable dataset: an
             // error outranks work in progress, which outranks serving.
@@ -359,7 +359,7 @@ namespace IndxServer.Monitor
             var signature = new StringBuilder();
             foreach (var d in s.Datasets)
             {
-                string note = d.ProgressPercent is { } percent ? $"{percent}%" : "";
+                string note = d.ProgressPercent is { } percent ? string.Create(Inv, $"{percent}%") : "";
                 if (d.ErrorMessage is { } error) note = error.Length > 48 ? error[..47] + "…" : error;
                 else if (d.IndexedTextTruncated) note = "text truncated";
                 else if (d.KeepAliveRemaining is { } remaining) note = $"evict in {Short(remaining)}";
@@ -369,8 +369,8 @@ namespace IndxServer.Monitor
                     d.DataSetName,
                     d.TeamLabel,
                     d.Phase,
-                    d.DocumentCount > 0 ? d.DocumentCount.ToString("N0") : "",
-                    d.RecordsOnDisk > 0 ? d.RecordsOnDisk.ToString("N0") : "",
+                    d.DocumentCount > 0 ? d.DocumentCount.ToString("N0", Inv) : "",
+                    d.RecordsOnDisk > 0 ? d.RecordsOnDisk.ToString("N0", Inv) : "",
                     d.LastUsedUtc is { } used && d.State is not null ? Short(s.TakenUtc - used) : "",
                     note,
                 ];
@@ -482,10 +482,10 @@ namespace IndxServer.Monitor
         private static string Short(TimeSpan span)
         {
             if (span < TimeSpan.Zero) span = TimeSpan.Zero;
-            if (span.TotalSeconds < 60) return $"{span.TotalSeconds:F0}s";
-            if (span.TotalMinutes < 60) return $"{span.TotalMinutes:F0}m";
-            if (span.TotalHours < 48) return $"{span.TotalHours:F0}h";
-            return $"{span.TotalDays:F0}d";
+            if (span.TotalSeconds < 60) return string.Create(Inv, $"{span.TotalSeconds:F0}s");
+            if (span.TotalMinutes < 60) return string.Create(Inv, $"{span.TotalMinutes:F0}m");
+            if (span.TotalHours < 48) return string.Create(Inv, $"{span.TotalHours:F0}h");
+            return string.Create(Inv, $"{span.TotalDays:F0}d");
         }
     }
 }

@@ -28,6 +28,15 @@ namespace IndxServer.Monitor
         private readonly Dictionary<string, string> _lastPhase = [];
         private bool _first = true;
 
+        // Searches, accumulated rather than summed. SystemStatus.SearchCounter is per engine and
+        // restarts at zero when a dataset is evicted and reloaded, so summing it across datasets
+        // gives a total that falls. Adding deltas instead — and treating a fall as a restart —
+        // gives a number that only goes up, which is what a counter on screen has to do.
+        private readonly Dictionary<string, int> _lastSearchCount = [];
+        private long _searchesTotal;
+        private readonly List<(DateTimeOffset At, long Total)> _rateSamples = [];
+        private static readonly TimeSpan RateWindow = TimeSpan.FromMinutes(1);
+
         internal MonitorSnapshot Collect(DateTimeOffset now)
         {
             List<(string DataSetName, string TeamId)> all;
@@ -53,7 +62,9 @@ namespace IndxServer.Monitor
             lines.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
 
             var events = DetectTransitions(lines, now);
-            return new MonitorSnapshot(now, lines, ReadProcess(), ReadFilters(), events);
+            CountSearches(lines);
+            return new MonitorSnapshot(now, lines, ReadProcess(), ReadFilters(), events,
+                                       _searchesTotal, RatePerMinute(now));
         }
 
         private static DatasetLine ReadOne(string dataSetName, string teamId, string? teamName)
@@ -119,6 +130,53 @@ namespace IndxServer.Monitor
 
             _first = false;
             return events;
+        }
+
+        /// <summary>
+        /// Adds what each dataset has served since the last tick. A dataset seen for the first time
+        /// contributes nothing: its counter may have been climbing long before the monitor started,
+        /// and counting it once as a spike would be a lie. A counter that went down means the
+        /// engine was reloaded, so everything it now reports is new.
+        /// </summary>
+        /// <summary>Exposed for tests: one tick's worth of counting, returning the running total.
+        /// The accumulation is the part with the reset rule in it, and it cannot be reached through
+        /// Collect without a live registry.</summary>
+        internal long CountForTest(IEnumerable<DatasetLine> lines)
+        {
+            CountSearches(lines.ToList());
+            return _searchesTotal;
+        }
+
+        private void CountSearches(List<DatasetLine> lines)
+        {
+            foreach (var line in lines)
+            {
+                if (!_lastSearchCount.TryGetValue(line.Key, out int previous))
+                {
+                    _lastSearchCount[line.Key] = line.SearchCounter;
+                    continue;
+                }
+
+                _lastSearchCount[line.Key] = line.SearchCounter;
+                _searchesTotal += line.SearchCounter >= previous
+                    ? line.SearchCounter - previous
+                    : line.SearchCounter;
+            }
+        }
+
+        /// <summary>Searches a minute over the last minute, from the oldest sample still inside the
+        /// window. A rate off one tick would swing wildly at a one-second poll.</summary>
+        private double RatePerMinute(DateTimeOffset now)
+        {
+            _rateSamples.Add((now, _searchesTotal));
+            while (_rateSamples.Count > 1 && now - _rateSamples[0].At > RateWindow)
+                _rateSamples.RemoveAt(0);
+
+            var oldest = _rateSamples[0];
+            double seconds = (now - oldest.At).TotalSeconds;
+            if (seconds < 1)
+                return 0;
+            return (_searchesTotal - oldest.Total) / seconds * 60.0;
         }
 
         private static FilterLine ReadFilters() => new(
