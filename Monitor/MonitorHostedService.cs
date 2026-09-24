@@ -25,6 +25,8 @@ namespace IndxServer.Monitor
             logger.LogInformation("Indx monitor starting in {Mode} mode, status every {Seconds:F0}s",
                 options.Mode, options.StatusInterval.TotalSeconds);
 
+            renderer.Start();
+
             using var timer = new PeriodicTimer(options.PollInterval);
             int consecutiveFailures = 0;
 
@@ -64,23 +66,36 @@ namespace IndxServer.Monitor
     internal static class MonitorRegistration
     {
         /// <summary>
-        /// Registers the monitor when the environment can show it. Call it late in service
-        /// registration; it reads configuration and the command line only, and touches no engine.
+        /// Registers the monitor when the environment can show it. Reads configuration and the
+        /// command line only, and touches no engine.
+        ///
+        /// <para>It takes the builder rather than the service collection because of one thing the
+        /// Terminal.Gui screen needs: <b>the console logger has to go.</b> Both write to stdout,
+        /// and a log line arriving mid-frame smears the screen with text the redraw does not know
+        /// about. Those lines are not lost — NLog still writes <c>IndxServer.log</c>, which is the
+        /// durable trail either way.</para>
         /// </summary>
-        internal static IServiceCollection AddIndxMonitor(
-            this IServiceCollection services, IConfiguration configuration, string[] args)
+        internal static WebApplicationBuilder AddIndxMonitor(this WebApplicationBuilder builder, string[] args)
         {
-            var options = MonitorOptions.Resolve(configuration, args);
+            var options = MonitorOptions.Resolve(builder.Configuration, args);
             if (options.Mode == MonitorMode.Off)
-                return services;
+                return builder;
 
-            services.AddSingleton(options);
-            // Stage one renders the text block in both modes. The Terminal.Gui renderer replaces
-            // this registration for Interactive and nothing else changes.
-            services.AddSingleton<IMonitorRenderer>(
-                _ => new PipedReporter(Console.Out, options.StatusInterval));
-            services.AddHostedService<MonitorHostedService>();
-            return services;
+            builder.Services.AddSingleton(options);
+
+            if (options.Mode == MonitorMode.Interactive)
+            {
+                builder.Logging.ClearProviders();
+                builder.Services.AddSingleton<IMonitorRenderer>(_ => new TuiRenderer(options.StatusInterval));
+            }
+            else
+            {
+                builder.Services.AddSingleton<IMonitorRenderer>(
+                    _ => new PipedReporter(Console.Out, options.StatusInterval));
+            }
+
+            builder.Services.AddHostedService<MonitorHostedService>();
+            return builder;
         }
     }
 }

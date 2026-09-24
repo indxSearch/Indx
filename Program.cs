@@ -616,7 +616,7 @@ public class Program
         // was started from. On by default when a terminal is attached, opt-in when stdout is
         // redirected (Azure log stream, docker logs, systemd). --no-monitor turns it off.
         // See Notes/terminal-monitor-ideas.md.
-        builder.Services.AddIndxMonitor(builder.Configuration, args);
+        builder.AddIndxMonitor(args);
 
         // License bootstrapper: downloads the .license file from the Indx portal (hardcoded URL)
         // using a configured license token. No-op when no token is configured.

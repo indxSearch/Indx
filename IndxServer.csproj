@@ -59,6 +59,8 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<!-- The terminal monitor. Pinned exactly: Terminal.Gui v2 breaks between minors. -->
+		<PackageReference Include="Terminal.Gui" Version="2.5.0" />
 		<PackageReference Include="Asp.Versioning.Mvc" Version="8.1.0" />
 		<PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" Version="8.1.0" />
 		<PackageReference Include="Azure.Communication.Email" Version="1.1.0" />

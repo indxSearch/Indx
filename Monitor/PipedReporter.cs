@@ -20,6 +20,8 @@ namespace IndxServer.Monitor
         private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
         private DateTimeOffset _lastStatus = DateTimeOffset.MinValue;
 
+        public void Start() { }
+
         public void Render(MonitorSnapshot snapshot)
         {
             foreach (var e in snapshot.NewEvents)
