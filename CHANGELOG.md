@@ -70,6 +70,10 @@ in the AI skill.
   type to send a selected value as a value filter or as a range with equal limits, and the name
   lists it reads carry no type. Nothing new is revealed: a Search key can already search and read
   documents. `PUT` stays Full.
+- **Waking a small dataset no longer takes as long as the team's largest.** The database had no
+  index a dataset lookup could use, so every wake, auto-reload and count walked the team's whole
+  table; loading 116 documents took 1.8 s on a team with 814k rows. The server adds the index to
+  an existing database at startup, in a fraction of a second.
 - **`filters/value` on a numeric field, and `filters/range` on a text field, are `400`.** The
   field's type decides the filter kind: a value filter compares text and is wrong on a number
   (`129` is not `129.0`), a range filter needs numbers, and a number stored as a JSON string is

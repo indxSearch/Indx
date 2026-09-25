@@ -973,6 +973,9 @@ public class Program
                 // Synonym lists and the per-dataset attachment column, for databases created before
                 // synonyms existed. Owned by the library, unlike the boost/metadata tables below.
                 accessTableManager.EnsureSynonymSchema();
+                // The (UserName, Name) index on JsonData, for databases created before it: without
+                // it every wake of a small dataset walked the team's whole table.
+                accessTableManager.EnsureDatasetIndex();
             }
 
             // Per-dataset boost rules: ensure the server-owned table and wire the store (+ the
