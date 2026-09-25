@@ -31,6 +31,10 @@ namespace IndxServer.Mcp
 
         [McpServerTool(Name = "list_datasets", UseStructuredContent = false, ReadOnly = true)]
         [System.ComponentModel.Description("START HERE. Lists the datasets this API key can reach, each with its team name, document count and state. " +
+                     "State is one of: Ready (searchable now); Asleep (the documents are on disk but not loaded - searching it wakes it, " +
+                     "which on a large dataset takes time, so expect the first call to be slow); Loading or Indexing (being prepared, " +
+                     "try again shortly); Error (it failed to load and searching will not fix it - tell the user rather than retrying); " +
+                     "Empty (created but nothing uploaded yet). " +
                      "Every other tool needs the team and dataset pair from this list. A dataset whose state is not Ready " +
                      "cannot be searched yet.")]
         public async Task<McpDatasetSummary[]> ListDatasets()
@@ -52,7 +56,7 @@ namespace IndxServer.Mcp
                         Dataset = ds,
                         Role = role,
                         DocumentCount = ka.RecordCount,
-                        State = ka.Ready ? "Ready" : "Asleep",
+                        State = DescribeState(ds, ownerKey, ka),
                     });
                 }
             }
@@ -330,6 +334,39 @@ namespace IndxServer.Mcp
             };
         }
 
+
+        /// <summary>
+        /// What state a dataset is in, told so an agent knows what to do about it.
+        ///
+        /// <para>This used to be <c>Ready</c> or <c>Asleep</c> and nothing else, so a dataset that
+        /// had failed to load read the same as one merely hibernated — an agent could not tell
+        /// "search this and it will wake" from "this is broken", and would keep trying.</para>
+        ///
+        /// <para>Read without resolving the engine, deliberately: resolving auto-loads a
+        /// hibernated dataset, and listing them all must not drag every dataset on disk into
+        /// memory. Same reason the admin dataset list and the terminal monitor read this way.</para>
+        /// </summary>
+        internal static string DescribeState(string dataSetName, string ownerKey,
+                                            IndxServerInternalApi.KeepAliveInfo keepAlive)
+        {
+            if (keepAlive.Ready)
+                return "Ready";
+
+            var engine = IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, ownerKey);
+            var state = engine is { IsDisposed: false } ? engine.Status.SystemState : (SystemState?)null;
+
+            return state switch
+            {
+                SystemState.Error => "Error",
+                SystemState.Loading => "Loading",
+                SystemState.Indexing => "Indexing",
+                SystemState.Loaded => "Indexing",
+                // Documents on disk but no engine holding them: searching it wakes it, which can
+                // take a while on a large one.
+                _ when keepAlive.RecordCount > 0 => "Asleep",
+                _ => "Empty",
+            };
+        }
 
         // ── Helpers ───────────────────────────────────────────────────────────
 

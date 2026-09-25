@@ -314,7 +314,11 @@ public class Program
         {
             options.TokenValidationParameters = new TokenValidationParameters
             {
-                ValidIssuer = builder.Configuration["Jwt:Issuer"],
+                // Both, and that is not tidiness. Tokens have been signed with "IndxCloudApi"
+                // since before the 12 Sep 2026 rename and are valid for up to a year, so dropping
+                // it would invalidate every key already in the wild. New tokens carry whatever
+                // Jwt:Issuer says; this keeps the old ones working until they expire.
+                ValidIssuers = [builder.Configuration["Jwt:Issuer"], "IndxCloudApi", "IndxServer"],
                 IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtkey!)),
                 ValidateIssuer = true,
                 ValidateAudience = false,
@@ -325,6 +329,34 @@ public class Program
 
             options.Events = new JwtBearerEvents
             {
+                // An unauthenticated /mcp call used to be a bare 401 with an empty body, and the
+                // endpoint has no discovery document either — so everything the server knows how
+                // to say about itself was behind the token, including the sentence that would tell
+                // you what kind of token to ask for. Someone handed the URL and nothing else had
+                // to delete "/mcp" off it and land on Swagger to learn what the product was.
+                OnChallenge = async context =>
+                {
+                    if (!context.Request.Path.StartsWithSegments("/mcp"))
+                        return;
+
+                    context.HandleResponse();   // ours, not the default empty body
+                    context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+
+                    var origin = $"{context.Request.Scheme}://{context.Request.Host}";
+                    await context.Response.WriteAsJsonAsync(new
+                    {
+                        type = "about:blank",
+                        title = "Authentication required",
+                        status = 401,
+                        detail = "This is the Model Context Protocol endpoint of an Indx search server. "
+                                 + "It needs an API key as a bearer token. Sign in to the web console "
+                                 + $"at {origin} and create one under Account, API keys. A Search key can "
+                                 + "list and search datasets; a Read key can also inspect their fields. "
+                                 + "Every tool here is read-only.",
+                        code = "authenticationRequired",
+                        console = origin,
+                    }, (System.Text.Json.JsonSerializerOptions?)null, "application/problem+json");
+                },
                 OnAuthenticationFailed = context =>
                 {
                     if (context.Exception.GetType() == typeof(SecurityTokenExpiredException))
@@ -456,7 +488,10 @@ public class Program
             {
                 Version = "2.0-beta",
                 Title = "Indx",
-                Description = "JWT Authenticated HTTP API for Indx Search"
+                Description = "JWT Authenticated HTTP API for Indx Search. "
+                          + "This server also exposes a Model Context Protocol endpoint at /mcp "
+                          + "(Streamable HTTP, same API keys, every tool read-only), which is not "
+                          + "described here because it is JSON-RPC rather than REST."
             });
 
             // Include all API descriptions in this doc — there's currently only one
