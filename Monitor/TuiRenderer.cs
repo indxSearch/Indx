@@ -29,11 +29,11 @@ namespace IndxServer.Monitor
         private volatile bool _stopped;
         private IMonitorRenderer? _fallback;
 
-        private string? _webUrl;
+        private MonitorEndpoints _endpoints = new(null, null);
 
-        public void Start(string? webUrl)
+        public void Start(MonitorEndpoints endpoints)
         {
-            _webUrl = webUrl;
+            _endpoints = endpoints;
             _thread = new Thread(RunScreen)
             {
                 IsBackground = true,     // never hold the process open after the host has stopped
@@ -50,7 +50,7 @@ namespace IndxServer.Monitor
                 using IApplication app = Application.Create().Init();
                 _app = app;
                 using var window = new MonitorWindow(app, ReadLatest, ReadEvents,
-                                                    requestShutdown ?? (() => { }), _webUrl);
+                                                    requestShutdown ?? (() => { }), _endpoints);
                 // Only now does the console belong to the screen. Until this point log lines --
                 // including whatever went wrong during startup -- print normally.
                 logProvider?.AttachTo(this);

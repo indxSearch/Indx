@@ -66,7 +66,7 @@ namespace IndxServer.Monitor
                                Func<MonitorSnapshot?> readLatest,
                                Func<IReadOnlyList<MonitorEvent>> readEvents,
                                Action requestShutdown,
-                               string? webUrl = null)
+                               MonitorEndpoints? endpoints = null)
         {
             _app = app;
             _readLatest = readLatest;
@@ -81,24 +81,6 @@ namespace IndxServer.Monitor
             var logo = new PixlIconView { X = 3, Y = 1, Icon = "IndxLogo" };
             int textLeft = 3 + PixlIcon.Width + 3;
             var heading = new Label { X = textLeft, Y = 1, Text = "indx monitor", HotKeySpecifier = NoHotKey };
-
-            // Where the browser console lives. The startup banner prints it and this screen then
-            // covers the banner with the alternate buffer, so without this the address is gone the
-            // moment the monitor appears. Right-aligned on the title row, out of the way of the
-            // figures below it.
-            var address = new Label
-            {
-                X = textLeft, Y = 1, Width = Dim.Fill(PixlIcon.Width + 5), Height = 1,
-                TextAlignment = Alignment.End,
-                HotKeySpecifier = NoHotKey,
-                Text = webUrl is { Length: > 0 } ? $"web interface  {webUrl}" : "",
-            };
-            _header.X = textLeft; _header.Y = 2; _header.Width = Dim.Fill(PixlIcon.Width + 5); _header.Height = 1;
-            _filters.X = textLeft; _filters.Y = 3; _filters.Width = Dim.Fill(PixlIcon.Width + 5); _filters.Height = 1;
-            // Labels swallow '_' as a hotkey marker, and these show data.
-            _header.HotKeySpecifier = NoHotKey;
-            _filters.HotKeySpecifier = NoHotKey;
-            _stateIcon.X = Pos.AnchorEnd(PixlIcon.Width + 3); _stateIcon.Y = 1;
 
             // ── Datasets ──
             // BottomResizable is the divider: dragging it sets an absolute height, which
@@ -126,7 +108,7 @@ namespace IndxServer.Monitor
             var eventsFrame = new FrameView
             {
                 Title = "Events",
-                X = 0, Y = Pos.Bottom(_datasetsFrame), Width = Dim.Fill(), Height = Dim.Fill(1),
+                X = 0, Y = Pos.Bottom(_datasetsFrame), Width = Dim.Fill(), Height = Dim.Fill(2),
             };
             _events.X = 0; _events.Y = 0; _events.Width = Dim.Fill(); _events.Height = Dim.Fill();
             _events.FullRowSelect = true;
@@ -134,6 +116,18 @@ namespace IndxServer.Monitor
             _events.Style.ShowVerticalCellLines = false;
             _events.Style.ExpandLastColumn = true;
             eventsFrame.Add(_events);
+
+            // Where to point a browser and an agent, on their own row above the status bar and
+            // right-aligned, away from the figures. The startup banner prints the address and this
+            // screen then covers the banner with the alternate buffer, so without this the one
+            // thing a developer needs on first run is gone the moment the monitor appears.
+            var reachable = new Label
+            {
+                X = 1, Y = Pos.AnchorEnd(2), Width = Dim.Fill(2), Height = 1,
+                TextAlignment = Alignment.End,
+                HotKeySpecifier = NoHotKey,
+                Text = Describe(endpoints),
+            };
 
             var status = new StatusBar(
             [
@@ -145,11 +139,25 @@ namespace IndxServer.Monitor
 
             foreach (var table in new[] { _datasets, _events }) ShowSelection(table);
 
-            Add(logo, heading, address, _header, _filters, _stateIcon, _datasetsFrame, eventsFrame, status);
+            Add(logo, heading, _header, _filters, _stateIcon, _datasetsFrame, eventsFrame, reachable, status);
             _datasetsFrame.FrameChanged += (_, _) => KeepDividerInBounds();
 
             Refresh();
             _app.AddTimeout(TimeSpan.FromMilliseconds(250), () => { KeepDividerInBounds(); Refresh(); return true; });
+        }
+
+        /// <summary>
+        /// The endpoints line. MCP is named even though it is not a page, because an agent is the
+        /// other thing pointed at this server and its address is not guessable from the console's.
+        /// An MCP an admin has switched off says so rather than offering a URL that 404s.
+        /// </summary>
+        internal static string Describe(MonitorEndpoints? endpoints)
+        {
+            if (endpoints?.Web is not { Length: > 0 } web)
+                return "";
+            return endpoints.Mcp is { Length: > 0 } mcp
+                ? $"web  {web}      mcp  {mcp}"
+                : $"web  {web}      mcp  off";
         }
 
         /// <summary>

@@ -22,7 +22,7 @@ namespace IndxServer.Monitor
 
         // Nothing to do: the startup banner has already printed the address, and nothing here
         // covers it up.
-        public void Start(string? webUrl) { }
+        public void Start(MonitorEndpoints endpoints) { }
 
         public void Render(MonitorSnapshot snapshot)
         {

@@ -1,3 +1,4 @@
+using IndxServer.Services;
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.Hosting.Server.Features;
 
@@ -39,7 +40,7 @@ namespace IndxServer.Monitor
             logger.LogInformation("Indx monitor starting in {Mode} mode, status every {Seconds:F0}s",
                 options.Mode, options.StatusInterval.TotalSeconds);
 
-            renderer.Start(WebUrl());
+            renderer.Start(Endpoints());
 
             using var timer = new PeriodicTimer(options.PollInterval);
             int consecutiveFailures = 0;
@@ -80,10 +81,33 @@ namespace IndxServer.Monitor
         /// port clash, and on port 0. Only valid after ApplicationStarted, which is where this
         /// is called.</para>
         /// </summary>
-        private string? WebUrl()
+        private MonitorEndpoints Endpoints()
         {
-            try { return PickAddress(server.Features.Get<IServerAddressesFeature>()?.Addresses); }
-            catch { return null; }
+            string? web = null;
+            try { web = PickAddress(server.Features.Get<IServerAddressesFeature>()?.Addresses); }
+            catch { /* an address that cannot be read shows nothing */ }
+
+            return new MonitorEndpoints(web, web is null ? null : McpUrl(web));
+        }
+
+        /// <summary>
+        /// The MCP endpoint, or null when an admin has switched it off — offering a URL that 404s
+        /// would be worse than saying it is off. Read once through a scope so the service stays
+        /// out of this class's constructor, and because settings.json is re-read on every Load:
+        /// fine once at startup, wasteful at one hertz.
+        /// </summary>
+        private string? McpUrl(string web)
+        {
+            try
+            {
+                using var scope = scopes.CreateScope();
+                var settings = scope.ServiceProvider.GetRequiredService<InstanceSettingsService>();
+                return settings.Load().McpEnabled ? web + "/mcp" : null;
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         /// <summary>
