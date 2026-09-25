@@ -66,6 +66,16 @@ in the AI skill.
   Manage team (members, rename, delete with typed confirmation). Rename a dataset. Field
   config with weight sliders and type icons. Reconnect overlay. Full tab set visible from the
   first upload, with not-yet tabs disabled.
+- **`GET …/fields/configuration` at Search level** (was Read). A filter panel needs each field's
+  type to send a selected value as a value filter or as a range with equal limits, and the name
+  lists it reads carry no type. Nothing new is revealed: a Search key can already search and read
+  documents. `PUT` stays Full.
+- **`POST …/filters/not`**: the NOT of a filter, as a token like any other. Combines further,
+  survives eviction, and answers `400 unknownFilter` for a token it cannot honour, like its
+  siblings. Search key level.
+- **`isCaseSensitive` on `filters/value`**, optional and off by default. Set it when the value
+  comes from a facet: facets count distinct stored values with their casing, so only a
+  case-sensitive filter agrees with a facet count. `value` takes a string, number or boolean.
 - **Synonyms** per dataset: `GET`/`PUT …/synonyms`, a Synonyms tab (experimental), copy a
   list onto another dataset. Expansion lowers coverage scores by design.
 - **Boost rules** per dataset with schedules; import/export as JSON; expired, scheduled and

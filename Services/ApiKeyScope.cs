@@ -11,12 +11,13 @@ namespace IndxServer.Services
     {
         /// <summary>
         /// What a search front-end needs and nothing more: search (text, vector, hybrid), document
-        /// lookup, building filters, the field lists a filter panel reads, and dataset status. Safe
-        /// to ship in a browser: a copied key can search the datasets it names, and that is all.
+        /// lookup, building filters, the field lists and the field configuration a filter panel
+        /// reads (the types decide value filter or range), and dataset status. Safe to ship in a
+        /// browser: a copied key can search the datasets it names, and that is all.
         /// </summary>
         Search = 1,
 
-        /// <summary>Every read: adds export, field configuration, synonyms, boost rules, counts.</summary>
+        /// <summary>Every read: adds export, synonyms, boost rules, counts, dataset lists.</summary>
         Read = 2,
 
         /// <summary>Everything the owner's team role allows, including writes and deletes.</summary>

@@ -155,8 +155,8 @@ Paired with the [Indx agent skill](https://github.com/indxSearch/skill-indx-sear
 
    | Level | Can do | Use it for |
    |---|---|---|
-   | **Search only** | Search (text, vector, hybrid), fetch result documents, build filters, read field lists and status | Websites and apps, safe in a browser |
-   | **Read only** | Every read, including export, field configuration and synonyms | Exports, reporting, AI agents, kept on a server |
+   | **Search only** | Search (text, vector, hybrid), fetch result documents, build filters, read field lists, field configuration and status | Websites and apps, safe in a browser |
+   | **Read only** | Every read, including export and synonyms | Exports, reporting, AI agents, kept on a server |
    | **Full access** | Everything your team role allows, including loading and deleting data | Your own servers and pipelines |
 
    A key never exceeds your role in the team, and cannot be changed after it is created. Outside its

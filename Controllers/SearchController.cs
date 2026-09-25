@@ -968,8 +968,12 @@ namespace IndxServer.Controllers
 
         /// <summary>
         /// GetFieldConfiguration returns the full configuration of every field in the dataset.
+        /// Search level, not Read: a filter panel needs each field's type to know whether a
+        /// selected value is a value filter or a range with equal limits, and the name lists it
+        /// reads today do not carry it. A Search key can already search and read documents, so
+        /// the types and sample values here reveal nothing it does not see.
         /// </summary>
-        [KeyAccess(ApiKeyLevel.Read)]
+        [KeyAccess(ApiKeyLevel.Search)]
         [HttpGet(DataSetRoute + "/fields/configuration")]
         public ActionResult<FieldProxy[]> GetFieldConfiguration(string teamName, string dataSetName)
         {
