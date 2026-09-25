@@ -126,19 +126,25 @@ large list to production. Behavior may still change.
 The server exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` (Streamable HTTP). Point an MCP-capable client at it with a bearer token, whether Claude Code, Claude Desktop, or any other, and the agent gets read-only tools over your datasets, for both querying and setting one up:
 
 - **Querying**: `list_datasets`, `describe_dataset`, `search`, `get_document`, `get_synonyms`
-- **Setting up**: `get_status` (state, document count, scoring mode, errors, and what to do next),
-  `get_field_configuration` (every field including the ones switched off, with weights, BM25
-  parameters and a sample of the real content), and `set_field_configuration` (apply capability
-  flags, weights and BM25 parameters; rebuilds on a shadow engine so live searches keep working)
+- **Inspecting**: `get_status` (state, document count, scoring mode, errors, and what to do next)
+  and `get_field_configuration` (every field including the ones switched off, with weights, BM25
+  parameters and a sample of the real content)
 
-Paired with the [Indx agent skill](https://github.com/indxSearch/skill-indx-search), an agent can read the documentation and inspect your live instance at the same time, which is most of what setting up a dataset takes.
+**Every tool is read-only.** An agent connected over MCP can read your data and your configuration
+and change neither. It can tell you that a field should be searchable; applying that happens in the
+web console or over the HTTP API, where a person sees the change before it takes effect.
+
+Paired with the [Indx agent skill](https://github.com/indxSearch/skill-indx-search), an agent can read the documentation and inspect your live instance at the same time, which is most of what deciding how to set a dataset up takes.
 
 - **Same keys and permissions** as the rest of the API. A Search only key lets the agent list,
   search and fetch documents; `describe_dataset`, `get_synonyms`, `get_status` and
-  `get_field_configuration` need Read; `set_field_configuration` needs Full
-- **Read-only except field configuration.** Everything an agent can change is configuration, and
-  only with a Full key. There is no tool that inserts, updates or deletes a document, and none
-  that drops a dataset
+  `get_field_configuration` need Read. No MCP tool needs Full, so no agent connection ever
+  requires a key that could delete a dataset
+- **The session is shaped by the key.** A client is offered only the tools its key can call, and
+  the instructions it receives at connection describe that set and no other. A Search key is not
+  told to inspect fields it cannot see
+- **Read-only, with nothing excepted.** No tool changes configuration, and none inserts, updates
+  or deletes a document or drops a dataset
 - **Switched off instance-wide** by an admin under Instance Settings, with no restart
 
 ## API Access

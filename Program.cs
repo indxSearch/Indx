@@ -116,30 +116,13 @@ public class Program
         // description. The audience is an agent that arrives with no documentation and no context:
         // whatever it needs to get the first call right has to be in this handshake or in the tool
         // descriptions, because there is nothing else.
-        builder.Services.AddMcpServer(options => options.ServerInstructions = """
-            Indx is a search engine over the datasets this server holds. Datasets belong to teams,
-            so every call takes a team name and a dataset name; list_datasets gives you the pairs
-            you can reach.
-
-            Normal order: list_datasets to find a dataset, describe_dataset to learn its fields and
-            the real values they hold, then search. Do not guess field names or filter values:
-            describe_dataset reports the distinct values of facetable fields and the ranges of
-            numeric ones, and a filter on a field that is not filterable is refused.
-
-            Matching is precise by default. Indx matches on character patterns rather than by
-            tokenising and stemming, so it handles typos, inflections and compound words without
-            configuration, but this server disables fuzzy pattern matches so that an empty result
-            is a trustworthy "not here" rather than noise. If a query returns nothing and you
-            believe the data is there, retry once with broaden=true before concluding anything.
-
-            Scores are relative within one result set: use them to rank, not as a percentage, and
-            do not compare them across queries. The dataset owner may have configured boost rules,
-            which apply automatically, so ranking reflects their intent rather than text similarity
-            alone.
-
-            What you can reach depends on the API key: some keys can only search, some can also
-            inspect configuration, and only an owner's key can change it.
-            """).WithHttpTransport().WithTools<IndxServer.Mcp.IndxMcpTools>();
+        // The instructions and the tool list are both shaped per session, from the key that
+        // opened it: see IndxServer.Mcp.McpSession. They used to be fixed, which told a Search key
+        // to call tools it could not reach.
+        builder.Services.AddMcpServer(options =>
+                options.Filters.Request.ListToolsFilters.Add(IndxServer.Mcp.McpSession.FilterListedTools))
+            .WithHttpTransport(transport => transport.ConfigureSessionOptions = IndxServer.Mcp.McpSession.ConfigureAsync)
+            .WithTools<IndxServer.Mcp.IndxMcpTools>();
 
         builder.Services.AddScoped<IndxServer.Services.NotificationService>();
         builder.Services.AddScoped<IndxServer.Services.TeamService>();

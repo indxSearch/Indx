@@ -13,6 +13,19 @@ Runs on IndxSearchLib 5.0.0-RC240926. First public release of the v2 server; v1 
 the [v1 → v2 migration guide](https://github.com/indxSearch/skill-indx-search/blob/main/references/migration-v4-to-v5.md)
 in the AI skill.
 
+### Changed
+
+- **MCP is read-only.** `set_field_configuration` is gone from the MCP surface; configuration is
+  changed in the web console or over the HTTP API, where a person sees the change. It was the only
+  tool that wrote, and it forced a **Full** key on anyone who wanted it - a key that, over HTTP,
+  can also delete the dataset and replace its data. No MCP connection now needs a key that could
+  do either.
+- **An MCP session is shaped by its key.** `tools/list` offers only what the key can call, and the
+  instructions sent at connection describe that set. Previously every client was told to call
+  `describe_dataset` before searching and was offered every tool, while a Search key could do
+  neither. Calling a tool that was not offered still gives the refusal naming the level needed,
+  rather than "unknown tool".
+
 ### Added
 
 - **Terminal monitor.** Start the server from a terminal and it shows a live view of the instance
