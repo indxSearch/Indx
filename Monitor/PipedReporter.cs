@@ -86,8 +86,6 @@ namespace IndxServer.Monitor
                 sb.Append(Inv, $"  searches {d.SearchCounter:N0}");
             if (d.IndexedTextTruncated)
                 sb.Append("  [text truncated]");
-            if (d.FieldIndexFallback)
-                sb.Append("  [filters scanning]");
             if (d.ErrorMessage is { } error)
                 sb.Append(Inv, $"  ERROR {Truncate(error, 60)}");
 

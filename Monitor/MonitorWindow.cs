@@ -386,7 +386,6 @@ namespace IndxServer.Monitor
                 string note = d.ProgressPercent is { } percent ? string.Create(Inv, $"{percent}%") : "";
                 if (d.ErrorMessage is { } error) note = error.Length > 48 ? error[..47] + "…" : error;
                 else if (d.IndexedTextTruncated) note = "text truncated";
-                else if (d.FieldIndexFallback) note = "filters scanning";
                 else if (d.KeepAliveRemaining is { } remaining) note = $"evict in {Short(remaining)}";
 
                 object[] cells =

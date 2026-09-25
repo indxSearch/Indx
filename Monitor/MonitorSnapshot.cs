@@ -24,7 +24,6 @@ namespace IndxServer.Monitor
         int? ProgressPercent,
         int SearchCounter,
         bool IndexedTextTruncated,
-        bool FieldIndexFallback,
         string? ErrorMessage)
     {
         /// <summary>Stable identity across ticks, for transition detection. The id, not the

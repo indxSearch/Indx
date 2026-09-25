@@ -176,10 +176,10 @@ namespace IndxServer.Mcp
                 Filter? combined = null;
                 foreach (var c in filters)
                 {
-                    var built = FilterConditionBuilder.Build(engine, c.Field, c.Value, c.Min, c.Max);
+                    var built = FilterConditionBuilder.Build(engine, c.Field, c.Value, c.Min, c.Max, out var filterError);
                     if (built == null)
-                        throw new McpToolException($"Filter field '{c.Field}' is not filterable, or the condition is empty. " +
-                            "Call describe_dataset for the fields that can be filtered and the values they hold.");
+                        throw new McpToolException((filterError ?? $"Filter field '{c.Field}' is not filterable, or the condition is empty.") +
+                            " Call describe_dataset for the fields that can be filtered and the values they hold.");
                     combined = combined == null ? built : combined & built;
                 }
                 if (combined != null)
@@ -260,7 +260,6 @@ namespace IndxServer.Mcp
             if (!string.IsNullOrWhiteSpace(status.ErrorMessage)) o["errorMessage"] = status.ErrorMessage;
             if (status.TooLongSearchText) o["tooLongSearchText"] = true;
             if (status.IndexedTextTruncated) o["indexedTextTruncated"] = true;
-            if (status.FieldIndexFallback) o["fieldIndexFallback"] = true;
             if (status.InvalidState) o["invalidState"] = true;
             if (status.InvalidArgument) o["invalidArgument"] = true;
             if (status.UnrecoverableErrors.Count > 0)

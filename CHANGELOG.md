@@ -70,6 +70,13 @@ in the AI skill.
   type to send a selected value as a value filter or as a range with equal limits, and the name
   lists it reads carry no type. Nothing new is revealed: a Search key can already search and read
   documents. `PUT` stays Full.
+- **`filters/value` on a numeric field, and `filters/range` on a text field, are `400`.** The
+  field's type decides the filter kind: a value filter compares text and is wrong on a number
+  (`129` is not `129.0`), a range filter needs numbers, and a number stored as a JSON string is
+  text. The message names the alternative - a range with equal limits for equality on a number,
+  storing the values as numbers for the other. A token of the refused kind answers
+  `400 unknownFilter`; re-create the filter. Boost rules and MCP conditions with a value on a
+  numeric field keep working: the server builds the range for them.
 - **`POST …/filters/not`**: the NOT of a filter, as a token like any other. Combines further,
   survives eviction, and answers `400 unknownFilter` for a token it cannot honour, like its
   siblings. Search key level.
