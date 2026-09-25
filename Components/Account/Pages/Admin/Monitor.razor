@@ -30,8 +30,18 @@ else
         @snapshot.Datasets.Count dataset@(snapshot.Datasets.Count == 1 ? "" : "s")
         (@snapshot.LoadedCount loaded) ·
         @snapshot.TotalDocuments.ToString("N0") documents ·
-        @snapshot.DescribeSearches() ·
-        @snapshot.Process.WorkingSetMb.ToString("N0") MB in use
+        @snapshot.DescribeSearches()
+    </p>
+
+    @* Three numbers rather than one, because for Indx they disagree on purpose. The engine keeps
+       its score arrays in unmanaged memory through SpanAlloc, so the managed heap understates
+       what it is using and resident memory is the honest answer. Outstanding native blocks is the
+       exact one: heap and resident both move with paging, that does not. *@
+    <p style="color: var(--lv5); margin-bottom: 24px;"
+       title="Managed heap is what the GC accounts for. Resident is the physical memory the process holds, which includes the unmanaged memory the search engine allocates itself. Native blocks is the count of those allocations, and a steady number means they are being released.">
+        @snapshot.Process.GcHeapMb.ToString("N0") MB managed heap ·
+        @snapshot.Process.WorkingSetMb.ToString("N0") MB resident ·
+        @snapshot.Process.NativeBlocks.ToString("N0") native blocks
     </p>
 
     @if (_events.Count == 0)

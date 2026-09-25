@@ -386,6 +386,20 @@ by state, with the same colours and icons as the chips in the web UI.
 Drag the divider between the two panes to resize them. Where you leave it is remembered in
 `~/.indx/monitor.layout.json`.
 
+### The three memory numbers
+
+They disagree on purpose, and for Indx the difference is larger than for most servers.
+
+- **Managed heap** is what the .NET garbage collector accounts for. The search engine keeps its
+  score arrays in unmanaged memory, outside the GC, so this number **understates** what a loaded
+  dataset costs. It is not the one to quote.
+- **Resident** is the physical memory the process actually holds, unmanaged memory included. This
+  is what the machine feels and what a hosting bill reflects.
+- **Native blocks** is the count of unmanaged allocations outstanding. It is the only one that is
+  exact: heap and resident both move with paging, and on a memory-starved host they say very
+  little. A steady block count means allocations are being released in step; a rising one over a
+  quiet period is the signal worth acting on.
+
 ### Lines about clients are not faults
 
 Two things in the event stream come from whatever is talking to the server, not from the server,
