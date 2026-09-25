@@ -54,7 +54,8 @@ in the AI skill.
 - **The `?configuration=` query parameter on create is ignored.** There is one configuration.
 - **Renamed C# types** for callers using the NuGet's request shapes: `CloudQuery` → `QueryProxy`,
   namespace `Indx.CloudApi` → `Indx.Http`, `ICloudSearchEngine` → `IServerSearchEngine`. The old
-  names remain as `[Obsolete]` aliases for the 5.0 betas. JSON on the wire is unchanged.
+  names were `[Obsolete]` aliases in the 5.0 betas and are removed in the release candidate; a
+  build against them fails with the rename in the message. JSON on the wire is unchanged.
 - **The shipped binary is `IndxServer.dll`** (was `IndxCloudApi.dll`); update run scripts.
 
 ### Added
