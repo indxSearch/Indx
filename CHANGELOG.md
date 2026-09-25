@@ -112,6 +112,8 @@ in the AI skill.
   deletes at once, and deleted documents are no longer counted or listed.
 - **Search beside writes** (IndxSearchLib 5.0.0-RC250926): searches, facets and vector searches that
   run while documents are inserted, updated or deleted no longer lose documents or hits.
+- **Filters after a reload** (IndxSearchLib 5.0.0-RC250926): after a dataset is loaded again in place,
+  case-sensitive and array filters see the new documents, and a field update reaches the filters.
 - **Search ranking** (IndxSearchLib 5.0.0-RC150926): common text fragments no longer push unrelated
   documents to the top score — the cause of hundreds of ties and the real match buried, most
   visible with long searchable text and natural-language queries; term frequency, field length
