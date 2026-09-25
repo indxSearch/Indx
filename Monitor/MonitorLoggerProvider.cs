@@ -8,9 +8,9 @@ namespace IndxServer.Monitor
     /// <para>Replacing the console provider outright was a mistake: a startup that fails (port in
     /// use, a bad connection string) then has nowhere to print, and the operator is left with a
     /// half-drawn screen and no message. So this provider writes to the console exactly like the
-    /// simple console logger, and only starts diverting once
-    /// <see cref="AttachTo"/> is called — which <see cref="TuiRenderer"/> does after the screen is
-    /// up and undoes when it comes down, so shutdown messages are visible again.</para>
+    /// simple console logger, and stops once <see cref="ScreenUp"/> is called — which
+    /// <see cref="TuiRenderer"/> does after the screen is drawing, reversing it with
+    /// <see cref="ScreenDown"/> when it comes down, so shutdown messages are visible again.</para>
     ///
     /// <para>NLog's <c>IndxServer.log</c> is unaffected either way: the engine registry writes to
     /// it outside the ASP.NET logging pipeline, and it remains the durable trail.</para>
@@ -20,10 +20,10 @@ namespace IndxServer.Monitor
         private readonly ConcurrentDictionary<string, MonitorLogger> _loggers = new();
 
         /// <summary>
-        /// True once the Terminal.Gui screen is drawing. Only meaningful when
-        /// <paramref name="ownsConsole"/> — that is, in the interactive mode where this provider
-        /// replaced the console logger. Until the screen is up it echoes to the console, so a
-        /// startup that never reaches the screen still prints its error the way it always has.
+        /// True once the Terminal.Gui screen is drawing. Only meaningful when this provider owns
+        /// the console — that is, in the interactive mode where it replaced the console logger.
+        /// Until the screen is up it echoes to the console, so a startup that never reaches the
+        /// screen still prints its error the way it always has.
         /// </summary>
         private volatile bool _screenUp;
 

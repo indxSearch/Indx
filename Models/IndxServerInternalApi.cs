@@ -550,6 +550,8 @@ namespace IndxServer.Models
         /// used, and how long until idle-eviction. <see cref="KeepAliveInfo.Remaining"/> is null for
         /// non-Ready datasets and for the non-counting policies (0 and <see cref="int.MaxValue"/>).
         /// </summary>
+        /// <param name="dataSetName">The dataset.</param>
+        /// <param name="teamId">The team that owns it, as the storage layer's owner column holds it.</param>
         /// <param name="countRecordsOnDisk">
         /// False to skip the on-disk record count and report it as -1. That count is
         /// <c>SELECT COUNT(*)</c> over the dataset's rows, which is cheap on a small dataset and
