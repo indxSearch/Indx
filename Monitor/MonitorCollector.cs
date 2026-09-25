@@ -96,6 +96,7 @@ namespace IndxServer.Monitor
                 ProgressPercent: manager.GetProgressPercent(dataSetName, teamId),
                 SearchCounter: status?.SearchCounter ?? 0,
                 IndexedTextTruncated: status?.IndexedTextTruncated ?? false,
+                FieldIndexFallback: status?.FieldIndexFallback ?? false,
                 ErrorMessage: string.IsNullOrWhiteSpace(status?.ErrorMessage) ? null : status!.ErrorMessage);
         }
 

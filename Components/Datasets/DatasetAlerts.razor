@@ -39,6 +39,7 @@
         if (status.InvalidState) list.Add(("Invalid state", "An operation was attempted in a state that does not allow it.", "warning"));
         if (status.TooLongSearchText) list.Add(("Too long search text", "A query exceeded the search-text ceiling and was refused, not cut.", "warning"));
         if (status.IndexedTextTruncated) list.Add(("Indexed text truncated", "Some documents exceed the indexed-text ceiling; the tail of those fields is not searchable.", "warning"));
+        if (status.FieldIndexFallback) list.Add(("Filters scanning", "A filter was built by scanning the documents where a posting index was expected. Searches are correct but slower; the server log names the field and the reason.", "warning"));
         return list;
     }
 }
