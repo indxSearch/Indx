@@ -469,15 +469,34 @@ namespace IndxServer.Models
 
             _logger.LogInformation($"Disposing {toDispose.Count} SearchEngine instances for team {teamId}");
             foreach (var (key, instance) in toDispose)
+                DisposeInstance(instance, key);
+        }
+
+        /// <summary>
+        /// Disposes an instance's engine under the instance's own <c>DbLock</c>, so it waits out
+        /// an auto-load or wake already running rather than disposing the engine under it.
+        ///
+        /// <para>Removing the entry from <c>_instances</c> only stops NEW lookups: a request that
+        /// already holds the engine and is queued on <c>DbLock</c> goes on to load it. Without the
+        /// lock here the load ran <c>Index()</c> on a disposed engine (ObjectDisposedException,
+        /// HTTP 500 — <c>Sweeper_EvictingUnderSearchFire_NeverReturns5xx</c>). With it, the
+        /// request finds the engine disposed once it gets the lock, and
+        /// <see cref="ResolveEngine"/> resolves again.</para>
+        ///
+        /// <para>The lock is per dataset, so a slow dispose holds up only requests for that
+        /// dataset — not the Blazor sessions <c>_dictionaryLock</c> would freeze. The cost is that
+        /// a delete arriving mid-load waits for the load to finish.</para>
+        /// </summary>
+        private void DisposeInstance(SearchEngineInstance instance, string key)
+        {
+            try
             {
-                try
-                {
+                lock (instance.DbLock)
                     instance.theInstance?.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError($"Error disposing SearchEngine instance {key}: {ex.Message}");
-                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError($"Error disposing SearchEngine instance {key}: {ex.Message}");
             }
         }
 
@@ -501,15 +520,8 @@ namespace IndxServer.Models
                 _instances.Remove(key);
             }
 
-            try
-            {
-                instance?.theInstance?.Dispose();
-                _logger.LogInformation($"Disposed SearchEngine instance for team {teamId}, dataset {dataSetName}");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Error disposing SearchEngine instance {key}: {ex.Message}");
-            }
+            DisposeInstance(instance, key);
+            _logger.LogInformation($"Disposed SearchEngine instance for team {teamId}, dataset {dataSetName}");
         }
 
         /// <summary>
@@ -571,34 +583,65 @@ namespace IndxServer.Models
         /// Disposes loaded instances whose idle time has passed their keep-alive countdown. Policies
         /// 0 (client-managed) and <see cref="int.MaxValue"/> (pinned) are never evicted. Called on an
         /// interval by <c>DatasetIdleSweeper</c>; also callable directly in tests after advancing the
-        /// clock. The brief window between selecting a victim and disposing it can race a fresh
-        /// request, but the threshold is hours, so it's negligible.
+        /// clock.
+        ///
+        /// <para>A victim is selected as an instance and evicted only if the registry still maps its
+        /// key to that same instance and it is still idle. Evicting by name instead disposed whatever
+        /// engine held the key by then: two sweeps racing (every test host runs its own
+        /// <c>DatasetIdleSweeper</c> against the one static Manager) let the second dispose the fresh
+        /// engine a request was auto-loading after the first had evicted the old one.</para>
         /// </summary>
+        /// <param name="afterSelectForTest">Runs between selection and eviction — the window the
+        /// race lives in. Tests only.</param>
         /// <returns>The number of instances disposed.</returns>
-        internal int SweepIdleInstances()
+        internal int SweepIdleInstances(Action? afterSelectForTest = null)
         {
             var now = TimeProvider.GetUtcNow();
-            List<(string ds, string team)> toEvict = new();
+            List<SearchEngineInstance> toEvict = new();
             lock (_dictionaryLock)
             {
                 foreach (var inst in _instances.Values)
-                {
-                    int hrs = inst.KeepAliveTimeHrs;
-                    if (hrs == 0 || hrs == int.MaxValue)
-                        continue;
-                    if (inst.theInstance?.Status.SystemState != SystemState.Ready)
-                        continue;
-                    if (now - inst.LastUsedUtc > TimeSpan.FromHours(hrs))
-                        toEvict.Add((inst.DataSetName, inst.TeamId));
-                }
+                    if (IsIdle(inst, now))
+                        toEvict.Add(inst);
             }
 
-            foreach (var (ds, team) in toEvict)
+            afterSelectForTest?.Invoke();
+
+            int evicted = 0;
+            foreach (var inst in toEvict)
+                if (EvictIfStillIdle(inst))
+                    evicted++;
+            return evicted;
+        }
+
+        private static bool IsIdle(SearchEngineInstance inst, DateTimeOffset now)
+        {
+            int hrs = inst.KeepAliveTimeHrs;
+            if (hrs == 0 || hrs == int.MaxValue)
+                return false;
+            var engine = inst.theInstance;
+            if (engine == null || engine.IsDisposed || engine.Status.SystemState != SystemState.Ready)
+                return false;
+            return now - inst.LastUsedUtc > TimeSpan.FromHours(hrs);
+        }
+
+        // Re-checked under the lock: a sweep that lost the race — to a newer instance under the same
+        // key, or to a request that touched this one since it was selected — evicts nothing.
+        private bool EvictIfStillIdle(SearchEngineInstance inst)
+        {
+            var key = MakeKey(inst.DataSetName, inst.TeamId);
+            lock (_dictionaryLock)
             {
-                _logger.LogInformation(MakeLogPrefix(team, ds) + "idle-evicting (keep-alive countdown elapsed)");
-                DisposeDataSetInstance(ds, team);
+                if (!_instances.TryGetValue(key, out var current) || !ReferenceEquals(current, inst))
+                    return false;
+                if (!IsIdle(inst, TimeProvider.GetUtcNow()))
+                    return false;
+                _instances.Remove(key);
             }
-            return toEvict.Count;
+
+            _logger.LogInformation(MakeLogPrefix(inst.TeamId, inst.DataSetName) + "idle-evicting (keep-alive countdown elapsed)");
+            DisposeInstance(inst, key);
+            return true;
         }
 
         /// <summary>
@@ -1495,9 +1538,15 @@ namespace IndxServer.Models
                 && engine.Persistence != null
                 && engine.Persistence.NumberOfJsonRecords() > 0)
             {
+                bool disposedWhileQueued;
                 lock (instance.DbLock)
                 {
-                    if (engine.Status.SystemState == SystemState.Created)
+                    // Disposed while this request queued for the lock: the entry has already left
+                    // the registry (see DisposeInstance), so resolving again finds or builds its
+                    // successor rather than loading a dead engine. Done after the lock is released,
+                    // so the dead instance's lock is not held while the successor loads.
+                    disposedWhileQueued = engine.IsDisposed;
+                    if (!disposedWhileQueued && engine.Status.SystemState == SystemState.Created)
                     {
                         // Bounded waits: DbLock is held for the duration, and every
                         // other request for this dataset queues behind it. An
@@ -1523,6 +1572,8 @@ namespace IndxServer.Models
                                 + "releasing the request; the dataset stays non-Ready until reloaded");
                     }
                 }
+                if (disposedWhileQueued)
+                    return ResolveEngine(dataSetName, teamId);
                 instance.Touch(TimeProvider.GetUtcNow());
             }
 
