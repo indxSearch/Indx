@@ -104,9 +104,14 @@ in the AI skill.
   whole text, so `knut h` puts Knut Hamsun above Knut Faldbakken; words in order anywhere in a
   document count as in order; and a document's score no longer depends on which others the search
   met first.
-- **Filters** (IndxSearchLib 5.0.0-RC240926): a combined filter used right after a reload or a first
+- **Filters** (IndxSearchLib 5.0.0-RC250926): a combined filter used right after a reload or a first
   field role no longer answers with the result from before it; a filtered search that overlapped a
-  filter load can no longer run unfiltered.
+  filter load can no longer run unfiltered; a filter loaded while documents are inserted or updated
+  no longer misses documents or fails.
+- **Facet panel and Search preview** (IndxSearchLib 5.0.0-RC250926): counts follow inserts and
+  deletes at once, and deleted documents are no longer counted or listed.
+- **Search beside writes** (IndxSearchLib 5.0.0-RC250926): searches, facets and vector searches that
+  run while documents are inserted, updated or deleted no longer lose documents or hits.
 - **Search ranking** (IndxSearchLib 5.0.0-RC150926): common text fragments no longer push unrelated
   documents to the top score — the cause of hundreds of ties and the real match buried, most
   visible with long searchable text and natural-language queries; term frequency, field length
