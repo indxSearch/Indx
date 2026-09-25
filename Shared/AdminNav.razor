@@ -12,7 +12,7 @@
 </div>
 
 @code {
-    /// <summary>Key of the active tab: Users | Teams | Datasets | Activity | Settings | License | EmailPreview.</summary>
+    /// <summary>Key of the active tab: Users | Teams | Datasets | Monitor | Settings | License | EmailPreview.</summary>
     [Parameter] public string Active { get; set; } = "";
 
     // Version banner (moved here from the Datasets page so it heads the admin area).
@@ -42,7 +42,7 @@
         new("Users", "Users", Of<Users>(), Href: "/admin/users"),
         new("Teams", "Teams", Of<UserGroup>(), Href: "/admin/teams"),
         new("Datasets", "Datasets", Of<Database>(), Href: "/admin/datasets"),
-        new("Activity", "Activity", Of<Analytics>(), Href: "/admin/activity"),
+        new("Monitor", "Monitor", Of<Terminal>(), Href: "/admin/monitor"),
         new("Settings", "Settings", Of<SlidersHorizontal>(), Href: "/admin/settings"),
         new("License", "License", Of<DocumentOrFile>(), Href: "/admin/license"),
         new("Email preview", "EmailPreview", Of<Bell>(), Href: "/admin/email-preview"),

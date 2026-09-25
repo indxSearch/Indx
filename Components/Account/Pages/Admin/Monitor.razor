@@ -1,21 +1,21 @@
-@page "/admin/activity"
+@page "/admin/monitor"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using IndxServer.Monitor
 @attribute [Authorize(Roles = "Admin")]
 @implements IDisposable
-@inject MonitorState Monitor
+@inject MonitorState State
 
-<PageTitle>Admin — Activity</PageTitle>
+<PageTitle>Admin — Monitor</PageTitle>
 
-<AdminNav Active="Activity" />
+<AdminNav Active="Monitor" />
 
 @* The same stream the terminal monitor shows, for the deployments where there is no terminal to
    show it in -- which is every Azure one. Admin only: a line names the team whose dataset changed,
    so a member of one team must not read another's activity here. *@
 <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
     <div>
-        <h2 style="margin-bottom: 4px;">Activity</h2>
+        <h2 style="margin-bottom: 4px;">Monitor</h2>
         <p style="color: var(--lv5);">What this server has been doing, newest first.</p>
     </div>
 </div>
@@ -76,7 +76,7 @@ else
 
     protected override void OnInitialized()
     {
-        Monitor.Changed += OnChanged;
+        State.Changed += OnChanged;
         Read();
     }
 
@@ -85,9 +85,9 @@ else
 
     private void Read()
     {
-        _snapshot = Monitor.Latest;
-        _events = [.. Monitor.Events().Reverse()];
+        _snapshot = State.Latest;
+        _events = [.. State.Events().Reverse()];
     }
 
-    public void Dispose() => Monitor.Changed -= OnChanged;
+    public void Dispose() => State.Changed -= OnChanged;
 }
