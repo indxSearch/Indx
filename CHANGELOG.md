@@ -28,12 +28,17 @@ in the AI skill.
 
 ### Added
 
-- **Terminal monitor.** Start the server from a terminal and it shows a live view of the instance
-  there: dataset states, document counts, idle-eviction countdowns, process and native memory, and
-  an event stream. `Ctrl+Q` detaches it and leaves the server running, `F10` shuts the server down
-  after a confirmation. Where stdout is redirected (Azure log stream, `docker logs`, systemd) it
-  prints a periodic status block instead, which is opt-in via `Indx:Monitor:Enabled`. Turn it off
-  entirely with `--no-monitor`. See the README.
+- **Monitor.** A live view of the instance: dataset states, document counts, idle-eviction
+  countdowns, process and native memory, filter-cache routing, and an event stream carrying state
+  changes, field configuration changes and anything the server logs.
+  - **In the console**, under **Admin → Monitor**. Admin only, since an event names the team whose
+    dataset changed. Events are held in memory and start again on restart. This is the one to use
+    on a hosted deployment, where there is no terminal.
+  - **In the terminal**, drawn automatically when the server is started from one. `Ctrl+Q`
+    detaches it and leaves the server running; `F10` shuts the server down after a confirmation;
+    `--no-monitor` turns it off.
+  - **Piped**, where stdout is redirected (Azure log stream, `docker logs`, systemd): a periodic
+    status block, opt-in via `Indx:Monitor:Enabled`.
 
 ### Breaking
 

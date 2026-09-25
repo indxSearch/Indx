@@ -38,7 +38,8 @@ dotnet run
 
 Open `https://localhost:5001`. The first visit walks you through a short setup: create the admin account, name your team, and pick instance settings. Done in under a minute.
 
-The terminal you started it from now shows a live [monitor](#terminal-monitor) of the instance.
+The terminal you started it from now shows a live [monitor](#monitor) of the instance. The same
+view is in the console under **Admin → Monitor**, for deployments with no terminal.
 
 Works immediately with no configuration:
 - Local username/password accounts
@@ -348,11 +349,24 @@ A background sweeper frees idle *Timed* datasets; the next access transparently 
 
 Over the HTTP API, the per-dataset `Hibernate`, `WakeUp`, and `LoadFromDatabase` operations control loading. See the [API reference](https://v5.docs.indx.co).
 
-## Terminal monitor
+## Monitor
 
-Start the server from a terminal and it shows a live view of the instance in that terminal, with
-no browser and no login. It is meant for the moment something looks wrong: what each dataset is
-doing right now, what the process is using, and what just happened.
+A live view of the instance: what each dataset is doing right now, what the process is using, and
+what just happened. It is meant for the moment something looks wrong, and it comes in two forms
+reading the same thing.
+
+### In the browser
+
+**Admin → Monitor** shows the event stream and the instance figures. It needs no terminal, so it
+is the one to use on a hosted deployment, and it is where the stream is visible when an agent is
+configuring a dataset over MCP or the API.
+
+Admin only: an event names the team whose dataset changed, so a member of one team must not read
+another's. Events are held in memory and start again when the server restarts.
+
+### In the terminal
+
+Start the server from a terminal and it draws the same view there, with no browser and no login.
 
 ```
  ⬛ indx monitor      datasets 5 (3 loaded)   docs 1,712,004   heap 412MB   ws 3,102MB   native 412 blk
@@ -387,13 +401,14 @@ and both are normal:
 
 Anything the server itself got wrong keeps its category and its exception.
 
-### When there is no terminal
+### Piping it somewhere else
 
 Azure log stream, `docker logs` and the systemd journal are pipes, not terminals: they cannot show
-a full-screen application. There the monitor prints a compact status block instead, appended every
-30 seconds, alongside events as they happen. This is **off by default**, because adding a status
-block to everyone's container logs uninvited is not a friendly default and log volume often costs
-money. Turn it on where you want it:
+a full-screen application. There the monitor can print a compact status block instead, appended
+every 30 seconds, alongside events as they happen. This is **off by default**, because adding a
+status block to everyone's container logs uninvited is not a friendly default and log volume often
+costs money, and because the browser page above is usually the better answer. Turn it on where you
+want it:
 
 ```jsonc
 {
@@ -406,10 +421,11 @@ money. Turn it on where you want it:
 }
 ```
 
-### Turning it off
+### Turning the terminal view off
 
 `Indx:Monitor:Enabled=false`, or start with `--no-monitor`. Use this if you run the server by hand
-on a machine where you would rather keep the plain startup log:
+on a machine where you would rather keep the plain startup log. The browser page keeps working
+either way:
 
 ```bash
 dotnet run --no-monitor
