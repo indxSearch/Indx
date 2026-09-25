@@ -372,6 +372,21 @@ by state, with the same colours and icons as the chips in the web UI.
 Drag the divider between the two panes to resize them. Where you leave it is remembered in
 `~/.indx/monitor.layout.json`.
 
+### Lines about clients are not faults
+
+Two things in the event stream come from whatever is talking to the server, not from the server,
+and both are normal:
+
+- **"a client hung up before its response finished"** appears whenever something makes a request
+  and exits without closing the connection properly. `curl` does this on every invocation, and so
+  do most health probes. On macOS the underlying message is "the encryption operation failed",
+  which reads alarmingly and means only that the last write landed on a connection that had
+  already gone. A browser, or any client that keeps connections open, never produces it.
+- **"MCP call refused"** is an API key being correctly told it lacks the level a tool needs. The
+  client already received that answer; the line is there so you can see it happen.
+
+Anything the server itself got wrong keeps its category and its exception.
+
 ### When there is no terminal
 
 Azure log stream, `docker logs` and the systemd journal are pipes, not terminals: they cannot show

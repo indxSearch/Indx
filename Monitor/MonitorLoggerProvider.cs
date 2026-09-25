@@ -75,12 +75,19 @@ namespace IndxServer.Monitor
         /// </summary>
         internal static string? ClientCaused(string category, string message, Exception? exception)
         {
-            // Reported rather than diagnosed: a write to a client that stopped reading looks like
-            // this, and so does a TLS teardown the client did not finish. The pane says what
-            // happened and to whom, without claiming to know which.
             if (category.StartsWith("Microsoft.AspNetCore.Server.Kestrel", StringComparison.Ordinal)
                 && exception is IOException or OperationCanceledException)
-                return $"connection to a client failed mid-response ({exception.GetType().Name}: {exception.Message})";
+                return HungUp(exception)
+                    // Said plainly, because the first thing anyone does with a fresh download is
+                    // run it and curl it, and the raw wording -- "The encryption operation failed"
+                    // on macOS -- reads like a fault in the server. It is the client going away:
+                    // curl makes one request and exits without closing TLS, so Kestrel's last
+                    // write lands on a socket that is gone. A browser or any client that reuses
+                    // connections never produces it.
+                    ? "a client hung up before its response finished (normal for one-shot clients "
+                      + "like curl, and for health probes)"
+                    // Some other write failure. Reported rather than diagnosed.
+                    : $"connection to a client failed mid-response ({exception.GetType().Name}: {exception.Message})";
 
             if (category.StartsWith("ModelContextProtocol", StringComparison.Ordinal))
             {
@@ -101,6 +108,28 @@ namespace IndxServer.Monitor
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// The shapes a client going away takes, which differ by platform for the same event:
+        /// macOS words a write to a torn-down TLS session as "the encryption operation failed",
+        /// Linux as a reset or a broken pipe.
+        /// </summary>
+        private static bool HungUp(Exception exception)
+        {
+            if (exception is OperationCanceledException)
+                return true;
+
+            for (Exception? e = exception; e is not null; e = e.InnerException)
+            {
+                var m = e.Message;
+                if (m.Contains("encryption operation failed", StringComparison.OrdinalIgnoreCase)
+                    || m.Contains("Connection reset", StringComparison.OrdinalIgnoreCase)
+                    || m.Contains("Broken pipe", StringComparison.OrdinalIgnoreCase)
+                    || m.Contains("client has disconnected", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
         }
 
         /// <summary>
