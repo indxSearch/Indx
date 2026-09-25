@@ -82,6 +82,15 @@ namespace IndxServer.Monitor
             int textLeft = 3 + PixlIcon.Width + 3;
             var heading = new Label { X = textLeft, Y = 1, Text = "indx monitor", HotKeySpecifier = NoHotKey };
 
+            // The two figure lines sit under the heading and stop short of the state icon.
+            _header.X = textLeft; _header.Y = 2; _header.Width = Dim.Fill(PixlIcon.Width + 5); _header.Height = 1;
+            _filters.X = textLeft; _filters.Y = 3; _filters.Width = Dim.Fill(PixlIcon.Width + 5); _filters.Height = 1;
+            // Labels swallow '_' as a hotkey marker, and these show data.
+            _header.HotKeySpecifier = NoHotKey;
+            _filters.HotKeySpecifier = NoHotKey;
+            // Mirrors the logo: three columns in from the right edge, level with it.
+            _stateIcon.X = Pos.AnchorEnd(PixlIcon.Width + 3); _stateIcon.Y = 1;
+
             // ── Datasets ──
             // BottomResizable is the divider: dragging it sets an absolute height, which
             // TakeDraggedHeight turns into the remembered one.
@@ -485,19 +494,31 @@ namespace IndxServer.Monitor
             cancel.Accepting += (_, e) => { e.Handled = true; _app.RequestStop(dialog); };
 
             var confirm = new Button { Text = "Shut down" };
-            confirm.Accepting += (_, e) =>
-            {
-                e.Handled = true;
-                _app.RequestStop(dialog);
-                // The host stops, which cancels the monitor's own token, which brings the screen
-                // down: no need to close it here, and closing it first would hide the shutdown.
-                _requestShutdown();
-            };
+            bool confirmed = false;
+            confirm.Accepting += (_, e) => { e.Handled = true; confirmed = true; _app.RequestStop(dialog); };
 
             dialog.AddButton(cancel);
             dialog.AddButton(confirm);
             _app.Run(dialog);
             dialog.Dispose();
+
+            if (!confirmed)
+                return;
+
+            // Bring the screen down HERE, from the UI thread and after the dialog's own loop has
+            // unwound, and only then stop the host. Two things depend on that order.
+            //
+            // Stopping the host first, and letting it cancel the monitor's token, asks the screen
+            // to stop from another thread. If the process got far enough down its shutdown before
+            // that landed, Terminal.Gui never restored the terminal: mouse reporting stayed on and
+            // the shell printed raw SGR sequences as gibberish ("35;4;44M35;14;43M...") at
+            // whoever used it next.
+            //
+            // And this runs after Run(dialog) returns rather than inside the handler, so the stop
+            // reaches the window. Called from inside, it would be a second RequestStop while the
+            // dialog is still the running top, and might only close the dialog again.
+            _app.RequestStop();
+            _requestShutdown();
         }
 
         private static string Short(TimeSpan span)

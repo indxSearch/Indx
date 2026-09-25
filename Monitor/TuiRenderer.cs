@@ -100,11 +100,18 @@ namespace IndxServer.Monitor
         public void Stop()
         {
             _stopped = true;
-            // Asking from another thread, then giving up rather than waiting: the screen thread is
-            // a background one, so a screen that does not come down in time dies with the process
-            // and cannot hold shutdown open.
-            try { _app?.RequestStop(); } catch { /* the screen is already down */ }
-            _thread?.Join(TimeSpan.FromSeconds(2));
+            // Ctrl+C and a host stopping for any other reason arrive here, on a thread that does
+            // not own the screen. Terminal.Gui's own queue is the safe way across: Invoke runs the
+            // stop on the UI thread, the same place F10 does it from.
+            //
+            // Then wait, and wait properly. A screen that has not come down has not restored the
+            // terminal either, and a shell left in mouse-reporting mode prints raw escape
+            // sequences at whoever used it next -- worth several seconds of shutdown to avoid.
+            try { _app?.Invoke(() => _app?.RequestStop()); }
+            catch { /* the screen is already down */ }
+
+            if (_thread is { } thread && !thread.Join(TimeSpan.FromSeconds(5)))
+                RestoreTerminal();
         }
 
         /// <summary>A log line, once the screen owns the console.</summary>
@@ -116,6 +123,29 @@ namespace IndxServer.Monitor
                 if (_events.Count > MaxEvents)
                     _events.RemoveRange(0, _events.Count - MaxEvents);
             }
+        }
+
+        /// <summary>
+        /// Last resort, for a screen that would not come down: put the terminal back by hand.
+        ///
+        /// <para>Terminal.Gui does this on dispose and this should never run. It exists because
+        /// the failure is so unpleasant and so confusing: the shell keeps mouse reporting on and
+        /// prints every click as raw text, with no hint of where it came from, long after the
+        /// server has gone. These four are the modes Terminal.Gui turns on; disabling one that is
+        /// already off does nothing.</para>
+        /// </summary>
+        private static void RestoreTerminal()
+        {
+            try
+            {
+                Console.Out.Write("\u001b[?1003l");   // no any-event mouse tracking
+                Console.Out.Write("\u001b[?1006l");   // no SGR extended coordinates
+                Console.Out.Write("\u001b[?1000l");   // no button tracking
+                Console.Out.Write("\u001b[?1049l");   // leave the alternate screen buffer
+                Console.Out.Write("\u001b[?25h");     // show the cursor
+                Console.Out.Flush();
+            }
+            catch { /* nothing left to write to */ }
         }
 
         private MonitorSnapshot? ReadLatest() => Volatile.Read(ref _latest);
