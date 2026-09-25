@@ -538,7 +538,13 @@ namespace IndxServer.Models
         /// used, and how long until idle-eviction. <see cref="KeepAliveInfo.Remaining"/> is null for
         /// non-Ready datasets and for the non-counting policies (0 and <see cref="int.MaxValue"/>).
         /// </summary>
-        internal KeepAliveInfo GetKeepAliveInfo(string dataSetName, string teamId)
+        /// <param name="countRecordsOnDisk">
+        /// False to skip the on-disk record count and report it as -1. That count is
+        /// <c>SELECT COUNT(*)</c> over the dataset's rows, which is cheap on a small dataset and
+        /// not on a large one, and the monitor asks for this every second: it needs the live state
+        /// at that rate and the row count far more rarely.
+        /// </param>
+        internal KeepAliveInfo GetKeepAliveInfo(string dataSetName, string teamId, bool countRecordsOnDisk = true)
         {
             SearchEngineInstance? inst;
             lock (_dictionaryLock)
@@ -563,7 +569,7 @@ namespace IndxServer.Models
 
             // On-disk record count — non-zero on a Created dataset means it's hibernated (data
             // persisted, engine not loaded) rather than empty. The website uses this to offer a wake.
-            int recordCount = db.NumberOfJsonRecordsInDataSet(dataSetName, teamId);
+            int recordCount = countRecordsOnDisk ? db.NumberOfJsonRecordsInDataSet(dataSetName, teamId) : -1;
             return new KeepAliveInfo(hrs, ready, lastUsed, remaining, recordCount, disposed);
         }
 

@@ -35,6 +35,14 @@ namespace IndxServer.Monitor
         // restarts at zero when a dataset is evicted and reloaded, so summing it across datasets
         // gives a total that falls. Adding deltas instead — and treating a fall as a restart —
         // gives a number that only goes up, which is what a counter on screen has to do.
+        // The on-disk row count is a COUNT(*) per dataset. It is what makes a hibernated dataset
+        // distinguishable from an empty one, and it changes when documents are loaded or deleted
+        // -- not every second. Asked for rarely and remembered, so an always-on collector does not
+        // run a count over half a million rows once a second for the life of the process.
+        private readonly Dictionary<string, int> _recordCounts = [];
+        private DateTimeOffset _countsReadAt = DateTimeOffset.MinValue;
+        private static readonly TimeSpan CountEvery = TimeSpan.FromSeconds(30);
+
         private readonly Dictionary<string, int> _lastSearchCount = [];
         private long _searchesTotal;
         private readonly List<(DateTimeOffset At, long Total)> _rateSamples = [];
@@ -58,27 +66,35 @@ namespace IndxServer.Monitor
             var names = teamNames?.Resolve(all.Select(r => r.TeamId), now)
                         ?? new Dictionary<string, string>();
 
+            bool countNow = now - _countsReadAt >= CountEvery;
+            if (countNow) _countsReadAt = now;
+
             var lines = new List<DatasetLine>(all.Count);
             foreach (var (dataSetName, teamId) in all)
-                lines.Add(ReadOne(dataSetName, teamId, names.GetValueOrDefault(teamId)));
+                lines.Add(ReadOne(dataSetName, teamId, names.GetValueOrDefault(teamId), countNow));
 
             lines.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
 
             return Build(lines, now);
         }
 
-        private static DatasetLine ReadOne(string dataSetName, string teamId, string? teamName)
+        private DatasetLine ReadOne(string dataSetName, string teamId, string? teamName, bool countNow)
         {
             var manager = IndxServerInternalApi.Manager;
 
             // Never Status on a disposed engine: that throws ObjectDisposedException.
             var engine = manager.FindSearchEngine(dataSetName, teamId);
             var status = engine is { IsDisposed: false } ? engine.Status : null;
-            var keepAlive = manager.GetKeepAliveInfo(dataSetName, teamId);
+            var keepAlive = manager.GetKeepAliveInfo(dataSetName, teamId, countRecordsOnDisk: countNow);
+
+            string key = teamId + "/" + dataSetName;
+            int recordsOnDisk = keepAlive.RecordCount >= 0
+                ? _recordCounts[key] = keepAlive.RecordCount
+                : _recordCounts.GetValueOrDefault(key);
 
             // Rows on disk with no live engine (or one still in Created) is what hibernation looks
             // like from outside: the data is persisted, the engine is not loaded.
-            bool hibernated = keepAlive.RecordCount > 0
+            bool hibernated = recordsOnDisk > 0
                               && status?.SystemState is null or SystemState.Created;
 
             return new DatasetLine(
@@ -88,7 +104,7 @@ namespace IndxServer.Monitor
                 State: status?.SystemState,
                 Hibernated: hibernated,
                 DocumentCount: status?.DocumentCount ?? 0,
-                RecordsOnDisk: keepAlive.RecordCount,
+                RecordsOnDisk: recordsOnDisk,
                 Ready: keepAlive.Ready,
                 LastUsedUtc: keepAlive.LastUsedUtc,
                 KeepAliveRemaining: keepAlive.Remaining,

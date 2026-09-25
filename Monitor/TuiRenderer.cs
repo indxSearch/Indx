@@ -13,17 +13,12 @@ namespace IndxServer.Monitor
     /// <para>If the terminal turns out not to support a full-screen application, this falls back to
     /// the piped renderer rather than failing: the server was started to serve, not to draw.</para>
     /// </summary>
-    internal sealed class TuiRenderer(TimeSpan fallbackStatusInterval,
+    internal sealed class TuiRenderer(MonitorState state,
+                                     TimeSpan fallbackStatusInterval,
                                      MonitorLoggerProvider? logProvider = null,
                                      Action? requestShutdown = null)
-        : IMonitorRenderer, IMonitorLogSink
+        : IMonitorRenderer
     {
-        private const int MaxEvents = 500;
-
-        private readonly Lock _eventLock = new();
-        private readonly List<MonitorEvent> _events = [];
-        private MonitorSnapshot? _latest;
-
         private IApplication? _app;
         private Thread? _thread;
         private volatile bool _stopped;
@@ -49,11 +44,11 @@ namespace IndxServer.Monitor
                 Console.OutputEncoding = System.Text.Encoding.UTF8;
                 using IApplication app = Application.Create().Init();
                 _app = app;
-                using var window = new MonitorWindow(app, ReadLatest, ReadEvents,
+                using var window = new MonitorWindow(app, () => state.Latest, state.Events,
                                                     requestShutdown ?? (() => { }), _endpoints);
                 // Only now does the console belong to the screen. Until this point log lines --
                 // including whatever went wrong during startup -- print normally.
-                logProvider?.AttachTo(this);
+                logProvider?.ScreenUp();
                 app.Run(window);
                 window.SaveLayout();
             }
@@ -71,69 +66,19 @@ namespace IndxServer.Monitor
             finally
             {
                 // Hand the console back before shutdown, so the host's stopping messages are seen.
-                logProvider?.Detach();
+                logProvider?.ScreenDown();
                 _app = null;
             }
         }
 
         public void Render(MonitorSnapshot snapshot)
         {
+            // MonitorState already has it; the screen reads from there on its own timer. Only the
+            // fallback, which writes lines rather than drawing, needs handing the snapshot.
             if (Volatile.Read(ref _fallback) is { } fallback)
-            {
                 fallback.Render(snapshot);
-                return;
-            }
-
-            if (snapshot.NewEvents.Count > 0)
-            {
-                lock (_eventLock)
-                {
-                    _events.AddRange(snapshot.NewEvents);
-                    if (_events.Count > MaxEvents)
-                        _events.RemoveRange(0, _events.Count - MaxEvents);
-                }
-            }
-
-            Volatile.Write(ref _latest, snapshot);
         }
 
-        public void Stop()
-        {
-            _stopped = true;
-            // Ctrl+C and a host stopping for any other reason arrive here, on a thread that does
-            // not own the screen. Terminal.Gui's own queue is the safe way across: Invoke runs the
-            // stop on the UI thread, the same place F10 does it from.
-            //
-            // Then wait, and wait properly. A screen that has not come down has not restored the
-            // terminal either, and a shell left in mouse-reporting mode prints raw escape
-            // sequences at whoever used it next -- worth several seconds of shutdown to avoid.
-            try { _app?.Invoke(() => _app?.RequestStop()); }
-            catch { /* the screen is already down */ }
-
-            if (_thread is { } thread && !thread.Join(TimeSpan.FromSeconds(5)))
-                RestoreTerminal();
-        }
-
-        /// <summary>A log line, once the screen owns the console.</summary>
-        public void Add(MonitorEvent entry)
-        {
-            lock (_eventLock)
-            {
-                _events.Add(entry);
-                if (_events.Count > MaxEvents)
-                    _events.RemoveRange(0, _events.Count - MaxEvents);
-            }
-        }
-
-        /// <summary>
-        /// Last resort, for a screen that would not come down: put the terminal back by hand.
-        ///
-        /// <para>Terminal.Gui does this on dispose and this should never run. It exists because
-        /// the failure is so unpleasant and so confusing: the shell keeps mouse reporting on and
-        /// prints every click as raw text, with no hint of where it came from, long after the
-        /// server has gone. These four are the modes Terminal.Gui turns on; disabling one that is
-        /// already off does nothing.</para>
-        /// </summary>
         private static void RestoreTerminal()
         {
             try
@@ -148,13 +93,22 @@ namespace IndxServer.Monitor
             catch { /* nothing left to write to */ }
         }
 
-        private MonitorSnapshot? ReadLatest() => Volatile.Read(ref _latest);
-
-        /// <summary>Internal so the buffering can be tested without a terminal.</summary>
-        internal IReadOnlyList<MonitorEvent> ReadEvents()
+        public void Stop()
         {
-            lock (_eventLock)
-                return _events.ToArray();
+            _stopped = true;
+
+            // Ctrl+C and a host stopping for any other reason arrive here, on a thread that does
+            // not own the screen. Terminal.Gui's own queue is the safe way across: Invoke runs the
+            // stop on the UI thread, the same place F10 does it from.
+            //
+            // Then wait, and wait properly. A screen that has not come down has not restored the
+            // terminal either, and a shell left in mouse-reporting mode prints raw escape
+            // sequences at whoever used it next -- worth several seconds of shutdown to avoid.
+            try { _app?.Invoke(() => _app?.RequestStop()); }
+            catch { /* the screen is already down */ }
+
+            if (_thread is { } thread && !thread.Join(TimeSpan.FromSeconds(5)))
+                RestoreTerminal();
         }
     }
 }

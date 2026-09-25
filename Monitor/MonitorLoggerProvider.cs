@@ -2,12 +2,6 @@ using System.Collections.Concurrent;
 
 namespace IndxServer.Monitor
 {
-    /// <summary>Where log lines go once the screen has taken the console.</summary>
-    internal interface IMonitorLogSink
-    {
-        void Add(MonitorEvent entry);
-    }
-
     /// <summary>
     /// The console logger, until the screen exists — then the event pane.
     ///
@@ -21,13 +15,20 @@ namespace IndxServer.Monitor
     /// <para>NLog's <c>IndxServer.log</c> is unaffected either way: the engine registry writes to
     /// it outside the ASP.NET logging pipeline, and it remains the durable trail.</para>
     /// </summary>
-    internal sealed class MonitorLoggerProvider : ILoggerProvider
+    internal sealed class MonitorLoggerProvider(MonitorState state, bool ownsConsole) : ILoggerProvider
     {
         private readonly ConcurrentDictionary<string, MonitorLogger> _loggers = new();
-        private volatile IMonitorLogSink? _sink;
 
-        internal void AttachTo(IMonitorLogSink sink) => _sink = sink;
-        internal void Detach() => _sink = null;
+        /// <summary>
+        /// True once the Terminal.Gui screen is drawing. Only meaningful when
+        /// <paramref name="ownsConsole"/> — that is, in the interactive mode where this provider
+        /// replaced the console logger. Until the screen is up it echoes to the console, so a
+        /// startup that never reaches the screen still prints its error the way it always has.
+        /// </summary>
+        private volatile bool _screenUp;
+
+        internal void ScreenUp() => _screenUp = true;
+        internal void ScreenDown() => _screenUp = false;
 
         public ILogger CreateLogger(string categoryName) =>
             _loggers.GetOrAdd(categoryName, name => new MonitorLogger(name, this));
@@ -36,8 +37,9 @@ namespace IndxServer.Monitor
 
         private void Write(string category, LogLevel level, string message, Exception? exception)
         {
-            var sink = _sink;
-            if (sink is null)
+            // The console half, and only where this provider took the console over. In every other
+            // mode the ordinary console logger is still installed and doing this itself.
+            if (ownsConsole && !_screenUp)
             {
                 // Same shape as the simple console logger, so a startup failure reads the way it
                 // always has.
@@ -46,7 +48,6 @@ namespace IndxServer.Monitor
                 writer.WriteLine($"      {message}");
                 if (exception is not null)
                     writer.WriteLine($"      {exception}");
-                return;
             }
 
             // A client's own mistake is not this server's incident. Kestrel and the MCP library
@@ -56,12 +57,12 @@ namespace IndxServer.Monitor
             // they are attributed to the client and carry no stack trace.
             if (ClientCaused(category, message, exception) is { } what)
             {
-                sink.Add(new MonitorEvent(DateTimeOffset.UtcNow, "client", what));
+                state.Add(new MonitorEvent(DateTimeOffset.UtcNow, "client", what));
                 return;
             }
 
             string text = exception is null ? message : $"{message} — {exception.GetType().Name}: {exception.Message}";
-            sink.Add(new MonitorEvent(DateTimeOffset.UtcNow, Source(category), text));
+            state.Add(new MonitorEvent(DateTimeOffset.UtcNow, Source(category), text));
         }
 
         /// <summary>

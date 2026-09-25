@@ -15,20 +15,22 @@ namespace IndxServer.Monitor
     /// </summary>
     internal sealed class MonitorHostedService(
         MonitorOptions options,
-        IMonitorRenderer renderer,
+        MonitorState state,
+        // An enumerable, not a nullable: the container has no notion of an optional dependency,
+        // and in Off mode -- a server with no terminal and no log block, which is every Azure
+        // one -- there is no renderer registered at all.
+        IEnumerable<IMonitorRenderer> renderers,
         IHostApplicationLifetime lifetime,
         IServer server,
         IServiceScopeFactory scopes,
         ILogger<MonitorHostedService> logger) : BackgroundService
     {
         private const int MaxConsecutiveFailures = 5;
+        private readonly IMonitorRenderer? renderer = renderers.FirstOrDefault();
         private readonly MonitorCollector _collector = new(new TeamNames(scopes));
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            if (options.Mode == MonitorMode.Off)
-                return;
-
             // Nothing is drawn until the server is actually listening. A startup that fails --
             // the port already in use is the one that found this -- must leave the console alone
             // so its error is readable, and ApplicationStarted is the signal that says startup
@@ -37,12 +39,11 @@ namespace IndxServer.Monitor
             if (!await WaitForApplicationStartedAsync(stoppingToken))
                 return;
 
-            logger.LogInformation("Indx monitor starting in {Mode} mode, status every {Seconds:F0}s",
-                options.Mode, options.StatusInterval.TotalSeconds);
+            logger.LogInformation("Indx monitor collecting; display is {Mode}", options.Mode);
 
             // Nothing reports activity until something is watching for it.
             MonitorActivity.Enabled = true;
-            renderer.Start(Endpoints());
+            renderer?.Start(Endpoints());
 
             using var timer = new PeriodicTimer(options.PollInterval);
             int consecutiveFailures = 0;
@@ -51,7 +52,9 @@ namespace IndxServer.Monitor
             {
                 try
                 {
-                    renderer.Render(_collector.Collect(DateTimeOffset.UtcNow));
+                    var snapshot = _collector.Collect(DateTimeOffset.UtcNow);
+                    state.Publish(snapshot);
+                    renderer?.Render(snapshot);
                     consecutiveFailures = 0;
                 }
                 catch (Exception ex)
@@ -70,7 +73,7 @@ namespace IndxServer.Monitor
             }
 
             MonitorActivity.Enabled = false;
-            try { renderer.Stop(); }
+            try { renderer?.Stop(); }
             catch (Exception ex) { logger.LogWarning(ex, "Indx monitor renderer failed to stop cleanly"); }
         }
 
@@ -178,30 +181,39 @@ namespace IndxServer.Monitor
         internal static WebApplicationBuilder AddIndxMonitor(this WebApplicationBuilder builder, string[] args)
         {
             var options = MonitorOptions.Resolve(builder.Configuration, args);
-            if (options.Mode == MonitorMode.Off)
-                return builder;
 
+            // The collector runs whichever mode this is, including Off: the console's monitor page
+            // reads the same state, and it must have something to show on a server nobody has
+            // attached a terminal to. Only the display is optional.
             builder.Services.AddSingleton(options);
+            builder.Services.AddSingleton<MonitorState>();
+            builder.Services.AddHostedService<MonitorHostedService>();
 
-            if (options.Mode == MonitorMode.Interactive)
-            {
-                // Not ClearProviders() alone: that leaves a failed startup with nowhere to print.
-                // This provider IS the console logger until the screen is up, then becomes the
-                // event pane, then is the console logger again once it comes down.
-                var logProvider = new MonitorLoggerProvider();
+            // One state, however it is looked at. Built here rather than resolved, because the
+            // logging provider is added to the builder and cannot wait for the container.
+            var state = new MonitorState();
+            builder.Services.AddSingleton(state);
+
+            bool interactive = options.Mode == MonitorMode.Interactive;
+
+            // Log lines reach the state in every mode, so the console's monitor page shows them on
+            // a server with no terminal. Only the interactive mode takes the console over, and
+            // even then not straight away: until the screen is up this provider prints exactly
+            // what the console logger would, so a startup that fails before the screen has
+            // somewhere to say so.
+            var logProvider = new MonitorLoggerProvider(state, ownsConsole: interactive);
+            if (interactive)
                 builder.Logging.ClearProviders();
-                builder.Logging.AddProvider(logProvider);
+            builder.Logging.AddProvider(logProvider);
+
+            if (interactive)
                 builder.Services.AddSingleton<IMonitorRenderer>(sp =>
-                    new TuiRenderer(options.StatusInterval, logProvider,
+                    new TuiRenderer(state, options.StatusInterval, logProvider,
                         () => sp.GetRequiredService<IHostApplicationLifetime>().StopApplication()));
-            }
-            else
-            {
+            else if (options.Mode == MonitorMode.Piped)
                 builder.Services.AddSingleton<IMonitorRenderer>(
                     _ => new PipedReporter(Console.Out, options.StatusInterval));
-            }
 
-            builder.Services.AddHostedService<MonitorHostedService>();
             return builder;
         }
     }

@@ -1,0 +1,93 @@
+@page "/admin/activity"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@using IndxServer.Monitor
+@attribute [Authorize(Roles = "Admin")]
+@implements IDisposable
+@inject MonitorState Monitor
+
+<PageTitle>Admin — Activity</PageTitle>
+
+<AdminNav Active="Activity" />
+
+@* The same stream the terminal monitor shows, for the deployments where there is no terminal to
+   show it in -- which is every Azure one. Admin only: a line names the team whose dataset changed,
+   so a member of one team must not read another's activity here. *@
+<div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
+    <div>
+        <h2 style="margin-bottom: 4px;">Activity</h2>
+        <p style="color: var(--lv5);">What this server has been doing, newest first.</p>
+    </div>
+</div>
+
+@if (_snapshot is not { } snapshot)
+{
+    <p style="color: var(--lv5);">Waiting for the first reading…</p>
+}
+else
+{
+    <p style="color: var(--lv5); margin-bottom: 24px;">
+        @snapshot.Datasets.Count dataset@(snapshot.Datasets.Count == 1 ? "" : "s")
+        (@snapshot.LoadedCount loaded) ·
+        @snapshot.TotalDocuments.ToString("N0") documents ·
+        @snapshot.DescribeSearches() ·
+        @snapshot.Process.WorkingSetMb.ToString("N0") MB in use
+    </p>
+
+    @if (_events.Count == 0)
+    {
+        @* Not an error: a server that has just started has nothing to report yet, and saying so
+           is better than an empty box that looks broken. *@
+        <p style="color: var(--lv5);">
+            Nothing yet. Dataset state changes, field configuration changes and anything the
+            server logs will appear here as they happen.
+        </p>
+    }
+    else
+    {
+        <table class="indx-table">
+            <thead>
+                <tr><th style="width: 90px;">Time</th><th style="width: 140px;">Source</th><th>What</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var item in _events)
+                {
+                    <tr>
+                        <td style="color: var(--lv5); white-space: nowrap;">
+                            <TimeAgo Value="@item.AtUtc.UtcDateTime" TooltipPosition="left" />
+                        </td>
+                        <td style="color: var(--lv5);">@item.Source</td>
+                        <td>@item.Text</td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+
+        <p style="color: var(--lv5); margin-top: 24px;">
+            The most recent @_events.Count. These are kept in memory only, so they start again
+            when the server restarts.
+        </p>
+    }
+}
+
+@code {
+    private MonitorSnapshot? _snapshot;
+    private List<MonitorEvent> _events = [];
+
+    protected override void OnInitialized()
+    {
+        Monitor.Changed += OnChanged;
+        Read();
+    }
+
+    // Raised from the collector's timer, off the circuit thread.
+    private void OnChanged() => _ = InvokeAsync(() => { Read(); StateHasChanged(); });
+
+    private void Read()
+    {
+        _snapshot = Monitor.Latest;
+        _events = [.. Monitor.Events().Reverse()];
+    }
+
+    public void Dispose() => Monitor.Changed -= OnChanged;
+}
