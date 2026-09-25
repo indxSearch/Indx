@@ -35,13 +35,24 @@ namespace IndxServer.Monitor
         // restarts at zero when a dataset is evicted and reloaded, so summing it across datasets
         // gives a total that falls. Adding deltas instead — and treating a fall as a restart —
         // gives a number that only goes up, which is what a counter on screen has to do.
-        // The on-disk row count is a COUNT(*) per dataset. It is what makes a hibernated dataset
-        // distinguishable from an empty one, and it changes when documents are loaded or deleted
-        // -- not every second. Asked for rarely and remembered, so an always-on collector does not
-        // run a count over half a million rows once a second for the life of the process.
+        // The on-disk row count, asked for as rarely as it can be.
+        //
+        // It is SELECT COUNT(*) per dataset, and measured on this repo's own data it is 150-185 ms
+        // EACH, near enough regardless of size: idx_UserJson covers UserName alone, so counting
+        // one dataset scans every row its team owns. Twelve datasets is about 1.8 seconds of
+        // SQLite per pass, which a collector running once a second could never have kept up with.
+        //
+        // So it is asked for only when the answer can have changed: the first time a dataset is
+        // seen, and afterwards only when its phase moves. A dataset that is not loaded cannot gain
+        // or lose rows without waking first, and a loaded one reports its own DocumentCount, which
+        // is the truer number anyway. Steady state is no counting at all.
         private readonly Dictionary<string, int> _recordCounts = [];
-        private DateTimeOffset _countsReadAt = DateTimeOffset.MinValue;
-        private static readonly TimeSpan CountEvery = TimeSpan.FromSeconds(30);
+
+        // The engine state each dataset was last seen in, kept separately from _lastSeen because
+        // that one holds DatasetLine.Phase -- which says "Hibernated", a word derived from the row
+        // count we are deciding whether to fetch. Comparing against it would be circular, and
+        // would silently count every tick.
+        private readonly Dictionary<string, string> _lastEngineState = [];
 
         private readonly Dictionary<string, int> _lastSearchCount = [];
         private long _searchesTotal;
@@ -66,28 +77,33 @@ namespace IndxServer.Monitor
             var names = teamNames?.Resolve(all.Select(r => r.TeamId), now)
                         ?? new Dictionary<string, string>();
 
-            bool countNow = now - _countsReadAt >= CountEvery;
-            if (countNow) _countsReadAt = now;
-
             var lines = new List<DatasetLine>(all.Count);
             foreach (var (dataSetName, teamId) in all)
-                lines.Add(ReadOne(dataSetName, teamId, names.GetValueOrDefault(teamId), countNow));
+                lines.Add(ReadOne(dataSetName, teamId, names.GetValueOrDefault(teamId)));
 
             lines.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
 
             return Build(lines, now);
         }
 
-        private DatasetLine ReadOne(string dataSetName, string teamId, string? teamName, bool countNow)
+        private DatasetLine ReadOne(string dataSetName, string teamId, string? teamName)
         {
             var manager = IndxServerInternalApi.Manager;
 
             // Never Status on a disposed engine: that throws ObjectDisposedException.
             var engine = manager.FindSearchEngine(dataSetName, teamId);
             var status = engine is { IsDisposed: false } ? engine.Status : null;
-            var keepAlive = manager.GetKeepAliveInfo(dataSetName, teamId, countRecordsOnDisk: countNow);
 
+            // Count only when the answer can have moved: a dataset not seen before, or one whose
+            // phase changed since the last pass. See _recordCounts.
             string key = teamId + "/" + dataSetName;
+            string engineState = status?.SystemState.ToString() ?? "Unloaded";
+            bool countNow = !_recordCounts.ContainsKey(key)
+                            || !_lastEngineState.TryGetValue(key, out var was)
+                            || was != engineState;
+            _lastEngineState[key] = engineState;
+
+            var keepAlive = manager.GetKeepAliveInfo(dataSetName, teamId, countRecordsOnDisk: countNow);
             int recordsOnDisk = keepAlive.RecordCount >= 0
                 ? _recordCounts[key] = keepAlive.RecordCount
                 : _recordCounts.GetValueOrDefault(key);
@@ -142,6 +158,9 @@ namespace IndxServer.Monitor
             {
                 string label = _lastSeen[goneKey].Label;
                 _lastSeen.Remove(goneKey);
+                _recordCounts.Remove(goneKey);
+                _lastEngineState.Remove(goneKey);
+                _lastSearchCount.Remove(goneKey);
                 if (!_first)
                     events.Add(new MonitorEvent(now, "system", $"{label} deleted"));
             }
