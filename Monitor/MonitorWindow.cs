@@ -156,18 +156,12 @@ namespace IndxServer.Monitor
         }
 
         /// <summary>
-        /// The endpoints line. MCP is named even though it is not a page, because an agent is the
-        /// other thing pointed at this server and its address is not guessable from the console's.
-        /// An MCP an admin has switched off says so rather than offering a URL that 404s.
+        /// The endpoints line: where to point a browser, and nothing else. MCP was here too and is
+        /// not any more — an agent's address is not what a developer needs on first run, and the
+        /// live view of what an agent is doing belongs in the web console rather than a line here.
         /// </summary>
         internal static string Describe(MonitorEndpoints? endpoints)
-        {
-            if (endpoints?.Web is not { Length: > 0 } web)
-                return "";
-            return endpoints.Mcp is { Length: > 0 } mcp
-                ? $"web  {web}      mcp  {mcp}"
-                : $"web  {web}      mcp  off";
-        }
+            => endpoints?.Web is { Length: > 0 } web ? $"web  {web}" : "";
 
         /// <summary>
         /// The selected row, as a grey block with dark text. Stated as colours rather than taken

@@ -369,6 +369,9 @@ namespace IndxServer.Mcp
             var proxies = fields.Select(f => f.ToProxy()).ToArray();
             // Also for a field getting its first role: see FieldConfigurationChange.
             bool needsReindex = IndxServer.Services.FieldConfigurationChange.NeedsRebuild(df, proxies);
+            // The reason the monitor has an event stream: an agent reconfiguring fields is the
+            // change a watching human most needs to see.
+            IndxServer.Services.FieldConfigurationChange.Announce(df, proxies, dataset, ownerKey);
 
             try
             {

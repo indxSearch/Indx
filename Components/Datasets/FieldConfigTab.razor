@@ -90,6 +90,9 @@ else if (Ctx.EditedFields is { } fields)
                 var df = engine.DocumentFields;
                 // Also for a field getting its first role: see FieldConfigurationChange.
                 bool needsReindex = df != null && FieldConfigurationChange.NeedsRebuild(df, edited);
+                // Before applying: afterwards the old configuration is gone and there is nothing
+                // left to diff against.
+                FieldConfigurationChange.Announce(df, edited, Ctx.Name, Ctx.TeamId);
                 if (needsReindex && engine.Status.SystemState == SystemState.Ready)
                     Ctx.Engines.RunFieldConfigurationOnShadow(Ctx.Name, Ctx.TeamId, edited);
                 else

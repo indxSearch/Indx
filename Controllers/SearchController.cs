@@ -844,6 +844,9 @@ namespace IndxServer.Controllers
             // _indexableFields against the new Searchable set.
             // Also for a field getting its first role: see FieldConfigurationChange.
             bool needsReindex = IndxServer.Services.FieldConfigurationChange.NeedsRebuild(df, fields);
+            // Before applying: afterwards the old configuration is gone and there is nothing left
+            // to diff against.
+            IndxServer.Services.FieldConfigurationChange.Announce(df, fields, dataSetName, ctx.OwnerKey);
             if (needsReindex && matcher.Status.SystemState == SystemState.Ready)
             {
                 foreach (var cfg in fields)

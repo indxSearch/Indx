@@ -135,6 +135,32 @@ namespace IndxServer.Monitor
         }
 
         /// <summary>
+        /// What the rest of the server reported since the last tick: things no amount of polling
+        /// would find, because they leave the engine looking exactly as it did.
+        /// </summary>
+        private static List<MonitorEvent> DrainActivity(List<DatasetLine> lines, DateTimeOffset now)
+        {
+            var reported = MonitorActivity.Drain();
+            if (reported.Count == 0)
+                return [];
+
+            var events = new List<MonitorEvent>(reported.Count);
+            foreach (var entry in reported)
+            {
+                // Name the team the way the table does. A dataset reported and then deleted in the
+                // same tick falls back to the id, which is better than dropping the line.
+                var line = lines.FirstOrDefault(d => d.DataSetName == entry.DataSetName && d.TeamId == entry.TeamId);
+                string label = line is not null
+                    ? $"{line.TeamLabel}/{entry.DataSetName}"
+                    : $"{Shorten(entry.TeamId)}/{entry.DataSetName}";
+                events.Add(new MonitorEvent(entry.At, "fields", $"{label} · {entry.Text}"));
+            }
+            return events;
+        }
+
+        private static string Shorten(string teamId) => teamId.Length > 8 ? teamId[..8] : teamId;
+
+        /// <summary>
         /// Adds what each dataset has served since the last tick. A dataset seen for the first time
         /// contributes nothing: its counter may have been climbing long before the monitor started,
         /// and counting it once as a spike would be a lie. A counter that went down means the
@@ -147,6 +173,7 @@ namespace IndxServer.Monitor
         {
             var ordered = lines.ToList();
             var events = DetectTransitions(ordered, now);
+            events.AddRange(DrainActivity(ordered, now));
             CountSearches(ordered);
             return new MonitorSnapshot(now, ordered, ReadProcess(), ReadFilters(), events,
                                        _searchesTotal, RatePerMinute(now));

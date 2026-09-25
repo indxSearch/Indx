@@ -40,6 +40,8 @@ namespace IndxServer.Monitor
             logger.LogInformation("Indx monitor starting in {Mode} mode, status every {Seconds:F0}s",
                 options.Mode, options.StatusInterval.TotalSeconds);
 
+            // Nothing reports activity until something is watching for it.
+            MonitorActivity.Enabled = true;
             renderer.Start(Endpoints());
 
             using var timer = new PeriodicTimer(options.PollInterval);
@@ -67,6 +69,7 @@ namespace IndxServer.Monitor
                 }
             }
 
+            MonitorActivity.Enabled = false;
             try { renderer.Stop(); }
             catch (Exception ex) { logger.LogWarning(ex, "Indx monitor renderer failed to stop cleanly"); }
         }
