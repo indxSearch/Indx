@@ -260,6 +260,7 @@ namespace IndxServer.Mcp
             if (!string.IsNullOrWhiteSpace(status.ErrorMessage)) o["errorMessage"] = status.ErrorMessage;
             if (status.TooLongSearchText) o["tooLongSearchText"] = true;
             if (status.IndexedTextTruncated) o["indexedTextTruncated"] = true;
+            if (status.FieldIndexFallback) o["fieldIndexFallback"] = true;
             if (status.InvalidState) o["invalidState"] = true;
             if (status.InvalidArgument) o["invalidArgument"] = true;
             if (status.UnrecoverableErrors.Count > 0)
