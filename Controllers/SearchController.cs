@@ -134,6 +134,31 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
+        /// NegateFilter returns a filter matching every document the given filter does not:
+        /// the NOT of a value, range or combined filter. The result is a token like any other
+        /// and can be combined further.
+        /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
+        [HttpPost(DataSetRoute + "/filters/not")]
+        public ActionResult<FilterProxy> NegateFilter(string teamName, string dataSetName, [FromBody] FilterProxy filterProxy)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return ApiProblems.InvalidDatasetName(dataSetName);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
+            if (RequireState(matcher, "NegateFilter", SystemState.Ready) is { } stateError)
+                return stateError;
+            var filter = ResolveFilter(matcher, filterProxy, "filter", out var filterError);
+            if (filter == null) return filterError!;
+            matcher.LoadFilters(new Filter[] { filter });
+            var result = !filter;
+            return Ok(new FilterProxy(result.SerializedKey));
+        }
+
+        /// <summary>
         /// CreateBoost will create a Boost setup which may be passed to any search.
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
@@ -293,6 +318,8 @@ namespace IndxServer.Controllers
 
         /// <summary>
         /// CreateValueFilter will create a ValueFilter which may be passed to any search.
+        /// Case-insensitive unless <c>isCaseSensitive</c> is set; see <see cref="ValueFilterProxy"/>
+        /// for when it should be, and what it costs.
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/filters/value")]
@@ -307,7 +334,13 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "CreateValueFilter", SystemState.Ready) is { } stateError)
                 return stateError;
-            var filter = matcher.CreateValueFilter(valueFilter.FieldName, valueFilter.Value, out var filterError);
+            if (valueFilter == null)
+                return ApiProblems.InvalidArgument("A body with fieldName and value is required.");
+            // Unwrapped like every other 'object' the API takes (UpdateField, UpdateFieldInFilter):
+            // ASP.NET Core binds it as a JsonElement, whose ToString happened to decode a string
+            // token, so this worked by coincidence and differed from its siblings.
+            var filter = matcher.CreateValueFilter(valueFilter.FieldName, UnwrapJsonElement(valueFilter.Value)!,
+                valueFilter.IsCaseSensitive, out var filterError);
             if (filter == null)
                 return ApiProblems.InvalidArgument(filterError ?? "invalid filter arguments");
             var filterProxy = new FilterProxy(filter.SerializedKey);

@@ -40,8 +40,13 @@ namespace IndxServer.Swagger
                 schema.Example = new OpenApiObject
                 {
                     ["fieldName"] = new OpenApiString("category"),
-                    ["value"] = new OpenApiString("electronics")
+                    ["value"] = new OpenApiString("electronics"),
+                    ["isCaseSensitive"] = new OpenApiBoolean(false)
                 };
+                // The property is 'object' in C#, which the generator renders as an empty schema.
+                // Say what it takes.
+                if (schema.Properties.TryGetValue("value", out var value))
+                    value.Description = "A string, number or boolean, compared as text against the stored value.";
             }
             // BoostProxy examples
             else if (context.Type == typeof(BoostProxy))
