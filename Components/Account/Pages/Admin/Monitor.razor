@@ -55,15 +55,18 @@ else
     }
     else
     {
-        <table class="indx-table">
+        @* Scrollable so that a long line widens the frame and never the page. No widths on the
+           header cells: a fixed Time and Source leave a phone nothing for the column that matters,
+           and at that width the row stacks instead (Monitor.razor.css). *@
+        <Table Scrollable BleedEnd="var(--page-gutter)" AriaLabel="Server activity" Class="admin-monitor-table">
             <thead>
-                <tr><th style="width: 90px;">Time</th><th style="width: 140px;">Source</th><th>What</th></tr>
+                <tr><th scope="col">Time</th><th scope="col">Source</th><th scope="col">What</th></tr>
             </thead>
             <tbody>
                 @foreach (var item in _events)
                 {
                     <tr>
-                        <td style="color: var(--lv5); white-space: nowrap;">
+                        <td style="color: var(--lv5);">
                             <TimeAgo Value="@item.AtUtc.UtcDateTime" TooltipPosition="left" />
                         </td>
                         <td style="color: var(--lv5);">@item.Source</td>
@@ -71,7 +74,7 @@ else
                     </tr>
                 }
             </tbody>
-        </table>
+        </Table>
 
         <p style="color: var(--lv5); margin-top: 24px;">
             The most recent @_events.Count. These are kept in memory only, so they start again

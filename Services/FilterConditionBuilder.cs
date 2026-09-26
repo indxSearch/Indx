@@ -6,7 +6,7 @@ namespace IndxServer.Services
     /// Builds a single engine <see cref="Filter"/> from a declarative condition (exact value OR
     /// numeric range). Shared by the boost-rules engine and the MCP search tool so both express
     /// filters the same way. Returns null when the field isn't filterable, the condition is empty,
-    /// or the engine refuses it; <paramref name="error"/> then says why in the engine's words.
+    /// or the engine refuses it; the <c>error</c> out-parameter then says why in the engine's words.
     /// <para>A value on a numeric field is built as a range with equal limits. The engine refuses
     /// a value filter there - it compares text, so 129 misses 129.0 - and the range is the right
     /// filter; a saved boost rule or an agent's condition should not have to know that.</para>

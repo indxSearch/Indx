@@ -1,0 +1,64 @@
+/* ::deep throughout: the table element belongs to systm Table, not to this page. */
+
+/* Time and Source are short and fixed in shape, so they keep to one line and the width goes to
+   the text. */
+::deep .admin-monitor-table td:nth-child(1),
+::deep .admin-monitor-table td:nth-child(2),
+::deep .admin-monitor-table th:nth-child(1),
+::deep .admin-monitor-table th:nth-child(2) {
+    white-space: nowrap;
+}
+
+/* A log line carries dataset keys, URLs and exception names with nowhere to break, and one of
+   those is what pushes a table wider than the screen. */
+::deep .admin-monitor-table td:last-child {
+    overflow-wrap: anywhere;
+}
+
+/* Three columns of log line do not fit a phone, and scrolling the frame sideways is the wrong
+   answer for this table: what happened is the part you came to read and it would be the part off
+   the screen. So the row becomes a block -- when and where on one line, what happened under it --
+   and nothing scrolls in either direction. */
+@media (max-width: 768px) {
+    ::deep .admin-monitor-table thead {
+        /* The stacked row labels itself, and a header naming columns that are no longer beside
+           each other reads as noise. Hidden from the eye, not from a screen reader. */
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+    }
+
+    ::deep .admin-monitor-table tbody tr {
+        display: block;
+        padding: 8px 0;
+        border-top: 0.5px solid var(--lv3);
+    }
+
+    ::deep .admin-monitor-table tbody tr:last-child {
+        border-bottom: 0.5px solid var(--lv3);
+    }
+
+    ::deep .admin-monitor-table td {
+        display: block;
+        height: auto;
+        padding: 0;
+        border: 0;
+    }
+
+    /* When and where read as one caption line above the text. */
+    ::deep .admin-monitor-table td:nth-child(1),
+    ::deep .admin-monitor-table td:nth-child(2) {
+        display: inline;
+    }
+
+    ::deep .admin-monitor-table td:nth-child(2)::before {
+        content: " · ";
+    }
+
+    ::deep .admin-monitor-table td:last-child {
+        margin-top: 2px;
+    }
+}
