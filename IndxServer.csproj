@@ -130,7 +130,7 @@
 	<!-- Obfuscated NuGet package. The version is a property so the packaging pipeline can point
 	     a build at the package it just made (-p:IndxSearchLibVersion=… with a local feed). -->
 	<PropertyGroup>
-	  <IndxSearchLibVersion Condition="'$(IndxSearchLibVersion)' == ''">5.0.0-RC240926</IndxSearchLibVersion>
+	  <IndxSearchLibVersion Condition="'$(IndxSearchLibVersion)' == ''">5.0.0-RC260926</IndxSearchLibVersion>
 	</PropertyGroup>
 	<ItemGroup Condition="'$(IndxReferenceMode)' == 'NuGet'">
 	  <PackageReference Include="IndxSearchLib" Version="$(IndxSearchLibVersion)" />
