@@ -224,7 +224,7 @@ namespace IndxServer.Models
         private SearchEngine NewReplaceEngine(ConfigurationParameters configuration, string dataSetName, string teamId) =>
             new SearchEngine(
                 MakeLogPrefix(teamId, dataSetName),
-                Indx.Utilities.FileLoggerFactory.GetFactory(logFileName),
+                IndxServer.Services.FileLoggerFactory.GetFactory(logFileName),
                 configuration,
                 GetLicensePath())
             {

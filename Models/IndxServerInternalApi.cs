@@ -32,7 +32,7 @@ namespace IndxServer.Models
             persistence.CreateOrOpenDataSet((int)configuration);
 
             var licensePath = GetLicensePath();
-            var newMatcher = new SearchEngine(MakeLogPrefix(teamId, dataSetName), Indx.Utilities.FileLoggerFactory.GetFactory(logFileName),
+            var newMatcher = new SearchEngine(MakeLogPrefix(teamId, dataSetName), IndxServer.Services.FileLoggerFactory.GetFactory(logFileName),
                ResolveConfiguration(configuration, dataSetName), licensePath)
             {
                 Persistence = persistence
@@ -118,7 +118,7 @@ namespace IndxServer.Models
 
             // Cold path: CreateOrOpen writes DefaultConfigurationNumber and nothing else can write
             // this column, so reaching here means a hand-edited or future-written row.
-            Indx.Utilities.FileLoggerFactory.Create<IndxServerInternalApi>(logFileName).LogWarning(
+            IndxServer.Services.FileLoggerFactory.Create<IndxServerInternalApi>(logFileName).LogWarning(
                 "Dataset '{DataSet}' carries configuration {Configuration}, which is not supported; opening with the default.",
                 dataSetName, persisted);
             return ConfigurationParameters.Default;
@@ -1069,7 +1069,7 @@ namespace IndxServer.Models
         #region Private Constructors
         private IndxServerInternalApi(string searchDbConnectionString)
         {
-            _logger = Indx.Utilities.FileLoggerFactory.Create<IndxServerInternalApi>(logFileName);
+            _logger = IndxServer.Services.FileLoggerFactory.Create<IndxServerInternalApi>(logFileName);
             SearchDbConnectionString = searchDbConnectionString;
         }
         #endregion Private Constructors
@@ -1337,7 +1337,7 @@ namespace IndxServer.Models
             // Persistence stays null → nothing this engine does can touch or lock the database.
             using var validate = new SearchEngine(
                 MakeLogPrefix(teamId, dataSetName),
-                Indx.Utilities.FileLoggerFactory.GetFactory(logFileName),
+                IndxServer.Services.FileLoggerFactory.GetFactory(logFileName),
                 configuration,
                 GetLicensePath());
             try
@@ -1623,7 +1623,7 @@ namespace IndxServer.Models
                 var licensePath = GetLicensePath();
                 var matcher = new SearchEngine(
                     MakeLogPrefix(teamId, dataSetName),
-                    Indx.Utilities.FileLoggerFactory.GetFactory(logFileName),
+                    IndxServer.Services.FileLoggerFactory.GetFactory(logFileName),
                     ResolveConfiguration(configuration, dataSetName),
                     licensePath)
                 {

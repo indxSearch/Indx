@@ -82,6 +82,10 @@
 		</PackageReference>
 		<PackageReference Include="Microsoft.VisualStudio.Web.CodeGeneration.Design" Version="10.0.2" />
 		<PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
+		<!-- NLog writes IndxServer.log (Services/FileLoggerFactory.cs). It came in through the library
+		     until Sep 2026; the library no longer references it. -->
+		<PackageReference Include="NLog" Version="6.1.0" />
+		<PackageReference Include="NLog.Extensions.Logging" Version="6.1.1" />
 		<PackageReference Include="NuGet.Packaging" Version="6.14.3" />
 		<PackageReference Include="NuGet.Protocol" Version="6.14.3" />
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
@@ -143,7 +147,6 @@
 	  <Reference Include="Indx">
 	    <HintPath>Indx.dll</HintPath>
 	  </Reference>
-	  <PackageReference Include="NLog.Extensions.Logging" Version="6.0.0" />
 	  <PackageReference Include="HNSW" Version="26.6.1848" />
 	  <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.3" />
 	  <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.0" />
