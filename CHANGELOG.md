@@ -50,7 +50,9 @@ in the AI skill.
   while loading or indexing), `shadowBusy`. Switch on `code`, not the status.
 - **A filter token the server cannot honour is a 400 `unknownFilter`**, never a silently
   unfiltered search. Filter tokens are opaque by contract; do not parse or construct them.
-- **A busy dataset answers 409, not 400**, from every state, not only Ready.
+- **A busy dataset answers 409, not 400**, from every state, not only Ready. And `POST
+  …/documents` on a dataset that is loaded but not indexed is a 409 `invalidState` saying to
+  index first; it used to hand back the engine's refusal as a 400 `invalidArgument`.
 - **The `?configuration=` query parameter on create is ignored.** There is one configuration.
 - **Renamed C# types** for callers using the NuGet's request shapes: `CloudQuery` → `QueryProxy`,
   namespace `Indx.CloudApi` → `Indx.Http`, `ICloudSearchEngine` → `IServerSearchEngine`. The old

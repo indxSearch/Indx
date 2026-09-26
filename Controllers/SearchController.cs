@@ -687,7 +687,14 @@ namespace IndxServer.Controllers
                 if (!result)
                     return ApiProblems.InvalidArgument(error2);
                 return StatusCode(StatusCodes.Status201Created);
-            }, SystemState.Created, SystemState.Loaded, SystemState.Ready);
+                // Created and Ready, not Loaded: the engine inserts into a Created dataset (it loads
+                // and indexes the records) and into a Ready one, and refuses Loaded with "must be
+                // Ready". Loaded used to be allowed here, so a loaded-but-not-indexed dataset got the
+                // engine's refusal as a 400 invalidArgument - "fix your request" - where the API's
+                // rule is that a wrong lifecycle state is a 409 invalidState with what to do next.
+                // Under a full test run, where every class shares one dataset name, that 400 was
+                // the one ShadowSwapTests.SecondBulkInsert saw instead of its 409.
+            }, SystemState.Created, SystemState.Ready);
         }
 
         /// <summary>
