@@ -25,6 +25,15 @@ in the AI skill.
   `describe_dataset` before searching and was offered every tool, while a Search key could do
   neither. Calling a tool that was not offered still gives the refusal naming the level needed,
   rather than "unknown tool".
+- **One log.** `IndxServer.log` is now a provider of the server's normal logging, beside the
+  console, the monitor and Application Insights. Before, the dataset registry and the search
+  engines wrote only to that file, and everything else only to the others, so Application
+  Insights never saw a failed load, index or search. The file is capped: it rolls over at 10 MB
+  and keeps 9 archives. It takes Indx categories from Information and the rest from Warning, set
+  under `Logging:NLog:LogLevel` in `appsettings.json`, and `Indx:LogFile` moves it (a container
+  volume, say). A failure is logged with its whole stack, inner exceptions included, everywhere
+  it used to be only a message or text glued into one: failed loads, replaces, wakes and
+  searches, and dataset creation in the console.
 
 ### Added
 

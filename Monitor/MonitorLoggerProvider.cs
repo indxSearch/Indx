@@ -12,8 +12,9 @@ namespace IndxServer.Monitor
     /// <see cref="TuiRenderer"/> does after the screen is drawing, reversing it with
     /// <see cref="ScreenDown"/> when it comes down, so shutdown messages are visible again.</para>
     ///
-    /// <para>NLog's <c>IndxServer.log</c> is unaffected either way: the engine registry writes to
-    /// it outside the ASP.NET logging pipeline, and it remains the durable trail.</para>
+    /// <para>NLog's <c>IndxServer.log</c> is unaffected either way: it is another provider of the
+    /// same pipeline (<see cref="Services.ServerLogFile"/>), added after this swap, and it remains
+    /// the durable trail.</para>
     /// </summary>
     internal sealed class MonitorLoggerProvider(MonitorState state, bool ownsConsole) : ILoggerProvider
     {

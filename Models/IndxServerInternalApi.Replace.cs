@@ -163,7 +163,7 @@ namespace IndxServer.Models
                 shadow.Init(jsonStream, initMonitor);
                 WaitReporting(initMonitor, p => report(new ReplaceProgress(ReplaceStep.Analyzing, p)));
                 if (!initMonitor.Succeeded)
-                    throw new InvalidOperationException($"Replace analyze failed: {initMonitor.ErrorMessage ?? "unknown error"}");
+                    throw new InvalidOperationException($"Replace analyze failed: {initMonitor.ErrorMessage ?? "unknown error"}", initMonitor.Exception);
 
                 report(new ReplaceProgress(ReplaceStep.Reconciling, -1));
                 // Re-key from the declared field. If the new data no longer has it, the engine keys
@@ -187,13 +187,13 @@ namespace IndxServer.Models
                 shadow.Load(jsonStream, loadMonitor);
                 WaitReporting(loadMonitor, p => report(new ReplaceProgress(ReplaceStep.Loading, p)));
                 if (!loadMonitor.Succeeded)
-                    throw new InvalidOperationException($"Replace load failed: {loadMonitor.ErrorMessage ?? "unknown error"}");
+                    throw new InvalidOperationException($"Replace load failed: {loadMonitor.ErrorMessage ?? "unknown error"}", loadMonitor.Exception);
 
                 report(new ReplaceProgress(ReplaceStep.Indexing, 0));
                 shadow.Index(monitor);
                 WaitReporting(monitor, p => report(new ReplaceProgress(ReplaceStep.Indexing, p)));
                 if (!monitor.Succeeded)
-                    throw new InvalidOperationException($"Replace index failed: {monitor.ErrorMessage ?? "unknown error"}");
+                    throw new InvalidOperationException($"Replace index failed: {monitor.ErrorMessage ?? "unknown error"}", monitor.Exception);
 
                 return (shadow, summary);
             }
@@ -224,7 +224,7 @@ namespace IndxServer.Models
         private SearchEngine NewReplaceEngine(ConfigurationParameters configuration, string dataSetName, string teamId) =>
             new SearchEngine(
                 MakeLogPrefix(teamId, dataSetName),
-                IndxServer.Services.FileLoggerFactory.GetFactory(logFileName),
+                _loggerFactory,
                 configuration,
                 GetLicensePath())
             {

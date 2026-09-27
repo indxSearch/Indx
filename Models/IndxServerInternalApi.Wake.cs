@@ -116,7 +116,7 @@ namespace IndxServer.Models
             }
             catch (Exception ex)
             {
-                _logger.LogError(prefix + "wake failed: " + ex);
+                _logger.LogError(ex, "{Prefix}wake failed", prefix);
                 _wakeErrors[key] = "Wake failed: " + ex.Message;
             }
             finally
@@ -128,7 +128,7 @@ namespace IndxServer.Models
                     if (op.CancelRequested && instance.theInstance is not { IsDisposed: false, Status.SystemState: SystemState.Ready })
                     {
                         DisposeDataSetInstance(dataSetName, teamId);
-                        _logger.LogInformation(prefix + "wake cancelled, dataset returned to hibernation");
+                        _logger.LogInformation("{Prefix}wake cancelled, dataset returned to hibernation", prefix);
                     }
                 }
                 finally

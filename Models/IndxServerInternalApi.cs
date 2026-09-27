@@ -32,7 +32,7 @@ namespace IndxServer.Models
             persistence.CreateOrOpenDataSet((int)configuration);
 
             var licensePath = GetLicensePath();
-            var newMatcher = new SearchEngine(MakeLogPrefix(teamId, dataSetName), IndxServer.Services.FileLoggerFactory.GetFactory(logFileName),
+            var newMatcher = new SearchEngine(MakeLogPrefix(teamId, dataSetName), _loggerFactory,
                ResolveConfiguration(configuration, dataSetName), licensePath)
             {
                 Persistence = persistence
@@ -64,14 +64,17 @@ namespace IndxServer.Models
         #endregion Internal Properties
 
         #region Internal Methods
-        internal static void StartUpSystem(string dbConnectionString, string licensePath = "")
+        /// <param name="loggerFactory">The host's. The registry logs through it and hands it to every
+        /// engine, so what they log goes where the rest of the server's logging goes (the file, the
+        /// console or monitor, Application Insights) rather than to a file of its own.</param>
+        internal static void StartUpSystem(string dbConnectionString, ILoggerFactory loggerFactory, string licensePath = "")
         {
             if (_manager != null)  // Check the backing field directly
             {
                 throw new InvalidOperationException("IndxServerInternalApi.StartUpSystem shall only be called once");
             }
             LicensePath = licensePath;
-            Manager = new IndxServerInternalApi(dbConnectionString);
+            Manager = new IndxServerInternalApi(dbConnectionString, loggerFactory);
             Manager.InitializeSystem();
         }
 
@@ -118,7 +121,7 @@ namespace IndxServer.Models
 
             // Cold path: CreateOrOpen writes DefaultConfigurationNumber and nothing else can write
             // this column, so reaching here means a hand-edited or future-written row.
-            IndxServer.Services.FileLoggerFactory.Create<IndxServerInternalApi>(logFileName).LogWarning(
+            _manager?._logger.LogWarning(
                 "Dataset '{DataSet}' carries configuration {Configuration}, which is not supported; opening with the default.",
                 dataSetName, persisted);
             return ConfigurationParameters.Default;
@@ -230,7 +233,7 @@ namespace IndxServer.Models
             }
             catch (System.Exception ex)
             {
-                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxServerInternalApi.DoIndexAsync exception" + ex.ToString());
+                _logger.LogError(ex, "{Prefix}DoIndexAsync failed", MakeLogPrefix(teamId, dataSetName));
                 throw;
             }
             finally
@@ -267,7 +270,7 @@ namespace IndxServer.Models
             }
             catch (Exception ex)
             {
-                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxServerInternalAPI.GetFields exception" + ex.ToString());
+                _logger.LogError(ex, "{Prefix}GetFields failed", MakeLogPrefix(teamId, dataSetName));
                 throw;
             }
         }
@@ -284,7 +287,7 @@ namespace IndxServer.Models
             }
             catch (System.Exception ex)
             {
-                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxServerInternalAPI.GetState exception" + ex.ToString());
+                _logger.LogError(ex, "{Prefix}GetState failed", MakeLogPrefix(teamId, dataSetName));
                 throw;
             }
         }
@@ -435,7 +438,7 @@ namespace IndxServer.Models
             }
             catch (System.Exception ex)
             {
-                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxServerInternalAPI.Search exception" + ex.ToString());
+                _logger.LogError(ex, "{Prefix}Search failed", MakeLogPrefix(teamId, dataSetName));
                 throw;
             }
         }
@@ -467,7 +470,7 @@ namespace IndxServer.Models
                 }
             }
 
-            _logger.LogInformation($"Disposing {toDispose.Count} SearchEngine instances for team {teamId}");
+            _logger.LogInformation("Disposing {Count} SearchEngine instances for team {TeamId}", toDispose.Count, teamId);
             foreach (var (key, instance) in toDispose)
                 DisposeInstance(instance, key);
         }
@@ -496,7 +499,7 @@ namespace IndxServer.Models
             }
             catch (Exception ex)
             {
-                _logger.LogError($"Error disposing SearchEngine instance {key}: {ex.Message}");
+                _logger.LogError(ex, "Error disposing SearchEngine instance {Key}", key);
             }
         }
 
@@ -521,7 +524,7 @@ namespace IndxServer.Models
             }
 
             DisposeInstance(instance, key);
-            _logger.LogInformation($"Disposed SearchEngine instance for team {teamId}, dataset {dataSetName}");
+            _logger.LogInformation("Disposed SearchEngine instance for team {TeamId}, dataset {DataSet}", teamId, dataSetName);
         }
 
         /// <summary>
@@ -647,7 +650,7 @@ namespace IndxServer.Models
                 _instances.Remove(key);
             }
 
-            _logger.LogInformation(MakeLogPrefix(inst.TeamId, inst.DataSetName) + "idle-evicting (keep-alive countdown elapsed)");
+            _logger.LogInformation("{Prefix}idle-evicting (keep-alive countdown elapsed)", MakeLogPrefix(inst.TeamId, inst.DataSetName));
             DisposeInstance(inst, key);
             return true;
         }
@@ -739,7 +742,7 @@ namespace IndxServer.Models
             }
             catch (Exception ex)
             {
-                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxServerInternalApi.VectorSearch exception " + ex);
+                _logger.LogError(ex, "{Prefix}VectorSearch failed", MakeLogPrefix(teamId, dataSetName));
                 throw;
             }
         }
@@ -791,7 +794,7 @@ namespace IndxServer.Models
             }
             catch (Exception ex)
             {
-                _logger.LogError(MakeLogPrefix(teamId, dataSetName) + "IndxServerInternalApi.HybridSearch exception " + ex);
+                _logger.LogError(ex, "{Prefix}HybridSearch failed", MakeLogPrefix(teamId, dataSetName));
                 throw;
             }
         }
@@ -826,7 +829,7 @@ namespace IndxServer.Models
             {
                 engine.Persistence.DeleteSynonyms();
                 engine.SynonymList = null;
-                _logger.LogInformation(MakeLogPrefix(teamId, dataSetName) + "synonym list removed");
+                _logger.LogInformation("{Prefix}synonym list removed", MakeLogPrefix(teamId, dataSetName));
                 return true;
             }
 
@@ -835,8 +838,7 @@ namespace IndxServer.Models
                 return false;
 
             engine.SynonymList = list;
-            _logger.LogInformation(MakeLogPrefix(teamId, dataSetName)
-                + $"synonym list set ({list.Entries.Count} entries)");
+            _logger.LogInformation("{Prefix}synonym list set ({Count} entries)", MakeLogPrefix(teamId, dataSetName), list.Entries.Count);
             return true;
         }
 
@@ -897,8 +899,8 @@ namespace IndxServer.Models
                 return false;
             }
 
-            _logger.LogInformation(MakeLogPrefix(teamId, toDataSetName)
-                + $"synonym list copied from '{fromDataSetName}' ({copy.Entries.Count} entries)");
+            _logger.LogInformation("{Prefix}synonym list copied from '{From}' ({Count} entries)",
+                MakeLogPrefix(teamId, toDataSetName), fromDataSetName, copy.Entries.Count);
             return true;
         }
 
@@ -927,7 +929,7 @@ namespace IndxServer.Models
             db.RenameDataSet(dataSetName, teamId, newName);
             _boostStore?.Rename(teamId, dataSetName, newName);
             _metadataStore?.Rename(teamId, dataSetName, newName);
-            _logger.LogInformation(MakeLogPrefix(teamId, dataSetName) + $"renamed to '{newName}'");
+            _logger.LogInformation("{Prefix}renamed to '{NewName}'", MakeLogPrefix(teamId, dataSetName), newName);
 
             // Bring the renamed dataset back to where it was: a Ready engine reloads under the new
             // key the way TransferOwnership does; a Created shell just gets created on next touch.
@@ -1063,13 +1065,15 @@ namespace IndxServer.Models
         private readonly object _dictionaryLock = new();
         private readonly Dictionary<string, SearchEngineInstance> _instances = [];
         private readonly ILogger<IndxServerInternalApi> _logger;
+        private readonly ILoggerFactory _loggerFactory;
         private static IndxServerInternalApi? _manager;
         #endregion Private Fields
 
         #region Private Constructors
-        private IndxServerInternalApi(string searchDbConnectionString)
+        private IndxServerInternalApi(string searchDbConnectionString, ILoggerFactory loggerFactory)
         {
-            _logger = IndxServer.Services.FileLoggerFactory.Create<IndxServerInternalApi>(logFileName);
+            _loggerFactory = loggerFactory;
+            _logger = loggerFactory.CreateLogger<IndxServerInternalApi>();
             SearchDbConnectionString = searchDbConnectionString;
         }
         #endregion Private Constructors
@@ -1078,17 +1082,17 @@ namespace IndxServer.Models
         private void InitializeSystem()
         {
             const string tag = nameof(IndxServerInternalApi) + "." + nameof(InitializeSystem);
-            _logger.Log(LogLevel.Information, $"{tag} starting up");
+            _logger.LogInformation("{Tag} starting up", tag);
             if (string.IsNullOrEmpty(SearchDbConnectionString))
             {
-                _logger.LogError($"{tag} SearchDbConnectionString is null or empty");
+                _logger.LogError("{Tag} SearchDbConnectionString is null or empty", tag);
                 throw new InvalidOperationException("SearchDbConnectionString is null or empty");
             }
 
             var sqLiteManager = new SqLiteManager(SearchDbConnectionString);
             if (!sqLiteManager.DatabaseExists())
             {
-                _logger.LogInformation($"{tag} no database found at {SearchDbConnectionString}");
+                _logger.LogInformation("{Tag} no database found at {Database}", tag, SearchDbConnectionString);
                 return;
             }
             // Add the KeepAliveTimeHrs column to databases that predate it (existing rows backfill
@@ -1125,7 +1129,7 @@ namespace IndxServer.Models
             // warm-up has reached it yet.
             foreach (var (teamId, dataSet) in work)
                 _warmUpPending[MakeKey(dataSet, teamId)] = 0;
-            _logger.LogInformation($"{tag} warming up {total} dataset(s) across {owners.Count} team(s), workingSet {WorkingSetMb()} MB");
+            _logger.LogInformation("{Tag} warming up {Total} dataset(s) across {Teams} team(s), workingSet {WorkingSetMb} MB", tag, total, owners.Count, WorkingSetMb());
 
             var overallSw = System.Diagnostics.Stopwatch.StartNew();
             int i = 0, loaded = 0, skipped = 0, failed = 0;
@@ -1143,13 +1147,13 @@ namespace IndxServer.Models
                     var engine = wrapper?.theInstance;
                     if (wrapper == null || engine == null)
                     {
-                        _logger.LogWarning($"{tag} [{i}/{total}] no engine instance for team {teamId} dataset '{dataSet}', skipping");
+                        _logger.LogWarning("{Tag} [{I}/{Total}] no engine instance for team {TeamId} dataset '{DataSet}', skipping", tag, i, total, teamId, dataSet);
                         skipped++;
                         continue;
                     }
                     if (engine.Persistence == null)
                     {
-                        _logger.LogWarning($"{tag} [{i}/{total}] instance.Persistence is null for team {teamId} dataset '{dataSet}', skipping");
+                        _logger.LogWarning("{Tag} [{I}/{Total}] instance.Persistence is null for team {TeamId} dataset '{DataSet}', skipping", tag, i, total, teamId, dataSet);
                         skipped++;
                         continue;
                     }
@@ -1157,14 +1161,14 @@ namespace IndxServer.Models
                     // loading itself. The engine shell stays registered but unloaded.
                     if (engine.Persistence.ReadKeepAliveHrs() == 0)
                     {
-                        _logger.LogInformation($"{tag} [{i}/{total}] skipping '{dataSet}' team {teamId}: KeepAliveTimeHrs=0 (client-managed)");
+                        _logger.LogInformation("{Tag} [{I}/{Total}] skipping '{DataSet}' team {TeamId}: KeepAliveTimeHrs=0 (client-managed)", tag, i, total, dataSet, teamId);
                         skipped++;
                         continue;
                     }
                     var records = engine.Persistence.NumberOfJsonRecords();
                     if (records == 0)
                     {
-                        _logger.LogInformation($"{tag} [{i}/{total}] skipping '{dataSet}' team {teamId}: 0 records");
+                        _logger.LogInformation("{Tag} [{I}/{Total}] skipping '{DataSet}' team {TeamId}: 0 records", tag, i, total, dataSet, teamId);
                         skipped++;
                         continue;
                     }
@@ -1177,18 +1181,20 @@ namespace IndxServer.Models
                         // while we worked through the list — same double-check as ResolveEngine.
                         if (engine.Status.SystemState != SystemState.Created)
                         {
-                            _logger.LogInformation($"{tag} [{i}/{total}] '{dataSet}' team {teamId} already {engine.Status.SystemState}, skipping");
+                            _logger.LogInformation("{Tag} [{I}/{Total}] '{DataSet}' team {TeamId} already {State}, skipping", tag, i, total, dataSet, teamId, engine.Status.SystemState);
                             skipped++;
                             continue;
                         }
 
-                        _logger.LogInformation($"{tag} [{i}/{total}] loading '{dataSet}' team {teamId}: {records} records, workingSet {beforeMb} MB");
+                        _logger.LogInformation("{Tag} [{I}/{Total}] loading '{DataSet}' team {TeamId}: {Records} records, workingSet {WorkingSetMb} MB", tag, i, total, dataSet, teamId, records, beforeMb);
                         var monitor = new ProcessMonitor { TimeoutSeconds = 600 };
                         using var warmUpScope = TrackMonitor(dataSet, teamId, monitor);
                         engine.LoadFromDatabaseSync(monitor);
                         if (!monitor.WaitForCompletion())
                         {
-                            _logger.LogError($"{tag} [{i}/{total}] load of '{dataSet}' team {teamId} did not complete; dataset stays non-Ready");
+                            // A thrown failure is logged, with its stack, by the engine itself; this says what it
+                            // means for the warm-up. Exception is null when it timed out instead.
+                            _logger.LogError(monitor.Exception, "{Tag} [{I}/{Total}] load of '{DataSet}' team {TeamId} did not complete; dataset stays non-Ready", tag, i, total, dataSet, teamId);
                             failed++;
                             continue;
                         }
@@ -1196,7 +1202,7 @@ namespace IndxServer.Models
                         engine.Index(monitor: monitor);
                         if (!monitor.WaitForCompletion())
                         {
-                            _logger.LogError($"{tag} [{i}/{total}] index of '{dataSet}' team {teamId} did not complete; dataset stays non-Ready");
+                            _logger.LogError(monitor.Exception, "{Tag} [{I}/{Total}] index of '{DataSet}' team {TeamId} did not complete; dataset stays non-Ready", tag, i, total, dataSet, teamId);
                             failed++;
                             continue;
                         }
@@ -1205,17 +1211,17 @@ namespace IndxServer.Models
                     sw.Stop();
                     var afterMb = WorkingSetMb();
                     loaded++;
-                    _logger.LogInformation($"{tag} [{i}/{total}] loaded '{dataSet}' in {sw.ElapsedMilliseconds} ms, workingSet now {afterMb} MB (delta {afterMb - beforeMb} MB)");
+                    _logger.LogInformation("{Tag} [{I}/{Total}] loaded '{DataSet}' in {ElapsedMs} ms, workingSet now {WorkingSetMb} MB (delta {DeltaMb} MB)", tag, i, total, dataSet, sw.ElapsedMilliseconds, afterMb, afterMb - beforeMb);
                 }
                 catch (Exception ex)
                 {
                     failed++;
-                    _logger.LogError($"{tag} [{i}/{total}] failed warming '{dataSet}' team {teamId}: {ex}");
+                    _logger.LogError(ex, "{Tag} [{I}/{Total}] failed warming '{DataSet}' team {TeamId}", tag, i, total, dataSet, teamId);
                 }
             }
 
             overallSw.Stop();
-            _logger.LogInformation($"{tag} completed: {loaded} loaded, {skipped} skipped, {failed} failed, {overallSw.ElapsedMilliseconds} ms, workingSet {WorkingSetMb()} MB");
+            _logger.LogInformation("{Tag} completed: {Loaded} loaded, {Skipped} skipped, {Failed} failed, {ElapsedMs} ms, workingSet {WorkingSetMb} MB", tag, loaded, skipped, failed, overallSw.ElapsedMilliseconds, WorkingSetMb());
         }
 
         /// <summary>
@@ -1337,7 +1343,7 @@ namespace IndxServer.Models
             // Persistence stays null → nothing this engine does can touch or lock the database.
             using var validate = new SearchEngine(
                 MakeLogPrefix(teamId, dataSetName),
-                IndxServer.Services.FileLoggerFactory.GetFactory(logFileName),
+                _loggerFactory,
                 configuration,
                 GetLicensePath());
             try
@@ -1370,6 +1376,7 @@ namespace IndxServer.Models
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "{Prefix}validating the key field '{KeyField}' threw", MakeLogPrefix(teamId, dataSetName), declared);
                 return DescribeKeyedLoadFailure(declared, ex.Message);
             }
         }
@@ -1572,12 +1579,13 @@ namespace IndxServer.Models
                         bool indexed = indexMonitor.WaitForCompletion();
 
                         if (loaded && indexed)
-                            _logger.LogInformation(MakeLogPrefix(teamId, dataSetName)
-                                + $"auto-loaded on demand (KeepAliveTimeHrs={instance.KeepAliveTimeHrs})");
+                            _logger.LogInformation("{Prefix}auto-loaded on demand (KeepAliveTimeHrs={KeepAliveTimeHrs})", MakeLogPrefix(teamId, dataSetName), instance.KeepAliveTimeHrs);
                         else
-                            _logger.LogError(MakeLogPrefix(teamId, dataSetName)
-                                + $"auto-load timed out (load completed:{loaded}, index completed:{indexed}) — "
-                                + "releasing the request; the dataset stays non-Ready until reloaded");
+                            // A thrown failure is logged, with its stack, by the engine itself;
+                            // Exception is null when a wait timed out instead.
+                            _logger.LogError(loadMonitor.Exception ?? indexMonitor.Exception,
+                                "{Prefix}auto-load did not complete (load completed:{Loaded}, index completed:{Indexed}) — "
+                                + "releasing the request; the dataset stays non-Ready until reloaded", MakeLogPrefix(teamId, dataSetName), loaded, indexed);
                     }
                 }
                 if (disposedWhileQueued)
@@ -1623,7 +1631,7 @@ namespace IndxServer.Models
                 var licensePath = GetLicensePath();
                 var matcher = new SearchEngine(
                     MakeLogPrefix(teamId, dataSetName),
-                    IndxServer.Services.FileLoggerFactory.GetFactory(logFileName),
+                    _loggerFactory,
                     ResolveConfiguration(configuration, dataSetName),
                     licensePath)
                 {
@@ -1641,8 +1649,7 @@ namespace IndxServer.Models
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, MakeLogPrefix(teamId, dataSetName)
-                        + "stored synonym list could not be parsed — continuing without it");
+                    _logger.LogError(ex, "{Prefix}stored synonym list could not be parsed — continuing without it", MakeLogPrefix(teamId, dataSetName));
                 }
 
                 var instance = new SearchEngineInstance

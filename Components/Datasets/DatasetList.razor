@@ -5,6 +5,7 @@
 @using Indx.Api
 @inject IDatasetEngines Engines
 @inject NavigationManager NavigationManager
+@inject ILogger<DatasetList> Logger
 @implements IDisposable
 
 <div class="indx-datasets-heading">
@@ -240,7 +241,7 @@ else
 
     private Task CreateDataset()
     {
-        _createError = DatasetCreation.TryCreate(_newDatasetName, TeamId, out var name);
+        _createError = DatasetCreation.TryCreate(_newDatasetName, TeamId, Logger, out var name);
         if (_createError != null) return Task.CompletedTask;
         _newDatasetName = string.Empty;
         _showNewDatasetForm = false;

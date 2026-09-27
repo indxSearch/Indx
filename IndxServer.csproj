@@ -82,7 +82,7 @@
 		</PackageReference>
 		<PackageReference Include="Microsoft.VisualStudio.Web.CodeGeneration.Design" Version="10.0.2" />
 		<PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
-		<!-- NLog writes IndxServer.log (Services/FileLoggerFactory.cs). It came in through the library
+		<!-- NLog writes IndxServer.log (Services/ServerLogFile.cs). It came in through the library
 		     until Sep 2026; the library no longer references it. -->
 		<PackageReference Include="NLog" Version="6.1.0" />
 		<PackageReference Include="NLog.Extensions.Logging" Version="6.1.1" />

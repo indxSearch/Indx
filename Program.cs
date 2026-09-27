@@ -635,6 +635,10 @@ public class Program
         // redirected (Azure log stream, docker logs, systemd). --no-monitor turns it off.
         // See Notes/terminal-monitor-ideas.md.
         builder.AddIndxMonitor(args);
+        // After the monitor, which clears the providers in interactive mode. See ServerLogFile.
+        // Indx:LogFile moves it, e.g. onto a container volume; relative paths follow ResolveLogPath.
+        builder.Logging.AddIndxLogFile(builder.Configuration["Indx:LogFile"] is { Length: > 0 } logFile
+            ? logFile : IndxServerInternalApi.logFileName);
 
         // License bootstrapper: downloads the .license file from the Indx portal (hardcoded URL)
         // using a configured license token. No-op when no token is configured.
@@ -962,7 +966,8 @@ public class Program
         try
         {
             var licensePath = builder.Configuration["Indx:LicenseFile"] ?? "";
-            IndxServerInternalApi.StartUpSystem(searchConnectionString, licensePath);
+            IndxServerInternalApi.StartUpSystem(searchConnectionString,
+                app.Services.GetRequiredService<ILoggerFactory>(), licensePath);
             Console.WriteLine($"✓ Search system initialized at: {searchDbPath}");
 
             // Ensure the DataSetAccess table exists for existing databases (idempotent).

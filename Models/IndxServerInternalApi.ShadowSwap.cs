@@ -211,7 +211,7 @@ namespace IndxServer.Models
                 monitor.WaitForCompletion();
                 if (!monitor.Succeeded)
                     throw new InvalidOperationException(
-                        $"Shadow indexing failed: {monitor.ErrorMessage ?? "unknown error"}");
+                        $"Shadow indexing failed: {monitor.ErrorMessage ?? "unknown error"}", monitor.Exception);
 
                 IServerSearchEngine? swappedOut;
                 lock (_dictionaryLock)
@@ -304,7 +304,7 @@ namespace IndxServer.Models
                 monitor.WaitForCompletion();
                 if (!monitor.Succeeded)
                     throw new InvalidOperationException(
-                        $"Shadow Index ({phase}) failed: {monitor.ErrorMessage ?? "unknown error"}");
+                        $"Shadow Index ({phase}) failed: {monitor.ErrorMessage ?? "unknown error"}", monitor.Exception);
             }
             finally
             {

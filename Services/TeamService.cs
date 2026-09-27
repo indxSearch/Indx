@@ -9,7 +9,7 @@ namespace IndxServer.Services
     /// HTTP — the Blazor pages (and registration) call this service directly. The team
     /// <see cref="Team.Name"/> is the only human-facing name; it is globally unique and URL-safe.
     /// </summary>
-    public class TeamService(ApplicationDbContext db, IEditionService edition, ITeamDatasets engines)
+    public class TeamService(ApplicationDbContext db, IEditionService edition, ITeamDatasets engines, ILogger<TeamService> logger)
     {
         /// <summary>Thrown when an operation would violate a team invariant (name taken, last admin, etc.).</summary>
         public sealed class TeamException(string message) : Exception(message);
@@ -139,7 +139,12 @@ namespace IndxServer.Services
         public List<string> GetDatasetNames(Guid teamId)
         {
             try { return engines.GetTeamDataSets(teamId.ToString()); }
-            catch { return []; }
+            catch (Exception ex)
+            {
+                // An empty list keeps the page up; the log says it was a failure, not an empty team.
+                logger.LogError(ex, "Listing the datasets of team {TeamId} failed", teamId);
+                return [];
+            }
         }
 
         /// <summary>

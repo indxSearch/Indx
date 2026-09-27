@@ -2,6 +2,7 @@ using Indx.Storage;
 using Indx.Utilities;
 
 using IndxServer.Models;
+using Microsoft.Extensions.Logging;
 
 namespace IndxServer.Services
 {
@@ -10,7 +11,7 @@ namespace IndxServer.Services
     public static class DatasetCreation
     {
         /// <summary>Returns null on success (the dataset now exists, empty) or the message to show.</summary>
-        public static string? TryCreate(string rawName, string teamId, out string name)
+        public static string? TryCreate(string rawName, string teamId, ILogger logger, out string name)
         {
             name = rawName.Trim();
             if (name.Length == 0) return "Enter a dataset name.";
@@ -24,6 +25,8 @@ namespace IndxServer.Services
             }
             catch (Exception ex)
             {
+                // The person sees the message; the stack is only here.
+                logger.LogError(ex, "Creating dataset '{DataSet}' for team {TeamId} failed", name, teamId);
                 return $"Failed to create dataset: {ex.Message}";
             }
         }
