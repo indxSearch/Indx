@@ -357,6 +357,8 @@ A background sweeper frees idle *Timed* datasets; the next access transparently 
 
 **Manual hibernation.** From a dataset's *Options* tab you can **Hibernate now** an *Off* dataset to free its memory immediately (the data stays on disk). A hibernated dataset shows a **💤 Hibernated** state with a **Wake up** action that reloads it.
 
+![A hibernated dataset: the Hibernated chip in the breadcrumb, a line saying the documents are on disk but not in memory, and a Wake up button](docs/images/console-hibernated-wake.png)
+
 > This is a *deep* hibernate: the in-memory engine is disposed and rebuilt from `indx.db` on wake, which is the right model when storage is the source of truth. It is distinct from the core library's lighter `Hibernate`/`WakeUp` (which keeps documents resident in RAM and only drops the index).
 
 ![The dataset list with one dataset showing a Hibernated state chip beside the others marked Ready](docs/images/console-datasets-hibernated.png)
