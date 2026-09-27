@@ -1,19 +1,20 @@
 # Screenshots
 
-Images for `README.md` and `docs/release-notes/`. Reference them as `docs/images/<name>.jpg` from
-the repository root, or `../images/<name>.jpg` from inside `docs/release-notes/`.
+Images for `README.md` and `docs/release-notes/`. Reference them as `docs/images/<name>.png` from
+the repository root, or `../images/<name>.png` from inside `docs/release-notes/`.
 
 | File | Shows |
 |---|---|
-| `console-datasets.jpg` | A team's dataset list: five datasets, document counts, Ready chips |
-| `console-datasets-hibernated.jpg` | The same list with a hibernated dataset, so the chip is visible |
-| `console-field-configuration.jpg` | Field configuration on a 57-field dataset: types, the four roles, weights |
-| `admin-users.jpg` | Admin → Users: accounts and platform roles |
-| `admin-teams.jpg` | Admin → Teams: both teams with their members and team roles |
-| `admin-datasets.jpg` | Admin → Datasets: every dataset across every team, with keep-alive |
-| `admin-monitor.jpg` | Admin → Monitor: the in-memory event stream |
+| `console-datasets.png` | A team's dataset list: five datasets, document counts, Ready chips |
+| `console-datasets-hibernated.png` | The same list with a hibernated dataset, so the chip is visible |
+| `console-field-configuration.png` | Field configuration on a nested 71-field dataset: objects and their children, types, the four roles, weights |
+| `admin-users.png` | Admin → Users: accounts and platform roles |
+| `admin-teams.png` | Admin → Teams: both teams with their members and team roles |
+| `admin-datasets.png` | Admin → Datasets: every dataset across every team, with keep-alive |
+| `admin-monitor.png` | Admin → Monitor: the in-memory event stream |
 
-1456x830, captured in the dark theme at the default zoom.
+**2912x1660 PNG** — a 1456x830 viewport at `deviceScaleFactor: 2`, dark theme, default zoom.
+Captured by `presentation/capture.mjs` (Playwright), not by hand.
 
 ## No customer data is in these
 
@@ -34,12 +35,14 @@ carries enough to rebuild it. In outline:
    `Identity:AdminEmail` — that is what skips the setup wizard, whose second step is an interactive
    circuit and cannot be scripted.
 3. `node seed.mjs people`, then `teams` with the server stopped, then `datasets`, then `sleep`.
-4. Capture with a browser at 1456x830.
+4. `node capture.mjs` writes all seven. `--light` for the light theme.
 
-Retake them when the UI meaningfully changes. A screenshot nobody looks at is how a release ships a
-picture of a broken layout — which is not hypothetical: `admin-monitor.jpg` was captured while the
-page's scoped stylesheet was matching nothing, and it shows "1 minute ago" wrapped over three lines.
-That is fixed; the image still needs retaking.
+Retake them when the UI meaningfully changes, and **look at them** rather than trusting the run. A
+screenshot nobody looks at is how a release ships a picture of a broken layout — not hypothetical
+here: the monitor page's scoped stylesheet was matching nothing, and the picture was the only thing
+that showed it.
+
+`Notes/screenshot-run.md` is the full procedure.
 
 ## Known cosmetic issue
 
