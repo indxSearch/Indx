@@ -2,6 +2,8 @@
 
 A self-hosted search service built on [Indx Search](https://indx.co). Blazor Server UI, HTTP API with JWT authentication, user management, and everything needed to run a multi-user search service on your own infrastructure.
 
+![The dataset list for a team, showing five datasets with their state and document counts](docs/images/console-datasets.png)
+
 ## What's Included
 
 - **Dashboard**: teams, datasets, field configuration with weight sliders, search preview,
@@ -69,6 +71,11 @@ Everything is organized around teams:
 - The HTTP API is team-scoped: every dataset route is
   `/api/teams/{team}/datasets/{dataset}/…`.
 
+![Admin, Teams: two teams listed with their members and each member's role](docs/images/admin-teams.png)
+
+**Admin → Users** lists every account and its platform role; **Admin → Teams**, above, is where
+membership and per-team roles are managed.
+
 ## Loading Data
 
 Data goes in as **JSON**, from the web UI or over the API.
@@ -76,6 +83,11 @@ Data goes in as **JSON**, from the web UI or over the API.
 **From the UI:** open your dataset, upload a JSON file, mark which fields are searchable
 (and filterable / facetable / sortable), then **Load & Index**. The search preview tab lets
 you try queries immediately.
+
+![Field configuration: each field with its detected type, the four role checkboxes and a weight slider. Nested objects are listed with their children indented beneath them](docs/images/console-field-configuration.png)
+
+Nested objects appear as their own row with the fields inside them indented underneath, so the
+structure of the source document stays readable while you configure it.
 
 **The format:** an array of JSON documents. Nested objects become dotted field names
 (`brand.displayName`), arrays are supported, and fields are auto-detected with types on
@@ -347,6 +359,13 @@ A background sweeper frees idle *Timed* datasets; the next access transparently 
 
 > This is a *deep* hibernate: the in-memory engine is disposed and rebuilt from `indx.db` on wake, which is the right model when storage is the source of truth. It is distinct from the core library's lighter `Hibernate`/`WakeUp` (which keeps documents resident in RAM and only drops the index).
 
+![The dataset list with one dataset showing a Hibernated state chip beside the others marked Ready](docs/images/console-datasets-hibernated.png)
+
+**Admin → Datasets** shows every dataset across every team with its state, document count, when it
+was last indexed, and its keep-alive policy:
+
+![Admin, Datasets: every dataset across both teams with state, document count, last indexed and keep-alive](docs/images/admin-datasets.png)
+
 Over the HTTP API, the per-dataset `Hibernate`, `WakeUp`, and `LoadFromDatabase` operations control loading. See the [API reference](https://v5.docs.indx.co).
 
 ## Monitor
@@ -360,6 +379,8 @@ reading the same thing.
 **Admin → Monitor** shows the event stream and the instance figures. It needs no terminal, so it
 is the one to use on a hosted deployment, and it is where the stream is visible when an agent is
 configuring a dataset over MCP or the API.
+
+![Admin, Monitor: the instance figures above a table of recent events, newest first](docs/images/admin-monitor.png)
 
 Admin only: an event names the team whose dataset changed, so a member of one team must not read
 another's. Events are held in memory and start again when the server restarts.

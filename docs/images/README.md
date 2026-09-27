@@ -8,7 +8,7 @@ the repository root, or `../images/<name>.png` from inside `docs/release-notes/`
 | `console-datasets.png` | A team's dataset list: five datasets, document counts, Ready chips |
 | `console-datasets-hibernated.png` | The same list with a hibernated dataset, so the chip is visible |
 | `console-field-configuration.png` | Field configuration on a nested 71-field dataset: objects and their children, types, the four roles, weights |
-| `admin-users.png` | Admin → Users: accounts and platform roles |
+| `admin-users.png` | Admin → Users: accounts and platform roles. Not in the root README — six images is already a lot for one page; this one is here for release notes |
 | `admin-teams.png` | Admin → Teams: both teams with their members and team roles |
 | `admin-datasets.png` | Admin → Datasets: every dataset across every team, with keep-alive |
 | `admin-monitor.png` | Admin → Monitor: the in-memory event stream |
