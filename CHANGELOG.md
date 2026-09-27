@@ -151,6 +151,8 @@ in the AI skill.
 
 ### Fixed
 
+- **An upload cut off in the middle fails** (IndxSearchLib, next version) rather than loading the
+  records that arrived before the break and reporting success.
 - **Coverage ranking** (IndxSearchLib 5.0.0-RC240926): a search containing æ, ø, å or another
   folded character fully matches documents with the same word; a query being typed ranks by its
   whole text, so `knut h` puts Knut Hamsun above Knut Faldbakken; words in order anywhere in a
