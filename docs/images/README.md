@@ -12,9 +12,14 @@ the repository root, or `../images/<name>.png` from inside `docs/release-notes/`
 | `admin-teams.png` | Admin → Teams: both teams with their members and team roles |
 | `admin-datasets.png` | Admin → Datasets: every dataset across every team, with keep-alive |
 | `admin-monitor.png` | Admin → Monitor: the in-memory event stream |
+| `tui.png` | The terminal monitor: instance figures, the dataset table, the event stream |
 
-**2912x1660 PNG** — a 1456x830 viewport at `deviceScaleFactor: 2`, dark theme, default zoom.
-Captured by `presentation/capture.mjs` (Playwright), not by hand.
+The console shots are **2912x1660 PNG** — a 1456x830 viewport at `deviceScaleFactor: 2`, dark
+theme, default zoom — written by `presentation/capture.mjs` (Playwright), not by hand.
+
+`tui.png` is hand-captured, and has to be: Terminal.Gui has no DOM, so nothing can drive it the way
+Playwright drives the browser. Take it with the macOS window capture (`Cmd+Shift+4`, `Space`, click
+the terminal) while the seed's activity is still in the event ring.
 
 ## No customer data is in these
 

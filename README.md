@@ -389,9 +389,7 @@ another's. Events are held in memory and start again when the server restarts.
 
 Start the server from a terminal and it draws the same view there, with no browser and no login.
 
-```
- ⬛ indx monitor      datasets 5 (3 loaded)   docs 1,712,004   heap 412MB   ws 3,102MB   native 412 blk
-```
+![The terminal monitor: a header line of instance figures, a table of datasets with their team, state and counts, and an event stream below it](docs/images/tui.png)
 
 The dataset table shows state, document count, records on disk, how long since each was last used,
 and its idle-eviction countdown. Below it, an event stream carries dataset state changes, idle
