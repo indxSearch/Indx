@@ -470,7 +470,7 @@ namespace IndxServer.Models
                 }
             }
 
-            _logger.LogInformation("Disposing {Count} SearchEngine instances for team {TeamId}", toDispose.Count, teamId);
+            _lifecycleLogger.LogInformation("Disposing {Count} SearchEngine instances for team {TeamId}", toDispose.Count, teamId);
             foreach (var (key, instance) in toDispose)
                 DisposeInstance(instance, key);
         }
@@ -524,7 +524,7 @@ namespace IndxServer.Models
             }
 
             DisposeInstance(instance, key);
-            _logger.LogInformation("Disposed SearchEngine instance for team {TeamId}, dataset {DataSet}", teamId, dataSetName);
+            _lifecycleLogger.LogInformation("Disposed SearchEngine instance for team {TeamId}, dataset {DataSet}", teamId, dataSetName);
         }
 
         /// <summary>
@@ -1066,6 +1066,14 @@ namespace IndxServer.Models
         private readonly Dictionary<string, SearchEngineInstance> _instances = [];
         private readonly ILogger<IndxServerInternalApi> _logger;
         private readonly ILoggerFactory _loggerFactory;
+        /// <summary>
+        /// Instances being disposed: mechanics the terminal monitor already shows as a phase change,
+        /// read by polling. Its own category so the monitor's pane can leave them out
+        /// (<see cref="Monitor.MonitorLoggerProvider.Minimum"/>) while the file keeps them; for a
+        /// deleted dataset this is the only line the file gets.
+        /// </summary>
+        private readonly ILogger _lifecycleLogger;
+        internal const string LifecycleLogCategory = "IndxServer.Models.IndxServerInternalApi.Lifecycle";
         private static IndxServerInternalApi? _manager;
         #endregion Private Fields
 
@@ -1074,6 +1082,7 @@ namespace IndxServer.Models
         {
             _loggerFactory = loggerFactory;
             _logger = loggerFactory.CreateLogger<IndxServerInternalApi>();
+            _lifecycleLogger = loggerFactory.CreateLogger(LifecycleLogCategory);
             SearchDbConnectionString = searchDbConnectionString;
         }
         #endregion Private Constructors

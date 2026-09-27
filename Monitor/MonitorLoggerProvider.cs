@@ -144,7 +144,10 @@ namespace IndxServer.Monitor
         /// pane that shows those is a pane an operator learns to ignore.</para>
         /// </summary>
         internal static LogLevel Minimum(string category)
-            => category.StartsWith("IndxServer", StringComparison.Ordinal)
+            // The registry's instance-disposal lines say what the pane already shows as a phase
+            // change it reads by polling. The file keeps them; the pane only wants them if they warn.
+            => category == Models.IndxServerInternalApi.LifecycleLogCategory ? LogLevel.Warning
+             : category.StartsWith("IndxServer", StringComparison.Ordinal)
                // The one Microsoft category ASP.NET's own default configuration keeps at
                // Information, and rightly: "Now listening on ..." and "Application is shutting
                // down" are the server telling you what it is doing, not a library narrating.
