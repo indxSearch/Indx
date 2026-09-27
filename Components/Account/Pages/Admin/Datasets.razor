@@ -48,7 +48,10 @@ else
 {
     @* systm Table: seven columns do not fit a phone, so the table scrolls inside its own frame
        with the dataset name pinned, and reaches the right edge of the screen while it does. *@
-    <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" AriaLabel="All datasets" Class="admin-datasets-table">
+    @* Carries the scope attribute that Datasets.razor.css's ::deep rules need above the table;
+   systm Table's own wrapper does not have it, so without this the stylesheet matches nothing. *@
+<div class="admin-datasets-table-wrap">
+<Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" AriaLabel="All datasets" Class="admin-datasets-table">
         <thead>
             <tr>
                 <th scope="col">Dataset</th>
@@ -118,6 +121,7 @@ else
             }
         </tbody>
     </Table>
+</div>
 }
 
 @code {

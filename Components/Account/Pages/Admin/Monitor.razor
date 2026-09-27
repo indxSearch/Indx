@@ -58,6 +58,11 @@ else
         @* Scrollable so that a long line widens the frame and never the page. No widths on the
            header cells: a fixed Time and Source leave a phone nothing for the column that matters,
            and at that width the row stacks instead (Monitor.razor.css). *@
+        @* The wrapper is not decoration. Scoped CSS compiles ::deep to "[scope] .selector", so the
+           rules in Monitor.razor.css need an element authored in THIS file above the table to
+           carry the scope attribute. systm Table renders its own wrapper, so without this there is
+           no such ancestor and the whole stylesheet silently matches nothing. *@
+        <div class="admin-monitor-table-wrap">
         <Table Scrollable BleedEnd="var(--page-gutter)" AriaLabel="Server activity" Class="admin-monitor-table">
             <thead>
                 <tr><th scope="col">Time</th><th scope="col">Source</th><th scope="col">What</th></tr>
@@ -75,6 +80,7 @@ else
                 }
             </tbody>
         </Table>
+        </div>
 
         <p style="color: var(--lv5); margin-top: 24px;">
             The most recent @_events.Count. These are kept in memory only, so they start again
