@@ -50,14 +50,14 @@ public class Program
         // ============================================
         // DATABASE CONFIGURATION
         // ============================================
-        var identityConnectionString = ConnectionStringHelper.GetIdentityConnectionString(builder.Configuration);
-        var dbPath = ConnectionStringHelper.ExtractDbPath(identityConnectionString);
+        var identityConnectionString = ServerConnectionStrings.GetIdentityConnectionString(builder.Configuration);
+        var dbPath = ServerConnectionStrings.ExtractDbPath(identityConnectionString);
         Console.WriteLine($"Using Identity database: {dbPath}");
 
         // Ensure database directory exists (works on both local and Azure)
         try
         {
-            ConnectionStringHelper.EnsureDatabaseDirectoryExists(identityConnectionString);
+            ServerConnectionStrings.EnsureDatabaseDirectoryExists(identityConnectionString);
 
             // Additional check: manually ensure directory exists for Azure compatibility
             var dbDirectory = Path.GetDirectoryName(dbPath);
@@ -905,14 +905,14 @@ public class Program
         // ============================================
         // INTERNAL API INITIALIZATION
         // ============================================
-        var searchConnectionString = ConnectionStringHelper.GetSearchDataConnectionString(builder.Configuration);
-        var searchDbPath = ConnectionStringHelper.ExtractDbPath(searchConnectionString);
+        var searchConnectionString = ServerConnectionStrings.GetSearchDataConnectionString(builder.Configuration);
+        var searchDbPath = ServerConnectionStrings.ExtractDbPath(searchConnectionString);
         Console.WriteLine($"Using Search database: {searchDbPath}");
 
         // Ensure search database directory exists (works on both local and Azure)
         try
         {
-            ConnectionStringHelper.EnsureDatabaseDirectoryExists(searchConnectionString);
+            ServerConnectionStrings.EnsureDatabaseDirectoryExists(searchConnectionString);
 
             // Additional check: manually ensure directory exists for Azure compatibility
             var searchDbDirectory = Path.GetDirectoryName(searchDbPath);

@@ -286,7 +286,7 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     RateLimits__Api__Burst: '200'
     WEBSITES_ENABLE_APP_SERVICE_STORAGE: 'true'
 
-    // Persistent SQLite paths (overrides ConnectionStringHelper default detection)
+    // Persistent SQLite paths (overrides ServerConnectionStrings default detection)
     ConnectionStrings__IdentityConnection: 'Data Source=/home/data/identity.db'
     ConnectionStrings__SearchDataConnection: '/home/data/indx.db'
 

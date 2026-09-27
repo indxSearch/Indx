@@ -151,6 +151,13 @@ in the AI skill.
 
 ### Fixed
 
+- **`appsettings.Production.json` is read on Linux.** It was named `appsettings.production.json`;
+  ASP.NET looks for the environment name as spelled, and Linux file names are case-sensitive, so
+  the production overrides (closed registration, among others) were silently skipped there.
+- **On a Linux App Service the databases go under `/home`.** Without a configured connection
+  string the server used `d:/home/IndxData`, the Windows path, on every App Service plan; on
+  Linux that is a relative directory the container loses on restart. It now follows `HOME`, as
+  the log file does. Windows plans are unchanged.
 - **An upload cut off in the middle fails** (IndxSearchLib, next version) rather than loading the
   records that arrived before the break and reporting success.
 - **Coverage ranking** (IndxSearchLib 5.0.0-RC240926): a search containing æ, ø, å or another
