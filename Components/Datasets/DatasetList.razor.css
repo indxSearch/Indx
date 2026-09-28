@@ -128,41 +128,33 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* ── The role matrix ─────────────────────────────────────────────────────────
-   The four roles are one fact in four parts, so they are drawn together rather than continuing
-   the list. Outlined rather than filled: the same hairline as the rule above the state row
-   (--lv2), so the two divisions on the card read as one weight. No shadow, as everywhere.
-
-   It spans both columns of the detail grid, so the list reads past it rather than around it. */
-.indx-dataset-card-roles {
+/* ── The field cloud ────────────────────────────────────────────────────────
+   The Search preview's facet values (SearchPreviewTab.razor.css): chips that wrap, each one
+   truncating rather than widening its row, with the remainder counted at the end. Spans both
+   columns of the detail grid, since the names are the content and the label column would leave
+   them a third of the card. */
+.indx-dataset-card-fields {
     grid-column: 1 / -1;
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    margin: 2px 0 4px;
-    border-radius: var(--radius);
-    border: 0.5px solid var(--lv2);
-    /* The cells carry the inner lines with their own borders, which would otherwise square off
-       the corners the radius just rounded. */
-    overflow: hidden;
-}
-
-/* Padding moves to the cells: with the dividers drawn, the space has to sit inside each cell
-   rather than between them, or the lines float away from what they separate. */
-.indx-dataset-card-role {
     display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
     min-width: 0;
-    padding: 7px 10px;
+    margin: 2px 0 2px;
 }
 
-/* One hairline per shared edge: the left column draws the vertical, the top row the horizontal,
-   so no line is drawn twice and none lands on the outer border. */
-.indx-dataset-card-role:nth-child(odd)   { border-right: 0.5px solid var(--lv2); }
-.indx-dataset-card-role:nth-child(-n+2)  { border-bottom: 0.5px solid var(--lv2); }
+.indx-dataset-card-field {
+    display: inline-block;
+    max-width: 140px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
 
-/* Inside the matrix the label no longer needs the list's fixed column. */
-.indx-dataset-card-role .indx-dataset-card-term {
-    font-weight: var(--reg);
+.indx-dataset-card-field-more {
+    font: var(--text-xs);
+    color: var(--lv5);
+    white-space: nowrap;
+    margin-left: 2px;
 }

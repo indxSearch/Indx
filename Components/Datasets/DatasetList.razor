@@ -72,13 +72,19 @@ else
                         {
                             <span class="indx-dataset-card-term">Fields</span>
                             <span class="indx-dataset-card-value">@f.Total</span>
-                            @* The four roles are one fact in four parts, so they get their own
-                               block rather than four more rows of the log. *@
-                            <span class="indx-dataset-card-roles">
-                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Searchable</span><span class="indx-dataset-card-value">@f.Searchable</span></span>
-                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Filterable</span><span class="indx-dataset-card-value">@f.Filterable</span></span>
-                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Facetable</span><span class="indx-dataset-card-value">@f.Facetable</span></span>
-                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Preloaded</span><span class="indx-dataset-card-value">@f.Preloaded</span></span>
+                            @* The Search preview's facet cloud (SearchPreviewTab): chips that wrap,
+                               each one truncating rather than widening the row. Capped, with the
+                               remainder counted, because a wide dataset would otherwise make one
+                               card several times the height of its neighbours. *@
+                            <span class="indx-dataset-card-fields">
+                                @foreach (var name in f.Names.Take(FieldChipCap))
+                                {
+                                    <Chip Color="var(--lv2)" TextColor="var(--lv6)"><span class="indx-dataset-card-field" title="@name">@name</span></Chip>
+                                }
+                                @if (f.Names.Count > FieldChipCap)
+                                {
+                                    <span class="indx-dataset-card-field-more">+@((f.Names.Count - FieldChipCap).ToString("N0")) more</span>
+                                }
                             </span>
                         }
                     </span>
@@ -129,7 +135,14 @@ else
 
     /// <summary>How the dataset is configured, for the card. Only knowable while an engine is
     /// loaded, which is why it is optional rather than zeroed.</summary>
-    private sealed record FieldShape(int Total, int Searchable, int Filterable, int Facetable, int Preloaded);
+    /// <summary>Every configured field by name, in the order the engine reports them, plus the
+    /// total. The card draws them as a cloud, so what a reader takes from it is the shape of the
+    /// configuration rather than four numbers.</summary>
+    /// <summary>How many field chips a card shows before counting the rest. Chosen so the tallest
+    /// card in a row is not several times the shortest.</summary>
+    private const int FieldChipCap = 12;
+
+    private sealed record FieldShape(int Total, IReadOnlyList<string> Names);
 
     private sealed record Row(string Name, string Label, DatasetStateChip Chip, int? Count, int? Percent = null,
                               FieldShape? Fields = null, DateTime? LastIndexed = null,
@@ -298,12 +311,15 @@ else
         {
             var fields = engine?.GetFieldConfiguration();
             if (fields is not { Length: > 0 }) return null;
-            return new FieldShape(
-                fields.Length,
-                fields.Count(f => f.Searchable == true),
-                fields.Count(f => f.Filterable == true),
-                fields.Count(f => f.Facetable == true),
-                fields.Count(f => f.PreloadFilters == true));
+            // Only fields carrying a role: an unconfigured field is not part of the shape, and on a
+            // wide dataset they would drown the ones that are.
+            var named = fields
+                .Where(f => f.Searchable == true || f.Filterable == true
+                         || f.Facetable == true || f.Sortable == true)
+                .Select(f => f.FieldName)
+                .Where(n => !string.IsNullOrEmpty(n))
+                .ToList();
+            return new FieldShape(fields.Length, named!);
         }
         catch
         {
