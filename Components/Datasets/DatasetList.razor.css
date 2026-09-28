@@ -138,20 +138,29 @@
     grid-column: 1 / -1;
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 4px 12px;
     margin: 2px 0 4px;
-    padding: 10px 12px;
     border-radius: var(--radius);
     border: 0.5px solid var(--lv2);
+    /* The cells carry the inner lines with their own borders, which would otherwise square off
+       the corners the radius just rounded. */
+    overflow: hidden;
 }
 
+/* Padding moves to the cells: with the dividers drawn, the space has to sit inside each cell
+   rather than between them, or the lines float away from what they separate. */
 .indx-dataset-card-role {
     display: flex;
     align-items: baseline;
     justify-content: space-between;
     gap: 8px;
     min-width: 0;
+    padding: 7px 10px;
 }
+
+/* One hairline per shared edge: the left column draws the vertical, the top row the horizontal,
+   so no line is drawn twice and none lands on the outer border. */
+.indx-dataset-card-role:nth-child(odd)   { border-right: 0.5px solid var(--lv2); }
+.indx-dataset-card-role:nth-child(-n+2)  { border-bottom: 0.5px solid var(--lv2); }
 
 /* Inside the matrix the label no longer needs the list's fixed column. */
 .indx-dataset-card-role .indx-dataset-card-term {
