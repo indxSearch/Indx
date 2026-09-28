@@ -53,10 +53,38 @@ else
                         <Chip Size="small" Color="@row.Chip.Color" TextColor="@row.Chip.TextColor" Icon="@row.Chip.Icon">@row.ChipLabel</Chip>
                         @if (row.Count is { } n)
                         {
-                            <span class="indx-dataset-card-count">@n.ToString("N0") @(n == 1 ? "document" : "documents")</span>
+                            <span class="indx-dataset-card-count">@n.ToString("N0") @row.CountNoun</span>
                         }
                     }
                 </span>
+                @* Everything below is read from the keep-alive view and the in-memory instance, so
+                   a hibernated dataset simply has less to show rather than being woken to fill it.
+                   A row is omitted when its value is unknown: a blank value reads as zero. *@
+                @if (!row.Pending && row.HasDetail)
+                {
+                    <span class="indx-dataset-card-detail">
+                        @if (row.Fields is { } f)
+                        {
+                            <span class="indx-dataset-card-term">Fields</span>
+                            <span class="indx-dataset-card-value">
+                                @f.Total<span class="indx-dataset-card-sep"> · </span>@f.Searchable searchable
+                                <br />@f.Filterable filterable<span class="indx-dataset-card-sep"> · </span>@f.Facetable facetable
+                            </span>
+                        }
+                        @if (row.LastIndexed is { } indexed)
+                        {
+                            <span class="indx-dataset-card-term">Last indexed</span>
+                            <span class="indx-dataset-card-value"><TimeAgo Value="indexed" /></span>
+                        }
+                        @if (row.LastUsed is { } used)
+                        {
+                            <span class="indx-dataset-card-term">Last used</span>
+                            <span class="indx-dataset-card-value"><TimeAgo Value="used" /></span>
+                        }
+                        <span class="indx-dataset-card-term">Keep-alive</span>
+                        <span class="indx-dataset-card-value">@row.KeepAlive</span>
+                    </span>
+                }
             </a>
         }
     </div>
@@ -87,8 +115,34 @@ else
 
     private bool CanCreate => TeamRoles.CanWrite(Role);
 
-    private sealed record Row(string Name, string Label, DatasetStateChip Chip, int? Count, int? Percent = null)
+    /// <summary>How the dataset is configured, for the card. Only knowable while an engine is
+    /// loaded, which is why it is optional rather than zeroed.</summary>
+    private sealed record FieldShape(int Total, int Searchable, int Filterable, int Facetable);
+
+    private sealed record Row(string Name, string Label, DatasetStateChip Chip, int? Count, int? Percent = null,
+                              FieldShape? Fields = null, DateTime? LastIndexed = null,
+                              DateTime? LastUsed = null, int KeepAliveHrs = int.MaxValue,
+                              bool CountsAreOnDisk = false)
     {
+        /// <summary>Documents when the engine holds them, records on disk when it does not. The
+        /// noun changes with it, because "41,562 documents" on a hibernated dataset would claim
+        /// they are searchable.</summary>
+        public string CountNoun => CountsAreOnDisk
+            ? (Count == 1 ? "record on disk" : "records on disk")
+            : (Count == 1 ? "document" : "documents");
+
+        public string KeepAlive => KeepAliveHrs switch
+        {
+            int.MaxValue => "pinned",
+            0 => "off (manual)",
+            1 => "1 hour idle",
+            _ => $"{KeepAliveHrs} hours idle",
+        };
+
+        /// <summary>Keep-alive is always known, so a settled card always has a detail block; a
+        /// transitional one does not, since its figures are about to change anyway.</summary>
+        public bool HasDetail => Label is not ("Loading" or "Loaded" or "Indexing" or "Waking" or "Hibernating" or "Unknown");
+
         /// <summary>"Indexing 42%" while there is progress to report, otherwise just the state.
         /// A percentage only appears once the monitor has one, so the chip does not flash 0%.</summary>
         public string ChipLabel => Percent is > 0 and { } pct ? $"{Label} {pct}%" : Label;
@@ -180,6 +234,7 @@ else
             var ka = Engines.GetKeepAliveInfo(name, teamId);
             var engine = Engines.FindSearchEngine(name, teamId);
             var state = engine is { IsDisposed: false } ? engine.Status.SystemState : (SystemState?)null;
+            var lastUsed = ka.LastUsedUtc?.UtcDateTime;
             if (state == SystemState.Ready)
             {
                 // A Ready dataset can still be rebuilding on a shadow engine while it keeps serving.
@@ -188,7 +243,9 @@ else
                 // the documents it reports are real and still being searched.
                 return rebuilding is { } pct
                     ? new Row(name, "Rebuilding", DatasetStateChip.Working(SystemState.Indexing), engine!.Status.DocumentCount, pct)
-                    : new Row(name, "Ready", DatasetStateChip.For(SystemState.Ready), engine!.Status.DocumentCount);
+                    : new Row(name, "Ready", DatasetStateChip.For(SystemState.Ready), engine!.Status.DocumentCount,
+                              Fields: Shape(engine), LastIndexed: engine!.Status.TimeOfLastIndexBuild,
+                              LastUsed: lastUsed, KeepAliveHrs: ka.KeepAliveTimeHrs);
             }
             // A wake being cancelled leaves its engine in Error (load) or Loaded (index) until it is
             // disposed a moment later. Asked first, so neither is reported as the dataset's state.
@@ -207,12 +264,37 @@ else
             if (ka.RecordCount > 0)
                 return Engines.IsWorkInProgress(name, teamId)
                     ? new Row(name, "Waking", DatasetStateChip.Working(), ka.RecordCount, Engines.GetProgressPercent(name, teamId))
-                    : new Row(name, "Hibernated", DatasetStateChip.Hibernated, ka.RecordCount);
-            return new Row(name, "Empty", DatasetStateChip.Empty, null);
+                    // No engine, so no field shape and no last-index time. The count is what is on
+                    // disk, which CountNoun says rather than calling them documents.
+                    : new Row(name, "Hibernated", DatasetStateChip.Hibernated, ka.RecordCount,
+                              LastUsed: lastUsed, KeepAliveHrs: ka.KeepAliveTimeHrs, CountsAreOnDisk: true);
+            return new Row(name, "Empty", DatasetStateChip.Empty, null,
+                           LastUsed: lastUsed, KeepAliveHrs: ka.KeepAliveTimeHrs);
         }
         catch
         {
             return new Row(name, "Unknown", DatasetStateChip.Empty, null);
+        }
+    }
+
+    /// <summary>The field configuration as three counts. Read from the engine already in hand, so
+    /// it costs a dictionary walk and never wakes anything; null when there is no engine or it has
+    /// no configuration yet, which is what keeps the row off a hibernated card.</summary>
+    private static FieldShape? Shape(IServerSearchEngine? engine)
+    {
+        try
+        {
+            var fields = engine?.GetFieldConfiguration();
+            if (fields is not { Length: > 0 }) return null;
+            return new FieldShape(
+                fields.Length,
+                fields.Count(f => f.Searchable == true),
+                fields.Count(f => f.Filterable == true),
+                fields.Count(f => f.Facetable == true));
+        }
+        catch
+        {
+            return null;   // a card is not worth an exception
         }
     }
 

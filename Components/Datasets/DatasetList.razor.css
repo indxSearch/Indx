@@ -37,17 +37,19 @@
    narrow for a state chip and a document count side by side, so they crowded each other. */
 .indx-dataset-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    /* Wider than the old 260: the detail block below carries a label and a value on one line, and
+       at 260 the longer labels wrapped. Four to a row on a laptop, five on a wide screen. */
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
     gap: 8px;
 }
 
 .indx-dataset-card {
     display: flex;
     flex-direction: column;
-    justify-content: space-between;
-    gap: 18px;
-    min-height: 96px;
-    padding: 14px;
+    /* Not space-between any more. The detail block is the card's own height now, so spreading the
+       parts to the edges left a gap that grew with the tallest card in the row. */
+    gap: 14px;
+    padding: 16px;
     border-radius: var(--radius);
     background: var(--lv1);
     color: inherit;
@@ -89,4 +91,36 @@
     font: var(--text-xs);
     white-space: nowrap;
     flex-shrink: 0;
+}
+
+/* ── The detail block ────────────────────────────────────────────────────────
+   A label/value grid rather than a table: the values are short, the labels are fixed, and the
+   whole card is one anchor, so nothing here may be interactive. Its rows are optional -- a
+   hibernated dataset has no field shape and no last-index time -- and the block is left out
+   entirely while a dataset is loading, since those figures are about to change. */
+.indx-dataset-card-detail {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 4px 12px;
+    align-items: baseline;
+    margin-top: auto;              /* sits at the foot however tall the card grows */
+    padding-top: 12px;
+    border-top: 0.5px solid var(--lv3);
+    font: var(--text-xs);
+}
+
+.indx-dataset-card-term {
+    color: var(--lv5);
+    white-space: nowrap;
+}
+
+.indx-dataset-card-value {
+    color: var(--lv6);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* The separator is dimmer than the numbers it divides, so the counts read first. */
+.indx-dataset-card-sep {
+    color: var(--lv4);
 }
