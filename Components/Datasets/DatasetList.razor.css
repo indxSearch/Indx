@@ -147,3 +147,29 @@
     color: var(--lv5);
     font-variant-numeric: tabular-nums;
 }
+
+/* ── Moving, errored and empty ───────────────────────────────────────────────
+   These replace the label/value rows rather than joining them: a dataset that is loading has no
+   settled figures to report, and an errored one has exactly one thing worth saying. All span
+   both columns, since none of them is a label and a value. */
+.indx-dataset-card-doing {
+    grid-column: 1 / -1;
+    color: var(--lv5);
+}
+
+.indx-dataset-card-progress {
+    grid-column: 1 / -1;
+    margin-top: 6px;
+}
+
+/* Clamped rather than truncated on one line: the first line of an engine message is usually the
+   kind of failure, and the second says which field or file. The Status tab has it in full. */
+.indx-dataset-card-error {
+    grid-column: 1 / -1;
+    color: var(--lv6);
+    overflow-wrap: anywhere;
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}

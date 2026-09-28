@@ -48,39 +48,58 @@ else
                    A row is omitted when its value is unknown: a blank value reads as zero. *@
                 @if (!row.Pending && row.HasDetail)
                 {
-                    @* The Status tab's shape (StatusTab.razor.css): a label column in --lv4 at a
-                       fixed width, values in --lv6 beside it. One row per fact rather than facts
-                       packed onto a line -- which is what made this read as loose text. *@
                     <span class="indx-dataset-card-detail">
-                        @if (row.LastIndexed is { } indexed)
+                        @if (row.IsMoving)
                         {
-                            <span class="indx-dataset-card-term">Last indexed</span>
-                            <span class="indx-dataset-card-value"><TimeAgo Value="indexed" /></span>
+                            @* Figures are in flux, so the card says what is happening instead of
+                               reporting counts that change under the reader. The bar only appears
+                               once there is a percentage, so it does not sit at 0 looking stuck. *@
+                            <span class="indx-dataset-card-doing">@row.Doing</span>
+                            @if (row.Percent is { } pct)
+                            {
+                                <span class="indx-dataset-card-progress"><ProgressBar Value="pct" ShowLabel FulfilledColor /></span>
+                            }
                         }
-                        @if (row.LastUsed is { } used)
+                        else if (row.Error is { Length: > 0 } message)
                         {
-                            <span class="indx-dataset-card-term">Last used</span>
-                            <span class="indx-dataset-card-value"><TimeAgo Value="used" /></span>
+                            @* The reason, which is the one thing this state has to give. The Status
+                               tab has the same message in full; here it is clamped. *@
+                            <span class="indx-dataset-card-error">@message</span>
                         }
-                        <span class="indx-dataset-card-term">Keep-alive</span>
-                        <span class="indx-dataset-card-value">@row.KeepAlive</span>
-                        @* Last, so the rows above it are the ones every dataset has. A hibernated
-                           dataset has no engine to read a field shape from, and putting it here
-                           means its card is this one minus the tail rather than a different
-                           shape. *@
-                        @if (row.Fields is { } f)
+                        else
                         {
-                            <span class="indx-dataset-card-term">Fields</span>
-                            <span class="indx-dataset-card-value">@f.Total</span>
-                            @* The Search preview's facet chips (SearchPreviewTab): a label and
-                               its count in one chip, the count set off and dimmer. Wraps, so the
-                               four roles read as a set. *@
-                            <span class="indx-dataset-card-fields">
-                                <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span>searchable</span><span class="indx-dataset-card-rolecount">@f.Searchable</span></Chip>
-                                <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span>filterable</span><span class="indx-dataset-card-rolecount">@f.Filterable</span></Chip>
-                                <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span>facetable</span><span class="indx-dataset-card-rolecount">@f.Facetable</span></Chip>
-                                <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span>preloaded</span><span class="indx-dataset-card-rolecount">@f.Preloaded</span></Chip>
-                            </span>
+                            @if (row.LastIndexed is { } indexed)
+                            {
+                                <span class="indx-dataset-card-term">Last indexed</span>
+                                <span class="indx-dataset-card-value"><TimeAgo Value="indexed" /></span>
+                            }
+                            @if (row.LastUsed is { } used)
+                            {
+                                <span class="indx-dataset-card-term">Last used</span>
+                                <span class="indx-dataset-card-value"><TimeAgo Value="used" /></span>
+                            }
+                            <span class="indx-dataset-card-term">Keep-alive</span>
+                            <span class="indx-dataset-card-value">@row.KeepAlive</span>
+                            @* Last, so the rows above it are the ones every dataset has. *@
+                            @if (row.Fields is { } f)
+                            {
+                                <span class="indx-dataset-card-term">Fields</span>
+                                <span class="indx-dataset-card-value">@f.Total</span>
+                                @* The Search preview's facet chips: a label and its count in one
+                                   chip, the count set off and dimmer. *@
+                                <span class="indx-dataset-card-fields">
+                                    <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span>searchable</span><span class="indx-dataset-card-rolecount">@f.Searchable</span></Chip>
+                                    <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span>filterable</span><span class="indx-dataset-card-rolecount">@f.Filterable</span></Chip>
+                                    <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span>facetable</span><span class="indx-dataset-card-rolecount">@f.Facetable</span></Chip>
+                                    <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span>preloaded</span><span class="indx-dataset-card-rolecount">@f.Preloaded</span></Chip>
+                                </span>
+                            }
+                            else if (row.Label == "Empty")
+                            {
+                                @* Nothing in it yet: the card says what to do rather than listing
+                                   three rows of nothing. *@
+                                <span class="indx-dataset-card-doing">No documents yet. Open it to upload JSON.</span>
+                            }
                         }
                     </span>
                 }
@@ -135,7 +154,7 @@ else
     private sealed record Row(string Name, string Label, DatasetStateChip Chip, int? Count, int? Percent = null,
                               FieldShape? Fields = null, DateTime? LastIndexed = null,
                               DateTime? LastUsed = null, int KeepAliveHrs = int.MaxValue,
-                              bool CountsAreOnDisk = false)
+                              bool CountsAreOnDisk = false, string? Error = null)
     {
         /// <summary>Documents when the engine holds them, records on disk when it does not. The
         /// noun changes with it, because "41,562 documents" on a hibernated dataset would claim
@@ -152,9 +171,26 @@ else
             _ => $"{KeepAliveHrs} hours idle",
         };
 
-        /// <summary>Keep-alive is always known, so a settled card always has a detail block; a
-        /// transitional one does not, since its figures are about to change anyway.</summary>
-        public bool HasDetail => Label is not ("Loading" or "Loaded" or "Indexing" or "Waking" or "Hibernating" or "Unknown");
+        /// <summary>Keep-alive is always known, so every card has something to say. The states
+        /// that are moving say what they are doing instead of reporting figures that are about to
+        /// change, and an errored one says what went wrong -- which was the whole of the card
+        /// before, and is the state where a reader most wants a reason.</summary>
+        public bool HasDetail => Label is not "Unknown";
+
+        /// <summary>Loading, indexing or waking: the figures are in flux, so the card shows
+        /// progress rather than counts.</summary>
+        public bool IsMoving => Label is "Loading" or "Loaded" or "Indexing" or "Waking" or "Hibernating";
+
+        /// <summary>What a moving dataset is doing, in the reader's words rather than the engine's
+        /// state name.</summary>
+        public string Doing => Label switch
+        {
+            "Loading" or "Loaded" => "Reading documents",
+            "Indexing"            => "Building the index",
+            "Waking"              => "Loading from the database",
+            "Hibernating"         => "Freeing memory",
+            _                     => Label,
+        };
 
         /// <summary>"Indexing 42%" while there is progress to report, otherwise just the state.
         /// A percentage only appears once the monitor has one, so the chip does not flash 0%.</summary>
@@ -268,7 +304,11 @@ else
                 return new Row(name, state.ToString()!, DatasetStateChip.For(state.Value), null,
                                Engines.GetProgressPercent(name, teamId));
             if (state == SystemState.Error)
-                return new Row(name, "Error", DatasetStateChip.For(SystemState.Error), null);
+                // The message is the whole point of this state on a card: without it the reader
+                // has to open the dataset to learn anything at all.
+                return new Row(name, "Error", DatasetStateChip.For(SystemState.Error), null,
+                               LastUsed: lastUsed, KeepAliveHrs: ka.KeepAliveTimeHrs,
+                               Error: engine!.Status.ErrorMessage);
             // Data on disk and not loaded is hibernated, whatever the keep-alive policy says: that
             // is what the word means to the reader, and the engine shell being registered or not is
             // an implementation detail. The one case that is genuinely different is a dataset
