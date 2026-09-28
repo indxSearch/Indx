@@ -163,3 +163,7 @@ IndxServer.xml
 
 # IDE/tooling caches
 *.lscache
+
+# Visual Studio publish-wizard artifacts (internal Azure resource names; regenerated on demand)
+Properties/ServiceDependencies/
+Properties/serviceDependencies*.json

@@ -479,10 +479,9 @@ dotnet watch run
 dotnet user-secrets set "Jwt:Key" "your-dev-key-minimum-32-characters"
 dotnet user-secrets set "Authentication:Microsoft:ClientId" "your-client-id"
 dotnet user-secrets set "Email:Provider" "Console"
-
-# Run tests
-dotnet test
 ```
+
+The test suite lives in the full IndxSolutions repository and is not part of this repo; `dotnet test` here finds no tests.
 
 ## Related Projects
 
