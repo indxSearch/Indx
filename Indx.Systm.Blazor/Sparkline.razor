@@ -1,0 +1,116 @@
+@* Port of indx-systm Sparkline. A tiny display-only graph: a shape the size of a line of text,
+   for putting a trend next to a number.
+
+   Deliberately NOT a mode of Chart. Chart is mostly chrome -- a legend, axis labels, hover state,
+   a tooltip, padding that changes with the labels -- and a sparkline must have none of it, so a
+   mode would be a list of parameters switching things off and a set of branches Chart then has to
+   carry. More to the point Chart is interactive and this is not: no state, no JS interop, no
+   element reference, nothing to dispose. That matters where these are used, which is many at once
+   on a list of cards.
+
+   If you want an axis, a legend or a tooltip, you want Chart. *@
+
+<svg class="indx-sparkline @Class" style="@Style" viewBox="@ViewBox" preserveAspectRatio="none"
+     role="@(AriaLabel == null ? null : "img")" aria-label="@AriaLabel"
+     aria-hidden="@(AriaLabel == null ? "true" : null)" focusable="false">
+    @if (_points.Count >= 2)
+    {
+        @if (Type == "bar")
+        {
+            @foreach (var bar in Bars())
+            {
+                <rect class="indx-sparkline-bar" x="@F(bar.X)" y="@F(bar.Y)" width="@F(bar.W)" height="@F(bar.H)" />
+            }
+        }
+        else
+        {
+            @if (Fill)
+            {
+                <polygon class="indx-sparkline-fill" points="@AreaPoints()" />
+            }
+            @* non-scaling-stroke: preserveAspectRatio="none" stretches the viewBox, which would
+               otherwise stretch the stroke with it and give a line thicker one way than the other. *@
+            <polyline class="indx-sparkline-line" points="@LinePoints()" vector-effect="non-scaling-stroke" />
+        }
+    }
+    @if (Baseline)
+    {
+        <line class="indx-sparkline-baseline" x1="0" y1="@F(VbH - 0.5)" x2="@F(VbW)" y2="@F(VbH - 0.5)"
+              vector-effect="non-scaling-stroke" />
+    }
+</svg>
+
+@code {
+    /// <summary>The values, oldest first. Fewer than two draws the baseline alone.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<double> Values { get; set; } = Array.Empty<double>();
+
+    /// <summary>"line" or "bar".</summary>
+    [Parameter] public string Type { get; set; } = "line";
+
+    /// <summary>CSS width. Defaults to filling the space it is given.</summary>
+    [Parameter] public string Width { get; set; } = "100%";
+
+    [Parameter] public int Height { get; set; } = 24;
+
+    /// <summary>Any CSS colour. Defaults to the text colour, so it inherits whatever it sits in.</summary>
+    [Parameter] public string Color { get; set; } = "currentColor";
+
+    /// <summary>Line only: fill the area under the curve, at low opacity.</summary>
+    [Parameter] public bool Fill { get; set; }
+
+    /// <summary>A hairline at the bottom, for when the shape alone does not read as a graph.</summary>
+    [Parameter] public bool Baseline { get; set; }
+
+    /// <summary>What the graph says, for anyone who cannot see it. Without one the SVG is hidden
+    /// from assistive technology, which is right for decoration and wrong for a graph carrying a
+    /// fact nothing else on the page carries.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+
+    // The viewBox is fixed and the SVG scales to its box, so nothing has to measure the DOM.
+    private const double VbW = 100, VbH = 100;
+    private const double Inset = 6;
+
+    private string ViewBox => $"0 0 {F(VbW)} {F(VbH)}";
+    private string Style => $"width:{Width};height:{Height}px;color:{Color}";
+
+    private List<double> _points = [];
+    private double _min, _span;
+
+    protected override void OnParametersSet()
+    {
+        _points = Values.Where(double.IsFinite).ToList();
+        var max = _points.Count > 0 ? _points.Max() : 0;
+        _min = _points.Count > 0 ? _points.Min() : 0;
+        // A flat series still draws: without this, max == min divides by zero and the shape vanishes.
+        _span = max - _min == 0 ? 1 : max - _min;
+    }
+
+    private double Y(double v) => Inset + (VbH - Inset * 2) - ((v - _min) / _span) * (VbH - Inset * 2);
+
+    /// <summary>Invariant, always: a Norwegian locale writes 12,5 into an SVG coordinate, and the
+    /// browser reads that as two numbers.</summary>
+    private static string F(double d) => d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private string LinePoints()
+    {
+        var step = VbW / (_points.Count - 1);
+        return string.Join(" ", _points.Select((v, i) => $"{F(i * step)},{F(Y(v))}"));
+    }
+
+    private string AreaPoints() => $"0,{F(VbH)} {LinePoints()} {F(VbW)},{F(VbH)}";
+
+    private IEnumerable<(double X, double Y, double W, double H)> Bars()
+    {
+        // A gap of a fifth of the slot, so bars read as separate without thinning to nothing when
+        // there are many of them.
+        var slot = VbW / _points.Count;
+        var barW = Math.Max(slot * 0.8, 0.5);
+        for (var i = 0; i < _points.Count; i++)
+        {
+            var top = Y(_points[i]);
+            yield return (i * slot + (slot - barW) / 2, top, barW, Math.Max(VbH - Inset - top, 0.5));
+        }
+    }
+}

@@ -1,0 +1,35 @@
+/* A sparkline has no ground of its own: no background, no border, no padding. It sits in whatever
+   it is put in, which is usually a card or a table cell that already has its own surface. Chart
+   draws a panel; this draws a shape. */
+.indx-sparkline {
+    display: block;
+    overflow: visible;
+}
+
+/* Everything takes its colour from the element's `color`, which the component sets from its Color
+   parameter and which defaults to currentColor. So a sparkline inside muted text is muted, and one
+   given var(--CTeal) is teal, without a second place deciding. */
+.indx-sparkline-line {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.indx-sparkline-fill {
+    fill: currentColor;
+    opacity: 0.12;
+    stroke: none;
+}
+
+.indx-sparkline-bar {
+    fill: currentColor;
+}
+
+/* Dimmer than the data, and a hairline whatever the SVG is stretched to. */
+.indx-sparkline-baseline {
+    stroke: var(--lv3);
+    stroke-width: 1;
+    fill: none;
+}
