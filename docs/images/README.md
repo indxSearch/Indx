@@ -9,6 +9,8 @@ the repository root, or `../images/<name>.png` from inside `docs/release-notes/`
 | `console-datasets-hibernated.png` | The same list with a hibernated dataset, so the chip is visible (the *list*; the page itself is `console-hibernated-wake.png`) |
 | `console-field-configuration.png` | Field configuration on a nested 71-field dataset: objects and their children, types, the four roles, weights |
 | `console-hibernated-wake.png` | A hibernated dataset's page, with its Wake up action |
+| `console-boost-rules.png` | Boost rules on `bookshop`: four rules, one scheduled, one switched off |
+| `console-synonyms.png` | The synonym list on `bookshop`: two-way entries and one one-way |
 | `admin-users.png` | Admin → Users: accounts and platform roles. Not in the root README — six images is already a lot for one page; this one is here for release notes |
 | `admin-teams.png` | Admin → Teams: both teams with their members and team roles |
 | `admin-datasets.png` | Admin → Datasets: every dataset across every team, with keep-alive |
@@ -40,7 +42,10 @@ carries enough to rebuild it. In outline:
 2. Clone this repository beside it, drop a licence in `IndxData/`, and configure an admin through
    `Identity:AdminEmail` — that is what skips the setup wizard, whose second step is an interactive
    circuit and cannot be scripted.
-3. `node seed.mjs people`, then `teams` with the server stopped, then `datasets`, then `sleep`.
+3. `node seed.mjs people`, then `teams` with the server stopped, then `datasets`, then `extras`
+   (boost rules and a synonym list on `bookshop`, which is what those two images show).
+   Hibernate `order-archive-2024` and `test-import-small` from their Options tabs, not with
+   `seed.mjs sleep` — see `Notes/screenshot-run.md` for why.
 4. `node capture.mjs` writes all seven. `--light` for the light theme.
 
 Retake them when the UI meaningfully changes, and **look at them** rather than trusting the run. A

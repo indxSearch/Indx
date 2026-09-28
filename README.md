@@ -110,6 +110,26 @@ keeps answering, then the two are swapped. Changing the **field configuration** 
 dataset rebuilds the same way. While a build runs, `GET status` reports
 `shadowBuildInProgress` and a second build is refused with `409 shadowBusy`.
 
+## Boost rules
+
+Ranking rules that lift matching documents when a search runs with `enableBoost`. They are
+per-dataset, edited on the dataset's **Boost rules** tab, and they stack: a document matching
+three rules is lifted by all three.
+
+![The boost rules tab: four rules, one with a date window, showing value, boolean and numeric
+range conditions and Low, Medium and High strengths](docs/images/console-boost-rules.png)
+
+A rule is a name, one or more conditions, and a strength:
+
+- **Conditions** use **filterable** fields, and are either an exact value or a numeric range
+  (not both). A value on a numeric field is sent as a range with equal limits, so you do not
+  have to know which the field wants.
+- **Strength** is Low, Medium or High.
+- **Time limit** is optional: give a rule an active-from and active-until date and it applies
+  only inside that window. Outside it the rule stays in the list, greyed rather than deleted, so
+  a seasonal rule is written once. The tab's header counts how many of the rules apply today.
+- A rule can be **switched off** without deleting it.
+
 ## Synonyms (experimental)
 
 Each dataset can carry a synonym list that widens searches: when a query matches an entry,
@@ -123,6 +143,9 @@ Two kinds of entries:
 - **One-way**: only the **From** term expands, into its synonyms. For acronyms: *hms*
   should bring in *helse, miljø og sikkerhet*, but a search for *helse* must not become
   a search for *hms*. Multi-word terms are matched as whole phrases.
+
+![The synonyms tab: five entries, four two-way with a double arrow between their terms and one
+one-way with a single arrow from its From term](docs/images/console-synonyms.png)
 
 **From the UI:** the **Synonyms** tab on a dataset (editor role). Create and edit entries
 in a dialog, or import/export the whole list as JSON.
