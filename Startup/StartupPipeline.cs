@@ -279,6 +279,10 @@ internal static class StartupPipeline
         try
         {
             var licensePath = app.Configuration["Indx:LicenseFile"] ?? "";
+            // Before the registry starts, so its very first log line already names the team rather
+            // than its GUID. Falls back to the id if the name cannot be read.
+            IndxServerInternalApi.TeamNameResolver =
+                app.Services.GetRequiredService<IndxServer.Monitor.TeamNames>().NameOf;
             IndxServerInternalApi.StartUpSystem(searchConnectionString,
                 app.Services.GetRequiredService<ILoggerFactory>(), licensePath);
             Console.WriteLine($"✓ Search system initialized at: {searchDbPath}");

@@ -23,6 +23,15 @@ namespace IndxServer.Monitor
         private Dictionary<string, string> _names = [];
         private DateTimeOffset _readAt = DateTimeOffset.MinValue;
 
+        /// <summary>One id to its name, or the id when it cannot be resolved. For log lines, which
+        /// arrive one at a time rather than a tickful at a time; the cache and its refresh rules
+        /// are the same ones the monitor uses.</summary>
+        internal string NameOf(string teamId)
+        {
+            if (string.IsNullOrEmpty(teamId)) return teamId;
+            return Resolve([teamId], DateTimeOffset.UtcNow).TryGetValue(teamId, out var name) ? name : teamId;
+        }
+
         /// <summary>Refreshes if due, then resolves. Called once per tick with every id the
         /// snapshot mentions, so one read serves the whole table.</summary>
         internal IReadOnlyDictionary<string, string> Resolve(IEnumerable<string> teamIds, DateTimeOffset now)

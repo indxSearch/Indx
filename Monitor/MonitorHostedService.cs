@@ -27,7 +27,11 @@ namespace IndxServer.Monitor
     {
         private const int MaxConsecutiveFailures = 5;
         private readonly IMonitorRenderer? renderer = renderers.FirstOrDefault();
-        private readonly MonitorCollector _collector = new(new TeamNames(scopes));
+        // GetService, not GetRequiredService: MonitorCollector takes a null resolver and simply
+        // reports team ids, which is what a test that builds this service with a bare container
+        // gets. A monitor that cannot name a team is still a monitor.
+        private readonly MonitorCollector _collector =
+            new(scopes.CreateScope().ServiceProvider.GetService<TeamNames>());
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
@@ -187,6 +191,10 @@ namespace IndxServer.Monitor
             // attached a terminal to. Only the display is optional.
             builder.Services.AddSingleton(options);
             builder.Services.AddSingleton<MonitorState>();
+            // One cache of team names, shared by the monitor's events and the engine registry's
+            // log prefix. Registered here rather than built by the collector, because the registry
+            // needs it too and starts before the monitor does.
+            builder.Services.AddSingleton<TeamNames>();
             builder.Services.AddHostedService<MonitorHostedService>();
 
             // One state, however it is looked at. Built here rather than resolved, because the

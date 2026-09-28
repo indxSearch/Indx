@@ -1623,9 +1623,26 @@ namespace IndxServer.Engine
             return teamId + dataSetName;
         }
 
+        /// <summary>
+        /// Turns a team id into its name for log lines. Set once at startup; until then, and when
+        /// the name cannot be resolved, lines carry the id.
+        ///
+        /// <para>A hook rather than an injected service because this registry is process-wide and
+        /// built before the container is usable, which is the same reason
+        /// <see cref="TimeProvider"/> is one. The name lives in identity.db while the dataset
+        /// knows only the id from indx.db, so resolving it means a second database and a cache —
+        /// both of which the monitor's TeamNames already has.</para>
+        /// </summary>
+        internal static Func<string, string>? TeamNameResolver { get; set; }
+
         private static string MakeLogPrefix(string teamId, string dataSetName)
         {
-            return "Team:" + teamId + " dataSet:" + dataSetName + " ";
+            // A GUID in a log line helps nobody: it cannot be pasted into the console, it does not
+            // match what the reader sees on the page, and two teams' lines cannot be told apart at
+            // a glance. The monitor's events were fixed for this in 09c5c3f0; the engine registry
+            // kept writing the raw id.
+            var team = TeamNameResolver?.Invoke(teamId) ?? teamId;
+            return "Team:" + team + " dataSet:" + dataSetName + " ";
         }
 
         private IServerSearchEngine? FindInstance(string dataSetName, string teamId)
