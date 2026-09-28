@@ -1,3 +1,4 @@
+using IndxServer.Engine;
 using Microsoft.Data.Sqlite;
 
 namespace IndxServer.Services
@@ -15,7 +16,7 @@ namespace IndxServer.Services
     /// </summary>
     public static class DatasetExport
     {
-        private static string DbPath => IndxServer.Models.IndxServerInternalApi.SearchDbConnectionString;
+        private static string DbPath => IndxServer.Engine.IndxServerInternalApi.SearchDbConnectionString;
 
         private static SqliteConnection Open()
         {

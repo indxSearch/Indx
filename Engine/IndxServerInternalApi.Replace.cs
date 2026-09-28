@@ -7,7 +7,8 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace IndxServer.Models
+using IndxServer.Models;
+namespace IndxServer.Engine
 {
     /// <summary>Summary of how the new JSON's schema differed from the dataset's current field config.</summary>
     /// <param name="Added">Fields in the new JSON that were not previously configured (they load unconfigured).</param>

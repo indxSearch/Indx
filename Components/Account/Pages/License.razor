@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Components.Authorization
 @using Indx.Api
 @using IndxServer.Models
+@using IndxServer.Engine
 @attribute [Authorize(Roles = "Admin")]
 @inject ILogger<License> Logger
 @inject Services.ILicenseBootstrapper Bootstrapper
