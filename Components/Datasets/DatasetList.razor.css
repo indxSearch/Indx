@@ -127,3 +127,34 @@
     color: var(--lv6);
     font-variant-numeric: tabular-nums;
 }
+
+/* ── The role matrix ─────────────────────────────────────────────────────────
+   The four roles are one fact in four parts, so they sit together on their own ground rather
+   than continuing the list. One step darker than the card (--lv2 on --lv1), which is how this
+   design separates surfaces; no border, and no shadow anywhere.
+
+   It spans both columns of the detail grid and is inset from the label column, so the list reads
+   past it rather than around it. */
+.indx-dataset-card-roles {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 12px;
+    margin: 2px 0 4px;
+    padding: 10px 12px;
+    border-radius: var(--radius);
+    background: var(--lv2);
+}
+
+.indx-dataset-card-role {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+/* Inside the matrix the label no longer needs the list's fixed column. */
+.indx-dataset-card-role .indx-dataset-card-term {
+    font-weight: var(--reg);
+}

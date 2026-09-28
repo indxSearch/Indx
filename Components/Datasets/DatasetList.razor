@@ -56,12 +56,15 @@ else
                         {
                             <span class="indx-dataset-card-term">Fields</span>
                             <span class="indx-dataset-card-value">@f.Total</span>
-                            <span class="indx-dataset-card-term">Searchable</span>
-                            <span class="indx-dataset-card-value">@f.Searchable</span>
-                            <span class="indx-dataset-card-term">Filterable</span>
-                            <span class="indx-dataset-card-value">@f.Filterable</span>
-                            <span class="indx-dataset-card-term">Facetable</span>
-                            <span class="indx-dataset-card-value">@f.Facetable</span>
+                            @* The four roles are one fact in four parts, so they get their own
+                               block: two columns on a darker ground, set in from the list around
+                               them. Read as a set rather than as four more rows of the log. *@
+                            <span class="indx-dataset-card-roles">
+                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Searchable</span><span class="indx-dataset-card-value">@f.Searchable</span></span>
+                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Filterable</span><span class="indx-dataset-card-value">@f.Filterable</span></span>
+                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Facetable</span><span class="indx-dataset-card-value">@f.Facetable</span></span>
+                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Preloaded</span><span class="indx-dataset-card-value">@f.Preloaded</span></span>
+                            </span>
                         }
                         @if (row.LastIndexed is { } indexed)
                         {
@@ -123,7 +126,7 @@ else
 
     /// <summary>How the dataset is configured, for the card. Only knowable while an engine is
     /// loaded, which is why it is optional rather than zeroed.</summary>
-    private sealed record FieldShape(int Total, int Searchable, int Filterable, int Facetable);
+    private sealed record FieldShape(int Total, int Searchable, int Filterable, int Facetable, int Preloaded);
 
     private sealed record Row(string Name, string Label, DatasetStateChip Chip, int? Count, int? Percent = null,
                               FieldShape? Fields = null, DateTime? LastIndexed = null,
@@ -296,7 +299,8 @@ else
                 fields.Length,
                 fields.Count(f => f.Searchable == true),
                 fields.Count(f => f.Filterable == true),
-                fields.Count(f => f.Facetable == true));
+                fields.Count(f => f.Facetable == true),
+                fields.Count(f => f.PreloadFilters == true));
         }
         catch
         {
