@@ -109,8 +109,6 @@
     gap: 5px 12px;
     align-items: baseline;
     margin-top: auto;              /* sits at the foot however tall the card grows */
-    padding-top: 14px;
-    border-top: 0.5px solid var(--lv3);
     font: var(--text-sm);
 }
 
