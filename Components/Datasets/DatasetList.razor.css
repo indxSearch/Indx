@@ -77,12 +77,18 @@
     white-space: nowrap;
 }
 
+/* State and count close the card, under a rule. The rule is fainter than the one the tables use
+   (--lv2 against --lv3): inside a surface that is already separated by tone, it is there to group
+   rather than to divide, and at --lv3 it cut the card in two. */
 .indx-dataset-card-foot {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 8px;
     flex-wrap: wrap;
+    margin-top: auto;              /* sits at the foot however tall the card grows */
+    padding-top: 14px;
+    border-top: 0.5px solid var(--lv2);
 }
 
 /* The count keeps its width and never breaks mid-number, so a long dataset state chip pushes it
@@ -108,7 +114,6 @@
     grid-template-columns: 96px 1fr;
     gap: 5px 12px;
     align-items: baseline;
-    margin-top: auto;              /* sits at the foot however tall the card grows */
     font: var(--text-sm);
 }
 

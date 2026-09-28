@@ -43,20 +43,6 @@ else
                     <Database Size="14" Color="currentColor" />
                     <span class="indx-dataset-card-name">@row.Name</span>
                 </span>
-                <span class="indx-dataset-card-foot">
-                    @if (row.Pending)
-                    {
-                        <span class="indx-dataset-card-count"><Spinner Size="12" /></span>
-                    }
-                    else
-                    {
-                        <Chip Size="small" Color="@row.Chip.Color" TextColor="@row.Chip.TextColor" Icon="@row.Chip.Icon">@row.ChipLabel</Chip>
-                        @if (row.Count is { } n)
-                        {
-                            <span class="indx-dataset-card-count">@n.ToString("N0") @row.CountNoun</span>
-                        }
-                    }
-                </span>
                 @* Everything below is read from the keep-alive view and the in-memory instance, so
                    a hibernated dataset simply has less to show rather than being woken to fill it.
                    A row is omitted when its value is unknown: a blank value reads as zero. *@
@@ -91,6 +77,20 @@ else
                         <span class="indx-dataset-card-value">@row.KeepAlive</span>
                     </span>
                 }
+                <span class="indx-dataset-card-foot">
+                    @if (row.Pending)
+                    {
+                        <span class="indx-dataset-card-count"><Spinner Size="12" /></span>
+                    }
+                    else
+                    {
+                        <Chip Size="small" Color="@row.Chip.Color" TextColor="@row.Chip.TextColor" Icon="@row.Chip.Icon">@row.ChipLabel</Chip>
+                        @if (row.Count is { } n)
+                        {
+                            <span class="indx-dataset-card-count">@n.ToString("N0") @row.CountNoun</span>
+                        }
+                    }
+                </span>
             </a>
         }
     </div>
