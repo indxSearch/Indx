@@ -3,7 +3,8 @@ using Indx.Api;
 using Indx.Http;
 using Indx.Embeddings;
 using Indx.Storage;
-namespace IndxServer.Models
+using IndxServer.Models;
+namespace IndxServer.Engine
 {
     /// <summary>
     /// In-process registry of <see cref="SearchEngine"/> instances, keyed by the owning team.
@@ -1085,7 +1086,7 @@ namespace IndxServer.Models
         /// deleted dataset this is the only line the file gets.
         /// </summary>
         private readonly ILogger _lifecycleLogger;
-        internal const string LifecycleLogCategory = "IndxServer.Models.IndxServerInternalApi.Lifecycle";
+        internal const string LifecycleLogCategory = "IndxServer.Engine.IndxServerInternalApi.Lifecycle";
         private static IndxServerInternalApi? _manager;
         #endregion Private Fields
 

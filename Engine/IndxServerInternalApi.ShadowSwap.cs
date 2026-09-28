@@ -7,7 +7,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
-namespace IndxServer.Models
+using IndxServer.Models;
+namespace IndxServer.Engine
 {
     /// <summary>
     /// Shadow-swap orchestration for heavy mutations.

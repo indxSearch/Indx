@@ -5,7 +5,8 @@ using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace IndxServer.Models
+using IndxServer.Models;
+namespace IndxServer.Engine
 {
     /// <summary>A console-started wake in progress. <c>Indexing</c> is false while the documents
     /// are still being read from the store; <c>Cancelling</c> is true from the moment a cancel is
