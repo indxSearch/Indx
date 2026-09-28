@@ -23,8 +23,19 @@
     stroke: none;
 }
 
+/* A row of bars, not an SVG: the gap is then the pixels the caller asked for, at any width and
+   any number of bars. */
+.indx-sparkline-bars {
+    display: flex;
+    align-items: flex-end;
+    box-sizing: border-box;
+    border-bottom: 0 solid var(--lv3);
+}
+
 .indx-sparkline-bar {
-    fill: currentColor;
+    flex: 1 1 0;
+    min-width: 1px;
+    background: currentColor;
 }
 
 /* Dimmer than the data, and a hairline whatever the SVG is stretched to. */
