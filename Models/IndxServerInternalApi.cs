@@ -64,9 +64,21 @@ namespace IndxServer.Models
         #endregion Internal Properties
 
         #region Internal Methods
+        /// <summary>
+        /// Builds the process-wide dataset registry and initialises it. Called once during startup,
+        /// before anything resolves <see cref="Manager"/>; a second call throws rather than
+        /// replacing a registry that already owns live engines.
+        /// </summary>
+        /// <param name="dbConnectionString">Where the datasets live — the search database
+        /// (<c>indx.db</c>), holding the documents and the per-dataset configuration. The registry
+        /// keeps it for every engine it later builds.</param>
         /// <param name="loggerFactory">The host's. The registry logs through it and hands it to every
         /// engine, so what they log goes where the rest of the server's logging goes (the file, the
         /// console or monitor, Application Insights) rather than to a file of its own.</param>
+        /// <param name="licensePath">An explicit licence file. Empty means look for one, which is
+        /// the usual case: <c>GetLicensePath()</c> scans the data directory and prefers a company
+        /// licence over a developer one. Held for the life of the process and read again whenever
+        /// an engine is built, including on a shadow rebuild.</param>
         internal static void StartUpSystem(string dbConnectionString, ILoggerFactory loggerFactory, string licensePath = "")
         {
             if (_manager != null)  // Check the backing field directly
