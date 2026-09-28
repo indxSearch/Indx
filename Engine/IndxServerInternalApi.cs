@@ -109,7 +109,7 @@ namespace IndxServer.Engine
 
         /// <summary>
         /// The only configuration number ever written to <c>DataSet.IndxConfiguration</c>. Written by
-        /// <c>SearchController.CreateOrOpen</c> and read back here — the two must agree.
+        /// <c>DatasetsController.CreateOrOpen</c> and read back here — the two must agree.
         /// </summary>
         internal const int DefaultConfigurationNumber = 400;
 
@@ -312,7 +312,7 @@ namespace IndxServer.Engine
         /// </summary>
         /// <remarks>
         /// Goes through <c>Init</c> — the same call the REST analyze endpoint makes
-        /// (<c>SearchController.AnalyzeStreamAsync</c>) — rather than
+        /// (<c>DatasetsController.AnalyzeStreamAsync</c>) — rather than
         /// <c>DocumentFields.AnalyzeAsync</c>, which the portal used to call.
         /// <para>The old path handed the WHOLE stream to <c>JsonDocument.ParseAsync</c>: raw
         /// bytes in a rented buffer plus a metadata row per JSON element, both alive at once.
