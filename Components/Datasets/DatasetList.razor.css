@@ -129,12 +129,11 @@
 }
 
 /* ── The role matrix ─────────────────────────────────────────────────────────
-   The four roles are one fact in four parts, so they sit together on their own ground rather
-   than continuing the list. One step darker than the card (--lv2 on --lv1), which is how this
-   design separates surfaces; no border, and no shadow anywhere.
+   The four roles are one fact in four parts, so they are drawn together rather than continuing
+   the list. Outlined rather than filled: the same hairline as the rule above the state row
+   (--lv2), so the two divisions on the card read as one weight. No shadow, as everywhere.
 
-   It spans both columns of the detail grid and is inset from the label column, so the list reads
-   past it rather than around it. */
+   It spans both columns of the detail grid, so the list reads past it rather than around it. */
 .indx-dataset-card-roles {
     grid-column: 1 / -1;
     display: grid;
@@ -143,7 +142,7 @@
     margin: 2px 0 4px;
     padding: 10px 12px;
     border-radius: var(--radius);
-    background: var(--lv2);
+    border: 0.5px solid var(--lv2);
 }
 
 .indx-dataset-card-role {

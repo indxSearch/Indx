@@ -52,20 +52,6 @@ else
                        fixed width, values in --lv6 beside it. One row per fact rather than facts
                        packed onto a line -- which is what made this read as loose text. *@
                     <span class="indx-dataset-card-detail">
-                        @if (row.Fields is { } f)
-                        {
-                            <span class="indx-dataset-card-term">Fields</span>
-                            <span class="indx-dataset-card-value">@f.Total</span>
-                            @* The four roles are one fact in four parts, so they get their own
-                               block: two columns on a darker ground, set in from the list around
-                               them. Read as a set rather than as four more rows of the log. *@
-                            <span class="indx-dataset-card-roles">
-                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Searchable</span><span class="indx-dataset-card-value">@f.Searchable</span></span>
-                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Filterable</span><span class="indx-dataset-card-value">@f.Filterable</span></span>
-                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Facetable</span><span class="indx-dataset-card-value">@f.Facetable</span></span>
-                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Preloaded</span><span class="indx-dataset-card-value">@f.Preloaded</span></span>
-                            </span>
-                        }
                         @if (row.LastIndexed is { } indexed)
                         {
                             <span class="indx-dataset-card-term">Last indexed</span>
@@ -78,6 +64,23 @@ else
                         }
                         <span class="indx-dataset-card-term">Keep-alive</span>
                         <span class="indx-dataset-card-value">@row.KeepAlive</span>
+                        @* Last, so the rows above it are the ones every dataset has. A hibernated
+                           dataset has no engine to read a field shape from, and putting it here
+                           means its card is this one minus the tail rather than a different
+                           shape. *@
+                        @if (row.Fields is { } f)
+                        {
+                            <span class="indx-dataset-card-term">Fields</span>
+                            <span class="indx-dataset-card-value">@f.Total</span>
+                            @* The four roles are one fact in four parts, so they get their own
+                               block rather than four more rows of the log. *@
+                            <span class="indx-dataset-card-roles">
+                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Searchable</span><span class="indx-dataset-card-value">@f.Searchable</span></span>
+                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Filterable</span><span class="indx-dataset-card-value">@f.Filterable</span></span>
+                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Facetable</span><span class="indx-dataset-card-value">@f.Facetable</span></span>
+                                <span class="indx-dataset-card-role"><span class="indx-dataset-card-term">Preloaded</span><span class="indx-dataset-card-value">@f.Preloaded</span></span>
+                            </span>
+                        }
                     </span>
                 }
                 <span class="indx-dataset-card-foot">
