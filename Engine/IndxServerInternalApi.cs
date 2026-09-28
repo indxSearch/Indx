@@ -483,7 +483,7 @@ namespace IndxServer.Engine
                 }
             }
 
-            _lifecycleLogger.LogInformation("Disposing {Count} SearchEngine instances for team {TeamId}", toDispose.Count, teamId);
+            _lifecycleLogger.LogInformation("Disposing {Count} SearchEngine instances for team {Team}", toDispose.Count, TeamLabel(teamId));
             foreach (var (key, instance) in toDispose)
                 DisposeInstance(instance, key);
         }
@@ -537,7 +537,7 @@ namespace IndxServer.Engine
             }
 
             DisposeInstance(instance, key);
-            _lifecycleLogger.LogInformation("Disposed SearchEngine instance for team {TeamId}, dataset {DataSet}", teamId, dataSetName);
+            _lifecycleLogger.LogInformation("Disposed SearchEngine instance for team {Team}, dataset {DataSet}", TeamLabel(teamId), dataSetName);
         }
 
         /// <summary>
@@ -1169,13 +1169,13 @@ namespace IndxServer.Engine
                     var engine = wrapper?.theInstance;
                     if (wrapper == null || engine == null)
                     {
-                        _logger.LogWarning("{Tag} [{I}/{Total}] no engine instance for team {TeamId} dataset '{DataSet}', skipping", tag, i, total, teamId, dataSet);
+                        _logger.LogWarning("{Tag} [{I}/{Total}] no engine instance for team {Team} dataset '{DataSet}', skipping", tag, i, total, TeamLabel(teamId), dataSet);
                         skipped++;
                         continue;
                     }
                     if (engine.Persistence == null)
                     {
-                        _logger.LogWarning("{Tag} [{I}/{Total}] instance.Persistence is null for team {TeamId} dataset '{DataSet}', skipping", tag, i, total, teamId, dataSet);
+                        _logger.LogWarning("{Tag} [{I}/{Total}] instance.Persistence is null for team {Team} dataset '{DataSet}', skipping", tag, i, total, TeamLabel(teamId), dataSet);
                         skipped++;
                         continue;
                     }
@@ -1183,14 +1183,14 @@ namespace IndxServer.Engine
                     // loading itself. The engine shell stays registered but unloaded.
                     if (engine.Persistence.ReadKeepAliveHrs() == 0)
                     {
-                        _logger.LogInformation("{Tag} [{I}/{Total}] skipping '{DataSet}' team {TeamId}: KeepAliveTimeHrs=0 (client-managed)", tag, i, total, dataSet, teamId);
+                        _logger.LogInformation("{Tag} [{I}/{Total}] skipping '{DataSet}' team {Team}: KeepAliveTimeHrs=0 (client-managed)", tag, i, total, dataSet, TeamLabel(teamId));
                         skipped++;
                         continue;
                     }
                     var records = engine.Persistence.NumberOfJsonRecords();
                     if (records == 0)
                     {
-                        _logger.LogInformation("{Tag} [{I}/{Total}] skipping '{DataSet}' team {TeamId}: 0 records", tag, i, total, dataSet, teamId);
+                        _logger.LogInformation("{Tag} [{I}/{Total}] skipping '{DataSet}' team {Team}: 0 records", tag, i, total, dataSet, TeamLabel(teamId));
                         skipped++;
                         continue;
                     }
@@ -1203,12 +1203,12 @@ namespace IndxServer.Engine
                         // while we worked through the list — same double-check as ResolveEngine.
                         if (engine.Status.SystemState != SystemState.Created)
                         {
-                            _logger.LogInformation("{Tag} [{I}/{Total}] '{DataSet}' team {TeamId} already {State}, skipping", tag, i, total, dataSet, teamId, engine.Status.SystemState);
+                            _logger.LogInformation("{Tag} [{I}/{Total}] '{DataSet}' team {Team} already {State}, skipping", tag, i, total, dataSet, TeamLabel(teamId), engine.Status.SystemState);
                             skipped++;
                             continue;
                         }
 
-                        _logger.LogInformation("{Tag} [{I}/{Total}] loading '{DataSet}' team {TeamId}: {Records} records, workingSet {WorkingSetMb} MB", tag, i, total, dataSet, teamId, records, beforeMb);
+                        _logger.LogInformation("{Tag} [{I}/{Total}] loading '{DataSet}' team {Team}: {Records} records, workingSet {WorkingSetMb} MB", tag, i, total, dataSet, TeamLabel(teamId), records, beforeMb);
                         var monitor = new ProcessMonitor { TimeoutSeconds = 600 };
                         using var warmUpScope = TrackMonitor(dataSet, teamId, monitor);
                         engine.LoadFromDatabaseSync(monitor);
@@ -1216,7 +1216,7 @@ namespace IndxServer.Engine
                         {
                             // A thrown failure is logged, with its stack, by the engine itself; this says what it
                             // means for the warm-up. Exception is null when it timed out instead.
-                            _logger.LogError(monitor.Exception, "{Tag} [{I}/{Total}] load of '{DataSet}' team {TeamId} did not complete; dataset stays non-Ready", tag, i, total, dataSet, teamId);
+                            _logger.LogError(monitor.Exception, "{Tag} [{I}/{Total}] load of '{DataSet}' team {Team} did not complete; dataset stays non-Ready", tag, i, total, dataSet, TeamLabel(teamId));
                             failed++;
                             continue;
                         }
@@ -1224,7 +1224,7 @@ namespace IndxServer.Engine
                         engine.Index(monitor: monitor);
                         if (!monitor.WaitForCompletion())
                         {
-                            _logger.LogError(monitor.Exception, "{Tag} [{I}/{Total}] index of '{DataSet}' team {TeamId} did not complete; dataset stays non-Ready", tag, i, total, dataSet, teamId);
+                            _logger.LogError(monitor.Exception, "{Tag} [{I}/{Total}] index of '{DataSet}' team {Team} did not complete; dataset stays non-Ready", tag, i, total, dataSet, TeamLabel(teamId));
                             failed++;
                             continue;
                         }
@@ -1238,7 +1238,7 @@ namespace IndxServer.Engine
                 catch (Exception ex)
                 {
                     failed++;
-                    _logger.LogError(ex, "{Tag} [{I}/{Total}] failed warming '{DataSet}' team {TeamId}", tag, i, total, dataSet, teamId);
+                    _logger.LogError(ex, "{Tag} [{I}/{Total}] failed warming '{DataSet}' team {Team}", tag, i, total, dataSet, TeamLabel(teamId));
                 }
             }
 
@@ -1635,14 +1635,17 @@ namespace IndxServer.Engine
         /// </summary>
         internal static Func<string, string>? TeamNameResolver { get; set; }
 
+        /// <summary>The team as a reader knows it: its name when it can be resolved, its id when it
+        /// cannot. Every log line that mentions a team goes through this.</summary>
+        private static string TeamLabel(string teamId) => TeamNameResolver?.Invoke(teamId) ?? teamId;
+
         private static string MakeLogPrefix(string teamId, string dataSetName)
         {
             // A GUID in a log line helps nobody: it cannot be pasted into the console, it does not
             // match what the reader sees on the page, and two teams' lines cannot be told apart at
             // a glance. The monitor's events were fixed for this in 09c5c3f0; the engine registry
             // kept writing the raw id.
-            var team = TeamNameResolver?.Invoke(teamId) ?? teamId;
-            return "Team:" + team + " dataSet:" + dataSetName + " ";
+            return "Team:" + TeamLabel(teamId) + " dataSet:" + dataSetName + " ";
         }
 
         private IServerSearchEngine? FindInstance(string dataSetName, string teamId)
