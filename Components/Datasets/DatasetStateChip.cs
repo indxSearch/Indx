@@ -17,6 +17,15 @@ namespace IndxServer.Components.Datasets
     ///   grey        nothing in it yet
     /// Light blue is reserved for hibernation on purpose. Used for Loading as well, the list could
     /// not tell a dataset going to sleep from one waking up.
+    ///
+    /// <para><b>Loading and Indexing share the amber deliberately</b>, and it was looked at again on
+    /// 28 Sep 2026. They are one thing to the reader -- something is working on it, do not expect
+    /// an answer yet -- and what tells them apart is carried elsewhere: different icons (a trolley
+    /// against an hourglass), the label itself, and, on the team page, a line saying "Reading
+    /// documents" or "Building the index" with a progress bar under it. Splitting the colour would
+    /// have meant either CPureBlue, which sits beside the hibernated light blue and reopens exactly
+    /// the confusion above, or a new token in both this library and the React indx-systm to keep
+    /// them at parity. Neither is worth it while the card says which in words.</para>
     /// </summary>
     public readonly record struct DatasetStateChip(string Color, string TextColor, RenderFragment<int>? Icon)
     {
