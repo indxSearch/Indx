@@ -128,11 +128,10 @@
     font-variant-numeric: tabular-nums;
 }
 
-/* ── The field cloud ────────────────────────────────────────────────────────
-   The Search preview's facet values (SearchPreviewTab.razor.css): chips that wrap, each one
-   truncating rather than widening its row, with the remainder counted at the end. Spans both
-   columns of the detail grid, since the names are the content and the label column would leave
-   them a third of the card. */
+/* ── The role chips ─────────────────────────────────────────────────────────
+   The Search preview's facet chips (SearchPreviewTab.razor.css): a label and its count in one
+   chip, the count set off from the label and dimmer than it. Wraps, so the four read as a set
+   rather than a row that can overflow. Spans both columns of the detail grid. */
 .indx-dataset-card-fields {
     grid-column: 1 / -1;
     display: flex;
@@ -140,21 +139,11 @@
     align-items: center;
     gap: 4px;
     min-width: 0;
-    margin: 2px 0 2px;
+    margin: 2px 0;
 }
 
-.indx-dataset-card-field {
-    display: inline-block;
-    max-width: 140px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    vertical-align: bottom;
-}
-
-.indx-dataset-card-field-more {
-    font: var(--text-xs);
+.indx-dataset-card-rolecount {
+    margin-left: 6px;
     color: var(--lv5);
-    white-space: nowrap;
-    margin-left: 2px;
+    font-variant-numeric: tabular-nums;
 }
