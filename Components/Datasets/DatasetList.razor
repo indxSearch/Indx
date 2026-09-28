@@ -62,14 +62,20 @@ else
                    A row is omitted when its value is unknown: a blank value reads as zero. *@
                 @if (!row.Pending && row.HasDetail)
                 {
+                    @* The Status tab's shape (StatusTab.razor.css): a label column in --lv4 at a
+                       fixed width, values in --lv6 beside it. One row per fact rather than facts
+                       packed onto a line -- which is what made this read as loose text. *@
                     <span class="indx-dataset-card-detail">
                         @if (row.Fields is { } f)
                         {
                             <span class="indx-dataset-card-term">Fields</span>
-                            <span class="indx-dataset-card-value">
-                                @f.Total<span class="indx-dataset-card-sep"> · </span>@f.Searchable searchable
-                                <br />@f.Filterable filterable<span class="indx-dataset-card-sep"> · </span>@f.Facetable facetable
-                            </span>
+                            <span class="indx-dataset-card-value">@f.Total</span>
+                            <span class="indx-dataset-card-term">Searchable</span>
+                            <span class="indx-dataset-card-value">@f.Searchable</span>
+                            <span class="indx-dataset-card-term">Filterable</span>
+                            <span class="indx-dataset-card-value">@f.Filterable</span>
+                            <span class="indx-dataset-card-term">Facetable</span>
+                            <span class="indx-dataset-card-value">@f.Facetable</span>
                         }
                         @if (row.LastIndexed is { } indexed)
                         {
