@@ -54,9 +54,12 @@ internal static class StartupPipeline
                         context.Request.Method, context.Request.Path, context.TraceIdentifier);
 
                 // The repeated-failure detector: enough of these inside the window raises the
-                // operational alert (in-app + email). It never throws, so the 500 below stands.
+                // operational alert (in-app + email). Only internal faults count - the detector
+                // skips client-caused conditions (disconnect, malformed body) itself. It never
+                // throws, so the 500 below stands.
                 await context.RequestServices.GetRequiredService<IndxServer.Services.ApiErrorAlert>()
-                    .RecordAsync(context.Request.Method, context.Request.Path, context.TraceIdentifier);
+                    .RecordAsync(context.Request.Method, context.Request.Path, context.TraceIdentifier,
+                        failure?.Error, context.RequestAborted.IsCancellationRequested);
 
                 context.Response.StatusCode = StatusCodes.Status500InternalServerError;
                 var problem = new Microsoft.AspNetCore.Mvc.ProblemDetails
