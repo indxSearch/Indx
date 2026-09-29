@@ -1,4 +1,4 @@
-# Indx
+# <img src="docs/icons/indx-logo.svg" width="35" height="25" alt="">&nbsp;Indx
 
 A self-hosted search service built on [Indx Search](https://indx.co). Blazor Server UI, HTTP API with JWT authentication, user management, and everything needed to run a multi-user search service on your own infrastructure.
 

@@ -22,7 +22,7 @@ const SOURCE = join(HERE, '../../Indx.Systm.Blazor/Icons');
 
 // The icons the README uses. Add a name here, then run this.
 const ICONS = [
-  'InternetBrowser', 'UserGroup', 'Api', 'DynamicJsonField', 'ShadowIndexing', 'Hibernate', 'Mcp',
+  'IndxLogo', 'InternetBrowser', 'UserGroup', 'Api', 'DynamicJsonField', 'ShadowIndexing', 'Hibernate', 'Mcp',
   'Login', 'Boost', 'Synonym', 'Bell', 'Terminal',
 ];
 
