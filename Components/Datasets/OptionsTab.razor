@@ -140,11 +140,13 @@
                 </label>
                 @if (_replaceFile != null)
                 {
-                    <Button Variant="secondary" Size="micro" @onclick="RunReplaceAsync">Replace all data</Button>
+                    <Button Variant="secondary" Size="micro" @onclick="() => _replaceOpen = true">Replace all data</Button>
                     <Button Variant="ghost" Size="micro" @onclick="() => _replaceFile = null">Cancel</Button>
                 }
             </div>
         }
+        <ConfirmModal @bind-Open="_replaceOpen" Title="@($"Replace all data in {Ctx.Name}?")" Consequences="ReplaceConsequences"
+                      ConfirmLabel="Replace all data" OnConfirm="StartReplace" />
         @if (!string.IsNullOrEmpty(_replaceResult))
         {
             <p class="opt-success">@_replaceResult</p>
@@ -177,39 +179,6 @@
         </div>
     }
 
-    @* ── Rename ── *@
-    <h3 class="indx-section-heading">Rename</h3>
-    <p class="indx-section-help">
-        The name is the dataset's address: every API call, MCP client and link that uses the old name stops working. A loaded dataset is reloaded under the new name, which takes as long as an index build.
-    </p>
-    @if (!Ctx.IsBusy)
-    {
-        <div class="opt-row">
-            <div class="opt-w240">
-                <InputField placeholder="New dataset name" @bind-Value="_renameInput"
-                            @oninput="e => _renameInput = e.Value?.ToString() ?? string.Empty" @onkeydown="OnRenameKeyDown" />
-            </div>
-            @if (!_renameConfirm)
-            {
-                <Button Variant="secondary" Size="micro" disabled="@(!RenameReady)" @onclick="() => { _renameError = null; _renameConfirm = true; }">Rename</Button>
-            }
-            else
-            {
-                <span class="opt-danger-text">Rename "@Ctx.Name" to "@_renameInput.Trim()"? Clients using the old name will break.</span>
-                <Button Variant="primary" Size="micro" Loading="@_renaming" @onclick="RenameAsync">@(_renaming ? "Renaming…" : "Confirm rename")</Button>
-                <Button Variant="ghost" Size="micro" Disabled="@_renaming" @onclick="() => _renameConfirm = false">Cancel</Button>
-            }
-        </div>
-        @if (!string.IsNullOrEmpty(_renameError))
-        {
-            <p class="opt-error">@_renameError</p>
-        }
-    }
-    else
-    {
-        <p class="opt-muted">Cannot rename while an operation is in progress.</p>
-    }
-
     @* ── Transfer to another team ── *@
     @{
         var transferTargets = Ctx.MyTeams
@@ -220,54 +189,42 @@
     {
         <h3 class="indx-section-heading">Transfer to another team</h3>
         <p class="indx-section-help">Move this dataset to another team you administer. The current team loses access.</p>
-        @if (!_transferConfirm)
-        {
-            <div class="opt-row">
-                <div class="opt-w240">
-                    <SelectField Size="micro" Placeholder="Select a team…" @bind-Value="_transferTargetTeamId"
-                                 Options="@transferTargets.Select(t => new SelectField.SelectOption(t.Team.Name, t.Team.Id.ToString())).ToList()" />
-                </div>
-                <Button Variant="secondary" Size="micro" disabled="@string.IsNullOrEmpty(_transferTargetTeamId)" @onclick="() => { _transferError = null; _transferConfirm = true; }">Transfer</Button>
-            </div>
-        }
-        else
-        {
-            <div class="opt-row">
-                <span class="opt-danger-text">Move "@Ctx.Name" to the selected team? This team loses access.</span>
-                <Button Variant="primary" Size="micro" Loading="@_transferring" @onclick="TransferAsync">@(_transferring ? "Transferring…" : "Confirm transfer")</Button>
-                <Button Variant="ghost" Size="micro" Disabled="@_transferring" @onclick="() => _transferConfirm = false">Cancel</Button>
-            </div>
-        }
-        @if (!string.IsNullOrEmpty(_transferError))
-        {
-            <p class="opt-error">@_transferError</p>
-        }
+        <Button Variant="secondary" Size="micro" @onclick="OpenTransfer">Transfer…</Button>
+
+        <ConfirmModal @bind-Open="_transferOpen" Title="@($"Transfer {Ctx.Name}")" Consequences="TransferConsequences"
+                      CanConfirm="@(!string.IsNullOrEmpty(_transferTargetTeamId))" ConfirmLabel="Transfer dataset" OnConfirm="TransferAsync">
+            <SelectField Label="To team" Placeholder="Select a team…" @bind-Value="_transferTargetTeamId"
+                         Options="@transferTargets.Select(t => new SelectField.SelectOption(t.Team.Name, t.Team.Id.ToString())).ToList()" />
+        </ConfirmModal>
     }
 
-    @* ── Danger zone ── *@
-    @if (Ctx.IsAdmin)
+    @* ── Danger zone: rename and delete, each confirmed in a modal that says what breaks. Rename
+       is here, not with the settings, because the name is the dataset's address in the API. ── *@
+    <h3 class="indx-section-heading indx-section-heading--danger">Danger Zone</h3>
+    @if (Ctx.IsBusy)
     {
-        @if (Ctx.EngineState == SystemState.Ready)
-        {
-            <h3 class="indx-section-heading indx-section-heading--danger">Danger Zone</h3>
-        }
-        @if (!Ctx.IsBusy)
-        {
-            <ConfirmButton Label="Delete dataset" Icon="DatasetIcons.Delete" Prompt="Are you sure?" ConfirmLabel="Yes, Delete"
-                           TriggerVariant="@(Ctx.EngineState == SystemState.Ready ? "secondary" : "ghost")"
-                           Open="@Ctx.DeleteConfirmOpen" OpenChanged="v => { Ctx.DeleteConfirmOpen = v; Ctx.NotifyChanged(); }"
-                           OnConfirm="DeleteAsync" />
-        }
-        else
-        {
-            <p class="opt-muted">Cannot delete while an operation is in progress.</p>
-        }
-        @* A delete that fails closes its dialog like a delete that worked, so say what happened. *@
-        @if (!string.IsNullOrEmpty(Ctx.OperationError))
-        {
-            <p class="opt-error">@Ctx.OperationError</p>
-        }
+        <p class="opt-muted">Cannot rename or delete while an operation is in progress.</p>
     }
+    else
+    {
+        <div class="opt-row">
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Tag" @onclick="OpenRename">Rename dataset</Button>
+            @if (Ctx.IsAdmin)
+            {
+                <DeleteDatasetButton Ctx="Ctx" TriggerVariant="secondary" />
+            }
+        </div>
+    }
+    @* A delete that fails says so in its modal; this keeps it on the page after the modal closes. *@
+    @if (Ctx.IsAdmin && !string.IsNullOrEmpty(Ctx.OperationError))
+    {
+        <p class="opt-error">@Ctx.OperationError</p>
+    }
+
+    <ConfirmModal @bind-Open="_renameOpen" Title="@($"Rename {Ctx.Name}")" Consequences="RenameConsequences"
+                  CanConfirm="RenameReady" ConfirmLabel="Rename dataset" ConfirmIcon="DatasetIcons.Tag" OnConfirm="RenameAsync">
+        <InputField Label="New name" @bind-Value="_renameInput" @oninput="e => _renameInput = e.Value?.ToString() ?? string.Empty" />
+    </ConfirmModal>
 </div>
 
 @code {
@@ -326,9 +283,6 @@
 
     // Transfer
     private string _transferTargetTeamId = "";
-    private bool _transferConfirm;
-    private bool _transferring;
-    private string? _transferError;
 
     protected override void OnParametersSet()
     {
@@ -441,6 +395,25 @@
         _replaceResult = _replaceWarning = _replaceError = null;
     }
 
+    private bool _replaceOpen;
+
+    private IReadOnlyList<string> ReplaceConsequences =>
+    [
+        Ctx.KeepAlive?.RecordCount is > 0 and var n
+            ? $"All {n.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)} documents in {Ctx.Name} are replaced by the contents of {_replaceFile?.Name} ({DatasetContext.FormatBytes(_replaceFile?.Size ?? 0)})."
+            : $"The documents in {Ctx.Name} are replaced by the contents of {_replaceFile?.Name} ({DatasetContext.FormatBytes(_replaceFile?.Size ?? 0)}).",
+        "Field configuration, boost rules, synonyms and the description are kept.",
+        "Search keeps serving the current data until the new index is ready. If the file fails to load, nothing changes.",
+        "The current documents can't be brought back afterwards. Download the data first if you may need it.",
+    ];
+
+    // The replace reports its own progress on the page, so the modal only starts it and closes.
+    private Task<string?> StartReplace()
+    {
+        _ = RunReplaceAsync();
+        return Task.FromResult<string?>(null);
+    }
+
     private async Task RunReplaceAsync()
     {
         if (_replaceFile == null) return;
@@ -544,85 +517,87 @@
     // ── Rename ───────────────────────────────────────────────────────────────
 
     private string _renameInput = "";
-    private bool _renameConfirm;
-    private bool _renaming;
-    private string? _renameError;
+    private bool _renameOpen;
 
     private bool RenameReady => !string.IsNullOrWhiteSpace(_renameInput) && _renameInput.Trim() != Ctx.Name;
 
-    private async Task OnRenameKeyDown(KeyboardEventArgs e)
+    private void OpenRename()
     {
-        if (e.Key == "Enter" && RenameReady)
-        {
-            if (_renameConfirm) await RenameAsync();
-            else { _renameError = null; _renameConfirm = true; }
-        }
-        if (e.Key == "Escape") _renameConfirm = false;
+        _renameInput = Ctx.Name;
+        _renameOpen = true;
     }
 
-    private async Task RenameAsync()
+    private IReadOnlyList<string> RenameConsequences =>
+    [
+        $"Its address in the API changes from /api/teams/{Ctx.TeamName}/datasets/{Ctx.Name} to …/datasets/{(RenameReady ? _renameInput.Trim() : "(new name)")}.",
+        "Websites, apps, scripts and MCP clients that use the old name get errors until they are updated.",
+        "API keys limited to this dataset by name lose it. Keys for the whole team keep working.",
+        "A loaded dataset is reloaded under the new name, which takes as long as an index build.",
+    ];
+
+    /// <summary>Null on success (the host then navigates to the new name), else the reason.</summary>
+    private async Task<string?> RenameAsync()
     {
-        if (!RenameReady || _renaming) return;
-        _renameError = null;
-        _renaming = true;
-        await Render();
         try
         {
-            _renameError = await Ctx.RenameAsync(_renameInput);
+            return await Ctx.RenameAsync(_renameInput);
         }
         catch (Exception ex)
         {
-            _renameError = $"Rename failed: {ex.Message}";
+            return $"Rename failed: {ex.Message}";
         }
-        finally
-        {
-            _renaming = false;
-            if (_renameError == null) { _renameInput = ""; _renameConfirm = false; }
-        }
-        await Render();
     }
 
     // ── Transfer ─────────────────────────────────────────────────────────────
 
-    private async Task TransferAsync()
+    private bool _transferOpen;
+
+    private void OpenTransfer()
     {
-        _transferError = null;
-        if (string.IsNullOrEmpty(_transferTargetTeamId) || _transferring) return;
-        _transferring = true;
-        await Render();
+        _transferTargetTeamId = "";
+        _transferOpen = true;
+    }
+
+    private IReadOnlyList<string> TransferConsequences
+    {
+        get
+        {
+            var target = Ctx.MyTeams.FirstOrDefault(t => t.Team.Id.ToString() == _transferTargetTeamId).Team?.Name ?? "(the team you choose)";
+            return
+            [
+                $"{Ctx.Name} moves from {Ctx.TeamName} to {target}, with its documents, field configuration, boost rules and synonyms. Members of {Ctx.TeamName} lose it.",
+                $"Its address in the API changes from /api/teams/{Ctx.TeamName}/datasets/{Ctx.Name} to /api/teams/{target}/datasets/{Ctx.Name}. Websites and apps calling the old address get errors until they are updated.",
+                $"API keys for {Ctx.TeamName} no longer reach it. {target} needs keys of its own.",
+            ];
+        }
+    }
+
+    /// <summary>Null on success (the dataset leaves this view), else the reason, shown in the modal.</summary>
+    private async Task<string?> TransferAsync()
+    {
+        if (string.IsNullOrEmpty(_transferTargetTeamId)) return "Choose a team.";
+        var target = _transferTargetTeamId;
         try
         {
-            // TransferOwnership evicts the source engine (can be slow) — run off the circuit.
-            var target = _transferTargetTeamId;
-
             // (Name, team) is the dataset's primary key, so a target team that already has this
             // name fails on the constraint mid-transaction and surfaces as raw SQL. Rename
             // pre-checks its target; do the same here, while the dataset is still untouched.
             var taken = await Task.Run(() => Ctx.Engines.GetTeamDataSets(target));
             if (taken.Any(n => string.Equals(n, Ctx.Name, StringComparison.OrdinalIgnoreCase)))
-            {
-                _transferError = $"That team already has a dataset called '{Ctx.Name}'. Rename one of them first.";
-                _transferring = false;   // there is no finally here; the success path clears it below
-                await Render();
-                return;
-            }
+                return $"That team already has a dataset called '{Ctx.Name}'. Rename one of them first.";
 
+            // TransferOwnership evicts the source engine (can be slow) — run off the circuit.
             await Task.Run(() => Ctx.Engines.TransferOwnership(Ctx.Name, Ctx.TeamId, target));
         }
         catch (Exception ex)
         {
-            _transferError = $"Transfer failed: {ex.Message}";
-            _transferring = false;
-            await Render();
-            return;
+            return $"Transfer failed: {ex.Message}";
         }
-        _transferring = false;
         _transferTargetTeamId = "";
-        _transferConfirm = false;
         await Ctx.NotifyDatasetListChangedAsync(); // dataset now belongs to another team — drops off this view
+        return null;
     }
 
     // ── Delete ───────────────────────────────────────────────────────────────
 
-    private Task DeleteAsync() => Ctx.DeleteAsync();
 }

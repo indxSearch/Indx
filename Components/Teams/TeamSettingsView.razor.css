@@ -4,3 +4,7 @@
     align-items: center;
     flex-wrap: wrap;
 }
+
+/* Member row actions at the right edge. ConfirmButton renders a block of its own, which a
+   text-align: right cell does not move. */
+.ts-row-actions { display: flex; justify-content: flex-end; }

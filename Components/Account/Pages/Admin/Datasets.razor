@@ -114,9 +114,7 @@ else
                         }
                     </td>
                     <td style="text-align: right;">
-                        <ConfirmButton Label="" Title="Delete dataset" Icon="_iconDelete" ConfirmLabel="Confirm Delete" CancelVariant="ghost"
-                                       Open="@(_deleteConfirmKey == row.Key)" OpenChanged="v => _deleteConfirmKey = v ? row.Key : null"
-                                       OnConfirm="() => DeleteDataset(row.DataSetName, row.TeamId)" />
+                        <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" title="Delete dataset" @onclick="() => { _deleting = row; _deleteOpen = true; }" />
                     </td>
                 </tr>
             }
@@ -124,6 +122,9 @@ else
     </Table>
 </div>
 }
+
+<ConfirmModal @bind-Open="_deleteOpen" Title="@($"Delete {_deleting?.DataSetName}?")" Consequences="DeleteLines"
+              TypeToConfirm="@_deleting?.DataSetName" ConfirmLabel="Delete dataset" ConfirmIcon="_iconDelete" OnConfirm="ConfirmDeleteDataset" />
 
 @code {
     private RenderFragment<int> _iconDelete  => size => @<Delete Size="size" />;
@@ -172,7 +173,28 @@ else
     private List<DatasetRow>? _rows;
     private string? _message;
     private string? _errorMessage;
-    private string? _deleteConfirmKey;
+    private bool _deleteOpen;
+    private DatasetRow? _deleting;
+
+    private IReadOnlyList<string> DeleteLines => _deleting is not { } row ? [] :
+    [
+        row.DisplayCount > 0
+            ? $"Its {row.DisplayCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)} documents are deleted, with its field configuration, boost rules and synonyms."
+            : "It is deleted, with its field configuration, boost rules and synonyms.",
+        $"It belongs to {row.TeamName ?? "a team"}. Its members lose it, and websites and apps that search it get errors.",
+        "API keys limited to this dataset no longer reach anything.",
+        "This can't be undone.",
+    ];
+
+    /// <summary>Null on success, else the reason, shown in the modal.</summary>
+    private async Task<string?> ConfirmDeleteDataset()
+    {
+        if (_deleting == null) return null;
+        await DeleteDataset(_deleting.DataSetName, _deleting.TeamId);
+        var error = _errorMessage;
+        _errorMessage = null;
+        return error;
+    }
     private string? _editKey;
     private string _editMode = "max";   // "max" (∞ pinned) | "0" (manual) | "timed"
     private string _editHours = "24";
@@ -259,10 +281,10 @@ else
         _message = null; _errorMessage = null;
         // Engine disposal can take seconds; off the circuit, or the spinner cannot paint.
         var deleted = await Task.Run(() => IndxServerInternalApi.Manager.DeleteDataSet(dataSetName, teamId));
-        _deleteConfirmKey = null;
         if (deleted)
         {
-            Logger.LogInformation("Admin deleted dataset {DataSetName} owned by team {TeamId}", dataSetName, teamId);
+            Logger.LogInformation("Admin deleted dataset {DataSetName} of team {Team}", dataSetName,
+                _rows?.FirstOrDefault(r => r.TeamId == teamId)?.TeamName ?? "an unknown team");
             _message = $"Dataset \"{dataSetName}\" deleted.";
             await Load();
         }

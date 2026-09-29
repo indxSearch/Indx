@@ -90,14 +90,15 @@ else
                         {
                             <Button Variant="ghost" Size="micro" Loading="@(_roleBusyId == u.Id)" @onclick="() => PromoteUser(u.Id)">Make Admin</Button>
                         }
-                        <ConfirmButton Label="" Title="Delete user" Icon="_iconDelete" ConfirmLabel="Confirm Delete" CancelVariant="ghost"
-                                       Open="@(_deleteConfirmId == u.Id)" OpenChanged="v => _deleteConfirmId = v ? u.Id : null"
-                                       OnConfirm="() => DeleteUser(u.Id)" />
+                        <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" title="Delete user" @onclick="() => OpenDelete(u)" />
                     </td>
                 </tr>
             }
         </tbody>
     </table>
+
+    <ConfirmModal @bind-Open="_deleteOpen" Title="@($"Delete {_deleting?.Email}?")" Consequences="_deleteLines"
+                  TypeToConfirm="@_deleting?.Email" ConfirmLabel="Delete user" ConfirmIcon="_iconDelete" OnConfirm="ConfirmDeleteUser" />
 }
 
 @if (!Edition.IsEnabled(IndxServer.Services.EditionFeature.MultipleUsers))
@@ -177,7 +178,41 @@ else if (_isInviteMode)
     private List<UserRow>? _users;
     private string? _message;
     private string? _errorMessage;
-    private string? _deleteConfirmId;
+    private bool _deleteOpen;
+    private UserRow? _deleting;
+    private IReadOnlyList<string> _deleteLines = [];
+
+    // What goes with the account, read when the modal opens so it names the actual teams.
+    private async Task OpenDelete(UserRow u)
+    {
+        var teams = await Db.TeamMembers.Where(m => m.UserId == u.Id)
+            .Join(Db.Teams, m => m.TeamId, t => t.Id, (m, t) => t.Name).OrderBy(n => n).ToListAsync();
+        var keys = await Db.ApiKeys.CountAsync(k => k.UserId == u.Id && !k.IsRevoked);
+        _deleting = u;
+        _deleteLines =
+        [
+            teams.Count == 0 ? "They are in no team." : $"They leave {string.Join(", ", teams)}. The teams and their datasets stay.",
+            keys switch
+            {
+                0 => "They have no API keys.",
+                1 => "Their 1 personal API key is deleted, and whatever uses it gets errors.",
+                _ => $"Their {keys} personal API keys are deleted, and whatever uses them gets errors.",
+            },
+            "Team keys they created keep working.",
+            "This can't be undone.",
+        ];
+        _deleteOpen = true;
+    }
+
+    /// <summary>Null on success, else the reason, shown in the modal.</summary>
+    private async Task<string?> ConfirmDeleteUser()
+    {
+        if (_deleting == null) return null;
+        await DeleteUser(_deleting.Id);
+        var error = _errorMessage;
+        _errorMessage = null;
+        return error;
+    }
     private string? _currentUserId;
     private bool _isInviteMode;
     private List<string> _inviteEmails = [];
@@ -338,7 +373,6 @@ else if (_isInviteMode)
     private async Task DeleteUser(string userId)
     {
         _message = null; _errorMessage = null;
-        _deleteConfirmId = null;
         var user = await UserManager.FindByIdAsync(userId);
         if (user == null) return;
         var email = user.Email;
@@ -347,12 +381,7 @@ else if (_isInviteMode)
         // that team alive with its datasets and nobody who can reach them — and /admin/teams is
         // read-only, so there is no way back. Removing a member already refuses this; deleting a
         // user must too. Add another Admin first.
-        var orphaned = await Db.TeamMembers
-            .Where(m => m.UserId == userId && m.Role == TeamRoles.Admin)
-            .Where(m => !Db.TeamMembers.Any(other =>
-                other.TeamId == m.TeamId && other.UserId != userId && other.Role == TeamRoles.Admin))
-            .Join(Db.Teams, m => m.TeamId, t => t.Id, (m, t) => t.Name)
-            .ToListAsync();
+        var orphaned = await IndxServer.Services.TeamService.TeamsOnlyAdministeredByAsync(Db, userId);
         if (orphaned.Count > 0)
         {
             _errorMessage = $"{email} is the only admin of {string.Join(", ", orphaned)}. "

@@ -13,8 +13,9 @@
 
 <PageTitle>Manage @Team.Name</PageTitle>
 
-@* Team settings: [team ▾] › Settings. Members and roles, rename, delete. Reached from the
-   "Manage team" button on the team page. Hosted by Pages/ConsolePage. *@
+@* Team settings: [team ▾] › Settings. Members and roles, team API keys, and a danger zone that
+   renames or deletes the team. Reached from the "Manage team" button on the team page. Hosted by
+   Pages/ConsolePage. *@
 
 <div>
 
@@ -62,11 +63,15 @@
                     <td style="padding:8px 12px; text-align:right;">
                         @if (m.UserId == UserId)
                         {
-                            <Button Variant="ghost" Size="micro" Loading="@(_busy == "leave")" @onclick="OnLeave">Leave</Button>
+                            <div class="ts-row-actions">
+                                <ConfirmButton Label="Leave" Prompt="@($"Only an Admin can add you back to {Team.Name}.")" ConfirmLabel="Leave team" OnConfirm="OnLeave" />
+                            </div>
                         }
                         else if (_canAdmin)
                         {
-                            <Button Variant="ghost" Size="micro" Loading="@(_busy == "remove:" + m.UserId)" @onclick="() => OnRemove(m.UserId)">Remove</Button>
+                            <div class="ts-row-actions">
+                                <ConfirmButton Label="Remove" Prompt="Their personal keys for this team stop working." ConfirmLabel="Remove member" OnConfirm="() => OnRemove(m.UserId)" />
+                            </div>
                         }
                     </td>
                 </tr>
@@ -97,41 +102,37 @@
         </div>
     </Modal>
 
-    @* ── Team settings (Admin) ── *@
+    @* ── Team keys (Admin): keys the team owns, for deployed sites and servers ── *@
     @if (_canAdmin)
     {
-        <h3 class="indx-section-heading">Team settings</h3>
-        <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; flex-wrap:wrap;">
-            <div style="width:220px;"><InputField @bind-Value="_renameInput" /></div>
-            <Button Variant="secondary" Size="micro" Loading="@(_busy == "rename")" @onclick="OnRename">Rename</Button>
-        </div>
+        <TeamKeys Team="Team" UserId="@UserId" />
     }
 
-    @* ── Danger zone (Admin): delete the team and everything it owns. Same shape as the
-       dataset's danger zone, plus typing the team name — the datasets go with it. ── *@
+    @* ── Danger zone (Admin): rename and delete, each confirmed in a modal that says what breaks.
+       Rename is here because the name is in every API path (/api/teams/{name}/…), so renaming
+       breaks every site and script that calls the API until it is updated. ── *@
     @if (_canAdmin)
     {
         <h3 class="indx-section-heading indx-section-heading--danger">Danger Zone</h3>
+        <div class="indx-confirm-typed">
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Tag" @onclick="OpenRename">Rename team</Button>
+            @if (ActiveTeam.Teams.Count > 1)
+            {
+                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="() => _deleteOpen = true">Delete team</Button>
+            }
+        </div>
         @if (ActiveTeam.Teams.Count <= 1)
         {
-            <p class="indx-section-help">You can't delete your only team.</p>
+            <p class="indx-section-help" style="margin-top:8px;">You can't delete your only team.</p>
         }
-        else if (!_confirmDelete)
-        {
-            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="BeginDelete">Delete team</Button>
-        }
-        else
-        {
-            <p class="indx-section-help">@DeletePrompt</p>
-            <div class="indx-confirm-typed">
-                <div style="width:260px;">
-                    <InputField placeholder="@($"Type {Team.Name} to confirm")" @bind-Value="_deleteTyped"
-                                @oninput="e => _deleteTyped = e.Value?.ToString() ?? string.Empty" @onkeydown="OnDeleteKeyDown" />
-                </div>
-                <Button Variant="danger" Size="micro" IconLeft="DatasetIcons.Delete" Disabled="@(!DeleteTypedMatches)" Loading="@(_busy == "delete")" @onclick="OnDelete">@(_busy == "delete" ? "Deleting…" : "Yes, delete")</Button>
-                <Button Variant="ghost" Size="micro" Disabled="@(_busy == "delete")" @onclick="CancelDelete">Cancel</Button>
-            </div>
-        }
+
+        <ConfirmModal @bind-Open="_renameOpen" Title="@($"Rename {Team.Name}")" Consequences="RenameConsequences"
+                      CanConfirm="RenameChanged" ConfirmLabel="Rename team" ConfirmIcon="DatasetIcons.Tag" OnConfirm="OnRename">
+            <InputField Label="New name" @bind-Value="_renameInput" @oninput="e => _renameInput = e.Value?.ToString() ?? string.Empty" />
+        </ConfirmModal>
+
+        <ConfirmModal @bind-Open="_deleteOpen" Title="@($"Delete {Team.Name}?")" Consequences="DeleteConsequences"
+                      TypeToConfirm="@Team.Name" ConfirmLabel="Delete team" ConfirmIcon="DatasetIcons.Delete" OnConfirm="OnDelete" />
     }
 </div>
 
@@ -154,7 +155,6 @@
     private string _addUserId = "";
     private string _addRole = TeamRoles.Viewer;
     private string _renameInput = "";
-    private bool _confirmDelete;
     private string? _error;
 
     private record MemberRow(string UserId, string Email, string Role);
@@ -196,7 +196,6 @@
         _canAddMembers = TeamRoles.CanWrite(Role)
             && Edition.IsEnabled(EditionFeature.MultipleUsers);
         _renameInput = Team.Name ?? "";
-        _confirmDelete = false;
 
         var members = await TeamService.GetMembersAsync(Team.Id);
         var rows = new List<MemberRow>();
@@ -221,7 +220,7 @@
     }
 
 
-    // Which action is in flight ("add", "rename", "delete", "leave", "remove:<userId>"), so its
+    // Which action is in flight ("add", "leave", "remove:<userId>"); ConfirmButton shows its own spinner, so its
     // button shows a spinner. One at a time: the handlers reload the whole view when they finish.
     private string? _busy;
 
@@ -297,44 +296,60 @@
         await ActiveTeam.ReloadAsync(); // I left → active team falls back to another
     });
 
-    private Task OnRename() => RunBusy("rename", async () =>
+    private bool _renameOpen;
+
+    private void OpenRename()
     {
-        if (string.IsNullOrWhiteSpace(_renameInput)) return;
-        _error = null;
-        try { await TeamService.RenameTeamAsync(Team.Id, _renameInput); }
-        catch (TeamService.TeamException ex) { _error = ex.Message; return; }
-        await ActiveTeam.ReloadAsync();
-    });
-
-    // The prompt names what goes with the team: its datasets are deleted, not orphaned.
-    private string DeletePrompt => TeamService.GetDatasetNames(Team.Id).Count switch
-    {
-        0 => $"This deletes the team \"{Team.Name}\" and removes every member from it. This can't be undone.",
-        1 => $"This deletes the team \"{Team.Name}\" and its 1 dataset, with all its documents, and removes every member. This can't be undone.",
-        var n => $"This deletes the team \"{Team.Name}\" and its {n} datasets, with all their documents, and removes every member. This can't be undone.",
-    };
-
-    private string _deleteTyped = "";
-    private bool DeleteTypedMatches => string.Equals(_deleteTyped.Trim(), Team.Name, StringComparison.OrdinalIgnoreCase);
-
-    private void BeginDelete() { _deleteTyped = ""; _error = null; _confirmDelete = true; }
-    private void CancelDelete() { _deleteTyped = ""; _confirmDelete = false; }
-
-    private async Task OnDeleteKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter" && DeleteTypedMatches) await OnDelete();
-        if (e.Key == "Escape") CancelDelete();
+        _renameInput = Team.Name ?? "";
+        _renameOpen = true;
     }
 
-    private Task OnDelete() => RunBusy("delete", async () =>
+    private bool RenameChanged => !string.IsNullOrWhiteSpace(_renameInput)
+        && !string.Equals(_renameInput.Trim(), Team.Name, StringComparison.Ordinal);
+
+    private IReadOnlyList<string> RenameConsequences =>
+    [
+        $"The team's address in the API changes from /api/teams/{Team.Name}/… to /api/teams/{(RenameChanged ? _renameInput.Trim() : "(new name)")}/….",
+        "Every website, app, script and MCP client that calls the API by the old name gets errors until it is updated.",
+        "API keys keep working: they belong to the team, not to its name.",
+        "Console links and bookmarks to the old name stop working.",
+    ];
+
+    /// <summary>Null on success, else the reason, shown in the modal.</summary>
+    private async Task<string?> OnRename()
     {
-        if (!DeleteTypedMatches) return;
-        if (ActiveTeam.Teams.Count <= 1) { _error = "You can't delete your only team."; _confirmDelete = false; return; }
-        _error = null;
+        try { await TeamService.RenameTeamAsync(Team.Id, _renameInput); }
+        catch (TeamService.TeamException ex) { return ex.Message; }
+        await ActiveTeam.ReloadAsync();
+        return null;
+    }
+
+    private bool _deleteOpen;
+
+    private IReadOnlyList<string> DeleteConsequences => TeamService.GetDatasetNames(Team.Id).Count switch
+    {
+        0 => DeleteLines("The team is deleted. It has no datasets."),
+        1 => DeleteLines("Its 1 dataset is deleted, with all its documents."),
+        var n => DeleteLines($"Its {n} datasets are deleted, with all their documents."),
+    };
+
+    private IReadOnlyList<string> DeleteLines(string datasets) =>
+    [
+        datasets,
+        $"All {_members.Count} member{(_members.Count == 1 ? "" : "s")} lose access to it.",
+        "Its team keys stop working, and so does every personal key made for it. Websites and apps that search it get errors.",
+        "This can't be undone.",
+    ];
+
+    /// <summary>Null on success, else the reason, shown in the modal.</summary>
+    private async Task<string?> OnDelete()
+    {
+        if (ActiveTeam.Teams.Count <= 1) return "You can't delete your only team.";
         // Deleting a team disposes every engine it owns — seconds, on the circuit's thread if we
         // let it, which would also freeze the spinner. Run it off the circuit.
         try { await Task.Run(() => TeamService.DeleteTeamAsync(Team.Id)); }
-        catch (TeamService.TeamException ex) { _error = ex.Message; _confirmDelete = false; return; }
+        catch (TeamService.TeamException ex) { return ex.Message; }
         await ActiveTeam.ReloadAsync();
-    });
+        return null;
+    }
 }

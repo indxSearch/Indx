@@ -100,6 +100,8 @@
     @* Whole-list actions close the page, where field configuration and boost rules keep theirs. *@
     <div class="indx-file-actions">
         <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
+        <ConfirmModal @bind-Open="_importOpen" Title="Replace the synonym list?" Consequences="ImportConsequences"
+                      ConfirmLabel="Replace list" ConfirmIcon="DatasetIcons.DynamicJson" OnConfirm="ConfirmImportAsync" />
         @if (_list != null)
         {
             <ConfirmButton Label="Remove list" Icon="DatasetIcons.Delete" Prompt="Remove the whole list?"
@@ -321,13 +323,44 @@
             using var reader = new StreamReader(stream);
             var imported = SynonymList.Deserialize(await reader.ReadToEndAsync());
             if (imported.Entries.Count == 0) { _error = "No entries found in the file."; return; }
-            _list = imported;
-            if (!await PushAsync()) _error = "Failed to save the imported list.";
+            // This tab saves at once, so an import goes live on the next search: say what it
+            // replaces before it does, rather than after.
+            _pendingImport = imported;
+            _pendingImportFile = e.File.Name;
+            _importOpen = true;
         }
         catch (Exception ex)
         {
             _error = $"Failed to import: {ex.Message}";
         }
+    }
+
+    private bool _importOpen;
+    private SynonymList? _pendingImport;
+    private string? _pendingImportFile;
+
+    private IReadOnlyList<string> ImportConsequences =>
+    [
+        _list is { Entries.Count: > 0 } current
+            ? $"The current {current.Entries.Count} entr{(current.Entries.Count == 1 ? "y is" : "ies are")} replaced by the {_pendingImport?.Entries.Count} in {_pendingImportFile}. They are not merged."
+            : $"The {_pendingImport?.Entries.Count} entries in {_pendingImportFile} become the list.",
+        "It takes effect on the next search, for everyone searching this dataset.",
+        "Export the current list first if you may need it.",
+    ];
+
+    /// <summary>Null on success, else the reason, shown in the modal.</summary>
+    private async Task<string?> ConfirmImportAsync()
+    {
+        if (_pendingImport == null) return null;
+        var previous = _list;
+        _list = _pendingImport;
+        if (!await PushAsync())
+        {
+            _list = previous;
+            return "The imported list could not be saved. The current list is unchanged.";
+        }
+        _pendingImport = null;
+        return null;
     }
 
     private async Task ExportAsync()

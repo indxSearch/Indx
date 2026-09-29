@@ -237,8 +237,6 @@ namespace IndxServer.Components.Datasets
 
         // ── UI state shared between tabs ──────────────────────────────────────
         public string ActiveTab { get; set; } = "fields";
-        /// <summary>One confirm token for every "delete this dataset" site across the tabs.</summary>
-        public bool DeleteConfirmOpen { get; set; }
 
         // ── Change notification ───────────────────────────────────────────────
         /// <summary>Raised by tabs after they change shared state, so the panel (status table,
@@ -279,11 +277,9 @@ namespace IndxServer.Components.Datasets
             try
             {
                 var ok = await Task.Run(() => Engines.DeleteDataSet(Name, TeamId));
-                DeleteConfirmOpen = false;
                 if (!ok)
                 {
-                    // The dataset is still there and the dialog just closed: without this the
-                    // user is left to guess whether anything happened.
+                    // The dataset is still there: say so, in the modal and on the page.
                     OperationError = $"Could not delete '{Name}'. It is still here; see the server log for why.";
                     NotifyChanged();
                     return false;
@@ -295,7 +291,6 @@ namespace IndxServer.Components.Datasets
             catch (Exception ex)
             {
                 OperationError = $"Could not delete '{Name}': {ex.Message}";
-                DeleteConfirmOpen = false;
                 NotifyChanged();
                 return false;
             }

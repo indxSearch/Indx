@@ -50,8 +50,7 @@
         }
         @if (Ctx.IsAdmin)
         {
-            <ConfirmButton Label="Delete dataset" Icon="DatasetIcons.Delete" Prompt="Delete this dataset?" ConfirmLabel="Yes, Delete" TriggerVariant="ghost"
-                           Open="@Ctx.DeleteConfirmOpen" OpenChanged="SetDeleteConfirm" OnConfirm="Ctx.DeleteAsync" />
+            <DeleteDatasetButton Ctx="Ctx" />
         }
     </div>
     <p class="up-hint up-top4">Stuck here? Download the data, then delete to recover.</p>
@@ -112,8 +111,7 @@ else if (state == SystemState.Error)
         }
         @if (Ctx.IsAdmin)
         {
-            <ConfirmButton Label="Delete dataset" Icon="DatasetIcons.Delete" Prompt="Delete this dataset?" ConfirmLabel="Yes, Delete" TriggerVariant="ghost"
-                           Open="@Ctx.DeleteConfirmOpen" OpenChanged="SetDeleteConfirm" OnConfirm="Ctx.DeleteAsync" />
+            <DeleteDatasetButton Ctx="Ctx" />
         }
     </div>
     @if (!Ctx.IsEditor)
@@ -167,8 +165,7 @@ else if (state == SystemState.Error)
     @if (Ctx.IsAdmin)
     {
         <div class="up-top16">
-            <ConfirmButton Label="Delete dataset" Icon="DatasetIcons.Delete" Prompt="Are you sure?" ConfirmLabel="Yes, Delete"
-                           Open="@Ctx.DeleteConfirmOpen" OpenChanged="SetDeleteConfirm" OnConfirm="Ctx.DeleteAsync" />
+            <DeleteDatasetButton Ctx="Ctx" TriggerVariant="secondary" />
         </div>
     }
 }
@@ -286,12 +283,6 @@ else if (Ctx.IsLoadIndexing)
     private void GoToReplace()
     {
         Ctx.ActiveTab = "options";
-        Ctx.NotifyChanged();
-    }
-
-    private void SetDeleteConfirm(bool open)
-    {
-        Ctx.DeleteConfirmOpen = open;
         Ctx.NotifyChanged();
     }
 

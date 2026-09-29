@@ -1,5 +1,7 @@
 @page "/account/manage"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.EntityFrameworkCore
+@inject IndxServer.Data.ApplicationDbContext Db
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
 @using Microsoft.AspNetCore.Components.Web
@@ -118,32 +120,14 @@
     <div style="margin-bottom: 40px;">
         <h3 style="color: var(--CSignal);">Danger zone</h3>
         <p style="color: var(--lv5); margin-top: 10px;">
-            Once you delete your account, there is no going back. This will permanently delete your account and all associated data.
+            Deleting your account can't be undone. The teams you are in, and their datasets, stay.
         </p>
 
-        @if (showDeleteConfirmation)
-        {
-            <div style="margin-top: 12px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-                <span style="font: var(--text-xs); color: var(--lv5);">Type your email to confirm:</span>
-                <input class="indx-input" @bind="confirmEmail" @bind:event="oninput" placeholder="@user?.Email" style="width: 200px;" />
-                @if (CanDeleteAccount)
-                {
-                    <form action="account/manage/delete-account" method="post" style="display:contents;">
-                        <AntiforgeryToken />
-                        <Button Type="submit" Variant="danger" Size="micro">Yes, delete my account</Button>
-                    </form>
-                }
-                else
-                {
-                    <Button Variant="danger" Size="micro" Disabled="true">Yes, delete my account</Button>
-                }
-                <Button Variant="secondary" Size="micro" @onclick="CancelDelete">Cancel</Button>
-            </div>
-        }
-        else
-        {
-            <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" style="margin-top: 8px;" @onclick="ShowDeleteConfirmation">Delete my account</Button>
-        }
+        <Button Variant="secondary" Size="micro" IconLeft="_iconDelete" style="margin-top: 8px;" @onclick="OpenDelete">Delete my account</Button>
+
+        <ConfirmModal @bind-Open="_deleteOpen" Title="Delete your account?" Consequences="_deleteLines"
+                      TypeToConfirm="@user?.Email" CanConfirm="@(_soleAdminOf.Count == 0)"
+                      ConfirmLabel="Delete my account" ConfirmIcon="_iconDelete" FormAction="account/manage/delete-account" />
     </div>
     }
 }
@@ -159,8 +143,6 @@ else
     private RenderFragment<int> _iconLogout => size => @<Logout Size="size" />;
 
     private ApplicationUser? user;
-    private bool showDeleteConfirmation = false;
-    private string confirmEmail = "";
     private bool isResending = false;
     private bool emailResendSuccess = false;
     private string? emailResendError = null;
@@ -171,7 +153,6 @@ else
     private List<NotificationTypeInfo> _visibleNotificationTypes = new();
     private Dictionary<NotificationType, ChannelState> _notificationPrefs = new();
 
-    private bool CanDeleteAccount => user != null && confirmEmail.Trim().ToLower() == user.Email?.ToLower();
 
     protected override async Task OnInitializedAsync()
     {
@@ -239,16 +220,33 @@ else
         }
     }
 
-    private void ShowDeleteConfirmation()
-    {
-        showDeleteConfirmation = true;
-        confirmEmail = "";
-    }
+    private bool _deleteOpen;
+    private IReadOnlyList<string> _deleteLines = [];
+    private List<string> _soleAdminOf = [];
 
-    private void CancelDelete()
+    // Read when the modal opens, so it names the actual teams and keys.
+    private async Task OpenDelete()
     {
-        showDeleteConfirmation = false;
-        confirmEmail = "";
+        if (user == null) return;
+        _soleAdminOf = await IndxServer.Services.TeamService.TeamsOnlyAdministeredByAsync(Db, user.Id);
+        var teams = await Db.TeamMembers.Where(m => m.UserId == user.Id)
+            .Join(Db.Teams, m => m.TeamId, t => t.Id, (m, t) => t.Name).OrderBy(n => n).ToListAsync();
+        var keys = await Db.ApiKeys.CountAsync(k => k.UserId == user.Id && !k.IsRevoked);
+        _deleteLines = _soleAdminOf.Count > 0
+            ? [$"You are the only Admin of {string.Join(", ", _soleAdminOf)}. Make someone else an Admin there, or delete the team, first: otherwise nobody could manage it."]
+            :
+            [
+                teams.Count == 0 ? "You are in no team." : $"You leave {string.Join(", ", teams)}. The teams and their datasets stay.",
+                keys switch
+                {
+                    0 => "You have no API keys.",
+                    1 => "Your personal API key is deleted, and whatever uses it gets errors.",
+                    _ => $"Your {keys} personal API keys are deleted, and whatever uses them gets errors.",
+                },
+                "Team keys you created keep working.",
+                "You are signed out, and this can't be undone.",
+            ];
+        _deleteOpen = true;
     }
 
     private async Task SaveNotificationPref(NotificationType type, bool? inApp = null, bool? email = null)

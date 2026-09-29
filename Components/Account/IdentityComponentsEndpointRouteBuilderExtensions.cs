@@ -72,7 +72,17 @@ namespace Microsoft.AspNetCore.Routing
                 }
 
                 var userId = appUser.Id;
-                logger.LogInformation($"Starting account deletion for user {userId}");
+
+                // The only Admin of a team leaving it leaves the team and its datasets with nobody
+                // who can manage them, and /admin/teams is read-only. The admin "Delete user" path
+                // has always refused this; deleting your own account must too. The page checks
+                // first and says so; this is the guarantee.
+                var db = context.RequestServices.GetRequiredService<IndxServer.Data.ApplicationDbContext>();
+                var orphaned = await IndxServer.Services.TeamService.TeamsOnlyAdministeredByAsync(db, userId);
+                if (orphaned.Count > 0)
+                    return Results.BadRequest($"You are the only Admin of {string.Join(", ", orphaned)}. Make someone else an Admin, or delete the team, first.");
+
+                logger.LogInformation("Starting account deletion for {Email}", appUser.Email);
 
                 // Datasets are owned by teams, not by users — so deleting a user must NOT delete
                 // any datasets (that continuity is the whole point of team ownership). The user's
@@ -84,11 +94,11 @@ namespace Microsoft.AspNetCore.Routing
                 var result = await userManager.DeleteAsync(appUser);
                 if (!result.Succeeded)
                 {
-                    logger.LogError($"Failed to delete ApplicationUser: {string.Join(", ", result.Errors.Select(e => e.Description))}");
+                    logger.LogError("Failed to delete the account of {Email}: {Errors}", appUser.Email, string.Join(", ", result.Errors.Select(e => e.Description)));
                     return Results.BadRequest(string.Join(", ", result.Errors.Select(e => e.Description)));
                 }
 
-                logger.LogInformation($"Successfully deleted account for user {userId}");
+                logger.LogInformation("Deleted the account of {Email}", appUser.Email);
                 await signInManager.SignOutAsync();
                 return TypedResults.LocalRedirect("~/");
             });
