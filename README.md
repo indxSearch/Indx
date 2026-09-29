@@ -10,61 +10,61 @@ A self-hosted search service built on [Indx Search](https://indx.co). Blazor Ser
 <tr>
 <td width="50%" valign="top">
 <img src="docs/icons/internet-browser.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Dashboard</b><br>
-Teams, datasets, field configuration with weight sliders, search preview, status, boost rules, synonyms, options; plus an admin panel
+<sub>Teams, datasets, field configuration with weight sliders, search preview, status, boost rules, synonyms, options; plus an admin panel</sub>
 </td>
 <td width="50%" valign="top">
 <img src="docs/icons/user-group.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Teams</b><br>
-Datasets belong to teams; members join with per-team roles
+<sub>Datasets belong to teams; members join with per-team roles</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 <img src="docs/icons/api.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>HTTP API</b><br>
-JWT authentication and API key management; the whole API browsable in Swagger UI at <code>/swagger</code>; errors are RFC 9457 problem documents with a machine-readable <code>code</code>
+<sub>JWT authentication and API key management; the whole API browsable in Swagger UI at <code>/swagger</code>; errors are RFC 9457 problem documents with a machine-readable <code>code</code></sub>
 </td>
 <td width="50%" valign="top">
 <img src="docs/icons/dynamic-json-field.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Dynamic data</b><br>
-Insert, update, delete, by key or by filter, with the index kept in sync
+<sub>Insert, update, delete, by key or by filter, with the index kept in sync</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 <img src="docs/icons/shadow-indexing.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Zero-downtime rebuilds</b><br>
-Replace a dataset, or change its field configuration, on a shadow engine while the old one keeps serving
+<sub>Replace a dataset, or change its field configuration, on a shadow engine while the old one keeps serving</sub>
 </td>
 <td width="50%" valign="top">
 <img src="docs/icons/hibernate.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Keep-alive &amp; hibernation</b><br>
-Pinned, timed or client-managed memory per dataset
+<sub>Pinned, timed or client-managed memory per dataset</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 <img src="docs/icons/mcp.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>MCP server</b><br>
-Connect AI agents (Claude, etc.) directly to your search data, at <code>/mcp</code>
+<sub>Connect AI agents (Claude, etc.) directly to your search data, at <code>/mcp</code></sub>
 </td>
 <td width="50%" valign="top">
 <img src="docs/icons/login.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Accounts</b><br>
-Registration, login and account management; local passwords, with optional Microsoft and Google sign-in
+<sub>Registration, login and account management; local passwords, with optional Microsoft and Google sign-in</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 <img src="docs/icons/boost.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Relevance</b><br>
-Server-side boost rules with schedules, facets, coverage, vector and hybrid search
+<sub>Server-side boost rules with schedules, facets, coverage, vector and hybrid search</sub>
 </td>
 <td width="50%" valign="top">
 <img src="docs/icons/synonym.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Synonyms</b><br>
-Per-dataset lists (experimental); query expansion at search time
+<sub>Per-dataset lists (experimental); query expansion at search time</sub>
 </td>
 </tr>
 <tr>
 <td width="50%" valign="top">
 <img src="docs/icons/bell.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Notifications</b><br>
-In the app and by email
+<sub>In the app and by email</sub>
 </td>
 <td width="50%" valign="top">
 <img src="docs/icons/terminal.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Terminal UI</b><br>
-A live view of datasets and server events in the terminal the server runs in, with no browser and no login
+<sub>A live view of datasets and server events in the terminal the server runs in, with no browser and no login</sub>
 </td>
 </tr>
 </table>
