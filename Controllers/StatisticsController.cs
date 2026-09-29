@@ -1,4 +1,5 @@
 ﻿using Asp.Versioning;
+using IndxServer.Models;
 using IndxServer.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,6 +15,50 @@ namespace IndxServer.Controllers
     public class StatisticsController(TeamContextResolver resolver, StatisticsService statistics)
         : DatasetApiController(resolver)
     {
+        /// <summary>The window's totals and rates - the dashboard's header numbers. Rates are
+        /// computed here so every consumer shares the definitions (see the response type).</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/overview")]
+        public ActionResult<StatisticsOverviewResponse> Overview(string teamName, string dataSetName, int days = 30)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var (fromDay, toDay) = Window(days);
+            var o = statistics.Store!.Overview(ctx.OwnerKey, dataSetName, fromDay, toDay);
+            return new StatisticsOverviewResponse(
+                o.Searches, o.ZeroHits, o.ClickedSearches, o.Selects, o.Converts, o.ConvertValueSum,
+                Rate(o.ZeroHits, o.Searches), Rate(o.ClickedSearches, o.Searches),
+                Rate(o.PositionSum, o.Selects));
+        }
+
+        /// <summary>The per-day series behind the charts: one row per UTC day in the window.
+        /// Days without events are served as zero rows, so a chart never has holes.</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/timeseries")]
+        public ActionResult<StatisticsDayResponse[]> TimeSeries(string teamName, string dataSetName, int days = 30)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var (fromDay, toDay) = Window(days);
+            var byDay = statistics.Store!.TimeSeries(ctx.OwnerKey, dataSetName, fromDay, toDay)
+                .ToDictionary(r => r.Day);
+            var series = new List<StatisticsDayResponse>((int)(toDay - fromDay + 1));
+            for (long day = fromDay; day <= toDay; day++)
+            {
+                var r = byDay.GetValueOrDefault(day);
+                series.Add(new StatisticsDayResponse(
+                    DateOnly.FromDayNumber((int)day + DateOnly.Parse("1970-01-01").DayNumber).ToString("yyyy-MM-dd"),
+                    r.Searches, r.ZeroHits, r.ClickedSearches, r.Selects, r.Converts,
+                    r.ConvertValueSum, Rate(r.PositionSum, r.Selects)));
+            }
+            return series.ToArray();
+        }
+
+        private static double? Rate(double numerator, double denominator) =>
+            denominator == 0 ? null : numerator / denominator;
+
         /// <summary>Top queries in the window: searches, zero-hit count and selects per query
         /// text (lowercased). With zeroHitsOnly=true, the zero-hit report — the searches the
         /// dataset could not answer, ordered by how often.</summary>

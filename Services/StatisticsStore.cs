@@ -18,8 +18,18 @@ namespace IndxServer.Services
         string TeamId, string DataSet, string? QueryId, long DocumentKey, string Type,
         double? Value, string? Currency, long? Quantity, string? Subject, long Timestamp);
 
-    /// <summary>One query's aggregate over a window.</summary>
-    public readonly record struct QueryStat(string QueryText, long Searches, long ZeroHits, long Selects);
+    /// <summary>One query's aggregate over a window. ClickedSearches is the CTR numerator
+    /// (searches with at least one select); average click position is PositionSum / Selects.</summary>
+    public readonly record struct QueryStat(string QueryText, long Searches, long ZeroHits, long Selects,
+        long ClickedSearches, long PositionSum);
+
+    /// <summary>The window's totals, for the dashboard's header numbers.</summary>
+    public readonly record struct OverviewStat(long Searches, long ZeroHits, long ClickedSearches,
+        long Selects, long PositionSum, long Converts, double ConvertValueSum);
+
+    /// <summary>One day of the time series behind the charts.</summary>
+    public readonly record struct DailyStat(long Day, long Searches, long ZeroHits, long ClickedSearches,
+        long Selects, long Converts, double ConvertValueSum, long PositionSum);
 
     /// <summary>One document's aggregate over a window.</summary>
     public readonly record struct DocumentStat(long DocumentKey, long Selects, long Converts, double ConvertValueSum);
@@ -114,7 +124,9 @@ CREATE TABLE IF NOT EXISTS DailyQueryStats (
     QueryText   TEXT    NOT NULL,
     Searches    INTEGER NOT NULL,
     ZeroHits    INTEGER NOT NULL,
-    Selects     INTEGER NOT NULL,
+    Selects     INTEGER NOT NULL,           -- select events joined to these searches
+    ClickedSearches INTEGER NOT NULL,       -- searches with at least one select (the CTR numerator)
+    PositionSum INTEGER NOT NULL,           -- sum of 1-based select positions (avg = / Selects)
     PRIMARY KEY (Day, TeamId, DataSet, QueryText)
 );
 
@@ -145,6 +157,17 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
     PRIMARY KEY (TeamId, DataSet, Subject, DocumentKey)
 );";
             cmd.ExecuteNonQuery();
+            // Dev-file guard: adds the two rollup columns to a stats.db created in the days
+            // before they existed. They shipped in no release, so this can go after one.
+            foreach (var col in new[] { "ClickedSearches", "PositionSum" })
+            {
+                try
+                {
+                    cmd.CommandText = $"ALTER TABLE DailyQueryStats ADD COLUMN {col} INTEGER NOT NULL DEFAULT 0";
+                    cmd.ExecuteNonQuery();
+                }
+                catch (SqliteException) { /* already there */ }
+            }
         }
 
         /// <summary>
@@ -292,13 +315,16 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
             cmd.Transaction = tx;
             cmd.CommandText = @"
 DELETE FROM DailyQueryStats WHERE Day = $day;
-INSERT INTO DailyQueryStats (Day, TeamId, DataSet, QueryText, Searches, ZeroHits, Selects)
+INSERT INTO DailyQueryStats (Day, TeamId, DataSet, QueryText, Searches, ZeroHits, Selects, ClickedSearches, PositionSum)
 SELECT $day, s.TeamId, s.DataSet, lower(s.QueryText),
        COUNT(*),
        SUM(CASE WHEN s.HitCount = 0 THEN 1 ELSE 0 END),
-       COALESCE(SUM(sc.Cnt), 0)
+       COALESCE(SUM(sc.Cnt), 0),
+       SUM(CASE WHEN sc.Cnt > 0 THEN 1 ELSE 0 END),
+       COALESCE(SUM(sc.PosSum), 0)
 FROM SearchEvents s
-LEFT JOIN (SELECT QueryId, COUNT(*) AS Cnt FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
+LEFT JOIN (SELECT QueryId, COUNT(*) AS Cnt, SUM(Position) AS PosSum
+             FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
        ON sc.QueryId = s.QueryId
 WHERE s.Timestamp >= $from AND s.Timestamp < $to
 GROUP BY s.TeamId, s.DataSet, lower(s.QueryText);
@@ -401,13 +427,17 @@ GROUP BY TeamId, DataSet, DocumentKey;";
             using var cmd = conn.CreateCommand();
             var order = zeroHitsOnly ? "HAVING SUM(ZeroHits) > 0 ORDER BY Z DESC, S DESC" : "ORDER BY S DESC";
             cmd.CommandText = $@"
-SELECT QueryText, SUM(Searches) AS S, SUM(ZeroHits) AS Z, SUM(Selects) AS C FROM (
-    SELECT QueryText, Searches, ZeroHits, Selects FROM DailyQueryStats
+SELECT QueryText, SUM(Searches) AS S, SUM(ZeroHits) AS Z, SUM(Selects) AS C,
+       SUM(Clicked) AS K, SUM(PosSum) FROM (
+    SELECT QueryText, Searches, ZeroHits, Selects, ClickedSearches AS Clicked, PositionSum AS PosSum
+      FROM DailyQueryStats
      WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
     UNION ALL
-    SELECT lower(s.QueryText), 1, CASE WHEN s.HitCount = 0 THEN 1 ELSE 0 END, COALESCE(sc.Cnt, 0)
+    SELECT lower(s.QueryText), 1, CASE WHEN s.HitCount = 0 THEN 1 ELSE 0 END, COALESCE(sc.Cnt, 0),
+           CASE WHEN sc.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(sc.PosSum, 0)
       FROM SearchEvents s
-      LEFT JOIN (SELECT QueryId, COUNT(*) AS Cnt FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
+      LEFT JOIN (SELECT QueryId, COUNT(*) AS Cnt, SUM(Position) AS PosSum
+                   FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
              ON sc.QueryId = s.QueryId
      WHERE s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $liveFrom AND s.Timestamp < $toEx
 )
@@ -424,7 +454,8 @@ LIMIT $n";
             var result = new List<QueryStat>();
             using var r = cmd.ExecuteReader();
             while (r.Read())
-                result.Add(new QueryStat(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3)));
+                result.Add(new QueryStat(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3),
+                    r.GetInt64(4), r.GetInt64(5)));
             return result;
         }
 
@@ -462,6 +493,75 @@ LIMIT $n";
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 result.Add(new DocumentStat(r.GetInt64(0), r.GetInt64(1), r.GetInt64(2), r.GetDouble(3)));
+            return result;
+        }
+
+        /// <summary>
+        /// The per-day series behind the charts: searches, zero-hits, clicked searches and
+        /// selects on the search's day, converts and their value on their own day. Rolled days
+        /// come from the daily tables, the rest live from the raw rows.
+        /// </summary>
+        public List<DailyStat> TimeSeries(string teamId, string dataSet, long fromDay, long toDay)
+        {
+            var rows = TimeSeriesInternal(teamId, dataSet, fromDay, toDay, perDay: true);
+            return rows;
+        }
+
+        /// <summary>The window's totals - the dashboard's header numbers. Same merge as the
+        /// time series, summed.</summary>
+        public OverviewStat Overview(string teamId, string dataSet, long fromDay, long toDay)
+        {
+            var rows = TimeSeriesInternal(teamId, dataSet, fromDay, toDay, perDay: false);
+            var r = rows.Count == 0 ? default : rows[0];
+            return new OverviewStat(r.Searches, r.ZeroHits, r.ClickedSearches, r.Selects,
+                r.PositionSum, r.Converts, r.ConvertValueSum);
+        }
+
+        private List<DailyStat> TimeSeriesInternal(string teamId, string dataSet, long fromDay, long toDay, bool perDay)
+        {
+            long rolledTo = Math.Min(toDay, LastRolledDay());
+            long liveFromMs = Math.Max(fromDay, rolledTo + 1) * 86_400_000L;
+            long toMsExcl = (toDay + 1) * 86_400_000L;
+            var group = perDay ? "GROUP BY Day ORDER BY Day" : "";
+            var dayCol = perDay ? "Day" : "0";
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv), SUM(Val), SUM(PosSum) FROM (
+    SELECT Day, Searches, ZeroHits, ClickedSearches AS Clicked, Selects AS Sel,
+           0 AS Conv, 0.0 AS Val, PositionSum AS PosSum
+      FROM DailyQueryStats
+     WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
+    UNION ALL
+    SELECT Day, 0, 0, 0, 0, Converts, ConvertValueSum, 0 FROM DailyDocumentStats
+     WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
+    UNION ALL
+    SELECT s.Timestamp / 86400000, 1, CASE WHEN s.HitCount = 0 THEN 1 ELSE 0 END,
+           CASE WHEN sc.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(sc.Cnt, 0), 0, 0.0, COALESCE(sc.PosSum, 0)
+      FROM SearchEvents s
+      LEFT JOIN (SELECT QueryId, COUNT(*) AS Cnt, SUM(Position) AS PosSum
+                   FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
+             ON sc.QueryId = s.QueryId
+     WHERE s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $liveFrom AND s.Timestamp < $toEx
+    UNION ALL
+    SELECT Timestamp / 86400000, 0, 0, 0, 0, 1, COALESCE(Value, 0), 0 FROM ConvertEvents
+     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx
+)
+{group}";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$fromDay", fromDay);
+            cmd.Parameters.AddWithValue("$rolledTo", rolledTo);
+            cmd.Parameters.AddWithValue("$liveFrom", liveFromMs);
+            cmd.Parameters.AddWithValue("$toEx", toMsExcl);
+            var result = new List<DailyStat>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                if (r.IsDBNull(1)) continue; // the no-rows aggregate row of the totals query
+                result.Add(new DailyStat(r.GetInt64(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3),
+                    r.GetInt64(4), r.GetInt64(5), r.GetDouble(6), r.GetInt64(7)));
+            }
             return result;
         }
 
