@@ -114,7 +114,7 @@
     grid-template-columns: 96px 1fr;
     gap: 5px 12px;
     align-items: baseline;
-    font: var(--text-sm);
+    font: var(--text-xs);
 }
 
 .indx-dataset-card-term {
@@ -130,16 +130,23 @@
 
 /* ── The role chips ─────────────────────────────────────────────────────────
    The Search preview's facet chips (SearchPreviewTab.razor.css): a label and its count in one
-   chip, the count set off from the label and dimmer than it. Wraps, so the four read as a set
-   rather than a row that can overflow. Spans both columns of the detail grid. */
+   chip, the count set off from the label and dimmer than it. They sit in the value column beside
+   "Fields", which baseline alignment keeps level with the first row of chips.
+   - At most two rows: they wrap, and a third row is clipped rather than growing the card. A chip
+     is its --text-xs line (11px x 1.5) plus 2px padding top and bottom.
+   - Pulled left by the chip's own horizontal padding (6px), so the chip text lines up with the
+     values in the rows above instead of starting 6px after them.
+   Designed in the components viewer's Dataset card mockup (indx-react/apps/components). */
 .indx-dataset-card-fields {
-    grid-column: 1 / -1;
+    --chip-h: calc(11px * 1.5 + 4px);
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 4px;
     min-width: 0;
-    margin: 2px 0;
+    max-height: calc(2 * var(--chip-h) + 4px);
+    overflow: hidden;
+    margin-left: -6px;
 }
 
 .indx-dataset-card-rolecount {

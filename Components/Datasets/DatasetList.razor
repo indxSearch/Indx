@@ -83,10 +83,10 @@ else
                             @* Last, so the rows above it are the ones every dataset has. *@
                             @if (row.Fields is { } f)
                             {
+                                @* No total: the chips sit on the label's own line, in the value
+                                   column. The Search preview's facet chips: a label and its count
+                                   in one chip, the count set off and dimmer. *@
                                 <span class="indx-dataset-card-term">Fields</span>
-                                <span class="indx-dataset-card-value">@f.Total</span>
-                                @* The Search preview's facet chips: a label and its count in one
-                                   chip, the count set off and dimmer. *@
                                 <span class="indx-dataset-card-fields">
                                     <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span>searchable</span><span class="indx-dataset-card-rolecount">@f.Searchable</span></Chip>
                                     <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span>filterable</span><span class="indx-dataset-card-rolecount">@f.Filterable</span></Chip>
@@ -149,7 +149,7 @@ else
 
     /// <summary>How the dataset is configured, for the card. Only knowable while an engine is
     /// loaded, which is why it is optional rather than zeroed.</summary>
-    private sealed record FieldShape(int Total, int Searchable, int Filterable, int Facetable, int Preloaded);
+    private sealed record FieldShape(int Searchable, int Filterable, int Facetable, int Preloaded);
 
     private sealed record Row(string Name, string Label, DatasetStateChip Chip, int? Count, int? Percent = null,
                               FieldShape? Fields = null, DateTime? LastIndexed = null,
@@ -330,7 +330,7 @@ else
         }
     }
 
-    /// <summary>The field configuration as three counts. Read from the engine already in hand, so
+    /// <summary>The field configuration as four role counts. Read from the engine already in hand, so
     /// it costs a dictionary walk and never wakes anything; null when there is no engine or it has
     /// no configuration yet, which is what keeps the row off a hibernated card.</summary>
     private static FieldShape? Shape(IServerSearchEngine? engine)
@@ -340,7 +340,6 @@ else
             var fields = engine?.GetFieldConfiguration();
             if (fields is not { Length: > 0 }) return null;
             return new FieldShape(
-                fields.Length,
                 fields.Count(f => f.Searchable == true),
                 fields.Count(f => f.Filterable == true),
                 fields.Count(f => f.Facetable == true),
