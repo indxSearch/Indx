@@ -1,0 +1,574 @@
+﻿using Microsoft.Data.Sqlite;
+
+namespace IndxServer.Services
+{
+    /// <summary>One search, as the search path records it. Timestamps are Unix milliseconds UTC.</summary>
+    public readonly record struct SearchEventRow(
+        string QueryId, string TeamId, string DataSet, string QueryText, string? FilterKey,
+        int HitCount, string? Subject, long Timestamp);
+
+    /// <summary>One select: the user chose a result. QueryId is an opaque reference — an orphan
+    /// (unknown or expired id) is stored like any other row and simply finds no search to join.</summary>
+    public readonly record struct SelectEventRow(
+        string TeamId, string DataSet, string? QueryId, long DocumentKey, int Position,
+        string? Subject, long Timestamp);
+
+    /// <summary>One conversion: whatever the customer considers valuable. Type is theirs.</summary>
+    public readonly record struct ConvertEventRow(
+        string TeamId, string DataSet, string? QueryId, long DocumentKey, string Type,
+        double? Value, string? Currency, long? Quantity, string? Subject, long Timestamp);
+
+    /// <summary>One query's aggregate over a window.</summary>
+    public readonly record struct QueryStat(string QueryText, long Searches, long ZeroHits, long Selects);
+
+    /// <summary>One document's aggregate over a window.</summary>
+    public readonly record struct DocumentStat(long DocumentKey, long Selects, long Converts, double ConvertValueSum);
+
+    /// <summary>One row of a subject's lifetime top-N.</summary>
+    public readonly record struct SubjectDocumentStat(long DocumentKey, long Selects, long Converts, long LastSeen);
+
+    /// <summary>
+    /// Server-owned persistence for search statistics, in its own SQLite file (stats.db) next to
+    /// the search database — see Notes/statistics-design.md for the model and the decisions.
+    /// Rows are keyed on the customer's identities (TeamId, DataSet name, DocumentKey), so
+    /// statistics survive dataset delete/recreate and document delete; purging is explicit.
+    ///
+    /// All writes go through <see cref="WriteBatch"/>, and only <see cref="StatisticsWriter"/>
+    /// calls it — one writer connection by construction, so search traffic never contends on
+    /// this file. Every access to statistics goes through this class (no SQL in controllers or
+    /// pages): that is the N-tier rule from the design note, and it is load-bearing.
+    /// </summary>
+    public sealed class StatisticsStore(string dbPath, ILogger<StatisticsStore> logger)
+    {
+        private readonly string _dbPath = dbPath;
+
+        public string DbPath => _dbPath;
+
+        private SqliteConnection Open()
+        {
+            var conn = new SqliteConnection($"Data Source={_dbPath}");
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "PRAGMA busy_timeout=5000;";
+            cmd.ExecuteNonQuery();
+            return conn;
+        }
+
+        /// <summary>Creates the file and schema. Idempotent; call once at startup.</summary>
+        public void EnsureSchema()
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(_dbPath))!);
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+PRAGMA journal_mode=WAL;
+
+CREATE TABLE IF NOT EXISTS SearchEvents (
+    QueryId     TEXT    PRIMARY KEY,
+    TeamId      TEXT    NOT NULL,
+    DataSet     TEXT    NOT NULL,
+    QueryText   TEXT    NOT NULL,
+    FilterKey   TEXT    NULL,
+    HitCount    INTEGER NOT NULL,
+    Subject     TEXT    NULL,
+    Timestamp   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS IX_Search_TeamDsTime ON SearchEvents(TeamId, DataSet, Timestamp);
+CREATE INDEX IF NOT EXISTS IX_Search_ZeroHits   ON SearchEvents(TeamId, DataSet, Timestamp) WHERE HitCount = 0;
+
+CREATE TABLE IF NOT EXISTS SelectEvents (
+    Id          INTEGER PRIMARY KEY,
+    TeamId      TEXT    NOT NULL,
+    DataSet     TEXT    NOT NULL,
+    QueryId     TEXT    NULL,
+    DocumentKey INTEGER NOT NULL,
+    Position    INTEGER NOT NULL,
+    Subject     TEXT    NULL,
+    Timestamp   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS IX_Select_TeamDsDoc ON SelectEvents(TeamId, DataSet, DocumentKey);
+CREATE INDEX IF NOT EXISTS IX_Select_QueryId   ON SelectEvents(QueryId) WHERE QueryId IS NOT NULL;
+CREATE INDEX IF NOT EXISTS IX_Select_Subject   ON SelectEvents(TeamId, DataSet, Subject) WHERE Subject IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS ConvertEvents (
+    Id          INTEGER PRIMARY KEY,
+    TeamId      TEXT    NOT NULL,
+    DataSet     TEXT    NOT NULL,
+    QueryId     TEXT    NULL,
+    DocumentKey INTEGER NOT NULL,
+    Type        TEXT    NOT NULL,
+    Value       REAL    NULL,
+    Currency    TEXT    NULL,
+    Quantity    INTEGER NULL,
+    Subject     TEXT    NULL,
+    Timestamp   INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS IX_Convert_TeamDsDoc ON ConvertEvents(TeamId, DataSet, DocumentKey);
+CREATE INDEX IF NOT EXISTS IX_Convert_QueryId   ON ConvertEvents(QueryId) WHERE QueryId IS NOT NULL;
+CREATE INDEX IF NOT EXISTS IX_Convert_Subject   ON ConvertEvents(TeamId, DataSet, Subject) WHERE Subject IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS DailyQueryStats (
+    Day         INTEGER NOT NULL,
+    TeamId      TEXT    NOT NULL,
+    DataSet     TEXT    NOT NULL,
+    QueryText   TEXT    NOT NULL,
+    Searches    INTEGER NOT NULL,
+    ZeroHits    INTEGER NOT NULL,
+    Selects     INTEGER NOT NULL,
+    PRIMARY KEY (Day, TeamId, DataSet, QueryText)
+);
+
+CREATE TABLE IF NOT EXISTS DailyDocumentStats (
+    Day         INTEGER NOT NULL,
+    TeamId      TEXT    NOT NULL,
+    DataSet     TEXT    NOT NULL,
+    DocumentKey INTEGER NOT NULL,
+    Selects     INTEGER NOT NULL,
+    Converts    INTEGER NOT NULL,
+    ConvertValueSum REAL NOT NULL DEFAULT 0,
+    PRIMARY KEY (Day, TeamId, DataSet, DocumentKey)
+);
+
+CREATE TABLE IF NOT EXISTS RollupState (
+    Id            INTEGER PRIMARY KEY CHECK (Id = 1),
+    LastRolledDay INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
+    TeamId      TEXT    NOT NULL,
+    DataSet     TEXT    NOT NULL,
+    Subject     TEXT    NOT NULL,
+    DocumentKey INTEGER NOT NULL,
+    Selects     INTEGER NOT NULL,
+    Converts    INTEGER NOT NULL,
+    LastSeen    INTEGER NOT NULL,
+    PRIMARY KEY (TeamId, DataSet, Subject, DocumentKey)
+);";
+            cmd.ExecuteNonQuery();
+        }
+
+        /// <summary>
+        /// Writes one batch in one transaction. The subject↔document edge
+        /// (<c>SubjectDocumentStats</c>) is maintained here at write time, not by the rollup:
+        /// lifetime counters upserted from a recomputable rollup would double-count on a re-run,
+        /// and maintained here the daily rollup stays idempotent.
+        /// </summary>
+        public void WriteBatch(
+            IReadOnlyList<SearchEventRow> searches,
+            IReadOnlyList<SelectEventRow> selects,
+            IReadOnlyList<ConvertEventRow> converts)
+        {
+            if (searches.Count == 0 && selects.Count == 0 && converts.Count == 0) return;
+            using var conn = Open();
+            using var tx = conn.BeginTransaction();
+
+            if (searches.Count > 0)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = @"INSERT OR IGNORE INTO SearchEvents
+                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp)
+                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts)";
+                var qid = cmd.Parameters.Add("$qid", SqliteType.Text);
+                var team = cmd.Parameters.Add("$team", SqliteType.Text);
+                var ds = cmd.Parameters.Add("$ds", SqliteType.Text);
+                var text = cmd.Parameters.Add("$text", SqliteType.Text);
+                var filter = cmd.Parameters.Add("$filter", SqliteType.Text);
+                var hits = cmd.Parameters.Add("$hits", SqliteType.Integer);
+                var subj = cmd.Parameters.Add("$subj", SqliteType.Text);
+                var ts = cmd.Parameters.Add("$ts", SqliteType.Integer);
+                foreach (var e in searches)
+                {
+                    qid.Value = e.QueryId; team.Value = e.TeamId; ds.Value = e.DataSet;
+                    text.Value = e.QueryText; filter.Value = (object?)e.FilterKey ?? DBNull.Value;
+                    hits.Value = e.HitCount; subj.Value = (object?)e.Subject ?? DBNull.Value;
+                    ts.Value = e.Timestamp;
+                    cmd.ExecuteNonQuery();
+                }
+            }
+
+            if (selects.Count > 0)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = @"INSERT INTO SelectEvents
+                    (TeamId, DataSet, QueryId, DocumentKey, Position, Subject, Timestamp)
+                    VALUES ($team, $ds, $qid, $key, $pos, $subj, $ts)";
+                var team = cmd.Parameters.Add("$team", SqliteType.Text);
+                var ds = cmd.Parameters.Add("$ds", SqliteType.Text);
+                var qid = cmd.Parameters.Add("$qid", SqliteType.Text);
+                var key = cmd.Parameters.Add("$key", SqliteType.Integer);
+                var pos = cmd.Parameters.Add("$pos", SqliteType.Integer);
+                var subj = cmd.Parameters.Add("$subj", SqliteType.Text);
+                var ts = cmd.Parameters.Add("$ts", SqliteType.Integer);
+                foreach (var e in selects)
+                {
+                    team.Value = e.TeamId; ds.Value = e.DataSet;
+                    qid.Value = (object?)e.QueryId ?? DBNull.Value; key.Value = e.DocumentKey;
+                    pos.Value = e.Position; subj.Value = (object?)e.Subject ?? DBNull.Value;
+                    ts.Value = e.Timestamp;
+                    cmd.ExecuteNonQuery();
+                }
+                UpsertSubjectEdges(conn, tx, selects.Where(s => s.Subject != null)
+                    .Select(s => (s.TeamId, s.DataSet, s.Subject!, s.DocumentKey, s.Timestamp, Selects: 1, Converts: 0)));
+            }
+
+            if (converts.Count > 0)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = @"INSERT INTO ConvertEvents
+                    (TeamId, DataSet, QueryId, DocumentKey, Type, Value, Currency, Quantity, Subject, Timestamp)
+                    VALUES ($team, $ds, $qid, $key, $type, $val, $cur, $qty, $subj, $ts)";
+                var team = cmd.Parameters.Add("$team", SqliteType.Text);
+                var ds = cmd.Parameters.Add("$ds", SqliteType.Text);
+                var qid = cmd.Parameters.Add("$qid", SqliteType.Text);
+                var key = cmd.Parameters.Add("$key", SqliteType.Integer);
+                var type = cmd.Parameters.Add("$type", SqliteType.Text);
+                var val = cmd.Parameters.Add("$val", SqliteType.Real);
+                var cur = cmd.Parameters.Add("$cur", SqliteType.Text);
+                var qty = cmd.Parameters.Add("$qty", SqliteType.Integer);
+                var subj = cmd.Parameters.Add("$subj", SqliteType.Text);
+                var ts = cmd.Parameters.Add("$ts", SqliteType.Integer);
+                foreach (var e in converts)
+                {
+                    team.Value = e.TeamId; ds.Value = e.DataSet;
+                    qid.Value = (object?)e.QueryId ?? DBNull.Value; key.Value = e.DocumentKey;
+                    type.Value = e.Type; val.Value = (object?)e.Value ?? DBNull.Value;
+                    cur.Value = (object?)e.Currency ?? DBNull.Value;
+                    qty.Value = (object?)e.Quantity ?? DBNull.Value;
+                    subj.Value = (object?)e.Subject ?? DBNull.Value; ts.Value = e.Timestamp;
+                    cmd.ExecuteNonQuery();
+                }
+                UpsertSubjectEdges(conn, tx, converts.Where(c => c.Subject != null)
+                    .Select(c => (c.TeamId, c.DataSet, c.Subject!, c.DocumentKey, c.Timestamp, Selects: 0, Converts: 1)));
+            }
+
+            tx.Commit();
+        }
+
+        private static void UpsertSubjectEdges(SqliteConnection conn, SqliteTransaction tx,
+            IEnumerable<(string TeamId, string DataSet, string Subject, long DocumentKey, long Timestamp, int Selects, int Converts)> edges)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = @"INSERT INTO SubjectDocumentStats
+                (TeamId, DataSet, Subject, DocumentKey, Selects, Converts, LastSeen)
+                VALUES ($team, $ds, $subj, $key, $sel, $conv, $ts)
+                ON CONFLICT(TeamId, DataSet, Subject, DocumentKey) DO UPDATE SET
+                    Selects  = Selects + excluded.Selects,
+                    Converts = Converts + excluded.Converts,
+                    LastSeen = max(LastSeen, excluded.LastSeen)";
+            var team = cmd.Parameters.Add("$team", SqliteType.Text);
+            var ds = cmd.Parameters.Add("$ds", SqliteType.Text);
+            var subj = cmd.Parameters.Add("$subj", SqliteType.Text);
+            var key = cmd.Parameters.Add("$key", SqliteType.Integer);
+            var sel = cmd.Parameters.Add("$sel", SqliteType.Integer);
+            var conv = cmd.Parameters.Add("$conv", SqliteType.Integer);
+            var ts = cmd.Parameters.Add("$ts", SqliteType.Integer);
+            foreach (var e in edges)
+            {
+                team.Value = e.TeamId; ds.Value = e.DataSet; subj.Value = e.Subject;
+                key.Value = e.DocumentKey; sel.Value = e.Selects; conv.Value = e.Converts;
+                ts.Value = e.Timestamp;
+                cmd.ExecuteNonQuery();
+            }
+        }
+
+        /// <summary>Unix day number (UTC) for a Unix-millisecond timestamp.</summary>
+        public static long DayOf(long unixMs) => unixMs / 86_400_000L;
+
+        /// <summary>
+        /// Recomputes the two daily tables for one Unix day. Idempotent: the day's rows are
+        /// replaced wholesale, so re-running it is safe. Roll up day D no earlier than D+2, so
+        /// its selects and converts have had time to arrive and join.
+        /// </summary>
+        public void RollupDay(long day)
+        {
+            long from = day * 86_400_000L, to = from + 86_400_000L;
+            using var conn = Open();
+            using var tx = conn.BeginTransaction();
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = @"
+DELETE FROM DailyQueryStats WHERE Day = $day;
+INSERT INTO DailyQueryStats (Day, TeamId, DataSet, QueryText, Searches, ZeroHits, Selects)
+SELECT $day, s.TeamId, s.DataSet, lower(s.QueryText),
+       COUNT(*),
+       SUM(CASE WHEN s.HitCount = 0 THEN 1 ELSE 0 END),
+       COALESCE(SUM(sc.Cnt), 0)
+FROM SearchEvents s
+LEFT JOIN (SELECT QueryId, COUNT(*) AS Cnt FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
+       ON sc.QueryId = s.QueryId
+WHERE s.Timestamp >= $from AND s.Timestamp < $to
+GROUP BY s.TeamId, s.DataSet, lower(s.QueryText);
+
+DELETE FROM DailyDocumentStats WHERE Day = $day;
+INSERT INTO DailyDocumentStats (Day, TeamId, DataSet, DocumentKey, Selects, Converts, ConvertValueSum)
+SELECT $day, TeamId, DataSet, DocumentKey, SUM(Sel), SUM(Conv), SUM(Val)
+FROM (
+    SELECT TeamId, DataSet, DocumentKey, 1 AS Sel, 0 AS Conv, 0.0 AS Val
+    FROM SelectEvents WHERE Timestamp >= $from AND Timestamp < $to
+    UNION ALL
+    SELECT TeamId, DataSet, DocumentKey, 0, 1, COALESCE(Value, 0)
+    FROM ConvertEvents WHERE Timestamp >= $from AND Timestamp < $to
+)
+GROUP BY TeamId, DataSet, DocumentKey;";
+            cmd.Parameters.AddWithValue("$day", day);
+            cmd.Parameters.AddWithValue("$from", from);
+            cmd.Parameters.AddWithValue("$to", to);
+            cmd.ExecuteNonQuery();
+            using (var mark = conn.CreateCommand())
+            {
+                mark.Transaction = tx;
+                mark.CommandText = @"INSERT INTO RollupState (Id, LastRolledDay) VALUES (1, $day)
+                    ON CONFLICT(Id) DO UPDATE SET LastRolledDay = max(LastRolledDay, $day)";
+                mark.Parameters.AddWithValue("$day", day);
+                mark.ExecuteNonQuery();
+            }
+            tx.Commit();
+        }
+
+        /// <summary>The newest Unix day the rollup has covered, or -1 when it never ran. Reads
+        /// merge the daily tables up to here with the raw rows after it.</summary>
+        public long LastRolledDay()
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT LastRolledDay FROM RollupState WHERE Id = 1";
+            return cmd.ExecuteScalar() is long d ? d : -1;
+        }
+
+        /// <summary>The Unix day of the oldest raw event, or -1 when there are none. The rollup
+        /// uses it after a lost watermark, so old raw days are rolled before they can be pruned.</summary>
+        public long OldestEventDay()
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"SELECT MIN(t) FROM (
+                SELECT MIN(Timestamp) AS t FROM SearchEvents
+                UNION ALL SELECT MIN(Timestamp) FROM SelectEvents
+                UNION ALL SELECT MIN(Timestamp) FROM ConvertEvents)";
+            return cmd.ExecuteScalar() is long ms ? DayOf(ms) : -1;
+        }
+
+        /// <summary>Deletes raw event rows older than the given Unix-ms cutoff. Call only for
+        /// days the rollup has already covered.</summary>
+        public int PruneRawBefore(long unixMsCutoff)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"DELETE FROM SearchEvents  WHERE Timestamp < $cut;";
+            cmd.Parameters.AddWithValue("$cut", unixMsCutoff);
+            int n = cmd.ExecuteNonQuery();
+            cmd.CommandText = @"DELETE FROM SelectEvents  WHERE Timestamp < $cut;";
+            n += cmd.ExecuteNonQuery();
+            cmd.CommandText = @"DELETE FROM ConvertEvents WHERE Timestamp < $cut;";
+            n += cmd.ExecuteNonQuery();
+            return n;
+        }
+
+        /// <summary>Row count of one statistics table, for diagnostics and tests.</summary>
+        public long Count(string table)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = table switch
+            {
+                "SearchEvents" => "SELECT COUNT(*) FROM SearchEvents",
+                "SelectEvents" => "SELECT COUNT(*) FROM SelectEvents",
+                "ConvertEvents" => "SELECT COUNT(*) FROM ConvertEvents",
+                "DailyQueryStats" => "SELECT COUNT(*) FROM DailyQueryStats",
+                "DailyDocumentStats" => "SELECT COUNT(*) FROM DailyDocumentStats",
+                "SubjectDocumentStats" => "SELECT COUNT(*) FROM SubjectDocumentStats",
+                _ => throw new ArgumentException($"Unknown statistics table '{table}'.", nameof(table)),
+            };
+            return (long)cmd.ExecuteScalar()!;
+        }
+
+        /// <summary>
+        /// Top queries in [fromDay, toDay], rolled days from DailyQueryStats and the rest live
+        /// from the raw rows, merged. With <paramref name="zeroHitsOnly"/> the list is the
+        /// zero-hit report, ordered by how often the query found nothing.
+        /// </summary>
+        public List<QueryStat> TopQueries(string teamId, string dataSet, long fromDay, long toDay,
+            int limit, bool zeroHitsOnly = false)
+        {
+            long rolledTo = Math.Min(toDay, LastRolledDay());
+            long liveFromMs = Math.Max(fromDay, rolledTo + 1) * 86_400_000L;
+            long toMsExcl = (toDay + 1) * 86_400_000L;
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            var order = zeroHitsOnly ? "HAVING SUM(ZeroHits) > 0 ORDER BY Z DESC, S DESC" : "ORDER BY S DESC";
+            cmd.CommandText = $@"
+SELECT QueryText, SUM(Searches) AS S, SUM(ZeroHits) AS Z, SUM(Selects) AS C FROM (
+    SELECT QueryText, Searches, ZeroHits, Selects FROM DailyQueryStats
+     WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
+    UNION ALL
+    SELECT lower(s.QueryText), 1, CASE WHEN s.HitCount = 0 THEN 1 ELSE 0 END, COALESCE(sc.Cnt, 0)
+      FROM SearchEvents s
+      LEFT JOIN (SELECT QueryId, COUNT(*) AS Cnt FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
+             ON sc.QueryId = s.QueryId
+     WHERE s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $liveFrom AND s.Timestamp < $toEx
+)
+GROUP BY QueryText
+{order}
+LIMIT $n";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$fromDay", fromDay);
+            cmd.Parameters.AddWithValue("$rolledTo", rolledTo);
+            cmd.Parameters.AddWithValue("$liveFrom", liveFromMs);
+            cmd.Parameters.AddWithValue("$toEx", toMsExcl);
+            cmd.Parameters.AddWithValue("$n", limit);
+            var result = new List<QueryStat>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                result.Add(new QueryStat(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3)));
+            return result;
+        }
+
+        /// <summary>Top documents by selects in [fromDay, toDay], with converts and value summed
+        /// the same way - rolled days plus live raw rows.</summary>
+        public List<DocumentStat> TopDocuments(string teamId, string dataSet, long fromDay, long toDay, int limit)
+        {
+            long rolledTo = Math.Min(toDay, LastRolledDay());
+            long liveFromMs = Math.Max(fromDay, rolledTo + 1) * 86_400_000L;
+            long toMsExcl = (toDay + 1) * 86_400_000L;
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT DocumentKey, SUM(Sel) AS S, SUM(Conv) AS C, SUM(Val) FROM (
+    SELECT DocumentKey, Selects AS Sel, Converts AS Conv, ConvertValueSum AS Val FROM DailyDocumentStats
+     WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
+    UNION ALL
+    SELECT DocumentKey, 1, 0, 0.0 FROM SelectEvents
+     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx
+    UNION ALL
+    SELECT DocumentKey, 0, 1, COALESCE(Value, 0) FROM ConvertEvents
+     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx
+)
+GROUP BY DocumentKey
+ORDER BY S DESC, C DESC
+LIMIT $n";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$fromDay", fromDay);
+            cmd.Parameters.AddWithValue("$rolledTo", rolledTo);
+            cmd.Parameters.AddWithValue("$liveFrom", liveFromMs);
+            cmd.Parameters.AddWithValue("$toEx", toMsExcl);
+            cmd.Parameters.AddWithValue("$n", limit);
+            var result = new List<DocumentStat>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                result.Add(new DocumentStat(r.GetInt64(0), r.GetInt64(1), r.GetInt64(2), r.GetDouble(3)));
+            return result;
+        }
+
+        /// <summary>One subject's top documents, lifetime - the personalization read.</summary>
+        public List<SubjectDocumentStat> TopForSubject(string teamId, string dataSet, string subject, int limit)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"SELECT DocumentKey, Selects, Converts, LastSeen FROM SubjectDocumentStats
+                WHERE TeamId = $t AND DataSet = $d AND Subject = $s
+                ORDER BY (Selects + Converts) DESC, LastSeen DESC LIMIT $n";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$s", subject);
+            cmd.Parameters.AddWithValue("$n", limit);
+            var result = new List<SubjectDocumentStat>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                result.Add(new SubjectDocumentStat(r.GetInt64(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3)));
+            return result;
+        }
+
+        /// <summary>Deletes every statistics row of one dataset - the explicit purge. Dataset
+        /// delete does NOT call this: statistics survive delete/recreate by design.</summary>
+        public int PurgeDataset(string teamId, string dataSet) =>
+            ExecutePerTable("WHERE TeamId = $a AND DataSet = $b", teamId, dataSet);
+
+        /// <summary>Deletes every statistics row of one team. Called when the team is deleted -
+        /// the teamId is ours and nothing can resume it.</summary>
+        public int PurgeTeam(string teamId) =>
+            ExecutePerTable("WHERE TeamId = $a", teamId, null);
+
+        /// <summary>
+        /// The GDPR erasure of one subject within a dataset: the subject-document edge is
+        /// deleted, and the raw rows are anonymised (Subject set to NULL) rather than deleted, so
+        /// the aggregate counts stay true. The daily tables carry no subject.
+        /// </summary>
+        public int EraseSubject(string teamId, string dataSet, string subject)
+        {
+            using var conn = Open();
+            using var tx = conn.BeginTransaction();
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$s", subject);
+            int n = 0;
+            foreach (var table in new[] { "SearchEvents", "SelectEvents", "ConvertEvents" })
+            {
+                cmd.CommandText = $"UPDATE {table} SET Subject = NULL WHERE TeamId = $t AND DataSet = $d AND Subject = $s";
+                n += cmd.ExecuteNonQuery();
+            }
+            cmd.CommandText = "DELETE FROM SubjectDocumentStats WHERE TeamId = $t AND DataSet = $d AND Subject = $s";
+            n += cmd.ExecuteNonQuery();
+            tx.Commit();
+            return n;
+        }
+
+        /// <summary>Moves a dataset's statistics to its new name. Called from the rename path -
+        /// keyed on the customer's name, the rows must follow it.</summary>
+        public int RenameDataset(string teamId, string oldName, string newName)
+        {
+            using var conn = Open();
+            using var tx = conn.BeginTransaction();
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$old", oldName);
+            cmd.Parameters.AddWithValue("$new", newName);
+            int n = 0;
+            foreach (var table in AllTables)
+            {
+                cmd.CommandText = $"UPDATE {table} SET DataSet = $new WHERE TeamId = $t AND DataSet = $old";
+                n += cmd.ExecuteNonQuery();
+            }
+            tx.Commit();
+            return n;
+        }
+
+        private static readonly string[] AllTables =
+            ["SearchEvents", "SelectEvents", "ConvertEvents",
+             "DailyQueryStats", "DailyDocumentStats", "SubjectDocumentStats"];
+
+        private int ExecutePerTable(string where, string a, string? b)
+        {
+            using var conn = Open();
+            using var tx = conn.BeginTransaction();
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.Parameters.AddWithValue("$a", a);
+            if (b != null) cmd.Parameters.AddWithValue("$b", b);
+            int n = 0;
+            foreach (var table in AllTables)
+            {
+                cmd.CommandText = $"DELETE FROM {table} {where}";
+                n += cmd.ExecuteNonQuery();
+            }
+            tx.Commit();
+            return n;
+        }
+
+        /// <summary>Logs a one-line summary of the file and its row counts, for startup.</summary>
+        public void LogState()
+        {
+            var size = File.Exists(_dbPath) ? new FileInfo(_dbPath).Length : 0;
+            logger.LogInformation("statistics store at {Path}: {Bytes} bytes, {Searches} searches, {Selects} selects, {Converts} converts",
+                _dbPath, size, Count("SearchEvents"), Count("SelectEvents"), Count("ConvertEvents"));
+        }
+    }
+}
