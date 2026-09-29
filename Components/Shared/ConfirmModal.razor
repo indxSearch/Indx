@@ -1,0 +1,114 @@
+@* A confirmation for an action that cannot be undone, or that breaks things outside the console:
+   deleting a dataset or a team, renaming one (the name is in every API path), revoking a team key.
+   It says what will happen, in a list, rather than "Are you sure?", and for the worst of them asks
+   for the name to be typed. Small actions that affect only you stay inline with ConfirmButton.
+
+   Buttons follow the page action pattern: the action first (danger), then a secondary Cancel.
+   OnConfirm returns null on success, which closes the modal, or a message to show in it. *@
+
+<Modal Open="Open" OpenChanged="SetOpen" Title="@Title">
+    <div class="indx-modal-form">
+        @if (Consequences is { Count: > 0 })
+        {
+            <ul class="cm-consequences">
+                @foreach (var line in Consequences)
+                {
+                    <li>@line</li>
+                }
+            </ul>
+        }
+        @ChildContent
+        @if (TypeToConfirm != null)
+        {
+            <InputField Label="@($"Type {TypeToConfirm} to confirm")" @bind-Value="_typed"
+                        @oninput="e => _typed = e.Value?.ToString() ?? string.Empty" @onkeydown="OnKeyDown" />
+        }
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <Alert Variant="destructive"><Description>@_error</Description></Alert>
+        }
+        <div class="indx-form-actions">
+            @if (FormAction != null)
+            {
+                @* An action that must be a real POST (deleting your own account signs you out). *@
+                <form action="@FormAction" method="post" style="display:contents;">
+                    <AntiforgeryToken />
+                    <Button Type="submit" Variant="danger" Size="micro" IconLeft="ConfirmIcon" Disabled="@(!Ready)">@ConfirmLabel</Button>
+                </form>
+            }
+            else
+            {
+                <Button Variant="danger" Size="micro" IconLeft="ConfirmIcon" Disabled="@(!Ready)" Loading="@_busy" @onclick="Confirm">@ConfirmLabel</Button>
+            }
+            <Button Variant="secondary" Size="micro" Disabled="@_busy" @onclick="() => SetOpen(false)">Cancel</Button>
+        </div>
+    </div>
+</Modal>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    /// <summary>What happens, one consequence per line.</summary>
+    [Parameter] public IReadOnlyList<string>? Consequences { get; set; }
+    /// <summary>Extra fields, e.g. the new name for a rename.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>When set, the action waits until this exact text is typed (case-insensitive).</summary>
+    [Parameter] public string? TypeToConfirm { get; set; }
+    /// <summary>A further condition the caller owns, e.g. a new name that differs from the old.</summary>
+    [Parameter] public bool CanConfirm { get; set; } = true;
+    [Parameter, EditorRequired] public string ConfirmLabel { get; set; } = "";
+    [Parameter] public RenderFragment<int>? ConfirmIcon { get; set; }
+    /// <summary>Null on success, which closes the modal, or the reason to show in it.</summary>
+    [Parameter] public Func<Task<string?>>? OnConfirm { get; set; }
+    /// <summary>
+    /// Instead of <see cref="OnConfirm"/>: the confirm button posts a form here, with an
+    /// antiforgery token, once <see cref="TypeToConfirm"/> and <see cref="CanConfirm"/> allow it.
+    /// </summary>
+    [Parameter] public string? FormAction { get; set; }
+
+    private string _typed = "";
+    private string? _error;
+    private bool _busy;
+
+    private bool Ready => CanConfirm && (TypeToConfirm == null
+        || string.Equals(_typed.Trim(), TypeToConfirm, StringComparison.OrdinalIgnoreCase));
+
+    protected override void OnParametersSet()
+    {
+        // A fresh start every time it opens: no half-typed name or old error from last time.
+        if (!Open) { _typed = ""; _error = null; }
+    }
+
+    private async Task SetOpen(bool open)
+    {
+        if (_busy && !open) return;
+        Open = open;
+        await OpenChanged.InvokeAsync(open);
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && Ready && FormAction == null) await Confirm();
+    }
+
+    private async Task Confirm()
+    {
+        if (!Ready || _busy) return;
+        _busy = true;
+        _error = null;
+        try
+        {
+            _error = OnConfirm == null ? null : await OnConfirm();
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+        finally
+        {
+            _busy = false;
+        }
+        if (_error == null) await SetOpen(false);
+    }
+}

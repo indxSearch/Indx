@@ -5,7 +5,8 @@ namespace IndxServer.Services
 {
     /// <summary>
     /// What a scoped API key may do. Ordered: a higher level includes everything below it.
-    /// A key never exceeds its owner's current role in the team — the role check still runs.
+    /// A personal key never exceeds its owner's current role in the team — the role check still
+    /// runs. A team key has no owner and acts with <see cref="ApiKeyScope.TeamKeyRole"/>.
     /// </summary>
     public enum ApiKeyLevel
     {
@@ -34,9 +35,14 @@ namespace IndxServer.Services
     /// limited by the user's team roles only.
     /// </para>
     /// </summary>
-    public sealed record ApiKeyScope(ApiKeyLevel Level, Guid TeamId, IReadOnlySet<string>? Datasets)
+    public sealed record ApiKeyScope(ApiKeyLevel Level, Guid TeamId, IReadOnlySet<string>? Datasets, bool IsTeamKey = false)
     {
         public const string LevelClaim = "indx_key_level";
+        /// <summary>
+        /// Present on a team key, which carries no user: no <c>sub</c>, no name identifier. Its
+        /// rights come from its level alone (<see cref="TeamKeyRole"/>), never from a person's role.
+        /// </summary>
+        public const string TeamKeyClaim = "indx_team_key";
         public const string TeamClaim = "indx_key_team";
         /// <summary>JSON array of dataset names; absent means every dataset in the team.</summary>
         public const string DatasetsClaim = "indx_key_datasets";
@@ -88,8 +94,15 @@ namespace IndxServer.Services
                     return Invalid;
                 }
             }
-            return new ApiKeyScope(parsedLevel, teamId, datasets);
+            return new ApiKeyScope(parsedLevel, teamId, datasets, principal.FindFirst(TeamKeyClaim) != null);
         }
+
+        /// <summary>
+        /// The team role a team key acts with, since it has no member behind it. Full writes as an
+        /// Editor does; nothing a key does needs Admin, so deleting a dataset, managing members and
+        /// managing keys stay with people.
+        /// </summary>
+        public string TeamKeyRole => Level == ApiKeyLevel.Full ? TeamRoles.Editor : TeamRoles.Viewer;
 
         /// <summary>
         /// Stand-in for a scoped token whose claims do not parse: bound to no team, so every
@@ -102,8 +115,9 @@ namespace IndxServer.Services
         public bool AllowsDataset(string dataSetName) => TeamId != Guid.Empty && (Datasets == null || Datasets.Contains(dataSetName));
 
         /// <summary>The claims to sign into a new key's JWT.</summary>
-        public static IEnumerable<Claim> ClaimsFor(ApiKeyLevel level, Guid teamId, IReadOnlyCollection<string>? datasets)
+        public static IEnumerable<Claim> ClaimsFor(ApiKeyLevel level, Guid teamId, IReadOnlyCollection<string>? datasets, bool teamKey = false)
         {
+            if (teamKey) yield return new Claim(TeamKeyClaim, "true");
             yield return new Claim(LevelClaim, level.ToString());
             yield return new Claim(TeamClaim, teamId.ToString());
             if (datasets is { Count: > 0 })

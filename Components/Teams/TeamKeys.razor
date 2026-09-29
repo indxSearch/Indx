@@ -1,0 +1,402 @@
+@using Microsoft.AspNetCore.Identity
+@using System.Text.Json
+@using IndxServer.Data
+@using IndxServer.Engine
+@using IndxServer.Services
+@inject ApiKeyService Keys
+@inject UserManager<ApplicationUser> UserManager
+@inject BrowserFiles BrowserFiles
+@inject NavigationManager Nav
+@inject ILogger<TeamKeys> Logger
+
+@* Team keys: API keys the team owns rather than a person, for deployed sites and servers. They keep
+   working when whoever made them leaves, and every Admin of the team can see and revoke them.
+   Admin only; TeamSettingsView decides whether to render this at all, and ApiKeyService checks
+   the role again on every create and revoke. Personal keys stay on Account, API keys. *@
+
+<h3 class="indx-section-heading">API keys</h3>
+<p class="indx-section-help">
+    Keys the team owns, for a production website or a server. They keep working when the person who created them
+    leaves the team, and every Admin can see and revoke them. Your own keys, for scripts and AI agents, are under
+    <a href="/account/api-key">Account, API keys</a>.
+</p>
+
+@if (!string.IsNullOrEmpty(_error) && !_showCreate)
+{
+    <div class="tk-block"><Alert Variant="destructive"><Description>@_error</Description></Alert></div>
+}
+
+@if (_created != null)
+{
+    <Alert Variant="success" Class="tk-reveal">
+        <Title>Key created. Copy it now: it will not be shown again.</Title>
+        <Description>
+            <span class="tk-reveal-scope">@ApiKeyService.DescribeScope(_created.Record, Team.Name)</span>
+            <code class="tk-token">@_created.Token</code>
+            <span class="tk-reveal-actions">
+                <Button Variant="secondary" Size="micro" @onclick="CopyNewToken">@(_copied ? "Copied" : "Copy key")</Button>
+                @if (_created.Record.Level == nameof(ApiKeyLevel.Search))
+                {
+                    <span class="tk-muted">Safe to use in a browser: it can search the datasets above and nothing else.</span>
+                }
+                else
+                {
+                    <span class="tk-muted">Keep this key on a server. Anyone who has it can @(_created.Record.Level == "Read" ? "read and download these datasets" : "change these datasets").</span>
+                }
+            </span>
+            @{
+                var dataset = _created.Record.Datasets is { } json ? (JsonSerializer.Deserialize<string[]>(json)?.FirstOrDefault() ?? "your-dataset") : "your-dataset";
+                var baseUrl = Nav.BaseUri.TrimEnd('/');
+            }
+            <pre class="tk-code"><code>curl -X POST "@baseUrl/api/teams/@Team.Name/datasets/@dataset/search" \
+     -H "Authorization: Bearer &lt;key&gt;" \
+     -H "Content-Type: application/json" \
+     -d '{"text": "your query", "maxNumberOfRecordsToReturn": 10}'</code></pre>
+        </Description>
+    </Alert>
+}
+
+@* The page action pattern (app.css): the primary "New …" on top of the list it adds to. *@
+<div class="indx-list-toolbar">
+    <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenCreate">New team key</Button>
+    @if (_keys.Count > 0)
+    {
+        <span class="indx-list-toolbar-end">@_keys.Count key@(_keys.Count == 1 ? "" : "s")</span>
+    }
+</div>
+
+@if (_keys.Count == 0)
+{
+    <p class="tk-muted">No team keys yet.</p>
+}
+else
+{
+    <div class="tk-table-wrap">
+        <Table Scrollable StickyFirstColumn AriaLabel="Team API keys">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Access</th>
+                    <th>Created by</th>
+                    <th>Created</th>
+                    <th>Expires</th>
+                    <th>Status</th>
+                    <th aria-label="Actions"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var key in _keys)
+                {
+                    var expired = key.ExpiresAt < DateTime.UtcNow;
+                    <tr>
+                        <td>
+                            @key.Name
+                            @if (key.KeySuffix != null) { <span class="tk-suffix">…@key.KeySuffix</span> }
+                        </td>
+                        <td class="tk-scope">@ApiKeyService.DescribeScope(key, Team.Name)</td>
+                        <td class="tk-muted">@CreatorName(key.CreatedByUserId)</td>
+                        <td class="tk-muted"><TimeAgo Value="key.CreatedAt" TooltipPosition="left" /></td>
+                        <td class="@(expired ? "tk-expired" : "tk-muted")">
+                            @if (key.ExpiresAt == null) { <span>Never</span> }
+                            else { <TimeAgo Value="key.ExpiresAt" TooltipPosition="left" /> }
+                        </td>
+                        <td>
+                            @if (key.IsRevoked) { <Chip Color="var(--lv3)" TextColor="var(--lv5)">Revoked</Chip> }
+                            else if (expired) { <Chip Color="var(--lv3)" TextColor="var(--lv5)">Expired</Chip> }
+                            else { <Chip Color="var(--CTeal)" TextColor="#080809">Active</Chip> }
+                        </td>
+                        <td class="tk-actions">
+                            @if (!key.IsRevoked && !expired)
+                            {
+                                <div class="tk-row-actions">
+                                    @if (key.SealedToken != null)
+                                    {
+                                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Eye" @onclick="() => Show(key)">Show key</Button>
+                                    }
+                                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Lock" @onclick="() => { _revoking = key; _revokeOpen = true; }">Revoke</Button>
+                                </div>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </Table>
+    </div>
+}
+
+@* Revoking a team key can take a production site down, so it says so in a modal. Personal keys
+   revoke inline: they only reach their owner's own scripts. *@
+<ConfirmModal @bind-Open="_revokeOpen" Title="@($"Revoke {_revoking?.Name}?")" Consequences="RevokeConsequences"
+              ConfirmLabel="Revoke key" ConfirmIcon="DatasetIcons.Lock" OnConfirm="RevokeAsync" />
+
+@* Show a Search key again (only those are stored; Read and Full are shown once). *@
+<Modal @bind-Open="_showToken" Title="@(_shownName ?? "Team key")" Description="A Search key can be shown again: it is meant to sit in a web page, so it is not a secret.">
+    <div class="indx-modal-form">
+        <code class="tk-token">@_shownToken</code>
+        <div class="indx-form-actions">
+            <Button Variant="primary" Size="micro" @onclick="CopyShownToken">@(_shownCopied ? "Copied" : "Copy key")</Button>
+            <Button Variant="secondary" Size="micro" @onclick="() => _showToken = false">Close</Button>
+        </div>
+    </div>
+</Modal>
+
+<Modal @bind-Open="_showCreate" Title="New team key" Description="The team owns this key, not you. It is shown once, right after it is created.">
+    <div class="indx-modal-form">
+        <InputField Label="Name" placeholder="e.g. Production website, Nightly import" @bind-Value="_name" />
+
+        <div class="tk-field">
+            <SelectField Label="Access" Value="@_level.ToString()" ValueChanged="OnLevelChanged" Options="LevelOptions" />
+            <p class="tk-help">@LevelHelp(_level)</p>
+        </div>
+
+        <div class="tk-field">
+            <span class="tk-label">Datasets</span>
+            <div class="tk-radios">
+                <RadioButton Id="tk-ds-all" Name="tk-datasets" Value="all" Label="All datasets in the team" Checked="@(!_limitDatasets)" CheckedChanged="@(_ => _limitDatasets = false)" />
+                <RadioButton Id="tk-ds-some" Name="tk-datasets" Value="some" Label="Only these datasets" Checked="@_limitDatasets" CheckedChanged="@(_ => _limitDatasets = true)" />
+            </div>
+            @if (_limitDatasets)
+            {
+                @if (_teamDatasets.Count == 0)
+                {
+                    <p class="tk-help">This team has no datasets yet.</p>
+                }
+                else
+                {
+                    <div class="tk-datasets">
+                        @foreach (var ds in _teamDatasets)
+                        {
+                            <Checkbox Id="@($"tk-ds-{ds}")" Label="@ds" Checked="@_selected.Contains(ds)" CheckedChanged="@(v => ToggleDataset(ds, v))" />
+                        }
+                    </div>
+                }
+            }
+        </div>
+
+        <div class="tk-field">
+            <SelectField Label="Expires after" Value="@_expiry" ValueChanged="@(v => _expiry = v ?? "90")" Options="ExpirationOptions" />
+            @if (_expiry == Never)
+            {
+                <p class="tk-help">A Search key is public anyway, so an expiry mostly schedules an outage. Revoke it when it is no longer used.</p>
+            }
+            else
+            {
+                <p class="tk-help">The team's Admins are notified 30 and 7 days before it expires.</p>
+            }
+        </div>
+
+        @if (!string.IsNullOrEmpty(_error))
+        {
+            <Alert Variant="destructive"><Description>@_error</Description></Alert>
+        }
+        <div class="indx-form-actions">
+            <Button Variant="primary" Size="micro" Loading="@_creating" Disabled="@(_limitDatasets && _selected.Count == 0)" @onclick="Create">Create key</Button>
+            <Button Variant="secondary" Size="micro" Disabled="@_creating" @onclick="() => _showCreate = false">Cancel</Button>
+        </div>
+    </div>
+</Modal>
+
+@code {
+    [Parameter, EditorRequired] public Team Team { get; set; } = default!;
+    [Parameter, EditorRequired] public string UserId { get; set; } = "";
+
+    private const string Never = "never";
+
+    private List<ApiKey> _keys = new();
+    private Dictionary<string, string> _creators = new();
+    private ApiKeyService.Created? _created;
+    private string? _error;
+    private bool _copied;
+    private bool _showCreate;
+    private bool _creating;
+    private Guid? _loadedFor;
+
+    private string? _name;
+    private ApiKeyLevel _level = ApiKeyLevel.Search;
+    private bool _limitDatasets = true;
+    private readonly HashSet<string> _selected = new(StringComparer.Ordinal);
+    private List<string> _teamDatasets = new();
+    private string _expiry = "90";
+
+    private IEnumerable<SelectField.SelectOption> ExpirationOptions
+    {
+        get
+        {
+            if (_level == ApiKeyLevel.Search) yield return new("Never", Never);
+            yield return new("30 days", "30");
+            yield return new("90 days", "90");
+            yield return new("180 days", "180");
+            yield return new("1 year", "365");
+        }
+    }
+
+    private static readonly List<SelectField.SelectOption> LevelOptions = new()
+    {
+        new("Search only, for websites and apps", nameof(ApiKeyLevel.Search)),
+        new("Read only, for exports and reporting", nameof(ApiKeyLevel.Read)),
+        new("Full access, for the team's servers", nameof(ApiKeyLevel.Full)),
+    };
+
+    private static string LevelHelp(ApiKeyLevel level) => level switch
+    {
+        ApiKeyLevel.Search =>
+            "Search, vector and hybrid search, fetching result documents, filters, and the field lists a filter panel reads. Nothing else, so it is safe to put in a browser.",
+        ApiKeyLevel.Read =>
+            "Everything Search can do, plus every other read: export, field configuration, synonyms, boost rules and counts. Keep it on a server.",
+        _ =>
+            "Loading, indexing, changing and deleting documents, as an Editor can. Deleting datasets and managing the team stay with people. Keep it on a server.",
+    };
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_loadedFor == Team.Id) return;
+        _loadedFor = Team.Id;
+        _created = null;
+        _error = null;
+        await LoadKeys();
+    }
+
+    private async Task LoadKeys()
+    {
+        _keys = await Keys.ListTeamKeysAsync(Team.Id);
+        foreach (var id in _keys.Select(k => k.CreatedByUserId).OfType<string>().Distinct())
+        {
+            if (_creators.ContainsKey(id)) continue;
+            var user = await UserManager.FindByIdAsync(id);
+            _creators[id] = user?.Email ?? "a former user";
+        }
+    }
+
+    private string CreatorName(string? userId) =>
+        userId != null && _creators.TryGetValue(userId, out var name) ? name : "unknown";
+
+    private void OpenCreate()
+    {
+        _error = null;
+        _name = null;
+        _level = ApiKeyLevel.Search;
+        _limitDatasets = true;
+        _selected.Clear();
+        _expiry = "90";
+        _teamDatasets = IndxServerInternalApi.Manager.GetTeamDataSets(Team.Id.ToString())
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList();
+        _showCreate = true;
+    }
+
+    private void OnLevelChanged(string? value)
+    {
+        if (!Enum.TryParse<ApiKeyLevel>(value, out var level)) return;
+        _level = level;
+        // "Never" is offered for Search keys only; drop back rather than keep a choice that fails.
+        if (_level != ApiKeyLevel.Search && _expiry == Never) _expiry = "90";
+    }
+
+    private void ToggleDataset(string name, bool on)
+    {
+        if (on) _selected.Add(name); else _selected.Remove(name);
+    }
+
+    private async Task Create()
+    {
+        _error = null;
+        _creating = true;
+        try
+        {
+            var user = await UserManager.FindByIdAsync(UserId);
+            if (user == null) { _error = "Your account could not be found."; return; }
+            int? days = _expiry == Never ? null : int.Parse(_expiry);
+
+            _created = await Keys.CreateTeamKeyAsync(user, _name ?? "", days, _level, Team.Id, _limitDatasets ? _selected.ToArray() : null);
+            _copied = false;
+            _showCreate = false;
+            await LoadKeys();
+        }
+        catch (ArgumentException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _error = "The key could not be created.";
+            Logger.LogError(ex, "Error creating team key");
+        }
+        finally
+        {
+            _creating = false;
+        }
+    }
+
+    private bool _revokeOpen;
+    private ApiKey? _revoking;
+
+    private IReadOnlyList<string> RevokeConsequences =>
+    [
+        _revoking?.KeySuffix is { } suffix
+            ? $"Every website, app and server using the key ending …{suffix} gets errors at once."
+            : "Every website, app and server using this key gets errors at once.",
+        "A revoked key can't be restored. To replace it, create a new key, deploy it, then revoke this one.",
+    ];
+
+    /// <summary>Null on success, else the reason, shown in the modal.</summary>
+    private async Task<string?> RevokeAsync()
+    {
+        if (_revoking == null) return null;
+        try
+        {
+            await Keys.RevokeTeamKeyAsync(Team.Id, _revoking.Id, UserId);
+        }
+        catch (ArgumentException ex)
+        {
+            return ex.Message;
+        }
+        await LoadKeys();
+        return null;
+    }
+
+    private bool _showToken;
+    private string? _shownToken;
+    private string? _shownName;
+    private bool _shownCopied;
+
+    private async Task Show(ApiKey key)
+    {
+        _error = null;
+        try
+        {
+            _shownToken = await Keys.RevealAsync(key.Id, UserId);
+            _shownName = key.Name;
+            _shownCopied = false;
+            _showToken = true;
+        }
+        catch (ArgumentException ex) { _error = ex.Message; }
+    }
+
+    private async Task CopyShownToken()
+    {
+        if (_shownToken == null) return;
+        try
+        {
+            await BrowserFiles.CopyToClipboardAsync(_shownToken);
+            _shownCopied = true;
+        }
+        catch
+        {
+            _error = "Copy failed. Select the key and copy it by hand.";
+            _showToken = false;
+        }
+    }
+
+    private async Task CopyNewToken()
+    {
+        if (_created == null) return;
+        try
+        {
+            await BrowserFiles.CopyToClipboardAsync(_created.Token);
+            _copied = true;
+        }
+        catch
+        {
+            _error = "Copy failed. Select the key and copy it by hand.";
+        }
+    }
+}

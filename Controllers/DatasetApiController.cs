@@ -58,11 +58,12 @@ namespace IndxServer.Controllers
         protected TeamContext? ResolveTeam(string teamName, out ActionResult? error, bool write = false, bool admin = false)
         {
             error = null;
+            // A team key carries no user id; it is the one caller allowed through without one.
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId)) { error = Unauthorized(); return null; }
+            var keyScope = ApiKeyScope.For(HttpContext);
+            if (string.IsNullOrEmpty(userId) && keyScope?.IsTeamKey != true) { error = Unauthorized(); return null; }
 
             // A scoped key's team is checked inside Resolve, on the team row it loads anyway.
-            var keyScope = ApiKeyScope.For(HttpContext);
             var ctx = resolver.Resolve(teamName, userId, keyScope);
             if (ctx == null) { error = ApiProblems.TeamNotFound(teamName); return null; }
             // ApiKeyScopeFilter has already held a scoped key to its datasets and each action's

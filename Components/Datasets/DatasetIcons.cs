@@ -47,6 +47,8 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> Search = Of<Icons.Search>();
         public static readonly RenderFragment<int> Sliders = Of<Icons.SlidersHorizontal>();
         public static readonly RenderFragment<int> Eye = Of<Icons.Eye>();
+        public static readonly RenderFragment<int> Lock = Of<Icons.Lock>();
+        public static readonly RenderFragment<int> Tag = Of<Icons.Tag>();
         public static readonly RenderFragment<int> Flag = Of<Icons.Flag>();
         public static readonly RenderFragment<int> Trolley = Of<Icons.Trolley>();
         public static readonly RenderFragment<int> HourGlass = Of<Icons.HourGlass>();

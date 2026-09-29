@@ -30,6 +30,32 @@ namespace IndxServer.Services
         public string? GetRole(Guid teamId, string userId) =>
             db.TeamMembers.FirstOrDefault(m => m.TeamId == teamId && m.UserId == userId)?.Role;
 
+        /// <summary>
+        /// The teams a request's caller can reach, with the role it acts with on each: the user's
+        /// teams, or for a team key its one team (none if the team is gone). Not narrowed to a
+        /// personal key's team; callers filter by <see cref="ApiKeyScope.AllowsTeam"/> as before.
+        /// </summary>
+        public async Task<List<(Team Team, string Role)>> GetTeamsForCallerAsync(string? userId, ApiKeyScope? keyScope)
+        {
+            if (keyScope?.IsTeamKey == true)
+                return await GetByIdAsync(keyScope.TeamId) is { } team ? [(team, keyScope.TeamKeyRole)] : [];
+            return string.IsNullOrEmpty(userId) ? [] : await GetTeamsForUserAsync(userId);
+        }
+
+        /// <summary>
+        /// Names of the teams where <paramref name="userId"/> is the only Admin: deleting that user
+        /// would leave each with nobody who can manage it. Static over a context so the minimal-API
+        /// account endpoint and the admin page share one definition.
+        /// </summary>
+        public static Task<List<string>> TeamsOnlyAdministeredByAsync(ApplicationDbContext db, string userId) =>
+            db.TeamMembers
+                .Where(m => m.UserId == userId && m.Role == TeamRoles.Admin)
+                .Where(m => !db.TeamMembers.Any(other =>
+                    other.TeamId == m.TeamId && other.UserId != userId && other.Role == TeamRoles.Admin))
+                .Join(db.Teams, m => m.TeamId, t => t.Id, (m, t) => t.Name)
+                .OrderBy(n => n)
+                .ToListAsync();
+
         /// <summary>All teams the user belongs to, with the user's role on each.</summary>
         public async Task<List<(Team Team, string Role)>> GetTeamsForUserAsync(string userId)
         {

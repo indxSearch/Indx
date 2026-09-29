@@ -4,6 +4,7 @@ using System.Security.Claims;
 using System.Text.Json.Nodes;
 using Indx.Api;
 using Indx.Http;
+using IndxServer.Data;
 using IndxServer.Models;
 using IndxServer.Services;
 using ModelContextProtocol.Server;
@@ -40,10 +41,9 @@ namespace IndxServer.Mcp
                      "cannot be searched yet.")]
         public async Task<McpDatasetSummary[]> ListDatasets()
         {
-            var userId = RequireUserId();
             var scope = Scope();
             var result = new List<McpDatasetSummary>();
-            foreach (var (team, role) in await teams.GetTeamsForUserAsync(userId))
+            foreach (var (team, role) in await CallerTeamsAsync(scope))
             {
                 if (scope != null && !scope.AllowsTeam(team.Id)) continue;
                 var ownerKey = team.Id.ToString();
@@ -371,9 +371,17 @@ namespace IndxServer.Mcp
 
         // ── Helpers ───────────────────────────────────────────────────────────
 
-        private string RequireUserId() =>
-            http.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
-            ?? throw new McpToolException("Not authenticated.");
+        /// <summary>
+        /// The teams this caller reaches: the user's, or a team key's own team. A principal that is
+        /// neither a user nor a team key is refused.
+        /// </summary>
+        private Task<List<(Team Team, string Role)>> CallerTeamsAsync(ApiKeyScope? scope)
+        {
+            var userId = http.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId) && scope?.IsTeamKey != true)
+                throw new McpToolException("Not authenticated.");
+            return teams.GetTeamsForCallerAsync(userId, scope);
+        }
 
         private ApiKeyScope? Scope() => ApiKeyScope.FromPrincipal(http.HttpContext?.User);
 
@@ -385,10 +393,9 @@ namespace IndxServer.Mcp
         /// </summary>
         private async Task<string> ResolveOwnerKey(string team, string dataset, ApiKeyLevel required)
         {
-            var userId = RequireUserId();
-            var match = (await teams.GetTeamsForUserAsync(userId))
-                .FirstOrDefault(t => string.Equals(t.Team.Name, team, StringComparison.OrdinalIgnoreCase));
             var scope = Scope();
+            var match = (await CallerTeamsAsync(scope))
+                .FirstOrDefault(t => string.Equals(t.Team.Name, team, StringComparison.OrdinalIgnoreCase));
             if (match.Team == null || (scope != null && !scope.AllowsTeam(match.Team.Id)))
                 throw new McpToolException($"Team '{team}' not found, or this API key cannot reach it. " +
                     "Call list_datasets for the team and dataset names this key can use.");

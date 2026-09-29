@@ -8,14 +8,45 @@ namespace IndxServer.Data
     {
         public int Id { get; set; }
 
-        [Required]
-        public string UserId { get; set; } = "";
+        /// <summary>
+        /// The user a personal key acts as. Null on a team key, which belongs to the team and acts
+        /// for it: it keeps working when its creator leaves (<see cref="CreatedByUserId"/>).
+        /// </summary>
+        public string? UserId { get; set; }
+
+        /// <summary>
+        /// Who created a team key, for the audit trail only: it gives the key no rights and is not
+        /// checked on requests. Null on personal keys, whose owner is <see cref="UserId"/>.
+        /// </summary>
+        [MaxLength(450)]
+        public string? CreatedByUserId { get; set; }
+
+        /// <summary>A team key: owned by <see cref="TeamId"/> rather than a user.</summary>
+        [NotMapped]
+        public bool IsTeamKey => UserId == null;
 
         [Required, MaxLength(100)]
         public string Name { get; set; } = "";
 
+        /// <summary>
+        /// The token's first 24 characters. Kept for older rows, but it cannot tell keys apart:
+        /// every token begins with the same JWT header. <see cref="KeySuffix"/> is what identifies one.
+        /// </summary>
         [Required, MaxLength(40)]
         public string KeyPrefix { get; set; } = "";
+
+        /// <summary>
+        /// The token's last four characters, shown as "…a1b2" so a key in a config file can be
+        /// matched to its row. Null on keys created before it was recorded.
+        /// </summary>
+        [MaxLength(8)]
+        public string? KeySuffix { get; set; }
+
+        /// <summary>
+        /// A Search key, encrypted (<see cref="IndxServer.Services.ApiKeySealer"/>), so it can be
+        /// shown again. Always null for Read and Full keys, which are shown once and never stored.
+        /// </summary>
+        public string? SealedToken { get; set; }
 
         /// <summary>JWT jti claim — used for revocation checks.</summary>
         [Required, MaxLength(36)]
@@ -36,7 +67,8 @@ namespace IndxServer.Data
         public string? Datasets { get; set; }
 
         public DateTime CreatedAt { get; set; }
-        public DateTime ExpiresAt { get; set; }
+        /// <summary>Null means it never expires, which only a team Search key may do.</summary>
+        public DateTime? ExpiresAt { get; set; }
         public bool IsRevoked { get; set; }
 
         [ForeignKey(nameof(UserId))]

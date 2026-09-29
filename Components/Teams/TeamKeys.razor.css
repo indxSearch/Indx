@@ -1,0 +1,43 @@
+/* Team keys, on Manage team. Same look as the personal key page (Account/Pages/ApiKey.razor.css),
+   whose scoped styles do not reach here. */
+.tk-block { margin-bottom: 12px; }
+.tk-muted { color: var(--lv5); }
+.tk-suffix { margin-left: 8px; color: var(--lv5); font: 12px 'IBM Plex Mono', 'SF Mono', monospace; }
+.tk-expired { color: var(--CSignal); }
+
+::deep .tk-reveal { margin-bottom: calc(var(--spacing) * 4); }
+.tk-reveal-scope { display: block; margin-bottom: 8px; }
+.tk-token {
+    display: block;
+    padding: 10px 12px;
+    background: var(--lv0);
+    border-radius: var(--radius);
+    font: 12px/1.5 'IBM Plex Mono', 'SF Mono', monospace;
+    color: var(--lv8);
+    overflow-wrap: anywhere;
+    user-select: all;
+}
+.tk-reveal-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+.tk-code {
+    margin: 12px 0 0;
+    padding: 12px 14px;
+    background: var(--lv0);
+    border-radius: var(--radius);
+    font: 12px/1.6 'IBM Plex Mono', 'SF Mono', monospace;
+    overflow-x: auto;
+}
+
+/* The frame is systm Table's. Every cell keeps to one line except the access description. */
+.tk-table-wrap td, .tk-table-wrap th { white-space: nowrap; }
+.tk-table-wrap .tk-scope { white-space: normal; min-width: 200px; }
+.tk-scope { color: var(--lv6); }
+.tk-actions { text-align: right; white-space: nowrap; }
+/* Show key and Revoke side by side, at the right. ConfirmButton renders a block of its own, which
+   dropped below an inline Show key and to the left. */
+.tk-row-actions { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
+
+.tk-field { display: flex; flex-direction: column; gap: 6px; }
+.tk-label { font: var(--text-xs); color: var(--lv6); }
+.tk-help { margin: 0; font: var(--text-xs); color: var(--lv5); }
+.tk-radios { display: flex; gap: 20px; flex-wrap: wrap; }
+.tk-datasets { display: flex; flex-direction: column; gap: 6px; padding: 8px 0 0 2px; }

@@ -41,9 +41,14 @@ namespace IndxServer.Services
         /// in. The key's scope is a required argument on purpose — pass null only for a principal
         /// that has none (<see cref="ApiKeyScope.For"/> returns that).
         /// </summary>
-        public TeamContext? Resolve(string teamName, string userId, ApiKeyScope? keyScope)
+        /// <para>
+        /// A team key has no user, so <paramref name="userId"/> is ignored for it: it reaches its own
+        /// team and acts with <see cref="ApiKeyScope.TeamKeyRole"/>.
+        /// </para>
+        public TeamContext? Resolve(string teamName, string? userId, ApiKeyScope? keyScope)
         {
-            if (string.IsNullOrWhiteSpace(teamName) || string.IsNullOrWhiteSpace(userId))
+            var teamKey = keyScope?.IsTeamKey == true;
+            if (string.IsNullOrWhiteSpace(teamName) || (!teamKey && string.IsNullOrWhiteSpace(userId)))
                 return null;
 
             var team = teams.GetByName(teamName);
@@ -51,8 +56,10 @@ namespace IndxServer.Services
                 return null;
             if (keyScope != null && !keyScope.AllowsTeam(team.Id))
                 return null;
+            if (teamKey)
+                return new TeamContext(team.Id, team.Name, keyScope!.TeamKeyRole);
 
-            var role = teams.GetRole(team.Id, userId);
+            var role = teams.GetRole(team.Id, userId!);
             if (role == null)
                 return null;
 

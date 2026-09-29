@@ -26,6 +26,10 @@
         An API key authenticates requests to the Indx API. Every key is limited to one team, optionally to some of its
         datasets, and to a level of access. It is shown only once, when it is created.
     </p>
+    <p class="key-intro">
+        These keys act as you, which suits your own scripts and AI agents, and they stop working if you leave the team.
+        For a production website or a shared server, a team Admin can create a team key under Manage team instead.
+    </p>
 
     @if (!string.IsNullOrEmpty(_error) && !_showCreate)
     {
@@ -99,7 +103,10 @@
                     {
                         var expired = key.ExpiresAt < DateTime.UtcNow;
                         <tr>
-                            <td>@key.Name</td>
+                            <td>
+                                @key.Name
+                                @if (key.KeySuffix != null) { <span class="key-suffix">…@key.KeySuffix</span> }
+                            </td>
                             <td class="key-scope">@IndxServer.Services.ApiKeyService.DescribeScope(key, TeamName(key.TeamId))</td>
                             <td class="key-muted"><TimeAgo Value="key.CreatedAt" TooltipPosition="left" /></td>
                             <td class="@(expired ? "key-expired" : "key-muted")"><TimeAgo Value="key.ExpiresAt" TooltipPosition="left" /></td>
@@ -112,7 +119,13 @@
                             <td class="key-actions">
                                 @if (!key.IsRevoked && !expired)
                                 {
-                                    <ConfirmButton Label="Revoke" Prompt="Requests with this key fail at once." ConfirmLabel="Yes, revoke" OnConfirm="() => Revoke(key.Id)" />
+                                    <div class="key-row-actions">
+                                        @if (key.SealedToken != null)
+                                        {
+                                            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Eye" @onclick="() => Show(key)">Show key</Button>
+                                        }
+                                        <ConfirmButton Label="Revoke" Icon="DatasetIcons.Lock" Prompt="Requests with this key fail at once." ConfirmLabel="Yes, revoke" OnConfirm="() => Revoke(key.Id)" />
+                                    </div>
                                 }
                             </td>
                         </tr>
@@ -128,6 +141,17 @@
             </Alert>
         }
     }
+
+    @* ── Show a Search key again (only those are stored; Read and Full are shown once) ── *@
+    <Modal @bind-Open="_showToken" Title="@(_shownName ?? "API key")" Description="A Search key can be shown again: it is meant to sit in a web page, so it is not a secret.">
+        <div class="indx-modal-form">
+            <code class="key-token">@_shownToken</code>
+            <div class="indx-form-actions">
+                <Button Variant="primary" Size="micro" @onclick="CopyShownToken">@(_shownCopied ? "Copied" : "Copy key")</Button>
+                <Button Variant="secondary" Size="micro" @onclick="() => _showToken = false">Close</Button>
+            </div>
+        </div>
+    </Modal>
 
     @* ── Create ── *@
     <Modal @bind-Open="_showCreate" Title="New API key" Description="The key is shown once, right after it is created.">
@@ -343,8 +367,6 @@
             _copied = false;
             _showCreate = false;
             await LoadKeys();
-            Logger.LogInformation("API key {Id} created for user {UserId}: {Level}, team {TeamId}, expires {Expires}",
-                _created.Record.Id, user.Id, _created.Record.Level, teamId, _created.Record.ExpiresAt);
         }
         catch (ArgumentException ex)
         {
@@ -372,7 +394,42 @@
         // Drop the cached "not revoked" verdict so the key stops working now, not in five minutes.
         IndxServer.Services.TokenValidationCache.EvictJti(MemoryCache, row.Jti);
         await LoadKeys();
-        Logger.LogInformation("API key {Id} revoked for user {UserId}", id, _userId);
+        Logger.LogInformation("API key \"{Name}\" in {Team} revoked by its owner {User}", row.Name, TeamName(row.TeamId) ?? "an unknown team",
+            (await UserManager.FindByIdAsync(_userId!))?.Email ?? "an unknown user");
+    }
+
+    private bool _showToken;
+    private string? _shownToken;
+    private string? _shownName;
+    private bool _shownCopied;
+
+    private async Task Show(Data.ApiKey key)
+    {
+        _error = null;
+        if (_userId == null) return;
+        try
+        {
+            _shownToken = await Keys.RevealAsync(key.Id, _userId);
+            _shownName = key.Name;
+            _shownCopied = false;
+            _showToken = true;
+        }
+        catch (ArgumentException ex) { _error = ex.Message; }
+    }
+
+    private async Task CopyShownToken()
+    {
+        if (_shownToken == null) return;
+        try
+        {
+            await BrowserFiles.CopyToClipboardAsync(_shownToken);
+            _shownCopied = true;
+        }
+        catch
+        {
+            _error = "Copy failed. Select the key and copy it by hand.";
+            _showToken = false;
+        }
     }
 
     private async Task CopyNewToken()

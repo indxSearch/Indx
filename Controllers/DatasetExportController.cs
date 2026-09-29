@@ -39,10 +39,11 @@ namespace IndxServer.Controllers
         public async Task<IActionResult> Export(string teamName, string dataSetName)
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId)) return Unauthorized();
+            var keyScope = ApiKeyScope.For(HttpContext);
+            if (string.IsNullOrEmpty(userId) && keyScope?.IsTeamKey != true) return Unauthorized();
 
             // Non-members get the same 404 as a team that does not exist, as everywhere else.
-            var ctx = resolver.Resolve(teamName, userId, ApiKeyScope.For(HttpContext));
+            var ctx = resolver.Resolve(teamName, userId, keyScope);
             if (ctx == null) return ApiProblems.TeamNotFound(teamName);
             if (!FileNameValidity.IsValid(dataSetName)) return ApiProblems.InvalidDatasetName(dataSetName);
             if (!DatasetExport.Exists(ctx.OwnerKey, dataSetName)) return ApiProblems.DatasetNotFound(dataSetName);

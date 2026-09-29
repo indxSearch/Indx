@@ -35,6 +35,14 @@ namespace IndxServer.Data
             // the source of truth and the AddTeams migration stays purely additive.
             builder.Entity<ApiKey>()
                 .HasIndex(k => k.Jti);
+            // A personal key goes with its user. Stated, not inferred: UserId became optional
+            // for team keys, and an optional key defaults to setting null on delete, which would
+            // quietly turn a deleted user's personal keys into keys the team appears to own.
+            builder.Entity<ApiKey>()
+                .HasOne(k => k.User)
+                .WithMany()
+                .HasForeignKey(k => k.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
             // Existing keys predate scopes and keep full access.
             builder.Entity<ApiKey>()
                 .Property(k => k.Level)

@@ -378,10 +378,23 @@ internal static class StartupServices
                 },
                 OnTokenValidated = async context =>
                 {
+                    var cache = context.HttpContext.RequestServices.GetRequiredService<IMemoryCache>();
+                    var jti = context.Principal?.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti)?.Value;
+
+                    // A team key has no user behind it, so there is no account to check and no
+                    // password to be retired by: revocation is its only off switch, and it must
+                    // carry both a jti and a scope that parses, or it is no team key at all.
+                    if (context.Principal?.FindFirst(IndxServer.Services.ApiKeyScope.TeamKeyClaim) != null)
+                    {
+                        var teamScope = IndxServer.Services.ApiKeyScope.FromPrincipal(context.Principal);
+                        if (jti == null || teamScope is not { IsTeamKey: true } || teamScope.TeamId == Guid.Empty)
+                        { context.Fail("Invalid token."); return; }
+                        if (await IsRevokedAsync(jti)) context.Fail("Token has been revoked.");
+                        return;
+                    }
+
                     var userId = context.Principal?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
                     if (userId == null) { context.Fail("Invalid token."); return; }
-
-                    var cache = context.HttpContext.RequestServices.GetRequiredService<IMemoryCache>();
 
                     // Current security stamp, or "" when the user no longer exists. Cached; the
                     // password change/reset paths evict it (TokenValidationCache.EvictUser).
@@ -408,18 +421,19 @@ internal static class StartupServices
                         return;
                     }
 
-                    var jti = context.Principal?.FindFirst(System.IdentityModel.Tokens.Jwt.JwtRegisteredClaimNames.Jti)?.Value;
-                    if (jti != null)
+                    if (jti != null && await IsRevokedAsync(jti)) context.Fail("Token has been revoked.");
+
+                    async Task<bool> IsRevokedAsync(string id)
                     {
-                        var revokeCacheKey = IndxServer.Services.TokenValidationCache.JtiKey(jti);
+                        var revokeCacheKey = IndxServer.Services.TokenValidationCache.JtiKey(id);
                         if (!cache.TryGetValue(revokeCacheKey, out bool revoked))
                         {
                             var db = context.HttpContext.RequestServices
                                 .GetRequiredService<ApplicationDbContext>();
-                            revoked = await db.ApiKeys.AnyAsync(k => k.Jti == jti && k.IsRevoked);
+                            revoked = await db.ApiKeys.AnyAsync(k => k.Jti == id && k.IsRevoked);
                             cache.Set(revokeCacheKey, revoked, IndxServer.Services.TokenValidationCache.CacheDuration);
                         }
-                        if (revoked) context.Fail("Token has been revoked.");
+                        return revoked;
                     }
                 }
             };

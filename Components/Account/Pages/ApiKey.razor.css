@@ -2,6 +2,7 @@
 .key-page { max-width: 880px; }
 .key-intro { color: var(--lv5); font: var(--text-sm); max-width: 640px; margin-bottom: calc(var(--spacing) * 6); }
 .key-muted { color: var(--lv5); }
+.key-suffix { margin-left: 8px; color: var(--lv5); font: 12px 'IBM Plex Mono', 'SF Mono', monospace; }
 .key-expired { color: var(--CSignal); }
 
 ::deep .key-reveal { margin-bottom: calc(var(--spacing) * 4); }
@@ -24,6 +25,8 @@
 .key-table-wrap .key-scope { white-space: normal; min-width: 200px; }
 .key-scope { color: var(--lv6); }
 .key-actions { text-align: right; white-space: nowrap; }
+/* Show key and Revoke side by side, at the right: ConfirmButton renders a block of its own. */
+.key-row-actions { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
 ::deep .key-legacy { margin-top: calc(var(--spacing) * 3); }
 
 .key-form { display: flex; flex-direction: column; gap: 18px; }

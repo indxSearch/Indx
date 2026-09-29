@@ -162,13 +162,13 @@ namespace IndxServer.Controllers
         public async Task<ActionResult<DataSetListDto[]>> GetMyDataSets()
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-            if (string.IsNullOrEmpty(userId))
+            var scope = ApiKeyScope.For(HttpContext);
+            if (string.IsNullOrEmpty(userId) && scope?.IsTeamKey != true)
                 return Unauthorized();
 
             // A scoped key sees only its own team, and only the datasets it names.
-            var scope = ApiKeyScope.For(HttpContext);
             var result = new List<DataSetListDto>();
-            foreach (var (team, role) in await teams.GetTeamsForUserAsync(userId))
+            foreach (var (team, role) in await teams.GetTeamsForCallerAsync(userId, scope))
             {
                 if (scope != null && !scope.AllowsTeam(team.Id)) continue;
                 foreach (var name in IndxServerInternalApi.Manager.GetTeamDataSets(team.Id.ToString()))
