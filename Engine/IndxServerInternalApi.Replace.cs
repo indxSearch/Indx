@@ -196,6 +196,11 @@ namespace IndxServer.Engine
                 if (!monitor.Succeeded)
                     throw new InvalidOperationException($"Replace index failed: {monitor.ErrorMessage ?? "unknown error"}", monitor.Exception);
 
+                // The synonym list belongs to the dataset, not to its documents, and the engine
+                // holds it in memory: restore it from storage, as building an engine at startup
+                // does, or the swap silently drops query expansion until the next restart.
+                RestoreSynonyms(shadow, dataSetName, teamId);
+
                 return (shadow, summary);
             }
             catch
@@ -220,6 +225,24 @@ namespace IndxServer.Engine
             }
             waiter.GetAwaiter().GetResult();
             onPercent(monitor.ProgressPercent);
+        }
+
+        /// <summary>
+        /// Puts the dataset's stored synonym list on <paramref name="engine"/>. A list that will not
+        /// parse is logged and skipped, as at startup: a bad list must not fail a Replace.
+        /// </summary>
+        private void RestoreSynonyms(SearchEngine engine, string dataSetName, string teamId)
+        {
+            try
+            {
+                var stored = engine.Persistence?.ReadSynonyms();
+                if (!string.IsNullOrWhiteSpace(stored))
+                    engine.SynonymList = SynonymList.Deserialize(stored);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "{Prefix}stored synonym list could not be parsed after Replace; continuing without it", MakeLogPrefix(teamId, dataSetName));
+            }
         }
 
         private SearchEngine NewReplaceEngine(ConfigurationParameters configuration, string dataSetName, string teamId) =>
