@@ -6,23 +6,68 @@ A self-hosted search service built on [Indx Search](https://indx.co). Blazor Ser
 
 ## What's Included
 
-- <img src="docs/icons/internet-browser.svg" alt=""> **Dashboard**: teams, datasets, field configuration with weight sliders, search preview,
-  status, boost rules, synonyms, options; plus an admin panel
-- <img src="docs/icons/user-group.svg" alt=""> **Teams**: datasets belong to teams; members join with per-team roles
-- <img src="docs/icons/api.svg" alt=""> **HTTP API**: JWT authentication and API key management; errors are RFC 9457 problem
-  documents with a machine-readable `code`
-- <img src="docs/icons/dynamic-json-field.svg" alt=""> **Dynamic data**: insert, update, delete, by key or by filter, with the index kept in sync
-- <img src="docs/icons/shadow-indexing.svg" alt=""> **Zero-downtime rebuilds**: replace a dataset, or change its field configuration, on a
-  shadow engine while the old one keeps serving
-- <img src="docs/icons/hibernate.svg" alt=""> **Keep-alive & hibernation**: pinned, timed or client-managed memory per dataset
-- <img src="docs/icons/mcp.svg" alt=""> **MCP server**: connect AI agents (Claude, etc.) directly to your search data, at `/mcp`
-- <img src="docs/icons/login.svg" alt=""> **Accounts**: registration, login and account management; local passwords, with optional
-  Microsoft and Google sign-in
-- <img src="docs/icons/boost.svg" alt=""> **Relevance**: server-side boost rules with schedules, facets, coverage, vector and hybrid search
-- <img src="docs/icons/synonym.svg" alt=""> **Synonyms**: per-dataset lists (experimental); query expansion at search time
-- <img src="docs/icons/bell.svg" alt=""> **Notifications**: in the app and by email
-- <img src="docs/icons/database.svg" alt=""> **SQLite storage**: no external database required, and migrations run on startup
-- <img src="docs/icons/json-query.svg" alt=""> **Swagger UI**: the whole API, browsable at `/swagger`
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/icons/internet-browser.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Dashboard</b><br>
+Teams, datasets, field configuration with weight sliders, search preview, status, boost rules, synonyms, options; plus an admin panel
+</td>
+<td width="50%" valign="top">
+<img src="docs/icons/user-group.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Teams</b><br>
+Datasets belong to teams; members join with per-team roles
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/icons/api.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>HTTP API</b><br>
+JWT authentication and API key management; the whole API browsable in Swagger UI at <code>/swagger</code>; errors are RFC 9457 problem documents with a machine-readable <code>code</code>
+</td>
+<td width="50%" valign="top">
+<img src="docs/icons/dynamic-json-field.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Dynamic data</b><br>
+Insert, update, delete, by key or by filter, with the index kept in sync
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/icons/shadow-indexing.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Zero-downtime rebuilds</b><br>
+Replace a dataset, or change its field configuration, on a shadow engine while the old one keeps serving
+</td>
+<td width="50%" valign="top">
+<img src="docs/icons/hibernate.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Keep-alive &amp; hibernation</b><br>
+Pinned, timed or client-managed memory per dataset
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/icons/mcp.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>MCP server</b><br>
+Connect AI agents (Claude, etc.) directly to your search data, at <code>/mcp</code>
+</td>
+<td width="50%" valign="top">
+<img src="docs/icons/login.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Accounts</b><br>
+Registration, login and account management; local passwords, with optional Microsoft and Google sign-in
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/icons/boost.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Relevance</b><br>
+Server-side boost rules with schedules, facets, coverage, vector and hybrid search
+</td>
+<td width="50%" valign="top">
+<img src="docs/icons/synonym.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Synonyms</b><br>
+Per-dataset lists (experimental); query expansion at search time
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/icons/bell.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Notifications</b><br>
+In the app and by email
+</td>
+<td width="50%" valign="top">
+<img src="docs/icons/terminal.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Terminal UI</b><br>
+A live view of datasets and server events in the terminal the server runs in, with no browser and no login
+</td>
+</tr>
+</table>
 
 ## Quick Start
 

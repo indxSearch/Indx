@@ -23,7 +23,7 @@ const SOURCE = join(HERE, '../../Indx.Systm.Blazor/Icons');
 // The icons the README uses. Add a name here, then run this.
 const ICONS = [
   'InternetBrowser', 'UserGroup', 'Api', 'DynamicJsonField', 'ShadowIndexing', 'Hibernate', 'Mcp',
-  'Login', 'Boost', 'Synonym', 'Bell', 'Database', 'JsonQuery',
+  'Login', 'Boost', 'Synonym', 'Bell', 'Terminal',
 ];
 
 const SCALE = 3;                 // CSS pixels per grid unit: a 7x5 icon becomes 21x15
