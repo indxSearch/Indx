@@ -1,4 +1,4 @@
-using IndxServer.Data;
+﻿using IndxServer.Data;
 using Microsoft.EntityFrameworkCore;
 
 namespace IndxServer.Services
@@ -9,7 +9,8 @@ namespace IndxServer.Services
     /// HTTP — the Blazor pages (and registration) call this service directly. The team
     /// <see cref="Team.Name"/> is the only human-facing name; it is globally unique and URL-safe.
     /// </summary>
-    public class TeamService(ApplicationDbContext db, IEditionService edition, ITeamDatasets engines, ILogger<TeamService> logger)
+    public class TeamService(ApplicationDbContext db, IEditionService edition, ITeamDatasets engines,
+        StatisticsService statistics, ILogger<TeamService> logger)
     {
         /// <summary>Thrown when an operation would violate a team invariant (name taken, last admin, etc.).</summary>
         public sealed class TeamException(string message) : Exception(message);
@@ -192,6 +193,11 @@ namespace IndxServer.Services
             var left = GetDatasetNames(team.Id);
             if (left.Count > 0)
                 throw new TeamException($"Could not delete {left.Count} dataset(s) of the team ({string.Join(", ", left)}); the team was kept.");
+
+            // Statistics are keyed on the customer's names and survive dataset deletion, but a
+            // deleted TEAM id is ours and nothing can resume it - so the team's rows go with it.
+            if (statistics.Enabled)
+                statistics.Store!.PurgeTeam(owner);
 
             db.Teams.Remove(team);
             await db.SaveChangesAsync();

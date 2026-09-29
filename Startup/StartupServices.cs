@@ -136,6 +136,10 @@ internal static class StartupServices
         builder.Services.AddScoped<IndxServer.Services.TeamContextResolver>();
         builder.Services.AddScoped<IndxServer.Services.ApiKeyService>();
         builder.Services.AddScoped<IndxServer.Services.DataMigrationService>();
+        // Search statistics: the store, the batch writer and the rollup live in one singleton
+        // that also runs as the hosted service (Notes/statistics-design.md).
+        builder.Services.AddSingleton<IndxServer.Services.StatisticsService>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.StatisticsService>());
         builder.Services.AddHostedService<IndxServer.Services.TokenExpiryNotificationJob>();
         builder.Services.AddHostedService<IndxServer.Services.BoostRuleExpiryNotificationJob>();
         builder.Services.AddHostedService<IndxServer.Services.DatasetIdleSweeper>();

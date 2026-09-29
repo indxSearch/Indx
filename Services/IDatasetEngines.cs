@@ -1,4 +1,4 @@
-using IndxServer.Engine;
+﻿using IndxServer.Engine;
 using Indx.Api;
 using Indx.Http;
 using IndxServer.Models;
@@ -79,8 +79,10 @@ namespace IndxServer.Services
         bool SetSynonyms(string dataSetName, string teamId, SynonymList? list);
     }
 
-    /// <summary>Forwards to the process-wide engine registry.</summary>
-    internal sealed class ManagerDatasetEngines : IDatasetEngines
+    /// <summary>Forwards to the process-wide engine registry. Rename also moves the dataset's
+    /// statistics: they are keyed on the customer's dataset name, so the rows must follow it
+    /// (Notes/statistics-design.md).</summary>
+    internal sealed class ManagerDatasetEngines(StatisticsService statistics) : IDatasetEngines
     {
         private static IndxServerInternalApi M => IndxServerInternalApi.Manager;
 
@@ -92,7 +94,13 @@ namespace IndxServer.Services
         public bool DeleteDataSet(string d, string t) => M.DeleteDataSet(d, t);
         public void DisposeDataSetInstance(string d, string t) => M.DisposeDataSetInstance(d, t);
         public void TransferOwnership(string d, string from, string to) => M.TransferOwnership(d, from, to);
-        public string? RenameDataSet(string d, string t, string newName) => M.RenameDataSet(d, t, newName);
+        public string? RenameDataSet(string d, string t, string newName)
+        {
+            var error = M.RenameDataSet(d, t, newName);
+            if (error == null && statistics.Enabled)
+                statistics.Store!.RenameDataset(t, d, newName);
+            return error;
+        }
 
         public Task<string?> InitFromStreamAsync(string d, string t, Stream s) => M.InitFromStreamAsync(d, t, s);
         public (Task loadTask, ProcessMonitor monitor)? StartLoadAsync(string d, string t, Stream s) => M.StartLoadAsync(d, t, s);

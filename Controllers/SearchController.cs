@@ -22,7 +22,8 @@ namespace IndxServer.Controllers
     /// Team scoping, authentication and the error contract are declared on
     /// <see cref="DatasetApiController"/>.
     /// </summary>
-    public class SearchController(TeamContextResolver resolver) : DatasetApiController(resolver)
+    public class SearchController(TeamContextResolver resolver, StatisticsService statistics)
+        : DatasetApiController(resolver)
     {
         /// <summary>
         /// Search will validate the search query and return the search result.
@@ -43,6 +44,20 @@ namespace IndxServer.Controllers
             try
             {
                 Indx.Api.Result res = IndxServerInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey);
+                // The search event is logged server-side - that is what makes the zero-hit list
+                // exist at all - and the minted queryId is what select/convert events reference.
+                // Cost on this path is a struct and a queue append (measured in
+                // Notes/statistics-design.md); the optional ?subject= gives per-subject history.
+                if (statistics.Enabled)
+                {
+                    var queryId = Guid.NewGuid().ToString("N");
+                    Response.Headers["Indx-Query-Id"] = queryId;
+                    var subject = Request.Query["subject"].FirstOrDefault();
+                    statistics.Writer!.RecordSearch(new SearchEventRow(
+                        queryId, ctx.OwnerKey, dataSetName, query.Text ?? string.Empty, null,
+                        res.Records?.Length ?? 0, string.IsNullOrWhiteSpace(subject) ? null : subject,
+                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+                }
                 return res;
             }
             catch (UnknownFilterException ex)
