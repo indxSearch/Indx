@@ -1,0 +1,69 @@
+/* Statistics dashboard tab. Tiles and tables sit on tone, never elevation — the indx design
+   uses no box-shadows anywhere. Numbers wear text tokens, not series colors (dataviz rule:
+   color belongs to marks; text stays ink). */
+
+.stats-tab {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+
+.stats-empty {
+    color: var(--text-secondary, #888);
+    font-size: 13px;
+    margin: 18px 0;
+}
+
+.stats-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 8px;
+}
+
+.stats-tile {
+    background: var(--lv1);
+    border: 1px solid var(--border, rgba(128, 128, 128, 0.25));
+    border-radius: 6px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.stats-tile-value {
+    font-size: 20px;
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+
+.stats-tile-label {
+    font-size: 11px;
+    color: var(--text-secondary, #888);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.stats-heading {
+    font-size: 13px;
+    font-weight: 600;
+    margin: 10px 0 0;
+}
+
+.stats-help {
+    font-size: 12px;
+    color: var(--text-secondary, #888);
+    margin: 0;
+}
+
+.stats-table td,
+.stats-table th {
+    font-size: 12px;
+}
+
+.stats-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}

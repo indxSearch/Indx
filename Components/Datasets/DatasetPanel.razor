@@ -1,4 +1,4 @@
-@* One dataset of the active team: status table, tab nav and the tab components. Owns the
+﻿@* One dataset of the active team: status table, tab nav and the tab components. Owns the
    DatasetContext the tabs share, loads status/field config on first display, and polls the
    engine while it is loading or indexing in the background.
 
@@ -7,6 +7,7 @@
    visible render. *@
 @using Indx.Api
 @implements IDisposable
+@inject IndxServer.Services.StatisticsService Statistics
 @inject IDatasetEngines Engines
 @inject BoostRuleStore BoostStore
 
@@ -55,6 +56,7 @@
                 <OptionsTab Active="@(tab == "options")" />
                 <BoostRulesTab Active="@(tab == "boosts")" />
                 <SynonymsTab Active="@(tab == "synonyms")" />
+                <StatisticsTab Active="@(tab == "statistics")" />
 
             </CascadingValue>
         </Surface>
@@ -137,6 +139,9 @@
         if (isReady || pending) items.Add(Tab("status", "Status", DatasetIcons.Status, isReady));
         items.Add(Tab("fields", "Field configuration", DatasetIcons.Fields, true));
         if (isReady || pending) items.Add(Tab("search", "Search preview", DatasetIcons.Search, isReady));
+        // Statistics live in their own store, so the tab works even for a hibernated dataset -
+        // it reads no engine (titles fall back to keys) and must never wake one.
+        if (Statistics.Enabled) items.Add(Tab("statistics", "Statistics", DatasetIcons.Analytics, true));
         if ((isReady || pending) && Ctx.IsEditor)
         {
             var expired = isReady ? ExpiredBoostRules() : 0;

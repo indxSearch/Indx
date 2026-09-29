@@ -1,0 +1,267 @@
+﻿@* The statistics dashboard for one dataset (Notes/statistics-design.md, "Presentation"):
+   hero tiles for the window's totals and rates, one time-series chart (one axis - searches and
+   selects share the unit), the zero-hit list, top queries and top documents. All reads go
+   through StatisticsStore (the N-tier rule: no SQL here), on a background thread. Document
+   titles come from the engine WITHOUT waking it: FindEngine only, a hibernated dataset shows
+   keys - never resolve an engine from a dashboard. *@
+@using System.Text.Json
+@using IndxServer.Services
+@inherits DatasetTabBase
+@inject StatisticsService Stats
+
+@if (!Active) { return; }
+
+<div class="stats-tab">
+@if (!Stats.Enabled || Stats.Store == null)
+{
+    <Alert Variant="info">Statistics are switched off on this instance (<code>Statistics:Enabled</code> in appsettings).</Alert>
+}
+else
+{
+    <div class="indx-list-toolbar">
+        <Tabs Items="WindowItems" Active="@_days.ToString()" ActiveChanged="@(v => SetWindow(v))"
+              Size="micro" Variant="button" />
+        @if (_loaded && !Empty)
+        {
+            <span class="indx-list-toolbar-end">last @_days days</span>
+        }
+    </div>
+
+    @if (!_loaded)
+    {
+        <p class="stats-empty">Loading statistics…</p>
+    }
+    else if (Empty)
+    {
+        <p class="stats-empty">
+            No statistics in the last @_days days. Searches are counted automatically; selects and
+            conversions arrive when the storefront sends them to
+            <code>events/select</code> and <code>events/convert</code>.
+        </p>
+    }
+    else
+    {
+        <div class="stats-tiles">
+            <div class="stats-tile">
+                <span class="stats-tile-value">@N(_overview.Searches)</span>
+                <span class="stats-tile-label">Searches</span>
+            </div>
+            <div class="stats-tile">
+                <span class="stats-tile-value">@Pct(_overview.ZeroHits, _overview.Searches)</span>
+                <span class="stats-tile-label">Without results</span>
+            </div>
+            <div class="stats-tile">
+                <span class="stats-tile-value">@Pct(_overview.ClickedSearches, _overview.Searches)</span>
+                <span class="stats-tile-label">Click-through</span>
+            </div>
+            <div class="stats-tile">
+                <span class="stats-tile-value">@AvgPos()</span>
+                <span class="stats-tile-label">Avg. click position</span>
+            </div>
+            <div class="stats-tile">
+                <span class="stats-tile-value">@N(_overview.Converts)</span>
+                <span class="stats-tile-label">Conversions@(_overview.ConvertValueSum > 0 ? $", {_overview.ConvertValueSum:0.##} in value" : "")</span>
+            </div>
+        </div>
+
+        <Chart Series="_series" Labels="_labels" Type="line" Height="180" />
+
+        @if (_zeroHit.Count > 0)
+        {
+            <h3 class="stats-heading">Searches without results</h3>
+            <p class="stats-help">What people looked for and did not find — synonym and catalogue candidates.</p>
+            <table class="indx-table stats-table">
+                <thead><tr><th>Query</th><th class="stats-num">Times</th></tr></thead>
+                <tbody>
+                    @foreach (var q in _zeroHit)
+                    {
+                        <tr><td>@q.QueryText</td><td class="stats-num">@N(q.ZeroHits)</td></tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (_topQueries.Count > 0)
+        {
+            <h3 class="stats-heading">Top queries</h3>
+            <table class="indx-table stats-table">
+                <thead><tr><th>Query</th><th class="stats-num">Searches</th><th class="stats-num">Click-through</th><th class="stats-num">Avg. position</th></tr></thead>
+                <tbody>
+                    @foreach (var q in _topQueries)
+                    {
+                        <tr>
+                            <td>@q.QueryText</td>
+                            <td class="stats-num">@N(q.Searches)</td>
+                            <td class="stats-num">@Pct(q.ClickedSearches, q.Searches)</td>
+                            <td class="stats-num">@(q.Selects > 0 ? ((double)q.PositionSum / q.Selects).ToString("0.0") : "–")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+
+        @if (_topDocuments.Count > 0)
+        {
+            <h3 class="stats-heading">Top documents</h3>
+            <table class="indx-table stats-table">
+                <thead><tr><th>Document</th><th class="stats-num">Selects</th><th class="stats-num">Conversions</th><th class="stats-num">Value</th></tr></thead>
+                <tbody>
+                    @foreach (var d in _topDocuments)
+                    {
+                        <tr>
+                            <td>@TitleOf(d.DocumentKey)</td>
+                            <td class="stats-num">@N(d.Selects)</td>
+                            <td class="stats-num">@N(d.Converts)</td>
+                            <td class="stats-num">@(d.ConvertValueSum > 0 ? d.ConvertValueSum.ToString("0.##") : "–")</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    }
+
+    @if (Ctx.IsAdmin && _loaded && !Empty)
+    {
+        <div class="indx-file-actions">
+            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="() => _confirmPurge = true">Delete statistics…</Button>
+        </div>
+        <Modal @bind-Open="_confirmPurge" Title="Delete statistics"
+               Description="Deletes every statistic of this dataset, including the kept daily aggregates. Statistics otherwise survive dataset deletion and recreation — this is the one way to start clean.">
+            <div class="indx-modal-form">
+                <div class="indx-form-actions">
+                    <Button Variant="primary" Size="micro" @onclick="PurgeAsync">Delete statistics</Button>
+                    <Button Variant="secondary" Size="micro" @onclick="() => _confirmPurge = false">Cancel</Button>
+                </div>
+            </div>
+        </Modal>
+    }
+}
+</div>
+
+@code {
+    private int _days = 30;
+    private bool _loaded;
+    private bool _confirmPurge;
+    private OverviewStat _overview;
+    private List<QueryStat> _topQueries = [];
+    private List<QueryStat> _zeroHit = [];
+    private List<DocumentStat> _topDocuments = [];
+    private IReadOnlyList<Chart.ChartSeries> _series = [];
+    private string[]? _labels;
+    private readonly Dictionary<long, string> _titles = [];
+    private bool _wasActive;
+
+    private static readonly List<Tabs.TabItem> WindowItems =
+    [
+        new("7 days", "7"), new("30 days", "30"), new("90 days", "90"),
+    ];
+
+    private bool Empty => _overview.Searches == 0 && _overview.Selects == 0 && _overview.Converts == 0;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Awaited (not fire-and-forget) so static rendering - prerender and the render tests -
+        // waits for the data; interactively Blazor still paints the loading state at the first
+        // await and again on completion.
+        if (Active && !_wasActive)
+        {
+            _wasActive = true;
+            await LoadAsync();
+        }
+        if (!Active) _wasActive = false;
+    }
+
+    private void SetWindow(string? value)
+    {
+        if (value != null && int.TryParse(value, out var days) && days != _days)
+        {
+            _days = days;
+            _ = LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        var store = Stats.Store;
+        if (store == null) return;
+        _loaded = false;
+        var (team, ds, days) = (Ctx.TeamId, Ctx.Name, _days);
+        await Task.Run(() =>
+        {
+            long toDay = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            long fromDay = toDay - days + 1;
+            _overview = store.Overview(team, ds, fromDay, toDay);
+            _topQueries = store.TopQueries(team, ds, fromDay, toDay, 10);
+            _zeroHit = store.TopQueries(team, ds, fromDay, toDay, 10, zeroHitsOnly: true);
+            _topDocuments = store.TopDocuments(team, ds, fromDay, toDay, 10);
+
+            var byDay = store.TimeSeries(team, ds, fromDay, toDay).ToDictionary(r => r.Day);
+            var searches = new double[days];
+            var selects = new double[days];
+            var labels = new string[days];
+            for (int i = 0; i < days; i++)
+            {
+                var day = fromDay + i;
+                var row = byDay.GetValueOrDefault(day);
+                searches[i] = row.Searches;
+                selects[i] = row.Selects;
+                labels[i] = DateOnly.FromDayNumber((int)day + DateOnly.Parse("1970-01-01").DayNumber).ToString("d MMM");
+            }
+            _series = new List<Chart.ChartSeries>
+            {
+                new("Searches", searches),
+                new("Selects", selects),
+            };
+            _labels = labels;
+        });
+        _titles.Clear();
+        _loaded = true;
+        await Render();
+    }
+
+    private async Task PurgeAsync()
+    {
+        _confirmPurge = false;
+        var store = Stats.Store;
+        if (store == null) return;
+        await Task.Run(() => store.PurgeDataset(Ctx.TeamId, Ctx.Name));
+        await LoadAsync();
+    }
+
+    private static string N(long n) => n.ToString("#,##0");
+
+    private static string Pct(long numerator, long denominator) =>
+        denominator == 0 ? "–" : ((double)numerator / denominator).ToString("0.0 %");
+
+    private string AvgPos() =>
+        _overview.Selects == 0 ? "–" : ((double)_overview.PositionSum / _overview.Selects).ToString("0.0");
+
+    /// <summary>A readable name for a document, from the engine's stored JSON — via FindEngine,
+    /// which never wakes a hibernated dataset; then the key stands in.</summary>
+    private string TitleOf(long key)
+    {
+        if (_titles.TryGetValue(key, out var cached)) return cached;
+        string title = key.ToString();
+        try
+        {
+            var json = Ctx.FindEngine()?.GetJsonDataOfKey(key);
+            if (!string.IsNullOrEmpty(json))
+            {
+                using var doc = JsonDocument.Parse(json);
+                string? best = null;
+                foreach (var property in doc.RootElement.EnumerateObject())
+                {
+                    if (property.Value.ValueKind != JsonValueKind.String) continue;
+                    best ??= property.Value.GetString();
+                    var name = property.Name.ToLowerInvariant();
+                    if (name is "title" or "name" or "displayname") { best = property.Value.GetString(); break; }
+                }
+                if (!string.IsNullOrWhiteSpace(best))
+                    title = best.Length > 80 ? best[..80] + "…" : best;
+            }
+        }
+        catch (JsonException) { }
+        _titles[key] = title;
+        return title;
+    }
+}
