@@ -2,10 +2,12 @@
 
 namespace IndxServer.Services
 {
-    /// <summary>One search, as the search path records it. Timestamps are Unix milliseconds UTC.</summary>
+    /// <summary>One search, as the search path records it. Timestamps are Unix milliseconds UTC.
+    /// Source marks non-customer traffic (null = the HTTP API, "console" = the web console's
+    /// search preview) so the two can be separated later; today's aggregates include both.</summary>
     public readonly record struct SearchEventRow(
         string QueryId, string TeamId, string DataSet, string QueryText, string? FilterKey,
-        int HitCount, string? Subject, long Timestamp);
+        int HitCount, string? Subject, long Timestamp, string? Source = null);
 
     /// <summary>One select: the user chose a result. QueryId is an opaque reference — an orphan
     /// (unknown or expired id) is stored like any other row and simply finds no search to join.</summary>
@@ -81,7 +83,8 @@ CREATE TABLE IF NOT EXISTS SearchEvents (
     FilterKey   TEXT    NULL,
     HitCount    INTEGER NOT NULL,
     Subject     TEXT    NULL,
-    Timestamp   INTEGER NOT NULL
+    Timestamp   INTEGER NOT NULL,
+    Source      TEXT    NULL
 );
 CREATE INDEX IF NOT EXISTS IX_Search_TeamDsTime ON SearchEvents(TeamId, DataSet, Timestamp);
 CREATE INDEX IF NOT EXISTS IX_Search_ZeroHits   ON SearchEvents(TeamId, DataSet, Timestamp) WHERE HitCount = 0;
@@ -168,6 +171,12 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                 }
                 catch (SqliteException) { /* already there */ }
             }
+            try
+            {
+                cmd.CommandText = "ALTER TABLE SearchEvents ADD COLUMN Source TEXT NULL";
+                cmd.ExecuteNonQuery();
+            }
+            catch (SqliteException) { /* already there */ }
         }
 
         /// <summary>
@@ -190,8 +199,8 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = @"INSERT OR IGNORE INTO SearchEvents
-                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp)
-                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts)";
+                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp, Source)
+                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts, $src)";
                 var qid = cmd.Parameters.Add("$qid", SqliteType.Text);
                 var team = cmd.Parameters.Add("$team", SqliteType.Text);
                 var ds = cmd.Parameters.Add("$ds", SqliteType.Text);
@@ -200,12 +209,13 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                 var hits = cmd.Parameters.Add("$hits", SqliteType.Integer);
                 var subj = cmd.Parameters.Add("$subj", SqliteType.Text);
                 var ts = cmd.Parameters.Add("$ts", SqliteType.Integer);
+                var src = cmd.Parameters.Add("$src", SqliteType.Text);
                 foreach (var e in searches)
                 {
                     qid.Value = e.QueryId; team.Value = e.TeamId; ds.Value = e.DataSet;
                     text.Value = e.QueryText; filter.Value = (object?)e.FilterKey ?? DBNull.Value;
                     hits.Value = e.HitCount; subj.Value = (object?)e.Subject ?? DBNull.Value;
-                    ts.Value = e.Timestamp;
+                    ts.Value = e.Timestamp; src.Value = (object?)e.Source ?? DBNull.Value;
                     cmd.ExecuteNonQuery();
                 }
             }

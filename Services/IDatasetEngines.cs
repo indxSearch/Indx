@@ -121,7 +121,18 @@ namespace IndxServer.Services
         public string? SetKeyField(string d, string t, string field, out bool needsReload) => M.SetKeyField(d, t, field, out needsReload);
         public string? ValidateExternalLoadForCustomKey(string d, string t, Stream s) => M.ValidateExternalLoadForCustomKey(d, t, s);
 
-        public Result Search(QueryProxy q, string d, string t) => M.Search(q, d, t);
+        public Result Search(QueryProxy q, string d, string t)
+        {
+            var result = M.Search(q, d, t);
+            // The console's search preview comes through here, not through the HTTP endpoint -
+            // it counts too, marked "console" so customer traffic can be separated later.
+            if (statistics.Enabled)
+                statistics.Writer!.RecordSearch(new SearchEventRow(
+                    Guid.NewGuid().ToString("N"), t, d, q.Text ?? string.Empty, null,
+                    result.Records?.Length ?? 0, null,
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Source: "console"));
+            return result;
+        }
         public SynonymList? GetSynonyms(string d, string t) => M.GetSynonyms(d, t);
         public bool SetSynonyms(string d, string t, SynonymList? l) => M.SetSynonyms(d, t, l);
     }

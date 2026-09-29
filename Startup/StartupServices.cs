@@ -637,15 +637,20 @@ internal static class StartupServices
             {
                 if (!builder.Environment.IsProduction())
                 {
+                    // Indx-Query-Id must be EXPOSED, not merely sent: a cross-origin client
+                    // (the storefront) can only read CORS-safelisted response headers, and the
+                    // statistics select/convert events reference exactly this header's value.
                     policy.AllowAnyOrigin()
                         .AllowAnyMethod()
-                        .AllowAnyHeader();
+                        .AllowAnyHeader()
+                        .WithExposedHeaders("Indx-Query-Id");
                 }
                 else if (corsAllowedOrigins.Length > 0)
                 {
                     policy.WithOrigins(corsAllowedOrigins)
                         .AllowAnyMethod()
-                        .AllowAnyHeader();
+                        .AllowAnyHeader()
+                        .WithExposedHeaders("Indx-Query-Id");
                 }
                 else
                 {
