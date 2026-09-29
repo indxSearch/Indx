@@ -2,7 +2,7 @@
 
 A self-hosted search service built on [Indx Search](https://indx.co). Blazor Server UI, HTTP API with JWT authentication, user management, and everything needed to run a multi-user search service on your own infrastructure.
 
-![The dataset list for a team, showing five datasets with their state and document counts](docs/images/console-datasets.png)
+![A tour of the Indx console: the dataset list, field configuration, boost rules, synonyms, and the admin views of datasets and the monitor](docs/images/tour.gif)
 
 ## What's Included
 
