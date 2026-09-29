@@ -15,6 +15,7 @@ the repository root, or `../images/<name>.png` from inside `docs/release-notes/`
 | `admin-teams.png` | Admin → Teams: both teams with their members and team roles |
 | `admin-datasets.png` | Admin → Datasets: every dataset across every team, with keep-alive |
 | `admin-monitor.png` | Admin → Monitor: the in-memory event stream |
+| `tour.gif` | The README's opening image: eight of the console shots above, 1.2 s each with a short crossfade. Built from them by `capture.mjs`, never edited by hand |
 | `tui.png` | The terminal monitor: instance figures, the dataset table, the event stream |
 
 The console shots are **2912x1660 PNG** — a 1456x830 viewport at `deviceScaleFactor: 2`, dark
@@ -46,7 +47,8 @@ carries enough to rebuild it. In outline:
    (boost rules and a synonym list on `bookshop`, which is what those two images show).
    Hibernate `order-archive-2024` and `test-import-small` from their Options tabs, not with
    `seed.mjs sleep` — see `Notes/screenshot-run.md` for why.
-4. `node capture.mjs` writes all seven. `--light` for the light theme.
+4. `node capture.mjs` writes all of the console shots, then builds `tour.gif` from them with ffmpeg.
+   `--light` for the light theme, `--gif-only` to rebuild just the GIF.
 
 Retake them when the UI meaningfully changes, and **look at them** rather than trusting the run. A
 screenshot nobody looks at is how a release ships a picture of a broken layout — not hypothetical
