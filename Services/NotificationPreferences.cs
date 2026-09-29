@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using IndxServer.Data;
 
 namespace IndxServer.Services;
@@ -33,6 +33,8 @@ internal static class NotificationPreferences
         new(NotificationType.ApiKeyExpiringSoon, "API key expiring soon", "One of your API keys is within 14 days of expiring.", AdminOnly: false),
         new(NotificationType.ApiKeyExpired,      "API key expired",       "One of your API keys has expired.",                   AdminOnly: false),
         new(NotificationType.BoostRuleExpired,   "Boost rule expired",    "A scheduled boost rule on one of your team's datasets has passed its end date and no longer applies.", AdminOnly: false),
+        new(NotificationType.BackupFailed,       "Backup failed",         "A scheduled database backup did not produce a verified copy. The copy, if any, was discarded.", AdminOnly: true),
+        new(NotificationType.LowDiskSpace,       "Low disk space",        "The disk holding the databases and backups is below the configured free-space threshold.", AdminOnly: true),
     ];
 
     public static Dictionary<NotificationType, NotificationChannelPref> Parse(string? json)

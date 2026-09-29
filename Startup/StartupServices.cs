@@ -140,6 +140,11 @@ internal static class StartupServices
         // that also runs as the hosted service (Notes/statistics-design.md).
         builder.Services.AddSingleton<IndxServer.Services.StatisticsService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.StatisticsService>());
+        // Nightly verified backups of the SQLite databases (Notes/backup-design.md). Singleton +
+        // hosted over the same instance, so the monitor/admin pages can read LastSuccess.
+        builder.Services.AddSingleton<IndxServer.Services.OperationalAlerts>();
+        builder.Services.AddSingleton<IndxServer.Services.BackupService>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.BackupService>());
         builder.Services.AddHostedService<IndxServer.Services.TokenExpiryNotificationJob>();
         builder.Services.AddHostedService<IndxServer.Services.BoostRuleExpiryNotificationJob>();
         builder.Services.AddHostedService<IndxServer.Services.DatasetIdleSweeper>();

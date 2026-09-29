@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace IndxServer.Data
@@ -13,6 +13,8 @@ namespace IndxServer.Data
         ApiKeyExpiringSoon  = 5,
         ApiKeyExpired       = 6,
         BoostRuleExpired    = 7,
+        BackupFailed        = 8,
+        LowDiskSpace        = 9,
     }
 
     public class Notification
