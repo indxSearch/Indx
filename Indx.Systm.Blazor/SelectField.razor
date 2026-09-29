@@ -1,11 +1,13 @@
-@implements IDisposable
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
 
 <div class="indx-select-wrapper">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label for="@_id" class="indx-select-label">@Label</label>
     }
-    <div class="indx-select-trigger">
+    <div class="indx-select-trigger" @ref="_trigger">
         <button type="button" id="@_id" class="indx-select indx-select-@Size" @onclick="Toggle" @onkeydown="OnKeyDown" @attributes="AdditionalAttributes">
             <span class="indx-select-value @(string.IsNullOrEmpty(Value) ? "indx-select-placeholder" : null)" style="display:inline-flex; align-items:center; gap:6px;">
                 @if (SelectedOption?.Icon is { } selIcon)
@@ -80,7 +82,39 @@
         if (e.Key == "Escape") _open = false;
     }
 
-    public void Dispose() { }
+    // The open menu is placed against the window by SelectField.razor.js, so a scrolling
+    // ancestor (a Modal's content box) cannot clip it. Without JS it falls back to the CSS
+    // position under the field.
+    private ElementReference _trigger;
+    private IJSObjectReference? _module;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Indx.Systm.Blazor/SelectField.razor.js");
+            await _module.InvokeVoidAsync("init", _trigger);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (JSException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is null) return;
+        try
+        {
+            await _module.InvokeVoidAsync("dispose", _trigger);
+            await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+        catch (TaskCanceledException) { }
+        catch (JSException) { } // element already gone on the client
+    }
 
     public record SelectOption(string Label, string Value)
     {
