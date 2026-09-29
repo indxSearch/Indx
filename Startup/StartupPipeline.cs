@@ -53,6 +53,11 @@ internal static class StartupPipeline
                         "Unhandled exception on {Method} {Path} (traceId {TraceId})",
                         context.Request.Method, context.Request.Path, context.TraceIdentifier);
 
+                // The repeated-failure detector: enough of these inside the window raises the
+                // operational alert (in-app + email). It never throws, so the 500 below stands.
+                await context.RequestServices.GetRequiredService<IndxServer.Services.ApiErrorAlert>()
+                    .RecordAsync(context.Request.Method, context.Request.Path, context.TraceIdentifier);
+
                 context.Response.StatusCode = StatusCodes.Status500InternalServerError;
                 var problem = new Microsoft.AspNetCore.Mvc.ProblemDetails
                 {

@@ -23,7 +23,6 @@ namespace IndxServer.Services
     /// </summary>
     public sealed class BackupService(
         IConfiguration configuration,
-        IServiceProvider services,
         StatisticsService statistics,
         OperationalAlerts alerts,
         ILogger<BackupService> logger) : BackgroundService
@@ -111,7 +110,7 @@ namespace IndxServer.Services
             if (failures.Count > 0)
             {
                 var body = string.Join(" ", failures.Select(fr => $"{fr.Database}: {fr.Error}."));
-                await NotifyAdminsAsync(NotificationType.BackupFailed, "Database backup failed", body);
+                await alerts.NotifyAdminsAsync(NotificationType.BackupFailed, "Database backup failed", body);
                 await alerts.RaiseAsync("backup-failed", "Indx: database backup failed", body);
             }
 
@@ -143,7 +142,7 @@ namespace IndxServer.Services
             var body = $"The disk holding the databases and backups has {free / (1024 * 1024)} MB free, " +
                        $"below the Alerts:MinFreeDiskMB threshold of {minFree / (1024 * 1024)} MB.";
             logger.LogWarning("low disk space: {Body}", body);
-            await NotifyAdminsAsync(NotificationType.LowDiskSpace, "Low disk space", body);
+            await alerts.NotifyAdminsAsync(NotificationType.LowDiskSpace, "Low disk space", body);
             await alerts.RaiseAsync("low-disk", "Indx: low disk space", body);
         }
 
@@ -226,19 +225,5 @@ namespace IndxServer.Services
             }
         }
 
-        private async Task NotifyAdminsAsync(NotificationType type, string title, string body)
-        {
-            try
-            {
-                using var scope = services.CreateScope();
-                var notifications = scope.ServiceProvider.GetRequiredService<NotificationService>();
-                await notifications.CreateForAdminsAsync(type, title, body);
-            }
-            catch (Exception ex)
-            {
-                // The failure is already in the log; a broken notification path must not hide it.
-                logger.LogError(ex, "could not raise the in-app notification '{Title}'", title);
-            }
-        }
     }
 }

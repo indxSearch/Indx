@@ -15,6 +15,7 @@ namespace IndxServer.Data
         BoostRuleExpired    = 7,
         BackupFailed        = 8,
         LowDiskSpace        = 9,
+        RepeatedApiErrors   = 10,
     }
 
     public class Notification

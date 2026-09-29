@@ -143,6 +143,7 @@ internal static class StartupServices
         // Nightly verified backups of the SQLite databases (Notes/backup-design.md). Singleton +
         // hosted over the same instance, so the monitor/admin pages can read LastSuccess.
         builder.Services.AddSingleton<IndxServer.Services.OperationalAlerts>();
+        builder.Services.AddSingleton<IndxServer.Services.ApiErrorAlert>();
         builder.Services.AddSingleton<IndxServer.Services.BackupService>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.BackupService>());
         builder.Services.AddHostedService<IndxServer.Services.TokenExpiryNotificationJob>();

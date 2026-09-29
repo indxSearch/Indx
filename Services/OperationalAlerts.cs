@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Identity.UI.Services;
+﻿using IndxServer.Data;
+using Microsoft.AspNetCore.Identity.UI.Services;
 using System.Collections.Concurrent;
 
 namespace IndxServer.Services
@@ -35,6 +36,22 @@ namespace IndxServer.Services
                       .SelectMany(v => v!.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
                       .Distinct(StringComparer.OrdinalIgnoreCase)
                       .ToArray();
+        }
+
+        /// <summary>The in-app twin of the email: an admin notification, best-effort — a broken
+        /// notification path must never mask the failure it reports.</summary>
+        public async Task NotifyAdminsAsync(NotificationType type, string title, string body)
+        {
+            try
+            {
+                using var scope = services.CreateScope();
+                var notifications = scope.ServiceProvider.GetRequiredService<NotificationService>();
+                await notifications.CreateForAdminsAsync(type, title, body);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "could not raise the in-app notification '{Title}'", title);
+            }
         }
 
         /// <summary>Sends the alert to the configured recipients, unless the same key was sent
