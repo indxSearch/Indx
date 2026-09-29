@@ -6,23 +6,23 @@ A self-hosted search service built on [Indx Search](https://indx.co). Blazor Ser
 
 ## What's Included
 
-- **Dashboard**: teams, datasets, field configuration with weight sliders, search preview,
+- <img src="docs/icons/internet-browser.svg" alt=""> **Dashboard**: teams, datasets, field configuration with weight sliders, search preview,
   status, boost rules, synonyms, options; plus an admin panel
-- **Teams**: datasets belong to teams; members join with per-team roles
-- **HTTP API**: JWT authentication and API key management; errors are RFC 9457 problem
+- <img src="docs/icons/user-group.svg" alt=""> **Teams**: datasets belong to teams; members join with per-team roles
+- <img src="docs/icons/api.svg" alt=""> **HTTP API**: JWT authentication and API key management; errors are RFC 9457 problem
   documents with a machine-readable `code`
-- **Dynamic data**: insert, update, delete, by key or by filter, with the index kept in sync
-- **Zero-downtime rebuilds**: replace a dataset, or change its field configuration, on a
+- <img src="docs/icons/dynamic-json-field.svg" alt=""> **Dynamic data**: insert, update, delete, by key or by filter, with the index kept in sync
+- <img src="docs/icons/shadow-indexing.svg" alt=""> **Zero-downtime rebuilds**: replace a dataset, or change its field configuration, on a
   shadow engine while the old one keeps serving
-- **Keep-alive & hibernation**: pinned, timed or client-managed memory per dataset
-- **MCP server**: connect AI agents (Claude, etc.) directly to your search data, at `/mcp`
-- **Accounts**: registration, login and account management; local passwords, with optional
+- <img src="docs/icons/hibernate.svg" alt=""> **Keep-alive & hibernation**: pinned, timed or client-managed memory per dataset
+- <img src="docs/icons/mcp.svg" alt=""> **MCP server**: connect AI agents (Claude, etc.) directly to your search data, at `/mcp`
+- <img src="docs/icons/login.svg" alt=""> **Accounts**: registration, login and account management; local passwords, with optional
   Microsoft and Google sign-in
-- **Relevance**: server-side boost rules with schedules, facets, coverage, vector and hybrid search
-- **Synonyms**: per-dataset lists (experimental); query expansion at search time
-- **Notifications**: in the app and by email
-- **SQLite storage**: no external database required, and migrations run on startup
-- **Swagger UI**: the whole API, browsable at `/swagger`
+- <img src="docs/icons/boost.svg" alt=""> **Relevance**: server-side boost rules with schedules, facets, coverage, vector and hybrid search
+- <img src="docs/icons/synonym.svg" alt=""> **Synonyms**: per-dataset lists (experimental); query expansion at search time
+- <img src="docs/icons/bell.svg" alt=""> **Notifications**: in the app and by email
+- <img src="docs/icons/database.svg" alt=""> **SQLite storage**: no external database required, and migrations run on startup
+- <img src="docs/icons/json-query.svg" alt=""> **Swagger UI**: the whole API, browsable at `/swagger`
 
 ## Quick Start
 
