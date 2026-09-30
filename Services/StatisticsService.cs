@@ -29,9 +29,17 @@ namespace IndxServer.Services
         /// and counting those would bury the searches people typed. An empty search with a filter
         /// is browsing: it is recorded with its filter key, and the reads count it under Browsing,
         /// never as a query (Notes/statistics-design.md, "What counts as a search"). Both recording
-        /// paths (the HTTP endpoint and the console preview) ask this, so they agree.</summary>
-        public static bool ShouldRecord(Indx.Http.QueryProxy query, string? filterKey) =>
-            !string.IsNullOrWhiteSpace(query.Text) || filterKey != null;
+        /// paths (the HTTP endpoint and the console preview) ask this, so they agree.
+        ///
+        /// <para>And only a search that ran. A refused one (<c>Reason</c> set: an unknown or
+        /// negative fieldBoosts key, text over the length ceiling, a disposed engine) or one that
+        /// could not be served in time (<c>DidTimeOut</c>) also comes back empty, and recorded it
+        /// would read as the shop having nothing: an integration bug or a busy moment showing up
+        /// as the zero-hit rate. Errors are not search data; the caller has the reason in the
+        /// response.</para></summary>
+        public static bool ShouldRecord(Indx.Http.QueryProxy query, string? filterKey, Indx.Api.Result result) =>
+            result.Reason == null && !result.DidTimeOut
+            && (!string.IsNullOrWhiteSpace(query.Text) || filterKey != null);
 
         /// <summary>The filter key to store with a search: the query's token (which IS the key),
         /// or null when it has none or the dataset has the Browsing report switched off. With it

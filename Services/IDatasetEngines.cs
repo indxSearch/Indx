@@ -127,7 +127,7 @@ namespace IndxServer.Services
             // The console's search preview comes through here, not through the HTTP endpoint -
             // it counts too, marked "console" so customer traffic can be separated later.
             var filterKey = statistics.Enabled ? statistics.FilterKeyToRecord(q, t, d) : null;
-            if (statistics.Enabled && StatisticsService.ShouldRecord(q, filterKey))
+            if (statistics.Enabled && StatisticsService.ShouldRecord(q, filterKey, result))
                 statistics.Writer!.RecordSearch(new SearchEventRow(
                     Guid.NewGuid().ToString("N"), t, d, q.Text ?? string.Empty, filterKey,
                     result.Records?.Length ?? 0, null,

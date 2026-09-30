@@ -60,7 +60,7 @@ namespace IndxServer.Controllers
                     // that references an unrecorded search is accepted as an orphan and still
                     // counts on the document.
                     var filterKey = statistics.FilterKeyToRecord(query, ctx.OwnerKey, dataSetName);
-                    if (StatisticsService.ShouldRecord(query, filterKey))
+                    if (StatisticsService.ShouldRecord(query, filterKey, res))
                         statistics.Writer!.RecordSearch(new SearchEventRow(
                             queryId, ctx.OwnerKey, dataSetName, query.Text ?? string.Empty,
                             // The token IS the filter's serialized key, and it resolved, or the
