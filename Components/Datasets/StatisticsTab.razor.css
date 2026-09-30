@@ -8,6 +8,24 @@
     gap: 14px;
 }
 
+.stats-intro {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+}
+
+.stats-intro p {
+    color: var(--lv5);
+    font: var(--text-sm);
+    margin: 0;
+    flex: 1;
+}
+
+/* As on the Synonyms tab: on a narrow screen the chip goes above the text. */
+@media (max-width: 768px) {
+    .stats-intro { flex-direction: column-reverse; align-items: flex-start; }
+}
+
 .stats-empty {
     color: var(--text-secondary, #888);
     font-size: 13px;
