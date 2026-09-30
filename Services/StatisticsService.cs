@@ -30,8 +30,16 @@ namespace IndxServer.Services
         /// is browsing: it is recorded with its filter key, and the reads count it under Browsing,
         /// never as a query (Notes/statistics-design.md, "What counts as a search"). Both recording
         /// paths (the HTTP endpoint and the console preview) ask this, so they agree.</summary>
-        public static bool ShouldRecord(Indx.Http.QueryProxy query) =>
-            !string.IsNullOrWhiteSpace(query.Text) || !string.IsNullOrWhiteSpace(query.Filter?.HashString);
+        public static bool ShouldRecord(Indx.Http.QueryProxy query, string? filterKey) =>
+            !string.IsNullOrWhiteSpace(query.Text) || filterKey != null;
+
+        /// <summary>The filter key to store with a search: the query's token (which IS the key),
+        /// or null when it has none or the dataset has the Browsing report switched off. With it
+        /// off, an empty search with a filter is not recorded at all - without its key it is a
+        /// page load.</summary>
+        public string? FilterKeyToRecord(Indx.Http.QueryProxy query, string teamId, string dataSet) =>
+            string.IsNullOrWhiteSpace(query.Filter?.HashString) || Store?.RecordsFilters(teamId, dataSet) != true
+                ? null : query.Filter.HashString;
         public StatisticsStore? Store { get; private set; }
         public StatisticsWriter? Writer { get; private set; }
         public int RetentionDays { get; private set; }

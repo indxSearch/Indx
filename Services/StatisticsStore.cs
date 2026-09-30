@@ -1,4 +1,5 @@
-﻿using Microsoft.Data.Sqlite;
+﻿using System.Collections.Concurrent;
+using Microsoft.Data.Sqlite;
 
 namespace IndxServer.Services
 {
@@ -162,6 +163,13 @@ CREATE TABLE IF NOT EXISTS DailyFilterStats (
     Uses        INTEGER NOT NULL,
     ZeroHits    INTEGER NOT NULL,
     PRIMARY KEY (Day, TeamId, DataSet, Field, Value)
+);
+
+CREATE TABLE IF NOT EXISTS DatasetSettings (
+    TeamId        TEXT    NOT NULL,
+    DataSet       TEXT    NOT NULL,
+    RecordFilters INTEGER NOT NULL DEFAULT 1, -- 0: no filter key is stored (Browsing is off)
+    PRIMARY KEY (TeamId, DataSet)
 );
 
 CREATE TABLE IF NOT EXISTS RollupState (
@@ -398,6 +406,53 @@ GROUP BY TeamId, DataSet, DocumentKey;";
                 mark.ExecuteNonQuery();
             }
             tx.Commit();
+        }
+
+        // ── Per-dataset settings ─────────────────────────────────────────────────────────
+
+        private readonly ConcurrentDictionary<(string Team, string DataSet), bool> _recordFilters = new();
+
+        /// <summary>Whether the dataset stores the filter of each search (the Browsing report).
+        /// On unless switched off. Asked on the search path, so it is cached: one dictionary read
+        /// after the first.</summary>
+        public bool RecordsFilters(string teamId, string dataSet) =>
+            _recordFilters.GetOrAdd((teamId, dataSet), key =>
+            {
+                using var conn = Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT RecordFilters FROM DatasetSettings WHERE TeamId = $t AND DataSet = $d";
+                cmd.Parameters.AddWithValue("$t", key.Team);
+                cmd.Parameters.AddWithValue("$d", key.DataSet);
+                return cmd.ExecuteScalar() is not long v || v != 0;
+            });
+
+        /// <summary>
+        /// Switches the Browsing report on or off for a dataset. Off also erases the filter values
+        /// already recorded - from the raw rows and the daily table - because a filter value can
+        /// be personal data (a name or a customer number on a dataset of people), and switching
+        /// off for that reason must not leave 90 days of them behind.
+        /// </summary>
+        public void SetRecordsFilters(string teamId, string dataSet, bool on)
+        {
+            using var conn = Open();
+            using var tx = conn.BeginTransaction();
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$on", on ? 1 : 0);
+            cmd.CommandText = @"INSERT INTO DatasetSettings (TeamId, DataSet, RecordFilters) VALUES ($t, $d, $on)
+                ON CONFLICT(TeamId, DataSet) DO UPDATE SET RecordFilters = $on";
+            cmd.ExecuteNonQuery();
+            if (!on)
+            {
+                cmd.CommandText = "UPDATE SearchEvents SET FilterKey = NULL WHERE TeamId = $t AND DataSet = $d AND FilterKey IS NOT NULL";
+                cmd.ExecuteNonQuery();
+                cmd.CommandText = "DELETE FROM DailyFilterStats WHERE TeamId = $t AND DataSet = $d";
+                cmd.ExecuteNonQuery();
+            }
+            tx.Commit();
+            _recordFilters[(teamId, dataSet)] = on;
         }
 
         // ── What counts as a search (Notes/statistics-design.md, "What counts as a search") ──
@@ -780,8 +835,17 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
 
         /// <summary>Deletes every statistics row of one team. Called when the team is deleted -
         /// the teamId is ours and nothing can resume it.</summary>
-        public int PurgeTeam(string teamId) =>
-            ExecutePerTable("WHERE TeamId = $a", teamId, null);
+        public int PurgeTeam(string teamId)
+        {
+            int n = ExecutePerTable("WHERE TeamId = $a", teamId, null);
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM DatasetSettings WHERE TeamId = $a";
+            cmd.Parameters.AddWithValue("$a", teamId);
+            n += cmd.ExecuteNonQuery();
+            _recordFilters.Clear();
+            return n;
+        }
 
         /// <summary>
         /// The GDPR erasure of one subject within a dataset: the subject-document edge is
@@ -821,12 +885,16 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
             cmd.Parameters.AddWithValue("$old", oldName);
             cmd.Parameters.AddWithValue("$new", newName);
             int n = 0;
-            foreach (var table in AllTables)
+            // The dataset's settings move with it; AllTables leaves them out because a purge must
+            // not quietly switch a privacy setting back on.
+            foreach (var table in AllTables.Append("DatasetSettings"))
             {
                 cmd.CommandText = $"UPDATE {table} SET DataSet = $new WHERE TeamId = $t AND DataSet = $old";
                 n += cmd.ExecuteNonQuery();
             }
             tx.Commit();
+            _recordFilters.TryRemove((teamId, oldName), out _);
+            _recordFilters.TryRemove((teamId, newName), out _);
             return n;
         }
 

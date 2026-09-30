@@ -59,12 +59,13 @@ namespace IndxServer.Controllers
                     // The header is minted either way, so a client can always read one; a click
                     // that references an unrecorded search is accepted as an orphan and still
                     // counts on the document.
-                    if (StatisticsService.ShouldRecord(query))
+                    var filterKey = statistics.FilterKeyToRecord(query, ctx.OwnerKey, dataSetName);
+                    if (StatisticsService.ShouldRecord(query, filterKey))
                         statistics.Writer!.RecordSearch(new SearchEventRow(
                             queryId, ctx.OwnerKey, dataSetName, query.Text ?? string.Empty,
                             // The token IS the filter's serialized key, and it resolved, or the
                             // search above would have thrown UnknownFilterException.
-                            query.Filter?.HashString,
+                            filterKey,
                             res.Records?.Length ?? 0, string.IsNullOrWhiteSpace(subject) ? null : subject,
                             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                             Session: string.IsNullOrWhiteSpace(session) ? null : session));

@@ -8,6 +8,9 @@ namespace IndxServer.Models
     /// AverageClickPosition = mean 1-based position of the selects that joined a search.
     /// Null rate/position means the denominator was zero, never "0%".
     /// </summary>
+    /// <summary>A dataset's statistics settings (GET/PUT …/statistics/settings).</summary>
+    public record StatisticsSettings(bool RecordFilters);
+
     public record StatisticsOverviewResponse(
         long Searches, long ZeroHits, long ClickedSearches, long Selects, long Converts,
         double ConvertValueSum, double? ZeroHitRate, double? ClickThroughRate,

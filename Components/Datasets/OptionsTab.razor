@@ -6,6 +6,7 @@
 @using IndxServer.Engine
 @inherits DatasetTabBase
 @inject DatasetMetadataStore DatasetMeta
+@inject StatisticsService Stats
 
 @if (!Active) { return; }
 
@@ -78,6 +79,28 @@
         {
             <p class="opt-muted opt-row--top10">Set keep-alive to <strong>Off</strong> to hibernate this dataset manually.</p>
         }
+    }
+
+    @* ── Statistics: whether each search's filter is stored (the Browsing report). A privacy
+       setting, so a team admin's call; editors see where it stands. ── *@
+    @if (Stats.Enabled && Stats.Store != null)
+    {
+        <h3 class="indx-section-heading">Statistics</h3>
+        <p class="indx-section-help">
+            The Statistics tab's Browsing report stores the filter of every search. On a dataset of
+            products that is catalogue vocabulary. On a dataset of people, a filter can hold a name
+            or a customer number, so switch it off there. Switching off also erases the filter
+            values already recorded.
+        </p>
+        <div class="opt-row">
+            <ToggleSwitch Label="Record filters for the Browsing report"
+                          Checked="Stats.Store.RecordsFilters(Ctx.TeamId, Ctx.Name)"
+                          CheckedChanged="SetRecordFilters" Disabled="!Ctx.IsAdmin" />
+            @if (!Ctx.IsAdmin)
+            {
+                <span class="opt-muted">Team admins can change this.</span>
+            }
+        </div>
     }
 
     @* ── Replace data (atomic full reload) ── *@
@@ -228,6 +251,13 @@
 </div>
 
 @code {
+    private async Task SetRecordFilters(bool on)
+    {
+        var store = Stats.Store;
+        if (store == null || !Ctx.IsAdmin) return;
+        await Task.Run(() => store.SetRecordsFilters(Ctx.TeamId, Ctx.Name, on));
+    }
+
 
     private static readonly IEnumerable<SelectField.SelectOption> KeepAliveModes =
     [

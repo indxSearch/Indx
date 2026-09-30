@@ -120,6 +120,33 @@ namespace IndxServer.Controllers
                 Math.Clamp(limit, 1, 1000)).ToArray();
         }
 
+        /// <summary>The dataset's statistics settings. <c>recordFilters</c>: whether each search's
+        /// filter is stored, which is what the Browsing report counts. On by default.</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/settings")]
+        public ActionResult<StatisticsSettings> GetSettings(string teamName, string dataSetName)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            return new StatisticsSettings(statistics.Store!.RecordsFilters(ctx.OwnerKey, dataSetName));
+        }
+
+        /// <summary>Changes the dataset's statistics settings. Switching <c>recordFilters</c> off
+        /// also erases the filter values already recorded: a filter value can be personal data on a
+        /// dataset of people. Team admin, Full key - the same bar as deleting the statistics.</summary>
+        [KeyAccess(ApiKeyLevel.Full)]
+        [HttpPut(DataSetRoute + "/statistics/settings")]
+        public ActionResult<StatisticsSettings> PutSettings(string teamName, string dataSetName,
+            [FromBody] StatisticsSettings settings)
+        {
+            var ctx = ResolveTeam(teamName, out var error, admin: true);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            statistics.Store!.SetRecordsFilters(ctx.OwnerKey, dataSetName, settings.RecordFilters);
+            return new StatisticsSettings(statistics.Store.RecordsFilters(ctx.OwnerKey, dataSetName));
+        }
+
         /// <summary>Deletes every statistics row of the dataset. This is the explicit purge:
         /// statistics survive dataset delete/recreate, so starting clean is a choice made here.</summary>
         [KeyAccess(ApiKeyLevel.Full)]
