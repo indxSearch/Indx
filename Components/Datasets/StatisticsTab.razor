@@ -70,7 +70,7 @@ else
         {
             <h3 class="stats-heading">Searches without results</h3>
             <p class="stats-help">What people looked for and did not find — synonym and catalogue candidates.</p>
-            <table class="indx-table stats-table">
+            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Searches without results" Class="stats-table">
                 <thead><tr><th>Query</th><th class="stats-num">Times</th></tr></thead>
                 <tbody>
                     @foreach (var q in _zeroHit)
@@ -78,13 +78,13 @@ else
                         <tr><td>@q.QueryText</td><td class="stats-num">@N(q.ZeroHits)</td></tr>
                     }
                 </tbody>
-            </table>
+            </Table>
         }
 
         @if (_topQueries.Count > 0)
         {
             <h3 class="stats-heading">Top queries</h3>
-            <table class="indx-table stats-table">
+            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Top queries" Class="stats-table">
                 <thead><tr><th>Query</th><th class="stats-num">Searches</th><th class="stats-num">Click-through</th><th class="stats-num">Avg. position</th></tr></thead>
                 <tbody>
                     @foreach (var q in _topQueries)
@@ -97,13 +97,13 @@ else
                         </tr>
                     }
                 </tbody>
-            </table>
+            </Table>
         }
 
         @if (_topDocuments.Count > 0)
         {
             <h3 class="stats-heading">Top documents</h3>
-            <table class="indx-table stats-table">
+            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Top documents" Class="stats-table">
                 <thead><tr><th>Document</th><th class="stats-num">Selects</th><th class="stats-num">Conversions</th><th class="stats-num">Value</th></tr></thead>
                 <tbody>
                     @foreach (var d in _topDocuments)
@@ -116,7 +116,7 @@ else
                         </tr>
                     }
                 </tbody>
-            </table>
+            </Table>
         }
     }
 

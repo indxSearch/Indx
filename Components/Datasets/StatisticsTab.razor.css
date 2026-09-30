@@ -57,12 +57,12 @@
     margin: 0;
 }
 
-.stats-table td,
-.stats-table th {
+.stats-tab ::deep .stats-table td,
+.stats-tab ::deep .stats-table th {
     font-size: 12px;
 }
 
-.stats-num {
+.stats-tab ::deep .stats-num {
     text-align: right;
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
