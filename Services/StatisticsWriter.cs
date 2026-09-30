@@ -21,6 +21,12 @@ namespace IndxServer.Services
         public int MaxQueued { get; init; } = 200_000;
 
         private readonly ConcurrentQueue<object> _queue = new();
+
+        /// <summary>Each session's latest search with text, for the keystroke rule. Only the
+        /// flush touches it (one thread), and entries older than the window are dropped each
+        /// flush, so it holds the sessions typing right now and no more.</summary>
+        private readonly Dictionary<(string Team, string DataSet, string Session), (string QueryId, string Text, long Timestamp)>
+            _lastBySession = new();
         private int _queued;
         private long _dropped;
         private long _flushedTotal;
@@ -86,10 +92,11 @@ namespace IndxServer.Services
             }
             var count = searches.Count + selects.Count + converts.Count;
             if (count == 0) return;
+            var superseded = MarkKeystrokes(searches);
             var started = Environment.TickCount64;
             try
             {
-                store.WriteBatch(searches, selects, converts);
+                store.WriteBatch(searches, selects, converts, superseded);
                 Interlocked.Add(ref _flushedTotal, count);
                 Interlocked.Increment(ref _flushes);
                 Interlocked.Add(ref _flushMsTotal, Environment.TickCount64 - started);
@@ -100,6 +107,41 @@ namespace IndxServer.Services
                 // block every later one. Loudly, with the count, so the loss is on record.
                 logger.LogError(ex, "statistics flush failed; {Count} events lost", count);
             }
+        }
+
+        /// <summary>
+        /// The keystroke rule (Notes/statistics-design.md, "What counts as a search"): a search
+        /// with text is superseded when the same session's next search with text, within
+        /// <see cref="StatisticsStore.KeystrokeWindowMs"/>, extends it - "o", "os", "osl", "oslo"
+        /// is one search. Returns the query ids to mark, which may belong to an earlier batch.
+        /// Here rather than in the reads because a read that sorts a day of keystrokes per
+        /// session cost a tab load seconds (StatisticsReadCostProbeTests); the search thread pays
+        /// nothing either way, this is the background flush. One writer per instance: several
+        /// instances without session affinity would each see part of a session and miss some
+        /// collapses, which only ever leaves a keystroke counted, never a search lost.
+        /// </summary>
+        private List<string> MarkKeystrokes(List<SearchEventRow> searches)
+        {
+            var superseded = new List<string>();
+            long newest = long.MinValue;
+            foreach (var s in searches)
+            {
+                if (s.Timestamp > newest) newest = s.Timestamp;
+                if (s.Session == null || string.IsNullOrWhiteSpace(s.QueryText) || s.Source != null) continue;
+                var key = (s.TeamId, s.DataSet, s.Session);
+                var text = s.QueryText.ToLowerInvariant();
+                if (_lastBySession.TryGetValue(key, out var last)
+                    && s.Timestamp - last.Timestamp <= StatisticsStore.KeystrokeWindowMs
+                    && text.Length > last.Text.Length
+                    && text.StartsWith(last.Text, StringComparison.Ordinal))
+                    superseded.Add(last.QueryId);
+                _lastBySession[key] = (s.QueryId, text, s.Timestamp);
+            }
+            if (newest != long.MinValue)
+                foreach (var stale in _lastBySession.Where(kv => newest - kv.Value.Timestamp > StatisticsStore.KeystrokeWindowMs)
+                                                    .Select(kv => kv.Key).ToList())
+                    _lastBySession.Remove(stale);
+            return superseded;
         }
 
         /// <summary>Stops the loop, flushes what remains, and logs the lifetime totals.</summary>

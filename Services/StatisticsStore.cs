@@ -94,7 +94,8 @@ CREATE TABLE IF NOT EXISTS SearchEvents (
     Subject     TEXT    NULL,
     Timestamp   INTEGER NOT NULL,
     Source      TEXT    NULL,
-    Session     TEXT    NULL                  -- per-page-load id, for the keystroke rule
+    Session     TEXT    NULL,                 -- per-page-load id, for the keystroke rule
+    Superseded  INTEGER NOT NULL DEFAULT 0    -- 1: the same session extended it within the window
 );
 CREATE INDEX IF NOT EXISTS IX_Search_TeamDsTime ON SearchEvents(TeamId, DataSet, Timestamp);
 CREATE INDEX IF NOT EXISTS IX_Search_ZeroHits   ON SearchEvents(TeamId, DataSet, Timestamp) WHERE HitCount = 0;
@@ -220,7 +221,36 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                     logger.LogInformation("statistics: the counting rules changed; re-rolling the kept days");
             }
             catch (SqliteException) { /* already there */ }
+            try
+            {
+                cmd.CommandText = "ALTER TABLE SearchEvents ADD COLUMN Superseded INTEGER NOT NULL DEFAULT 0";
+                cmd.ExecuteNonQuery();
+                // Rows written before the writer marked keystrokes: mark them once, by the same
+                // rule, so a file that already holds sessions reads the same as a new one.
+                cmd.CommandText = MarkSupersededSql;
+                int marked = cmd.ExecuteNonQuery();
+                cmd.CommandText = "DELETE FROM RollupState";
+                if (cmd.ExecuteNonQuery() > 0 || marked > 0)
+                    logger.LogInformation("statistics: marked {Marked} keystroke searches; re-rolling the kept days", marked);
+            }
+            catch (SqliteException) { /* already there */ }
         }
+
+        /// <summary>The keystroke rule in SQL, for rows the writer did not mark: a search with
+        /// text is superseded when the same session's next search with text, within the window,
+        /// extends it. The writer applies the same rule in <see cref="StatisticsWriter"/>.</summary>
+        private static readonly string MarkSupersededSql = $@"
+UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
+    SELECT QueryId FROM (
+        SELECT QueryId, QueryText, Timestamp,
+               LEAD(lower(QueryText)) OVER w AS NextText, LEAD(Timestamp) OVER w AS NextTs
+          FROM SearchEvents
+         WHERE Session IS NOT NULL AND trim(QueryText) <> ''
+        WINDOW w AS (PARTITION BY TeamId, DataSet, Session ORDER BY Timestamp, rowid))
+     WHERE NextTs - Timestamp <= {KeystrokeWindowMs}
+       AND length(NextText) > length(QueryText)
+       AND substr(NextText, 1, length(QueryText)) = lower(QueryText))
+  AND NOT EXISTS (SELECT 1 FROM SelectEvents x WHERE x.QueryId = SearchEvents.QueryId)";
 
         /// <summary>
         /// Writes one batch in one transaction. The subject↔document edge
@@ -231,9 +261,10 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
         public void WriteBatch(
             IReadOnlyList<SearchEventRow> searches,
             IReadOnlyList<SelectEventRow> selects,
-            IReadOnlyList<ConvertEventRow> converts)
+            IReadOnlyList<ConvertEventRow> converts,
+            IReadOnlyCollection<string>? superseded = null)
         {
-            if (searches.Count == 0 && selects.Count == 0 && converts.Count == 0) return;
+            if (searches.Count == 0 && selects.Count == 0 && converts.Count == 0 && (superseded?.Count ?? 0) == 0) return;
             using var conn = Open();
             using var tx = conn.BeginTransaction();
 
@@ -265,6 +296,23 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                 }
             }
 
+            // Keystrokes the writer saw superseded, in this batch or an earlier one: a typing
+            // sequence crosses flushes, so this is an update by id rather than a column on the row.
+            if (superseded is { Count: > 0 })
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                // Never a search someone already clicked: a click makes it a search.
+                cmd.CommandText = @"UPDATE SearchEvents SET Superseded = 1 WHERE QueryId = $qid
+                    AND NOT EXISTS (SELECT 1 FROM SelectEvents x WHERE x.QueryId = $qid)";
+                var qid = cmd.Parameters.Add("$qid", SqliteType.Text);
+                foreach (var id in superseded)
+                {
+                    qid.Value = id;
+                    cmd.ExecuteNonQuery();
+                }
+            }
+
             if (selects.Count > 0)
             {
                 using var cmd = conn.CreateCommand();
@@ -286,6 +334,20 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                     pos.Value = e.Position; subj.Value = (object?)e.Subject ?? DBNull.Value;
                     ts.Value = e.Timestamp;
                     cmd.ExecuteNonQuery();
+                }
+                // A click makes its search a search, even one already marked a keystroke - the
+                // visitor chose a result before typing on. The other order (the click first) is
+                // the NOT EXISTS on the supersede above.
+                using (var unmark = conn.CreateCommand())
+                {
+                    unmark.Transaction = tx;
+                    unmark.CommandText = "UPDATE SearchEvents SET Superseded = 0 WHERE QueryId = $qid AND Superseded = 1";
+                    var uq = unmark.Parameters.Add("$qid", SqliteType.Text);
+                    foreach (var e in selects.Where(s => s.QueryId != null))
+                    {
+                        uq.Value = e.QueryId;
+                        unmark.ExecuteNonQuery();
+                    }
                 }
                 UpsertSubjectEdges(conn, tx, selects.Where(s => s.Subject != null)
                     .Select(s => (s.TeamId, s.DataSet, s.Subject!, s.DocumentKey, s.Timestamp, Selects: 1, Converts: 0)));
@@ -478,43 +540,33 @@ GROUP BY TeamId, DataSet, DocumentKey;";
         /// <item>Customer traffic only: the console's preview is left out.</item>
         /// <item>With a session, a search the same session extends within
         ///   <see cref="KeystrokeWindowMs"/> is superseded: "o", "os", "osl", "oslo" count as
-        ///   "oslo". Measured in the rollup, so the search path stays a queue append. The session
-        ///   only, never the subject: a subject may be a customer segment, and two members of one
-        ///   typing at once would swallow each other's searches.</item>
+        ///   "oslo". The writer marks it (<c>Superseded</c>) as it writes the batch, so a read
+        ///   filters a column instead of sorting a day of keystrokes per session - measured, that
+        ///   sort was a tab load of seconds. The session only, never the subject: a subject may be
+        ///   a customer segment, and two members of one typing at once would swallow each other's
+        ///   searches.</item>
         /// <item>Without one, text shorter than <see cref="MinAnonymousQueryLength"/> is left out.</item>
         /// <item>A search that got a click counts whatever else is true: someone chose a result
         ///   from it.</item>
-        /// <item>Ties in the millisecond fall back to rowid, which is the order the writer
-        ///   queued them in - keystrokes a millisecond apart are otherwise unordered.</item>
         /// <item>An empty-text row is kept; it exists only with a filter (browsing), and the
         ///   query reads leave it out while the filter reads count it.</item>
         /// </list>
         /// </summary>
         private static string CountedSearches(string where) => $@"(
-SELECT * FROM (
-    SELECT e.QueryId, e.TeamId, e.DataSet, e.QueryText, e.FilterKey, e.HitCount, e.Timestamp,
-           e.Visitor, e.NextText, e.NextTs,
-           -- Per search through IX_Select_QueryId. Not a GROUP BY over SelectEvents joined in:
-           -- that grouped every select ever kept on every read, and was most of what a read cost
-           -- (StatisticsReadCostProbeTests).
-           (SELECT COUNT(*) FROM SelectEvents x WHERE x.QueryId = e.QueryId) AS Cnt,
-           (SELECT SUM(x.Position) FROM SelectEvents x WHERE x.QueryId = e.QueryId) AS PosSum
-      FROM (SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.Timestamp,
-                   s.Session AS Visitor,
-                   LEAD(lower(s.QueryText)) OVER w AS NextText,
-                   LEAD(s.Timestamp) OVER w AS NextTs
-              FROM SearchEvents s
-             WHERE {where} AND s.Source IS NULL
-            WINDOW w AS (PARTITION BY s.TeamId, s.DataSet, s.Session
-                         ORDER BY s.Timestamp, s.rowid)) e
-) e
- WHERE e.Cnt > 0
-    OR trim(e.QueryText) = ''
-    OR (e.Visitor IS NOT NULL AND NOT (
-            e.NextTs IS NOT NULL AND e.NextTs - e.Timestamp <= {KeystrokeWindowMs}
-            AND length(e.NextText) > length(e.QueryText)
-            AND substr(e.NextText, 1, length(e.QueryText)) = lower(e.QueryText)))
-    OR (e.Visitor IS NULL AND length(trim(e.QueryText)) >= {MinAnonymousQueryLength})
+SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.Timestamp,
+       -- Per counted search through IX_Select_QueryId, after the WHERE has dropped the
+       -- keystrokes. Not a GROUP BY over SelectEvents joined in: that grouped every select ever
+       -- kept on every read (StatisticsReadCostProbeTests).
+       (SELECT COUNT(*) FROM SelectEvents x WHERE x.QueryId = s.QueryId) AS Cnt,
+       (SELECT SUM(x.Position) FROM SelectEvents x WHERE x.QueryId = s.QueryId) AS PosSum
+  FROM SearchEvents s
+ WHERE {where} AND s.Source IS NULL
+   AND (trim(s.QueryText) = ''
+        -- A clicked search is never marked superseded (the writer sees to it both ways round),
+        -- so with a session the mark alone decides.
+        OR (s.Session IS NOT NULL AND s.Superseded = 0)
+        OR (s.Session IS NULL AND length(trim(s.QueryText)) >= {MinAnonymousQueryLength})
+        OR (s.Session IS NULL AND EXISTS (SELECT 1 FROM SelectEvents x WHERE x.QueryId = s.QueryId)))
 )";
 
         /// <summary>Adds each operand of one search's filter to <paramref name="counts"/>, once per
