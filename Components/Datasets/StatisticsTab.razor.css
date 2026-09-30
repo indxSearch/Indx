@@ -14,35 +14,69 @@
     margin: 18px 0;
 }
 
+/* Five tiles: one row on a wide screen, then three, then two with the last one spanning. */
 .stats-tiles {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: 8px;
 }
 
-.stats-tile {
-    background: var(--lv1);
-    border: 1px solid var(--border, rgba(128, 128, 128, 0.25));
-    border-radius: 6px;
-    padding: 10px 12px;
+@media (max-width: 1100px) {
+    .stats-tiles { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 560px) {
+    .stats-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .stats-tiles ::deep .stats-tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+.stats-tiles ::deep .stats-tile {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    align-items: flex-start;
+    gap: 4px;
     min-width: 0;
 }
 
+/* A tile's hint spans the tile rather than centring on its label. The labels sit at the tile's
+   start, so a centred bubble on a phone ran off the left edge in the first column and off the
+   right in the second; the tile is always on screen, so a bubble its width is too. */
+.stats-tiles ::deep .stats-tile {
+    position: relative;
+}
+
+.stats-tiles ::deep .stats-tile .indx-tooltip-wrapper {
+    position: static;
+}
+
+.stats-tiles ::deep .stats-tile .indx-tooltip {
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+    transform: none;
+}
+
+.stats-tiles ::deep .stats-tile .indx-tooltip::after {
+    left: 24px;
+}
+
 .stats-tile-value {
-    font-size: 20px;
-    font-weight: 500;
+    font: var(--text-2xl);
+    color: var(--lv8);
     font-variant-numeric: tabular-nums;
 }
 
 .stats-tile-label {
-    font-size: 11px;
-    color: var(--text-secondary, #888);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font: var(--text-xs);
+    color: var(--lv5);
+    cursor: help;
+    border-bottom: 1px dotted var(--lv3);
+}
+
+.stats-tile-foot {
+    font: var(--text-xs);
+    color: var(--lv4);
 }
 
 .stats-heading {
@@ -60,6 +94,20 @@
 .stats-tab ::deep .stats-table td,
 .stats-tab ::deep .stats-table th {
     font-size: 12px;
+}
+
+/* The pinned query column wraps rather than widening: on a phone a long query would
+   otherwise take the whole frame and leave the numbers nowhere to scroll into. */
+.stats-tab ::deep .stats-table td:first-child {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    min-width: 12ch;
+    max-width: 28ch;
+}
+
+.stats-muted {
+    color: var(--lv4);
+    font-style: italic;
 }
 
 .stats-tab ::deep .stats-num {

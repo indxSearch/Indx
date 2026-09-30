@@ -42,26 +42,30 @@ else
     else
     {
         <div class="stats-tiles">
-            <div class="stats-tile">
+            <Surface Class="stats-tile">
+                <Tooltip Content="Every search in the window, including the console's own."><span class="stats-tile-label">Searches</span></Tooltip>
                 <span class="stats-tile-value">@N(_overview.Searches)</span>
-                <span class="stats-tile-label">Searches</span>
-            </div>
-            <div class="stats-tile">
+            </Surface>
+            <Surface Class="stats-tile">
+                <Tooltip Content="Share of searches that returned no records."><span class="stats-tile-label">Without results</span></Tooltip>
                 <span class="stats-tile-value">@Pct(_overview.ZeroHits, _overview.Searches)</span>
-                <span class="stats-tile-label">Without results</span>
-            </div>
-            <div class="stats-tile">
+            </Surface>
+            <Surface Class="stats-tile">
+                <Tooltip Content="Share of searches that ended in a chosen result."><span class="stats-tile-label">Click-through</span></Tooltip>
                 <span class="stats-tile-value">@Pct(_overview.ClickedSearches, _overview.Searches)</span>
-                <span class="stats-tile-label">Click-through</span>
-            </div>
-            <div class="stats-tile">
+            </Surface>
+            <Surface Class="stats-tile">
+                <Tooltip Content="Mean position of the chosen result. Lower means the right hit is nearer the top."><span class="stats-tile-label">Avg. click position</span></Tooltip>
                 <span class="stats-tile-value">@AvgPos()</span>
-                <span class="stats-tile-label">Avg. click position</span>
-            </div>
-            <div class="stats-tile">
+            </Surface>
+            <Surface Class="stats-tile">
+                <Tooltip Content="Conversions the storefront reported for results found here."><span class="stats-tile-label">Conversions</span></Tooltip>
                 <span class="stats-tile-value">@N(_overview.Converts)</span>
-                <span class="stats-tile-label">Conversions@(_overview.ConvertValueSum > 0 ? $", {_overview.ConvertValueSum:0.##} in value" : "")</span>
-            </div>
+                @if (_overview.ConvertValueSum > 0)
+                {
+                    <span class="stats-tile-foot">@_overview.ConvertValueSum.ToString("#,##0.##") in value</span>
+                }
+            </Surface>
         </div>
 
         <Chart Series="_series" Labels="_labels" Type="line" Height="180" />
@@ -75,7 +79,7 @@ else
                 <tbody>
                     @foreach (var q in _zeroHit)
                     {
-                        <tr><td>@q.QueryText</td><td class="stats-num">@N(q.ZeroHits)</td></tr>
+                        <tr><td>@QueryLabel(q.QueryText)</td><td class="stats-num">@N(q.ZeroHits)</td></tr>
                     }
                 </tbody>
             </Table>
@@ -90,7 +94,7 @@ else
                     @foreach (var q in _topQueries)
                     {
                         <tr>
-                            <td>@q.QueryText</td>
+                            <td>@QueryLabel(q.QueryText)</td>
                             <td class="stats-num">@N(q.Searches)</td>
                             <td class="stats-num">@Pct(q.ClickedSearches, q.Searches)</td>
                             <td class="stats-num">@(q.Selects > 0 ? ((double)q.PositionSum / q.Selects).ToString("0.0") : "–")</td>
@@ -210,7 +214,7 @@ else
             _series = new List<Chart.ChartSeries>
             {
                 new("Searches", searches),
-                new("Selects", selects),
+                new("Selects", selects, "var(--CTeal)"),
             };
             _labels = labels;
         });
@@ -227,6 +231,13 @@ else
         await Task.Run(() => store.PurgeDataset(Ctx.TeamId, Ctx.Name));
         await LoadAsync();
     }
+
+    /// <summary>A browse (empty) search is counted too; give it a name rather than a blank cell.</summary>
+    private static RenderFragment QueryLabel(string text) => __builder =>
+    {
+        if (string.IsNullOrWhiteSpace(text)) { <span class="stats-muted">(empty search)</span> }
+        else { @text }
+    };
 
     private static string N(long n) => n.ToString("#,##0");
 
