@@ -60,9 +60,7 @@ that showed it.
 
 `Notes/screenshot-run.md` is the full procedure.
 
-## Known cosmetic issue
+## Number format
 
-Numbers are formatted in the server's culture rather than the invariant one, so an instance running
-under a Norwegian locale renders `937 886` and `1,86s` where an English-language page wants `937,886`
-and `1.86s`. Visible in several of these. The terminal monitor was made invariant for the same
-reason; the console has not been.
+Numbers are formatted in the server's culture, so these images, taken under a Norwegian locale,
+show `937 886` and `1,86s` rather than `937,886` and `1.86s`. That is intended, not a defect.
