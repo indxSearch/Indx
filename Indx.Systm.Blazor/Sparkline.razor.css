@@ -17,6 +17,12 @@
     stroke-linejoin: round;
 }
 
+/* The last segment of a series whose last period is still running. With a non-scaling stroke
+   the dashes are screen pixels, whatever the SVG is stretched to. */
+.indx-sparkline-partial {
+    stroke-dasharray: 2 3;
+}
+
 .indx-sparkline-fill {
     fill: currentColor;
     opacity: 0.12;

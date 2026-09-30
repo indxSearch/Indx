@@ -111,8 +111,10 @@ else
                        of cards. Read from stats.db, never from the engine, so a hibernated
                        dataset shows its activity without being woken. *@
                     <span class="indx-dataset-card-activity">
-                        <span class="indx-dataset-card-activity-label">Search activity</span>
-                        <Sparkline Values="activity" Height="22" Color="var(--lv5)" Fill Baseline
+                        <span class="indx-dataset-card-activity-label">
+                            Search activity<span class="indx-dataset-card-activity-today"> · @(((long)activity[^1]).ToString("N0")) today</span>
+                        </span>
+                        <Sparkline Values="activity" Height="22" Color="var(--lv5)" Fill Baseline LastIsPartial
                                    AriaLabel="@ActivityLabel(activity)" />
                     </span>
                 }
@@ -349,10 +351,11 @@ else
     /// <summary>Days of search activity on a card: two weeks, enough for a weekly rhythm to show.</summary>
     private const int ActivityDays = 14;
 
-    /// <summary>Searches per day over the last <see cref="ActivityDays"/> complete days, oldest
-    /// first, with the days nobody searched as zeros. Today is left out: a part-day as the last
-    /// point dropped every card's line at its end until evening, so every dataset read as losing
-    /// traffic. The Statistics tab keeps today, where the axis labels it. Only the settled states ask (Ready and Hibernated): a moving
+    /// <summary>Searches per day over the last <see cref="ActivityDays"/> days, today last, oldest
+    /// first, with the days nobody searched as zeros. Today is in so the day can be followed as
+    /// it goes, and drawn as partial (the Sparkline dashes its segment) with its count beside the
+    /// label: left out, a dataset searched only today drew a flat line and read as unused;
+    /// drawn plain, every card fell at its end until evening. Only the settled states ask (Ready and Hibernated): a moving
     /// card is re-described on every progress tick and shows progress instead. Null when
     /// statistics are off, which leaves the block off the card rather than drawing a flat line
     /// that would claim nobody searched.</summary>
@@ -362,7 +365,7 @@ else
         if (store == null) return null;
         try
         {
-            long toDay = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) - 1;
+            long toDay = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             long fromDay = toDay - ActivityDays + 1;
             var series = new double[ActivityDays];
             foreach (var day in store.TimeSeries(teamId, name, fromDay, toDay))
@@ -382,7 +385,7 @@ else
         var total = (long)activity.Sum();
         return total == 0
             ? $"No searches in the last {ActivityDays} days"
-            : $"{total:N0} searches in the last {ActivityDays} days";
+            : $"{total:N0} searches in the last {ActivityDays} days, {(long)activity[^1]:N0} of them today";
     }
 
     /// <summary>The field configuration as four role counts. Read from the engine already in hand, so

@@ -104,6 +104,12 @@
     margin-top: auto;
 }
 
+/* Today's count beside the label: the number that goes with the dashed last segment. */
+.indx-dataset-card-activity-today {
+    color: var(--lv5);
+    font-variant-numeric: tabular-nums;
+}
+
 .indx-dataset-card-activity + .indx-dataset-card-foot {
     margin-top: 0;
 }

@@ -36,7 +36,20 @@ else
             }
             @* non-scaling-stroke: preserveAspectRatio="none" stretches the viewBox, which would
                otherwise stretch the stroke with it and give a line thicker one way than the other. *@
-            <polyline class="indx-sparkline-line" points="@LinePoints()" vector-effect="non-scaling-stroke" />
+            @if (LastIsPartial)
+            {
+                @* The last point is a period still running: solid up to the one before it, dashed
+                   into it, so "so far" does not read as a fall. *@
+                @if (_points.Count > 2)
+                {
+                    <polyline class="indx-sparkline-line" points="@LinePoints(0, _points.Count - 1)" vector-effect="non-scaling-stroke" />
+                }
+                <polyline class="indx-sparkline-line indx-sparkline-partial" points="@LinePoints(_points.Count - 2, 2)" vector-effect="non-scaling-stroke" />
+            }
+            else
+            {
+                <polyline class="indx-sparkline-line" points="@LinePoints()" vector-effect="non-scaling-stroke" />
+            }
         }
         @if (Baseline)
         {
@@ -66,6 +79,10 @@ else
 
     /// <summary>A hairline at the bottom, for when the shape alone does not read as a graph.</summary>
     [Parameter] public bool Baseline { get; set; }
+
+    /// <summary>Line only: the last value is a period still running (today, this hour). Its segment
+    /// is dashed, so a count that is only partway through does not read as a drop.</summary>
+    [Parameter] public bool LastIsPartial { get; set; }
 
     /// <summary>Bar only: the gap between bars, in real pixels whatever the width.</summary>
     [Parameter] public double Gap { get; set; } = 1;
@@ -109,10 +126,14 @@ else
     /// browser reads that as two numbers.</summary>
     private static string F(double d) => d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
 
-    private string LinePoints()
+    private string LinePoints() => LinePoints(0, _points.Count);
+
+    /// <summary><paramref name="count"/> points from <paramref name="from"/>, placed where they sit
+    /// in the whole series, so the parts of a split line meet.</summary>
+    private string LinePoints(int from, int count)
     {
         var step = VbW / (_points.Count - 1);
-        return string.Join(" ", _points.Select((v, i) => $"{F(i * step)},{F(Y(v))}"));
+        return string.Join(" ", _points.Skip(from).Take(count).Select((v, i) => $"{F((from + i) * step)},{F(Y(v))}"));
     }
 
     private string AreaPoints() => $"0,{F(VbH)} {LinePoints()} {F(VbW)},{F(VbH)}";
