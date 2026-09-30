@@ -297,10 +297,11 @@ namespace IndxServer.Components.Datasets
         }
 
         /// <summary>Unloads the engine from memory (data stays on disk). Only durable for
-        /// Off (client-managed) datasets; timed/pinned reload on the next access.</summary>
+        /// Off (client-managed) datasets; timed/pinned reload on the next access. Sleep, not
+        /// Dispose: the shell stays registered, so nothing can race a corpse.</summary>
         public async Task HibernateAsync()
         {
-            await Task.Run(() => Engines.DisposeDataSetInstance(Name, TeamId));
+            await Task.Run(() => Engines.SleepDataSetInstance(Name, TeamId));
             IndxServer.Engine.IndxServerInternalApi.ManagerOrNull?.ReportChange(
                 Name, TeamId, Services.DatasetChangeKind.Hibernate, new { reason = "manual" });
             // A hibernated dataset isn't Ready, so the tab nav disappears. Land on the

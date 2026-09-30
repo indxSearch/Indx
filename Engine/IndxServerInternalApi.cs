@@ -542,6 +542,59 @@ namespace IndxServer.Engine
         }
 
         /// <summary>
+        /// The server's sleep, shared by the console's Hibernate button and the idle sweeper's
+        /// eviction: <see cref="ISearchEngine.Unload"/> on a Ready engine, so the shell stays
+        /// registered in Created with the documents in the store, and the next access (or an
+        /// explicit wake) restores it. When Unload's guard refuses — the engine is mid-load,
+        /// mid-index or already asleep — falls back to <see cref="DisposeDataSetInstance"/>, which
+        /// handles every state and leaves the same Created-with-records picture behind, at the
+        /// price of a fresh shell.
+        /// </summary>
+        internal void SleepDataSetInstance(string dataSetName, string teamId)
+        {
+            var engine = FindInstance(dataSetName, teamId);
+            if (engine == null || engine.IsDisposed)
+                return;
+            if (engine.Unload(out _))
+            {
+                _lifecycleLogger.LogInformation("Unloaded SearchEngine instance for team {Team}, dataset {DataSet} (sleep)", TeamLabel(teamId), dataSetName);
+                return;
+            }
+            DisposeDataSetInstance(dataSetName, teamId);
+        }
+
+        /// <summary>
+        /// Persistence facts for the server's status extension, read straight from the store so
+        /// asking never resolves — and so never wakes — the engine: how many records the dataset
+        /// has on disk, and how many fields its stored configuration holds (0 = not analyzed).
+        /// Created with records on disk is what "hibernated" means on this server.
+        /// </summary>
+        internal (int RecordsOnDisk, int FieldsDiscovered) GetStoreFacts(string dataSetName, string teamId)
+        {
+            var db = new SqLiteManager(SearchDbConnectionString);
+            int records = db.NumberOfJsonRecordsInDataSet(dataSetName, teamId);
+            int fields = 0;
+            var serialized = db.ReadDocumentFields(dataSetName, teamId);
+            if (!string.IsNullOrWhiteSpace(serialized))
+            {
+                try
+                {
+                    // The stored form is a dictionary keyed by field name (DocumentFields'
+                    // serialization); the count is all that is wanted here, so the values stay
+                    // unread rather than round-tripping through the engine's own deserializer.
+                    fields = System.Text.Json.JsonSerializer
+                        .Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(serialized)?.Count ?? 0;
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // A configuration that will not parse reads as not analyzed; the load path is
+                    // where a corrupt configuration gets reported, not a status poll.
+                }
+            }
+            return (records, fields);
+        }
+
+        /// <summary>
         /// Sets a dataset's keep-alive policy (hours): <see cref="int.MaxValue"/> = autoload + never
         /// dispose, <c>0</c> = no autoload (client-managed), other = idle-eviction countdown. Persists
         /// to the store and updates the live instance's cached value if loaded. Does not load or
@@ -661,11 +714,24 @@ namespace IndxServer.Engine
                     return false;
                 if (!IsIdle(inst, TimeProvider.GetUtcNow()))
                     return false;
-                _instances.Remove(key);
             }
 
-            _logger.LogInformation("{Prefix}idle-evicting (keep-alive countdown elapsed)", MakeLogPrefix(inst.TeamId, inst.DataSetName));
-            DisposeInstance(inst, key);
+            // Unload, not Dispose: the shell stays registered in Created and the documents stay in
+            // the store, which removes the whole disposed-instance race family (d544c60c and kin) —
+            // a request that raced the sweep finds a live engine that auto-loads, never a corpse.
+            // Outside the dictionary lock: Unload drains in-flight searches and can wait.
+            var engine = inst.theInstance;
+            if (engine == null || engine.IsDisposed)
+                return false;
+            if (!engine.Unload(out var unloadError))
+            {
+                // The engine left Ready since it was selected (a request or build got in): it is
+                // not idle after all, so it is not evicted. Dispose stays reserved for deletion
+                // and teardown, where a corpse is the point.
+                _logger.LogInformation("{Prefix}idle-unload skipped: {Reason}", MakeLogPrefix(inst.TeamId, inst.DataSetName), unloadError);
+                return false;
+            }
+            _logger.LogInformation("{Prefix}idle-unloaded (keep-alive countdown elapsed); documents remain in the store", MakeLogPrefix(inst.TeamId, inst.DataSetName));
             ReportChange(inst.DataSetName, inst.TeamId, Services.DatasetChangeKind.Hibernate, new { reason = "idle" });
             return true;
         }

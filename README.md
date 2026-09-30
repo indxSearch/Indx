@@ -479,7 +479,7 @@ A background sweeper frees idle *Timed* datasets; the next access transparently 
 
 ![A hibernated dataset: the Hibernated chip in the breadcrumb, a line saying the documents are on disk but not in memory, and a Wake up button](docs/images/console-hibernated-wake.png)
 
-> This is a *deep* hibernate: the in-memory engine is disposed and rebuilt from `indx.db` on wake, which is the right model when storage is the source of truth. It is distinct from the core library's lighter `Hibernate`/`WakeUp` (which keeps documents resident in RAM and only drops the index).
+> This is a *deep* hibernate: everything leaves memory and the dataset is rebuilt from `indx.db` on wake, which is the right model when storage is the source of truth. Every route into it — the Options button, the idle sweeper, and `POST …/hibernate` over the API — does the same thing, and a hibernated dataset always reports the `Created` state with `recordsOnDisk > 0` in its status. The core library's own `Hibernate`/`WakeUp` is the lighter variant for in-process use (documents stay resident in RAM, only the index is dropped, and the engine reports `Loaded`).
 
 ![The dataset list with one dataset showing a Hibernated state chip beside the others marked Ready](docs/images/console-datasets-hibernated.png)
 

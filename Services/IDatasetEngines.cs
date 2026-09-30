@@ -30,6 +30,8 @@ namespace IndxServer.Services
         bool SetKeepAliveHrs(string dataSetName, string teamId, int keepAliveHrs);
         IServerSearchEngine? FindSearchEngine(string dataSetName, string teamId);
         void DisposeDataSetInstance(string dataSetName, string teamId);
+        /// <summary>The server's sleep: Unload on a Ready engine, Dispose as the fallback.</summary>
+        void SleepDataSetInstance(string dataSetName, string teamId);
         void TransferOwnership(string dataSetName, string currentTeamId, string newTeamId);
         /// <summary>Renames within the team. Null on success, else the message to show.</summary>
         string? RenameDataSet(string dataSetName, string teamId, string newName);
@@ -93,6 +95,7 @@ namespace IndxServer.Services
         public IServerSearchEngine? FindSearchEngine(string d, string t) => M.FindSearchEngine(d, t);
         public bool DeleteDataSet(string d, string t) => M.DeleteDataSet(d, t);
         public void DisposeDataSetInstance(string d, string t) => M.DisposeDataSetInstance(d, t);
+        public void SleepDataSetInstance(string d, string t) => M.SleepDataSetInstance(d, t);
         public void TransferOwnership(string d, string from, string to)
         {
             M.TransferOwnership(d, from, to);

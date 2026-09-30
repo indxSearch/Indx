@@ -35,7 +35,6 @@ namespace IndxServer.Components.Datasets
         {
             SystemState.Ready => new("var(--CTeal)", Dark, DatasetIcons.ForState(state)),
             SystemState.Loading or SystemState.Loaded or SystemState.Indexing => Working(state),
-            SystemState.Hibernated => Hibernated,
             SystemState.Error => new("var(--CSignal)", "var(--lv0)", DatasetIcons.ForState(state)),
             _ => Empty,
         };

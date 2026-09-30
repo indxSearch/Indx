@@ -144,6 +144,28 @@ namespace IndxServer.Engine
             }
         }
 
+        /// <summary>The HTTP wake behind <c>POST …/wakeup</c>: starts the background wake — or
+        /// joins the one already running, so a console wake and an API wake of the same dataset
+        /// are one operation — and completes when it has finished. Null on success; otherwise why
+        /// the dataset did not come up. Same path as the console button, so progress shows there
+        /// and cancel keeps working.</summary>
+        internal async Task<string?> WakeAndWaitAsync(string dataSetName, string teamId)
+        {
+            if (!StartWake(dataSetName, teamId))
+                return "Dataset not found.";
+            if (_wakes.TryGetValue(MakeKey(dataSetName, teamId), out var op))
+                await op.Task;
+            var error = GetWakeError(dataSetName, teamId);
+            if (error != null)
+                return error;
+            // RunWake returns silently when someone else already had the engine up or on the way;
+            // for the synchronous caller, "up" is the only success worth a 204.
+            var engine = FindInstance(dataSetName, teamId);
+            return engine is { IsDisposed: false, Status.SystemState: SystemState.Ready }
+                ? null
+                : $"Wake did not reach Ready (the dataset is {engine?.Status.SystemState.ToString() ?? "gone"}).";
+        }
+
         /// <summary>Progress of the wake running for this dataset, or null when none is.</summary>
         internal WakeProgress? GetWakeProgress(string dataSetName, string teamId)
         {

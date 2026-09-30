@@ -174,14 +174,15 @@ namespace IndxServer.Controllers
             };
         }
 
-        /// <summary>Per-state, operation-independent guidance shown in the 409 body.</summary>
+        /// <summary>Per-state, operation-independent guidance shown in the 409 body. Created covers
+        /// both "new and empty" and "hibernated" — which one it is stands in the status response's
+        /// recordsOnDisk, which a 409 cannot see from here, so the guidance names both ways out.</summary>
         protected static string StateGuidance(SystemState state, SystemStatus status) => state switch
         {
-            SystemState.Created => "The dataset is created but not loaded. Call Load (LoadStream/LoadString/LoadFromDatabase) and then IndexDataSet.",
+            SystemState.Created => "The dataset is created but not loaded. Call Load (LoadStream/LoadString/LoadFromDatabase) and then IndexDataSet — or WakeUp, if the dataset is hibernated (status shows recordsOnDisk > 0).",
             SystemState.Loading => "Loading is in progress — retry once the dataset reaches Ready.",
             SystemState.Loaded => "The dataset is loaded but not indexed. Call IndexDataSet.",
             SystemState.Indexing => "Indexing is in progress — retry once the dataset reaches Ready.",
-            SystemState.Hibernated => "The dataset is hibernated. Call WakeUp.",
             SystemState.Error => $"The dataset is in an error state: {status.ErrorMessage}",
             _ => ""
         };

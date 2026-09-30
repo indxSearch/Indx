@@ -71,18 +71,23 @@ else
                     <td style="color: var(--lv6); font-family: monospace;">@row.DataSetName</td>
                     <td style="color: var(--lv5);">@(row.TeamName ?? row.TeamId)</td>
                     <td>
-                        @if (row.DisplayState is null)
+                        @if (row.Unknown)
                         {
                             <span style="color: var(--lv4);">—</span>
                         }
+                        else if (row.Hibernated)
+                        {
+                            var chip = DatasetStateChip.Hibernated;
+                            <Chip Size="large" Color="@chip.Color" TextColor="@chip.TextColor" Icon="@chip.Icon">Hibernated</Chip>
+                        }
                         else
                         {
-                            var chip = DatasetStateChip.For(row.DisplayState.Value);
-                            <Chip Size="large" Color="@chip.Color" TextColor="@chip.TextColor" Icon="@chip.Icon">@row.DisplayState.Value.ToString()</Chip>
+                            var chip = DatasetStateChip.For(row.State!.Value);
+                            <Chip Size="large" Color="@chip.Color" TextColor="@chip.TextColor" Icon="@chip.Icon">@row.State.Value.ToString()</Chip>
                         }
                     </td>
                     <td style="text-align: right; color: var(--lv5); font-variant-numeric: tabular-nums;">
-                        @(row.DisplayState is null ? "—" : row.DisplayCount.ToString("N0"))
+                        @(row.Unknown ? "—" : row.DisplayCount.ToString("N0"))
                     </td>
                     <td style="color: var(--lv5);">
                         <TimeAgo Value="row.LastIndexed" TooltipPosition="left" />
@@ -140,16 +145,16 @@ else
         /// <summary>
         /// What the admin should see. The raw engine state says "Created" (or the engine
         /// is not instantiated at all) for a dataset whose documents live in indx.db with
-        /// no index in memory - which is hibernation, not an empty dataset. Same inference
-        /// the user dashboard makes (Index.razor: Created + records on disk = hibernated).
+        /// no index in memory - which is hibernation, not an empty dataset. The one shared
+        /// sentence: Created (or no instance) with records on disk means hibernated.
         /// </summary>
-        public SystemState? DisplayState =>
-            (State is null or SystemState.Created) && RecordCount > 0
-                ? SystemState.Hibernated
-                : State;
+        public bool Hibernated => (State is null or SystemState.Created) && RecordCount > 0;
+
+        /// <summary>Nothing to show: no engine and nothing persisted either.</summary>
+        public bool Unknown => State is null && !Hibernated;
 
         /// <summary>In-memory count when serving; persisted count when hibernated.</summary>
-        public int DisplayCount => DisplayState == SystemState.Hibernated ? RecordCount : DocumentCount;
+        public int DisplayCount => Hibernated ? RecordCount : DocumentCount;
     }
 
     private static string KeepAliveLabel(int hrs) => hrs switch

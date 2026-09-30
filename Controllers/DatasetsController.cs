@@ -146,8 +146,11 @@ namespace IndxServer.Controllers
             if (status == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
 
+            var (recordsOnDisk, fieldsDiscovered) = IndxServerInternalApi.Manager.GetStoreFacts(dataSetName, ctx.OwnerKey);
             return new ServerSystemStatus(status)
             {
+                RecordsOnDisk = recordsOnDisk,
+                FieldsDiscovered = fieldsDiscovered,
                 ShadowBuildInProgress = IndxServerInternalApi.Manager.IsShadowBuildInProgress(dataSetName, ctx.OwnerKey),
                 ShadowBuildStartedUtc = IndxServerInternalApi.Manager.ShadowBuildStartedUtc(dataSetName, ctx.OwnerKey),
             };
@@ -369,7 +372,9 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
-        /// Hibernates the dataset, freeing in-memory structures while retaining persisted data.
+        /// Hibernates the dataset: everything leaves memory while the documents stay in the store.
+        /// The dataset reports Created with recordsOnDisk &gt; 0 afterwards, and WakeUp — or, for a
+        /// timed/pinned dataset, simply the next access — restores it.
         /// </summary>
         [HttpPost(DataSetRoute + "/hibernate")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -379,12 +384,14 @@ namespace IndxServer.Controllers
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
-            var matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            // FindSearchEngine, not ResolveEngine: resolving auto-loads a sleeping timed dataset,
+            // and waking a dataset in order to put it to sleep helps nobody.
+            var matcher = IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "Hibernate", SystemState.Ready) is { } stateError)
                 return stateError;
-            var result = matcher.Hibernate(out string errorMessage);
+            var result = matcher.Unload(out string errorMessage);
             if (!result)
                 return ApiProblems.InvalidArgument(errorMessage);
             IndxServerInternalApi.Manager.ReportChange(dataSetName, ctx.OwnerKey,
@@ -393,26 +400,33 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
-        /// Wakes up a hibernated dataset, restoring it from the persisted state.
+        /// Wakes a hibernated dataset — Created with records in the store — by reloading the
+        /// documents from the store and rebuilding the index. The same operation the console's
+        /// Wake button runs, so its progress shows there too.
         /// </summary>
         [HttpPost(DataSetRoute + "/wakeup")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
-        public ActionResult WakeUp(string teamName, string dataSetName)
+        public async Task<ActionResult> WakeUp(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
-            var matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            // FindSearchEngine, not ResolveEngine: resolving would wake a timed dataset as a side
+            // effect and then report 409 "already Ready" for the wake the caller asked for.
+            var matcher = IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
-            if (RequireState(matcher, "WakeUp", SystemState.Hibernated) is { } stateError)
+            if (RequireState(matcher, "WakeUp", SystemState.Created) is { } stateError)
                 return stateError;
-            var result = matcher.WakeUp();
-            if (!result)
-                return ApiProblems.OperationFailed("WakeUp failed - the dataset could not be restored from storage.");
-            IndxServerInternalApi.Manager.ReportChange(dataSetName, ctx.OwnerKey,
-                IndxServer.Services.DatasetChangeKind.Wake, new { reason = "manual" });
+            if (matcher.Persistence == null || matcher.Persistence.NumberOfJsonRecords() == 0)
+                return ApiProblems.OperationFailed(
+                    "WakeUp failed - the dataset has no records in the store to restore. Load data first.");
+            // No change event here: the wake runs through RunWake, which reports it on success.
+            // Reporting here as well would record every API wake twice.
+            var wakeError = await IndxServerInternalApi.Manager.WakeAndWaitAsync(dataSetName, ctx.OwnerKey);
+            if (wakeError != null)
+                return ApiProblems.OperationFailed(wakeError);
             return NoContent();
         }
     }
