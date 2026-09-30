@@ -6,6 +6,7 @@
 @inject IDatasetEngines Engines
 @inject NavigationManager NavigationManager
 @inject ILogger<DatasetList> Logger
+@inject StatisticsService Stats
 @implements IDisposable
 
 <div class="indx-datasets-heading">
@@ -103,6 +104,18 @@ else
                         }
                     </span>
                 }
+                @if (!row.Pending && row.Activity is { } activity)
+                {
+                    @* Option C of the dataset-card mockup (indx-react apps/components): A's
+                       placement above the state line, as a line - quieter than bars across a page
+                       of cards. Read from stats.db, never from the engine, so a hibernated
+                       dataset shows its activity without being woken. *@
+                    <span class="indx-dataset-card-activity">
+                        <span class="indx-dataset-card-activity-label">Search activity</span>
+                        <Sparkline Values="activity" Height="22" Color="var(--lv5)" Fill Baseline
+                                   AriaLabel="@ActivityLabel(activity)" />
+                    </span>
+                }
                 <span class="indx-dataset-card-foot">
                     @if (row.Pending)
                     {
@@ -154,7 +167,8 @@ else
     private sealed record Row(string Name, string Label, DatasetStateChip Chip, int? Count, int? Percent = null,
                               FieldShape? Fields = null, DateTime? LastIndexed = null,
                               DateTime? LastUsed = null, int KeepAliveHrs = int.MaxValue,
-                              bool CountsAreOnDisk = false, string? Error = null)
+                              bool CountsAreOnDisk = false, string? Error = null,
+                              IReadOnlyList<double>? Activity = null)
     {
         /// <summary>Documents when the engine holds them, records on disk when it does not. The
         /// noun changes with it, because "41,562 documents" on a hibernated dataset would claim
@@ -294,7 +308,8 @@ else
                     ? new Row(name, "Rebuilding", DatasetStateChip.Working(SystemState.Indexing), engine!.Status.DocumentCount, pct)
                     : new Row(name, "Ready", DatasetStateChip.For(SystemState.Ready), engine!.Status.DocumentCount,
                               Fields: Shape(engine), LastIndexed: engine!.Status.TimeOfLastIndexBuild,
-                              LastUsed: lastUsed, KeepAliveHrs: ka.KeepAliveTimeHrs);
+                              LastUsed: lastUsed, KeepAliveHrs: ka.KeepAliveTimeHrs,
+                              Activity: SearchActivity(name, teamId));
             }
             // A wake being cancelled leaves its engine in Error (load) or Loaded (index) until it is
             // disposed a moment later. Asked first, so neither is reported as the dataset's state.
@@ -320,7 +335,8 @@ else
                     // No engine, so no field shape and no last-index time. The count is what is on
                     // disk, which CountNoun says rather than calling them documents.
                     : new Row(name, "Hibernated", DatasetStateChip.Hibernated, ka.RecordCount,
-                              LastUsed: lastUsed, KeepAliveHrs: ka.KeepAliveTimeHrs, CountsAreOnDisk: true);
+                              LastUsed: lastUsed, KeepAliveHrs: ka.KeepAliveTimeHrs, CountsAreOnDisk: true,
+                              Activity: SearchActivity(name, teamId));
             return new Row(name, "Empty", DatasetStateChip.Empty, null,
                            LastUsed: lastUsed, KeepAliveHrs: ka.KeepAliveTimeHrs);
         }
@@ -328,6 +344,43 @@ else
         {
             return new Row(name, "Unknown", DatasetStateChip.Empty, null);
         }
+    }
+
+    /// <summary>Days of search activity on a card: two weeks, enough for a weekly rhythm to show.</summary>
+    private const int ActivityDays = 14;
+
+    /// <summary>Searches per day over the last <see cref="ActivityDays"/>, oldest first, with the
+    /// days nobody searched as zeros. Only the settled states ask (Ready and Hibernated): a moving
+    /// card is re-described on every progress tick and shows progress instead. Null when
+    /// statistics are off, which leaves the block off the card rather than drawing a flat line
+    /// that would claim nobody searched.</summary>
+    private IReadOnlyList<double>? SearchActivity(string name, string teamId)
+    {
+        var store = Stats.Enabled ? Stats.Store : null;
+        if (store == null) return null;
+        try
+        {
+            long toDay = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            long fromDay = toDay - ActivityDays + 1;
+            var series = new double[ActivityDays];
+            foreach (var day in store.TimeSeries(teamId, name, fromDay, toDay))
+                if (day.Day >= fromDay && day.Day <= toDay)
+                    series[day.Day - fromDay] = day.Searches;
+            return series;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Search activity for {DataSet} could not be read", name);
+            return null;   // a card is not worth an exception
+        }
+    }
+
+    private static string ActivityLabel(IReadOnlyList<double> activity)
+    {
+        var total = (long)activity.Sum();
+        return total == 0
+            ? $"No searches in the last {ActivityDays} days"
+            : $"{total:N0} searches in the last {ActivityDays} days";
     }
 
     /// <summary>The field configuration as four role counts. Read from the engine already in hand, so

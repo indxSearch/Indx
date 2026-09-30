@@ -93,6 +93,26 @@
 
 /* The count keeps its width and never breaks mid-number, so a long dataset state chip pushes it
    onto the next line rather than squeezing into it. */
+/* Search activity: one group with the state line at the foot of the card, so the free space
+   opens above it: margin-top: auto here, and none on the foot that follows. Two auto margins
+   would share the space and open it between them. Left on the foot alone, the space opened between the two and the graph drifted up to the
+   detail list it is not part of - the note in the mockup's css. */
+.indx-dataset-card-activity {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: auto;
+}
+
+.indx-dataset-card-activity + .indx-dataset-card-foot {
+    margin-top: 0;
+}
+
+.indx-dataset-card-activity-label {
+    color: var(--lv4);
+    font: var(--text-xs);
+}
+
 .indx-dataset-card-count {
     color: var(--lv5);
     font: var(--text-xs);
