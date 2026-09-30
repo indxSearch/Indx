@@ -53,14 +53,21 @@ namespace IndxServer.Controllers
                     var queryId = Guid.NewGuid().ToString("N");
                     Response.Headers["Indx-Query-Id"] = queryId;
                     var subject = Request.Query["subject"].FirstOrDefault();
+                    // ?session= is any per-page-load random id. It identifies no one; it lets the
+                    // rollup see that "o", "os", "osl", "oslo" were one visitor typing one search.
+                    var session = Request.Query["session"].FirstOrDefault();
                     // The header is minted either way, so a client can always read one; a click
                     // that references an unrecorded search is accepted as an orphan and still
                     // counts on the document.
                     if (StatisticsService.ShouldRecord(query))
                         statistics.Writer!.RecordSearch(new SearchEventRow(
-                            queryId, ctx.OwnerKey, dataSetName, query.Text ?? string.Empty, null,
+                            queryId, ctx.OwnerKey, dataSetName, query.Text ?? string.Empty,
+                            // The token IS the filter's serialized key, and it resolved, or the
+                            // search above would have thrown UnknownFilterException.
+                            query.Filter?.HashString,
                             res.Records?.Length ?? 0, string.IsNullOrWhiteSpace(subject) ? null : subject,
-                            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+                            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                            Session: string.IsNullOrWhiteSpace(session) ? null : session));
                 }
                 return res;
             }

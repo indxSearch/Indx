@@ -24,16 +24,14 @@ namespace IndxServer.Services
 
         public bool Enabled { get; private set; }
 
-        /// <summary>Whether a search is worth recording: it has text. An empty search is a page
-        /// load or a facet click - a browse page opening, a storefront narrowing its catalogue -
-        /// and counting those would bury the searches people typed. Both recording paths (the
-        /// HTTP endpoint and the console preview) ask this, so they agree.
-        ///
-        /// An empty search WITH a filter is browsing, and worth counting once the filter is
-        /// stored with it (Notes/statistics-design.md, "Browsing"). Until then it would arrive as
-        /// a blank query with nothing to tell one filter from another, so it waits.</summary>
+        /// <summary>Whether a search is worth recording: it has text, or a filter. An empty search
+        /// without one is a page load - a browse page opening, a storefront listing its catalogue -
+        /// and counting those would bury the searches people typed. An empty search with a filter
+        /// is browsing: it is recorded with its filter key, and the reads count it under Browsing,
+        /// never as a query (Notes/statistics-design.md, "What counts as a search"). Both recording
+        /// paths (the HTTP endpoint and the console preview) ask this, so they agree.</summary>
         public static bool ShouldRecord(Indx.Http.QueryProxy query) =>
-            !string.IsNullOrWhiteSpace(query.Text);
+            !string.IsNullOrWhiteSpace(query.Text) || !string.IsNullOrWhiteSpace(query.Filter?.HashString);
         public StatisticsStore? Store { get; private set; }
         public StatisticsWriter? Writer { get; private set; }
         public int RetentionDays { get; private set; }

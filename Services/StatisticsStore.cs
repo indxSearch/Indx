@@ -10,7 +10,7 @@ namespace IndxServer.Services
     /// view if one is wanted.</summary>
     public readonly record struct SearchEventRow(
         string QueryId, string TeamId, string DataSet, string QueryText, string? FilterKey,
-        int HitCount, string? Subject, long Timestamp, string? Source = null);
+        int HitCount, string? Subject, long Timestamp, string? Source = null, string? Session = null);
 
     /// <summary>One select: the user chose a result. QueryId is an opaque reference — an orphan
     /// (unknown or expired id) is stored like any other row and simply finds no search to join.</summary>
@@ -22,6 +22,11 @@ namespace IndxServer.Services
     public readonly record struct ConvertEventRow(
         string TeamId, string DataSet, string? QueryId, long DocumentKey, string Type,
         double? Value, string? Currency, long? Quantity, string? Subject, long Timestamp);
+
+    /// <summary>One filter operand's aggregate over a window: how often people narrowed by it,
+    /// and how often that came back empty. Value is empty for a range filter, which is reported
+    /// by field only.</summary>
+    public readonly record struct FilterStat(string Field, string Value, long Uses, long ZeroHits);
 
     /// <summary>One query's aggregate over a window. ClickedSearches is the CTR numerator
     /// (searches with at least one select); average click position is PositionSum / Selects.</summary>
@@ -147,6 +152,17 @@ CREATE TABLE IF NOT EXISTS DailyDocumentStats (
     PRIMARY KEY (Day, TeamId, DataSet, DocumentKey)
 );
 
+CREATE TABLE IF NOT EXISTS DailyFilterStats (
+    Day         INTEGER NOT NULL,
+    TeamId      TEXT    NOT NULL,
+    DataSet     TEXT    NOT NULL,
+    Field       TEXT    NOT NULL,
+    Value       TEXT    NOT NULL,           -- '' for a range filter
+    Uses        INTEGER NOT NULL,
+    ZeroHits    INTEGER NOT NULL,
+    PRIMARY KEY (Day, TeamId, DataSet, Field, Value)
+);
+
 CREATE TABLE IF NOT EXISTS RollupState (
     Id            INTEGER PRIMARY KEY CHECK (Id = 1),
     LastRolledDay INTEGER NOT NULL
@@ -174,12 +190,15 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                 }
                 catch (SqliteException) { /* already there */ }
             }
-            try
+            foreach (var col in new[] { "Source", "Session" })
             {
-                cmd.CommandText = "ALTER TABLE SearchEvents ADD COLUMN Source TEXT NULL";
-                cmd.ExecuteNonQuery();
+                try
+                {
+                    cmd.CommandText = $"ALTER TABLE SearchEvents ADD COLUMN {col} TEXT NULL";
+                    cmd.ExecuteNonQuery();
+                }
+                catch (SqliteException) { /* already there */ }
             }
-            catch (SqliteException) { /* already there */ }
         }
 
         /// <summary>
@@ -202,8 +221,8 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = @"INSERT OR IGNORE INTO SearchEvents
-                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp, Source)
-                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts, $src)";
+                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp, Source, Session)
+                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts, $src, $sess)";
                 var qid = cmd.Parameters.Add("$qid", SqliteType.Text);
                 var team = cmd.Parameters.Add("$team", SqliteType.Text);
                 var ds = cmd.Parameters.Add("$ds", SqliteType.Text);
@@ -213,12 +232,14 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                 var subj = cmd.Parameters.Add("$subj", SqliteType.Text);
                 var ts = cmd.Parameters.Add("$ts", SqliteType.Integer);
                 var src = cmd.Parameters.Add("$src", SqliteType.Text);
+                var sess = cmd.Parameters.Add("$sess", SqliteType.Text);
                 foreach (var e in searches)
                 {
                     qid.Value = e.QueryId; team.Value = e.TeamId; ds.Value = e.DataSet;
                     text.Value = e.QueryText; filter.Value = (object?)e.FilterKey ?? DBNull.Value;
                     hits.Value = e.HitCount; subj.Value = (object?)e.Subject ?? DBNull.Value;
                     ts.Value = e.Timestamp; src.Value = (object?)e.Source ?? DBNull.Value;
+                    sess.Value = (object?)e.Session ?? DBNull.Value;
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -329,18 +350,15 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
             cmd.CommandText = @"
 DELETE FROM DailyQueryStats WHERE Day = $day;
 INSERT INTO DailyQueryStats (Day, TeamId, DataSet, QueryText, Searches, ZeroHits, Selects, ClickedSearches, PositionSum)
-SELECT $day, s.TeamId, s.DataSet, lower(s.QueryText),
+SELECT $day, c.TeamId, c.DataSet, lower(c.QueryText),
        COUNT(*),
-       SUM(CASE WHEN s.HitCount = 0 THEN 1 ELSE 0 END),
-       COALESCE(SUM(sc.Cnt), 0),
-       SUM(CASE WHEN sc.Cnt > 0 THEN 1 ELSE 0 END),
-       COALESCE(SUM(sc.PosSum), 0)
-FROM SearchEvents s
-LEFT JOIN (SELECT QueryId, COUNT(*) AS Cnt, SUM(Position) AS PosSum
-             FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
-       ON sc.QueryId = s.QueryId
-WHERE s.Timestamp >= $from AND s.Timestamp < $to AND s.Source IS NULL
-GROUP BY s.TeamId, s.DataSet, lower(s.QueryText);
+       SUM(CASE WHEN c.HitCount = 0 THEN 1 ELSE 0 END),
+       COALESCE(SUM(c.Cnt), 0),
+       SUM(CASE WHEN c.Cnt > 0 THEN 1 ELSE 0 END),
+       COALESCE(SUM(c.PosSum), 0)
+FROM " + CountedSearches("s.Timestamp >= $from AND s.Timestamp < $to") + @" c
+WHERE trim(c.QueryText) <> ''
+GROUP BY c.TeamId, c.DataSet, lower(c.QueryText);
 
 DELETE FROM DailyDocumentStats WHERE Day = $day;
 INSERT INTO DailyDocumentStats (Day, TeamId, DataSet, DocumentKey, Selects, Converts, ConvertValueSum)
@@ -357,6 +375,7 @@ GROUP BY TeamId, DataSet, DocumentKey;";
             cmd.Parameters.AddWithValue("$from", from);
             cmd.Parameters.AddWithValue("$to", to);
             cmd.ExecuteNonQuery();
+            RollupFilters(conn, tx, day, from, to);
             using (var mark = conn.CreateCommand())
             {
                 mark.Transaction = tx;
@@ -366,6 +385,153 @@ GROUP BY TeamId, DataSet, DocumentKey;";
                 mark.ExecuteNonQuery();
             }
             tx.Commit();
+        }
+
+        // ── What counts as a search (Notes/statistics-design.md, "What counts as a search") ──
+
+        /// <summary>A search the same visitor extends within this long was a keystroke on the way
+        /// to the one they settled on.</summary>
+        internal const long KeystrokeWindowMs = 3_000;
+
+        /// <summary>Without a visitor to follow, the shortest text that counts: one letter is
+        /// almost always a keystroke.</summary>
+        internal const int MinAnonymousQueryLength = 2;
+
+        /// <summary>The live reads' window: one dataset, the days the rollup has not covered.</summary>
+        private const string LiveWhere =
+            "s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $liveFrom AND s.Timestamp < $toEx";
+
+        /// <summary>
+        /// The searches that count, as a derived table over <c>SearchEvents</c> rows matching
+        /// <paramref name="where"/> (written against alias <c>s</c>), with their selects joined
+        /// (<c>Cnt</c>, <c>PosSum</c>). One definition for the rollup and every live read, so a
+        /// rolled day and a live day cannot disagree about what a search is.
+        /// <list type="bullet">
+        /// <item>Customer traffic only: the console's preview is left out.</item>
+        /// <item>With a visitor (session, else subject), a search the same visitor extends within
+        ///   <see cref="KeystrokeWindowMs"/> is superseded: "o", "os", "osl", "oslo" count as
+        ///   "oslo". Measured in the rollup, so the search path stays a queue append.</item>
+        /// <item>Without one, text shorter than <see cref="MinAnonymousQueryLength"/> is left out.</item>
+        /// <item>A search that got a click counts whatever else is true: someone chose a result
+        ///   from it.</item>
+        /// <item>Ties in the millisecond fall back to rowid, which is the order the writer
+        ///   queued them in - keystrokes a millisecond apart are otherwise unordered.</item>
+        /// <item>An empty-text row is kept; it exists only with a filter (browsing), and the
+        ///   query reads leave it out while the filter reads count it.</item>
+        /// </list>
+        /// </summary>
+        private static string CountedSearches(string where) => $@"(
+SELECT e.QueryId, e.TeamId, e.DataSet, e.QueryText, e.FilterKey, e.HitCount, e.Timestamp,
+       sc.Cnt, sc.PosSum
+  FROM (SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.Timestamp,
+               COALESCE(s.Session, s.Subject) AS Visitor,
+               LEAD(lower(s.QueryText)) OVER w AS NextText,
+               LEAD(s.Timestamp) OVER w AS NextTs
+          FROM SearchEvents s
+         WHERE {where} AND s.Source IS NULL
+        WINDOW w AS (PARTITION BY s.TeamId, s.DataSet, COALESCE(s.Session, s.Subject)
+                     ORDER BY s.Timestamp, s.rowid)) e
+  LEFT JOIN (SELECT QueryId, COUNT(*) AS Cnt, SUM(Position) AS PosSum
+               FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
+         ON sc.QueryId = e.QueryId
+ WHERE sc.Cnt > 0
+    OR trim(e.QueryText) = ''
+    OR (e.Visitor IS NOT NULL AND NOT (
+            e.NextTs IS NOT NULL AND e.NextTs - e.Timestamp <= {KeystrokeWindowMs}
+            AND length(e.NextText) > length(e.QueryText)
+            AND substr(e.NextText, 1, length(e.QueryText)) = lower(e.QueryText)))
+    OR (e.Visitor IS NULL AND length(trim(e.QueryText)) >= {MinAnonymousQueryLength})
+)";
+
+        /// <summary>Adds each operand of one search's filter to <paramref name="counts"/>, once per
+        /// search however often the key repeats it.</summary>
+        private static void CountOperands(
+            Dictionary<(string Team, string Ds, string Field, string Value), (long Uses, long Zero)> counts,
+            string team, string ds, string key, int hitCount)
+        {
+            foreach (var op in FilterKeyOperands.Parse(key).Distinct())
+            {
+                var k = (team, ds, op.Field, op.Value);
+                var (uses, zero) = counts.GetValueOrDefault(k);
+                counts[k] = (uses + 1, zero + (hitCount == 0 ? 1 : 0));
+            }
+        }
+
+        /// <summary>The day's filter use, per operand. In C# rather than SQL because splitting a
+        /// key is a parse of our own grammar (<see cref="FilterKeyOperands"/>), not a string op.</summary>
+        private static void RollupFilters(SqliteConnection conn, SqliteTransaction tx, long day, long from, long to)
+        {
+            var counts = new Dictionary<(string Team, string Ds, string Field, string Value), (long Uses, long Zero)>();
+            using (var read = conn.CreateCommand())
+            {
+                read.Transaction = tx;
+                read.CommandText = $"SELECT c.TeamId, c.DataSet, c.FilterKey, c.HitCount FROM " +
+                    CountedSearches("s.Timestamp >= $from AND s.Timestamp < $to") + " c WHERE c.FilterKey IS NOT NULL";
+                read.Parameters.AddWithValue("$from", from);
+                read.Parameters.AddWithValue("$to", to);
+                using var r = read.ExecuteReader();
+                while (r.Read())
+                    CountOperands(counts, r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt32(3));
+            }
+            using var write = conn.CreateCommand();
+            write.Transaction = tx;
+            write.CommandText = "DELETE FROM DailyFilterStats WHERE Day = $day";
+            write.Parameters.AddWithValue("$day", day);
+            write.ExecuteNonQuery();
+            write.CommandText = @"INSERT INTO DailyFilterStats (Day, TeamId, DataSet, Field, Value, Uses, ZeroHits)
+                VALUES ($day, $t, $d, $f, $v, $u, $z)";
+            var t = write.Parameters.Add("$t", SqliteType.Text);
+            var d = write.Parameters.Add("$d", SqliteType.Text);
+            var f = write.Parameters.Add("$f", SqliteType.Text);
+            var v = write.Parameters.Add("$v", SqliteType.Text);
+            var u = write.Parameters.Add("$u", SqliteType.Integer);
+            var z = write.Parameters.Add("$z", SqliteType.Integer);
+            foreach (var ((team, ds, field, value), (uses, zero)) in counts)
+            {
+                t.Value = team; d.Value = ds; f.Value = field; v.Value = value; u.Value = uses; z.Value = zero;
+                write.ExecuteNonQuery();
+            }
+        }
+
+        /// <summary>
+        /// Filter use in [fromDay, toDay]: how often people narrowed by each field value (a range
+        /// by its field), with or without text, and how often it came back empty. Rolled days from
+        /// <c>DailyFilterStats</c>, the rest parsed live - the same merge as the query reads.
+        /// </summary>
+        public List<FilterStat> TopFilters(string teamId, string dataSet, long fromDay, long toDay, int limit)
+        {
+            long rolledTo = Math.Min(toDay, LastRolledDay());
+            var counts = new Dictionary<(string Team, string Ds, string Field, string Value), (long Uses, long Zero)>();
+            using var conn = Open();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"SELECT Field, Value, SUM(Uses), SUM(ZeroHits) FROM DailyFilterStats
+                    WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
+                    GROUP BY Field, Value";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSet);
+                cmd.Parameters.AddWithValue("$fromDay", fromDay);
+                cmd.Parameters.AddWithValue("$rolledTo", rolledTo);
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    counts[(teamId, dataSet, r.GetString(0), r.GetString(1))] = (r.GetInt64(2), r.GetInt64(3));
+            }
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT c.FilterKey, c.HitCount FROM " + CountedSearches(LiveWhere) +
+                    " c WHERE c.FilterKey IS NOT NULL";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSet);
+                cmd.Parameters.AddWithValue("$liveFrom", Math.Max(fromDay, rolledTo + 1) * 86_400_000L);
+                cmd.Parameters.AddWithValue("$toEx", (toDay + 1) * 86_400_000L);
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    CountOperands(counts, teamId, dataSet, r.GetString(0), r.GetInt32(1));
+            }
+            return counts
+                .Select(kv => new FilterStat(kv.Key.Field, kv.Key.Value, kv.Value.Uses, kv.Value.Zero))
+                .OrderByDescending(f => f.Uses).ThenBy(f => f.Field).ThenBy(f => f.Value)
+                .Take(limit).ToList();
         }
 
         /// <summary>The newest Unix day the rollup has covered, or -1 when it never ran. Reads
@@ -419,6 +585,7 @@ GROUP BY TeamId, DataSet, DocumentKey;";
                 "ConvertEvents" => "SELECT COUNT(*) FROM ConvertEvents",
                 "DailyQueryStats" => "SELECT COUNT(*) FROM DailyQueryStats",
                 "DailyDocumentStats" => "SELECT COUNT(*) FROM DailyDocumentStats",
+                "DailyFilterStats" => "SELECT COUNT(*) FROM DailyFilterStats",
                 "SubjectDocumentStats" => "SELECT COUNT(*) FROM SubjectDocumentStats",
                 _ => throw new ArgumentException($"Unknown statistics table '{table}'.", nameof(table)),
             };
@@ -446,14 +613,10 @@ SELECT QueryText, SUM(Searches) AS S, SUM(ZeroHits) AS Z, SUM(Selects) AS C,
       FROM DailyQueryStats
      WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
     UNION ALL
-    SELECT lower(s.QueryText), 1, CASE WHEN s.HitCount = 0 THEN 1 ELSE 0 END, COALESCE(sc.Cnt, 0),
-           CASE WHEN sc.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(sc.PosSum, 0)
-      FROM SearchEvents s
-      LEFT JOIN (SELECT QueryId, COUNT(*) AS Cnt, SUM(Position) AS PosSum
-                   FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
-             ON sc.QueryId = s.QueryId
-     WHERE s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $liveFrom AND s.Timestamp < $toEx
-       AND s.Source IS NULL
+    SELECT lower(c.QueryText), 1, CASE WHEN c.HitCount = 0 THEN 1 ELSE 0 END, COALESCE(c.Cnt, 0),
+           CASE WHEN c.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(c.PosSum, 0)
+      FROM {CountedSearches(LiveWhere)} c
+     WHERE trim(c.QueryText) <> ''
 )
 GROUP BY QueryText
 {order}
@@ -550,14 +713,10 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
     SELECT Day, 0, 0, 0, 0, Converts, ConvertValueSum, 0 FROM DailyDocumentStats
      WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
     UNION ALL
-    SELECT s.Timestamp / 86400000, 1, CASE WHEN s.HitCount = 0 THEN 1 ELSE 0 END,
-           CASE WHEN sc.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(sc.Cnt, 0), 0, 0.0, COALESCE(sc.PosSum, 0)
-      FROM SearchEvents s
-      LEFT JOIN (SELECT QueryId, COUNT(*) AS Cnt, SUM(Position) AS PosSum
-                   FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
-             ON sc.QueryId = s.QueryId
-     WHERE s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $liveFrom AND s.Timestamp < $toEx
-       AND s.Source IS NULL
+    SELECT c.Timestamp / 86400000, 1, CASE WHEN c.HitCount = 0 THEN 1 ELSE 0 END,
+           CASE WHEN c.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(c.Cnt, 0), 0, 0.0, COALESCE(c.PosSum, 0)
+      FROM {CountedSearches(LiveWhere)} c
+     WHERE trim(c.QueryText) <> ''
     UNION ALL
     SELECT Timestamp / 86400000, 0, 0, 0, 0, 1, COALESCE(Value, 0), 0 FROM ConvertEvents
      WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx
@@ -658,7 +817,7 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
 
         private static readonly string[] AllTables =
             ["SearchEvents", "SelectEvents", "ConvertEvents",
-             "DailyQueryStats", "DailyDocumentStats", "SubjectDocumentStats"];
+             "DailyQueryStats", "DailyDocumentStats", "DailyFilterStats", "SubjectDocumentStats"];
 
         private int ExecutePerTable(string where, string a, string? b)
         {

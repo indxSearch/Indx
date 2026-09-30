@@ -75,6 +75,22 @@ namespace IndxServer.Controllers
                 Math.Clamp(limit, 1, 1000), zeroHitsOnly).ToArray();
         }
 
+        /// <summary>Browsing in the window: how often people narrowed by each filter value, with
+        /// or without text, and how often that came back empty. A combined filter counts once per
+        /// operand; a range counts by its field, with an empty value.</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/filters")]
+        public ActionResult<FilterStat[]> Filters(string teamName, string dataSetName,
+            int days = 30, int limit = 50)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var (fromDay, toDay) = Window(days);
+            return statistics.Store!.TopFilters(ctx.OwnerKey, dataSetName, fromDay, toDay,
+                Math.Clamp(limit, 1, 1000)).ToArray();
+        }
+
         /// <summary>Top documents in the window: selects, converts and summed convert value per
         /// document key. The keys are the customer's own; titles are looked up by key.</summary>
         [KeyAccess(ApiKeyLevel.Read)]

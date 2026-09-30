@@ -128,7 +128,7 @@ namespace IndxServer.Services
             // it counts too, marked "console" so customer traffic can be separated later.
             if (statistics.Enabled && StatisticsService.ShouldRecord(q))
                 statistics.Writer!.RecordSearch(new SearchEventRow(
-                    Guid.NewGuid().ToString("N"), t, d, q.Text ?? string.Empty, null,
+                    Guid.NewGuid().ToString("N"), t, d, q.Text ?? string.Empty, q.Filter?.HashString,
                     result.Records?.Length ?? 0, null,
                     DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Source: "console"));
             return result;

@@ -110,6 +110,25 @@ else
             </Table>
         }
 
+        @if (_topFilters.Count > 0)
+        {
+            <h3 class="stats-heading">Browsing</h3>
+            <p class="stats-help">What people narrowed the catalogue by, with or without typing, and how often it left them nothing.</p>
+            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Browsing" Class="stats-table">
+                <thead><tr><th>Filter</th><th class="stats-num">Uses</th><th class="stats-num">Without results</th></tr></thead>
+                <tbody>
+                    @foreach (var f in _topFilters)
+                    {
+                        <tr>
+                            <td>@f.Field: @(f.Value.Length == 0 ? "a range" : f.Value)</td>
+                            <td class="stats-num">@N(f.Uses)</td>
+                            <td class="stats-num">@N(f.ZeroHits)</td>
+                        </tr>
+                    }
+                </tbody>
+            </Table>
+        }
+
         @if (_topDocuments.Count > 0)
         {
             <h3 class="stats-heading">Top documents</h3>
@@ -156,6 +175,7 @@ else
     private List<QueryStat> _topQueries = [];
     private List<QueryStat> _zeroHit = [];
     private List<DocumentStat> _topDocuments = [];
+    private List<FilterStat> _topFilters = [];
     private IReadOnlyList<Chart.ChartSeries> _series = [];
     private string[]? _labels;
     private readonly Dictionary<long, string> _titles = [];
@@ -166,7 +186,8 @@ else
         new("7 days", "7"), new("30 days", "30"), new("90 days", "90"),
     ];
 
-    private bool Empty => _overview.Searches == 0 && _overview.Selects == 0 && _overview.Converts == 0;
+    private bool Empty => _overview.Searches == 0 && _overview.Selects == 0 && _overview.Converts == 0
+                          && _topFilters.Count == 0;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -204,6 +225,7 @@ else
             _topQueries = store.TopQueries(team, ds, fromDay, toDay, 10);
             _zeroHit = store.TopQueries(team, ds, fromDay, toDay, 10, zeroHitsOnly: true);
             _topDocuments = store.TopDocuments(team, ds, fromDay, toDay, 10);
+            _topFilters = store.TopFilters(team, ds, fromDay, toDay, 10);
 
             var byDay = store.TimeSeries(team, ds, fromDay, toDay).ToDictionary(r => r.Day);
             var searches = new double[days];
