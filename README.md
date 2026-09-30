@@ -2,7 +2,7 @@
 
 A self-hosted search service built on [Indx Search](https://indx.co). Blazor Server UI, HTTP API with JWT authentication, user management, and everything needed to run a multi-user search service on your own infrastructure.
 
-![A tour of the Indx console: the dataset list, field configuration, boost rules, synonyms, and the admin views of datasets and the monitor](docs/images/tour.gif)
+![A tour of the Indx console: the dataset list, field configuration, boost rules, synonyms, search statistics, and the admin views of datasets and the monitor](docs/images/tour.gif)
 
 ## What's Included
 
@@ -201,6 +201,37 @@ the list (or `null`), `PUT` replaces it (`null` removes it; editor role required
 **Why experimental:** expansion widens recall but grows the query text, which dilutes
 Coverage scores proportionally. Measure the net effect on your data before shipping a
 large list to production. Behavior may still change.
+
+## Search statistics (experimental)
+
+The server counts every search on its own: the query text, and how many results it found. Your
+storefront adds the two things the server cannot see, which result the visitor chose and whether
+it led to an order. Each dataset's **Statistics** tab shows the result for the last 7, 30 or 90
+days.
+
+![The statistics tab for a bookshop: five tiles for searches, searches without results,
+click-through, average click position and conversions, a month of searches and clicks per day,
+and the list of searches that found nothing](docs/images/console-statistics.png)
+
+- **Searches without results** lists what people looked for and did not find. These are your
+  synonym and catalogue candidates.
+- **Top queries** gives each query its click-through and the average position of the result
+  people chose. A low position means the right document was found and ranked too low.
+- **Top documents** lists what gets chosen and what sells, with the order value.
+
+Every dataset card on the team page also draws the last two weeks of searches, so a dataset
+nobody uses any more is visible at a glance.
+
+**Sending clicks and orders:** every search response carries an `Indx-Query-Id` header. Send it
+back with `POST …/events/select` when a result is clicked, and with `POST …/events/convert` for
+an order. A Search key, the one your storefront already has, is enough.
+
+**Over the API:** `GET …/statistics/overview`, `timeseries`, `queries` and `documents`, with a
+Read key. Statistics are stored in their own `stats.db` next to `indx.db`. Raw events are kept
+for 90 days and daily totals until you delete them. `Statistics:Enabled` in `appsettings.json`
+switches the whole feature off.
+
+**Why experimental:** the numbers and their definitions may still change.
 
 ## MCP: connect AI agents
 

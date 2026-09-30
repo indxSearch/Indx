@@ -11,11 +11,12 @@ the repository root, or `../images/<name>.png` from inside `docs/release-notes/`
 | `console-hibernated-wake.png` | A hibernated dataset's page, with its Wake up action |
 | `console-boost-rules.png` | Boost rules on `bookshop`: four rules, one scheduled, one switched off |
 | `console-synonyms.png` | The synonym list on `bookshop`: two-way entries and one one-way |
+| `console-statistics.png` | The Statistics tab on `bookshop`: a month of searches, clicks and orders, and the searches that found nothing. Seeded by `seed.mjs traffic` and `history` |
 | `admin-users.png` | Admin → Users: accounts and platform roles. Not in the root README — six images is already a lot for one page; this one is here for release notes |
 | `admin-teams.png` | Admin → Teams: both teams with their members and team roles |
 | `admin-datasets.png` | Admin → Datasets: every dataset across every team, with keep-alive |
 | `admin-monitor.png` | Admin → Monitor: the in-memory event stream |
-| `tour.gif` | The README's opening image: eight of the console shots above, 1.2 s each with a short crossfade. Built from them by `capture.mjs`, never edited by hand |
+| `tour.gif` | The README's opening image: nine of the console shots above, 1.2 s each with a short crossfade. Built from them by `capture.mjs`, never edited by hand |
 | `tui.png` | The terminal monitor: instance figures, the dataset table, the event stream |
 
 The console shots are **2912x1660 PNG** — a 1456x830 viewport at `deviceScaleFactor: 2`, dark
@@ -47,7 +48,9 @@ carries enough to rebuild it. In outline:
    (boost rules and a synonym list on `bookshop`, which is what those two images show).
    Hibernate `order-archive-2024` and `test-import-small` from their Options tabs, not with
    `seed.mjs sleep` — see `Notes/screenshot-run.md` for why.
-4. `node capture.mjs` writes all of the console shots, then builds `tour.gif` from them with ffmpeg.
+4. `node seed.mjs traffic` (server running, before hibernating), then `history` with the server
+   stopped: a month of search statistics, which the Statistics shot and every dataset card show.
+5. `node capture.mjs` writes all of the console shots, then builds `tour.gif` from them with ffmpeg.
    `--light` for the light theme, `--gif-only` to rebuild just the GIF.
 
 Retake them when the UI meaningfully changes, and **look at them** rather than trusting the run. A
