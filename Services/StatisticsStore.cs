@@ -92,7 +92,8 @@ CREATE TABLE IF NOT EXISTS SearchEvents (
     HitCount    INTEGER NOT NULL,
     Subject     TEXT    NULL,
     Timestamp   INTEGER NOT NULL,
-    Source      TEXT    NULL
+    Source      TEXT    NULL,
+    Session     TEXT    NULL                  -- per-page-load id, for the keystroke rule
 );
 CREATE INDEX IF NOT EXISTS IX_Search_TeamDsTime ON SearchEvents(TeamId, DataSet, Timestamp);
 CREATE INDEX IF NOT EXISTS IX_Search_ZeroHits   ON SearchEvents(TeamId, DataSet, Timestamp) WHERE HitCount = 0;
@@ -190,15 +191,27 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                 }
                 catch (SqliteException) { /* already there */ }
             }
-            foreach (var col in new[] { "Source", "Session" })
+            try
             {
-                try
-                {
-                    cmd.CommandText = $"ALTER TABLE SearchEvents ADD COLUMN {col} TEXT NULL";
-                    cmd.ExecuteNonQuery();
-                }
-                catch (SqliteException) { /* already there */ }
+                cmd.CommandText = "ALTER TABLE SearchEvents ADD COLUMN Source TEXT NULL";
+                cmd.ExecuteNonQuery();
             }
+            catch (SqliteException) { /* already there */ }
+            try
+            {
+                cmd.CommandText = "ALTER TABLE SearchEvents ADD COLUMN Session TEXT NULL";
+                cmd.ExecuteNonQuery();
+                // The column arriving means this file predates "what counts as a search"
+                // (Notes/statistics-design.md): its rolled days counted every keystroke, empty
+                // searches and the console. Clearing the watermark makes the next rollup pass
+                // re-roll every day from the oldest raw row still kept, under the one definition.
+                // Rollup is idempotent, so this is safe; days older than retention keep what they
+                // were rolled with. Once per file: the next start finds the column there.
+                cmd.CommandText = "DELETE FROM RollupState";
+                if (cmd.ExecuteNonQuery() > 0)
+                    logger.LogInformation("statistics: the counting rules changed; re-rolling the kept days");
+            }
+            catch (SqliteException) { /* already there */ }
         }
 
         /// <summary>
@@ -408,9 +421,11 @@ GROUP BY TeamId, DataSet, DocumentKey;";
         /// rolled day and a live day cannot disagree about what a search is.
         /// <list type="bullet">
         /// <item>Customer traffic only: the console's preview is left out.</item>
-        /// <item>With a visitor (session, else subject), a search the same visitor extends within
+        /// <item>With a session, a search the same session extends within
         ///   <see cref="KeystrokeWindowMs"/> is superseded: "o", "os", "osl", "oslo" count as
-        ///   "oslo". Measured in the rollup, so the search path stays a queue append.</item>
+        ///   "oslo". Measured in the rollup, so the search path stays a queue append. The session
+        ///   only, never the subject: a subject may be a customer segment, and two members of one
+        ///   typing at once would swallow each other's searches.</item>
         /// <item>Without one, text shorter than <see cref="MinAnonymousQueryLength"/> is left out.</item>
         /// <item>A search that got a click counts whatever else is true: someone chose a result
         ///   from it.</item>
@@ -424,12 +439,12 @@ GROUP BY TeamId, DataSet, DocumentKey;";
 SELECT e.QueryId, e.TeamId, e.DataSet, e.QueryText, e.FilterKey, e.HitCount, e.Timestamp,
        sc.Cnt, sc.PosSum
   FROM (SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.Timestamp,
-               COALESCE(s.Session, s.Subject) AS Visitor,
+               s.Session AS Visitor,
                LEAD(lower(s.QueryText)) OVER w AS NextText,
                LEAD(s.Timestamp) OVER w AS NextTs
           FROM SearchEvents s
          WHERE {where} AND s.Source IS NULL
-        WINDOW w AS (PARTITION BY s.TeamId, s.DataSet, COALESCE(s.Session, s.Subject)
+        WINDOW w AS (PARTITION BY s.TeamId, s.DataSet, s.Session
                      ORDER BY s.Timestamp, s.rowid)) e
   LEFT JOIN (SELECT QueryId, COUNT(*) AS Cnt, SUM(Position) AS PosSum
                FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
