@@ -204,10 +204,11 @@ large list to production. Behavior may still change.
 
 ## Search statistics (experimental)
 
-The server counts every search on its own: the query text, and how many results it found. Your
-storefront adds the two things the server cannot see, which result the visitor chose and whether
-it led to an order. Each dataset's **Statistics** tab shows the result for the last 7, 30 or 90
-days.
+The server counts every search with text on its own: the query text, and how many results it
+found. Empty searches, such as a browse page opening, are not counted, and neither is your own
+testing in the console's search preview. Your storefront adds the two things the server cannot
+see, which result the visitor chose and whether it led to an order. Each dataset's **Statistics**
+tab shows the result for the last 7, 30 or 90 days.
 
 ![The statistics tab for a bookshop: five tiles for searches, searches without results,
 click-through, average click position and conversions, a month of searches and clicks per day,

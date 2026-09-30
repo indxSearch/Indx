@@ -126,7 +126,7 @@ namespace IndxServer.Services
             var result = M.Search(q, d, t);
             // The console's search preview comes through here, not through the HTTP endpoint -
             // it counts too, marked "console" so customer traffic can be separated later.
-            if (statistics.Enabled)
+            if (statistics.Enabled && StatisticsService.ShouldRecord(q))
                 statistics.Writer!.RecordSearch(new SearchEventRow(
                     Guid.NewGuid().ToString("N"), t, d, q.Text ?? string.Empty, null,
                     result.Records?.Length ?? 0, null,

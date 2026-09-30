@@ -4,7 +4,10 @@ namespace IndxServer.Services
 {
     /// <summary>One search, as the search path records it. Timestamps are Unix milliseconds UTC.
     /// Source marks non-customer traffic (null = the HTTP API, "console" = the web console's
-    /// search preview) so the two can be separated later; today's aggregates include both.</summary>
+    /// search preview). Only customer traffic (Source IS NULL) is aggregated: the rollup and the
+    /// live reads both leave the console out, so an editor trying queries in the preview does
+    /// not show up in the dashboard. The console rows are kept, for a later "your own testing"
+    /// view if one is wanted.</summary>
     public readonly record struct SearchEventRow(
         string QueryId, string TeamId, string DataSet, string QueryText, string? FilterKey,
         int HitCount, string? Subject, long Timestamp, string? Source = null);
@@ -336,7 +339,7 @@ FROM SearchEvents s
 LEFT JOIN (SELECT QueryId, COUNT(*) AS Cnt, SUM(Position) AS PosSum
              FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
        ON sc.QueryId = s.QueryId
-WHERE s.Timestamp >= $from AND s.Timestamp < $to
+WHERE s.Timestamp >= $from AND s.Timestamp < $to AND s.Source IS NULL
 GROUP BY s.TeamId, s.DataSet, lower(s.QueryText);
 
 DELETE FROM DailyDocumentStats WHERE Day = $day;
@@ -450,6 +453,7 @@ SELECT QueryText, SUM(Searches) AS S, SUM(ZeroHits) AS Z, SUM(Selects) AS C,
                    FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
              ON sc.QueryId = s.QueryId
      WHERE s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $liveFrom AND s.Timestamp < $toEx
+       AND s.Source IS NULL
 )
 GROUP BY QueryText
 {order}
@@ -553,6 +557,7 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
                    FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
              ON sc.QueryId = s.QueryId
      WHERE s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $liveFrom AND s.Timestamp < $toEx
+       AND s.Source IS NULL
     UNION ALL
     SELECT Timestamp / 86400000, 0, 0, 0, 0, 1, COALESCE(Value, 0), 0 FROM ConvertEvents
      WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx

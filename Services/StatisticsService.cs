@@ -23,6 +23,17 @@ namespace IndxServer.Services
         private Task? _rollupLoop;
 
         public bool Enabled { get; private set; }
+
+        /// <summary>Whether a search is worth recording: it has text. An empty search is a page
+        /// load or a facet click - a browse page opening, a storefront narrowing its catalogue -
+        /// and counting those would bury the searches people typed. Both recording paths (the
+        /// HTTP endpoint and the console preview) ask this, so they agree.
+        ///
+        /// An empty search WITH a filter is browsing, and worth counting once the filter is
+        /// stored with it (Notes/statistics-design.md, "Browsing"). Until then it would arrive as
+        /// a blank query with nothing to tell one filter from another, so it waits.</summary>
+        public static bool ShouldRecord(Indx.Http.QueryProxy query) =>
+            !string.IsNullOrWhiteSpace(query.Text);
         public StatisticsStore? Store { get; private set; }
         public StatisticsWriter? Writer { get; private set; }
         public int RetentionDays { get; private set; }

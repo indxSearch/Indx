@@ -53,10 +53,14 @@ namespace IndxServer.Controllers
                     var queryId = Guid.NewGuid().ToString("N");
                     Response.Headers["Indx-Query-Id"] = queryId;
                     var subject = Request.Query["subject"].FirstOrDefault();
-                    statistics.Writer!.RecordSearch(new SearchEventRow(
-                        queryId, ctx.OwnerKey, dataSetName, query.Text ?? string.Empty, null,
-                        res.Records?.Length ?? 0, string.IsNullOrWhiteSpace(subject) ? null : subject,
-                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+                    // The header is minted either way, so a client can always read one; a click
+                    // that references an unrecorded search is accepted as an orphan and still
+                    // counts on the document.
+                    if (StatisticsService.ShouldRecord(query))
+                        statistics.Writer!.RecordSearch(new SearchEventRow(
+                            queryId, ctx.OwnerKey, dataSetName, query.Text ?? string.Empty, null,
+                            res.Records?.Length ?? 0, string.IsNullOrWhiteSpace(subject) ? null : subject,
+                            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
                 }
                 return res;
             }
