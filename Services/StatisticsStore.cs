@@ -491,20 +491,24 @@ GROUP BY TeamId, DataSet, DocumentKey;";
         /// </list>
         /// </summary>
         private static string CountedSearches(string where) => $@"(
-SELECT e.QueryId, e.TeamId, e.DataSet, e.QueryText, e.FilterKey, e.HitCount, e.Timestamp,
-       sc.Cnt, sc.PosSum
-  FROM (SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.Timestamp,
-               s.Session AS Visitor,
-               LEAD(lower(s.QueryText)) OVER w AS NextText,
-               LEAD(s.Timestamp) OVER w AS NextTs
-          FROM SearchEvents s
-         WHERE {where} AND s.Source IS NULL
-        WINDOW w AS (PARTITION BY s.TeamId, s.DataSet, s.Session
-                     ORDER BY s.Timestamp, s.rowid)) e
-  LEFT JOIN (SELECT QueryId, COUNT(*) AS Cnt, SUM(Position) AS PosSum
-               FROM SelectEvents WHERE QueryId IS NOT NULL GROUP BY QueryId) sc
-         ON sc.QueryId = e.QueryId
- WHERE sc.Cnt > 0
+SELECT * FROM (
+    SELECT e.QueryId, e.TeamId, e.DataSet, e.QueryText, e.FilterKey, e.HitCount, e.Timestamp,
+           e.Visitor, e.NextText, e.NextTs,
+           -- Per search through IX_Select_QueryId. Not a GROUP BY over SelectEvents joined in:
+           -- that grouped every select ever kept on every read, and was most of what a read cost
+           -- (StatisticsReadCostProbeTests).
+           (SELECT COUNT(*) FROM SelectEvents x WHERE x.QueryId = e.QueryId) AS Cnt,
+           (SELECT SUM(x.Position) FROM SelectEvents x WHERE x.QueryId = e.QueryId) AS PosSum
+      FROM (SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.Timestamp,
+                   s.Session AS Visitor,
+                   LEAD(lower(s.QueryText)) OVER w AS NextText,
+                   LEAD(s.Timestamp) OVER w AS NextTs
+              FROM SearchEvents s
+             WHERE {where} AND s.Source IS NULL
+            WINDOW w AS (PARTITION BY s.TeamId, s.DataSet, s.Session
+                         ORDER BY s.Timestamp, s.rowid)) e
+) e
+ WHERE e.Cnt > 0
     OR trim(e.QueryText) = ''
     OR (e.Visitor IS NOT NULL AND NOT (
             e.NextTs IS NOT NULL AND e.NextTs - e.Timestamp <= {KeystrokeWindowMs}
