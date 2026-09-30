@@ -40,7 +40,9 @@
                                   stroke-linejoin="round" stroke-linecap="round" />
                         @for (int i = 0; i < s.Data.Count; i++)
                         {
-                            var size = _tooltip?.Index == i ? 10.0 : 5.0;
+                            var hovered = _tooltip?.Index == i;
+                            if (!hovered && !RoomForMarkers) { continue; }
+                            var size = hovered ? (RoomForMarkers ? 10.0 : 7.0) : 5.0;
                             var half = size / 2;
                             <rect x="@F(ToX(i) - half)" y="@F(ToY(s.Data[i]) - half)" width="@F(size)" height="@F(size)" fill="@color" />
                         }
@@ -69,9 +71,11 @@
                 @* SVG <text> is a reserved Razor tag, so the axis labels are emitted via the builder. *@
                 @RenderAxisLabels
 
-                @* transparent overlay captures the pointer so OffsetX/Y is relative to the whole svg *@
+                @* transparent overlay captures the pointer so OffsetX/Y is relative to the whole svg.
+                   Pointer events, not mouse events: a tap opens the tooltip on a phone, and a
+                   horizontal drag scrubs (touch-action: pan-y in the css keeps vertical scrolling). *@
                 <rect x="0" y="0" width="@F(_containerWidth)" height="@Height" fill="transparent" pointer-events="all"
-                      @onmousemove="OnMouseMove" @onmouseleave="ClearTooltip" />
+                      @onpointermove="OnMouseMove" @onpointerdown="OnMouseMove" @onpointerleave="OnPointerLeave" />
             </svg>
         }
 
@@ -157,19 +161,43 @@
         if (Labels is not { Length: > 0 }) return;
         var ly = PadTop + _ch + 18;
         var seq = 0;
+        var last = Labels.Length - 1;
+        var step = LabelStep();
         for (int i = 0; i < Labels.Length; i++)
         {
+            // Counted from the end, so the latest point always keeps its label.
+            if ((last - i) % step != 0) continue;
             var lx = Type == "line" ? ToX(i) : PadLeft + (i + 0.5) * (_cw / Math.Max(_dataLen, 1));
+            // On a line chart the end labels sit on the plot's edges; anchor them inwards so the
+            // frame does not clip them.
+            var anchor = Type != "line" || last == 0 ? "middle" : i == 0 ? "start" : i == last ? "end" : "middle";
             builder.OpenElement(seq++, "text");
             builder.AddAttribute(seq++, "x", F(lx));
             builder.AddAttribute(seq++, "y", F(ly));
-            builder.AddAttribute(seq++, "text-anchor", "middle");
+            builder.AddAttribute(seq++, "text-anchor", anchor);
             builder.AddAttribute(seq++, "fill", "var(--lv4)");
             builder.AddAttribute(seq++, "style", "font: var(--text-2xs)");
             builder.AddContent(seq++, Labels[i]);
             builder.CloseElement();
         }
     };
+
+    // Roughly the width of one --text-2xs character, and the gap kept between two labels.
+    private const double LabelCharWidth = 6, LabelGap = 12, MinMarkerSpacing = 12;
+
+    /// <summary>Every how many points a label is drawn: as many as fit side by side at the
+    /// chart's current width, so 90 daily labels on a phone become a readable handful.</summary>
+    private int LabelStep()
+    {
+        if (Labels is not { Length: > 1 } || _cw <= 0) return 1;
+        var widest = Labels.Max(l => l.Length) * LabelCharWidth + LabelGap;
+        var fit = Math.Max((int)(_cw / widest), 1);
+        return (int)Math.Ceiling((double)Labels.Length / fit);
+    }
+
+    /// <summary>Whether points are far enough apart to each carry a marker. When they are not,
+    /// the markers merge into a second, thicker line, so only the hovered point gets one.</summary>
+    private bool RoomForMarkers => _dataLen <= 1 || _cw / (_dataLen - 1) >= MinMarkerSpacing;
 
     private string LinePoints(ChartSeries s)
     {
@@ -222,6 +250,13 @@
     }
 
     private void ClearTooltip() => _tooltip = null;
+
+    /// <summary>A touch lifts off with a pointerleave; clearing then would close the tooltip
+    /// the tap just opened. Only a mouse leaving clears it.</summary>
+    private void OnPointerLeave(PointerEventArgs e)
+    {
+        if (e.PointerType == "mouse") ClearTooltip();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {

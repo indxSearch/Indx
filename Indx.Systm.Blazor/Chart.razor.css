@@ -33,6 +33,8 @@
 .indx-chart-svg {
     display: block;
     overflow: visible;
+    /* a horizontal drag scrubs the tooltip; a vertical one still scrolls the page */
+    touch-action: pan-y;
 }
 
 /* Tooltip */
