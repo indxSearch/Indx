@@ -349,8 +349,10 @@ else
     /// <summary>Days of search activity on a card: two weeks, enough for a weekly rhythm to show.</summary>
     private const int ActivityDays = 14;
 
-    /// <summary>Searches per day over the last <see cref="ActivityDays"/>, oldest first, with the
-    /// days nobody searched as zeros. Only the settled states ask (Ready and Hibernated): a moving
+    /// <summary>Searches per day over the last <see cref="ActivityDays"/> complete days, oldest
+    /// first, with the days nobody searched as zeros. Today is left out: a part-day as the last
+    /// point dropped every card's line at its end until evening, so every dataset read as losing
+    /// traffic. The Statistics tab keeps today, where the axis labels it. Only the settled states ask (Ready and Hibernated): a moving
     /// card is re-described on every progress tick and shows progress instead. Null when
     /// statistics are off, which leaves the block off the card rather than drawing a flat line
     /// that would claim nobody searched.</summary>
@@ -360,7 +362,7 @@ else
         if (store == null) return null;
         try
         {
-            long toDay = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            long toDay = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) - 1;
             long fromDay = toDay - ActivityDays + 1;
             var series = new double[ActivityDays];
             foreach (var day in store.TimeSeries(teamId, name, fromDay, toDay))
