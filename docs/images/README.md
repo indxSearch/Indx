@@ -12,6 +12,7 @@ the repository root, or `../images/<name>.png` from inside `docs/release-notes/`
 | `console-boost-rules.png` | Boost rules on `bookshop`: four rules, one scheduled, one switched off |
 | `console-synonyms.png` | The synonym list on `bookshop`: two-way entries and one one-way |
 | `console-statistics.png` | The Statistics tab on `bookshop`: a month of searches, clicks and orders, and the searches that found nothing. Seeded by `seed.mjs traffic` and `history` |
+| `console-statistics-browsing.png` | Further down the same tab: Top queries with click-through and position, and Browsing, the filter values people narrowed by |
 | `admin-users.png` | Admin → Users: accounts and platform roles. Not in the root README — six images is already a lot for one page; this one is here for release notes |
 | `admin-teams.png` | Admin → Teams: both teams with their members and team roles |
 | `admin-datasets.png` | Admin → Datasets: every dataset across every team, with keep-alive |

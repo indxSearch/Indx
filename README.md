@@ -218,14 +218,23 @@ and the list of searches that found nothing](docs/images/console-statistics.png)
   synonym and catalogue candidates.
 - **Top queries** gives each query its click-through and the average position of the result
   people chose. A low position means the right document was found and ranked too low.
+- **Browsing** lists what people narrowed the catalogue by, filter value by filter value, with or
+  without typing. On a dataset of people, where a filter can hold a name, switch it off on the
+  **Options** tab.
 - **Top documents** lists what gets chosen and what sells, with the order value.
+
+![Further down the statistics tab: top queries with their click-through and average click
+position, and the Browsing list of filter values and how often each was used](docs/images/console-statistics-browsing.png)
 
 Every dataset card on the team page also draws the last two weeks of searches, so a dataset
 nobody uses any more is visible at a glance.
 
 **Sending clicks and orders:** every search response carries an `Indx-Query-Id` header. Send it
 back with `POST …/events/select` when a result is clicked, and with `POST …/events/convert` for
-an order. A Search key, the one your storefront already has, is enough.
+an order. A Search key, the one your storefront already has, is enough. Send a `session` with
+each search too, any random id made per page load, and a visitor typing "oslo" counts as one
+search instead of four. [@indxsearch/intrface](https://github.com/indxSearch/indx-intrface)
+does both for you: it sends the session, and a result's `select()` reports the click.
 
 **Over the API:** `GET …/statistics/overview`, `timeseries`, `queries` and `documents`, with a
 Read key. Statistics are stored in their own `stats.db` next to `indx.db`. Raw events are kept
