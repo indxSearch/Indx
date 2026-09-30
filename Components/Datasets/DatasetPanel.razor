@@ -141,7 +141,7 @@
         if (isReady || pending) items.Add(Tab("search", "Search preview", DatasetIcons.Search, isReady));
         // Statistics live in their own store, so the tab works even for a hibernated dataset -
         // it reads no engine (titles fall back to keys) and must never wake one.
-        if (Statistics.Enabled) items.Add(Tab("statistics", "Statistics", DatasetIcons.Analytics, true));
+        if (Statistics.Enabled) items.Add(Tab("statistics", "Statistics", DatasetIcons.Statistics, true));
         if ((isReady || pending) && Ctx.IsEditor)
         {
             var expired = isReady ? ExpiredBoostRules() : 0;
