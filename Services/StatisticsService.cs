@@ -36,9 +36,13 @@ namespace IndxServer.Services
         /// could not be served in time (<c>DidTimeOut</c>) also comes back empty, and recorded it
         /// would read as the shop having nothing: an integration bug or a busy moment showing up
         /// as the zero-hit rate. Errors are not search data; the caller has the reason in the
-        /// response.</para></summary>
+        /// response.</para>
+        ///
+        /// <para>And only a search that asked for records. A request for none is a front-end's
+        /// helper - intrface fetches the facet counts of an OR field that way - and it showed no
+        /// one anything, so it is not a search a visitor made.</para></summary>
         public static bool ShouldRecord(Indx.Http.QueryProxy query, string? filterKey, Indx.Api.Result result) =>
-            result.Reason == null && !result.DidTimeOut
+            result.Reason == null && !result.DidTimeOut && query.MaxNumberOfRecordsToReturn > 0
             && (!string.IsNullOrWhiteSpace(query.Text) || filterKey != null);
 
         /// <summary>The filter key to store with a search: the query's token (which IS the key),

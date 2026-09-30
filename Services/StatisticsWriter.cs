@@ -25,7 +25,7 @@ namespace IndxServer.Services
         /// <summary>Each session's latest search with text, for the keystroke rule. Only the
         /// flush touches it (one thread), and entries older than the window are dropped each
         /// flush, so it holds the sessions typing right now and no more.</summary>
-        private readonly Dictionary<(string Team, string DataSet, string Session), (string QueryId, string Text, long Timestamp)>
+        private readonly Dictionary<(string Team, string DataSet, string Session), (string QueryId, string Text, string? FilterKey, long Timestamp)>
             _lastBySession = new();
         private int _queued;
         private long _dropped;
@@ -113,7 +113,9 @@ namespace IndxServer.Services
         /// The keystroke rule (Notes/statistics-design.md, "What counts as a search"): a search
         /// with text is superseded when the same session's next search with text, within
         /// <see cref="StatisticsStore.KeystrokeWindowMs"/>, extends it - "o", "os", "osl", "oslo"
-        /// is one search. Returns the query ids to mark, which may belong to an earlier batch.
+        /// is one search. And the repeat rule: the same text with the same filter again within
+        /// <see cref="StatisticsStore.RepeatWindowMs"/> is the same search, the later one kept,
+        /// since that is the one whose queryId the front-end holds for a click. Returns the query ids to mark, which may belong to an earlier batch.
         /// Here rather than in the reads because a read that sorts a day of keystrokes per
         /// session cost a tab load seconds (StatisticsReadCostProbeTests); the search thread pays
         /// nothing either way, this is the background flush. One writer per instance: several
@@ -127,18 +129,27 @@ namespace IndxServer.Services
             foreach (var s in searches)
             {
                 if (s.Timestamp > newest) newest = s.Timestamp;
-                if (s.Session == null || string.IsNullOrWhiteSpace(s.QueryText) || s.Source != null) continue;
+                if (s.Session == null || s.Source != null) continue;
                 var key = (s.TeamId, s.DataSet, s.Session);
-                var text = s.QueryText.ToLowerInvariant();
-                if (_lastBySession.TryGetValue(key, out var last)
-                    && s.Timestamp - last.Timestamp <= StatisticsStore.KeystrokeWindowMs
-                    && text.Length > last.Text.Length
-                    && text.StartsWith(last.Text, StringComparison.Ordinal))
-                    superseded.Add(last.QueryId);
-                _lastBySession[key] = (s.QueryId, text, s.Timestamp);
+                var text = s.QueryText.Trim().ToLowerInvariant();
+                if (_lastBySession.TryGetValue(key, out var last))
+                {
+                    long gap = s.Timestamp - last.Timestamp;
+                    // Typing on: the next search extends this one.
+                    bool extends = last.Text.Length > 0 && gap <= StatisticsStore.KeystrokeWindowMs
+                                   && text.Length > last.Text.Length
+                                   && text.StartsWith(last.Text, StringComparison.Ordinal);
+                    // The same search sent again: a front-end re-running it with facets after a
+                    // debounce, for a new sort, or to load more. One visitor, one search.
+                    bool repeats = gap <= StatisticsStore.RepeatWindowMs
+                                   && text == last.Text && s.FilterKey == last.FilterKey;
+                    if (extends || repeats)
+                        superseded.Add(last.QueryId);
+                }
+                _lastBySession[key] = (s.QueryId, text, s.FilterKey, s.Timestamp);
             }
             if (newest != long.MinValue)
-                foreach (var stale in _lastBySession.Where(kv => newest - kv.Value.Timestamp > StatisticsStore.KeystrokeWindowMs)
+                foreach (var stale in _lastBySession.Where(kv => newest - kv.Value.Timestamp > StatisticsStore.RepeatWindowMs)
                                                     .Select(kv => kv.Key).ToList())
                     _lastBySession.Remove(stale);
             return superseded;

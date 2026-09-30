@@ -527,6 +527,11 @@ GROUP BY TeamId, DataSet, DocumentKey;";
         /// almost always a keystroke.</summary>
         internal const int MinAnonymousQueryLength = 2;
 
+        /// <summary>The same session sending the same text and filter again within this long is
+        /// the same search: a front-end re-runs it with facets after a debounce, for a new sort,
+        /// or to load more.</summary>
+        internal const long RepeatWindowMs = 30_000;
+
         /// <summary>The live reads' window: one dataset, the days the rollup has not covered.</summary>
         private const string LiveWhere =
             "s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $liveFrom AND s.Timestamp < $toEx";
