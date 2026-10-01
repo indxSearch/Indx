@@ -83,8 +83,7 @@ else
         @if (_section == "queries")
         {
             <div class="stats-view">
-                <SelectField Size="micro" Options="QueryOrderOptions" Value="@_queryOrder.ToString()" ValueChanged="SetQueryOrder" aria-label="Order" />
-                <Tabs Items="RowItems" Active="@_queryRows.ToString()" ActiveChanged="SetQueryRows" Size="micro" Variant="button" AriaLabel="Rows shown" />
+                <div class="stats-view-select"><SelectField Size="micro" Options="QueryOrderOptions" Value="@_queryOrder.ToString()" ValueChanged="SetQueryOrder" aria-label="Order" /></div>
             </div>
             @if (_queryOrder != QueryOrder.Searches)
             {
@@ -106,6 +105,12 @@ else
                     }
                 </tbody>
             </Table>
+            @if (_moreQueries)
+            {
+                <div class="stats-more">
+                    <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.ShowMore" @onclick="ShowMoreQueries">Show @QueryPage more</Button>
+                </div>
+            }
             }
         }
 
@@ -115,7 +120,7 @@ else
                the visitor chose a result anyway. One of the things Indx does that others do not, so
                the section leads with the finds; "All" adds the searches nothing was chosen from. *@
             <div class="stats-view">
-                <Tabs Items="FuzzyItems" Active="@(_fuzzyAll ? "all" : "found")" ActiveChanged="SetFuzzyView" Size="micro" Variant="button" AriaLabel="Fuzzy searches shown" />
+                <Tabs Items="FuzzyItems" Active="@(_fuzzyAll ? "all" : "selected")" ActiveChanged="SetFuzzyView" Size="micro" Variant="button" AriaLabel="Fuzzy searches shown" />
             </div>
             <p class="stats-help">
                 @if (_fuzzyAll) { <text>Every search with typos too large for an exact match, the ones nothing was chosen from included.</text> }
@@ -146,7 +151,7 @@ else
         @if (_section == "documents")
         {
             <div class="stats-view">
-                <SelectField Size="micro" Options="DocumentOrderOptions" Value="@(_documentsByConverts ? "converts" : "selects")" ValueChanged="SetDocumentOrder" aria-label="Order" />
+                <div class="stats-view-select"><SelectField Size="micro" Options="DocumentOrderOptions" Value="@(_documentsByConverts ? "converts" : "selects")" ValueChanged="SetDocumentOrder" aria-label="Order" /></div>
             </div>
             @if (_topDocuments.Count == 0 && _documentsByConverts) { <p class="stats-empty">No conversions in this period. They arrive when the storefront sends them to <code>events/convert</code>.</p> }
             else if (_topDocuments.Count == 0) { <p class="stats-empty">No results were chosen in this period. Clicks arrive when the storefront sends them to <code>events/select</code>.</p> }
@@ -198,7 +203,7 @@ else
             @if (ChangeKindOptions.Count > 2)
             {
                 <div class="stats-view">
-                    <SelectField Size="micro" Options="ChangeKindOptions" Value="@(_changeKind ?? "")" ValueChanged="SetChangeKind" aria-label="Kind of change" />
+                    <div class="stats-view-select"><SelectField Size="micro" Options="ChangeKindOptions" Value="@(_changeKind ?? "")" ValueChanged="SetChangeKind" aria-label="Kind of change" /></div>
                 </div>
             }
             @if (_changes.Count == 0) { <p class="stats-empty">No changes were made to the dataset in this period.</p> }
@@ -241,7 +246,9 @@ else
 
     // Each section's view settings. They live as long as the tab does; a new window keeps them.
     private QueryOrder _queryOrder = QueryOrder.Searches;
-    private int _queryRows = 10;
+    private const int QueryPage = 10;
+    private int _queryRows = QueryPage;
+    private bool _moreQueries;
     private bool _fuzzyAll;
     private bool _documentsByConverts;
     private string? _changeKind;
@@ -252,8 +259,8 @@ else
         new("Highest click-through", nameof(QueryOrder.HighestClickThrough)),
         new("Lowest click-through", nameof(QueryOrder.LowestClickThrough)),
     ];
-    private static readonly List<Tabs.TabItem> RowItems = [new("10", "10"), new("25", "25"), new("50", "50")];
-    private static readonly List<Tabs.TabItem> FuzzyItems = [new("Found", "found"), new("All", "all")];
+    private static readonly List<Tabs.TabItem> FuzzyItems =
+        [new("Selected", "selected", DatasetIcons.FuzzySelected), new("All", "all", DatasetIcons.FuzzyAll)];
     private static readonly List<SelectField.SelectOption> DocumentOrderOptions =
     [
         new("Most selected", "selects"),
@@ -384,7 +391,10 @@ else
     private void LoadLists(StatisticsStore store)
     {
         var (team, ds) = (Ctx.TeamId, Ctx.Name);
-        _topQueries = store.TopQueries(team, ds, _fromDay, _toDay, _queryRows, order: _queryOrder);
+        // One row past the page says whether there is another page.
+        var queries = store.TopQueries(team, ds, _fromDay, _toDay, _queryRows + 1, order: _queryOrder);
+        _moreQueries = queries.Count > _queryRows;
+        _topQueries = _moreQueries ? queries[.._queryRows] : queries;
         _fuzzy = store.TopQueries(team, ds, _fromDay, _toDay, 10, uncoveredOnly: true,
             order: _fuzzyAll ? QueryOrder.Searches : QueryOrder.ChosenAnyway);
         _topDocuments = store.TopDocuments(team, ds, _fromDay, _toDay, 10, byConverts: _documentsByConverts);
@@ -405,10 +415,9 @@ else
         return ReloadListsAsync();
     }
 
-    private Task SetQueryRows(string? value)
+    private Task ShowMoreQueries()
     {
-        if (!int.TryParse(value, out var rows) || rows == _queryRows) return Task.CompletedTask;
-        _queryRows = rows;
+        _queryRows += QueryPage;
         return ReloadListsAsync();
     }
 

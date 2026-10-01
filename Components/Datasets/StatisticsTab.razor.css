@@ -108,6 +108,15 @@
     margin-top: 18px;
 }
 
+/* The orders read as words ("Highest click-through"); micro's content width crams them. */
+.stats-view-select {
+    width: 200px;
+}
+
+.stats-more {
+    display: flex;
+}
+
 /* A section's view settings, above its table. */
 .stats-view {
     display: flex;

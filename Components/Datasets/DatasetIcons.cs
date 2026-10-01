@@ -35,9 +35,12 @@ namespace IndxServer.Components.Datasets
         // The Statistics tab's sections.
         public static readonly RenderFragment<int> TopQueries = Of<Icons.SearchQuery>();
         public static readonly RenderFragment<int> FuzzySearch = Of<Icons.FuzzySearch>();
-        public static readonly RenderFragment<int> TopDocuments = Of<Icons.DocumentOrFile>();
-        public static readonly RenderFragment<int> Browsing = Of<Icons.Filter>();
+        public static readonly RenderFragment<int> TopDocuments = Of<Icons.SortAscending>();
+        public static readonly RenderFragment<int> Browsing = Of<Icons.InternetBrowser>();
         public static readonly RenderFragment<int> Changes = Of<Icons.Update>();
+        public static readonly RenderFragment<int> FuzzySelected = Of<Icons.ClickSelect>();
+        public static readonly RenderFragment<int> FuzzyAll = Of<Icons.SearchAsYouType>();
+        public static readonly RenderFragment<int> ShowMore = Of<Icons.Plus>();
 
         /// <summary>The speedometer as a running spinner — the benchmark button swaps to this
         /// while a run is in progress, so the icon itself says "measuring".</summary>
