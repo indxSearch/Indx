@@ -210,26 +210,27 @@ testing in the console's search preview. Your storefront adds the two things the
 see, which result the visitor chose and whether it led to an order. Each dataset's **Statistics**
 tab shows the result for the last 7, 30 or 90 days.
 
-![The statistics tab for a bookshop: five tiles for searches, searches without coverage,
-click-through, average click position and conversions, a month of searches and clicks per day
+![The statistics tab for a bookshop: five tiles for searches, fuzzy finds, click-through,
+average click position and conversions, a month of searches and clicks per day
 with changes marked, and the top queries](docs/images/console-statistics.png)
 
-Below the chart, one section at a time:
+Below the chart, one section at a time, each with its own view settings:
 
 - **Top queries** gives each query its click-through and the average position of the result
-  people chose. A low position means the right document was found and ranked too low.
-- **Without coverage** lists the searches coverage confirmed nothing for. Indx nearly always
-  shows something, so this is the "found nothing" that matters. Where a result was chosen anyway,
-  fuzzy matching rescued a misspelling, and the most chosen document shows what was meant: add
-  the synonym. Where nothing was chosen, the catalogue has a gap.
-- **Top documents** lists what gets chosen and what converts.
+  people chose. A low position means the right document was found and ranked too low. Order by
+  searches or by click-through, and show 10, 25 or 50.
+- **Fuzzy search** shows what Indx found for searches with typos too large for an exact match:
+  how often the visitor still chose a result, and which one. **All** adds the misspelled searches
+  nothing was chosen from.
+- **Top documents** lists what gets chosen, or what converts.
 - **Browsing** lists what people narrowed the catalogue by, filter value by filter value, with or
   without typing. On a dataset of people, where a filter can hold a name, switch it off on the
   **Options** tab.
-- **Changes** lists what was changed on the dataset itself.
+- **Changes** lists what was changed on the dataset itself. Pick a kind of change, and the chart
+  marks only those.
 
-![The Without coverage section: misspelled searches coverage could not confirm, how often a result
-was chosen anyway, and the document chosen most](docs/images/console-statistics-coverage.png)
+![The Fuzzy search section: misspelled searches, how often a result was chosen anyway, and the
+result chosen most](docs/images/console-statistics-coverage.png)
 
 Every dataset card on the team page also draws the last two weeks of searches, so a dataset
 nobody uses any more is visible at a glance.
