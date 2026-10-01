@@ -140,7 +140,8 @@ namespace IndxServer.Services
                 statistics.Writer!.RecordSearch(new SearchEventRow(
                     Guid.NewGuid().ToString("N"), t, d, q.Text ?? string.Empty, filterKey,
                     result.Records?.Length ?? 0, null,
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Source: "console"));
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Source: "console",
+                    Covered: StatisticsService.CoverageConfirmed(q, result)));
             return result;
         }
         public SynonymList? GetSynonyms(string d, string t) => M.GetSynonyms(d, t);

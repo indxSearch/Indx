@@ -23,14 +23,19 @@ namespace IndxServer.Models
     /// against ALL searches, zero-hit ones included — Algolia's definition), and
     /// AverageClickPosition = mean 1-based position of the selects that joined a search.
     /// Null rate/position means the denominator was zero, never "0%".
+    ///
+    /// <para>Uncovered counts the searches coverage confirmed nothing for: what was shown came
+    /// from fuzzy matching alone, or nothing was shown. For a fuzzy engine that is the meaningful
+    /// "found nothing", since it nearly always shows something; ZeroHits stays for compatibility.
+    /// UncoveredRate = Uncovered / Searches.</para>
     /// </summary>
     public record StatisticsOverviewResponse(
         long Searches, long ZeroHits, long ClickedSearches, long Selects, long Converts,
         double ConvertValueSum, double? ZeroHitRate, double? ClickThroughRate,
-        double? AverageClickPosition);
+        double? AverageClickPosition, long Uncovered = 0, double? UncoveredRate = null);
 
     /// <summary>One day of the chart series. Date is the UTC day as yyyy-MM-dd.</summary>
     public record StatisticsDayResponse(
         string Date, long Searches, long ZeroHits, long ClickedSearches, long Selects,
-        long Converts, double ConvertValueSum, double? AverageClickPosition);
+        long Converts, double ConvertValueSum, double? AverageClickPosition, long Uncovered = 0);
 }

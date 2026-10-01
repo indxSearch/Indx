@@ -68,7 +68,8 @@ namespace IndxServer.Controllers
                             filterKey,
                             res.Records?.Length ?? 0, string.IsNullOrWhiteSpace(subject) ? null : subject,
                             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-                            Session: string.IsNullOrWhiteSpace(session) ? null : session));
+                            Session: string.IsNullOrWhiteSpace(session) ? null : session,
+                            Covered: StatisticsService.CoverageConfirmed(query, res)));
                 }
                 return res;
             }

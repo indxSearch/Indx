@@ -46,6 +46,12 @@ namespace IndxServer.Services
             result.Reason == null && !result.DidTimeOut && query.MaxNumberOfRecordsToReturn > 0
             && (!string.IsNullOrWhiteSpace(query.Text) || filterKey != null);
 
+        /// <summary>Whether coverage confirmed any result: the truncation index marks where the
+        /// confirmed results end, and -1 is none, so what was shown came from fuzzy matching
+        /// alone. Null with coverage off, where the index is always 0 and says nothing.</summary>
+        public static bool? CoverageConfirmed(Indx.Http.QueryProxy query, Indx.Api.Result result) =>
+            query.EnableCoverage ? result.TruncationIndex >= 0 : null;
+
         /// <summary>The filter key to store with a search: the query's token (which IS the key),
         /// or null when it has none or the dataset has the Browsing report switched off. With it
         /// off, an empty search with a filter is not recorded at all - without its key it is a

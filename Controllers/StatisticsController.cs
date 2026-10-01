@@ -29,7 +29,7 @@ namespace IndxServer.Controllers
             return new StatisticsOverviewResponse(
                 o.Searches, o.ZeroHits, o.ClickedSearches, o.Selects, o.Converts, o.ConvertValueSum,
                 Rate(o.ZeroHits, o.Searches), Rate(o.ClickedSearches, o.Searches),
-                Rate(o.PositionSum, o.Selects));
+                Rate(o.PositionSum, o.Selects), o.Uncovered, Rate(o.Uncovered, o.Searches));
         }
 
         /// <summary>The per-day series behind the charts: one row per UTC day in the window.
@@ -51,7 +51,7 @@ namespace IndxServer.Controllers
                 series.Add(new StatisticsDayResponse(
                     DateOnly.FromDayNumber((int)day + DateOnly.Parse("1970-01-01").DayNumber).ToString("yyyy-MM-dd"),
                     r.Searches, r.ZeroHits, r.ClickedSearches, r.Selects, r.Converts,
-                    r.ConvertValueSum, Rate(r.PositionSum, r.Selects)));
+                    r.ConvertValueSum, Rate(r.PositionSum, r.Selects), r.Uncovered));
             }
             return series.ToArray();
         }
@@ -60,19 +60,22 @@ namespace IndxServer.Controllers
             denominator == 0 ? null : numerator / denominator;
 
         /// <summary>Top queries in the window: searches, zero-hit count and selects per query
-        /// text (lowercased). With zeroHitsOnly=true, the zero-hit report — the searches the
+        /// text (lowercased). With uncoveredOnly=true, the searches without coverage: those coverage
+        /// confirmed nothing for, how often a result was chosen anyway, and the document chosen most
+        /// (mostChosenDocument), which is usually the synonym or spelling to add.
+        /// With zeroHitsOnly=true, the zero-hit report — the searches the
         /// dataset could not answer, ordered by how often.</summary>
         [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/statistics/queries")]
         public ActionResult<QueryStat[]> Queries(string teamName, string dataSetName,
-            int days = 30, int limit = 50, bool zeroHitsOnly = false)
+            int days = 30, int limit = 50, bool zeroHitsOnly = false, bool uncoveredOnly = false)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (Disabled(out var off)) return off!;
             var (fromDay, toDay) = Window(days);
             return statistics.Store!.TopQueries(ctx.OwnerKey, dataSetName, fromDay, toDay,
-                Math.Clamp(limit, 1, 1000), zeroHitsOnly).ToArray();
+                Math.Clamp(limit, 1, 1000), zeroHitsOnly, uncoveredOnly).ToArray();
         }
 
         /// <summary>Browsing in the window: how often people narrowed by each filter value, with

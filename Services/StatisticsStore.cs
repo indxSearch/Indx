@@ -11,7 +11,8 @@ namespace IndxServer.Services
     /// view if one is wanted.</summary>
     public readonly record struct SearchEventRow(
         string QueryId, string TeamId, string DataSet, string QueryText, string? FilterKey,
-        int HitCount, string? Subject, long Timestamp, string? Source = null, string? Session = null);
+        int HitCount, string? Subject, long Timestamp, string? Source = null, string? Session = null,
+        bool? Covered = null);
 
     /// <summary>One select: the user chose a result. QueryId is an opaque reference — an orphan
     /// (unknown or expired id) is stored like any other row and simply finds no search to join.</summary>
@@ -46,15 +47,16 @@ namespace IndxServer.Services
     /// <summary>One query's aggregate over a window. ClickedSearches is the CTR numerator
     /// (searches with at least one select); average click position is PositionSum / Selects.</summary>
     public readonly record struct QueryStat(string QueryText, long Searches, long ZeroHits, long Selects,
-        long ClickedSearches, long PositionSum);
+        long ClickedSearches, long PositionSum, long Uncovered = 0, long UncoveredChosen = 0,
+        long? MostChosenDocument = null);
 
     /// <summary>The window's totals, for the dashboard's header numbers.</summary>
     public readonly record struct OverviewStat(long Searches, long ZeroHits, long ClickedSearches,
-        long Selects, long PositionSum, long Converts, double ConvertValueSum);
+        long Selects, long PositionSum, long Converts, double ConvertValueSum, long Uncovered = 0);
 
     /// <summary>One day of the time series behind the charts.</summary>
     public readonly record struct DailyStat(long Day, long Searches, long ZeroHits, long ClickedSearches,
-        long Selects, long Converts, double ConvertValueSum, long PositionSum);
+        long Selects, long Converts, double ConvertValueSum, long PositionSum, long Uncovered = 0);
 
     /// <summary>One document's aggregate over a window.</summary>
     public readonly record struct DocumentStat(long DocumentKey, long Selects, long Converts, double ConvertValueSum);
@@ -109,7 +111,8 @@ CREATE TABLE IF NOT EXISTS SearchEvents (
     Timestamp   INTEGER NOT NULL,
     Source      TEXT    NULL,
     Session     TEXT    NULL,                 -- per-page-load id, for the keystroke rule
-    Superseded  INTEGER NOT NULL DEFAULT 0    -- 1: the same session extended it within the window
+    Superseded  INTEGER NOT NULL DEFAULT 0,   -- 1: the same session extended it within the window
+    Covered     INTEGER NULL                  -- 1: coverage confirmed a result, 0: none (fuzzy only), NULL: coverage off
 );
 CREATE INDEX IF NOT EXISTS IX_Search_TeamDsTime ON SearchEvents(TeamId, DataSet, Timestamp);
 CREATE INDEX IF NOT EXISTS IX_Search_ZeroHits   ON SearchEvents(TeamId, DataSet, Timestamp) WHERE HitCount = 0;
@@ -155,6 +158,8 @@ CREATE TABLE IF NOT EXISTS DailyQueryStats (
     Selects     INTEGER NOT NULL,           -- select events joined to these searches
     ClickedSearches INTEGER NOT NULL,       -- searches with at least one select (the CTR numerator)
     PositionSum INTEGER NOT NULL,           -- sum of 1-based select positions (avg = / Selects)
+    Uncovered   INTEGER NOT NULL DEFAULT 0, -- searches coverage confirmed nothing for (or that found nothing)
+    UncoveredChosen INTEGER NOT NULL DEFAULT 0, -- of those, searches where a result was chosen anyway
     PRIMARY KEY (Day, TeamId, DataSet, QueryText)
 );
 
@@ -225,7 +230,7 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
             cmd.ExecuteNonQuery();
             // Dev-file guard: adds the two rollup columns to a stats.db created in the days
             // before they existed. They shipped in no release, so this can go after one.
-            foreach (var col in new[] { "ClickedSearches", "PositionSum" })
+            foreach (var col in new[] { "ClickedSearches", "PositionSum", "Uncovered", "UncoveredChosen" })
             {
                 try
                 {
@@ -268,6 +273,17 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                     logger.LogInformation("statistics: marked {Marked} keystroke searches; re-rolling the kept days", marked);
             }
             catch (SqliteException) { /* already there */ }
+            try
+            {
+                cmd.CommandText = "ALTER TABLE SearchEvents ADD COLUMN Covered INTEGER NULL";
+                cmd.ExecuteNonQuery();
+                // Rolled days have no coverage counts yet. Re-rolled from the raw rows, they get
+                // their zero-hit searches as uncovered; coverage itself is known only from now on.
+                cmd.CommandText = "DELETE FROM RollupState";
+                if (cmd.ExecuteNonQuery() > 0)
+                    logger.LogInformation("statistics: coverage is recorded from now on; re-rolling the kept days");
+            }
+            catch (SqliteException) { /* already there */ }
         }
 
         /// <summary>The keystroke rule in SQL, for rows the writer did not mark: a search with
@@ -307,8 +323,8 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = @"INSERT OR IGNORE INTO SearchEvents
-                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp, Source, Session)
-                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts, $src, $sess)";
+                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp, Source, Session, Covered)
+                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts, $src, $sess, $cov)";
                 var qid = cmd.Parameters.Add("$qid", SqliteType.Text);
                 var team = cmd.Parameters.Add("$team", SqliteType.Text);
                 var ds = cmd.Parameters.Add("$ds", SqliteType.Text);
@@ -319,6 +335,7 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                 var ts = cmd.Parameters.Add("$ts", SqliteType.Integer);
                 var src = cmd.Parameters.Add("$src", SqliteType.Text);
                 var sess = cmd.Parameters.Add("$sess", SqliteType.Text);
+                var cov = cmd.Parameters.Add("$cov", SqliteType.Integer);
                 foreach (var e in searches)
                 {
                     qid.Value = e.QueryId; team.Value = e.TeamId; ds.Value = e.DataSet;
@@ -326,6 +343,7 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                     hits.Value = e.HitCount; subj.Value = (object?)e.Subject ?? DBNull.Value;
                     ts.Value = e.Timestamp; src.Value = (object?)e.Source ?? DBNull.Value;
                     sess.Value = (object?)e.Session ?? DBNull.Value;
+                    cov.Value = e.Covered is bool covered ? (covered ? 1 : 0) : DBNull.Value;
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -558,13 +576,16 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
             cmd.Transaction = tx;
             cmd.CommandText = @"
 DELETE FROM DailyQueryStats WHERE Day = $day;
-INSERT INTO DailyQueryStats (Day, TeamId, DataSet, QueryText, Searches, ZeroHits, Selects, ClickedSearches, PositionSum)
+INSERT INTO DailyQueryStats (Day, TeamId, DataSet, QueryText, Searches, ZeroHits, Selects, ClickedSearches, PositionSum,
+                             Uncovered, UncoveredChosen)
 SELECT $day, c.TeamId, c.DataSet, lower(c.QueryText),
        COUNT(*),
        SUM(CASE WHEN c.HitCount = 0 THEN 1 ELSE 0 END),
        COALESCE(SUM(c.Cnt), 0),
        SUM(CASE WHEN c.Cnt > 0 THEN 1 ELSE 0 END),
-       COALESCE(SUM(c.PosSum), 0)
+       COALESCE(SUM(c.PosSum), 0),
+       SUM(CASE WHEN (c.HitCount = 0 OR c.Covered = 0) THEN 1 ELSE 0 END),
+       SUM(CASE WHEN (c.HitCount = 0 OR c.Covered = 0) AND c.Cnt > 0 THEN 1 ELSE 0 END)
 FROM " + CountedSearches("s.Timestamp >= $from AND s.Timestamp < $to") + @" c
 WHERE trim(c.QueryText) <> ''
 GROUP BY c.TeamId, c.DataSet, lower(c.QueryText);
@@ -684,7 +705,7 @@ GROUP BY TeamId, DataSet, DocumentKey;";
         /// </list>
         /// </summary>
         private static string CountedSearches(string where) => $@"(
-SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.Timestamp,
+SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.Timestamp, s.Covered,
        -- Per counted search through IX_Select_QueryId, after the WHERE has dropped the
        -- keystrokes. Not a GROUP BY over SelectEvents joined in: that grouped every select ever
        -- kept on every read (StatisticsReadCostProbeTests).
@@ -857,23 +878,27 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
         /// zero-hit report, ordered by how often the query found nothing.
         /// </summary>
         public List<QueryStat> TopQueries(string teamId, string dataSet, long fromDay, long toDay,
-            int limit, bool zeroHitsOnly = false)
+            int limit, bool zeroHitsOnly = false, bool uncoveredOnly = false)
         {
             long rolledTo = Math.Min(toDay, LastRolledDay());
             long liveFromMs = Math.Max(fromDay, rolledTo + 1) * 86_400_000L;
             long toMsExcl = (toDay + 1) * 86_400_000L;
             using var conn = Open();
             using var cmd = conn.CreateCommand();
-            var order = zeroHitsOnly ? "HAVING SUM(ZeroHits) > 0 ORDER BY Z DESC, S DESC" : "ORDER BY S DESC";
+            var order = uncoveredOnly ? "HAVING SUM(Unc) > 0 ORDER BY U DESC, S DESC"
+                : zeroHitsOnly ? "HAVING SUM(ZeroHits) > 0 ORDER BY Z DESC, S DESC" : "ORDER BY S DESC";
             cmd.CommandText = $@"
 SELECT QueryText, SUM(Searches) AS S, SUM(ZeroHits) AS Z, SUM(Selects) AS C,
-       SUM(Clicked) AS K, SUM(PosSum) FROM (
-    SELECT QueryText, Searches, ZeroHits, Selects, ClickedSearches AS Clicked, PositionSum AS PosSum
+       SUM(Clicked) AS K, SUM(PosSum), SUM(Unc) AS U, SUM(UncChosen) FROM (
+    SELECT QueryText, Searches, ZeroHits, Selects, ClickedSearches AS Clicked, PositionSum AS PosSum,
+           Uncovered AS Unc, UncoveredChosen AS UncChosen
       FROM DailyQueryStats
      WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
     UNION ALL
     SELECT lower(c.QueryText), 1, CASE WHEN c.HitCount = 0 THEN 1 ELSE 0 END, COALESCE(c.Cnt, 0),
-           CASE WHEN c.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(c.PosSum, 0)
+           CASE WHEN c.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(c.PosSum, 0),
+           CASE WHEN (c.HitCount = 0 OR c.Covered = 0) THEN 1 ELSE 0 END,
+           CASE WHEN (c.HitCount = 0 OR c.Covered = 0) AND c.Cnt > 0 THEN 1 ELSE 0 END
       FROM {CountedSearches(LiveWhere)} c
      WHERE trim(c.QueryText) <> ''
 )
@@ -888,11 +913,44 @@ LIMIT $n";
             cmd.Parameters.AddWithValue("$toEx", toMsExcl);
             cmd.Parameters.AddWithValue("$n", limit);
             var result = new List<QueryStat>();
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
-                result.Add(new QueryStat(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3),
-                    r.GetInt64(4), r.GetInt64(5)));
+            using (var r = cmd.ExecuteReader())
+                while (r.Read())
+                    result.Add(new QueryStat(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3),
+                        r.GetInt64(4), r.GetInt64(5), r.GetInt64(6), r.GetInt64(7)));
+            if (uncoveredOnly && result.Count > 0)
+                result = WithMostChosen(conn, teamId, dataSet, fromDay, toDay, result);
             return result;
+        }
+
+        /// <summary>
+        /// For each query without coverage, the document visitors chose most often from its
+        /// fuzzy-only results: the answer coverage could not find, which is usually the synonym or
+        /// spelling to add. From the raw rows, so it reaches back as far as they are kept (90 days
+        /// by default); for an older window the column is simply empty.
+        /// </summary>
+        private static List<QueryStat> WithMostChosen(SqliteConnection conn, string teamId, string dataSet,
+            long fromDay, long toDay, List<QueryStat> queries)
+        {
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT lower(s.QueryText), x.DocumentKey, COUNT(*) AS N
+  FROM SearchEvents s JOIN SelectEvents x ON x.QueryId = s.QueryId
+ WHERE s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $from AND s.Timestamp < $to
+   AND s.Source IS NULL AND (s.HitCount = 0 OR s.Covered = 0)
+ GROUP BY lower(s.QueryText), x.DocumentKey";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$from", fromDay * 86_400_000L);
+            cmd.Parameters.AddWithValue("$to", (toDay + 1) * 86_400_000L);
+            var best = new Dictionary<string, (long Key, long Count)>();
+            using (var r = cmd.ExecuteReader())
+                while (r.Read())
+                {
+                    var (text, key, n) = (r.GetString(0), r.GetInt64(1), r.GetInt64(2));
+                    if (!best.TryGetValue(text, out var b) || n > b.Count || (n == b.Count && key < b.Key))
+                        best[text] = (key, n);
+                }
+            return queries.Select(q => best.TryGetValue(q.QueryText, out var b) ? q with { MostChosenDocument = b.Key } : q).ToList();
         }
 
         /// <summary>Top documents by selects in [fromDay, toDay], with converts and value summed
@@ -950,7 +1008,7 @@ LIMIT $n";
             var rows = TimeSeriesInternal(teamId, dataSet, fromDay, toDay, perDay: false);
             var r = rows.Count == 0 ? default : rows[0];
             return new OverviewStat(r.Searches, r.ZeroHits, r.ClickedSearches, r.Selects,
-                r.PositionSum, r.Converts, r.ConvertValueSum);
+                r.PositionSum, r.Converts, r.ConvertValueSum, r.Uncovered);
         }
 
         private List<DailyStat> TimeSeriesInternal(string teamId, string dataSet, long fromDay, long toDay, bool perDay)
@@ -963,21 +1021,22 @@ LIMIT $n";
             using var conn = Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv), SUM(Val), SUM(PosSum) FROM (
+SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv), SUM(Val), SUM(PosSum), SUM(Unc) FROM (
     SELECT Day, Searches, ZeroHits, ClickedSearches AS Clicked, Selects AS Sel,
-           0 AS Conv, 0.0 AS Val, PositionSum AS PosSum
+           0 AS Conv, 0.0 AS Val, PositionSum AS PosSum, Uncovered AS Unc
       FROM DailyQueryStats
      WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
     UNION ALL
-    SELECT Day, 0, 0, 0, 0, Converts, ConvertValueSum, 0 FROM DailyDocumentStats
+    SELECT Day, 0, 0, 0, 0, Converts, ConvertValueSum, 0, 0 FROM DailyDocumentStats
      WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
     UNION ALL
     SELECT c.Timestamp / 86400000, 1, CASE WHEN c.HitCount = 0 THEN 1 ELSE 0 END,
-           CASE WHEN c.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(c.Cnt, 0), 0, 0.0, COALESCE(c.PosSum, 0)
+           CASE WHEN c.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(c.Cnt, 0), 0, 0.0, COALESCE(c.PosSum, 0),
+           CASE WHEN (c.HitCount = 0 OR c.Covered = 0) THEN 1 ELSE 0 END
       FROM {CountedSearches(LiveWhere)} c
      WHERE trim(c.QueryText) <> ''
     UNION ALL
-    SELECT Timestamp / 86400000, 0, 0, 0, 0, 1, COALESCE(Value, 0), 0 FROM ConvertEvents
+    SELECT Timestamp / 86400000, 0, 0, 0, 0, 1, COALESCE(Value, 0), 0, 0 FROM ConvertEvents
      WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx
 )
 {group}";
@@ -993,7 +1052,7 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
             {
                 if (r.IsDBNull(1)) continue; // the no-rows aggregate row of the totals query
                 result.Add(new DailyStat(r.GetInt64(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3),
-                    r.GetInt64(4), r.GetInt64(5), r.GetDouble(6), r.GetInt64(7)));
+                    r.GetInt64(4), r.GetInt64(5), r.GetDouble(6), r.GetInt64(7), r.GetInt64(8)));
             }
             return result;
         }
