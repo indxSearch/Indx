@@ -218,7 +218,7 @@ Below the chart, one section at a time, each with its own view settings:
 
 - **Top queries** gives each query its click-through and the average position of the result
   people chose. A low position means the right document was found and ranked too low. Order by
-  searches or by click-through, and show 10, 25 or 50.
+  searches or by click-through, ten more at a time.
 - **Fuzzy search** shows what Indx found for searches with typos too large for an exact match:
   how often the visitor still chose a result, and which one. **All** adds the misspelled searches
   nothing was chosen from.
