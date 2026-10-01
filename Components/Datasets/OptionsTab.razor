@@ -236,7 +236,7 @@
             {
                 @* Here rather than on the Statistics tab: it cannot be undone, and it sits with the
                    other things that cannot. *@
-                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="() => _purgeOpen = true">Delete statistics</Button>
+                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Erase" @onclick="() => _purgeOpen = true">Erase statistics history</Button>
             }
             @if (Ctx.IsAdmin)
             {
@@ -250,8 +250,8 @@
         <p class="opt-error">@Ctx.OperationError</p>
     }
 
-    <ConfirmModal @bind-Open="_purgeOpen" Title="@($"Delete the statistics of {Ctx.Name}")" Consequences="PurgeConsequences"
-                  ConfirmLabel="Delete statistics" ConfirmIcon="DatasetIcons.Delete" OnConfirm="PurgeStatisticsAsync" />
+    <ConfirmModal @bind-Open="_purgeOpen" Title="@($"Erase the statistics history of {Ctx.Name}")" Consequences="PurgeConsequences"
+                  ConfirmLabel="Erase statistics history" ConfirmIcon="DatasetIcons.Erase" OnConfirm="PurgeStatisticsAsync" />
 
     <ConfirmModal @bind-Open="_renameOpen" Title="@($"Rename {Ctx.Name}")" Consequences="RenameConsequences"
                   CanConfirm="RenameReady" ConfirmLabel="Rename dataset" ConfirmIcon="DatasetIcons.Tag" OnConfirm="RenameAsync">

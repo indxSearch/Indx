@@ -77,7 +77,7 @@ else
            its own view settings and a phone shows one table rather than five. *@
         <div class="stats-sections">
             <Tabs Items="SectionItems" Active="@_section" ActiveChanged="@(v => _section = v ?? "queries")"
-                  Size="micro" Scrollable Bleed="calc(var(--page-gutter) + 5px)" AriaLabel="Statistics sections" />
+                  Scrollable AriaLabel="Statistics sections" />
         </div>
 
         @if (_section == "queries")
@@ -108,7 +108,7 @@ else
             @if (_moreQueries)
             {
                 <div class="stats-more">
-                    <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.ShowMore" @onclick="ShowMoreQueries">Show @QueryPage more</Button>
+                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.ShowMore" @onclick="ShowMoreQueries">Show @QueryPage more</Button>
                 </div>
             }
             }
@@ -294,15 +294,15 @@ else
         if (!string.IsNullOrEmpty(InitialSection)) _section = InitialSection;
     }
 
-    /// <summary>The detail sections, in the order they matter. Changes carries a count: a change
-    /// is the thing worth noticing from the overview.</summary>
+    /// <summary>The detail sections, in the order they matter. Changes says how many in its label:
+    /// the badge is the signal colour, and a change is information, not a warning.</summary>
     private List<Tabs.TabItem> SectionItems =>
     [
         new("Top queries", "queries", DatasetIcons.TopQueries),
         new("Fuzzy search", "fuzzy", DatasetIcons.FuzzySearch),
         new("Top documents", "documents", DatasetIcons.TopDocuments),
         new("Browsing", "browsing", DatasetIcons.Browsing),
-        new("Changes", "changes", DatasetIcons.Changes, Badge: _changes.Count > 0 ? _changes.Count.ToString() : null),
+        new(_changes.Count > 0 ? $"Changes ({_changes.Count})" : "Changes", "changes", DatasetIcons.Changes),
     ];
     private List<DocumentStat> _topDocuments = [];
     private List<FilterStat> _topFilters = [];
