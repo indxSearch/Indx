@@ -295,7 +295,8 @@ else
     }
 
     /// <summary>The detail sections, in the order they matter. Changes carries how many fell in
-    /// the window, in teal: a change is information, not a warning. Over 99 it says 99+.</summary>
+    /// the window, in the info blue of the chart's change markers: a change is information, not a
+    /// warning, and the badge and the marks are the same thing. Over 99 it says 99+.</summary>
     private List<Tabs.TabItem> SectionItems =>
     [
         new("Top queries", "queries", DatasetIcons.TopQueries),
@@ -304,7 +305,7 @@ else
         new("Browsing", "browsing", DatasetIcons.Browsing),
         new("Changes", "changes", DatasetIcons.Changes,
             Badge: _changes.Count switch { 0 => null, > 99 => "99+", var n => n.ToString() },
-            BadgeTitle: $"{_changes.Count} changes in the last {_days} days", BadgeTone: "teal"),
+            BadgeTitle: $"{_changes.Count} changes in the last {_days} days", BadgeTone: "info"),
     ];
     private List<DocumentStat> _topDocuments = [];
     private List<FilterStat> _topFilters = [];

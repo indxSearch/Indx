@@ -95,10 +95,10 @@
     border-radius: var(--radius);
 }
 
-/* Information rather than a call to act. Dark ink on teal in both themes, as on the teal Chip. */
-.indx-tab-badge-teal {
+/* Information rather than a call to act: the info blue of Chart's markers, dark ink in both themes. */
+.indx-tab-badge-info {
     color: #080809;
-    background: var(--CTeal);
+    background: var(--CLightBlue);
 }
 
 .indx-tab-active {
