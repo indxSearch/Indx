@@ -93,7 +93,16 @@ namespace IndxServer.Services
         public IServerSearchEngine? FindSearchEngine(string d, string t) => M.FindSearchEngine(d, t);
         public bool DeleteDataSet(string d, string t) => M.DeleteDataSet(d, t);
         public void DisposeDataSetInstance(string d, string t) => M.DisposeDataSetInstance(d, t);
-        public void TransferOwnership(string d, string from, string to) => M.TransferOwnership(d, from, to);
+        public void TransferOwnership(string d, string from, string to)
+        {
+            M.TransferOwnership(d, from, to);
+            if (!statistics.Enabled || statistics.Store == null) return;
+            // Flushed first: an event still queued under the old team would be written after
+            // the move and left behind there.
+            statistics.Writer?.Flush();
+            statistics.Store.TransferDataset(from, to, d);
+            statistics.Changed(to, d, DatasetChangeKind.Transfer);
+        }
         public string? RenameDataSet(string d, string t, string newName)
         {
             var error = M.RenameDataSet(d, t, newName);

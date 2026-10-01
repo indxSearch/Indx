@@ -16,6 +16,7 @@ namespace IndxServer.Services
         public const string Hibernate = "hibernate";
         public const string Wake = "wake";
         public const string Rename = "rename";
+        public const string Transfer = "transfer";
         public const string Delete = "delete";
     }
 

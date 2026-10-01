@@ -88,6 +88,8 @@ namespace IndxServer.Services
                     return S("reason") == "onDemand" ? "Woken by a search" : "Woken";
                 case DatasetChangeKind.Rename:
                     return S("from") is { } from ? $"Renamed from {from}" : "Renamed";
+                case DatasetChangeKind.Transfer:
+                    return "Moved here from another team";
                 case DatasetChangeKind.Delete:
                     return "Dataset deleted";
                 default:

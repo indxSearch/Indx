@@ -1062,6 +1062,34 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
             return n;
         }
 
+        /// <summary>
+        /// Moves a dataset's statistics to the team it was transferred to: keyed on the team id,
+        /// they would otherwise stay with the old team and the dataset would arrive with no
+        /// history. The Browsing setting moves too. The target team can hold leftovers of a
+        /// deleted dataset of the same name (statistics survive a delete); where a daily row
+        /// collides, the moved dataset's row replaces the leftover.
+        /// </summary>
+        public int TransferDataset(string fromTeamId, string toTeamId, string dataSet)
+        {
+            using var conn = Open();
+            using var tx = conn.BeginTransaction();
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.Parameters.AddWithValue("$from", fromTeamId);
+            cmd.Parameters.AddWithValue("$to", toTeamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            int n = 0;
+            foreach (var table in AllTables.Append("DatasetSettings"))
+            {
+                cmd.CommandText = $"UPDATE OR REPLACE {table} SET TeamId = $to WHERE TeamId = $from AND DataSet = $d";
+                n += cmd.ExecuteNonQuery();
+            }
+            tx.Commit();
+            _recordFilters.TryRemove((fromTeamId, dataSet), out _);
+            _recordFilters.TryRemove((toTeamId, dataSet), out _);
+            return n;
+        }
+
         /// <summary>Moves a dataset's statistics to its new name. Called from the rename path -
         /// keyed on the customer's name, the rows must follow it.</summary>
         public int RenameDataset(string teamId, string oldName, string newName)
