@@ -46,9 +46,10 @@ namespace IndxServer.Services
             result.Reason == null && !result.DidTimeOut && query.MaxNumberOfRecordsToReturn > 0
             && (!string.IsNullOrWhiteSpace(query.Text) || filterKey != null);
 
-        /// <summary>A caller's <c>?source=</c>, as stored: trimmed, at most 40 characters, null when
+        /// <summary>A caller's <c>?probe=</c>, as stored in the search row's Source: trimmed, at
+        /// most 40 characters, null when
         /// blank. Any non-null source keeps the search out of the aggregates.</summary>
-        public static string? CleanSource(string? source)
+        public static string? CleanProbe(string? source)
         {
             var s = source?.Trim();
             return string.IsNullOrEmpty(s) ? null : s.Length <= 40 ? s : s[..40];
