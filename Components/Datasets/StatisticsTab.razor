@@ -143,14 +143,17 @@ else
             <h3 class="stats-heading">Browsing</h3>
             <p class="stats-help">What people narrowed the catalogue by, with or without typing, and how often it left them nothing.</p>
             <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Browsing" Class="stats-table">
-                <thead><tr><th>Filter</th><th class="stats-num">Uses</th><th class="stats-num">Without results</th></tr></thead>
+                @* "Without results" only when something came back empty: a column of zeros says
+                   nothing and takes the room. *@
+                @{ var anyEmpty = _topFilters.Any(f => f.ZeroHits > 0); }
+                <thead><tr><th>Filter</th><th class="stats-num">Uses</th>@if (anyEmpty) {<th class="stats-num">Without results</th>}</tr></thead>
                 <tbody>
                     @foreach (var f in _topFilters)
                     {
                         <tr>
-                            <td>@f.Field: @(f.Value.Length == 0 ? "a range" : f.Value)</td>
+                            <td>@FilterLabel(f)</td>
                             <td class="stats-num">@N(f.Uses)</td>
-                            <td class="stats-num">@N(f.ZeroHits)</td>
+                            @if (anyEmpty) {<td class="stats-num">@N(f.ZeroHits)</td>}
                         </tr>
                     }
                 </tbody>
@@ -280,6 +283,14 @@ else
         if (string.IsNullOrWhiteSpace(text)) { <span class="stats-muted">(empty search)</span> }
         else { @text }
     };
+
+    /// <summary>"genre: Poetry", "year (range)". The value comes out of the filter key, where a
+    /// case-insensitive filter's value is lowercased, so the first letter is capitalised for
+    /// reading; the real spelling is not in the key to restore.</summary>
+    private static string FilterLabel(FilterStat f) =>
+        f.Value.Length == 0
+            ? $"{f.Field} (range)"
+            : $"{f.Field}: {char.ToUpper(f.Value[0], System.Globalization.CultureInfo.CurrentCulture)}{f.Value[1..]}";
 
     private static string N(long n) => n.ToString("#,##0");
 
