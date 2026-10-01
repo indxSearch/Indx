@@ -10,6 +10,23 @@ namespace IndxServer.Services
     /// </summary>
     public static class ChangeDescriptions
     {
+        /// <summary>The kind's name on its own, for the Changes section's filter.</summary>
+        public static string KindLabel(string kind) => kind switch
+        {
+            DatasetChangeKind.Synonyms => "Synonyms",
+            DatasetChangeKind.BoostRules => "Boost rules",
+            DatasetChangeKind.Fields => "Fields",
+            DatasetChangeKind.Reindex => "Reindex",
+            DatasetChangeKind.Replace => "Replace",
+            DatasetChangeKind.Documents => "Documents",
+            DatasetChangeKind.Hibernate => "Hibernation",
+            DatasetChangeKind.Wake => "Wake",
+            DatasetChangeKind.Rename => "Rename",
+            DatasetChangeKind.Transfer => "Transfer",
+            DatasetChangeKind.Delete => "Delete",
+            _ => kind,
+        };
+
         public static string Describe(string kind, string? summaryJson)
         {
             JsonElement s = default;

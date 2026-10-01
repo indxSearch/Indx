@@ -103,6 +103,19 @@
     margin: 10px 0 0;
 }
 
+/* The overview ends at the chart; the section bar starts the detail, so it stands apart. */
+.stats-sections {
+    margin-top: 18px;
+}
+
+/* A section's view settings, above its table. */
+.stats-view {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
 .stats-help {
     font-size: 12px;
     color: var(--text-secondary, #888);

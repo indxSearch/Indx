@@ -29,7 +29,8 @@ namespace IndxServer.Controllers
             return new StatisticsOverviewResponse(
                 o.Searches, o.ZeroHits, o.ClickedSearches, o.Selects, o.Converts, o.ConvertValueSum,
                 Rate(o.ZeroHits, o.Searches), Rate(o.ClickedSearches, o.Searches),
-                Rate(o.PositionSum, o.Selects), o.Uncovered, Rate(o.Uncovered, o.Searches));
+                Rate(o.PositionSum, o.Selects), o.Uncovered, Rate(o.Uncovered, o.Searches),
+                o.UncoveredChosen);
         }
 
         /// <summary>The per-day series behind the charts: one row per UTC day in the window.

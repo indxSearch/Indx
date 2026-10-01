@@ -50,13 +50,31 @@ namespace IndxServer.Services
         long ClickedSearches, long PositionSum, long Uncovered = 0, long UncoveredChosen = 0,
         long? MostChosenDocument = null);
 
-    /// <summary>The window's totals, for the dashboard's header numbers.</summary>
+    /// <summary>The window's totals, for the dashboard's header numbers. UncoveredChosen is the
+    /// fuzzy finds: searches coverage confirmed nothing for where a result was chosen anyway.</summary>
     public readonly record struct OverviewStat(long Searches, long ZeroHits, long ClickedSearches,
-        long Selects, long PositionSum, long Converts, double ConvertValueSum, long Uncovered = 0);
+        long Selects, long PositionSum, long Converts, double ConvertValueSum, long Uncovered = 0,
+        long UncoveredChosen = 0);
 
     /// <summary>One day of the time series behind the charts.</summary>
     public readonly record struct DailyStat(long Day, long Searches, long ZeroHits, long ClickedSearches,
-        long Selects, long Converts, double ConvertValueSum, long PositionSum, long Uncovered = 0);
+        long Selects, long Converts, double ConvertValueSum, long PositionSum, long Uncovered = 0,
+        long UncoveredChosen = 0);
+
+    /// <summary>How a query list is ordered.</summary>
+    public enum QueryOrder
+    {
+        /// <summary>Most searched first (with uncoveredOnly or zeroHitsOnly: most often so).</summary>
+        Searches,
+        /// <summary>Highest click-through first, among queries searched at least
+        /// <see cref="StatisticsStore.ClickThroughMinSearches"/> times.</summary>
+        HighestClickThrough,
+        /// <summary>Lowest click-through first, with the same floor.</summary>
+        LowestClickThrough,
+        /// <summary>With uncoveredOnly: only the queries a result was chosen from anyway, most
+        /// chosen first. The fuzzy finds.</summary>
+        ChosenAnyway,
+    }
 
     /// <summary>One document's aggregate over a window.</summary>
     public readonly record struct DocumentStat(long DocumentKey, long Selects, long Converts, double ConvertValueSum);
@@ -78,6 +96,9 @@ namespace IndxServer.Services
     public sealed class StatisticsStore(string dbPath, ILogger<StatisticsStore> logger)
     {
         private readonly string _dbPath = dbPath;
+
+        /// <summary>The fewest searches a query needs to take part in a click-through order.</summary>
+        public const int ClickThroughMinSearches = 5;
 
         public string DbPath => _dbPath;
 
@@ -878,18 +899,27 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
         /// zero-hit report, ordered by how often the query found nothing.
         /// </summary>
         public List<QueryStat> TopQueries(string teamId, string dataSet, long fromDay, long toDay,
-            int limit, bool zeroHitsOnly = false, bool uncoveredOnly = false)
+            int limit, bool zeroHitsOnly = false, bool uncoveredOnly = false, QueryOrder order = QueryOrder.Searches)
         {
             long rolledTo = Math.Min(toDay, LastRolledDay());
             long liveFromMs = Math.Max(fromDay, rolledTo + 1) * 86_400_000L;
             long toMsExcl = (toDay + 1) * 86_400_000L;
             using var conn = Open();
             using var cmd = conn.CreateCommand();
-            var order = uncoveredOnly ? "HAVING SUM(Unc) > 0 ORDER BY U DESC, S DESC"
-                : zeroHitsOnly ? "HAVING SUM(ZeroHits) > 0 ORDER BY Z DESC, S DESC" : "ORDER BY S DESC";
+            // A click-through order needs a floor: a query searched once and clicked once is 100 %
+            // and says nothing.
+            var orderBy = order switch
+            {
+                QueryOrder.HighestClickThrough => $"HAVING S >= {ClickThroughMinSearches} ORDER BY CAST(K AS REAL) / S DESC, S DESC",
+                QueryOrder.LowestClickThrough => $"HAVING S >= {ClickThroughMinSearches} ORDER BY CAST(K AS REAL) / S ASC, S DESC",
+                QueryOrder.ChosenAnyway when uncoveredOnly => "HAVING UC > 0 ORDER BY UC DESC, U DESC",
+                _ when uncoveredOnly => "HAVING SUM(Unc) > 0 ORDER BY U DESC, S DESC",
+                _ when zeroHitsOnly => "HAVING SUM(ZeroHits) > 0 ORDER BY Z DESC, S DESC",
+                _ => "ORDER BY S DESC",
+            };
             cmd.CommandText = $@"
 SELECT QueryText, SUM(Searches) AS S, SUM(ZeroHits) AS Z, SUM(Selects) AS C,
-       SUM(Clicked) AS K, SUM(PosSum), SUM(Unc) AS U, SUM(UncChosen) FROM (
+       SUM(Clicked) AS K, SUM(PosSum), SUM(Unc) AS U, SUM(UncChosen) AS UC FROM (
     SELECT QueryText, Searches, ZeroHits, Selects, ClickedSearches AS Clicked, PositionSum AS PosSum,
            Uncovered AS Unc, UncoveredChosen AS UncChosen
       FROM DailyQueryStats
@@ -903,7 +933,7 @@ SELECT QueryText, SUM(Searches) AS S, SUM(ZeroHits) AS Z, SUM(Selects) AS C,
      WHERE trim(c.QueryText) <> ''
 )
 GROUP BY QueryText
-{order}
+{orderBy}
 LIMIT $n";
             cmd.Parameters.AddWithValue("$t", teamId);
             cmd.Parameters.AddWithValue("$d", dataSet);
@@ -954,8 +984,10 @@ SELECT lower(s.QueryText), x.DocumentKey, COUNT(*) AS N
         }
 
         /// <summary>Top documents by selects in [fromDay, toDay], with converts and value summed
-        /// the same way - rolled days plus live raw rows.</summary>
-        public List<DocumentStat> TopDocuments(string teamId, string dataSet, long fromDay, long toDay, int limit)
+        /// the same way - rolled days plus live raw rows. With <paramref name="byConverts"/>, by
+        /// conversions instead, and only the documents that have any.</summary>
+        public List<DocumentStat> TopDocuments(string teamId, string dataSet, long fromDay, long toDay, int limit,
+            bool byConverts = false)
         {
             long rolledTo = Math.Min(toDay, LastRolledDay());
             long liveFromMs = Math.Max(fromDay, rolledTo + 1) * 86_400_000L;
@@ -974,7 +1006,7 @@ SELECT DocumentKey, SUM(Sel) AS S, SUM(Conv) AS C, SUM(Val) FROM (
      WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx
 )
 GROUP BY DocumentKey
-ORDER BY S DESC, C DESC
+" + (byConverts ? "HAVING C > 0 ORDER BY C DESC, S DESC" : "ORDER BY S DESC, C DESC") + @"
 LIMIT $n";
             cmd.Parameters.AddWithValue("$t", teamId);
             cmd.Parameters.AddWithValue("$d", dataSet);
@@ -1008,7 +1040,7 @@ LIMIT $n";
             var rows = TimeSeriesInternal(teamId, dataSet, fromDay, toDay, perDay: false);
             var r = rows.Count == 0 ? default : rows[0];
             return new OverviewStat(r.Searches, r.ZeroHits, r.ClickedSearches, r.Selects,
-                r.PositionSum, r.Converts, r.ConvertValueSum, r.Uncovered);
+                r.PositionSum, r.Converts, r.ConvertValueSum, r.Uncovered, r.UncoveredChosen);
         }
 
         private List<DailyStat> TimeSeriesInternal(string teamId, string dataSet, long fromDay, long toDay, bool perDay)
@@ -1021,22 +1053,23 @@ LIMIT $n";
             using var conn = Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv), SUM(Val), SUM(PosSum), SUM(Unc) FROM (
+SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv), SUM(Val), SUM(PosSum), SUM(Unc), SUM(UncChosen) FROM (
     SELECT Day, Searches, ZeroHits, ClickedSearches AS Clicked, Selects AS Sel,
-           0 AS Conv, 0.0 AS Val, PositionSum AS PosSum, Uncovered AS Unc
+           0 AS Conv, 0.0 AS Val, PositionSum AS PosSum, Uncovered AS Unc, UncoveredChosen AS UncChosen
       FROM DailyQueryStats
      WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
     UNION ALL
-    SELECT Day, 0, 0, 0, 0, Converts, ConvertValueSum, 0, 0 FROM DailyDocumentStats
+    SELECT Day, 0, 0, 0, 0, Converts, ConvertValueSum, 0, 0, 0 FROM DailyDocumentStats
      WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
     UNION ALL
     SELECT c.Timestamp / 86400000, 1, CASE WHEN c.HitCount = 0 THEN 1 ELSE 0 END,
            CASE WHEN c.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(c.Cnt, 0), 0, 0.0, COALESCE(c.PosSum, 0),
-           CASE WHEN (c.HitCount = 0 OR c.Covered = 0) THEN 1 ELSE 0 END
+           CASE WHEN (c.HitCount = 0 OR c.Covered = 0) THEN 1 ELSE 0 END,
+           CASE WHEN (c.HitCount = 0 OR c.Covered = 0) AND c.Cnt > 0 THEN 1 ELSE 0 END
       FROM {CountedSearches(LiveWhere)} c
      WHERE trim(c.QueryText) <> ''
     UNION ALL
-    SELECT Timestamp / 86400000, 0, 0, 0, 0, 1, COALESCE(Value, 0), 0, 0 FROM ConvertEvents
+    SELECT Timestamp / 86400000, 0, 0, 0, 0, 1, COALESCE(Value, 0), 0, 0, 0 FROM ConvertEvents
      WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx
 )
 {group}";
@@ -1052,7 +1085,7 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
             {
                 if (r.IsDBNull(1)) continue; // the no-rows aggregate row of the totals query
                 result.Add(new DailyStat(r.GetInt64(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3),
-                    r.GetInt64(4), r.GetInt64(5), r.GetDouble(6), r.GetInt64(7), r.GetInt64(8)));
+                    r.GetInt64(4), r.GetInt64(5), r.GetDouble(6), r.GetInt64(7), r.GetInt64(8), r.GetInt64(9)));
             }
             return result;
         }

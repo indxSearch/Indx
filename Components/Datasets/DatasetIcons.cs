@@ -32,6 +32,13 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> WeightHigh = Of<Icons.WeightHigh>();
         public static readonly RenderFragment<int> Speedometer = Of<Icons.Speedometer>();
 
+        // The Statistics tab's sections.
+        public static readonly RenderFragment<int> TopQueries = Of<Icons.SearchQuery>();
+        public static readonly RenderFragment<int> FuzzySearch = Of<Icons.FuzzySearch>();
+        public static readonly RenderFragment<int> TopDocuments = Of<Icons.DocumentOrFile>();
+        public static readonly RenderFragment<int> Browsing = Of<Icons.Filter>();
+        public static readonly RenderFragment<int> Changes = Of<Icons.Update>();
+
         /// <summary>The speedometer as a running spinner — the benchmark button swaps to this
         /// while a run is in progress, so the icon itself says "measuring".</summary>
         public static readonly RenderFragment<int> SpeedometerRunning = size => builder =>

@@ -1,6 +1,7 @@
 ﻿@* The statistics dashboard for one dataset (Notes/statistics-design.md, "Presentation"):
    hero tiles for the window's totals and rates, one time-series chart (one axis - searches and
-   selects share the unit), the zero-hit list, top queries and top documents. All reads go
+   selects share the unit), then one section at a time behind a tab bar, each with its own view
+   settings: top queries, fuzzy search, top documents, browsing and changes. All reads go
    through StatisticsStore (the N-tier rule: no SQL here), on a background thread. Document
    titles come from the engine WITHOUT waking it: FindEngine only, a hibernated dataset shows
    keys - never resolve an engine from a dashboard. *@
@@ -53,8 +54,8 @@ else
                 <span class="stats-tile-value">@N(_overview.Searches)</span>
             </Surface>
             <Surface Class="stats-tile">
-                <Tooltip Content="Share of searches coverage confirmed no result for: what was shown came from fuzzy matching alone, or nothing was."><span class="stats-tile-label">Without coverage</span></Tooltip>
-                <span class="stats-tile-value">@Pct(_overview.Uncovered, _overview.Searches)</span>
+                <Tooltip Content="Searches with typos too large for an exact match, where the visitor still chose a result fuzzy search found."><span class="stats-tile-label">Fuzzy finds</span></Tooltip>
+                <span class="stats-tile-value">@N(_overview.UncoveredChosen)</span>
             </Surface>
             <Surface Class="stats-tile">
                 <Tooltip Content="Share of searches that ended in a chosen result."><span class="stats-tile-label">Click-through</span></Tooltip>
@@ -70,15 +71,25 @@ else
             </Surface>
         </div>
 
-        <Chart Series="_series" Labels="_labels" Type="line" Height="180" Markers="_markers" />
+        <Chart Series="_series" Labels="_labels" Type="line" Height="180" Markers="Markers" />
 
         @* The overview above stays put; the detail is one section at a time, so each can carry
            its own view settings and a phone shows one table rather than five. *@
-        <Tabs Items="SectionItems" Active="@_section" ActiveChanged="@(v => _section = v ?? "queries")"
-              Size="micro" Scrollable Bleed="calc(var(--page-gutter) + 5px)" AriaLabel="Statistics sections" />
+        <div class="stats-sections">
+            <Tabs Items="SectionItems" Active="@_section" ActiveChanged="@(v => _section = v ?? "queries")"
+                  Size="micro" Scrollable Bleed="calc(var(--page-gutter) + 5px)" AriaLabel="Statistics sections" />
+        </div>
 
         @if (_section == "queries")
         {
+            <div class="stats-view">
+                <SelectField Size="micro" Options="QueryOrderOptions" Value="@_queryOrder.ToString()" ValueChanged="SetQueryOrder" aria-label="Order" />
+                <Tabs Items="RowItems" Active="@_queryRows.ToString()" ActiveChanged="SetQueryRows" Size="micro" Variant="button" AriaLabel="Rows shown" />
+            </div>
+            @if (_queryOrder != QueryOrder.Searches)
+            {
+                <p class="stats-help">Queries searched at least @StatisticsStore.ClickThroughMinSearches times.</p>
+            }
             @if (_topQueries.Count == 0) { <p class="stats-empty">No searches with text in this period.</p> }
             else {
             <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Top queries" Class="stats-table">
@@ -98,19 +109,27 @@ else
             }
         }
 
-        @if (_section == "uncovered")
+        @if (_section == "fuzzy")
         {
-            @* A fuzzy engine nearly always shows something, so "no results" is rare and says little.
-               Without coverage is the signal: coverage confirmed nothing. A row nobody chose from is
-               a gap in the catalogue or a missing synonym; a row with choices is a search fuzzy
-               matching rescued, and the most chosen document says what the visitor meant. *@
-            <p class="stats-help">Searches coverage confirmed nothing for. Chosen anyway means fuzzy matching found what the visitor meant: a synonym or spelling to add. Nothing chosen: a gap to fill.</p>
-            @if (_uncovered.Count == 0) { <p class="stats-empty">Coverage confirmed a result for every search in this period.</p> }
+            @* What fuzzy search found that an exact match could not: coverage confirmed nothing, and
+               the visitor chose a result anyway. One of the things Indx does that others do not, so
+               the section leads with the finds; "All" adds the searches nothing was chosen from. *@
+            <div class="stats-view">
+                <Tabs Items="FuzzyItems" Active="@(_fuzzyAll ? "all" : "found")" ActiveChanged="SetFuzzyView" Size="micro" Variant="button" AriaLabel="Fuzzy searches shown" />
+            </div>
+            <p class="stats-help">
+                @if (_fuzzyAll) { <text>Every search with typos too large for an exact match, the ones nothing was chosen from included.</text> }
+                else { <text>Searches with typos too large for an exact match, where fuzzy search still found what the visitor was looking for.</text> }
+            </p>
+            @if (_fuzzy.Count == 0)
+            {
+                <p class="stats-empty">@(_fuzzyAll ? "Every search in this period had an exact or near-exact match." : "No fuzzy finds in this period.")</p>
+            }
             else {
-            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Searches without coverage" Class="stats-table">
-                <thead><tr><th>Query</th><th class="stats-num">Searches</th><th class="stats-num">Chosen anyway</th><th>Most chosen</th></tr></thead>
+            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Fuzzy search" Class="stats-table">
+                <thead><tr><th>Query</th><th class="stats-num">Searches</th><th class="stats-num">Chosen</th><th>Most chosen result</th></tr></thead>
                 <tbody>
-                    @foreach (var q in _uncovered)
+                    @foreach (var q in _fuzzy)
                     {
                         <tr>
                             <td>@QueryLabel(q.QueryText)</td>
@@ -126,7 +145,11 @@ else
 
         @if (_section == "documents")
         {
-            @if (_topDocuments.Count == 0) { <p class="stats-empty">No results were chosen in this period. Clicks arrive when the storefront sends them to <code>events/select</code>.</p> }
+            <div class="stats-view">
+                <SelectField Size="micro" Options="DocumentOrderOptions" Value="@(_documentsByConverts ? "converts" : "selects")" ValueChanged="SetDocumentOrder" aria-label="Order" />
+            </div>
+            @if (_topDocuments.Count == 0 && _documentsByConverts) { <p class="stats-empty">No conversions in this period. They arrive when the storefront sends them to <code>events/convert</code>.</p> }
+            else if (_topDocuments.Count == 0) { <p class="stats-empty">No results were chosen in this period. Clicks arrive when the storefront sends them to <code>events/select</code>.</p> }
             else {
             <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Top documents" Class="stats-table">
                 <thead><tr><th>Document</th><th class="stats-num">Selects</th><th class="stats-num">Conversions</th></tr></thead>
@@ -172,13 +195,19 @@ else
         {
             @* What the owners changed, beside what visitors did: the why behind a bend in the line
                (Notes/statistics-design.md, "Change events"). The blue squares on the chart are these. *@
+            @if (ChangeKindOptions.Count > 2)
+            {
+                <div class="stats-view">
+                    <SelectField Size="micro" Options="ChangeKindOptions" Value="@(_changeKind ?? "")" ValueChanged="SetChangeKind" aria-label="Kind of change" />
+                </div>
+            }
             @if (_changes.Count == 0) { <p class="stats-empty">No changes were made to the dataset in this period.</p> }
             @if (_changes.Count > 0)
             {
                 <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Changes" Class="stats-table">
                     <thead><tr><th>When</th><th>What</th></tr></thead>
                     <tbody>
-                        @foreach (var c in Enumerable.Reverse(_changes))
+                        @foreach (var c in Enumerable.Reverse(ShownChanges))
                         {
                             <tr>
                                 <td><TimeAgo Value="DateTimeOffset.FromUnixTimeMilliseconds(c.Timestamp).UtcDateTime" TooltipPosition="left" /></td>
@@ -188,7 +217,8 @@ else
                     </tbody>
                 </Table>
             }
-            @if (_documentTotals.Inserted + _documentTotals.Updated + _documentTotals.Deleted > 0)
+            @if (_documentTotals.Inserted + _documentTotals.Updated + _documentTotals.Deleted > 0
+                 && (_changeKind == null || _changeKind == DatasetChangeKind.Documents))
             {
                 <p class="stats-help">
                     Documents in this period: @N(_documentTotals.Inserted) inserted, @N(_documentTotals.Updated) updated, @N(_documentTotals.Deleted) deleted.
@@ -205,10 +235,51 @@ else
     private bool _loaded;
     private OverviewStat _overview;
     private List<QueryStat> _topQueries = [];
-    private List<QueryStat> _uncovered = [];
+    private List<QueryStat> _fuzzy = [];
     private string _section = "queries";
+    private long _fromDay, _toDay;
 
-    /// <summary>The section to open on: queries, uncovered, documents, browsing or changes.</summary>
+    // Each section's view settings. They live as long as the tab does; a new window keeps them.
+    private QueryOrder _queryOrder = QueryOrder.Searches;
+    private int _queryRows = 10;
+    private bool _fuzzyAll;
+    private bool _documentsByConverts;
+    private string? _changeKind;
+
+    private static readonly List<SelectField.SelectOption> QueryOrderOptions =
+    [
+        new("Most searched", nameof(QueryOrder.Searches)),
+        new("Highest click-through", nameof(QueryOrder.HighestClickThrough)),
+        new("Lowest click-through", nameof(QueryOrder.LowestClickThrough)),
+    ];
+    private static readonly List<Tabs.TabItem> RowItems = [new("10", "10"), new("25", "25"), new("50", "50")];
+    private static readonly List<Tabs.TabItem> FuzzyItems = [new("Found", "found"), new("All", "all")];
+    private static readonly List<SelectField.SelectOption> DocumentOrderOptions =
+    [
+        new("Most selected", "selects"),
+        new("Most converted", "converts"),
+    ];
+
+    /// <summary>"All changes" and the kinds this window has, by name.</summary>
+    private List<SelectField.SelectOption> ChangeKindOptions =>
+    [
+        new("All changes", ""),
+        .. _changes.Select(c => c.Kind).Distinct()
+            .Select(k => new SelectField.SelectOption(ChangeDescriptions.KindLabel(k), k))
+            .OrderBy(o => o.Label),
+    ];
+
+    private IEnumerable<ChangeStat> ShownChanges =>
+        _changeKind == null ? _changes : _changes.Where(c => c.Kind == _changeKind);
+
+    /// <summary>The chart's change markers follow the Changes filter, so picking a kind there
+    /// shows where on the line those changes fell.</summary>
+    private IReadOnlyList<Chart.ChartMarker> Markers => ShownChanges
+        .Select(c => new Chart.ChartMarker((int)(StatisticsStore.DayOf(c.Timestamp) - _fromDay),
+                                           ChangeDescriptions.Describe(c.Kind, c.Summary)))
+        .ToList();
+
+    /// <summary>The section to open on: queries, fuzzy, documents, browsing or changes.</summary>
     [Parameter] public string? InitialSection { get; set; }
 
     protected override void OnInitialized()
@@ -220,17 +291,16 @@ else
     /// is the thing worth noticing from the overview.</summary>
     private List<Tabs.TabItem> SectionItems =>
     [
-        new("Top queries", "queries"),
-        new("Without coverage", "uncovered"),
-        new("Top documents", "documents"),
-        new("Browsing", "browsing"),
-        new("Changes", "changes", Badge: _changes.Count > 0 ? _changes.Count.ToString() : null),
+        new("Top queries", "queries", DatasetIcons.TopQueries),
+        new("Fuzzy search", "fuzzy", DatasetIcons.FuzzySearch),
+        new("Top documents", "documents", DatasetIcons.TopDocuments),
+        new("Browsing", "browsing", DatasetIcons.Browsing),
+        new("Changes", "changes", DatasetIcons.Changes, Badge: _changes.Count > 0 ? _changes.Count.ToString() : null),
     ];
     private List<DocumentStat> _topDocuments = [];
     private List<FilterStat> _topFilters = [];
     private List<ChangeStat> _changes = [];
     private (long Inserted, long Updated, long Deleted) _documentTotals;
-    private IReadOnlyList<Chart.ChartMarker>? _markers;
     private IReadOnlyList<Chart.ChartSeries> _series = [];
     private string[]? _labels;
     private readonly Dictionary<long, string> _titles = [];
@@ -277,18 +347,14 @@ else
         {
             long toDay = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             long fromDay = toDay - days + 1;
+            (_fromDay, _toDay) = (fromDay, toDay);
             _overview = store.Overview(team, ds, fromDay, toDay);
-            _topQueries = store.TopQueries(team, ds, fromDay, toDay, 10);
-            _uncovered = store.TopQueries(team, ds, fromDay, toDay, 10, uncoveredOnly: true);
-            _topDocuments = store.TopDocuments(team, ds, fromDay, toDay, 10);
+            LoadLists(store);
             _topFilters = store.TopFilters(team, ds, fromDay, toDay, 10);
             _changes = store.Changes(team, ds, fromDay, toDay);
+            if (_changeKind != null && !_changes.Any(c => c.Kind == _changeKind)) _changeKind = null;
             var documentDays = store.DocumentChanges(team, ds, fromDay, toDay);
             _documentTotals = (documentDays.Sum(d => d.Inserted), documentDays.Sum(d => d.Updated), documentDays.Sum(d => d.Deleted));
-            _markers = _changes
-                .Select(c => new Chart.ChartMarker((int)(StatisticsStore.DayOf(c.Timestamp) - fromDay),
-                                                   ChangeDescriptions.Describe(c.Kind, c.Summary)))
-                .ToList();
 
             var byDay = store.TimeSeries(team, ds, fromDay, toDay).ToDictionary(r => r.Day);
             var searches = new double[days];
@@ -313,6 +379,56 @@ else
         _loaded = true;
         await Render();
     }
+
+    /// <summary>The lists whose rows depend on a section's view settings.</summary>
+    private void LoadLists(StatisticsStore store)
+    {
+        var (team, ds) = (Ctx.TeamId, Ctx.Name);
+        _topQueries = store.TopQueries(team, ds, _fromDay, _toDay, _queryRows, order: _queryOrder);
+        _fuzzy = store.TopQueries(team, ds, _fromDay, _toDay, 10, uncoveredOnly: true,
+            order: _fuzzyAll ? QueryOrder.Searches : QueryOrder.ChosenAnyway);
+        _topDocuments = store.TopDocuments(team, ds, _fromDay, _toDay, 10, byConverts: _documentsByConverts);
+    }
+
+    private async Task ReloadListsAsync()
+    {
+        var store = Stats.Store;
+        if (store == null || !_loaded) return;
+        await Task.Run(() => LoadLists(store));
+        await Render();
+    }
+
+    private Task SetQueryOrder(string? value)
+    {
+        if (!Enum.TryParse<QueryOrder>(value, out var order) || order == _queryOrder) return Task.CompletedTask;
+        _queryOrder = order;
+        return ReloadListsAsync();
+    }
+
+    private Task SetQueryRows(string? value)
+    {
+        if (!int.TryParse(value, out var rows) || rows == _queryRows) return Task.CompletedTask;
+        _queryRows = rows;
+        return ReloadListsAsync();
+    }
+
+    private Task SetFuzzyView(string? value)
+    {
+        var all = value == "all";
+        if (all == _fuzzyAll) return Task.CompletedTask;
+        _fuzzyAll = all;
+        return ReloadListsAsync();
+    }
+
+    private Task SetDocumentOrder(string? value)
+    {
+        var byConverts = value == "converts";
+        if (byConverts == _documentsByConverts) return Task.CompletedTask;
+        _documentsByConverts = byConverts;
+        return ReloadListsAsync();
+    }
+
+    private void SetChangeKind(string? value) => _changeKind = string.IsNullOrEmpty(value) ? null : value;
 
     /// <summary>A browse (empty) search is counted too; give it a name rather than a blank cell.</summary>
     private static RenderFragment QueryLabel(string text) => __builder =>

@@ -28,11 +28,15 @@ namespace IndxServer.Models
     /// from fuzzy matching alone, or nothing was shown. For a fuzzy engine that is the meaningful
     /// "found nothing", since it nearly always shows something; ZeroHits stays for compatibility.
     /// UncoveredRate = Uncovered / Searches.</para>
+    ///
+    /// <para>UncoveredChosen is the fuzzy finds: of those, the searches where a result was chosen
+    /// anyway, a typo too large for an exact match that fuzzy search still answered.</para>
     /// </summary>
     public record StatisticsOverviewResponse(
         long Searches, long ZeroHits, long ClickedSearches, long Selects, long Converts,
         double ConvertValueSum, double? ZeroHitRate, double? ClickThroughRate,
-        double? AverageClickPosition, long Uncovered = 0, double? UncoveredRate = null);
+        double? AverageClickPosition, long Uncovered = 0, double? UncoveredRate = null,
+        long UncoveredChosen = 0);
 
     /// <summary>One day of the chart series. Date is the UTC day as yyyy-MM-dd.</summary>
     public record StatisticsDayResponse(
