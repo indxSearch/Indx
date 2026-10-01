@@ -136,12 +136,13 @@
         Tabs.TabItem Tab(string value, string label, RenderFragment<int> icon, bool enabled, string? badge = null, string? badgeTitle = null) =>
             new(label, value, icon, Disabled: !enabled, Title: enabled ? null : NotYet, Badge: badge, BadgeTitle: badgeTitle);
 
+        // Statistics first: how the dataset is used is what people come back for. They live in
+        // their own store, so the tab works even for a hibernated dataset - it reads no engine
+        // (titles fall back to keys) and must never wake one.
+        if (Statistics.Enabled) items.Add(Tab("statistics", "Statistics", DatasetIcons.Statistics, true));
         if (isReady || pending) items.Add(Tab("status", "Status", DatasetIcons.Status, isReady));
         items.Add(Tab("fields", "Field configuration", DatasetIcons.Fields, true));
         if (isReady || pending) items.Add(Tab("search", "Search preview", DatasetIcons.Search, isReady));
-        // Statistics live in their own store, so the tab works even for a hibernated dataset -
-        // it reads no engine (titles fall back to keys) and must never wake one.
-        if (Statistics.Enabled) items.Add(Tab("statistics", "Statistics", DatasetIcons.Statistics, true));
         if ((isReady || pending) && Ctx.IsEditor)
         {
             var expired = isReady ? ExpiredBoostRules() : 0;
