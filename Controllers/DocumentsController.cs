@@ -22,8 +22,19 @@ namespace IndxServer.Controllers
     /// Team scoping, authentication and the error contract are declared on
     /// <see cref="DatasetApiController"/>.
     /// </summary>
-    public class DocumentsController(TeamContextResolver resolver) : DatasetApiController(resolver)
+    public class DocumentsController(TeamContextResolver resolver, StatisticsService statistics) : DatasetApiController(resolver)
     {
+        /// <summary>
+        /// Counts a successful request's document changes into the dataset's statistics
+        /// (Notes/statistics-design.md, "Change events"): the day's totals, and an event of its
+        /// own for a mass change or a by-filter operation. Every mutating route calls it once,
+        /// just before its success response; this controller is the only place documents change.
+        /// </summary>
+        private void Count(string dataSetName, string teamId, IServerSearchEngine engine, string operation,
+            long inserted = 0, long updated = 0, long deleted = 0, bool byFilter = false) =>
+            statistics.RecordDocuments(teamId, dataSetName, operation, inserted, updated, deleted,
+                engine.Status.DocumentCount, byFilter);
+
         /// <summary>
         /// Deletes a document from the dataset by its key.
         /// </summary>
@@ -43,6 +54,7 @@ namespace IndxServer.Controllers
             var result = matcher.DeleteJsonRecord(documentKey);
             if (!result)
                 return ApiProblems.DocumentNotFound(documentKey);
+            Count(dataSetName, ctx.OwnerKey, matcher, "delete", deleted: 1);
             return NoContent();
         }
 
@@ -70,6 +82,7 @@ namespace IndxServer.Controllers
                     if (!result)
                         return ApiProblems.DocumentNotFound(documentKey);
                 }
+                Count(dataSetName, ctx.OwnerKey, engine, "delete", deleted: documentKeys.Length);
                 return NoContent();
             }, SystemState.Ready);
         }
@@ -133,6 +146,7 @@ namespace IndxServer.Controllers
             var result = matcher.InsertJsonRecord(jsonData, out string error2);
             if (!result)
                 return ApiProblems.InvalidArgument(error2);
+            Count(dataSetName, ctx.OwnerKey, matcher, "insert", inserted: 1);
             return StatusCode(StatusCodes.Status201Created);
         }
 
@@ -152,6 +166,7 @@ namespace IndxServer.Controllers
                 var result = engine.InsertJsonRecords(jsonRecords, null, out string error2);
                 if (!result)
                     return ApiProblems.InvalidArgument(error2);
+                Count(dataSetName, ctx.OwnerKey, engine, "insert", inserted: jsonRecords.Length);
                 return StatusCode(StatusCodes.Status201Created);
                 // Created and Ready, not Loaded: the engine inserts into a Created dataset (it loads
                 // and indexes the records) and into a Ready one, and refuses Loaded with "must be
@@ -183,6 +198,9 @@ namespace IndxServer.Controllers
                 var result = engine.UpdateJsonRecords(jsonRecords, null, out string error2);
                 if (!result)
                     return ApiProblems.InvalidArgument(error2);
+                // The records sent: the engine skips any whose key matches no document, so this is
+                // an upper bound - the volume of the sync, which is what the count is for.
+                Count(dataSetName, ctx.OwnerKey, engine, "update", updated: jsonRecords.Length);
                 return NoContent();
             }, SystemState.Ready);
         }
@@ -220,6 +238,7 @@ namespace IndxServer.Controllers
                     return ApiProblems.DocumentNotFound(documentKey);
                 return ApiProblems.InvalidArgument(error2);
             }
+            Count(dataSetName, ctx.OwnerKey, matcher, "update", updated: 1);
             return NoContent();
         }
 
@@ -242,6 +261,7 @@ namespace IndxServer.Controllers
             var result = matcher.UpdateField(documentKey, update.FieldName, UnwrapJsonElement(update.Value)!, out string error2);
             if (!result)
                 return ApiProblems.InvalidArgument(error2);
+            Count(dataSetName, ctx.OwnerKey, matcher, "updateField", updated: 1);
             return NoContent();
         }
 
@@ -261,7 +281,11 @@ namespace IndxServer.Controllers
                 var filter = ResolveFilter(engine, filterProxy, "filter", out var filterError);
                 if (filter == null) return filterError!;
                 engine.LoadFilters(new[] { filter });
+                // The engine does not say how many it deleted; the count before and after does.
+                long before = engine.Status.DocumentCount;
                 engine.DeleteRecordsInFilter(filter);
+                Count(dataSetName, ctx.OwnerKey, engine, "deleteByFilter",
+                    deleted: Math.Max(0, before - engine.Status.DocumentCount), byFilter: true);
                 return NoContent();
             }, SystemState.Ready);
         }
@@ -285,6 +309,7 @@ namespace IndxServer.Controllers
                 var count = engine.UpdateFieldInFilter(filter, payload.FieldName, UnwrapJsonElement(payload.Value)!, out string error2);
                 if (count == 0 && !string.IsNullOrEmpty(error2))
                     return ApiProblems.InvalidArgument(error2);
+                Count(dataSetName, ctx.OwnerKey, engine, "updateByFilter", updated: count, byFilter: true);
                 return Ok(new CountResponse(count));
             }, SystemState.Ready);
         }

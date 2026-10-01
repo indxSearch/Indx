@@ -131,6 +131,12 @@ namespace IndxServer.Services
             return changes;
         }
 
+        /// <summary>The fields whose role or weight the proposal actually changes, by name: what a
+        /// change event records (Notes/statistics-design.md, "Change events"). Empty when nothing
+        /// changes, as when a client re-sends the configuration it read.</summary>
+        internal static string[] ChangedFields(DocumentFields? current, FieldProxy[] proposed) =>
+            current == null ? [] : Diff(current.GetField, proposed).Select(c => c.Field).Distinct().ToArray();
+
         /// <summary>True when the change cannot be applied to the live engine as it stands.</summary>
         public static bool NeedsRebuild(DocumentFields current, FieldProxy[] proposed) =>
             current.RequiresReindex(proposed) || current.RequiresReload(proposed);
@@ -138,11 +144,19 @@ namespace IndxServer.Services
         /// <summary>Applies a change that needs no rebuild to the live engine, and saves it: the
         /// library only persists by itself when Searchable or Sortable changes. Returns the name of
         /// a field that does not exist, or null.</summary>
-        public static string? ApplyInPlace(IServerSearchEngine engine, FieldProxy[] proposed)
+        public static string? ApplyInPlace(IServerSearchEngine engine, FieldProxy[] proposed,
+                                           string dataSetName, string teamId)
         {
+            // Before applying: afterwards there is nothing left to diff against. Only a Ready
+            // dataset's change is recorded; configuring one before its first index is setup.
+            var changed = engine.Status.SystemState == SystemState.Ready
+                ? ChangedFields(engine.DocumentFields, proposed) : [];
             var unknown = engine.SetFieldConfiguration(proposed);
             if (unknown == null && engine.DocumentFields is { } fields)
                 engine.Persistence?.SaveDocumentFields(fields.GetSerialized());
+            if (unknown == null && changed.Length > 0)
+                Engine.IndxServerInternalApi.ManagerOrNull?.ReportChange(dataSetName, teamId,
+                    DatasetChangeKind.Fields, new { fields = changed });
             return unknown;
         }
     }

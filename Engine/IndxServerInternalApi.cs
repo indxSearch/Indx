@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using Indx.Api;
 using Indx.Http;
 using Indx.Embeddings;
@@ -665,6 +666,7 @@ namespace IndxServer.Engine
 
             _logger.LogInformation("{Prefix}idle-evicting (keep-alive countdown elapsed)", MakeLogPrefix(inst.TeamId, inst.DataSetName));
             DisposeInstance(inst, key);
+            ReportChange(inst.DataSetName, inst.TeamId, Services.DatasetChangeKind.Hibernate, new { reason = "idle" });
             return true;
         }
 
@@ -709,6 +711,8 @@ namespace IndxServer.Engine
             DisposeDataSetInstance(dataSetName, teamId);
             _boostStore?.Delete(teamId, dataSetName);
             _metadataStore?.Delete(teamId, dataSetName);
+            // Statistics survive a delete by design, so the history says where the gap came from.
+            ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Delete);
             return true;
         }
 
@@ -837,12 +841,16 @@ namespace IndxServer.Engine
             var engine = FindInstance(dataSetName, teamId);
             if (engine?.Persistence == null)
                 return false;
+            // Every path to a synonym change lands here (HTTP, console, copy from another
+            // dataset). A replace restores the stored list directly and is not a change.
+            int entriesBefore = engine.SynonymList?.Entries.Count ?? 0;
 
             if (list == null)
             {
                 engine.Persistence.DeleteSynonyms();
                 engine.SynonymList = null;
                 _logger.LogInformation("{Prefix}synonym list removed", MakeLogPrefix(teamId, dataSetName));
+                ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Synonyms, new { entriesBefore, entries = 0 });
                 return true;
             }
 
@@ -852,6 +860,7 @@ namespace IndxServer.Engine
 
             engine.SynonymList = list;
             _logger.LogInformation("{Prefix}synonym list set ({Count} entries)", MakeLogPrefix(teamId, dataSetName), list.Entries.Count);
+            ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Synonyms, new { entriesBefore, entries = list.Entries.Count });
             return true;
         }
 
@@ -959,6 +968,9 @@ namespace IndxServer.Engine
                 instance.Index(monitor: indexMonitor);
                 indexMonitor.WaitForCompletion();
             }
+            // Under the new name: the statistics move there, and an event under the old one could
+            // be written after the move and be left behind.
+            ReportChange(newName, teamId, Services.DatasetChangeKind.Rename, new { from = dataSetName });
             return null;
         }
 
@@ -1255,6 +1267,32 @@ namespace IndxServer.Engine
         {
             using var proc = System.Diagnostics.Process.GetCurrentProcess();
             return proc.WorkingSet64 / (1024 * 1024);
+        }
+
+        /// <summary>The registry, or null before StartUpSystem - for services that attach to it from
+        /// their own start-up and must not throw when it is not there (a test host without it).</summary>
+        internal static IndxServerInternalApi? ManagerOrNull => _manager;
+
+        // Where changes to a dataset are reported (Notes/statistics-design.md, "Change events").
+        // A list, not one: the registry is process-wide and a test process runs a host per test,
+        // each with its own statistics. In production there is exactly one.
+        private ImmutableArray<Services.IDatasetChangeSink> _changeSinks = ImmutableArray<Services.IDatasetChangeSink>.Empty;
+
+        internal void AttachChangeSink(Services.IDatasetChangeSink sink) =>
+            ImmutableInterlocked.Update(ref _changeSinks, s => s.Contains(sink) ? s : s.Add(sink));
+
+        internal void DetachChangeSink(Services.IDatasetChangeSink sink) =>
+            ImmutableInterlocked.Update(ref _changeSinks, s => s.Remove(sink));
+
+        /// <summary>Reports a change to every attached sink. Never throws: a change has already
+        /// happened by the time it is reported, and its statistics must not undo it.</summary>
+        internal void ReportChange(string dataSetName, string teamId, string kind, object? summary = null)
+        {
+            foreach (var sink in _changeSinks)
+            {
+                try { sink.Changed(teamId, dataSetName, kind, summary); }
+                catch (Exception ex) { _logger.LogWarning(ex, "{Prefix}change event not recorded", MakeLogPrefix(teamId, dataSetName)); }
+            }
         }
 
         // Per-dataset boost rules (server-owned). Wired in once at startup; null until then.
@@ -1601,7 +1639,10 @@ namespace IndxServer.Engine
                         bool indexed = indexMonitor.WaitForCompletion();
 
                         if (loaded && indexed)
+                        {
                             _logger.LogInformation("{Prefix}auto-loaded on demand (KeepAliveTimeHrs={KeepAliveTimeHrs})", MakeLogPrefix(teamId, dataSetName), instance.KeepAliveTimeHrs);
+                            ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Wake, new { reason = "onDemand" });
+                        }
                         else
                             // A thrown failure is logged, with its stack, by the engine itself;
                             // Exception is null when a wait timed out instead.

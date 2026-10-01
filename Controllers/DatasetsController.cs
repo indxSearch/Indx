@@ -387,6 +387,8 @@ namespace IndxServer.Controllers
             var result = matcher.Hibernate(out string errorMessage);
             if (!result)
                 return ApiProblems.InvalidArgument(errorMessage);
+            IndxServerInternalApi.Manager.ReportChange(dataSetName, ctx.OwnerKey,
+                IndxServer.Services.DatasetChangeKind.Hibernate, new { reason = "manual" });
             return NoContent();
         }
 
@@ -409,6 +411,8 @@ namespace IndxServer.Controllers
             var result = matcher.WakeUp();
             if (!result)
                 return ApiProblems.OperationFailed("WakeUp failed - the dataset could not be restored from storage.");
+            IndxServerInternalApi.Manager.ReportChange(dataSetName, ctx.OwnerKey,
+                IndxServer.Services.DatasetChangeKind.Wake, new { reason = "manual" });
             return NoContent();
         }
     }

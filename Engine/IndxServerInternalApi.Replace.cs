@@ -88,6 +88,15 @@ namespace IndxServer.Engine
                 container.Touch(TimeProvider.GetUtcNow());
                 shadow = null; // ownership transferred
 
+                ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Replace, new
+                {
+                    documentsBefore = swappedOut?.Status.DocumentCount,
+                    documents = container.theInstance?.Status.DocumentCount,
+                    fieldsAdded = summary.Added,
+                    fieldsRemoved = summary.Removed,
+                    fieldsRetyped = summary.TypeChanged,
+                });
+
                 if (swappedOut != null)
                     _ = Task.Run(() => DisposeAfterGraceAsync(swappedOut, dataSetName, teamId));
 

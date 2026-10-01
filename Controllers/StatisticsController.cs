@@ -120,6 +120,32 @@ namespace IndxServer.Controllers
                 Math.Clamp(limit, 1, 1000)).ToArray();
         }
 
+        /// <summary>What the dataset's owners changed in the window, oldest first, and the daily
+        /// document totals: the why beside the numbers (Notes/statistics-design.md, "Change
+        /// events").</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/changes")]
+        public ActionResult<StatisticsChangesResponse> Changes(string teamName, string dataSetName, int days = 30)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var (fromDay, toDay) = Window(days);
+            var store = statistics.Store!;
+            var changes = store.Changes(ctx.OwnerKey, dataSetName, fromDay, toDay)
+                .Select(c => new StatisticsChangeResponse(
+                    DateTimeOffset.FromUnixTimeMilliseconds(c.Timestamp).UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                    c.Kind,
+                    c.Summary == null ? null : System.Text.Json.JsonDocument.Parse(c.Summary).RootElement.Clone()))
+                .ToArray();
+            var documents = store.DocumentChanges(ctx.OwnerKey, dataSetName, fromDay, toDay)
+                .Select(d => new StatisticsDocumentChangesResponse(
+                    DateOnly.FromDayNumber((int)d.Day + DateOnly.FromDateTime(DateTime.UnixEpoch).DayNumber).ToString("yyyy-MM-dd"),
+                    d.Inserted, d.Updated, d.Deleted))
+                .ToArray();
+            return new StatisticsChangesResponse(changes, documents);
+        }
+
         /// <summary>The dataset's statistics settings. <c>recordFilters</c>: whether each search's
         /// filter is stored, which is what the Browsing report counts. On by default.</summary>
         [KeyAccess(ApiKeyLevel.Read)]

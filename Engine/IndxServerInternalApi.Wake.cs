@@ -112,7 +112,10 @@ namespace IndxServer.Engine
                             ? "Indexing failed. See the server log for details."
                             : "Indexing failed: " + op.IndexMonitor.ErrorMessage;
                     else
+                    {
                         instance.Touch(TimeProvider.GetUtcNow());
+                        ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Wake, new { reason = "manual" });
+                    }
                 }
             }
             catch (Exception ex)

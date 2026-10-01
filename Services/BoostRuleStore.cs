@@ -97,9 +97,14 @@ namespace IndxServer.Services
             }
         }
 
+        /// <summary>Where a save is reported as a change (Notes/statistics-design.md, "Change
+        /// events"). Set by StatisticsService at startup; null with statistics off.</summary>
+        public IDatasetChangeSink? ChangeSink { get; set; }
+
         /// <summary>Replaces the whole rule list for a dataset and invalidates the cache.</summary>
         public void Save(string teamId, string dataSetName, IReadOnlyList<BoostRule> rules)
         {
+            var before = ChangeSink == null ? null : Load(teamId, dataSetName);
             var json = JsonSerializer.Serialize(rules, JsonOptions);
 
             // Ensure the search DB exists WITH its base schema before we touch it — going through
@@ -121,6 +126,18 @@ namespace IndxServer.Services
             cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
             cmd.ExecuteNonQuery();
             _cache.TryRemove(Key(teamId, dataSetName), out _);
+
+            // Counts and the schedule as saved, so a chart can mark when a scheduled rule starts
+            // and ends without an event of its own. Names and conditions stay out: counts only.
+            ChangeSink?.Changed(teamId, dataSetName, DatasetChangeKind.BoostRules, new
+            {
+                rulesBefore = before?.Count ?? 0,
+                rules = rules.Count,
+                enabledBefore = before?.Count(r => r.Enabled) ?? 0,
+                enabled = rules.Count(r => r.Enabled),
+                scheduled = rules.Where(r => r.ActiveFrom != null || r.ActiveUntil != null)
+                    .Select(r => new { from = r.ActiveFrom, until = r.ActiveUntil }).ToArray(),
+            });
         }
 
         /// <summary>Removes all boost rules for a dataset (e.g. on dataset delete) and invalidates the cache.</summary>

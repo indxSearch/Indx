@@ -301,6 +301,8 @@ namespace IndxServer.Components.Datasets
         public async Task HibernateAsync()
         {
             await Task.Run(() => Engines.DisposeDataSetInstance(Name, TeamId));
+            IndxServer.Engine.IndxServerInternalApi.ManagerOrNull?.ReportChange(
+                Name, TeamId, Services.DatasetChangeKind.Hibernate, new { reason = "manual" });
             // A hibernated dataset isn't Ready, so the tab nav disappears. Land on the
             // field-config view, where the "Hibernated → Wake up" UI lives.
             ActiveTab = "fields";

@@ -96,7 +96,7 @@ else if (Ctx.EditedFields is { } fields)
                 if (needsReindex && engine.Status.SystemState == SystemState.Ready)
                     Ctx.Engines.RunFieldConfigurationOnShadow(Ctx.Name, Ctx.TeamId, edited);
                 else
-                    FieldConfigurationChange.ApplyInPlace(engine, edited);
+                    FieldConfigurationChange.ApplyInPlace(engine, edited, Ctx.Name, Ctx.TeamId);
             });
 
             Ctx.RefreshFieldsFromEngine();

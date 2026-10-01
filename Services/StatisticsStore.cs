@@ -24,6 +24,20 @@ namespace IndxServer.Services
         string TeamId, string DataSet, string? QueryId, long DocumentKey, string Type,
         double? Value, string? Currency, long? Quantity, string? Subject, long Timestamp);
 
+    /// <summary>One change the dataset's owners made (Notes/statistics-design.md, "Change events").
+    /// Summary is a small JSON object of counts and field names, never content or who.</summary>
+    public readonly record struct ChangeEventRow(string TeamId, string DataSet, long Timestamp, string Kind, string? Summary);
+
+    /// <summary>Documents inserted, updated and deleted by one request, added up per day.</summary>
+    public readonly record struct DocumentCountRow(string TeamId, string DataSet, long Timestamp,
+        long Inserted, long Updated, long Deleted);
+
+    /// <summary>One recorded change, as the reads return it.</summary>
+    public readonly record struct ChangeStat(long Timestamp, string Kind, string? Summary);
+
+    /// <summary>One day's document changes.</summary>
+    public readonly record struct DocumentChangeStat(long Day, long Inserted, long Updated, long Deleted);
+
     /// <summary>One filter operand's aggregate over a window: how often people narrowed by it,
     /// and how often that came back empty. Value is empty for a range filter, which is reported
     /// by field only.</summary>
@@ -164,6 +178,26 @@ CREATE TABLE IF NOT EXISTS DailyFilterStats (
     Uses        INTEGER NOT NULL,
     ZeroHits    INTEGER NOT NULL,
     PRIMARY KEY (Day, TeamId, DataSet, Field, Value)
+);
+
+CREATE TABLE IF NOT EXISTS DatasetChanges (
+    Id          INTEGER PRIMARY KEY,
+    TeamId      TEXT    NOT NULL,
+    DataSet     TEXT    NOT NULL,
+    Timestamp   INTEGER NOT NULL,
+    Kind        TEXT    NOT NULL,           -- DatasetChangeKind
+    Summary     TEXT    NULL                -- small JSON: counts, field names; never content or who
+);
+CREATE INDEX IF NOT EXISTS IX_Changes_TeamDsTime ON DatasetChanges(TeamId, DataSet, Timestamp);
+
+CREATE TABLE IF NOT EXISTS DailyDocumentChanges (
+    Day         INTEGER NOT NULL,
+    TeamId      TEXT    NOT NULL,
+    DataSet     TEXT    NOT NULL,
+    Inserted    INTEGER NOT NULL,
+    Updated     INTEGER NOT NULL,
+    Deleted     INTEGER NOT NULL,
+    PRIMARY KEY (Day, TeamId, DataSet)
 );
 
 CREATE TABLE IF NOT EXISTS DatasetSettings (
@@ -385,6 +419,98 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
             }
 
             tx.Commit();
+        }
+
+        /// <summary>
+        /// Writes change events and document counts, in their own short transaction beside the
+        /// event batch: they are rare, and the search write path stays as it was. Document counts
+        /// are upserted (added to the day's row), so several writers - several instances - add up
+        /// rather than overwrite each other.
+        /// </summary>
+        public void WriteChanges(IReadOnlyList<ChangeEventRow> changes, IReadOnlyList<DocumentCountRow> documents)
+        {
+            if (changes.Count == 0 && documents.Count == 0) return;
+            using var conn = Open();
+            using var tx = conn.BeginTransaction();
+            if (changes.Count > 0)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = @"INSERT INTO DatasetChanges (TeamId, DataSet, Timestamp, Kind, Summary)
+                    VALUES ($t, $d, $ts, $k, $s)";
+                var t = cmd.Parameters.Add("$t", SqliteType.Text);
+                var d = cmd.Parameters.Add("$d", SqliteType.Text);
+                var ts = cmd.Parameters.Add("$ts", SqliteType.Integer);
+                var k = cmd.Parameters.Add("$k", SqliteType.Text);
+                var sm = cmd.Parameters.Add("$s", SqliteType.Text);
+                foreach (var c in changes)
+                {
+                    t.Value = c.TeamId; d.Value = c.DataSet; ts.Value = c.Timestamp; k.Value = c.Kind;
+                    sm.Value = (object?)c.Summary ?? DBNull.Value;
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            if (documents.Count > 0)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = @"INSERT INTO DailyDocumentChanges (Day, TeamId, DataSet, Inserted, Updated, Deleted)
+                    VALUES ($day, $t, $d, $i, $u, $x)
+                    ON CONFLICT(Day, TeamId, DataSet) DO UPDATE SET
+                        Inserted = Inserted + excluded.Inserted,
+                        Updated = Updated + excluded.Updated,
+                        Deleted = Deleted + excluded.Deleted";
+                var day = cmd.Parameters.Add("$day", SqliteType.Integer);
+                var t = cmd.Parameters.Add("$t", SqliteType.Text);
+                var d = cmd.Parameters.Add("$d", SqliteType.Text);
+                var i = cmd.Parameters.Add("$i", SqliteType.Integer);
+                var u = cmd.Parameters.Add("$u", SqliteType.Integer);
+                var x = cmd.Parameters.Add("$x", SqliteType.Integer);
+                foreach (var g in documents.GroupBy(r => (Day: DayOf(r.Timestamp), r.TeamId, r.DataSet)))
+                {
+                    day.Value = g.Key.Day; t.Value = g.Key.TeamId; d.Value = g.Key.DataSet;
+                    i.Value = g.Sum(r => r.Inserted); u.Value = g.Sum(r => r.Updated); x.Value = g.Sum(r => r.Deleted);
+                    cmd.ExecuteNonQuery();
+                }
+            }
+            tx.Commit();
+        }
+
+        /// <summary>The dataset's recorded changes in [fromDay, toDay], oldest first.</summary>
+        public List<ChangeStat> Changes(string teamId, string dataSet, long fromDay, long toDay)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"SELECT Timestamp, Kind, Summary FROM DatasetChanges
+                WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $from AND Timestamp < $to
+                ORDER BY Timestamp, Id";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$from", fromDay * 86_400_000L);
+            cmd.Parameters.AddWithValue("$to", (toDay + 1) * 86_400_000L);
+            var result = new List<ChangeStat>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                result.Add(new ChangeStat(r.GetInt64(0), r.GetString(1), r.IsDBNull(2) ? null : r.GetString(2)));
+            return result;
+        }
+
+        /// <summary>The dataset's document changes per day in [fromDay, toDay], days with none left out.</summary>
+        public List<DocumentChangeStat> DocumentChanges(string teamId, string dataSet, long fromDay, long toDay)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"SELECT Day, Inserted, Updated, Deleted FROM DailyDocumentChanges
+                WHERE TeamId = $t AND DataSet = $d AND Day >= $from AND Day <= $to ORDER BY Day";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$from", fromDay);
+            cmd.Parameters.AddWithValue("$to", toDay);
+            var result = new List<DocumentChangeStat>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                result.Add(new DocumentChangeStat(r.GetInt64(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3)));
+            return result;
         }
 
         private static void UpsertSubjectEdges(SqliteConnection conn, SqliteTransaction tx,
@@ -717,6 +843,8 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
                 "DailyQueryStats" => "SELECT COUNT(*) FROM DailyQueryStats",
                 "DailyDocumentStats" => "SELECT COUNT(*) FROM DailyDocumentStats",
                 "DailyFilterStats" => "SELECT COUNT(*) FROM DailyFilterStats",
+                "DatasetChanges" => "SELECT COUNT(*) FROM DatasetChanges",
+                "DailyDocumentChanges" => "SELECT COUNT(*) FROM DailyDocumentChanges",
                 "SubjectDocumentStats" => "SELECT COUNT(*) FROM SubjectDocumentStats",
                 _ => throw new ArgumentException($"Unknown statistics table '{table}'.", nameof(table)),
             };
@@ -961,7 +1089,10 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
 
         private static readonly string[] AllTables =
             ["SearchEvents", "SelectEvents", "ConvertEvents",
-             "DailyQueryStats", "DailyDocumentStats", "DailyFilterStats", "SubjectDocumentStats"];
+             "DailyQueryStats", "DailyDocumentStats", "DailyFilterStats", "SubjectDocumentStats",
+             // Deleting the statistics deletes their explanation too: starting the numbers over
+             // starts the history of what moved them over (decided 1 Oct 2026).
+             "DatasetChanges", "DailyDocumentChanges"];
 
         private int ExecutePerTable(string where, string a, string? b)
         {

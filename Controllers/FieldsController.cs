@@ -171,7 +171,7 @@ namespace IndxServer.Controllers
             // Inline: only query-time flags changed, or engine is not yet Ready.
             try
             {
-                var failed = IndxServer.Services.FieldConfigurationChange.ApplyInPlace(matcher, fields);
+                var failed = IndxServer.Services.FieldConfigurationChange.ApplyInPlace(matcher, fields, dataSetName, ctx.OwnerKey);
                 if (failed != null)
                     return ApiProblems.InvalidArgument($"Field '{failed}' does not exist in this dataset.");
             }
@@ -329,6 +329,11 @@ namespace IndxServer.Controllers
                     return ApiProblems.InvalidArgument($"Field '{name}' does not exist in this dataset.");
                 apply(f, name);
             }
+            // The legacy flag routes set roles directly; recorded like the configuration route,
+            // and only on a Ready dataset (before the first index it is setup, not a change).
+            if (matcher.Status.SystemState == SystemState.Ready)
+                IndxServerInternalApi.Manager.ReportChange(dataSetName, ctx.OwnerKey,
+                    IndxServer.Services.DatasetChangeKind.Fields, new { fields = fieldNames.Distinct().ToArray() });
             return NoContent();
         }
     }

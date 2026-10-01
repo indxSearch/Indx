@@ -43,6 +43,8 @@ namespace IndxServer.Services
         public void RecordSearch(in SearchEventRow row) => Enqueue(row);
         public void RecordSelect(in SelectEventRow row) => Enqueue(row);
         public void RecordConvert(in ConvertEventRow row) => Enqueue(row);
+        public void RecordChange(in ChangeEventRow row) => Enqueue(row);
+        public void RecordDocuments(in DocumentCountRow row) => Enqueue(row);
 
         private void Enqueue(object row)
         {
@@ -80,6 +82,8 @@ namespace IndxServer.Services
             var searches = new List<SearchEventRow>();
             var selects = new List<SelectEventRow>();
             var converts = new List<ConvertEventRow>();
+            var changes = new List<ChangeEventRow>();
+            var documents = new List<DocumentCountRow>();
             while (_queue.TryDequeue(out var row))
             {
                 Interlocked.Decrement(ref _queued);
@@ -88,15 +92,18 @@ namespace IndxServer.Services
                     case SearchEventRow s: searches.Add(s); break;
                     case SelectEventRow s: selects.Add(s); break;
                     case ConvertEventRow c: converts.Add(c); break;
+                    case ChangeEventRow c: changes.Add(c); break;
+                    case DocumentCountRow d: documents.Add(d); break;
                 }
             }
-            var count = searches.Count + selects.Count + converts.Count;
+            var count = searches.Count + selects.Count + converts.Count + changes.Count + documents.Count;
             if (count == 0) return;
             var superseded = MarkKeystrokes(searches);
             var started = Environment.TickCount64;
             try
             {
                 store.WriteBatch(searches, selects, converts, superseded);
+                store.WriteChanges(changes, documents);
                 Interlocked.Add(ref _flushedTotal, count);
                 Interlocked.Increment(ref _flushes);
                 Interlocked.Add(ref _flushMsTotal, Environment.TickCount64 - started);

@@ -13,8 +13,9 @@ namespace IndxServer.Services
     /// in Notes/statistics-design.md is why logging every search is affordable),
     /// <c>RetentionDays</c> (default 90; raw event rows only — rollups are kept), <c>DbFile</c>.
     /// </summary>
-    public sealed class StatisticsService(IConfiguration configuration, ILoggerFactory loggerFactory)
-        : IHostedService, IDisposable
+    public sealed class StatisticsService(IConfiguration configuration, ILoggerFactory loggerFactory,
+        BoostRuleStore? boostRules = null)
+        : IHostedService, IDisposable, IDatasetChangeSink
     {
         /// <summary>Roll up day D no earlier than D+2, so its selects and converts have arrived.</summary>
         private const int RollupLagDays = 2;
@@ -83,6 +84,11 @@ namespace IndxServer.Services
             Writer = new StatisticsWriter(Store, loggerFactory.CreateLogger<StatisticsWriter>());
             Writer.Start();
 
+            // The places changes happen report them here (Notes/statistics-design.md, "Change
+            // events"). Attached only when statistics are on, so off records nothing.
+            IndxServerInternalApi.ManagerOrNull?.AttachChangeSink(this);
+            if (boostRules != null) boostRules.ChangeSink = this;
+
             _cts = new CancellationTokenSource();
             _rollupLoop = Task.Run(() => RollupLoopAsync(_cts.Token));
             return Task.CompletedTask;
@@ -93,8 +99,56 @@ namespace IndxServer.Services
             // Idempotent, and safe after Dispose: the test host stops and disposes the factory in
             // an order that can run this twice around Dispose.
             try { _cts?.Cancel(); } catch (ObjectDisposedException) { }
+            IndxServerInternalApi.ManagerOrNull?.DetachChangeSink(this);
             Writer?.Stop();
             return Task.CompletedTask;
+        }
+
+        // ── Change events ────────────────────────────────────────────────────────────
+
+        private static readonly System.Text.Json.JsonSerializerOptions SummaryJson =
+            new(System.Text.Json.JsonSerializerDefaults.Web);
+
+        /// <inheritdoc/>
+        public void Changed(string teamId, string dataSet, string kind, object? summary = null)
+        {
+            if (!Enabled || Writer == null) return;
+            Writer.RecordChange(new ChangeEventRow(teamId, dataSet,
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), kind,
+                summary == null ? null : System.Text.Json.JsonSerializer.Serialize(summary, SummaryJson)));
+        }
+
+        /// <summary>A single request this large is a change worth a marker of its own, beside the
+        /// day's totals: a nightly sync gone wrong, a delete-by-filter that matched more than
+        /// meant. The smaller of a thousand documents and a tenth of the dataset, never below ten.</summary>
+        internal static long MassChangeThreshold(long datasetSize) =>
+            Math.Min(1_000, Math.Max(10, datasetSize / 10));
+
+        /// <summary>
+        /// Counts one request's document changes into the day's totals, and records it as a change
+        /// event of its own when it is a mass change (<see cref="MassChangeThreshold"/>) or a
+        /// by-filter operation, whose size nobody knew until it ran. Every document route calls
+        /// this once, after it succeeded.
+        /// </summary>
+        /// <param name="teamId">The team that owns the dataset.</param>
+        /// <param name="dataSet">The dataset's name.</param>
+        /// <param name="inserted">Documents the request added.</param>
+        /// <param name="updated">Documents the request changed.</param>
+        /// <param name="deleted">Documents the request removed.</param>
+        /// <param name="byFilter">A by-filter operation: always an event, its size unknown beforehand.</param>
+        /// <param name="operation">The route's verb ("insert", "update", "delete", "updateField",
+        /// "deleteByFilter", "updateByFilter"), for the event's summary.</param>
+        /// <param name="datasetSize">Documents in the dataset after the change, for the threshold.</param>
+        public void RecordDocuments(string teamId, string dataSet, string operation,
+            long inserted, long updated, long deleted, long datasetSize, bool byFilter = false)
+        {
+            if (!Enabled || Writer == null) return;
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            if (inserted + updated + deleted > 0)
+                Writer.RecordDocuments(new DocumentCountRow(teamId, dataSet, now, inserted, updated, deleted));
+            if (byFilter || inserted + updated + deleted >= MassChangeThreshold(datasetSize))
+                Changed(teamId, dataSet, DatasetChangeKind.Documents,
+                    new { operation, inserted, updated, deleted, documents = datasetSize });
         }
 
         /// <summary>Runs a rollup pass at startup and then every six hours. Idempotent per day,

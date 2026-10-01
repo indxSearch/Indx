@@ -208,6 +208,8 @@ namespace IndxServer.Engine
                     original = found.theInstance;
                 }
 
+                // Before the build: the swap replaces the configuration this diffs against.
+                var changedFields = Services.FieldConfigurationChange.ChangedFields(original.DocumentFields, fields);
                 shadow = BuildShadowFrom(original, dataSetName, teamId, fields, monitor);
                 monitor.WaitForCompletion();
                 if (!monitor.Succeeded)
@@ -226,6 +228,15 @@ namespace IndxServer.Engine
                     shadow.Persistence?.SaveDocumentFields(df.GetSerialized());
 
                 shadow = null;
+
+                // Every change to a loaded dataset's field configuration ends here (seven fields/*
+                // routes and the console); with no fields it is a plain rebuild, POST index on a
+                // Ready dataset. Field names only, as configuration.
+                if (changedFields.Length == 0)
+                    ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Reindex);
+                else
+                    ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Fields,
+                        new { fields = changedFields });
 
                 if (swappedOut != null)
                     _ = Task.Run(() => DisposeAfterGraceAsync(swappedOut, dataSetName, teamId));
