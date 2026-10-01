@@ -75,7 +75,7 @@
         @item.Label
         @if (item.Badge != null)
         {
-            <span class="indx-tab-badge" title="@item.BadgeTitle">@item.Badge</span>
+            <span class="indx-tab-badge @(item.BadgeTone == "teal" ? "indx-tab-badge-teal" : null)" title="@item.BadgeTitle">@item.Badge</span>
         }
     };
 
@@ -219,9 +219,11 @@
     /// <param name="Title">Tooltip. With Disabled, say why.</param>
     /// <param name="Badge">A small count or marker after the label, in the signal colour.</param>
     /// <param name="BadgeTitle">Tooltip for the badge.</param>
+    /// <param name="BadgeTone">"signal" (the default) asks for attention; "teal" is information,
+    /// a count worth seeing that is not a warning.</param>
     /// <param name="Href">Makes the item a link to a separate page. The bar then renders as a nav
     /// of anchors, and the active item carries aria-current="page".</param>
     public record TabItem(string Label, string Value, RenderFragment<int>? Icon = null,
         bool Disabled = false, string? Title = null, string? Badge = null, string? BadgeTitle = null,
-        string? Href = null);
+        string? Href = null, string BadgeTone = "signal");
 }

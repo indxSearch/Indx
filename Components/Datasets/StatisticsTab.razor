@@ -294,15 +294,17 @@ else
         if (!string.IsNullOrEmpty(InitialSection)) _section = InitialSection;
     }
 
-    /// <summary>The detail sections, in the order they matter. Changes says how many in its label:
-    /// the badge is the signal colour, and a change is information, not a warning.</summary>
+    /// <summary>The detail sections, in the order they matter. Changes carries how many fell in
+    /// the window, in teal: a change is information, not a warning. Over 99 it says 99+.</summary>
     private List<Tabs.TabItem> SectionItems =>
     [
         new("Top queries", "queries", DatasetIcons.TopQueries),
         new("Fuzzy search", "fuzzy", DatasetIcons.FuzzySearch),
         new("Top documents", "documents", DatasetIcons.TopDocuments),
         new("Browsing", "browsing", DatasetIcons.Browsing),
-        new(_changes.Count > 0 ? $"Changes ({_changes.Count})" : "Changes", "changes", DatasetIcons.Changes),
+        new("Changes", "changes", DatasetIcons.Changes,
+            Badge: _changes.Count switch { 0 => null, > 99 => "99+", var n => n.ToString() },
+            BadgeTitle: $"{_changes.Count} changes in the last {_days} days", BadgeTone: "teal"),
     ];
     private List<DocumentStat> _topDocuments = [];
     private List<FilterStat> _topFilters = [];
