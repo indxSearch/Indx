@@ -74,7 +74,35 @@ else
             </Surface>
         </div>
 
-        <Chart Series="_series" Labels="_labels" Type="line" Height="180" />
+        <Chart Series="_series" Labels="_labels" Type="line" Height="180" Markers="_markers" />
+
+        @if (_changes.Count > 0 || _documentTotals.Inserted + _documentTotals.Updated + _documentTotals.Deleted > 0)
+        {
+            @* What the owners changed, beside what visitors did: the why behind a bend in the line
+               (Notes/statistics-design.md, "Change events"). The blue squares on the chart are these. *@
+            <h3 class="stats-heading">Changes</h3>
+            @if (_changes.Count > 0)
+            {
+                <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Changes" Class="stats-table">
+                    <thead><tr><th>When</th><th>What</th></tr></thead>
+                    <tbody>
+                        @foreach (var c in Enumerable.Reverse(_changes))
+                        {
+                            <tr>
+                                <td><TimeAgo Value="DateTimeOffset.FromUnixTimeMilliseconds(c.Timestamp).UtcDateTime" TooltipPosition="left" /></td>
+                                <td>@ChangeDescriptions.Describe(c.Kind, c.Summary)</td>
+                            </tr>
+                        }
+                    </tbody>
+                </Table>
+            }
+            @if (_documentTotals.Inserted + _documentTotals.Updated + _documentTotals.Deleted > 0)
+            {
+                <p class="stats-help">
+                    Documents in this period: @N(_documentTotals.Inserted) inserted, @N(_documentTotals.Updated) updated, @N(_documentTotals.Deleted) deleted.
+                </p>
+            }
+        }
 
         @if (_zeroHit.Count > 0)
         {
@@ -149,33 +177,20 @@ else
         }
     }
 
-    @if (Ctx.IsAdmin && _loaded && !Empty)
-    {
-        <div class="indx-file-actions">
-            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="() => _confirmPurge = true">Delete statistics…</Button>
-        </div>
-        <Modal @bind-Open="_confirmPurge" Title="Delete statistics"
-               Description="Deletes every statistic of this dataset, including the kept daily aggregates. Statistics otherwise survive dataset deletion and recreation — this is the one way to start clean.">
-            <div class="indx-modal-form">
-                <div class="indx-form-actions">
-                    <Button Variant="primary" Size="micro" @onclick="PurgeAsync">Delete statistics</Button>
-                    <Button Variant="secondary" Size="micro" @onclick="() => _confirmPurge = false">Cancel</Button>
-                </div>
-            </div>
-        </Modal>
-    }
 }
 </div>
 
 @code {
     private int _days = 30;
     private bool _loaded;
-    private bool _confirmPurge;
     private OverviewStat _overview;
     private List<QueryStat> _topQueries = [];
     private List<QueryStat> _zeroHit = [];
     private List<DocumentStat> _topDocuments = [];
     private List<FilterStat> _topFilters = [];
+    private List<ChangeStat> _changes = [];
+    private (long Inserted, long Updated, long Deleted) _documentTotals;
+    private IReadOnlyList<Chart.ChartMarker>? _markers;
     private IReadOnlyList<Chart.ChartSeries> _series = [];
     private string[]? _labels;
     private readonly Dictionary<long, string> _titles = [];
@@ -187,7 +202,8 @@ else
     ];
 
     private bool Empty => _overview.Searches == 0 && _overview.Selects == 0 && _overview.Converts == 0
-                          && _topFilters.Count == 0;
+                          && _topFilters.Count == 0 && _changes.Count == 0
+                          && _documentTotals.Inserted + _documentTotals.Updated + _documentTotals.Deleted == 0;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -226,6 +242,13 @@ else
             _zeroHit = store.TopQueries(team, ds, fromDay, toDay, 10, zeroHitsOnly: true);
             _topDocuments = store.TopDocuments(team, ds, fromDay, toDay, 10);
             _topFilters = store.TopFilters(team, ds, fromDay, toDay, 10);
+            _changes = store.Changes(team, ds, fromDay, toDay);
+            var documentDays = store.DocumentChanges(team, ds, fromDay, toDay);
+            _documentTotals = (documentDays.Sum(d => d.Inserted), documentDays.Sum(d => d.Updated), documentDays.Sum(d => d.Deleted));
+            _markers = _changes
+                .Select(c => new Chart.ChartMarker((int)(StatisticsStore.DayOf(c.Timestamp) - fromDay),
+                                                   ChangeDescriptions.Describe(c.Kind, c.Summary)))
+                .ToList();
 
             var byDay = store.TimeSeries(team, ds, fromDay, toDay).ToDictionary(r => r.Day);
             var searches = new double[days];
@@ -249,15 +272,6 @@ else
         _titles.Clear();
         _loaded = true;
         await Render();
-    }
-
-    private async Task PurgeAsync()
-    {
-        _confirmPurge = false;
-        var store = Stats.Store;
-        if (store == null) return;
-        await Task.Run(() => store.PurgeDataset(Ctx.TeamId, Ctx.Name));
-        await LoadAsync();
     }
 
     /// <summary>A browse (empty) search is counted too; give it a name rather than a blank cell.</summary>

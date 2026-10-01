@@ -81,6 +81,20 @@
     color: var(--lv6);
 }
 
+/* Markers: something happened on this point. Blue, the info tone, so it reads apart from the
+   series' grey and teal, and on the baseline so it never sits on the data. */
+.indx-chart-marker {
+    fill: var(--CLightBlue);
+}
+
+.indx-chart-tooltip-marker {
+    margin-top: 4px;
+}
+
+.indx-chart-tooltip-marker-dot {
+    background: var(--CLightBlue);
+}
+
 /* Legend */
 .indx-chart-legend {
     display: flex;

@@ -232,6 +232,12 @@
     {
         <div class="opt-row">
             <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Tag" @onclick="OpenRename">Rename dataset</Button>
+            @if (Ctx.IsAdmin && Stats.Enabled && Stats.Store != null)
+            {
+                @* Here rather than on the Statistics tab: it cannot be undone, and it sits with the
+                   other things that cannot. *@
+                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="() => _purgeOpen = true">Delete statistics</Button>
+            }
             @if (Ctx.IsAdmin)
             {
                 <DeleteDatasetButton Ctx="Ctx" TriggerVariant="secondary" />
@@ -244,6 +250,9 @@
         <p class="opt-error">@Ctx.OperationError</p>
     }
 
+    <ConfirmModal @bind-Open="_purgeOpen" Title="@($"Delete the statistics of {Ctx.Name}")" Consequences="PurgeConsequences"
+                  ConfirmLabel="Delete statistics" ConfirmIcon="DatasetIcons.Delete" OnConfirm="PurgeStatisticsAsync" />
+
     <ConfirmModal @bind-Open="_renameOpen" Title="@($"Rename {Ctx.Name}")" Consequences="RenameConsequences"
                   CanConfirm="RenameReady" ConfirmLabel="Rename dataset" ConfirmIcon="DatasetIcons.Tag" OnConfirm="RenameAsync">
         <InputField Label="New name" @bind-Value="_renameInput" @oninput="e => _renameInput = e.Value?.ToString() ?? string.Empty" />
@@ -251,6 +260,24 @@
 </div>
 
 @code {
+    private bool _purgeOpen;
+
+    private static readonly IReadOnlyList<string> PurgeConsequences =
+    [
+        "Every search, click and conversion recorded for this dataset is deleted, with the daily totals.",
+        "The history of changes made to the dataset is deleted too.",
+        "Statistics otherwise survive deleting and recreating the dataset; this is the one way to start clean.",
+        "The Browsing setting is kept.",
+    ];
+
+    private async Task<string?> PurgeStatisticsAsync()
+    {
+        var store = Stats.Store;
+        if (store == null || !Ctx.IsAdmin) return "Statistics are not available.";
+        await Task.Run(() => store.PurgeDataset(Ctx.TeamId, Ctx.Name));
+        return null;
+    }
+
     private async Task SetRecordFilters(bool on)
     {
         var store = Stats.Store;

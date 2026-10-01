@@ -68,6 +68,18 @@
                     }
                 }
 
+                @* Markers: something happened on this point (a change, a release). A small square on
+                   the baseline under it, drawn after the data so a bar cannot hide it; what it marks
+                   is in the tooltip. One square per point however many markers it carries. *@
+                @if (Markers is { Count: > 0 } && _dataLen > 0)
+                {
+                    @foreach (var index in Markers.Select(m => m.Index).Where(i => i >= 0 && i < _dataLen).Distinct())
+                    {
+                        var mx = Type == "line" ? ToX(index) : PadLeft + (index + 0.5) * (_cw / _dataLen);
+                        <rect class="indx-chart-marker" x="@F(mx - 3)" y="@F(PadTop + _ch - 3)" width="6" height="6" />
+                    }
+                }
+
                 @* SVG <text> is a reserved Razor tag, so the axis labels are emitted via the builder. *@
                 @RenderAxisLabels
 
@@ -90,6 +102,16 @@
                         <span class="indx-chart-tooltip-name">@s.Label</span>
                         <span class="indx-chart-tooltip-value">@FormatValue(tip.Index < s.Data.Count ? s.Data[tip.Index] : 0)</span>
                     </div>
+                }
+                @if (Markers != null)
+                {
+                    @foreach (var m in Markers.Where(m => m.Index == tip.Index))
+                    {
+                        <div class="indx-chart-tooltip-row indx-chart-tooltip-marker">
+                            <span class="indx-chart-tooltip-dot indx-chart-tooltip-marker-dot"></span>
+                            <span class="indx-chart-tooltip-name">@m.Label</span>
+                        </div>
+                    }
                 }
             </div>
         }
@@ -120,6 +142,13 @@
     [Parameter] public int Height { get; set; } = 200;
     [Parameter] public bool ShowLegend { get; set; } = true;
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>Points where something happened, each with what it was. Drawn as a small square on
+    /// the baseline under the point, and listed in that point's tooltip. Several may share a point.</summary>
+    [Parameter] public IReadOnlyList<ChartMarker>? Markers { get; set; }
+
+    /// <summary>One marker: the point's index in the series, and what happened there.</summary>
+    public sealed record ChartMarker(int Index, string Label);
 
     private const double PadTop = 12, PadRight = 20, PadBottomBase = 8, PadBottomLabels = 28, PadLeft = 20;
     private const string DefaultLineColor = "var(--lv4)";
