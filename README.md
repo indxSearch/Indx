@@ -236,10 +236,15 @@ each search too, any random id made per page load, and a visitor typing "oslo" c
 search instead of four. [@indxsearch/intrface](https://github.com/indxSearch/indx-intrface)
 does both for you: it sends the session, and a result's `select()` reports the click.
 
-**Over the API:** `GET …/statistics/overview`, `timeseries`, `queries` and `documents`, with a
-Read key. Statistics are stored in their own `stats.db` next to `indx.db`. Raw events are kept
-for 90 days and daily totals until you delete them. `Statistics:Enabled` in `appsettings.json`
-switches the whole feature off.
+**What changed:** small blue marks under the chart are changes made to the dataset itself, listed
+below it: synonyms, boost rules, field configuration, a replace, a reindex, and large document
+changes. When a number moves, the reason is next to it. Only what changed and when is kept,
+never who.
+
+**Over the API:** `GET …/statistics/overview`, `timeseries`, `queries`, `documents` and `changes`,
+with a Read key. Statistics are stored in their own `stats.db` next to `indx.db`. Raw events are kept
+for 90 days and daily totals until you delete them, on the dataset's **Options** tab.
+`Statistics:Enabled` in `appsettings.json` switches the whole feature off.
 
 **Why experimental:** the numbers and their definitions may still change.
 
