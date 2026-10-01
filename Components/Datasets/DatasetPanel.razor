@@ -10,6 +10,7 @@
 @inject IndxServer.Services.StatisticsService Statistics
 @inject IDatasetEngines Engines
 @inject BoostRuleStore BoostStore
+@inject NavigationManager Nav
 
 @* The header slot (the console's breadcrumb row, with DatasetStatus in its actions) sits
    outside the Surface so it lands at exactly the same spot as on the team page — the
@@ -105,7 +106,9 @@
             if (Ctx.EngineState == SystemState.Ready)
             {
                 Ctx.EnsureFieldsLoaded();
-                Ctx.ActiveTab = "status"; // a Ready dataset opens on Status; Created opens on the upload flow
+                // A Ready dataset opens on the tab the address names (?tab=, so a refresh stays
+                // where it was), else on Status; Created opens on the upload flow.
+                Ctx.ActiveTab = RequestedTab() ?? "status";
             }
             StartPollingIfTransitional();
             // The tab components rendered once already (before status was known) and Blazor
@@ -117,12 +120,40 @@
     private void OnCtxChanged()
     {
         StartPollingIfTransitional();
-        _ = InvokeAsync(StateHasChanged);
+        _ = InvokeAsync(() => { SyncAddress(); StateHasChanged(); });
     }
 
     private void SelectTab(string tab)
     {
         Ctx.ActiveTab = tab;
+        SyncAddress();
+    }
+
+    private const string TabQuery = "tab";
+
+    /// <summary>The tab the address asks for, when this user can open it on a Ready dataset:
+    /// one the nav shows and has enabled. Anything else (a stale link, a viewer handed an
+    /// editor's link) falls back to the default.</summary>
+    private string? RequestedTab()
+    {
+        var query = new Uri(Nav.Uri).Query;
+        var requested = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(query)
+            .TryGetValue(TabQuery, out var v) ? v.ToString() : null;
+        if (string.IsNullOrEmpty(requested)) return null;
+        return NavItems(isReady: true, pending: false).Any(i => i.Value == requested && !i.Disabled) ? requested : null;
+    }
+
+    /// <summary>Keeps ?tab= in step with the open tab, replacing the history entry rather than
+    /// adding one, so Back still leaves the dataset. Status is the default and is left out. Only
+    /// while the dataset is Ready: the other states choose their own view.</summary>
+    private void SyncAddress()
+    {
+        if (!Visible || Ctx.EngineState != SystemState.Ready) return;
+        var want = Ctx.ActiveTab == "status" ? null : Ctx.ActiveTab;
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        var have = query.TryGetValue(TabQuery, out var v) ? v.ToString() : null;
+        if (want == have) return;
+        Nav.NavigateTo(Nav.GetUriWithQueryParameter(TabQuery, want), replace: true);
     }
 
     private const string NotYet = "Available after the index is built";
@@ -136,13 +167,12 @@
         Tabs.TabItem Tab(string value, string label, RenderFragment<int> icon, bool enabled, string? badge = null, string? badgeTitle = null) =>
             new(label, value, icon, Disabled: !enabled, Title: enabled ? null : NotYet, Badge: badge, BadgeTitle: badgeTitle);
 
-        // Statistics first: how the dataset is used is what people come back for. They live in
-        // their own store, so the tab works even for a hibernated dataset - it reads no engine
-        // (titles fall back to keys) and must never wake one.
-        if (Statistics.Enabled) items.Add(Tab("statistics", "Statistics", DatasetIcons.Statistics, true));
         if (isReady || pending) items.Add(Tab("status", "Status", DatasetIcons.Status, isReady));
         items.Add(Tab("fields", "Field configuration", DatasetIcons.Fields, true));
         if (isReady || pending) items.Add(Tab("search", "Search preview", DatasetIcons.Search, isReady));
+        // Statistics live in their own store, so the tab works even for a hibernated dataset -
+        // it reads no engine (titles fall back to keys) and must never wake one.
+        if (Statistics.Enabled) items.Add(Tab("statistics", "Statistics", DatasetIcons.Statistics, true));
         if ((isReady || pending) && Ctx.IsEditor)
         {
             var expired = isReady ? ExpiredBoostRules() : 0;
