@@ -64,19 +64,45 @@ namespace IndxServer.Controllers
         /// text (lowercased). With uncoveredOnly=true, the searches without coverage: those coverage
         /// confirmed nothing for, how often a result was chosen anyway, and the document chosen most
         /// (mostChosenDocument), which is usually the synonym or spelling to add.
+        /// order=lowestClickThrough lists the queries searched often and chosen from rarely
+        /// (highestClickThrough the reverse; both leave out queries searched fewer than five
+        /// times, where one click reads as 100%), and
+        /// order=chosenAnyway with uncoveredOnly the fuzzy finds.
         /// With zeroHitsOnly=true, the zero-hit report — the searches the
         /// dataset could not answer, ordered by how often.</summary>
         [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/statistics/queries")]
         public ActionResult<QueryStat[]> Queries(string teamName, string dataSetName,
-            int days = 30, int limit = 50, bool zeroHitsOnly = false, bool uncoveredOnly = false)
+            int days = 30, int limit = 50, bool zeroHitsOnly = false, bool uncoveredOnly = false,
+            QueryOrder order = QueryOrder.Searches)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (Disabled(out var off)) return off!;
             var (fromDay, toDay) = Window(days);
             return statistics.Store!.TopQueries(ctx.OwnerKey, dataSetName, fromDay, toDay,
-                Math.Clamp(limit, 1, 1000), zeroHitsOnly, uncoveredOnly).ToArray();
+                Math.Clamp(limit, 1, 1000), zeroHitsOnly, uncoveredOnly, order).ToArray();
+        }
+
+        /// <summary>For one query (<paramref name="text"/>, compared lowercased like the query
+        /// list): which documents visitors chose from its results, most chosen first, with the
+        /// position sum and the conversions from the same searches. A query searched often and
+        /// chosen from rarely is either missing what people want or ranking it too low; which of
+        /// the two, and whether the choices were the thing itself or a substitute, is read from
+        /// this list. From the raw rows, so as far back as they are kept (90 days by default).</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/queries/documents")]
+        public ActionResult<QueryDocumentStat[]> QueryDocuments(string teamName, string dataSetName,
+            string? text, int days = 30, int limit = 50)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            if (string.IsNullOrWhiteSpace(text))
+                return ApiProblems.InvalidArgument("text is required: the query whose chosen documents to list");
+            var (fromDay, toDay) = Window(days);
+            return statistics.Store!.QueryDocuments(ctx.OwnerKey, dataSetName, text, fromDay, toDay,
+                Math.Clamp(limit, 1, 1000)).ToArray();
         }
 
         /// <summary>Browsing in the window: how often people narrowed by each filter value, with

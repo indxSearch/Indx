@@ -76,6 +76,11 @@ namespace IndxServer.Services
         ChosenAnyway,
     }
 
+    /// <summary>One document chosen from one query's results over a window: how often, the
+    /// position sum (average position is PositionSum / Selects), and the conversions that came
+    /// from those searches.</summary>
+    public readonly record struct QueryDocumentStat(long DocumentKey, long Selects, long PositionSum, long Converts);
+
     /// <summary>One document's aggregate over a window.</summary>
     public readonly record struct DocumentStat(long DocumentKey, long Selects, long Converts, double ConvertValueSum);
 
@@ -981,6 +986,45 @@ SELECT lower(s.QueryText), x.DocumentKey, COUNT(*) AS N
                         best[text] = (key, n);
                 }
             return queries.Select(q => best.TryGetValue(q.QueryText, out var b) ? q with { MostChosenDocument = b.Key } : q).ToList();
+        }
+
+        /// <summary>
+        /// For one query text (compared lowercased, as the query list groups it): which documents
+        /// visitors chose from its results, most chosen first, with the positions and the
+        /// conversions linked to the same searches by queryId. Telling an exact match from a
+        /// substitute needs this whole distribution, not only the document chosen most. From the
+        /// raw rows, so it reaches back as far as they are kept (90 days by default).
+        /// </summary>
+        public List<QueryDocumentStat> QueryDocuments(string teamId, string dataSet, string queryText,
+            long fromDay, long toDay, int limit)
+        {
+            using var conn = Open();
+            var selects = new Dictionary<long, (long Selects, long PositionSum)>();
+            var converts = new Dictionary<long, long>();
+            foreach (var (table, extra) in new[] { ("SelectEvents", ", SUM(x.Position)"), ("ConvertEvents", "") })
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $@"
+SELECT x.DocumentKey, COUNT(*){extra}
+  FROM SearchEvents s JOIN {table} x ON x.QueryId = s.QueryId
+ WHERE s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $from AND s.Timestamp < $to
+   AND s.Source IS NULL AND lower(s.QueryText) = lower($q)
+ GROUP BY x.DocumentKey";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSet);
+                cmd.Parameters.AddWithValue("$from", fromDay * 86_400_000L);
+                cmd.Parameters.AddWithValue("$to", (toDay + 1) * 86_400_000L);
+                cmd.Parameters.AddWithValue("$q", queryText.Trim());
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    if (table == "SelectEvents") selects[r.GetInt64(0)] = (r.GetInt64(1), r.GetInt64(2));
+                    else converts[r.GetInt64(0)] = r.GetInt64(1);
+            }
+            return selects.Keys.Union(converts.Keys)
+                .Select(k => new QueryDocumentStat(k, selects.GetValueOrDefault(k).Selects,
+                    selects.GetValueOrDefault(k).PositionSum, converts.GetValueOrDefault(k)))
+                .OrderByDescending(d => d.Selects).ThenByDescending(d => d.Converts).ThenBy(d => d.DocumentKey)
+                .Take(limit).ToList();
         }
 
         /// <summary>Top documents by selects in [fromDay, toDay], with converts and value summed
