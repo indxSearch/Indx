@@ -46,6 +46,14 @@ namespace IndxServer.Services
             result.Reason == null && !result.DidTimeOut && query.MaxNumberOfRecordsToReturn > 0
             && (!string.IsNullOrWhiteSpace(query.Text) || filterKey != null);
 
+        /// <summary>A caller's <c>?source=</c>, as stored: trimmed, at most 40 characters, null when
+        /// blank. Any non-null source keeps the search out of the aggregates.</summary>
+        public static string? CleanSource(string? source)
+        {
+            var s = source?.Trim();
+            return string.IsNullOrEmpty(s) ? null : s.Length <= 40 ? s : s[..40];
+        }
+
         /// <summary>Whether coverage confirmed any result: the truncation index marks where the
         /// confirmed results end, and -1 is none, so what was shown came from fuzzy matching
         /// alone. Null with coverage off, where the index is always 0 and says nothing.</summary>

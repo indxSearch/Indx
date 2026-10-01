@@ -4,8 +4,9 @@ using Microsoft.Data.Sqlite;
 namespace IndxServer.Services
 {
     /// <summary>One search, as the search path records it. Timestamps are Unix milliseconds UTC.
-    /// Source marks non-customer traffic (null = the HTTP API, "console" = the web console's
-    /// search preview). Only customer traffic (Source IS NULL) is aggregated: the rollup and the
+    /// Source marks non-customer traffic (null = a visitor through the HTTP API, "console" = the
+    /// web console's search preview, anything else = what the caller sent as ?source=, such as an
+    /// agent's probes). Only customer traffic (Source IS NULL) is aggregated: the rollup and the
     /// live reads both leave the console out, so an editor trying queries in the preview does
     /// not show up in the dashboard. The console rows are kept, for a later "your own testing"
     /// view if one is wanted.</summary>
