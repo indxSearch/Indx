@@ -1485,8 +1485,8 @@ namespace IndxServer.Engine
                 if (validate.DocumentFields?.Haskey() != true)
                     return DescribeKeyedLoadFailure(declared, $"field '{declared}' is not present in the data");
 
-                var cfgErr = validate.SetFieldConfiguration(liveConfig);
-                if (!string.IsNullOrEmpty(cfgErr)) return $"Field configuration error: {cfgErr}";
+                if (!validate.TrySetFieldConfiguration(liveConfig, out var cfgErr))
+                    return $"Field configuration error: {cfgErr}";
 
                 jsonStream.Position = 0;
                 var pm = new ProcessMonitor();

@@ -151,7 +151,11 @@ namespace IndxServer.Services
             // dataset's change is recorded; configuring one before its first index is setup.
             var changed = engine.Status.SystemState == SystemState.Ready
                 ? ChangedFields(engine.DocumentFields, proposed) : [];
-            var unknown = engine.SetFieldConfiguration(proposed);
+            // The name, not the library's message: callers answer "Field 'x' does not exist in
+            // this dataset.", the wording every field route uses and the docs quote.
+            var unknown = proposed.FirstOrDefault(p => engine.DocumentFields?.GetField(p.FieldName) == null)?.FieldName;
+            if (unknown == null && !engine.TrySetFieldConfiguration(proposed, out var applyError))
+                throw new InvalidOperationException(applyError);
             if (unknown == null && engine.DocumentFields is { } fields)
                 engine.Persistence?.SaveDocumentFields(fields.GetSerialized());
             if (unknown == null && changed.Length > 0)

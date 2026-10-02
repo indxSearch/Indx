@@ -430,7 +430,7 @@ else if (Ctx.IsLoadIndexing)
         if (Ctx.EditedFields is { } edited)
         {
             var engine = Ctx.FindEngine();
-            engine?.SetFieldConfiguration(edited);
+            engine?.TrySetFieldConfiguration(edited, out _);
             var df = engine?.DocumentFields;
             if (df != null && engine?.Persistence != null)
                 engine.Persistence.SaveDocumentFields(df.GetSerialized());

@@ -267,8 +267,7 @@ namespace IndxServer.Engine
         private static void ApplyCarry(SearchEngine engine, FieldProxy[] carry)
         {
             if (carry.Length == 0) return;
-            var err = engine.SetFieldConfiguration(carry);
-            if (!string.IsNullOrEmpty(err))
+            if (!engine.TrySetFieldConfiguration(carry, out var err))
                 throw new InvalidOperationException($"Replace field-config carry-over failed: {err}");
         }
 
