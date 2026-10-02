@@ -136,14 +136,15 @@ namespace IndxServer.Services
         public Result Search(QueryProxy q, string d, string t)
         {
             var result = M.Search(q, d, t);
-            // The console's search preview comes through here, not through the HTTP endpoint -
-            // it counts too, marked "console" so customer traffic can be separated later.
+            // The console's search preview comes through here, not through the HTTP endpoint. It is
+            // stored with the console as its surface and not counted: an editor trying queries is
+            // not a visitor, and the dashboard leaves it out.
             var filterKey = statistics.Enabled ? statistics.FilterKeyToRecord(q, t, d) : null;
             if (statistics.Enabled && StatisticsService.ShouldRecord(q, filterKey, result))
                 statistics.Writer!.RecordSearch(new SearchEventRow(
                     Guid.NewGuid().ToString("N"), t, d, q.Text ?? string.Empty, filterKey,
                     result.Records?.Length ?? 0, null,
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Source: "console",
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Source: "console", Counted: false,
                     Covered: StatisticsService.CoverageConfirmed(q, result)));
             return result;
         }

@@ -4,27 +4,32 @@ using Microsoft.Data.Sqlite;
 namespace IndxServer.Services
 {
     /// <summary>One search, as the search path records it. Timestamps are Unix milliseconds UTC.
-    /// Source marks non-customer traffic (null = a visitor through the HTTP API, "console" = the
-    /// web console's search preview, anything else = what the caller sent as ?probe=, such as an
-    /// agent's probes). Only customer traffic (Source IS NULL) is aggregated: the rollup and the
-    /// live reads both leave the console out, so an editor trying queries in the preview does
-    /// not show up in the dashboard. The console rows are kept, for a later "your own testing"
-    /// view if one is wanted.</summary>
+    /// Two separate facts about where it came from: <see cref="Source"/> names the surface - a
+    /// search box, an app, "console" for the web console's preview, "observr" for that agent -
+    /// as the caller sent it in ?source= (null when none was named); <see cref="Counted"/> says
+    /// whether it is a visitor's search at all. Only counted rows are aggregated, by the rollup
+    /// and every live read, so the console's preview and an agent's probes (?count=false) are
+    /// stored but never show up in the dashboard. Until Oct 2026 the one column did both jobs:
+    /// any Source meant "not counted", which left no way to name a surface that is counted.</summary>
     public readonly record struct SearchEventRow(
         string QueryId, string TeamId, string DataSet, string QueryText, string? FilterKey,
         int HitCount, string? Subject, long Timestamp, string? Source = null, string? Session = null,
-        bool? Covered = null);
+        bool? Covered = null, bool Counted = true);
 
     /// <summary>One select: the user chose a result. QueryId is an opaque reference — an orphan
-    /// (unknown or expired id) is stored like any other row and simply finds no search to join.</summary>
+    /// (unknown or expired id) is stored like any other row and simply finds no search to join.
+    /// Counted is the caller's count; the store also leaves uncounted a select whose search was
+    /// not counted, so a click on a probe's results never reaches the numbers.</summary>
     public readonly record struct SelectEventRow(
         string TeamId, string DataSet, string? QueryId, long DocumentKey, int Position,
-        string? Subject, long Timestamp);
+        string? Subject, long Timestamp, bool Counted = true);
 
-    /// <summary>One conversion: whatever the customer considers valuable. Type is theirs.</summary>
+    /// <summary>One conversion: whatever the customer considers valuable. Type is theirs.
+    /// Counted as for <see cref="SelectEventRow"/>.</summary>
     public readonly record struct ConvertEventRow(
         string TeamId, string DataSet, string? QueryId, long DocumentKey, string Type,
-        double? Value, string? Currency, long? Quantity, string? Subject, long Timestamp);
+        double? Value, string? Currency, long? Quantity, string? Subject, long Timestamp,
+        bool Counted = true);
 
     /// <summary>One change the dataset's owners made (Notes/statistics-design.md, "Change events").
     /// Summary is a small JSON object of counts and field names, never content or who.</summary>
@@ -139,7 +144,8 @@ CREATE TABLE IF NOT EXISTS SearchEvents (
     Source      TEXT    NULL,
     Session     TEXT    NULL,                 -- per-page-load id, for the keystroke rule
     Superseded  INTEGER NOT NULL DEFAULT 0,   -- 1: the same session extended it within the window
-    Covered     INTEGER NULL                  -- 1: coverage confirmed a result, 0: none (fuzzy only), NULL: coverage off
+    Covered     INTEGER NULL,                 -- 1: coverage confirmed a result, 0: none (fuzzy only), NULL: coverage off
+    Counted     INTEGER NOT NULL DEFAULT 1    -- 0: stored but not a visitor's (the console, ?count=false)
 );
 CREATE INDEX IF NOT EXISTS IX_Search_TeamDsTime ON SearchEvents(TeamId, DataSet, Timestamp);
 CREATE INDEX IF NOT EXISTS IX_Search_ZeroHits   ON SearchEvents(TeamId, DataSet, Timestamp) WHERE HitCount = 0;
@@ -152,7 +158,8 @@ CREATE TABLE IF NOT EXISTS SelectEvents (
     DocumentKey INTEGER NOT NULL,
     Position    INTEGER NOT NULL,
     Subject     TEXT    NULL,
-    Timestamp   INTEGER NOT NULL
+    Timestamp   INTEGER NOT NULL,
+    Counted     INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS IX_Select_TeamDsDoc ON SelectEvents(TeamId, DataSet, DocumentKey);
 CREATE INDEX IF NOT EXISTS IX_Select_QueryId   ON SelectEvents(QueryId) WHERE QueryId IS NOT NULL;
@@ -169,7 +176,8 @@ CREATE TABLE IF NOT EXISTS ConvertEvents (
     Currency    TEXT    NULL,
     Quantity    INTEGER NULL,
     Subject     TEXT    NULL,
-    Timestamp   INTEGER NOT NULL
+    Timestamp   INTEGER NOT NULL,
+    Counted     INTEGER NOT NULL DEFAULT 1
 );
 CREATE INDEX IF NOT EXISTS IX_Convert_TeamDsDoc ON ConvertEvents(TeamId, DataSet, DocumentKey);
 CREATE INDEX IF NOT EXISTS IX_Convert_QueryId   ON ConvertEvents(QueryId) WHERE QueryId IS NOT NULL;
@@ -311,6 +319,31 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                     logger.LogInformation("statistics: coverage is recorded from now on; re-rolling the kept days");
             }
             catch (SqliteException) { /* already there */ }
+            try
+            {
+                cmd.CommandText = "ALTER TABLE SearchEvents ADD COLUMN Counted INTEGER NOT NULL DEFAULT 1";
+                cmd.ExecuteNonQuery();
+                // Source used to mean "not counted" by being set at all: "console", or a probe's
+                // name. It keeps its value - it named the surface all along - and Counted takes
+                // over the other half, so the old rows read exactly as they did.
+                cmd.CommandText = "UPDATE SearchEvents SET Counted = 0 WHERE Source IS NOT NULL";
+                int uncounted = cmd.ExecuteNonQuery();
+                foreach (var table in new[] { "SelectEvents", "ConvertEvents" })
+                {
+                    try
+                    {
+                        cmd.CommandText = $"ALTER TABLE {table} ADD COLUMN Counted INTEGER NOT NULL DEFAULT 1";
+                        cmd.ExecuteNonQuery();
+                    }
+                    catch (SqliteException) { /* already there */ }
+                    cmd.CommandText = $"UPDATE {table} SET Counted = 0 WHERE QueryId IN (SELECT QueryId FROM SearchEvents WHERE Counted = 0)";
+                    cmd.ExecuteNonQuery();
+                }
+                cmd.CommandText = "DELETE FROM RollupState";
+                if (cmd.ExecuteNonQuery() > 0 || uncounted > 0)
+                    logger.LogInformation("statistics: where a search came from and whether it counts are separate now ({Uncounted} uncounted); re-rolling the kept days", uncounted);
+            }
+            catch (SqliteException) { /* already there */ }
         }
 
         /// <summary>The keystroke rule in SQL, for rows the writer did not mark: a search with
@@ -350,8 +383,8 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = @"INSERT OR IGNORE INTO SearchEvents
-                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp, Source, Session, Covered)
-                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts, $src, $sess, $cov)";
+                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp, Source, Session, Covered, Counted)
+                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts, $src, $sess, $cov, $cnt)";
                 var qid = cmd.Parameters.Add("$qid", SqliteType.Text);
                 var team = cmd.Parameters.Add("$team", SqliteType.Text);
                 var ds = cmd.Parameters.Add("$ds", SqliteType.Text);
@@ -363,6 +396,7 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                 var src = cmd.Parameters.Add("$src", SqliteType.Text);
                 var sess = cmd.Parameters.Add("$sess", SqliteType.Text);
                 var cov = cmd.Parameters.Add("$cov", SqliteType.Integer);
+                var cnt = cmd.Parameters.Add("$cnt", SqliteType.Integer);
                 foreach (var e in searches)
                 {
                     qid.Value = e.QueryId; team.Value = e.TeamId; ds.Value = e.DataSet;
@@ -371,6 +405,7 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                     ts.Value = e.Timestamp; src.Value = (object?)e.Source ?? DBNull.Value;
                     sess.Value = (object?)e.Session ?? DBNull.Value;
                     cov.Value = e.Covered is bool covered ? (covered ? 1 : 0) : DBNull.Value;
+                    cnt.Value = e.Counted ? 1 : 0;
                     cmd.ExecuteNonQuery();
                 }
             }
@@ -394,11 +429,12 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
 
             if (selects.Count > 0)
             {
+                selects = selects.Select(e => e with { Counted = e.Counted && !FromUncountedSearch(conn, tx, e.QueryId) }).ToList();
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = @"INSERT INTO SelectEvents
-                    (TeamId, DataSet, QueryId, DocumentKey, Position, Subject, Timestamp)
-                    VALUES ($team, $ds, $qid, $key, $pos, $subj, $ts)";
+                    (TeamId, DataSet, QueryId, DocumentKey, Position, Subject, Timestamp, Counted)
+                    VALUES ($team, $ds, $qid, $key, $pos, $subj, $ts, $cnt)";
                 var team = cmd.Parameters.Add("$team", SqliteType.Text);
                 var ds = cmd.Parameters.Add("$ds", SqliteType.Text);
                 var qid = cmd.Parameters.Add("$qid", SqliteType.Text);
@@ -406,12 +442,13 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                 var pos = cmd.Parameters.Add("$pos", SqliteType.Integer);
                 var subj = cmd.Parameters.Add("$subj", SqliteType.Text);
                 var ts = cmd.Parameters.Add("$ts", SqliteType.Integer);
+                var cnt = cmd.Parameters.Add("$cnt", SqliteType.Integer);
                 foreach (var e in selects)
                 {
                     team.Value = e.TeamId; ds.Value = e.DataSet;
                     qid.Value = (object?)e.QueryId ?? DBNull.Value; key.Value = e.DocumentKey;
                     pos.Value = e.Position; subj.Value = (object?)e.Subject ?? DBNull.Value;
-                    ts.Value = e.Timestamp;
+                    ts.Value = e.Timestamp; cnt.Value = e.Counted ? 1 : 0;
                     cmd.ExecuteNonQuery();
                 }
                 // A click makes its search a search, even one already marked a keystroke - the
@@ -422,23 +459,24 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                     unmark.Transaction = tx;
                     unmark.CommandText = "UPDATE SearchEvents SET Superseded = 0 WHERE QueryId = $qid AND Superseded = 1";
                     var uq = unmark.Parameters.Add("$qid", SqliteType.Text);
-                    foreach (var e in selects.Where(s => s.QueryId != null))
+                    foreach (var e in selects.Where(s => s.QueryId != null && s.Counted))
                     {
                         uq.Value = e.QueryId;
                         unmark.ExecuteNonQuery();
                     }
                 }
-                UpsertSubjectEdges(conn, tx, selects.Where(s => s.Subject != null)
+                UpsertSubjectEdges(conn, tx, selects.Where(s => s.Subject != null && s.Counted)
                     .Select(s => (s.TeamId, s.DataSet, s.Subject!, s.DocumentKey, s.Timestamp, Selects: 1, Converts: 0)));
             }
 
             if (converts.Count > 0)
             {
+                converts = converts.Select(e => e with { Counted = e.Counted && !FromUncountedSearch(conn, tx, e.QueryId) }).ToList();
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = @"INSERT INTO ConvertEvents
-                    (TeamId, DataSet, QueryId, DocumentKey, Type, Value, Currency, Quantity, Subject, Timestamp)
-                    VALUES ($team, $ds, $qid, $key, $type, $val, $cur, $qty, $subj, $ts)";
+                    (TeamId, DataSet, QueryId, DocumentKey, Type, Value, Currency, Quantity, Subject, Timestamp, Counted)
+                    VALUES ($team, $ds, $qid, $key, $type, $val, $cur, $qty, $subj, $ts, $cnt)";
                 var team = cmd.Parameters.Add("$team", SqliteType.Text);
                 var ds = cmd.Parameters.Add("$ds", SqliteType.Text);
                 var qid = cmd.Parameters.Add("$qid", SqliteType.Text);
@@ -449,6 +487,7 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                 var qty = cmd.Parameters.Add("$qty", SqliteType.Integer);
                 var subj = cmd.Parameters.Add("$subj", SqliteType.Text);
                 var ts = cmd.Parameters.Add("$ts", SqliteType.Integer);
+                var cnt = cmd.Parameters.Add("$cnt", SqliteType.Integer);
                 foreach (var e in converts)
                 {
                     team.Value = e.TeamId; ds.Value = e.DataSet;
@@ -457,13 +496,29 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                     cur.Value = (object?)e.Currency ?? DBNull.Value;
                     qty.Value = (object?)e.Quantity ?? DBNull.Value;
                     subj.Value = (object?)e.Subject ?? DBNull.Value; ts.Value = e.Timestamp;
+                    cnt.Value = e.Counted ? 1 : 0;
                     cmd.ExecuteNonQuery();
                 }
-                UpsertSubjectEdges(conn, tx, converts.Where(c => c.Subject != null)
+                UpsertSubjectEdges(conn, tx, converts.Where(c => c.Subject != null && c.Counted)
                     .Select(c => (c.TeamId, c.DataSet, c.Subject!, c.DocumentKey, c.Timestamp, Selects: 0, Converts: 1)));
             }
 
             tx.Commit();
+        }
+
+        /// <summary>Whether <paramref name="queryId"/> names a search that was stored but not
+        /// counted. Decided when the event is written, not when it is read: the subject edges are
+        /// maintained here, and an event from a probe must not reach them either. The search is
+        /// always there first - it is queued before its response goes out, so before any click on
+        /// it - and a batch inserts its searches ahead of its events.</summary>
+        private static bool FromUncountedSearch(SqliteConnection conn, SqliteTransaction tx, string? queryId)
+        {
+            if (queryId == null) return false;
+            using var cmd = conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText = "SELECT 1 FROM SearchEvents WHERE QueryId = $q AND Counted = 0";
+            cmd.Parameters.AddWithValue("$q", queryId);
+            return cmd.ExecuteScalar() != null;
         }
 
         /// <summary>
@@ -622,10 +677,10 @@ INSERT INTO DailyDocumentStats (Day, TeamId, DataSet, DocumentKey, Selects, Conv
 SELECT $day, TeamId, DataSet, DocumentKey, SUM(Sel), SUM(Conv), SUM(Val)
 FROM (
     SELECT TeamId, DataSet, DocumentKey, 1 AS Sel, 0 AS Conv, 0.0 AS Val
-    FROM SelectEvents WHERE Timestamp >= $from AND Timestamp < $to
+    FROM SelectEvents WHERE Timestamp >= $from AND Timestamp < $to AND Counted = 1
     UNION ALL
     SELECT TeamId, DataSet, DocumentKey, 0, 1, COALESCE(Value, 0)
-    FROM ConvertEvents WHERE Timestamp >= $from AND Timestamp < $to
+    FROM ConvertEvents WHERE Timestamp >= $from AND Timestamp < $to AND Counted = 1
 )
 GROUP BY TeamId, DataSet, DocumentKey;";
             cmd.Parameters.AddWithValue("$day", day);
@@ -736,16 +791,16 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
        -- Per counted search through IX_Select_QueryId, after the WHERE has dropped the
        -- keystrokes. Not a GROUP BY over SelectEvents joined in: that grouped every select ever
        -- kept on every read (StatisticsReadCostProbeTests).
-       (SELECT COUNT(*) FROM SelectEvents x WHERE x.QueryId = s.QueryId) AS Cnt,
-       (SELECT SUM(x.Position) FROM SelectEvents x WHERE x.QueryId = s.QueryId) AS PosSum
+       (SELECT COUNT(*) FROM SelectEvents x WHERE x.QueryId = s.QueryId AND x.Counted = 1) AS Cnt,
+       (SELECT SUM(x.Position) FROM SelectEvents x WHERE x.QueryId = s.QueryId AND x.Counted = 1) AS PosSum
   FROM SearchEvents s
- WHERE {where} AND s.Source IS NULL
+ WHERE {where} AND s.Counted = 1
    AND (trim(s.QueryText) = ''
         -- A clicked search is never marked superseded (the writer sees to it both ways round),
         -- so with a session the mark alone decides.
         OR (s.Session IS NOT NULL AND s.Superseded = 0)
         OR (s.Session IS NULL AND length(trim(s.QueryText)) >= {MinAnonymousQueryLength})
-        OR (s.Session IS NULL AND EXISTS (SELECT 1 FROM SelectEvents x WHERE x.QueryId = s.QueryId)))
+        OR (s.Session IS NULL AND EXISTS (SELECT 1 FROM SelectEvents x WHERE x.QueryId = s.QueryId AND x.Counted = 1)))
 )";
 
         /// <summary>Adds each operand of one search's filter to <paramref name="counts"/>, once per
@@ -972,7 +1027,7 @@ LIMIT $n";
 SELECT lower(s.QueryText), x.DocumentKey, COUNT(*) AS N
   FROM SearchEvents s JOIN SelectEvents x ON x.QueryId = s.QueryId
  WHERE s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $from AND s.Timestamp < $to
-   AND s.Source IS NULL AND (s.HitCount = 0 OR s.Covered = 0)
+   AND s.Counted = 1 AND x.Counted = 1 AND (s.HitCount = 0 OR s.Covered = 0)
  GROUP BY lower(s.QueryText), x.DocumentKey";
             cmd.Parameters.AddWithValue("$t", teamId);
             cmd.Parameters.AddWithValue("$d", dataSet);
@@ -1009,7 +1064,7 @@ SELECT lower(s.QueryText), x.DocumentKey, COUNT(*) AS N
 SELECT x.DocumentKey, COUNT(*){extra}
   FROM SearchEvents s JOIN {table} x ON x.QueryId = s.QueryId
  WHERE s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $from AND s.Timestamp < $to
-   AND s.Source IS NULL AND lower(s.QueryText) = lower($q)
+   AND s.Counted = 1 AND x.Counted = 1 AND lower(s.QueryText) = lower($q)
  GROUP BY x.DocumentKey";
                 cmd.Parameters.AddWithValue("$t", teamId);
                 cmd.Parameters.AddWithValue("$d", dataSet);
@@ -1045,10 +1100,10 @@ SELECT DocumentKey, SUM(Sel) AS S, SUM(Conv) AS C, SUM(Val) FROM (
      WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
     UNION ALL
     SELECT DocumentKey, 1, 0, 0.0 FROM SelectEvents
-     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx
+     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx AND Counted = 1
     UNION ALL
     SELECT DocumentKey, 0, 1, COALESCE(Value, 0) FROM ConvertEvents
-     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx
+     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx AND Counted = 1
 )
 GROUP BY DocumentKey
 " + (byConverts ? "HAVING C > 0 ORDER BY C DESC, S DESC" : "ORDER BY S DESC, C DESC") + @"
@@ -1115,7 +1170,7 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
      WHERE trim(c.QueryText) <> ''
     UNION ALL
     SELECT Timestamp / 86400000, 0, 0, 0, 0, 1, COALESCE(Value, 0), 0, 0, 0 FROM ConvertEvents
-     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx
+     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx AND Counted = 1
 )
 {group}";
             cmd.Parameters.AddWithValue("$t", teamId);

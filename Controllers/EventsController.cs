@@ -34,7 +34,7 @@ namespace IndxServer.Controllers
                 statistics.Writer!.RecordSelect(new SelectEventRow(
                     ctx.OwnerKey, dataSetName, Blank(request.QueryId), request.DocumentKey,
                     request.Position, Blank(request.Subject),
-                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+                    DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Counted: request.Count ?? true));
             return Accepted();
         }
 
@@ -57,7 +57,8 @@ namespace IndxServer.Controllers
                 statistics.Writer!.RecordConvert(new ConvertEventRow(
                     ctx.OwnerKey, dataSetName, Blank(request.QueryId), request.DocumentKey,
                     request.Type.Trim(), request.Value, Blank(request.Currency), request.Quantity,
-                    Blank(request.Subject), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+                    Blank(request.Subject), DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                    Counted: request.Count ?? true));
             return Accepted();
         }
 

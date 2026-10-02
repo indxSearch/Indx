@@ -56,13 +56,16 @@ namespace IndxServer.Controllers
                     // ?session= is any per-page-load random id. It identifies no one; it lets the
                     // rollup see that "o", "os", "osl", "oslo" were one visitor typing one search.
                     var session = Request.Query["session"].FirstOrDefault();
-                    // ?probe=<name> marks a search that is not a visitor's: an agent looking at what a
-                    // query returns, a monitor, a test. Stored like the console's preview searches
-                    // and left out of every aggregate the same way, so whoever reads the statistics
-                    // does not read their own probes back. A caller can only hide its own searches.
-                    // (Not ?source=: that name is kept for which search box or app a visitor's
-                    // search came from, counted, in Notes/backlog.md.)
-                    var source = StatisticsService.CleanProbe(Request.Query["probe"].FirstOrDefault());
+                    // ?source=<name> names the surface the search came from: a search box, an app,
+                    // an agent. ?count=false says it is not a visitor's search - an agent looking at
+                    // what a query returns, a monitor, a test - so it is stored but left out of
+                    // every aggregate, as the console's preview is, and whoever reads the statistics
+                    // does not read their own probes back. Two facts, two parameters: until Oct 2026
+                    // one ?probe= did both, and a surface that should count could not be named.
+                    // A caller can only hide its own searches.
+                    var source = StatisticsService.CleanSource(Request.Query["source"].FirstOrDefault());
+                    bool counted = !string.Equals(Request.Query["count"].FirstOrDefault()?.Trim(), "false",
+                        StringComparison.OrdinalIgnoreCase);
                     // The header is minted either way, so a client can always read one; a click
                     // that references an unrecorded search is accepted as an orphan and still
                     // counts on the document.
@@ -76,7 +79,7 @@ namespace IndxServer.Controllers
                             res.Records?.Length ?? 0, string.IsNullOrWhiteSpace(subject) ? null : subject,
                             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
                             Session: string.IsNullOrWhiteSpace(session) ? null : session,
-                            Source: source,
+                            Source: source, Counted: counted,
                             Covered: StatisticsService.CoverageConfirmed(query, res)));
                 }
                 return res;

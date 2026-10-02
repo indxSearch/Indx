@@ -136,7 +136,9 @@ namespace IndxServer.Services
             foreach (var s in searches)
             {
                 if (s.Timestamp > newest) newest = s.Timestamp;
-                if (s.Session == null || s.Source != null) continue;
+                // A counted search with a named surface (a search box, an app) is a visitor
+                // typing like any other; only the uncounted ones stay out of the rule.
+                if (s.Session == null || !s.Counted) continue;
                 var key = (s.TeamId, s.DataSet, s.Session);
                 var text = s.QueryText.Trim().ToLowerInvariant();
                 if (_lastBySession.TryGetValue(key, out var last))
