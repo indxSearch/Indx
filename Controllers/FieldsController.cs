@@ -322,13 +322,19 @@ namespace IndxServer.Controllers
                         return ApiProblems.InvalidArgument(
                             $"Field '{name}' has no type: it was null in every analyzed document, so it "
                             + $"cannot be made {roleNeedingType}. Searchable and Facetable do not need a type.");
+            // Every name first, then any change: a name refused halfway would otherwise leave the
+            // fields before it changed, and the call is meant to be all or nothing.
             foreach (var name in fieldNames)
-            {
-                var f = df.GetField(name);
-                if (f == null)
+                if (df.GetField(name) == null)
                     return ApiProblems.InvalidArgument($"Field '{name}' does not exist in this dataset.");
-                apply(f, name);
-            }
+            foreach (var name in fieldNames)
+                apply(df.GetField(name)!, name);
+            // Saved here, as ApplyInPlace does for the configuration route. The engine's own save
+            // on a field's change notification cannot be relied on: Searchable, Sortable and Weight
+            // raise it before they assign, so it captured the value from before, and Facetable,
+            // Filterable and WordIndexing raise none - so a role set here lived in memory only and
+            // was gone after a restart (Notes/backlog.md, 28).
+            matcher.Persistence?.SaveDocumentFields(df.GetSerialized());
             // The legacy flag routes set roles directly; recorded like the configuration route,
             // and only on a Ready dataset (before the first index it is setup, not a change).
             if (matcher.Status.SystemState == SystemState.Ready)
