@@ -189,8 +189,8 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>Changes the dataset's statistics settings. Switching <c>recordFilters</c> off
-        /// also erases the filter values already recorded: a filter value can be personal data on a
-        /// dataset of people. Team admin, Full key - the same bar as deleting the statistics.</summary>
+        /// stops recording filters; what is already recorded stays until it ages out or the
+        /// statistics are erased. Team admin, Full key: a privacy setting.</summary>
         [KeyAccess(ApiKeyLevel.Full)]
         [HttpPut(DataSetRoute + "/statistics/settings")]
         public ActionResult<StatisticsSettings> PutSettings(string teamName, string dataSetName,

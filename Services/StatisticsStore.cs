@@ -718,10 +718,10 @@ GROUP BY TeamId, DataSet, DocumentKey;";
             });
 
         /// <summary>
-        /// Switches the Browsing report on or off for a dataset. Off also erases the filter values
-        /// already recorded - from the raw rows and the daily table - because a filter value can
-        /// be personal data (a name or a customer number on a dataset of people), and switching
-        /// off for that reason must not leave 90 days of them behind.
+        /// Switches the recording of filters (the Browsing report) on or off for a dataset. Only
+        /// the recording: what is already recorded stays, until it ages out of retention or the
+        /// statistics are erased. A switch that deleted data on a click was decided against on
+        /// 3 Oct 2026 (it used to erase the recorded values here).
         /// </summary>
         public void SetRecordsFilters(string teamId, string dataSet, bool on)
         {
@@ -735,13 +735,6 @@ GROUP BY TeamId, DataSet, DocumentKey;";
             cmd.CommandText = @"INSERT INTO DatasetSettings (TeamId, DataSet, RecordFilters) VALUES ($t, $d, $on)
                 ON CONFLICT(TeamId, DataSet) DO UPDATE SET RecordFilters = $on";
             cmd.ExecuteNonQuery();
-            if (!on)
-            {
-                cmd.CommandText = "UPDATE SearchEvents SET FilterKey = NULL WHERE TeamId = $t AND DataSet = $d AND FilterKey IS NOT NULL";
-                cmd.ExecuteNonQuery();
-                cmd.CommandText = "DELETE FROM DailyFilterStats WHERE TeamId = $t AND DataSet = $d";
-                cmd.ExecuteNonQuery();
-            }
             tx.Commit();
             _recordFilters[(teamId, dataSet)] = on;
         }
