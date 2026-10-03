@@ -430,7 +430,18 @@ else if (Ctx.IsLoadIndexing)
         if (Ctx.EditedFields is { } edited)
         {
             var engine = Ctx.FindEngine();
-            engine?.TrySetFieldConfiguration(edited, out _);
+            try
+            {
+                engine?.TrySetFieldConfiguration(edited, out _);
+            }
+            catch (ArgumentException ex)
+            {
+                // A combination of roles the engine refuses, a vector field given a second role
+                // for one. The table lets it be ticked, so it arrives here: say why and stop,
+                // rather than load with the configuration half meant.
+                Ctx.OperationError = ex.Message;
+                return;
+            }
             var df = engine?.DocumentFields;
             if (df != null && engine?.Persistence != null)
                 engine.Persistence.SaveDocumentFields(df.GetSerialized());
