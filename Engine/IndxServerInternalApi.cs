@@ -1030,9 +1030,19 @@ namespace IndxServer.Engine
                     instance.LoadFromDatabaseSync(loadMonitor);
                     loadMonitor.WaitForCompletion();
                 }
-                var indexMonitor = new ProcessMonitor();
-                instance.Index(monitor: indexMonitor);
-                indexMonitor.WaitForCompletion();
+                // Only on a load that succeeded. The engine refuses to index one that failed, so
+                // asking would change nothing; the point is to say here what happened. The rename
+                // itself is done and stands: the dataset is under its new name, in Error, and the
+                // next request for it loads it again.
+                if (loadMonitor.Succeeded)
+                {
+                    var indexMonitor = new ProcessMonitor();
+                    instance.Index(monitor: indexMonitor);
+                    indexMonitor.WaitForCompletion();
+                }
+                else
+                    _logger.LogError(loadMonitor.Exception, "{Prefix}reload after rename failed: {Error}; the dataset stays non-Ready until reloaded",
+                        MakeLogPrefix(teamId, newName), loadMonitor.ErrorMessage);
             }
             // Under the new name: the statistics move there, and an event under the old one could
             // be written after the move and be left behind.
@@ -1058,9 +1068,16 @@ namespace IndxServer.Engine
                     instance.LoadFromDatabaseSync(loadMonitor);
                     loadMonitor.WaitForCompletion();
                 }
-                var indexMonitor = new ProcessMonitor();
-                instance.Index(monitor: indexMonitor);
-                indexMonitor.WaitForCompletion();
+                // Only on a load that succeeded - see RenameDataSet.
+                if (loadMonitor.Succeeded)
+                {
+                    var indexMonitor = new ProcessMonitor();
+                    instance.Index(monitor: indexMonitor);
+                    indexMonitor.WaitForCompletion();
+                }
+                else
+                    _logger.LogError(loadMonitor.Exception, "{Prefix}reload after transfer failed: {Error}; the dataset stays non-Ready until reloaded",
+                        MakeLogPrefix(newTeamId, dataSetName), loadMonitor.ErrorMessage);
             }
         }
 
@@ -1290,7 +1307,9 @@ namespace IndxServer.Engine
                         var monitor = new ProcessMonitor { TimeoutSeconds = 600 };
                         using var warmUpScope = TrackMonitor(dataSet, teamId, monitor);
                         engine.LoadFromDatabaseSync(monitor);
-                        if (!monitor.WaitForCompletion())
+                        // Finished and succeeded - see ResolveEngine. A load that finished with an
+                        // error used to pass this and be indexed.
+                        if (!monitor.WaitForCompletion() || !monitor.Succeeded)
                         {
                             // A thrown failure is logged, with its stack, by the engine itself; this says what it
                             // means for the warm-up. Exception is null when it timed out instead.
@@ -1698,11 +1717,21 @@ namespace IndxServer.Engine
                         var loadMonitor = new ProcessMonitor { TimeoutSeconds = 600 };
                         using var wakeScope = TrackMonitor(dataSetName, teamId, loadMonitor);
                         engine.LoadFromDatabaseSync(loadMonitor);
-                        bool loaded = loadMonitor.WaitForCompletion();
+                        // Finished AND succeeded. WaitForCompletion answers only the first, and
+                        // until Oct 2026 that was all that was asked: a load that failed part-way,
+                        // or was still running at the timeout, went on to Index(), which built on
+                        // the documents read so far and left the dataset Ready on part of itself.
+                        // The engine refuses that Index() now; this is what keeps it from being
+                        // asked, and from being logged as an auto-load that worked.
+                        bool loaded = loadMonitor.WaitForCompletion() && loadMonitor.Succeeded;
 
                         var indexMonitor = new ProcessMonitor { TimeoutSeconds = 600 };
-                        engine.Index(monitor: indexMonitor);
-                        bool indexed = indexMonitor.WaitForCompletion();
+                        bool indexed = false;
+                        if (loaded)
+                        {
+                            engine.Index(monitor: indexMonitor);
+                            indexed = indexMonitor.WaitForCompletion();
+                        }
 
                         if (loaded && indexed)
                         {
@@ -1713,7 +1742,7 @@ namespace IndxServer.Engine
                             // A thrown failure is logged, with its stack, by the engine itself;
                             // Exception is null when a wait timed out instead.
                             _logger.LogError(loadMonitor.Exception ?? indexMonitor.Exception,
-                                "{Prefix}auto-load did not complete (load completed:{Loaded}, index completed:{Indexed}) — "
+                                "{Prefix}auto-load did not complete (load succeeded:{Loaded}, index completed:{Indexed}) — "
                                 + "releasing the request; the dataset stays non-Ready until reloaded", MakeLogPrefix(teamId, dataSetName), loaded, indexed);
                     }
                 }
