@@ -147,7 +147,8 @@
 	  <Reference Include="Indx">
 	    <HintPath>Indx.dll</HintPath>
 	  </Reference>
-	  <PackageReference Include="HNSW" Version="26.9.5494" />
+	  <!-- An Indx.dll built before Oct 2026 also needs the HNSW package (26.9.5494); since then
+	       the vector graph is the library's own. -->
 	  <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.3" />
 	  <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.0" />
 	</ItemGroup>
