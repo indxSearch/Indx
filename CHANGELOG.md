@@ -13,8 +13,29 @@ Runs on IndxSearchLib 5.0.0-RC240926. First public release of the v2 server; v1 
 the [v1 → v2 migration guide](https://github.com/indxSearch/skill-indx-search/blob/main/references/migration-v4-to-v5.md)
 in the AI skill.
 
+### Known limitations
+
+- **A dataset with a vector field takes no insert, update or delete** on this version of the
+  engine: after a few updates of a document, of any field, vector and hybrid search no longer
+  find it. Load it and search it; to change it, replace it. See the engine's changelog,
+  "Known limitations of 5.0", for the rest of what is known about vector search here.
+- **`PUT fields/searchable`, `fields/filterable`, `fields/facetable`, `fields/sortable`,
+  `fields/word-indexing` and `fields/embeddable` set their flag with no rebuild**, so on a
+  dataset that is Ready a role that needs one (searchable, or a field's first role) has no
+  effect until the next index build. `PUT fields/configuration` rebuilds.
+- **`PUT fields/configuration` and `POST index` hold the request until the rebuild is done**,
+  minutes on a large dataset. A client or a proxy may time out before that; the rebuild goes
+  on, and `GET status` shows `shadowBuildInProgress` while it runs.
+- **The console's field table lets a vector field be given another role**; the refusal comes
+  when the configuration is saved or the data loaded.
+
 ### Changed
 
+- **A load that fails is not indexed, and a refused field configuration is shown.** The server
+  went on to index after a load from the store that had failed or timed out, which left the
+  dataset Ready on the documents read so far. It now indexes only after a load that succeeded.
+  In the console, a field configuration the engine refuses at Load (a vector field with
+  another role) is shown as the reason instead of being lost.
 - **MCP is read-only.** `set_field_configuration` is gone from the MCP surface; configuration is
   changed in the web console or over the HTTP API, where a person sees the change. It was the only
   tool that wrote, and it forced a **Full** key on anyone who wanted it - a key that, over HTTP,
