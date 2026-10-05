@@ -430,16 +430,12 @@ else if (Ctx.IsLoadIndexing)
         if (Ctx.EditedFields is { } edited)
         {
             var engine = Ctx.FindEngine();
-            try
+            // A value or a combination of roles the engine refuses: say why and stop, rather
+            // than load with the configuration half meant. (An answer since Oct 2026; it used
+            // to be thrown, and this used to catch it.)
+            if (engine != null && !engine.TrySetFieldConfiguration(edited, out var refused))
             {
-                engine?.TrySetFieldConfiguration(edited, out _);
-            }
-            catch (ArgumentException ex)
-            {
-                // A combination of roles the engine refuses, a vector field given a second role
-                // for one. The table lets it be ticked, so it arrives here: say why and stop,
-                // rather than load with the configuration half meant.
-                Ctx.OperationError = ex.Message;
+                Ctx.OperationError = refused;
                 return;
             }
             var df = engine?.DocumentFields;

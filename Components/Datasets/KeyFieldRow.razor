@@ -115,8 +115,14 @@
         {
             // The dry-run reads the engine's field config, so apply the user's current edits first —
             // otherwise a valid key could falsely fail the dry-run's index on "no searchable field".
-            if (Ctx.EditedFields is { } edited)
-                Ctx.FindEngine()?.TrySetFieldConfiguration(edited, out _);
+            if (Ctx.EditedFields is { } edited && Ctx.FindEngine() is { } engine
+                && !engine.TrySetFieldConfiguration(edited, out var refused))
+            {
+                // The edits themselves are not ones the engine takes: that is what to say, and
+                // a dry run of the key on a configuration that was not applied says nothing.
+                _error = refused;
+                return;
+            }
 
             _checking = true;
             await InvokeAsync(StateHasChanged);
