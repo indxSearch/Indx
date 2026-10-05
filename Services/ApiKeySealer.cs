@@ -4,10 +4,11 @@ using System.Text;
 namespace IndxServer.Services
 {
     /// <summary>
-    /// Encrypts a Search key so it can be shown again after the one-time reveal. Search keys only:
-    /// they are public by design, sitting in a website's page, so hiding them protected nothing and
-    /// made people rotate keys they had merely lost. Read and Full keys are secrets and are never
-    /// stored in any form that gives them back.
+    /// Encrypts a Search or Read key so it can be shown again after the one-time reveal. Search
+    /// keys are public by design, sitting in a website's page, so hiding them protected nothing and
+    /// made people rotate keys they had merely lost. A Read key is shown only to its owner or the
+    /// team's Admins, who could create a new one anyway. Full keys change and delete data and are
+    /// never stored in any form that gives them back (<see cref="ApiKeyService.CanBeShownAgain"/>).
     /// <para>
     /// Stored encrypted all the same, so a copy of the database alone does not hand out working keys.
     /// The AES-GCM key is derived from <c>Jwt:Key</c>, the key that signs the tokens: it is already

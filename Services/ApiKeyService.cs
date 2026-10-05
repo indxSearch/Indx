@@ -59,7 +59,7 @@ namespace IndxServer.Services
                 Name = name,
                 KeyPrefix = token[..Math.Min(24, token.Length)],
                 KeySuffix = token[^4..],
-                SealedToken = level == ApiKeyLevel.Search ? ApiKeySealer.Seal(token, JwtKey) : null,
+                SealedToken = CanBeShownAgain(level) ? ApiKeySealer.Seal(token, JwtKey) : null,
                 Jti = jti,
                 Level = level.ToString(),
                 TeamId = teamId,
@@ -111,7 +111,7 @@ namespace IndxServer.Services
                 Name = name,
                 KeyPrefix = token[..Math.Min(24, token.Length)],
                 KeySuffix = token[^4..],
-                SealedToken = level == ApiKeyLevel.Search ? ApiKeySealer.Seal(token, JwtKey) : null,
+                SealedToken = CanBeShownAgain(level) ? ApiKeySealer.Seal(token, JwtKey) : null,
                 Jti = jti,
                 Level = level.ToString(),
                 TeamId = teamId,
@@ -152,10 +152,16 @@ namespace IndxServer.Services
         }
 
         /// <summary>
-        /// Shows a Search key again. A personal key to its owner, a team key to its team's Admins,
-        /// and only while it still works. Read and Full keys are never stored, so they cannot be:
+        /// Shows a Search or Read key again. A personal key to its owner, a team key to its team's
+        /// Admins, and only while it still works. Full keys are never stored, so they cannot be:
         /// losing one means creating a new key and revoking the old.
         /// </summary>
+        /// <summary>Which keys are stored, encrypted, so they can be shown again. Search keys sit in
+        /// public web pages, and a Read key's reader is its owner or the team's Admins, who could
+        /// mint a new one anyway (Anders, 5 Oct 2026; until then Search only). Full keys change and
+        /// delete data, and stay shown once.</summary>
+        public static bool CanBeShownAgain(ApiKeyLevel level) => level is ApiKeyLevel.Search or ApiKeyLevel.Read;
+
         public async Task<string> RevealAsync(int keyId, string actingUserId)
         {
             var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.Id == keyId)
@@ -166,9 +172,9 @@ namespace IndxServer.Services
             if (key.IsRevoked || key.ExpiresAt < DateTime.UtcNow)
                 throw new ArgumentException("That key no longer works, so there is nothing to show.");
             if (key.SealedToken == null)
-                throw new ArgumentException(key.Level == nameof(ApiKeyLevel.Search)
-                    ? "This key was created before keys could be shown again. Create a new one if you have lost it."
-                    : "Only Search keys can be shown again. Keys that read or change data are shown once: create a new one and revoke this.");
+                throw new ArgumentException(key.Level is nameof(ApiKeyLevel.Search) or nameof(ApiKeyLevel.Read)
+                    ? "This key was created before it could be shown again. Create a new one if you have lost it."
+                    : "Full keys are shown once, because they can change and delete data: create a new one and revoke this.");
             var token = ApiKeySealer.Open(key.SealedToken, JwtKey)
                 ?? throw new ArgumentException("This key can no longer be shown: the server's signing key has changed since it was created.");
             logger.LogInformation("{Kind} \"{Name}\" in {Team} shown again to {User}",
