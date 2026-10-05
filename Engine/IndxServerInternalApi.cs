@@ -227,33 +227,59 @@ namespace IndxServer.Engine
             return null;
         }
 
-        internal bool DoIndex(string dataSetName, string teamId)
+        /// <summary>
+        /// Starts the index build of a Loaded dataset and returns at once; false when there is no
+        /// such dataset or it is not Loaded. <c>Index</c> itself returns as soon as the build is
+        /// under way, so nothing here waits for it: the monitor stays published as the dataset's
+        /// running operation until the build ends, which is what status and the console read the
+        /// progress from. How it ended is on the engine's own status - Ready, or the state it fell
+        /// back to with <c>ErrorMessage</c> set. Until Oct 2026 this waited for the build and
+        /// <c>POST index</c> answered 202 only when it was over.
+        /// </summary>
+        internal bool StartIndex(string dataSetName, string teamId)
         {
-            var monitorKey = MakeKey(dataSetName, teamId);
+            var engine = FindInstance(dataSetName, teamId);
+            if (engine == null || engine.Status.SystemState != SystemState.Loaded)
+                return false;
+
+            var pm = new ProcessMonitor();
+            var tracked = TrackMonitor(dataSetName, teamId, pm);
             try
             {
-                var pm = new ProcessMonitor();
-                var engine = FindInstance(dataSetName, teamId);
-                if (engine != null && (engine.Status.SystemState == SystemState.Loaded
-                    || engine.Status.SystemState == SystemState.Ready))
-                {
-                    _activeMonitors[monitorKey] = pm;
-                    engine.Index(monitor: pm);
-                    pm.WaitForCompletion();
-                    return true;
-                }
-                else
-                    return false;
+                engine.Index(monitor: pm);
             }
             catch (System.Exception ex)
             {
-                _logger.LogError(ex, "{Prefix}DoIndexAsync failed", MakeLogPrefix(teamId, dataSetName));
+                tracked.Dispose();
+                _logger.LogError(ex, "{Prefix}StartIndex failed", MakeLogPrefix(teamId, dataSetName));
                 throw;
             }
-            finally
+            _ = Task.Run(() =>
             {
-                _activeMonitors.TryRemove(monitorKey, out _);
-            }
+                try { pm.WaitForCompletion(); }
+                finally { tracked.Dispose(); }
+            });
+            return true;
+        }
+
+        /// <summary>The dataset's status as GET status reports it: the engine's own, with what only
+        /// the server knows added. Null when the dataset does not exist. Resolves the engine, so a
+        /// hibernated timed or pinned dataset is loaded by asking.</summary>
+        internal ServerSystemStatus? GetServerStatus(string dataSetName, string teamId)
+        {
+            var status = GetState(dataSetName, teamId);
+            if (status == null)
+                return null;
+            var (recordsOnDisk, fieldsDiscovered) = GetStoreFacts(dataSetName, teamId);
+            return new ServerSystemStatus(status)
+            {
+                RecordsOnDisk = recordsOnDisk,
+                FieldsDiscovered = fieldsDiscovered,
+                ShadowBuildInProgress = IsShadowBuildInProgress(dataSetName, teamId),
+                ShadowBuildStartedUtc = ShadowBuildStartedUtc(dataSetName, teamId),
+                ShadowBuildFinishedUtc = ShadowBuildFinishedUtc(dataSetName, teamId),
+                ShadowBuildError = ShadowBuildError(dataSetName, teamId),
+            };
         }
 
         internal string[] GetFields(string dataSetName, string teamId, bool all, bool indexable, bool sortable, bool filterable, bool facetable, bool wordIndexing)
@@ -388,6 +414,7 @@ namespace IndxServer.Engine
                         return false;
                 }
 
+                UseSavedEmbeddings(instance, dataSetName, teamId);
                 instance.LoadFromDatabaseSync(monitor);
                 return true;
             }
@@ -555,6 +582,7 @@ namespace IndxServer.Engine
             var engine = FindInstance(dataSetName, teamId);
             if (engine == null || engine.IsDisposed)
                 return;
+            SaveEmbeddingsForSleep(engine, dataSetName, teamId);
             if (engine.Unload(out _))
             {
                 _lifecycleLogger.LogInformation("Unloaded SearchEngine instance for team {Team}, dataset {DataSet} (sleep)", TeamLabel(teamId), dataSetName);
@@ -723,6 +751,7 @@ namespace IndxServer.Engine
             var engine = inst.theInstance;
             if (engine == null || engine.IsDisposed)
                 return false;
+            SaveEmbeddingsForSleep(engine, inst.DataSetName, inst.TeamId);
             if (!engine.Unload(out var unloadError))
             {
                 // The engine left Ready since it was selected (a request or build got in): it is
@@ -775,25 +804,11 @@ namespace IndxServer.Engine
             // nothing can appear behind the removal.
             persistence.DeleteDataSet();
             DisposeDataSetInstance(dataSetName, teamId);
+            DeleteSavedEmbeddings(dataSetName, teamId);
             _boostStore?.Delete(teamId, dataSetName);
             _metadataStore?.Delete(teamId, dataSetName);
             // Statistics survive a delete by design, so the history says where the gap came from.
             ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Delete);
-            return true;
-        }
-
-        internal bool SetEmbeddableFields(string[] fieldNames, string dataSetName, string teamId)
-        {
-            var engine = FindInstance(dataSetName, teamId);
-            if (engine?.DocumentFields == null)
-                return false;
-            foreach (var name in fieldNames)
-            {
-                var field = engine.DocumentFields.GetField(name);
-                if (field == null)
-                    return false;
-                field.Embeddable = true;
-            }
             return true;
         }
 
@@ -1017,6 +1032,7 @@ namespace IndxServer.Engine
             db.RenameDataSet(dataSetName, teamId, newName);
             _boostStore?.Rename(teamId, dataSetName, newName);
             _metadataStore?.Rename(teamId, dataSetName, newName);
+            MoveSavedEmbeddings(dataSetName, teamId, newName, teamId);
             _logger.LogInformation("{Prefix}renamed to '{NewName}'", MakeLogPrefix(teamId, dataSetName), newName);
 
             // Bring the renamed dataset back to where it was: a Ready engine reloads under the new
@@ -1027,6 +1043,7 @@ namespace IndxServer.Engine
                 var loadMonitor = new ProcessMonitor();
                 using (TrackMonitor(dataSetName, teamId, loadMonitor))
                 {
+                    UseSavedEmbeddings(instance, newName, teamId);
                     instance.LoadFromDatabaseSync(loadMonitor);
                     loadMonitor.WaitForCompletion();
                 }
@@ -1057,6 +1074,7 @@ namespace IndxServer.Engine
             db.TransferOwnership(dataSetName, currentTeamId, newTeamId);
             _boostStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _metadataStore?.Transfer(currentTeamId, newTeamId, dataSetName);
+            MoveSavedEmbeddings(dataSetName, currentTeamId, dataSetName, newTeamId);
 
             // Warm up the engine for the new owning team, same as InitializeSystem does on startup.
             var instance = FindInstance(dataSetName, newTeamId);
@@ -1065,6 +1083,7 @@ namespace IndxServer.Engine
                 var loadMonitor = new ProcessMonitor();
                 using (TrackMonitor(dataSetName, newTeamId, loadMonitor))
                 {
+                    UseSavedEmbeddings(instance, dataSetName, newTeamId);
                     instance.LoadFromDatabaseSync(loadMonitor);
                     loadMonitor.WaitForCompletion();
                 }
@@ -1306,6 +1325,7 @@ namespace IndxServer.Engine
                         _logger.LogInformation("{Tag} [{I}/{Total}] loading '{DataSet}' team {Team}: {Records} records, workingSet {WorkingSetMb} MB", tag, i, total, dataSet, TeamLabel(teamId), records, beforeMb);
                         var monitor = new ProcessMonitor { TimeoutSeconds = 600 };
                         using var warmUpScope = TrackMonitor(dataSet, teamId, monitor);
+                        UseSavedEmbeddings(engine, dataSet, teamId);
                         engine.LoadFromDatabaseSync(monitor);
                         // Finished and succeeded - see ResolveEngine. A load that finished with an
                         // error used to pass this and be indexed.
@@ -1716,6 +1736,7 @@ namespace IndxServer.Engine
                         // dataset with a growing pile of blocked request threads.
                         var loadMonitor = new ProcessMonitor { TimeoutSeconds = 600 };
                         using var wakeScope = TrackMonitor(dataSetName, teamId, loadMonitor);
+                        UseSavedEmbeddings(engine, dataSetName, teamId);
                         engine.LoadFromDatabaseSync(loadMonitor);
                         // Finished AND succeeded. WaitForCompletion answers only the first, and
                         // until Oct 2026 that was all that was asked: a load that failed part-way,

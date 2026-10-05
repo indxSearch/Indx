@@ -28,6 +28,39 @@ namespace IndxServer.Engine
     {
         private readonly ConcurrentDictionary<string, DateTime> _shadowBuildsInProgress = new();
         private readonly ConcurrentDictionary<string, ProcessMonitor> _shadowMonitors = new();
+
+        /// <summary>How the last shadow build of a dataset ended: when, and why it failed (null
+        /// when it did not). A build started over HTTP answers 202 before it is done, so this is
+        /// the only place its caller can read the outcome; it is what
+        /// <c>ShadowBuildFinishedUtc</c> and <c>ShadowBuildError</c> on GET status report.
+        /// Cleared when the next build of the dataset starts.</summary>
+        private sealed record ShadowOutcome(DateTime FinishedUtc, string? Error);
+        private readonly ConcurrentDictionary<string, ShadowOutcome> _shadowOutcomes = new();
+
+        /// <summary>Test seam: called on the build thread once a field-configuration build has
+        /// claimed its dataset and before it builds, with the name of the dataset, so a test can
+        /// hold it there or fail it. A small test dataset is otherwise rebuilt before a second
+        /// request can be aimed at it.</summary>
+        internal Action<string>? ShadowBuildStarting { get; set; }
+
+        /// <summary>Claims the dataset's single shadow build, or throws
+        /// <see cref="ShadowBusyException"/> when one is running. Paired with
+        /// <see cref="ReleaseShadowBuild"/>.</summary>
+        private void ClaimShadowBuild(string key, string dataSetName)
+        {
+            if (!_shadowBuildsInProgress.TryAdd(key, TimeProvider.GetUtcNow().UtcDateTime))
+                throw new ShadowBusyException(dataSetName);
+            _shadowOutcomes.TryRemove(key, out _);
+        }
+
+        /// <summary>Records how the build ended and gives the dataset up for the next one. In
+        /// that order: a caller polling status must never see "no build running" before the
+        /// outcome of the one that just ran is there to read.</summary>
+        private void ReleaseShadowBuild(string key, string? error)
+        {
+            _shadowOutcomes[key] = new ShadowOutcome(TimeProvider.GetUtcNow().UtcDateTime, error);
+            _shadowBuildsInProgress.TryRemove(key, out _);
+        }
         private const int DisposalGraceSeconds = 30;
         private const int DisposalPollMilliseconds = 200;
 
@@ -58,10 +91,10 @@ namespace IndxServer.Engine
             Func<IServerSearchEngine, TResult> mutation)
         {
             var key = MakeKey(dataSetName, teamId);
-            if (!_shadowBuildsInProgress.TryAdd(key, DateTime.UtcNow))
-                throw new ShadowBusyException(dataSetName);
+            ClaimShadowBuild(key, dataSetName);
 
             SearchEngine? shadow = null;
+            string? failure = null;
             try
             {
                 SearchEngineInstance container;
@@ -105,6 +138,7 @@ namespace IndxServer.Engine
             }
             catch (Exception ex)
             {
+                failure = ex.Message;
                 _logger.LogError(ex,
                     "{Prefix}RunMutationOnShadow failed",
                     MakeLogPrefix(teamId, dataSetName));
@@ -124,7 +158,7 @@ namespace IndxServer.Engine
                             MakeLogPrefix(teamId, dataSetName));
                     }
                 }
-                _shadowBuildsInProgress.TryRemove(key, out _);
+                ReleaseShadowBuild(key, failure);
             }
         }
 
@@ -183,21 +217,60 @@ namespace IndxServer.Engine
         /// <see cref="RunMutationOnShadow{TResult}"/> would leave _indexableFields in the
         /// pre-mutation shape and the change would silently have no search-time effect.
         /// </summary>
+        /// <remarks>Blocks until the swap is done and throws when the build fails: for the console,
+        /// which runs it on a task of its own and shows the progress. A request must not wait on
+        /// it - on a large dataset it is minutes - and uses
+        /// <see cref="StartFieldConfigurationOnShadow"/>.</remarks>
         internal void RunFieldConfigurationOnShadow(
             string dataSetName,
             string teamId,
             FieldProxy[] fields)
         {
             var key = MakeKey(dataSetName, teamId);
-            if (!_shadowBuildsInProgress.TryAdd(key, DateTime.UtcNow))
-                throw new ShadowBusyException(dataSetName);
+            ClaimShadowBuild(key, dataSetName);
+            BuildFieldConfigurationOnShadow(dataSetName, teamId, fields, key);
+        }
 
+        /// <summary>
+        /// Starts the same build in the background and returns at once. The dataset is claimed
+        /// before this returns, so <see cref="IsShadowBuildInProgress"/> is already true for the
+        /// caller's first status poll, and a second start throws
+        /// <see cref="ShadowBusyException"/> here, on the caller's thread. Everything after that
+        /// is reported through status: in progress while it runs, then the finish time and, if it
+        /// failed, the error. A failed build swaps nothing in; the dataset keeps serving with the
+        /// configuration it had.
+        /// </summary>
+        internal void StartFieldConfigurationOnShadow(
+            string dataSetName,
+            string teamId,
+            FieldProxy[] fields)
+        {
+            var key = MakeKey(dataSetName, teamId);
+            ClaimShadowBuild(key, dataSetName);
+            _ = Task.Run(() =>
+            {
+                // Logged and recorded as the outcome inside; nobody waits on this task.
+                try { BuildFieldConfigurationOnShadow(dataSetName, teamId, fields, key); }
+                catch { }
+            });
+        }
+
+        /// <summary>The build itself, for a dataset the caller has claimed. Releases the claim.</summary>
+        private void BuildFieldConfigurationOnShadow(
+            string dataSetName,
+            string teamId,
+            FieldProxy[] fields,
+            string key)
+        {
             var monitor = new ProcessMonitor();
             _shadowMonitors[key] = monitor;
 
             SearchEngine? shadow = null;
+            string? failure = null;
             try
             {
+                ShadowBuildStarting?.Invoke(dataSetName);
+
                 SearchEngineInstance container;
                 IServerSearchEngine original;
                 lock (_dictionaryLock)
@@ -243,6 +316,7 @@ namespace IndxServer.Engine
             }
             catch (Exception ex)
             {
+                failure = ex.Message;
                 _logger.LogError(ex,
                     "{Prefix}RunFieldConfigurationOnShadow failed",
                     MakeLogPrefix(teamId, dataSetName));
@@ -261,7 +335,7 @@ namespace IndxServer.Engine
                             MakeLogPrefix(teamId, dataSetName));
                     }
                 }
-                _shadowBuildsInProgress.TryRemove(key, out _);
+                ReleaseShadowBuild(key, failure);
             }
         }
 
@@ -273,6 +347,18 @@ namespace IndxServer.Engine
         internal DateTime? ShadowBuildStartedUtc(string dataSetName, string teamId)
             => _shadowBuildsInProgress.TryGetValue(MakeKey(dataSetName, teamId), out var started)
                 ? started : null;
+
+        /// <summary>UTC time at which the dataset's last shadow build ended, or null when none has
+        /// ended since the server started or one is running now.</summary>
+        internal DateTime? ShadowBuildFinishedUtc(string dataSetName, string teamId)
+            => _shadowOutcomes.TryGetValue(MakeKey(dataSetName, teamId), out var outcome)
+                ? outcome.FinishedUtc : null;
+
+        /// <summary>Why the dataset's last shadow build failed, or null: it succeeded, none has
+        /// run, or one is running now.</summary>
+        internal string? ShadowBuildError(string dataSetName, string teamId)
+            => _shadowOutcomes.TryGetValue(MakeKey(dataSetName, teamId), out var outcome)
+                ? outcome.Error : null;
 
         /// <summary>Progress percentage (0–100) of the current shadow build's index phase, or 0 if none.</summary>
         internal int GetShadowBuildPercent(string dataSetName, string teamId)

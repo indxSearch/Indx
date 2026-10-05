@@ -142,18 +142,10 @@ namespace IndxServer.Controllers
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
-            var status = IndxServerInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
+            var status = IndxServerInternalApi.Manager.GetServerStatus(dataSetName, ctx.OwnerKey);
             if (status == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
-
-            var (recordsOnDisk, fieldsDiscovered) = IndxServerInternalApi.Manager.GetStoreFacts(dataSetName, ctx.OwnerKey);
-            return new ServerSystemStatus(status)
-            {
-                RecordsOnDisk = recordsOnDisk,
-                FieldsDiscovered = fieldsDiscovered,
-                ShadowBuildInProgress = IndxServerInternalApi.Manager.IsShadowBuildInProgress(dataSetName, ctx.OwnerKey),
-                ShadowBuildStartedUtc = IndxServerInternalApi.Manager.ShadowBuildStartedUtc(dataSetName, ctx.OwnerKey),
-            };
+            return status;
         }
 
         /// <summary>
@@ -197,10 +189,15 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
-        /// IndexDataSet will start indexing of the loaded documents.
+        /// IndexDataSet starts the index build and answers 202 with the status as it is then; the
+        /// build goes on in the background. A Loaded dataset is indexed for the first time: poll
+        /// GET status until <c>systemState</c> is Ready (a build that fails leaves the state it
+        /// fell back to and <c>errorMessage</c>). A Ready dataset is rebuilt on a shadow engine
+        /// and keeps serving meanwhile: poll until <c>shadowBuildInProgress</c> is false, then
+        /// read <c>shadowBuildError</c>. Until Oct 2026 the request waited for the build.
         /// </summary>
         [HttpPost(DataSetRoute + "/index")]
-        [ProducesResponseType(typeof(SystemStatus), StatusCodes.Status202Accepted)]
+        [ProducesResponseType(typeof(ServerSystemStatus), StatusCodes.Status202Accepted)]
         public IActionResult IndexDataSet(string teamName, string dataSetName)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -211,7 +208,7 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
 
             // First-time indexing needs Loaded; a Ready dataset is re-indexed via shadow-swap.
-            // Created / Loading / Indexing / Hibernated / Error are not indexable here → 409.
+            // Created / Loading / Indexing / Error are not indexable here → 409.
             if (RequireState(matcher, "IndexDataSet", SystemState.Loaded, SystemState.Ready) is { } stateError)
                 return stateError;
 
@@ -221,30 +218,23 @@ namespace IndxServer.Controllers
                 // internally) and swap it in. Empty FieldProxy[] means no field-config changes.
                 try
                 {
-                    IndxServerInternalApi.Manager.RunFieldConfigurationOnShadow(
+                    IndxServerInternalApi.Manager.StartFieldConfigurationOnShadow(
                         dataSetName, ctx.OwnerKey, Array.Empty<FieldProxy>());
                 }
                 catch (ShadowBusyException ex)
                 {
                     return ApiProblems.ShadowBusy(ex.Message);
                 }
-                catch (InvalidOperationException ex)
-                {
-                    // Same mapping as SetFieldConfiguration's shadow path — a failed shadow
-                    // build is a clean 400, not an unhandled 500.
-                    return ApiProblems.OperationFailed(ex.Message);
-                }
             }
-            else if (!IndxServerInternalApi.Manager.DoIndex(dataSetName, ctx.OwnerKey))
+            else if (!IndxServerInternalApi.Manager.StartIndex(dataSetName, ctx.OwnerKey))
             {
+                // Loaded a moment ago and not now: someone else started the build in between.
                 return ApiProblems.OperationFailed("Indexing could not be started.");
             }
 
-            var status = IndxServerInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
+            var status = IndxServerInternalApi.Manager.GetServerStatus(dataSetName, ctx.OwnerKey);
             if (status == null)
                 return ApiProblems.OperationFailed("Indexing did not report a status.");
-            // The work continues in the background — 202 with the current status;
-            // poll GET status until Ready.
             return Accepted(status);
         }
 
@@ -391,6 +381,8 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "Hibernate", SystemState.Ready) is { } stateError)
                 return stateError;
+            // The vector graphs go to a file first, for the wake to read in place of building them.
+            IndxServerInternalApi.Manager.SaveEmbeddingsForSleep(matcher, dataSetName, ctx.OwnerKey);
             var result = matcher.Unload(out string errorMessage);
             if (!result)
                 return ApiProblems.InvalidArgument(errorMessage);

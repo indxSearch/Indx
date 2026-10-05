@@ -549,9 +549,6 @@ internal static class StartupServices
             // Add operation filter for Search endpoint examples
             c.OperationFilter<IndxServer.Swagger.SearchExamplesOperationFilter>();
 
-            // Add operation filter for SetSearchableFields endpoint examples
-            c.OperationFilter<IndxServer.Swagger.SetSearchableFieldsExamplesOperationFilter>();
-
             c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme()
             {
                 Type = SecuritySchemeType.Http,

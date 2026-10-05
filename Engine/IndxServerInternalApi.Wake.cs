@@ -84,6 +84,7 @@ namespace IndxServer.Engine
                     {
                         if (!op.CancelRequested)
                         {
+                            UseSavedEmbeddings(engine, dataSetName, teamId);
                             engine.LoadFromDatabaseSync(op.LoadMonitor);
                             op.LoadMonitor.WaitForCompletion();
                         }

@@ -152,8 +152,12 @@ present at load time are stored but not indexed. Use **Replace** to adopt them.
 **Replace** (`POST …/replace`, or the *Options* tab) swaps the whole dataset for a new JSON
 file with no downtime: the new documents load and index on a shadow engine while the old one
 keeps answering, then the two are swapped. Changing the **field configuration** of a loaded
-dataset rebuilds the same way. While a build runs, `GET status` reports
-`shadowBuildInProgress` and a second build is refused with `409 shadowBusy`.
+dataset rebuilds the same way, and so does `POST …/index` on a dataset that is already Ready.
+Those two do not wait for the build: they answer `202` when it is started. While a build runs,
+`GET status` reports `shadowBuildInProgress` and a second build is refused with
+`409 shadowBusy`; when it is over, `shadowBuildFinishedUtc` is set and `shadowBuildError` says
+why it failed, or is null. Field roles are written by `PUT …/fields/configuration` only; the
+per-role lists (`GET …/fields/searchable` and the rest) are for reading.
 
 ## Boost rules
 

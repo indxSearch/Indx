@@ -88,6 +88,10 @@ else if (Ctx.EditedFields is { } fields)
                 var engine = Ctx.FindEngine();
                 if (engine == null) return;
                 var df = engine.DocumentFields;
+                // Refused as a whole and before anything is changed, as the HTTP route does. A
+                // refusal throws with the reason, which the catch below shows.
+                if (!engine.TryValidateFieldConfiguration(edited, out var invalid))
+                    throw new ArgumentException(invalid);
                 // Also for a field getting its first role: see FieldConfigurationChange.
                 bool needsReindex = df != null && FieldConfigurationChange.NeedsRebuild(df, edited);
                 // Before applying: afterwards the old configuration is gone and there is nothing

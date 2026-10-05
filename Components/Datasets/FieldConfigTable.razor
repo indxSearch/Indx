@@ -204,24 +204,56 @@
     /// <summary>One capability: its label, whether it belongs to the advanced set, and how to
     /// read and write it. Both renderings walk this list, in column order, so a capability added
     /// here appears in both.</summary>
+    /// <remarks><c>NotOnAVector</c> marks the roles a vector field cannot have, and
+    /// <c>IsEmbeddable</c> the one that makes it a vector field: the engine refuses the two
+    /// together (DocumentFields.VectorFieldObjection), since a vector indexed as text, a filter
+    /// or a facet is indexed number by number.</remarks>
     private sealed record Cap(string Label, bool Advanced, Func<FieldProxy, bool?> Get, Action<FieldProxy, bool> Put,
-        bool IsSearchable = false, bool NeedsType = false);
+        bool IsSearchable = false, bool NeedsType = false, bool NotOnAVector = false, bool IsEmbeddable = false);
 
     private static readonly Cap[] Caps =
     [
-        new("Searchable", false, f => f.Searchable, (f, v) => f.Searchable = v, IsSearchable: true),
-        new("Filterable", false, f => f.Filterable, (f, v) => f.Filterable = v, NeedsType: true),
-        new("Facetable", false, f => f.Facetable, (f, v) => f.Facetable = v),
-        new("Sortable", false, f => f.Sortable, (f, v) => f.Sortable = v, NeedsType: true),
-        new("WordIndexing", true, f => f.WordIndexing, (f, v) => f.WordIndexing = v),
-        new("Embeddable", true, f => f.Embeddable, (f, v) => f.Embeddable = v),
-        new("PreloadFilters", true, f => f.PreloadFilters, (f, v) => f.PreloadFilters = v),
+        new("Searchable", false, f => f.Searchable, (f, v) => f.Searchable = v, IsSearchable: true, NotOnAVector: true),
+        new("Filterable", false, f => f.Filterable, (f, v) => f.Filterable = v, NeedsType: true, NotOnAVector: true),
+        new("Facetable", false, f => f.Facetable, (f, v) => f.Facetable = v, NotOnAVector: true),
+        new("Sortable", false, f => f.Sortable, (f, v) => f.Sortable = v, NeedsType: true, NotOnAVector: true),
+        new("WordIndexing", true, f => f.WordIndexing, (f, v) => f.WordIndexing = v, NotOnAVector: true),
+        new("Embeddable", true, f => f.Embeddable, (f, v) => f.Embeddable = v, IsEmbeddable: true),
+        new("PreloadFilters", true, f => f.PreloadFilters, (f, v) => f.PreloadFilters = v, NotOnAVector: true),
         new("HighResolution", true, f => f.HighResolution, (f, v) => f.HighResolution = v),
     ];
 
+    /// <summary>Why this box cannot be ticked for this field, or null when it can. The same
+    /// rules the engine refuses a saved configuration by, shown where the choice is made
+    /// instead of as an error after Save. A box that is ticked is never refused: a
+    /// configuration from before a rule existed has to be something one can untick.</summary>
+    internal static string? WhyRefused(FieldProxy field, string capLabel)
+    {
+        var cap = Caps.First(c => c.Label == capLabel);
+        if (cap.Get(field) == true)
+            return null;
+        // FieldType == null, not HasNoValue: that excludes containers, and a container is untyped
+        // too - its data lives on the nested fields under it - so the engine refuses these two on
+        // it for the same reason.
+        if (cap.NeedsType && field.FieldType == null)
+            return $"{field.FieldName} has no type in this dataset, so it cannot be {cap.Label}. Those two are the only roles that need one.";
+        if (cap.NotOnAVector && field.Embeddable == true)
+            return $"{field.FieldName} is a vector field (Embeddable), which is used for vector search and nothing else. Untick Embeddable to give it another role.";
+        if (cap.IsEmbeddable)
+        {
+            if (field.IsArray != true || field.FieldType != "Number")
+                return $"{field.FieldName} cannot be Embeddable: a vector field holds an array of numbers.";
+            var others = Caps.Where(c => c.NotOnAVector && c.Get(field) == true).Select(c => c.Label).ToArray();
+            if (others.Length > 0)
+                return $"{field.FieldName} is {string.Join(", ", others)}. A vector field has no other role: untick {(others.Length == 1 ? "it" : "them")} to make the field Embeddable.";
+        }
+        return null;
+    }
+
     private Cap[] VisibleCaps => ShowAdvanced ? Caps : Caps.Where(c => !c.Advanced).ToArray();
 
-    /// <summary>Filterable and Sortable are the only roles that read Field.Type, and a field that
+    /// <summary>A box the engine would refuse is disabled, with the reason as its title
+    /// (<see cref="WhyRefused"/>). Filterable and Sortable are the only roles that read Field.Type, and a field that
     /// was null in every analyzed document has none, so the engine refuses them. Disabled per column
     /// rather than per row: Searchable and Facetable never read the type and stay available, and the
     /// reason ticking Searchable is still offered is that it prepares the field - a record inserted
@@ -229,11 +261,9 @@
     /// disabled control does not raise the hover.</summary>
     private RenderFragment CapBox(FieldProxy field, Cap cap) => __builder =>
     {
-        // FieldType == null, not HasNoValue: that excludes containers, and a container is untyped
-        // too - its data lives on the nested fields under it - so the engine refuses these two on
-        // it for the same reason.
-        var refused = cap.NeedsType && field.FieldType == null;
-        <span title="@(refused ? $"{field.FieldName} has no type in this dataset, so it cannot be {cap.Label}. Those two are the only roles that need one." : null)">
+        var why = WhyRefused(field, cap.Label);
+        var refused = why != null;
+        <span title="@why">
             <Checkbox Checked="@(cap.Get(field) == true)" Disabled="@(!Editable || refused)" aria-label="@($"{cap.Label}: {field.FieldName}")"
                       CheckedChanged="@(v => Set(() => { cap.Put(field, v); if (cap.IsSearchable) SearchableTouched = true; }))" />
         </span>

@@ -258,6 +258,13 @@ namespace IndxServer.Mcp
                 ["shadowBuildInProgress"] = IndxServerInternalApi.Manager.IsShadowBuildInProgress(dataset, ownerKey),
             };
 
+            // How the last rebuild ended. A field configuration change that needs one answers
+            // before it is done, so this is where its outcome is read.
+            if (IndxServerInternalApi.Manager.ShadowBuildFinishedUtc(dataset, ownerKey) is { } finished)
+                o["shadowBuildFinishedUtc"] = finished.ToString("o", CultureInfo.InvariantCulture);
+            if (IndxServerInternalApi.Manager.ShadowBuildError(dataset, ownerKey) is { } buildError)
+                o["shadowBuildError"] = buildError;
+
             if (!string.IsNullOrWhiteSpace(status.ErrorMessage)) o["errorMessage"] = status.ErrorMessage;
             if (status.TooLongSearchText) o["tooLongSearchText"] = true;
             if (status.IndexedTextTruncated) o["indexedTextTruncated"] = true;

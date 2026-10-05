@@ -28,6 +28,14 @@
 
 	<ItemGroup>
 		<None Include="LICENSE" Pack="true" PackagePath="" />
+		<!-- The vector graph in the Indx library is a port of code from FAISS (MIT) and hnswlib
+		     (Apache 2.0), and both licences ask that their text goes with every copy. A published
+		     server is a copy, whichever way the library is referenced, so the texts ship in its
+		     output. They are copies of Indx/THIRD-PARTY-NOTICES.md and Indx/ThirdParty/*, kept
+		     here because this folder is all the public repository gets;
+		     PublicTreeTests.TheThirdPartyLicenceTexts_AreTheLibrarysOwn fails when they differ. -->
+		<None Update="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<None Update="ThirdParty\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
 	</ItemGroup>
 
 	<!-- Internal services (LicenseBootstrapper, NotificationService, …) are exercised

@@ -29,5 +29,17 @@ namespace IndxServer.Models
 
         /// <summary>UTC timestamp at which the in-progress shadow build started, or null if none is active.</summary>
         public DateTime? ShadowBuildStartedUtc { get; set; }
+
+        /// <summary>UTC timestamp at which the dataset's last shadow build ended, or null when
+        /// none has ended since the server started or one is running now. A request that starts a
+        /// rebuild answers 202 before it is done; the rebuild is over when
+        /// <see cref="ShadowBuildInProgress"/> is false again and this is set.</summary>
+        public DateTime? ShadowBuildFinishedUtc { get; set; }
+
+        /// <summary>Why the dataset's last shadow build failed, or null: it succeeded, none has
+        /// run, or one is running now. A failed build swaps nothing in, so the dataset keeps
+        /// serving with the documents and field configuration it had. Cleared when the next build
+        /// starts.</summary>
+        public string? ShadowBuildError { get; set; }
     }
 }

@@ -19,6 +19,9 @@ namespace IndxServer.Controllers
 {
     /// <summary>
     /// Field roles (searchable, filterable, facetable, sortable, word-indexing, embeddable, key) and the field configuration.
+    /// The roles are read one list at a time and written in one place, <c>PUT fields/configuration</c>:
+    /// until Oct 2026 each list also had a PUT of its own, which set its one flag on the live
+    /// engine with no rebuild, so a role that needs one took effect only at the next index build.
     /// Team scoping, authentication and the error contract are declared on
     /// <see cref="DatasetApiController"/>.
     /// </summary>
@@ -109,13 +112,39 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
+        /// GetEmbeddableFields will return the array of embeddable (vector) field names.
+        /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
+        [HttpGet(DataSetRoute + "/fields/embeddable")]
+        public ActionResult<string[]> GetEmbeddableFields(string teamName, string dataSetName)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            var engine = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (engine == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
+            return engine.GetFieldList().Where(f => f.Embeddable).Select(f => f.Name).ToArray();
+        }
+
+        /// <summary>
         /// SetFieldConfiguration sets any combination of field properties (Searchable, Filterable,
         /// Facetable, Sortable, WordIndexing, Embeddable, PreloadFilters, Weight, BM25b, BM25k1)
         /// in one call. Nullable properties have replace semantics: null = leave untouched,
         /// any value (including false) = overwrite.
+        ///
+        /// <para>The whole request is checked before anything is changed, and a refused one is a
+        /// 400 that changes nothing. An accepted one answers in one of two ways. <b>204</b>: the
+        /// change is applied, which is every change on a dataset that is not serving yet and a
+        /// change of query-time roles on one that is. <b>202</b> with the status: the change needs
+        /// the index rebuilt on a dataset that is Ready, so a rebuild on a shadow engine has been
+        /// started and the dataset serves with the old configuration until it is swapped in. Poll
+        /// GET status until <c>shadowBuildInProgress</c> is false, then read
+        /// <c>shadowBuildError</c>: null means the new configuration is in use. Until Oct 2026
+        /// the request waited for the rebuild, minutes on a large dataset.</para>
         /// </summary>
         [HttpPut(DataSetRoute + "/fields/configuration")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(typeof(ServerSystemStatus), StatusCodes.Status202Accepted)]
         public IActionResult SetFieldConfiguration(string teamName, string dataSetName, [FromBody] FieldProxy[] fields)
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
@@ -129,6 +158,39 @@ namespace IndxServer.Controllers
             if (df == null)
                 return ApiProblems.InvalidArgument("The dataset has not been analyzed yet, so there are no fields to configure.");
 
+            // Everything that can be refused is refused here, before anything is changed and before
+            // a rebuild is started: the rebuild runs after the answer has gone, so what it would
+            // have refused the caller would only find in status. The names first, in the wording
+            // every field route uses and the docs quote.
+            foreach (var cfg in fields)
+                if (df.GetField(cfg.FieldName) == null)
+                    return ApiProblems.InvalidArgument(
+                        $"Field '{cfg.FieldName}' does not exist in this dataset.");
+            // Then the values: a negative weight, a BM25b outside [0, 1], a negative BM25k1, a
+            // Filterable or Sortable field with no type, a vector field given another role. The
+            // caller's mistake, so a 400 with the reason, not the 500 the global handler would
+            // produce - that tells the caller we broke and logs it as our incident.
+            try
+            {
+                if (!matcher.TryValidateFieldConfiguration(fields, out var invalid))
+                    return ApiProblems.InvalidArgument(invalid);
+            }
+            catch (ArgumentException ex)
+            {
+                return ApiProblems.InvalidArgument(ex.Message);
+            }
+
+            // Mid-load or mid-build the engine is working on the configuration it was given, and
+            // a change now would be half in that work and half out of it. Not the caller's mistake
+            // and not ours: retry shortly, as for a document change in the same window.
+            var state = matcher.Status.SystemState;
+            if (state is SystemState.Loading or SystemState.Indexing)
+                return ApiProblems.ShadowBusy(new ShadowBusyException(dataSetName, state).Message);
+            // Likewise while a rebuild runs: applied in place the change would be on the engine
+            // that is about to be swapped out, and gone with it.
+            if (IndxServerInternalApi.Manager.IsShadowBuildInProgress(dataSetName, ctx.OwnerKey))
+                return ApiProblems.ShadowBusy(new ShadowBusyException(dataSetName).Message);
+
             // If any proposed change requires rebuilding the index AND the engine is serving
             // searches, route via the shadow-swap path so live searches are not blocked. The
             // override is applied between Init and Load on the shadow so MakeSearchEngines builds
@@ -138,34 +200,18 @@ namespace IndxServer.Controllers
             // Before applying: afterwards the old configuration is gone and there is nothing left
             // to diff against.
             IndxServer.Services.FieldConfigurationChange.Announce(df, fields, dataSetName, ctx.OwnerKey);
-            if (needsReindex && matcher.Status.SystemState == SystemState.Ready)
+            if (needsReindex && state == SystemState.Ready)
             {
-                foreach (var cfg in fields)
-                    if (df.GetField(cfg.FieldName) == null)
-                        return ApiProblems.InvalidArgument(
-                            $"Field '{cfg.FieldName}' does not exist in this dataset.");
-
                 try
                 {
-                    IndxServerInternalApi.Manager.RunFieldConfigurationOnShadow(dataSetName, ctx.OwnerKey, fields);
-                    return NoContent();
+                    IndxServerInternalApi.Manager.StartFieldConfigurationOnShadow(dataSetName, ctx.OwnerKey, fields);
                 }
                 catch (ShadowBusyException ex)
                 {
                     return ApiProblems.ShadowBusy(ex.Message);
                 }
-                // A value the engine refuses — a negative weight, a BM25b outside [0, 1], a
-                // negative BM25k1. That is the caller's mistake, so it is a 400 with the reason,
-                // not the 500 the global handler would otherwise produce. A 500 tells the caller
-                // we broke and logs it as our incident, when the fix is on their side.
-                catch (ArgumentException ex)
-                {
-                    return ApiProblems.InvalidArgument(ex.Message);
-                }
-                catch (InvalidOperationException ex)
-                {
-                    return ApiProblems.OperationFailed(ex.Message);
-                }
+                var status = IndxServerInternalApi.Manager.GetServerStatus(dataSetName, ctx.OwnerKey);
+                return status == null ? ApiProblems.DatasetNotFound(dataSetName) : Accepted(status);
             }
 
             // Inline: only query-time flags changed, or engine is not yet Ready.
@@ -179,50 +225,14 @@ namespace IndxServer.Controllers
             {
                 return ApiProblems.InvalidArgument(ex.Message);
             }
+            // The engine said no to something the check above let through. Still the request it
+            // refused, not a fault of ours: until Oct 2026 this was a 500.
+            catch (InvalidOperationException ex)
+            {
+                return ApiProblems.InvalidArgument(ex.Message);
+            }
             return NoContent();
         }
-
-        /// <summary>Sets the Searchable property and weight on the specified fields.</summary>
-        [HttpPut(DataSetRoute + "/fields/searchable")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        public IActionResult SetSearchableFields(string teamName, string dataSetName, [FromBody] (string Name, float Weight)[] fields)
-        {
-            // Checked here rather than left to the Field.Weight setter, for two reasons: the
-            // setter throws, which SetFieldFlag would turn into a 500; and SetFieldFlag applies
-            // field by field, so a throw partway through would leave the earlier fields already
-            // changed. Refusing the whole call up front keeps it all-or-nothing.
-            foreach (var f in fields)
-                if (f.Weight < 0f)
-                    return ApiProblems.InvalidArgument(
-                        $"Weight for field '{f.Name}' is {f.Weight}; a field weight cannot be negative.");
-
-            return SetFieldFlag(teamName, dataSetName, fields.Select(f => f.Name),
-                (f, t) => { f.Searchable = true; f.Weight = fields.First(x => x.Name == t).Weight; });
-        }
-
-        /// <summary>Sets the Filterable property on the specified fields.</summary>
-        [HttpPut(DataSetRoute + "/fields/filterable")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        public IActionResult SetFilterableFields(string teamName, string dataSetName, [FromBody] string[] fields)
-            => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.Filterable = true, nameof(Indx.Api.Field.Filterable));
-
-        /// <summary>Sets the Facetable property on the specified fields.</summary>
-        [HttpPut(DataSetRoute + "/fields/facetable")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        public IActionResult SetFacetableFields(string teamName, string dataSetName, [FromBody] string[] fields)
-            => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.Facetable = true);
-
-        /// <summary>Sets the Sortable property on the specified fields.</summary>
-        [HttpPut(DataSetRoute + "/fields/sortable")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        public IActionResult SetSortableFields(string teamName, string dataSetName, [FromBody] string[] fields)
-            => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.Sortable = true, nameof(Indx.Api.Field.Sortable));
-
-        /// <summary>Sets the WordIndexing property on the specified fields.</summary>
-        [HttpPut(DataSetRoute + "/fields/word-indexing")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        public IActionResult SetWordIndexingFields(string teamName, string dataSetName, [FromBody] string[] fields)
-            => SetFieldFlag(teamName, dataSetName, fields, (f, _) => f.WordIndexing = true);
 
         /// <summary>
         /// GetFieldConfiguration returns the full configuration of every field in the dataset.
@@ -276,71 +286,6 @@ namespace IndxServer.Controllers
             if (failure != null)
                 return ApiProblems.InvalidArgument(failure);
             return Ok(new { keyField = fieldName ?? "", needsReloadToReKey });
-        }
-
-        /// <summary>
-        /// Marks the specified fields as embeddable so that their vector values are indexed
-        /// during the next Load. Must be called after AnalyzeStream and before LoadStream.
-        /// </summary>
-        [HttpPut(DataSetRoute + "/fields/embeddable")]
-        [ProducesResponseType(StatusCodes.Status204NoContent)]
-        public IActionResult SetEmbeddableFields(string teamName, string dataSetName, [FromBody] string[] fields)
-        {
-            var ctx = ResolveTeam(teamName, out var error, write: true);
-            if (ctx == null) return error!;
-            if (!FileNameValidity.IsValid(dataSetName))
-                return ApiProblems.InvalidDatasetName(dataSetName);
-            // No lifecycle-state guard: SetEmbeddableFields is idempotent and may legitimately be
-            // re-sent on an already-Ready dataset (it operates on DocumentFields, which the manager
-            // null-checks). Adding a Created-only guard would wrongly reject that idempotent re-send.
-            if (!IndxServerInternalApi.Manager.SetEmbeddableFields(fields, dataSetName, ctx.OwnerKey))
-                return ApiProblems.InvalidArgument("SetEmbeddableFields failed — dataset not found or unknown field name");
-            return NoContent();
-        }
-
-        /// <summary>Shared body for the legacy Set*Fields helpers — resolve, validate, mutate each field.</summary>
-        private IActionResult SetFieldFlag(string teamName, string dataSetName, IEnumerable<string> fieldNames, Action<Indx.Api.Field, string> apply, string? roleNeedingType = null)
-        {
-            var ctx = ResolveTeam(teamName, out var error, write: true);
-            if (ctx == null) return error!;
-            if (!FileNameValidity.IsValid(dataSetName))
-                return ApiProblems.InvalidDatasetName(dataSetName);
-            var matcher = IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey);
-            if (matcher == null)
-                return ApiProblems.DatasetNotFound(dataSetName);
-            var df = matcher.DocumentFields;
-            if (df == null)
-                return ApiProblems.InvalidArgument("The dataset has not been analyzed yet, so there are no fields to configure.");
-            // Filterable and Sortable are the only roles that read Field.Type, and a field that was
-            // null in every analyzed document has none. Refused up front for the same two reasons the
-            // weight check above gives: the Field setter throws, which this method would turn into a
-            // 500, and it applies field by field, so a throw partway through would leave the earlier
-            // fields already changed.
-            if (roleNeedingType != null)
-                foreach (var name in fieldNames)
-                    if (df.GetField(name) is { Type: System.Text.Json.JsonValueKind.Null })
-                        return ApiProblems.InvalidArgument(
-                            $"Field '{name}' has no type: it was null in every analyzed document, so it "
-                            + $"cannot be made {roleNeedingType}. Searchable and Facetable do not need a type.");
-            // Every name first, then any change: a name refused halfway would otherwise leave the
-            // fields before it changed, and the call is meant to be all or nothing.
-            foreach (var name in fieldNames)
-                if (df.GetField(name) == null)
-                    return ApiProblems.InvalidArgument($"Field '{name}' does not exist in this dataset.");
-            foreach (var name in fieldNames)
-                apply(df.GetField(name)!, name);
-            // Saved here, as ApplyInPlace does for the configuration route. The engine's own save
-            // on a field's change notification cannot be relied on: Searchable, Sortable and Weight
-            // raise it before they assign, so it captured the value from before, and Facetable,
-            // Filterable and WordIndexing raise none - so a role set here lived in memory only and
-            // was gone after a restart (Notes/backlog.md, 28).
-            matcher.Persistence?.SaveDocumentFields(df.GetSerialized());
-            // The legacy flag routes set roles directly; recorded like the configuration route,
-            // and only on a Ready dataset (before the first index it is setup, not a change).
-            if (matcher.Status.SystemState == SystemState.Ready)
-                IndxServerInternalApi.Manager.ReportChange(dataSetName, ctx.OwnerKey,
-                    IndxServer.Services.DatasetChangeKind.Fields, new { fields = fieldNames.Distinct().ToArray() });
-            return NoContent();
         }
     }
 }

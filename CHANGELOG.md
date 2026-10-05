@@ -15,6 +15,35 @@ in the AI skill.
 
 ### Changed
 
+- **Field roles are written by one route, and it no longer waits for a rebuild.** The per-role
+  setters are removed: `PUT fields/searchable`, `fields/filterable`, `fields/facetable`,
+  `fields/sortable`, `fields/word-indexing` and `fields/embeddable` answer `405`. They set one
+  flag on the live engine with no rebuild, so a role that needs one (searchable, or a field's
+  first role) had no effect on search until the next index build. The lists stay readable with
+  `GET`, and `GET fields/embeddable` is new. Send roles to `PUT fields/configuration`, one object
+  per field with only the properties to change.
+  `PUT fields/configuration` checks the whole request first (a refused one is a `400` and
+  changes nothing), then answers `204` when the change is applied at once, or `202` with the
+  status when it has started a rebuild of a dataset that is Ready. It used to hold the request
+  for the whole rebuild, minutes on a large dataset. Poll `GET status` until
+  `shadowBuildInProgress` is false, then read `shadowBuildError`.
+- **`POST index` answers when the build is started**, as its `202` always said. It waited for
+  the build to finish. After a first build poll `GET status` until Ready; on a Ready dataset it
+  is a rebuild on a shadow engine, reported like a field configuration change.
+- **`GET status` says how the last rebuild ended**: `shadowBuildFinishedUtc`, and
+  `shadowBuildError` with the reason when it failed (the dataset then serves as it did). Also
+  in MCP `get_status`.
+- **A change while the dataset is loading, indexing or rebuilding is a `409`**, for
+  `PUT fields/configuration` as it already was for documents. Applied in the middle of a build
+  it was half in the build and half out of it.
+- **A vector field has no other role, in the console too.** The field table disables the boxes
+  the engine would refuse and says why: no other role on an embeddable field, and embeddable
+  only on an array of numbers.
+- **A dataset that sleeps keeps its vector graphs in a file**, and waking it reads them in
+  place of building them, which is the slow part of loading a dataset with vectors (41 to 25
+  seconds on 43 000 vectors of 1 536 numbers). One file per dataset in `embeddings` beside the
+  search database, about 3 KB a vector of that size. A cache only: a file that is missing or
+  out of date costs the time to build.
 - **MCP is read-only.** `set_field_configuration` is gone from the MCP surface; configuration is
   changed in the web console or over the HTTP API, where a person sees the change. It was the only
   tool that wrote, and it forced a **Full** key on anyone who wanted it - a key that, over HTTP,

@@ -22,7 +22,7 @@ namespace IndxServer.Models
             var available = embeddableFields.OrderBy(f => f, StringComparer.Ordinal).ToArray();
             return available.Length == 0
                 ? $"Field '{fieldName}' has no embedding index: this dataset has no embeddable field. " +
-                  "Mark a field Embeddable (PUT fields/embeddable), then load documents carrying its vectors."
+                  "Mark a field Embeddable (PUT fields/configuration), then load documents carrying its vectors."
                 : $"Field '{fieldName}' has no embedding index. Embeddable fields on this dataset: " +
                   string.Join(", ", available) + ".";
         }

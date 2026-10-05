@@ -50,14 +50,14 @@ namespace IndxServer.Engine
         internal ReplaceSchemaChange RunReplaceFromJson(string dataSetName, string teamId, Stream jsonStream)
         {
             var key = MakeKey(dataSetName, teamId);
-            if (!_shadowBuildsInProgress.TryAdd(key, TimeProvider.GetUtcNow().UtcDateTime))
-                throw new ShadowBusyException(dataSetName);
+            ClaimShadowBuild(key, dataSetName);
 
             var monitor = new ProcessMonitor();
             _shadowMonitors[key] = monitor;
             _replaceProgress[key] = new ReplaceProgress(ReplaceStep.Preparing, -1);
 
             SearchEngine? shadow = null;
+            string? failure = null;
             try
             {
                 // GetOrCreateInstance (NOT ResolveEngine) gives the container shell without
@@ -87,6 +87,8 @@ namespace IndxServer.Engine
 
                 container.Touch(TimeProvider.GetUtcNow());
                 shadow = null; // ownership transferred
+                // Graphs saved at an earlier sleep are of the documents that were just replaced.
+                DeleteSavedEmbeddings(dataSetName, teamId);
 
                 ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Replace, new
                 {
@@ -105,6 +107,7 @@ namespace IndxServer.Engine
             }
             catch (Exception ex)
             {
+                failure = ex.Message;
                 _logger.LogError(ex, "{Prefix}RunReplaceFromJson failed", MakeLogPrefix(teamId, dataSetName));
                 throw;
             }
@@ -120,8 +123,8 @@ namespace IndxServer.Engine
                             MakeLogPrefix(teamId, dataSetName));
                     }
                 }
-                _shadowBuildsInProgress.TryRemove(key, out _);
                 _replaceProgress.TryRemove(key, out _);
+                ReleaseShadowBuild(key, failure);
             }
         }
 
