@@ -42,7 +42,9 @@
     @if (_created != null)
     {
         <Alert Variant="success" Class="key-reveal">
-            <Title>Key created — copy it now. It will not be shown again.</Title>
+            <Title>@(_created.Record.Level == nameof(IndxServer.Services.ApiKeyLevel.Full)
+                ? "Key created. Copy it now: it will not be shown again."
+                : "Key created. Copy it now; you can show it again from the list.")</Title>
             <Description>
                 <span class="key-reveal-scope">@IndxServer.Services.ApiKeyService.DescribeScope(_created.Record, TeamName(_created.Record.TeamId))</span>
                 <code class="key-token">@_created.Token</code>
@@ -143,7 +145,7 @@
     }
 
     @* ── Show a Search key again (only those are stored; Read and Full are shown once) ── *@
-    <Modal @bind-Open="_showToken" Title="@(_shownName ?? "API key")" Description="A Search key can be shown again: it is meant to sit in a web page, so it is not a secret.">
+    <Modal @bind-Open="_showToken" Title="@(_shownName ?? "API key")" Description="Search and Read keys can be shown again to whoever could create a new one. Full keys are shown only once.">
         <div class="indx-modal-form">
             <code class="key-token">@_shownToken</code>
             <div class="indx-form-actions">

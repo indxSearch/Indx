@@ -29,7 +29,9 @@
 @if (_created != null)
 {
     <Alert Variant="success" Class="tk-reveal">
-        <Title>Key created. Copy it now: it will not be shown again.</Title>
+        <Title>@(_created.Record.Level == nameof(ApiKeyLevel.Full)
+            ? "Key created. Copy it now: it will not be shown again."
+            : "Key created. Copy it now; you can show it again from the list.")</Title>
         <Description>
             <span class="tk-reveal-scope">@ApiKeyService.DescribeScope(_created.Record, Team.Name)</span>
             <code class="tk-token">@_created.Token</code>
@@ -130,7 +132,7 @@ else
               ConfirmLabel="Revoke key" ConfirmIcon="DatasetIcons.Lock" OnConfirm="RevokeAsync" />
 
 @* Show a Search key again (only those are stored; Read and Full are shown once). *@
-<Modal @bind-Open="_showToken" Title="@(_shownName ?? "Team key")" Description="A Search key can be shown again: it is meant to sit in a web page, so it is not a secret.">
+<Modal @bind-Open="_showToken" Title="@(_shownName ?? "Team key")" Description="Search and Read keys can be shown again to the team's Admins. Full keys are shown only once.">
     <div class="indx-modal-form">
         <code class="tk-token">@_shownToken</code>
         <div class="indx-form-actions">
