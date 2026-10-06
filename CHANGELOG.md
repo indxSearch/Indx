@@ -77,6 +77,15 @@ in the AI skill.
   `GET statistics/sources` lists the surfaces with their searches. The `source` parameter was
   accepted before and ignored, so every surface read as the dataset's totals. The console's
   Statistics tab gets a surface selector.
+- **Statistics name documents, not only number them.** `documents`, `queries/documents` and
+  `subjects/{subject}` give each document a `label`, and the misspelled-query list a
+  `mostChosenLabel`: the first searchable field, or the field set as `labelField` with
+  `PUT statistics/settings` (also on the Options tab). That `PUT` now changes only what it is
+  sent, so setting one setting no longer resets the other. A sleeping dataset is not woken for
+  a label; it reads `null` until it is loaded.
+- **Delete part of the statistics.** `DELETE statistics?source=` and `?from=&to=` remove one
+  surface's searches or a span of days, with their clicks and conversions, so test traffic can
+  go without the real history. A bare `DELETE statistics` still erases everything.
 - **Monitor.** A live view of the instance: dataset states, document counts, idle-eviction
   countdowns, process and native memory, filter-cache routing, and an event stream carrying state
   changes, field configuration changes and anything the server logs.

@@ -1,7 +1,13 @@
 namespace IndxServer.Models
 {
-    /// <summary>A dataset's statistics settings (GET/PUT …/statistics/settings).</summary>
-    public record StatisticsSettings(bool RecordFilters);
+    /// <summary>A dataset's statistics settings (GET …/statistics/settings, and the answer to a
+    /// PUT). LabelField: the field the statistics name a document by; null means the first
+    /// searchable field.</summary>
+    public record StatisticsSettings(bool RecordFilters, string? LabelField = null);
+
+    /// <summary>A change to the statistics settings (PUT …/statistics/settings). A property left
+    /// out stays as it is; labelField "" goes back to the first searchable field.</summary>
+    public record StatisticsSettingsUpdate(bool? RecordFilters = null, string? LabelField = null);
 
     /// <summary>One change the dataset's owners made: when (UTC, ISO 8601), what kind
     /// (synonyms, boostRules, fields, reindex, replace, documents, hibernate, wake, rename,

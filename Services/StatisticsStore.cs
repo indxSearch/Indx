@@ -54,7 +54,7 @@ namespace IndxServer.Services
     /// (searches with at least one select); average click position is PositionSum / Selects.</summary>
     public readonly record struct QueryStat(string QueryText, long Searches, long ZeroHits, long Selects,
         long ClickedSearches, long PositionSum, long Uncovered = 0, long UncoveredChosen = 0,
-        long? MostChosenDocument = null);
+        long? MostChosenDocument = null, string? MostChosenLabel = null);
 
     /// <summary>The window's totals, for the dashboard's header numbers. UncoveredChosen is the
     /// fuzzy finds: searches coverage confirmed nothing for where a result was chosen anyway.</summary>
@@ -85,17 +85,20 @@ namespace IndxServer.Services
     /// <summary>One document chosen from one query's results over a window: how often, the
     /// position sum (average position is PositionSum / Selects), and the conversions that came
     /// from those searches.</summary>
-    public readonly record struct QueryDocumentStat(long DocumentKey, long Selects, long PositionSum, long Converts);
+    public readonly record struct QueryDocumentStat(long DocumentKey, long Selects, long PositionSum, long Converts,
+        string? Label = null);
 
     /// <summary>One document's aggregate over a window.</summary>
-    public readonly record struct DocumentStat(long DocumentKey, long Selects, long Converts, double ConvertValueSum);
+    public readonly record struct DocumentStat(long DocumentKey, long Selects, long Converts, double ConvertValueSum,
+        string? Label = null);
 
-    /// <summary>One row of a subject's lifetime top-N.</summary>
     /// <summary>One surface's counted searches in a window: the <c>?source=</c> a search was sent
     /// with, null for the searches that named none.</summary>
     public readonly record struct SourceStat(string? Source, long Searches);
 
-    public readonly record struct SubjectDocumentStat(long DocumentKey, long Selects, long Converts, long LastSeen);
+    /// <summary>One row of a subject's lifetime top-N.</summary>
+    public readonly record struct SubjectDocumentStat(long DocumentKey, long Selects, long Converts, long LastSeen,
+        string? Label = null);
 
     /// <summary>
     /// Server-owned persistence for search statistics, in its own SQLite file (stats.db) next to
@@ -248,6 +251,7 @@ CREATE TABLE IF NOT EXISTS DatasetSettings (
     TeamId        TEXT    NOT NULL,
     DataSet       TEXT    NOT NULL,
     RecordFilters INTEGER NOT NULL DEFAULT 1, -- 0: no filter key is stored (Browsing is off)
+    LabelField    TEXT    NULL,               -- the field statistics name a document by; NULL: the first searchable
     PRIMARY KEY (TeamId, DataSet)
 );
 
@@ -278,6 +282,12 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                 }
                 catch (SqliteException) { /* already there */ }
             }
+            try
+            {
+                cmd.CommandText = "ALTER TABLE DatasetSettings ADD COLUMN LabelField TEXT NULL";
+                cmd.ExecuteNonQuery();
+            }
+            catch (SqliteException) { /* already there */ }
             try
             {
                 cmd.CommandText = "ALTER TABLE SearchEvents ADD COLUMN Source TEXT NULL";
@@ -741,6 +751,33 @@ GROUP BY TeamId, DataSet, DocumentKey;";
             cmd.ExecuteNonQuery();
             tx.Commit();
             _recordFilters[(teamId, dataSet)] = on;
+        }
+
+        /// <summary>The field the statistics name a document by, as the dataset's owners set it;
+        /// null when they did not, which means the first searchable field
+        /// (<see cref="StatisticsLabels"/> resolves it).</summary>
+        public string? LabelField(string teamId, string dataSet)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT LabelField FROM DatasetSettings WHERE TeamId = $t AND DataSet = $d";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            return cmd.ExecuteScalar() as string;
+        }
+
+        /// <summary>Sets the field the statistics name a document by; null or blank goes back to
+        /// the first searchable field.</summary>
+        public void SetLabelField(string teamId, string dataSet, string? field)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$f", string.IsNullOrWhiteSpace(field) ? DBNull.Value : field.Trim());
+            cmd.CommandText = @"INSERT INTO DatasetSettings (TeamId, DataSet, LabelField) VALUES ($t, $d, $f)
+                ON CONFLICT(TeamId, DataSet) DO UPDATE SET LabelField = $f";
+            cmd.ExecuteNonQuery();
         }
 
         // ── What counts as a search (Notes/statistics-design.md, "What counts as a search") ──
@@ -1275,6 +1312,85 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
         /// delete does NOT call this: statistics survive delete/recreate by design.</summary>
         public int PurgeDataset(string teamId, string dataSet) =>
             ExecutePerTable("WHERE TeamId = $a AND DataSet = $b", teamId, dataSet);
+
+        /// <summary>
+        /// Deletes part of a dataset's visitor statistics: the searches sent with one
+        /// <paramref name="source"/>, those in the UTC days [<paramref name="fromDay"/>,
+        /// <paramref name="toDay"/>], or both, with the selects and conversions that belong to them.
+        /// For cleaning out test traffic without losing real history. The owners' changes, the
+        /// Browsing setting and the subjects' lifetime top documents stay.
+        /// <list type="bullet">
+        /// <item>By days alone: the raw rows of those days go (a select or conversion by its own
+        ///   day), and the daily totals of those days with them, also for days whose raw rows have
+        ///   already aged out.</item>
+        /// <item>By source: the daily tables carry no source, so the searches are deleted from the
+        ///   raw rows, with the selects and conversions whose queryId names one of them, and each
+        ///   day that lost a row and was already rolled up is rolled up again from what is left.
+        ///   Days older than the raw rows' retention keep that surface's share of their totals.</item>
+        /// </list>
+        /// Returns the number of searches deleted.
+        /// </summary>
+        public int DeleteEvents(string teamId, string dataSet, string? source, long? fromDay, long? toDay)
+        {
+            if (source == null && fromDay == null && toDay == null)
+                throw new ArgumentException("Give a source, days, or both; PurgeDataset deletes everything.");
+            long fromMs = (fromDay ?? 0) * 86_400_000L;
+            long toMsExcl = toDay is long t ? (t + 1) * 86_400_000L : long.MaxValue;
+            var searchWhere = "TeamId = $t AND DataSet = $d AND Timestamp >= $from AND Timestamp < $to" +
+                              (source == null ? "" : " AND Source = $src");
+            var touchedDays = new SortedSet<long>();
+            int searches;
+            using (var conn = Open())
+            using (var tx = conn.BeginTransaction())
+            {
+                SqliteCommand Command(string sql)
+                {
+                    var cmd = conn.CreateCommand();
+                    cmd.Transaction = tx;
+                    cmd.CommandText = sql;
+                    cmd.Parameters.AddWithValue("$t", teamId);
+                    cmd.Parameters.AddWithValue("$d", dataSet);
+                    cmd.Parameters.AddWithValue("$from", fromMs);
+                    cmd.Parameters.AddWithValue("$to", toMsExcl);
+                    if (source != null) cmd.Parameters.AddWithValue("$src", source);
+                    return cmd;
+                }
+                // A select or conversion belongs to a surface through its search; without a
+                // source it belongs to its own day.
+                var eventWhere = source == null
+                    ? "TeamId = $t AND DataSet = $d AND Timestamp >= $from AND Timestamp < $to"
+                    : $"TeamId = $t AND DataSet = $d AND QueryId IN (SELECT QueryId FROM SearchEvents WHERE {searchWhere})";
+                foreach (var table in new[] { "SearchEvents", "SelectEvents", "ConvertEvents" })
+                {
+                    using var days = Command($"SELECT DISTINCT Timestamp / 86400000 FROM {table} WHERE " +
+                                             (table == "SearchEvents" ? searchWhere : eventWhere));
+                    using var r = days.ExecuteReader();
+                    while (r.Read()) touchedDays.Add(r.GetInt64(0));
+                }
+                using (var cmd = Command($"DELETE FROM SelectEvents WHERE {eventWhere}")) cmd.ExecuteNonQuery();
+                using (var cmd = Command($"DELETE FROM ConvertEvents WHERE {eventWhere}")) cmd.ExecuteNonQuery();
+                using (var cmd = Command($"DELETE FROM SearchEvents WHERE {searchWhere}")) searches = cmd.ExecuteNonQuery();
+                if (source == null)
+                {
+                    foreach (var table in new[] { "DailyQueryStats", "DailyDocumentStats", "DailyFilterStats" })
+                    {
+                        using var cmd = Command($"DELETE FROM {table} WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $toDay");
+                        cmd.Parameters.AddWithValue("$fromDay", fromDay ?? long.MinValue);
+                        cmd.Parameters.AddWithValue("$toDay", toDay ?? long.MaxValue);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+                tx.Commit();
+            }
+            // By source: the rolled days that lost a row are rolled again from what is left. Only
+            // days that had raw rows can be in the set, so none has aged out of retention.
+            if (source != null)
+            {
+                long rolled = LastRolledDay();
+                foreach (var day in touchedDays.Where(d => d <= rolled)) RollupDay(day);
+            }
+            return searches;
+        }
 
         /// <summary>Deletes every statistics row of one team. Called when the team is deleted -
         /// the teamId is ours and nothing can resume it.</summary>

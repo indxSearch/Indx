@@ -102,6 +102,16 @@
                 <span class="opt-muted">Team admins can change this.</span>
             }
         </div>
+        <p class="indx-section-help">
+            Statistics name each document by one of its fields, beside its key: on the Statistics tab
+            and in the statistics API. Without a choice it is the first searchable field.
+        </p>
+        <div class="opt-row">
+            <div class="opt-w240">
+                <SelectField Size="micro" Label="Name documents by" Options="LabelFieldOptions"
+                             Value="@(_labelField ?? "")" ValueChanged="SetLabelField" disabled="@(!Ctx.IsAdmin)" />
+            </div>
+        </div>
     }
 
     @* ── Replace data (atomic full reload) ── *@
@@ -277,6 +287,39 @@
         if (store == null || !Ctx.IsAdmin) return "Statistics are not available.";
         await Task.Run(() => store.PurgeDataset(Ctx.TeamId, Ctx.Name));
         return null;
+    }
+
+    private string? _labelField;
+    private bool _labelFieldLoaded;
+
+    /// <summary>"First searchable field (title)" and the dataset's fields, vector fields left out.
+    /// From the engine only when it is loaded (never woken for this); asleep, the choice made
+    /// before is still listed.</summary>
+    private List<SelectField.SelectOption> LabelFieldOptions
+    {
+        get
+        {
+            if (!_labelFieldLoaded && Stats.Store != null)
+            {
+                _labelField = Stats.Store.LabelField(Ctx.TeamId, Ctx.Name);
+                _labelFieldLoaded = true;
+            }
+            var engine = Ctx.FindEngine();
+            var fields = engine is { IsDisposed: false } ? engine.GetFieldConfiguration() ?? [] : [];
+            var first = fields.FirstOrDefault(f => f.Searchable == true)?.FieldName;
+            var names = fields.Where(f => f.Embeddable != true).Select(f => f.FieldName).ToList();
+            if (_labelField != null && !names.Contains(_labelField)) names.Insert(0, _labelField);
+            return [new(first == null ? "First searchable field" : $"First searchable field ({first})", ""),
+                    .. names.Select(n => new SelectField.SelectOption(n, n))];
+        }
+    }
+
+    private async Task SetLabelField(string? value)
+    {
+        var store = Stats.Store;
+        if (store == null || !Ctx.IsAdmin) return;
+        _labelField = string.IsNullOrEmpty(value) ? null : value;
+        await Task.Run(() => store.SetLabelField(Ctx.TeamId, Ctx.Name, _labelField));
     }
 
     private async Task SetRecordFilters(bool on)
