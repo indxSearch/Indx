@@ -102,7 +102,7 @@
                 <span class="opt-muted">Team admins can change this.</span>
             }
         </div>
-        <p class="indx-section-help">
+        <p class="indx-section-help opt-gap">
             Statistics name each document by one of its fields, beside its key: on the Statistics tab
             and in the statistics API. Without a choice it is the first searchable field.
         </p>
@@ -111,6 +111,17 @@
                 <SelectField Size="micro" Label="Name documents by" Options="LabelFieldOptions"
                              Value="@(_labelField ?? "")" ValueChanged="SetLabelField" disabled="@(!Ctx.IsAdmin)" />
             </div>
+        </div>
+        <p class="indx-section-help opt-gap">
+            Statistics count by day, and a day begins at midnight in this time zone. Changing it
+            counts the last @Stats.RetentionDays days again; days before that keep the zone they were counted in.
+        </p>
+        <div class="opt-row">
+            <div class="opt-w240">
+                <SelectField Size="micro" Label="Time zone" Options="TimeZoneOptions"
+                             Value="@(_timeZone ?? "")" ValueChanged="SetTimeZone" disabled="@(!Ctx.IsAdmin || _savingZone)" />
+            </div>
+            @if (_savingZone) { <span class="opt-muted">Counting the days again…</span> }
         </div>
     }
 
@@ -312,6 +323,44 @@
             return [new(first == null ? "First searchable field" : $"First searchable field ({first})", ""),
                     .. names.Select(n => new SelectField.SelectOption(n, n))];
         }
+    }
+
+    private string? _timeZone;
+    private bool _timeZoneLoaded, _savingZone;
+
+    /// <summary>The instance default first, then every zone this host knows by its IANA name,
+    /// west to east, with today's offset in front.</summary>
+    private List<SelectField.SelectOption> TimeZoneOptions
+    {
+        get
+        {
+            if (!_timeZoneLoaded && Stats.Store != null)
+            {
+                _timeZone = Stats.Store.TimeZoneName(Ctx.TeamId, Ctx.Name);
+                _timeZoneLoaded = true;
+            }
+            var fallback = StatisticsDays.NameOf(Stats.Store?.DefaultTimeZone ?? TimeZoneInfo.Utc);
+            var now = DateTime.UtcNow;
+            var zones = TimeZoneInfo.GetSystemTimeZones()
+                .Select(z => (Name: StatisticsDays.NameOf(z), Offset: z.GetUtcOffset(now)))
+                .Where(z => z.Name.Contains('/') && !z.Name.StartsWith("Etc/", StringComparison.Ordinal))
+                .DistinctBy(z => z.Name)
+                .OrderBy(z => z.Offset).ThenBy(z => z.Name, StringComparer.Ordinal)
+                .Select(z => new SelectField.SelectOption(
+                    $"UTC{(z.Offset < TimeSpan.Zero ? "−" : "+")}{Math.Abs(z.Offset.Hours):00}:{Math.Abs(z.Offset.Minutes):00} {z.Name}", z.Name));
+            return [new($"Instance default ({fallback})", ""), new("UTC", "UTC"), .. zones];
+        }
+    }
+
+    private async Task SetTimeZone(string? value)
+    {
+        var store = Stats.Store;
+        if (store == null || !Ctx.IsAdmin) return;
+        _timeZone = string.IsNullOrEmpty(value) ? null : value;
+        _savingZone = true;
+        StateHasChanged();
+        try { await Task.Run(() => store.SetTimeZone(Ctx.TeamId, Ctx.Name, _timeZone)); }
+        finally { _savingZone = false; }
     }
 
     private async Task SetLabelField(string? value)

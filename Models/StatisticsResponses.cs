@@ -2,12 +2,14 @@ namespace IndxServer.Models
 {
     /// <summary>A dataset's statistics settings (GET …/statistics/settings, and the answer to a
     /// PUT). LabelField: the field the statistics name a document by; null means the first
-    /// searchable field.</summary>
-    public record StatisticsSettings(bool RecordFilters, string? LabelField = null);
+    /// searchable field. TimeZone: the IANA name its days are cut in, the instance's default
+    /// (UTC unless configured) when it has not chosen one.</summary>
+    public record StatisticsSettings(bool RecordFilters, string? LabelField = null, string? TimeZone = null);
 
     /// <summary>A change to the statistics settings (PUT …/statistics/settings). A property left
-    /// out stays as it is; labelField "" goes back to the first searchable field.</summary>
-    public record StatisticsSettingsUpdate(bool? RecordFilters = null, string? LabelField = null);
+    /// out stays as it is; labelField "" goes back to the first searchable field, timeZone "" to
+    /// the instance's default.</summary>
+    public record StatisticsSettingsUpdate(bool? RecordFilters = null, string? LabelField = null, string? TimeZone = null);
 
     /// <summary>One change the dataset's owners made: when (UTC, ISO 8601), what kind
     /// (synonyms, boostRules, fields, reindex, replace, documents, hibernate, wake, rename,

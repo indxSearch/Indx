@@ -2,6 +2,8 @@
 .opt-narrow { max-width: 560px; }
 .opt-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .opt-row--top { margin-top: 8px; }
+/* A second setting under the same heading: room between it and the control above. */
+.opt-gap { margin-top: 24px; }
 .opt-row--top10 { margin-top: 10px; }
 .opt-w80 { width: 80px; }
 .opt-w220 { width: 220px; }

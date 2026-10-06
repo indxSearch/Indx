@@ -308,7 +308,7 @@ else
     /// <summary>The chart's change markers follow the Changes filter, so picking a kind there
     /// shows where on the line those changes fell.</summary>
     private IReadOnlyList<Chart.ChartMarker> Markers => ShownChanges
-        .Select(c => new Chart.ChartMarker((int)(StatisticsStore.DayOf(c.Timestamp) - _fromDay),
+        .Select(c => new Chart.ChartMarker((int)(StatisticsDays.DayOf(_zone, c.Timestamp) - _fromDay),
                                            ChangeDescriptions.Describe(c.Kind, c.Summary)))
         .ToList();
 
@@ -340,6 +340,7 @@ else
     private IReadOnlyList<Chart.ChartSeries> _series = [];
     private string[]? _labels;
     private Func<long, string?>? _label;
+    private TimeZoneInfo _zone = TimeZoneInfo.Utc;
     private bool _wasActive;
 
     private static readonly List<Tabs.TabItem> WindowItems =
@@ -381,7 +382,9 @@ else
         var (team, ds, days, source) = (Ctx.TeamId, Ctx.Name, _days, _source);
         await Task.Run(() =>
         {
-            long toDay = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            // Days in the dataset's statistics time zone (Options tab), as the API counts them.
+            _zone = store.ZoneOf(team, ds);
+            long toDay = StatisticsDays.Today(_zone);
             long fromDay = toDay - days + 1;
             (_fromDay, _toDay) = (fromDay, toDay);
             _sources = store.Sources(team, ds, fromDay, toDay);

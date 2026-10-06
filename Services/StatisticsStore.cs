@@ -252,6 +252,7 @@ CREATE TABLE IF NOT EXISTS DatasetSettings (
     DataSet       TEXT    NOT NULL,
     RecordFilters INTEGER NOT NULL DEFAULT 1, -- 0: no filter key is stored (Browsing is off)
     LabelField    TEXT    NULL,               -- the field statistics name a document by; NULL: the first searchable
+    TimeZone      TEXT    NULL,               -- IANA name its days are cut in; NULL: the instance default
     PRIMARY KEY (TeamId, DataSet)
 );
 
@@ -285,6 +286,12 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
             try
             {
                 cmd.CommandText = "ALTER TABLE DatasetSettings ADD COLUMN LabelField TEXT NULL";
+                cmd.ExecuteNonQuery();
+            }
+            catch (SqliteException) { /* already there */ }
+            try
+            {
+                cmd.CommandText = "ALTER TABLE DatasetSettings ADD COLUMN TimeZone TEXT NULL";
                 cmd.ExecuteNonQuery();
             }
             catch (SqliteException) { /* already there */ }
@@ -544,6 +551,10 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
         public void WriteChanges(IReadOnlyList<ChangeEventRow> changes, IReadOnlyList<DocumentCountRow> documents)
         {
             if (changes.Count == 0 && documents.Count == 0) return;
+            // Each dataset's document totals fall on its own local day; resolved before the
+            // write transaction, since ZoneOf reads through a connection of its own.
+            var zones = documents.Select(r => (r.TeamId, r.DataSet)).Distinct()
+                .ToDictionary(k => k, k => ZoneOf(k.TeamId, k.DataSet));
             using var conn = Open();
             using var tx = conn.BeginTransaction();
             if (changes.Count > 0)
@@ -580,7 +591,7 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                 var i = cmd.Parameters.Add("$i", SqliteType.Integer);
                 var u = cmd.Parameters.Add("$u", SqliteType.Integer);
                 var x = cmd.Parameters.Add("$x", SqliteType.Integer);
-                foreach (var g in documents.GroupBy(r => (Day: DayOf(r.Timestamp), r.TeamId, r.DataSet)))
+                foreach (var g in documents.GroupBy(r => (Day: StatisticsDays.DayOf(zones[(r.TeamId, r.DataSet)], r.Timestamp), r.TeamId, r.DataSet)))
                 {
                     day.Value = g.Key.Day; t.Value = g.Key.TeamId; d.Value = g.Key.DataSet;
                     i.Value = g.Sum(r => r.Inserted); u.Value = g.Sum(r => r.Updated); x.Value = g.Sum(r => r.Deleted);
@@ -593,6 +604,7 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
         /// <summary>The dataset's recorded changes in [fromDay, toDay], oldest first.</summary>
         public List<ChangeStat> Changes(string teamId, string dataSet, long fromDay, long toDay)
         {
+            var tz = ZoneOf(teamId, dataSet);
             using var conn = Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"SELECT Timestamp, Kind, Summary FROM DatasetChanges
@@ -600,8 +612,8 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                 ORDER BY Timestamp, Id";
             cmd.Parameters.AddWithValue("$t", teamId);
             cmd.Parameters.AddWithValue("$d", dataSet);
-            cmd.Parameters.AddWithValue("$from", fromDay * 86_400_000L);
-            cmd.Parameters.AddWithValue("$to", (toDay + 1) * 86_400_000L);
+            cmd.Parameters.AddWithValue("$from", StatisticsDays.Start(tz, fromDay));
+            cmd.Parameters.AddWithValue("$to", StatisticsDays.Start(tz, toDay + 1));
             var result = new List<ChangeStat>();
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -665,13 +677,57 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
         /// </summary>
         public void RollupDay(long day)
         {
-            long from = day * 86_400_000L, to = from + 86_400_000L;
-            using var conn = Open();
-            using var tx = conn.BeginTransaction();
+            // Each dataset's day runs between its own local midnights, so the datasets are found
+            // first: those with events in the UTC span any time zone's day can reach (UTC-12 to
+            // +14), and those with rolled rows for the day, which a re-roll may have to empty.
+            var datasets = new List<(string Team, string DataSet, TimeZoneInfo Tz)>();
+            using (var conn = Open())
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"
+SELECT TeamId, DataSet FROM SearchEvents  WHERE Timestamp >= $a AND Timestamp < $b
+UNION SELECT TeamId, DataSet FROM SelectEvents  WHERE Timestamp >= $a AND Timestamp < $b
+UNION SELECT TeamId, DataSet FROM ConvertEvents WHERE Timestamp >= $a AND Timestamp < $b
+UNION SELECT TeamId, DataSet FROM DailyQueryStats    WHERE Day = $day
+UNION SELECT TeamId, DataSet FROM DailyDocumentStats WHERE Day = $day
+UNION SELECT TeamId, DataSet FROM DailyFilterStats   WHERE Day = $day";
+                cmd.Parameters.AddWithValue("$a", (day - 1) * 86_400_000L);
+                cmd.Parameters.AddWithValue("$b", (day + 2) * 86_400_000L);
+                cmd.Parameters.AddWithValue("$day", day);
+                using var r = cmd.ExecuteReader();
+                while (r.Read()) datasets.Add((r.GetString(0), r.GetString(1), TimeZoneInfo.Utc));
+            }
+            // Resolved before the write transaction: ZoneOf reads through a connection of its own.
+            for (int k = 0; k < datasets.Count; k++)
+                datasets[k] = datasets[k] with { Tz = ZoneOf(datasets[k].Team, datasets[k].DataSet) };
+
+            using (var conn = Open())
+            using (var tx = conn.BeginTransaction())
+            {
+                foreach (var (team, ds, tz) in datasets)
+                    RollupDataset(conn, tx, team, ds, day, tz);
+                using (var mark = conn.CreateCommand())
+                {
+                    mark.Transaction = tx;
+                    mark.CommandText = @"INSERT INTO RollupState (Id, LastRolledDay) VALUES (1, $day)
+                        ON CONFLICT(Id) DO UPDATE SET LastRolledDay = max(LastRolledDay, $day)";
+                    mark.Parameters.AddWithValue("$day", day);
+                    mark.ExecuteNonQuery();
+                }
+                tx.Commit();
+            }
+        }
+
+        /// <summary>One dataset's local <paramref name="day"/>, rolled from its raw rows: the day's
+        /// rows in the daily tables are replaced.</summary>
+        private static void RollupDataset(SqliteConnection conn, SqliteTransaction tx, string team, string ds,
+            long day, TimeZoneInfo tz)
+        {
+            long from = StatisticsDays.Start(tz, day), to = StatisticsDays.Start(tz, day + 1);
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
             cmd.CommandText = @"
-DELETE FROM DailyQueryStats WHERE Day = $day;
+DELETE FROM DailyQueryStats WHERE Day = $day AND TeamId = $t AND DataSet = $d;
 INSERT INTO DailyQueryStats (Day, TeamId, DataSet, QueryText, Searches, ZeroHits, Selects, ClickedSearches, PositionSum,
                              Uncovered, UncoveredChosen)
 SELECT $day, c.TeamId, c.DataSet, lower(c.QueryText),
@@ -682,35 +738,28 @@ SELECT $day, c.TeamId, c.DataSet, lower(c.QueryText),
        COALESCE(SUM(c.PosSum), 0),
        SUM(CASE WHEN (c.HitCount = 0 OR c.Covered = 0) THEN 1 ELSE 0 END),
        SUM(CASE WHEN (c.HitCount = 0 OR c.Covered = 0) AND c.Cnt > 0 THEN 1 ELSE 0 END)
-FROM " + CountedSearches("s.Timestamp >= $from AND s.Timestamp < $to") + @" c
+FROM " + CountedSearches("s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $from AND s.Timestamp < $to") + @" c
 WHERE trim(c.QueryText) <> ''
 GROUP BY c.TeamId, c.DataSet, lower(c.QueryText);
 
-DELETE FROM DailyDocumentStats WHERE Day = $day;
+DELETE FROM DailyDocumentStats WHERE Day = $day AND TeamId = $t AND DataSet = $d;
 INSERT INTO DailyDocumentStats (Day, TeamId, DataSet, DocumentKey, Selects, Converts, ConvertValueSum)
 SELECT $day, TeamId, DataSet, DocumentKey, SUM(Sel), SUM(Conv), SUM(Val)
 FROM (
     SELECT TeamId, DataSet, DocumentKey, 1 AS Sel, 0 AS Conv, 0.0 AS Val
-    FROM SelectEvents WHERE Timestamp >= $from AND Timestamp < $to AND Counted = 1
+    FROM SelectEvents WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $from AND Timestamp < $to AND Counted = 1
     UNION ALL
     SELECT TeamId, DataSet, DocumentKey, 0, 1, COALESCE(Value, 0)
-    FROM ConvertEvents WHERE Timestamp >= $from AND Timestamp < $to AND Counted = 1
+    FROM ConvertEvents WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $from AND Timestamp < $to AND Counted = 1
 )
 GROUP BY TeamId, DataSet, DocumentKey;";
             cmd.Parameters.AddWithValue("$day", day);
+            cmd.Parameters.AddWithValue("$t", team);
+            cmd.Parameters.AddWithValue("$d", ds);
             cmd.Parameters.AddWithValue("$from", from);
             cmd.Parameters.AddWithValue("$to", to);
             cmd.ExecuteNonQuery();
-            RollupFilters(conn, tx, day, from, to);
-            using (var mark = conn.CreateCommand())
-            {
-                mark.Transaction = tx;
-                mark.CommandText = @"INSERT INTO RollupState (Id, LastRolledDay) VALUES (1, $day)
-                    ON CONFLICT(Id) DO UPDATE SET LastRolledDay = max(LastRolledDay, $day)";
-                mark.Parameters.AddWithValue("$day", day);
-                mark.ExecuteNonQuery();
-            }
-            tx.Commit();
+            RollupFilters(conn, tx, day, from, to, team, ds);
         }
 
         // ── Per-dataset settings ─────────────────────────────────────────────────────────
@@ -751,6 +800,92 @@ GROUP BY TeamId, DataSet, DocumentKey;";
             cmd.ExecuteNonQuery();
             tx.Commit();
             _recordFilters[(teamId, dataSet)] = on;
+        }
+
+        /// <summary>The time zone a dataset without one of its own cuts its days in:
+        /// <c>Statistics:TimeZone</c>, UTC unless set. Set once at startup.</summary>
+        public TimeZoneInfo DefaultTimeZone { get; set; } = TimeZoneInfo.Utc;
+
+        private readonly ConcurrentDictionary<(string Team, string DataSet), TimeZoneInfo> _zones = new();
+
+        /// <summary>The time zone a dataset's statistics days are cut in: its own, else
+        /// <see cref="DefaultTimeZone"/>. A name this host no longer knows falls back to the
+        /// default rather than failing a read. Cached: every read asks.</summary>
+        public TimeZoneInfo ZoneOf(string teamId, string dataSet) =>
+            _zones.GetOrAdd((teamId, dataSet), key => StatisticsDays.Find(TimeZoneName(key.Team, key.DataSet)) ?? DefaultTimeZone);
+
+        /// <summary>Today, as a day number in the dataset's time zone.</summary>
+        public long Today(string teamId, string dataSet) => StatisticsDays.Today(ZoneOf(teamId, dataSet));
+
+        /// <summary>The dataset's own time zone name, null when it uses the default.</summary>
+        public string? TimeZoneName(string teamId, string dataSet)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT TimeZone FROM DatasetSettings WHERE TeamId = $t AND DataSet = $d";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            return cmd.ExecuteScalar() as string;
+        }
+
+        /// <summary>
+        /// Sets the time zone a dataset's days are cut in (an IANA name; null or blank goes back
+        /// to the default), and rolls up again every day whose raw rows are all still kept, so the
+        /// last <c>RetentionDays</c> read in the new zone. Older days keep the cut they were rolled
+        /// with: their raw rows are gone, so there is nothing to cut them again from, and the day
+        /// at the seam between the two may count a few hours twice or not at all.
+        /// </summary>
+        public void SetTimeZone(string teamId, string dataSet, string? name)
+        {
+            using (var conn = Open())
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSet);
+                cmd.Parameters.AddWithValue("$z", string.IsNullOrWhiteSpace(name) ? DBNull.Value : name.Trim());
+                cmd.CommandText = @"INSERT INTO DatasetSettings (TeamId, DataSet, TimeZone) VALUES ($t, $d, $z)
+                    ON CONFLICT(TeamId, DataSet) DO UPDATE SET TimeZone = $z";
+                cmd.ExecuteNonQuery();
+            }
+            _zones.TryRemove((teamId, dataSet), out _);
+            RerollKeptDays(teamId, dataSet);
+        }
+
+        /// <summary>How long raw rows are kept, in days (<c>Statistics:RetentionDays</c>). Set once
+        /// at startup; it tells a re-roll whether the oldest raw row's day may be incomplete.</summary>
+        public int RetentionDays { get; set; } = 90;
+
+        /// <summary>Rolls up again, in the dataset's current time zone, every rolled day whose raw
+        /// rows are all still kept, up to the watermark. When pruning may already have cut into the
+        /// oldest raw row's day, from the day after it; when nothing can have been pruned yet, from
+        /// the day before it, so a row the old zone had put on the day before is taken out of it.</summary>
+        private void RerollKeptDays(string teamId, string dataSet)
+        {
+            long oldestMs;
+            using (var conn = Open())
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = @"SELECT MIN(t) FROM (
+                    SELECT MIN(Timestamp) AS t FROM SearchEvents  WHERE TeamId = $t AND DataSet = $d
+                    UNION ALL SELECT MIN(Timestamp) FROM SelectEvents  WHERE TeamId = $t AND DataSet = $d
+                    UNION ALL SELECT MIN(Timestamp) FROM ConvertEvents WHERE TeamId = $t AND DataSet = $d)";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSet);
+                if (cmd.ExecuteScalar() is not long ms) return;
+                oldestMs = ms;
+            }
+            var tz = ZoneOf(teamId, dataSet);
+            long rolled = LastRolledDay();
+            long oldestDay = StatisticsDays.DayOf(tz, oldestMs);
+            long pruneCutMs = (DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()) - RetentionDays - 1) * 86_400_000L;
+            long first = oldestMs < pruneCutMs + 86_400_000L ? oldestDay + 1 : oldestDay - 1;
+            for (long day = first; day <= rolled; day++)
+            {
+                using var conn = Open();
+                using var tx = conn.BeginTransaction();
+                RollupDataset(conn, tx, teamId, dataSet, day, tz);
+                tx.Commit();
+            }
         }
 
         /// <summary>The field the statistics name a document by, as the dataset's owners set it;
@@ -816,6 +951,22 @@ GROUP BY TeamId, DataSet, DocumentKey;";
             source == null ? "" :
             $" AND EXISTS (SELECT 1 FROM SearchEvents q WHERE q.QueryId = {table}.QueryId AND q.Source = $src)";
 
+        /// <summary>The local days a live read groups its rows into, as a CTE <c>days(Day, S, E)</c>
+        /// of their bounds in Unix ms: a local day is not a fixed 86 400 000 ms (a clock change),
+        /// so a row finds its day by its bounds. Empty when the window has no live days.</summary>
+        private static string LiveDays(TimeZoneInfo tz, long fromDay, long toDay)
+        {
+            if (fromDay > toDay) return "WITH days(Day, S, E) AS (SELECT 0, 0, 0 WHERE 0)";
+            var rows = new List<string>();
+            for (long day = fromDay; day <= toDay; day++)
+                rows.Add($"({day}, {StatisticsDays.Start(tz, day)}, {StatisticsDays.Start(tz, day + 1)})");
+            return "WITH days(Day, S, E) AS (VALUES " + string.Join(", ", rows) + ")";
+        }
+
+        /// <summary>The local day of a row, against <see cref="LiveDays"/>.</summary>
+        private static string DayOfRow(string timestamp) =>
+            $"(SELECT d.Day FROM days d WHERE {timestamp} >= d.S AND {timestamp} < d.E)";
+
         /// <summary>The newest day to read from the daily tables: none for one surface.</summary>
         private long RolledTo(long fromDay, long toDay, string? source) =>
             source == null ? Math.Min(toDay, LastRolledDay()) : fromDay - 1;
@@ -879,14 +1030,18 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
 
         /// <summary>The day's filter use, per operand. In C# rather than SQL because splitting a
         /// key is a parse of our own grammar (<see cref="FilterKeyOperands"/>), not a string op.</summary>
-        private static void RollupFilters(SqliteConnection conn, SqliteTransaction tx, long day, long from, long to)
+        private static void RollupFilters(SqliteConnection conn, SqliteTransaction tx, long day, long from, long to,
+            string team, string ds)
         {
             var counts = new Dictionary<(string Team, string Ds, string Field, string Value), (long Uses, long Zero)>();
             using (var read = conn.CreateCommand())
             {
                 read.Transaction = tx;
                 read.CommandText = $"SELECT c.TeamId, c.DataSet, c.FilterKey, c.HitCount FROM " +
-                    CountedSearches("s.Timestamp >= $from AND s.Timestamp < $to") + " c WHERE c.FilterKey IS NOT NULL";
+                    CountedSearches("s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $from AND s.Timestamp < $to") +
+                    " c WHERE c.FilterKey IS NOT NULL";
+                read.Parameters.AddWithValue("$t", team);
+                read.Parameters.AddWithValue("$d", ds);
                 read.Parameters.AddWithValue("$from", from);
                 read.Parameters.AddWithValue("$to", to);
                 using var r = read.ExecuteReader();
@@ -895,20 +1050,20 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
             }
             using var write = conn.CreateCommand();
             write.Transaction = tx;
-            write.CommandText = "DELETE FROM DailyFilterStats WHERE Day = $day";
+            write.CommandText = "DELETE FROM DailyFilterStats WHERE Day = $day AND TeamId = $t AND DataSet = $d";
             write.Parameters.AddWithValue("$day", day);
+            write.Parameters.AddWithValue("$t", team);
+            write.Parameters.AddWithValue("$d", ds);
             write.ExecuteNonQuery();
             write.CommandText = @"INSERT INTO DailyFilterStats (Day, TeamId, DataSet, Field, Value, Uses, ZeroHits)
                 VALUES ($day, $t, $d, $f, $v, $u, $z)";
-            var t = write.Parameters.Add("$t", SqliteType.Text);
-            var d = write.Parameters.Add("$d", SqliteType.Text);
             var f = write.Parameters.Add("$f", SqliteType.Text);
             var v = write.Parameters.Add("$v", SqliteType.Text);
             var u = write.Parameters.Add("$u", SqliteType.Integer);
             var z = write.Parameters.Add("$z", SqliteType.Integer);
-            foreach (var ((team, ds, field, value), (uses, zero)) in counts)
+            foreach (var ((_, _, field, value), (uses, zero)) in counts)
             {
-                t.Value = team; d.Value = ds; f.Value = field; v.Value = value; u.Value = uses; z.Value = zero;
+                f.Value = field; v.Value = value; u.Value = uses; z.Value = zero;
                 write.ExecuteNonQuery();
             }
         }
@@ -921,6 +1076,7 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
         public List<FilterStat> TopFilters(string teamId, string dataSet, long fromDay, long toDay, int limit,
             string? source = null)
         {
+            var tz = ZoneOf(teamId, dataSet);
             long rolledTo = RolledTo(fromDay, toDay, source);
             var counts = new Dictionary<(string Team, string Ds, string Field, string Value), (long Uses, long Zero)>();
             using var conn = Open();
@@ -944,8 +1100,8 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
                 AddSource(cmd, source);
                 cmd.Parameters.AddWithValue("$t", teamId);
                 cmd.Parameters.AddWithValue("$d", dataSet);
-                cmd.Parameters.AddWithValue("$liveFrom", Math.Max(fromDay, rolledTo + 1) * 86_400_000L);
-                cmd.Parameters.AddWithValue("$toEx", (toDay + 1) * 86_400_000L);
+                cmd.Parameters.AddWithValue("$liveFrom", StatisticsDays.Start(tz, Math.Max(fromDay, rolledTo + 1)));
+                cmd.Parameters.AddWithValue("$toEx", StatisticsDays.Start(tz, toDay + 1));
                 using var r = cmd.ExecuteReader();
                 while (r.Read())
                     CountOperands(counts, teamId, dataSet, r.GetString(0), r.GetInt32(1));
@@ -1025,9 +1181,10 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
             int limit, bool zeroHitsOnly = false, bool uncoveredOnly = false, QueryOrder order = QueryOrder.Searches,
             string? source = null)
         {
+            var tz = ZoneOf(teamId, dataSet);
             long rolledTo = RolledTo(fromDay, toDay, source);
-            long liveFromMs = Math.Max(fromDay, rolledTo + 1) * 86_400_000L;
-            long toMsExcl = (toDay + 1) * 86_400_000L;
+            long liveFromMs = StatisticsDays.Start(tz, Math.Max(fromDay, rolledTo + 1));
+            long toMsExcl = StatisticsDays.Start(tz, toDay + 1);
             using var conn = Open();
             using var cmd = conn.CreateCommand();
             // A click-through order needs a floor: a query searched once and clicked once is 100 %
@@ -1073,7 +1230,7 @@ LIMIT $n";
                     result.Add(new QueryStat(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3),
                         r.GetInt64(4), r.GetInt64(5), r.GetInt64(6), r.GetInt64(7)));
             if (uncoveredOnly && result.Count > 0)
-                result = WithMostChosen(conn, teamId, dataSet, fromDay, toDay, result, source);
+                result = WithMostChosen(conn, teamId, dataSet, tz, fromDay, toDay, result, source);
             return result;
         }
 
@@ -1083,7 +1240,7 @@ LIMIT $n";
         /// spelling to add. From the raw rows, so it reaches back as far as they are kept (90 days
         /// by default); for an older window the column is simply empty.
         /// </summary>
-        private static List<QueryStat> WithMostChosen(SqliteConnection conn, string teamId, string dataSet,
+        private static List<QueryStat> WithMostChosen(SqliteConnection conn, string teamId, string dataSet, TimeZoneInfo tz,
             long fromDay, long toDay, List<QueryStat> queries, string? source)
         {
             using var cmd = conn.CreateCommand();
@@ -1097,8 +1254,8 @@ SELECT lower(s.QueryText), x.DocumentKey, COUNT(*) AS N
             AddSource(cmd, source);
             cmd.Parameters.AddWithValue("$t", teamId);
             cmd.Parameters.AddWithValue("$d", dataSet);
-            cmd.Parameters.AddWithValue("$from", fromDay * 86_400_000L);
-            cmd.Parameters.AddWithValue("$to", (toDay + 1) * 86_400_000L);
+            cmd.Parameters.AddWithValue("$from", StatisticsDays.Start(tz, fromDay));
+            cmd.Parameters.AddWithValue("$to", StatisticsDays.Start(tz, toDay + 1));
             var best = new Dictionary<string, (long Key, long Count)>();
             using (var r = cmd.ExecuteReader())
                 while (r.Read())
@@ -1120,6 +1277,7 @@ SELECT lower(s.QueryText), x.DocumentKey, COUNT(*) AS N
         public List<QueryDocumentStat> QueryDocuments(string teamId, string dataSet, string queryText,
             long fromDay, long toDay, int limit, string? source = null)
         {
+            var tz = ZoneOf(teamId, dataSet);
             using var conn = Open();
             var selects = new Dictionary<long, (long Selects, long PositionSum)>();
             var converts = new Dictionary<long, long>();
@@ -1136,8 +1294,8 @@ SELECT x.DocumentKey, COUNT(*){extra}
                 AddSource(cmd, source);
                 cmd.Parameters.AddWithValue("$t", teamId);
                 cmd.Parameters.AddWithValue("$d", dataSet);
-                cmd.Parameters.AddWithValue("$from", fromDay * 86_400_000L);
-                cmd.Parameters.AddWithValue("$to", (toDay + 1) * 86_400_000L);
+                cmd.Parameters.AddWithValue("$from", StatisticsDays.Start(tz, fromDay));
+                cmd.Parameters.AddWithValue("$to", StatisticsDays.Start(tz, toDay + 1));
                 cmd.Parameters.AddWithValue("$q", queryText.Trim());
                 using var r = cmd.ExecuteReader();
                 while (r.Read())
@@ -1157,9 +1315,10 @@ SELECT x.DocumentKey, COUNT(*){extra}
         public List<DocumentStat> TopDocuments(string teamId, string dataSet, long fromDay, long toDay, int limit,
             bool byConverts = false, string? source = null)
         {
+            var tz = ZoneOf(teamId, dataSet);
             long rolledTo = RolledTo(fromDay, toDay, source);
-            long liveFromMs = Math.Max(fromDay, rolledTo + 1) * 86_400_000L;
-            long toMsExcl = (toDay + 1) * 86_400_000L;
+            long liveFromMs = StatisticsDays.Start(tz, Math.Max(fromDay, rolledTo + 1));
+            long toMsExcl = StatisticsDays.Start(tz, toDay + 1);
             using var conn = Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
@@ -1217,14 +1376,16 @@ LIMIT $n";
         private List<DailyStat> TimeSeriesInternal(string teamId, string dataSet, long fromDay, long toDay, bool perDay,
             string? source)
         {
+            var tz = ZoneOf(teamId, dataSet);
             long rolledTo = RolledTo(fromDay, toDay, source);
-            long liveFromMs = Math.Max(fromDay, rolledTo + 1) * 86_400_000L;
-            long toMsExcl = (toDay + 1) * 86_400_000L;
+            long liveFromDay = Math.Max(fromDay, rolledTo + 1);
+            long liveFromMs = StatisticsDays.Start(tz, liveFromDay);
+            long toMsExcl = StatisticsDays.Start(tz, toDay + 1);
             var group = perDay ? "GROUP BY Day ORDER BY Day" : "";
             var dayCol = perDay ? "Day" : "0";
             using var conn = Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = $@"
+            cmd.CommandText = $@"{LiveDays(tz, liveFromDay, toDay)}
 SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv), SUM(Val), SUM(PosSum), SUM(Unc), SUM(UncChosen) FROM (
     SELECT Day, Searches, ZeroHits, ClickedSearches AS Clicked, Selects AS Sel,
            0 AS Conv, 0.0 AS Val, PositionSum AS PosSum, Uncovered AS Unc, UncoveredChosen AS UncChosen
@@ -1234,14 +1395,14 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
     SELECT Day, 0, 0, 0, 0, Converts, ConvertValueSum, 0, 0, 0 FROM DailyDocumentStats
      WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
     UNION ALL
-    SELECT c.Timestamp / 86400000, 1, CASE WHEN c.HitCount = 0 THEN 1 ELSE 0 END,
+    SELECT {DayOfRow("c.Timestamp")}, 1, CASE WHEN c.HitCount = 0 THEN 1 ELSE 0 END,
            CASE WHEN c.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(c.Cnt, 0), 0, 0.0, COALESCE(c.PosSum, 0),
            CASE WHEN (c.HitCount = 0 OR c.Covered = 0) THEN 1 ELSE 0 END,
            CASE WHEN (c.HitCount = 0 OR c.Covered = 0) AND c.Cnt > 0 THEN 1 ELSE 0 END
       FROM {CountedSearches(LiveWhereFor(source))} c
      WHERE trim(c.QueryText) <> ''
     UNION ALL
-    SELECT Timestamp / 86400000, 0, 0, 0, 0, 1, COALESCE(Value, 0), 0, 0, 0 FROM ConvertEvents
+    SELECT {DayOfRow("ConvertEvents.Timestamp")}, 0, 0, 0, 0, 1, COALESCE(Value, 0), 0, 0, 0 FROM ConvertEvents
      WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx AND Counted = 1{EventFromSource("ConvertEvents", source)}
 )
 {group}";
@@ -1272,6 +1433,7 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
         /// </summary>
         public List<SourceStat> Sources(string teamId, string dataSet, long fromDay, long toDay)
         {
+            var tz = ZoneOf(teamId, dataSet);
             using var conn = Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
@@ -1280,8 +1442,8 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
  ORDER BY N DESC, c.Source IS NULL, c.Source";
             cmd.Parameters.AddWithValue("$t", teamId);
             cmd.Parameters.AddWithValue("$d", dataSet);
-            cmd.Parameters.AddWithValue("$liveFrom", fromDay * 86_400_000L);
-            cmd.Parameters.AddWithValue("$toEx", (toDay + 1) * 86_400_000L);
+            cmd.Parameters.AddWithValue("$liveFrom", StatisticsDays.Start(tz, fromDay));
+            cmd.Parameters.AddWithValue("$toEx", StatisticsDays.Start(tz, toDay + 1));
             var result = new List<SourceStat>();
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -1334,8 +1496,9 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
         {
             if (source == null && fromDay == null && toDay == null)
                 throw new ArgumentException("Give a source, days, or both; PurgeDataset deletes everything.");
-            long fromMs = (fromDay ?? 0) * 86_400_000L;
-            long toMsExcl = toDay is long t ? (t + 1) * 86_400_000L : long.MaxValue;
+            var tz = ZoneOf(teamId, dataSet);
+            long fromMs = fromDay is long f ? StatisticsDays.Start(tz, f) : 0;
+            long toMsExcl = toDay is long t ? StatisticsDays.Start(tz, t + 1) : long.MaxValue;
             var searchWhere = "TeamId = $t AND DataSet = $d AND Timestamp >= $from AND Timestamp < $to" +
                               (source == null ? "" : " AND Source = $src");
             var touchedDays = new SortedSet<long>();
@@ -1362,10 +1525,11 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
                     : $"TeamId = $t AND DataSet = $d AND QueryId IN (SELECT QueryId FROM SearchEvents WHERE {searchWhere})";
                 foreach (var table in new[] { "SearchEvents", "SelectEvents", "ConvertEvents" })
                 {
-                    using var days = Command($"SELECT DISTINCT Timestamp / 86400000 FROM {table} WHERE " +
+                    // By quarter hour, which every zone's day boundary falls on, then to local days.
+                    using var days = Command($"SELECT DISTINCT Timestamp / 900000 FROM {table} WHERE " +
                                              (table == "SearchEvents" ? searchWhere : eventWhere));
                     using var r = days.ExecuteReader();
-                    while (r.Read()) touchedDays.Add(r.GetInt64(0));
+                    while (r.Read()) touchedDays.Add(StatisticsDays.DayOf(tz, r.GetInt64(0) * 900_000L));
                 }
                 using (var cmd = Command($"DELETE FROM SelectEvents WHERE {eventWhere}")) cmd.ExecuteNonQuery();
                 using (var cmd = Command($"DELETE FROM ConvertEvents WHERE {eventWhere}")) cmd.ExecuteNonQuery();
@@ -1403,6 +1567,7 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
             cmd.Parameters.AddWithValue("$a", teamId);
             n += cmd.ExecuteNonQuery();
             _recordFilters.Clear();
+            _zones.Clear();
             return n;
         }
 
@@ -1457,6 +1622,8 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
             tx.Commit();
             _recordFilters.TryRemove((fromTeamId, dataSet), out _);
             _recordFilters.TryRemove((toTeamId, dataSet), out _);
+            _zones.TryRemove((fromTeamId, dataSet), out _);
+            _zones.TryRemove((toTeamId, dataSet), out _);
             return n;
         }
 
@@ -1482,6 +1649,8 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
             tx.Commit();
             _recordFilters.TryRemove((teamId, oldName), out _);
             _recordFilters.TryRemove((teamId, newName), out _);
+            _zones.TryRemove((teamId, oldName), out _);
+            _zones.TryRemove((teamId, newName), out _);
             return n;
         }
 

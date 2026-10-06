@@ -83,6 +83,11 @@ in the AI skill.
   `PUT statistics/settings` (also on the Options tab). That `PUT` now changes only what it is
   sent, so setting one setting no longer resets the other. A sleeping dataset is not woken for
   a label; it reads `null` until it is loaded.
+- **Statistics count in your time zone.** A day runs midnight to midnight in the dataset's
+  `timeZone` (`PUT statistics/settings`, or the Options tab), UTC unless set or unless the
+  operator sets a default with `Statistics:TimeZone`. Every read, the chart and the Statistics tab
+  follow it, so a late-evening search in Oslo lands on that evening's day. Changing it counts the
+  kept 90 days again.
 - **Delete part of the statistics.** `DELETE statistics?source=` and `?from=&to=` remove one
   surface's searches or a span of days, with their clicks and conversions, so test traffic can
   go without the real history. A bare `DELETE statistics` still erases everything.

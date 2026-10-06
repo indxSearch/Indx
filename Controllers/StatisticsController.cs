@@ -31,7 +31,7 @@ namespace IndxServer.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (Disabled(out var off)) return off!;
-            var (fromDay, toDay) = Window(days);
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
             var o = statistics.Store!.Overview(ctx.OwnerKey, dataSetName, fromDay, toDay, Source(source));
             return new StatisticsOverviewResponse(
                 o.Searches, o.ZeroHits, o.ClickedSearches, o.Selects, o.Converts, o.ConvertValueSum,
@@ -50,7 +50,7 @@ namespace IndxServer.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (Disabled(out var off)) return off!;
-            var (fromDay, toDay) = Window(days);
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
             var byDay = statistics.Store!.TimeSeries(ctx.OwnerKey, dataSetName, fromDay, toDay, Source(source))
                 .ToDictionary(r => r.Day);
             var series = new List<StatisticsDayResponse>((int)(toDay - fromDay + 1));
@@ -87,7 +87,7 @@ namespace IndxServer.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (Disabled(out var off)) return off!;
-            var (fromDay, toDay) = Window(days);
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
             var queries = statistics.Store!.TopQueries(ctx.OwnerKey, dataSetName, fromDay, toDay,
                 Math.Clamp(limit, 1, 1000), zeroHitsOnly, uncoveredOnly, order, Source(source));
             if (!queries.Any(q => q.MostChosenDocument != null)) return queries.ToArray();
@@ -111,7 +111,7 @@ namespace IndxServer.Controllers
             if (Disabled(out var off)) return off!;
             if (string.IsNullOrWhiteSpace(text))
                 return ApiProblems.InvalidArgument("text is required: the query whose chosen documents to list");
-            var (fromDay, toDay) = Window(days);
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
             var label = Labels(ctx.OwnerKey, dataSetName);
             return statistics.Store!.QueryDocuments(ctx.OwnerKey, dataSetName, text, fromDay, toDay,
                 Math.Clamp(limit, 1, 1000), Source(source))
@@ -129,7 +129,7 @@ namespace IndxServer.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (Disabled(out var off)) return off!;
-            var (fromDay, toDay) = Window(days);
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
             return statistics.Store!.TopFilters(ctx.OwnerKey, dataSetName, fromDay, toDay,
                 Math.Clamp(limit, 1, 1000), Source(source)).ToArray();
         }
@@ -144,7 +144,7 @@ namespace IndxServer.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (Disabled(out var off)) return off!;
-            var (fromDay, toDay) = Window(days);
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
             var label = Labels(ctx.OwnerKey, dataSetName);
             return statistics.Store!.TopDocuments(ctx.OwnerKey, dataSetName, fromDay, toDay,
                 Math.Clamp(limit, 1, 1000), source: Source(source))
@@ -161,7 +161,7 @@ namespace IndxServer.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (Disabled(out var off)) return off!;
-            var (fromDay, toDay) = Window(days);
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
             return statistics.Store!.Sources(ctx.OwnerKey, dataSetName, fromDay, toDay).ToArray();
         }
 
@@ -190,7 +190,7 @@ namespace IndxServer.Controllers
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (Disabled(out var off)) return off!;
-            var (fromDay, toDay) = Window(days);
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
             var store = statistics.Store!;
             var changes = store.Changes(ctx.OwnerKey, dataSetName, fromDay, toDay)
                 .Select(c => new StatisticsChangeResponse(
@@ -242,13 +242,18 @@ namespace IndxServer.Controllers
                 if (known != null && known.Length > 0 && !known.Any(f => f.FieldName == field.Trim()))
                     return ApiProblems.InvalidArgument($"labelField: the dataset has no field '{field.Trim()}'");
             }
+            if (settings.TimeZone is { } zone && zone.Trim().Length > 0 && StatisticsDays.Find(zone) == null)
+                return ApiProblems.InvalidArgument($"timeZone: '{zone.Trim()}' is not a time zone name, such as Europe/Oslo or UTC");
             if (settings.RecordFilters is bool on) store.SetRecordsFilters(ctx.OwnerKey, dataSetName, on);
+            if (settings.TimeZone != null && settings.TimeZone.Trim() != (store.TimeZoneName(ctx.OwnerKey, dataSetName) ?? ""))
+                store.SetTimeZone(ctx.OwnerKey, dataSetName, settings.TimeZone);
             if (settings.LabelField != null) store.SetLabelField(ctx.OwnerKey, dataSetName, settings.LabelField);
             return Settings(ctx.OwnerKey, dataSetName);
         }
 
         private StatisticsSettings Settings(string teamId, string dataSetName) =>
-            new(statistics.Store!.RecordsFilters(teamId, dataSetName), statistics.Store.LabelField(teamId, dataSetName));
+            new(statistics.Store!.RecordsFilters(teamId, dataSetName), statistics.Store.LabelField(teamId, dataSetName),
+                StatisticsDays.NameOf(statistics.Store.ZoneOf(teamId, dataSetName)));
 
         /// <summary>Key to label for one read (<see cref="StatisticsLabels"/>): from the engine when
         /// it is loaded, never waking it; asleep, every label is null.</summary>
@@ -322,9 +327,10 @@ namespace IndxServer.Controllers
         /// finds what was written; blank means every surface.</summary>
         private static string? Source(string? source) => StatisticsService.CleanSource(source);
 
-        private static (long FromDay, long ToDay) Window(int days)
+        /// <summary>The last <paramref name="days"/> days, today included, in the dataset's time zone.</summary>
+        private (long FromDay, long ToDay) Window(string teamId, string dataSetName, int days)
         {
-            long today = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            long today = statistics.Store!.Today(teamId, dataSetName);
             return (today - Math.Clamp(days, 1, 3650) + 1, today);
         }
     }
