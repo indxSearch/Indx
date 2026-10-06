@@ -1230,15 +1230,15 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
         /// The surfaces searches came from in [fromDay, toDay], most searched first: each
         /// <c>?source=</c> with its counted searches (as the overview counts them), and a row with
         /// a null source for the searches that named none. From the raw rows, like every read for
-        /// one surface.
+        /// one surface. A surface whose visitors only browsed (empty text, a filter) is listed with
+        /// zero searches: its Browsing numbers are still there to read.
         /// </summary>
         public List<SourceStat> Sources(string teamId, string dataSet, long fromDay, long toDay)
         {
             using var conn = Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = $@"
-SELECT c.Source, COUNT(*) AS N FROM {CountedSearches(LiveWhere)} c
- WHERE trim(c.QueryText) <> ''
+SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N FROM {CountedSearches(LiveWhere)} c
  GROUP BY c.Source
  ORDER BY N DESC, c.Source IS NULL, c.Source";
             cmd.Parameters.AddWithValue("$t", teamId);
