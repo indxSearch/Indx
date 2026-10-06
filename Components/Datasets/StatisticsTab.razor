@@ -34,14 +34,11 @@ else
               Size="micro" Variant="button" />
         @* Shown once any search named its surface (?source=, intrface's source prop): the
            numbers below for one surface alone. The changes are the owners', not a surface's,
-           so they stay whole. *@
+           so they stay whole. At the end of the row, where a "last 30 days" stood that only
+           repeated the period buttons. *@
         @if (SourceOptions.Count > 1)
         {
-            <div class="indx-list-toolbar-filter"><SelectField Size="micro" Options="SourceOptions" Value="@(_source ?? "")" ValueChanged="SetSource" aria-label="Search surface" /></div>
-        }
-        @if (_loaded && !Empty)
-        {
-            <span class="indx-list-toolbar-end">last @_days days</span>
+            <div class="indx-list-toolbar-end"><SelectField Size="micro" Variant="ghost" Options="SourceOptions" Value="@(_source ?? "")" ValueChanged="SetSource" aria-label="Search surface" /></div>
         }
     </div>
 

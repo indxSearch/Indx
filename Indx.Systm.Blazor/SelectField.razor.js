@@ -19,10 +19,15 @@ function place(trigger, menu) {
     const wanted = Math.min(menu.scrollHeight, MAX_HEIGHT);
     const up = below < wanted && above > below;
 
+    // As wide as the longest option, never narrower than the field: a ghost field is sized to its
+    // value and would squeeze its options. Kept inside the window, so one at the right edge opens
+    // leftward rather than past it.
     menu.style.position = 'fixed';
-    menu.style.left = `${r.left}px`;
     menu.style.right = 'auto';
-    menu.style.width = `${r.width}px`;
+    menu.style.width = 'max-content';
+    menu.style.minWidth = `${r.width}px`;
+    const w = menu.offsetWidth;
+    menu.style.left = `${Math.max(MARGIN, Math.min(r.left, window.innerWidth - MARGIN - w))}px`;
     menu.style.maxHeight = `${Math.max(0, Math.min(MAX_HEIGHT, up ? above : below))}px`;
     if (up) {
         menu.style.top = 'auto';

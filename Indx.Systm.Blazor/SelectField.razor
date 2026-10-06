@@ -2,19 +2,38 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-<div class="indx-select-wrapper">
+<div class="indx-select-wrapper @(Variant == "ghost" ? "indx-select-wrapper-ghost" : null)">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label for="@_id" class="indx-select-label">@Label</label>
     }
     <div class="indx-select-trigger" @ref="_trigger">
-        <button type="button" id="@_id" class="indx-select indx-select-@Size" @onclick="Toggle" @onkeydown="OnKeyDown" @attributes="AdditionalAttributes">
+        <button type="button" id="@_id" class="indx-select indx-select-@Size @(Variant == "ghost" ? "indx-select-ghost" : null)" @onclick="Toggle" @onkeydown="OnKeyDown" @attributes="AdditionalAttributes">
             <span class="indx-select-value @(string.IsNullOrEmpty(Value) ? "indx-select-placeholder" : null)" style="display:inline-flex; align-items:center; gap:6px;">
                 @if (SelectedOption?.Icon is { } selIcon)
                 {
                     @selIcon(_iconSize)
                 }
-                <span>@(SelectedLabel ?? Placeholder)</span>
+                @if (Variant == "ghost")
+                {
+                    @* Every label in one grid cell, only the chosen one visible: the field is as
+                       wide as its widest option, so a value never clips and the field does not
+                       change width as the choice changes. *@
+                    <span class="indx-select-sizer">
+                        @foreach (var option in Options)
+                        {
+                            <span class="@(option.Value == Value ? null : "indx-select-sizer-hidden")" aria-hidden="@(option.Value == Value ? null : "true")">@option.Label</span>
+                        }
+                        @if (SelectedOption == null)
+                        {
+                            <span>@Placeholder</span>
+                        }
+                    </span>
+                }
+                else
+                {
+                    <span>@(SelectedLabel ?? Placeholder)</span>
+                }
             </span>
             <span class="indx-select-icon" aria-hidden="true"><ChevronDown Size="@_iconSize" /></span>
         </button>
@@ -52,6 +71,10 @@
 
     /// <summary>"micro" | "default" | "large" — matches Button sizing.</summary>
     [Parameter] public string Size { get; set; } = "default";
+
+    /// <summary>"default" (a bordered field) | "ghost" (no border or background, sized to its
+    /// value, like a ghost Button): for a view setting in a toolbar rather than a form field.</summary>
+    [Parameter] public string Variant { get; set; } = "default";
 
     [Parameter, EditorRequired] public IEnumerable<SelectOption> Options { get; set; } = [];
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }

@@ -75,6 +75,56 @@
     cursor: not-allowed;
 }
 
+/* Ghost: a view setting in a toolbar, styled as the ghost Button. Sized to its value; the border
+   stays, transparent, so the height matches the bordered field's. */
+.indx-select-wrapper-ghost .indx-select-trigger {
+    width: auto;
+}
+
+.indx-select-ghost {
+    width: auto;
+    background: transparent;
+    border-color: transparent;
+    color: var(--lv5);
+}
+
+.indx-select-ghost:not(:disabled):hover {
+    background: var(--lv2);
+    border-color: transparent;
+}
+
+.indx-select-ghost:focus {
+    border-color: transparent;
+}
+
+.indx-select-ghost:focus-visible {
+    outline: 2px solid var(--lv5);
+    outline-offset: 2px;
+}
+
+.indx-select-ghost .indx-select-icon {
+    color: inherit;
+}
+
+/* The ghost value neither shrinks nor clips: it is as wide as the widest option (the sizer). */
+.indx-select-ghost .indx-select-value {
+    flex: none;
+    overflow: visible;
+}
+
+.indx-select-sizer {
+    display: inline-grid;
+}
+
+.indx-select-sizer > span {
+    grid-area: 1 / 1;
+    white-space: nowrap;
+}
+
+.indx-select-sizer-hidden {
+    visibility: hidden;
+}
+
 .indx-select-icon {
     flex-shrink: 0;
     display: flex;
