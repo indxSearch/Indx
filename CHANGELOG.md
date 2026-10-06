@@ -9,7 +9,7 @@ patch can pick up a newer core without changing the HTTP contract.
 
 ## [2.0.0-beta] - Unreleased
 
-Runs on IndxSearchLib 5.0.0-RC240926. First public release of the v2 server; v1 users should read
+Runs on IndxSearchLib 5.0.2. First public release of the v2 server; v1 users should read
 the [v1 → v2 migration guide](https://github.com/indxSearch/skill-indx-search/blob/main/references/migration-v4-to-v5.md)
 in the AI skill.
 
@@ -44,6 +44,11 @@ in the AI skill.
   seconds on 43 000 vectors of 1 536 numbers). One file per dataset in `embeddings` beside the
   search database, about 3 KB a vector of that size. A cache only: a file that is missing or
   out of date costs the time to build.
+- **A load that fails is not indexed, and a refused field configuration is shown.** The server
+  went on to index after a load from the store that had failed or timed out, which left the
+  dataset Ready on the documents read so far. It now indexes only after a load that succeeded.
+  In the console, a field configuration the engine refuses at Load is shown as the reason
+  instead of being lost.
 - **MCP is read-only.** `set_field_configuration` is gone from the MCP surface; configuration is
   changed in the web console or over the HTTP API, where a person sees the change. It was the only
   tool that wrote, and it forced a **Full** key on anyone who wanted it - a key that, over HTTP,
