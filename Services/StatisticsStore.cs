@@ -91,6 +91,10 @@ namespace IndxServer.Services
     public readonly record struct DocumentStat(long DocumentKey, long Selects, long Converts, double ConvertValueSum);
 
     /// <summary>One row of a subject's lifetime top-N.</summary>
+    /// <summary>One surface's counted searches in a window: the <c>?source=</c> a search was sent
+    /// with, null for the searches that named none.</summary>
+    public readonly record struct SourceStat(string? Source, long Searches);
+
     public readonly record struct SubjectDocumentStat(long DocumentKey, long Selects, long Converts, long LastSeen);
 
     /// <summary>
@@ -758,6 +762,32 @@ GROUP BY TeamId, DataSet, DocumentKey;";
         private const string LiveWhere =
             "s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $liveFrom AND s.Timestamp < $toEx";
 
+        // ── One surface (?source=) ─────────────────────────────────────────────────
+        // The daily tables carry no source, so a read for one surface takes the whole window from
+        // the raw rows: rolledTo is set before the window and the live part covers all of it. The
+        // raw rows are kept RetentionDays (90 by default), the console's longest window; an API
+        // window longer than that reaches back only as far as they do. A select or conversion
+        // belongs to the surface of the search it names by queryId; one that names none, or a
+        // search already pruned, belongs to no surface.
+
+        private static string LiveWhereFor(string? source) =>
+            source == null ? LiveWhere : LiveWhere + " AND s.Source = $src";
+
+        /// <summary>For a read of <c>SelectEvents</c> or <c>ConvertEvents</c> (unaliased): only
+        /// the events whose search came from the surface.</summary>
+        private static string EventFromSource(string table, string? source) =>
+            source == null ? "" :
+            $" AND EXISTS (SELECT 1 FROM SearchEvents q WHERE q.QueryId = {table}.QueryId AND q.Source = $src)";
+
+        /// <summary>The newest day to read from the daily tables: none for one surface.</summary>
+        private long RolledTo(long fromDay, long toDay, string? source) =>
+            source == null ? Math.Min(toDay, LastRolledDay()) : fromDay - 1;
+
+        private static void AddSource(SqliteCommand cmd, string? source)
+        {
+            if (source != null) cmd.Parameters.AddWithValue("$src", source);
+        }
+
         /// <summary>
         /// The searches that count, as a derived table over <c>SearchEvents</c> rows matching
         /// <paramref name="where"/> (written against alias <c>s</c>), with their selects joined
@@ -780,7 +810,7 @@ GROUP BY TeamId, DataSet, DocumentKey;";
         /// </list>
         /// </summary>
         private static string CountedSearches(string where) => $@"(
-SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.Timestamp, s.Covered,
+SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.Timestamp, s.Covered, s.Source,
        -- Per counted search through IX_Select_QueryId, after the WHERE has dropped the
        -- keystrokes. Not a GROUP BY over SelectEvents joined in: that grouped every select ever
        -- kept on every read (StatisticsReadCostProbeTests).
@@ -851,9 +881,10 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
         /// by its field), with or without text, and how often it came back empty. Rolled days from
         /// <c>DailyFilterStats</c>, the rest parsed live - the same merge as the query reads.
         /// </summary>
-        public List<FilterStat> TopFilters(string teamId, string dataSet, long fromDay, long toDay, int limit)
+        public List<FilterStat> TopFilters(string teamId, string dataSet, long fromDay, long toDay, int limit,
+            string? source = null)
         {
-            long rolledTo = Math.Min(toDay, LastRolledDay());
+            long rolledTo = RolledTo(fromDay, toDay, source);
             var counts = new Dictionary<(string Team, string Ds, string Field, string Value), (long Uses, long Zero)>();
             using var conn = Open();
             using (var cmd = conn.CreateCommand())
@@ -871,8 +902,9 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
             }
             using (var cmd = conn.CreateCommand())
             {
-                cmd.CommandText = "SELECT c.FilterKey, c.HitCount FROM " + CountedSearches(LiveWhere) +
+                cmd.CommandText = "SELECT c.FilterKey, c.HitCount FROM " + CountedSearches(LiveWhereFor(source)) +
                     " c WHERE c.FilterKey IS NOT NULL";
+                AddSource(cmd, source);
                 cmd.Parameters.AddWithValue("$t", teamId);
                 cmd.Parameters.AddWithValue("$d", dataSet);
                 cmd.Parameters.AddWithValue("$liveFrom", Math.Max(fromDay, rolledTo + 1) * 86_400_000L);
@@ -953,9 +985,10 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
         /// zero-hit report, ordered by how often the query found nothing.
         /// </summary>
         public List<QueryStat> TopQueries(string teamId, string dataSet, long fromDay, long toDay,
-            int limit, bool zeroHitsOnly = false, bool uncoveredOnly = false, QueryOrder order = QueryOrder.Searches)
+            int limit, bool zeroHitsOnly = false, bool uncoveredOnly = false, QueryOrder order = QueryOrder.Searches,
+            string? source = null)
         {
-            long rolledTo = Math.Min(toDay, LastRolledDay());
+            long rolledTo = RolledTo(fromDay, toDay, source);
             long liveFromMs = Math.Max(fromDay, rolledTo + 1) * 86_400_000L;
             long toMsExcl = (toDay + 1) * 86_400_000L;
             using var conn = Open();
@@ -983,7 +1016,7 @@ SELECT QueryText, SUM(Searches) AS S, SUM(ZeroHits) AS Z, SUM(Selects) AS C,
            CASE WHEN c.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(c.PosSum, 0),
            CASE WHEN (c.HitCount = 0 OR c.Covered = 0) THEN 1 ELSE 0 END,
            CASE WHEN (c.HitCount = 0 OR c.Covered = 0) AND c.Cnt > 0 THEN 1 ELSE 0 END
-      FROM {CountedSearches(LiveWhere)} c
+      FROM {CountedSearches(LiveWhereFor(source))} c
      WHERE trim(c.QueryText) <> ''
 )
 GROUP BY QueryText
@@ -996,13 +1029,14 @@ LIMIT $n";
             cmd.Parameters.AddWithValue("$liveFrom", liveFromMs);
             cmd.Parameters.AddWithValue("$toEx", toMsExcl);
             cmd.Parameters.AddWithValue("$n", limit);
+            AddSource(cmd, source);
             var result = new List<QueryStat>();
             using (var r = cmd.ExecuteReader())
                 while (r.Read())
                     result.Add(new QueryStat(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3),
                         r.GetInt64(4), r.GetInt64(5), r.GetInt64(6), r.GetInt64(7)));
             if (uncoveredOnly && result.Count > 0)
-                result = WithMostChosen(conn, teamId, dataSet, fromDay, toDay, result);
+                result = WithMostChosen(conn, teamId, dataSet, fromDay, toDay, result, source);
             return result;
         }
 
@@ -1013,15 +1047,17 @@ LIMIT $n";
         /// by default); for an older window the column is simply empty.
         /// </summary>
         private static List<QueryStat> WithMostChosen(SqliteConnection conn, string teamId, string dataSet,
-            long fromDay, long toDay, List<QueryStat> queries)
+            long fromDay, long toDay, List<QueryStat> queries, string? source)
         {
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"
 SELECT lower(s.QueryText), x.DocumentKey, COUNT(*) AS N
   FROM SearchEvents s JOIN SelectEvents x ON x.QueryId = s.QueryId
  WHERE s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $from AND s.Timestamp < $to
-   AND s.Counted = 1 AND x.Counted = 1 AND (s.HitCount = 0 OR s.Covered = 0)
+   AND s.Counted = 1 AND x.Counted = 1 AND (s.HitCount = 0 OR s.Covered = 0)" +
+   (source == null ? "" : " AND s.Source = $src") + @"
  GROUP BY lower(s.QueryText), x.DocumentKey";
+            AddSource(cmd, source);
             cmd.Parameters.AddWithValue("$t", teamId);
             cmd.Parameters.AddWithValue("$d", dataSet);
             cmd.Parameters.AddWithValue("$from", fromDay * 86_400_000L);
@@ -1045,7 +1081,7 @@ SELECT lower(s.QueryText), x.DocumentKey, COUNT(*) AS N
         /// raw rows, so it reaches back as far as they are kept (90 days by default).
         /// </summary>
         public List<QueryDocumentStat> QueryDocuments(string teamId, string dataSet, string queryText,
-            long fromDay, long toDay, int limit)
+            long fromDay, long toDay, int limit, string? source = null)
         {
             using var conn = Open();
             var selects = new Dictionary<long, (long Selects, long PositionSum)>();
@@ -1058,7 +1094,9 @@ SELECT x.DocumentKey, COUNT(*){extra}
   FROM SearchEvents s JOIN {table} x ON x.QueryId = s.QueryId
  WHERE s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $from AND s.Timestamp < $to
    AND s.Counted = 1 AND x.Counted = 1 AND lower(s.QueryText) = lower($q)
+   {(source == null ? "" : "AND s.Source = $src")}
  GROUP BY x.DocumentKey";
+                AddSource(cmd, source);
                 cmd.Parameters.AddWithValue("$t", teamId);
                 cmd.Parameters.AddWithValue("$d", dataSet);
                 cmd.Parameters.AddWithValue("$from", fromDay * 86_400_000L);
@@ -1080,23 +1118,23 @@ SELECT x.DocumentKey, COUNT(*){extra}
         /// the same way - rolled days plus live raw rows. With <paramref name="byConverts"/>, by
         /// conversions instead, and only the documents that have any.</summary>
         public List<DocumentStat> TopDocuments(string teamId, string dataSet, long fromDay, long toDay, int limit,
-            bool byConverts = false)
+            bool byConverts = false, string? source = null)
         {
-            long rolledTo = Math.Min(toDay, LastRolledDay());
+            long rolledTo = RolledTo(fromDay, toDay, source);
             long liveFromMs = Math.Max(fromDay, rolledTo + 1) * 86_400_000L;
             long toMsExcl = (toDay + 1) * 86_400_000L;
             using var conn = Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
+            cmd.CommandText = $@"
 SELECT DocumentKey, SUM(Sel) AS S, SUM(Conv) AS C, SUM(Val) FROM (
     SELECT DocumentKey, Selects AS Sel, Converts AS Conv, ConvertValueSum AS Val FROM DailyDocumentStats
      WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo
     UNION ALL
     SELECT DocumentKey, 1, 0, 0.0 FROM SelectEvents
-     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx AND Counted = 1
+     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx AND Counted = 1{EventFromSource("SelectEvents", source)}
     UNION ALL
     SELECT DocumentKey, 0, 1, COALESCE(Value, 0) FROM ConvertEvents
-     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx AND Counted = 1
+     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx AND Counted = 1{EventFromSource("ConvertEvents", source)}
 )
 GROUP BY DocumentKey
 " + (byConverts ? "HAVING C > 0 ORDER BY C DESC, S DESC" : "ORDER BY S DESC, C DESC") + @"
@@ -1108,6 +1146,7 @@ LIMIT $n";
             cmd.Parameters.AddWithValue("$liveFrom", liveFromMs);
             cmd.Parameters.AddWithValue("$toEx", toMsExcl);
             cmd.Parameters.AddWithValue("$n", limit);
+            AddSource(cmd, source);
             var result = new List<DocumentStat>();
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -1120,25 +1159,28 @@ LIMIT $n";
         /// selects on the search's day, converts and their value on their own day. Rolled days
         /// come from the daily tables, the rest live from the raw rows.
         /// </summary>
-        public List<DailyStat> TimeSeries(string teamId, string dataSet, long fromDay, long toDay)
+        public List<DailyStat> TimeSeries(string teamId, string dataSet, long fromDay, long toDay,
+            string? source = null)
         {
-            var rows = TimeSeriesInternal(teamId, dataSet, fromDay, toDay, perDay: true);
+            var rows = TimeSeriesInternal(teamId, dataSet, fromDay, toDay, perDay: true, source);
             return rows;
         }
 
         /// <summary>The window's totals - the dashboard's header numbers. Same merge as the
         /// time series, summed.</summary>
-        public OverviewStat Overview(string teamId, string dataSet, long fromDay, long toDay)
+        public OverviewStat Overview(string teamId, string dataSet, long fromDay, long toDay,
+            string? source = null)
         {
-            var rows = TimeSeriesInternal(teamId, dataSet, fromDay, toDay, perDay: false);
+            var rows = TimeSeriesInternal(teamId, dataSet, fromDay, toDay, perDay: false, source);
             var r = rows.Count == 0 ? default : rows[0];
             return new OverviewStat(r.Searches, r.ZeroHits, r.ClickedSearches, r.Selects,
                 r.PositionSum, r.Converts, r.ConvertValueSum, r.Uncovered, r.UncoveredChosen);
         }
 
-        private List<DailyStat> TimeSeriesInternal(string teamId, string dataSet, long fromDay, long toDay, bool perDay)
+        private List<DailyStat> TimeSeriesInternal(string teamId, string dataSet, long fromDay, long toDay, bool perDay,
+            string? source)
         {
-            long rolledTo = Math.Min(toDay, LastRolledDay());
+            long rolledTo = RolledTo(fromDay, toDay, source);
             long liveFromMs = Math.Max(fromDay, rolledTo + 1) * 86_400_000L;
             long toMsExcl = (toDay + 1) * 86_400_000L;
             var group = perDay ? "GROUP BY Day ORDER BY Day" : "";
@@ -1159,11 +1201,11 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
            CASE WHEN c.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(c.Cnt, 0), 0, 0.0, COALESCE(c.PosSum, 0),
            CASE WHEN (c.HitCount = 0 OR c.Covered = 0) THEN 1 ELSE 0 END,
            CASE WHEN (c.HitCount = 0 OR c.Covered = 0) AND c.Cnt > 0 THEN 1 ELSE 0 END
-      FROM {CountedSearches(LiveWhere)} c
+      FROM {CountedSearches(LiveWhereFor(source))} c
      WHERE trim(c.QueryText) <> ''
     UNION ALL
     SELECT Timestamp / 86400000, 0, 0, 0, 0, 1, COALESCE(Value, 0), 0, 0, 0 FROM ConvertEvents
-     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx AND Counted = 1
+     WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx AND Counted = 1{EventFromSource("ConvertEvents", source)}
 )
 {group}";
             cmd.Parameters.AddWithValue("$t", teamId);
@@ -1172,6 +1214,7 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
             cmd.Parameters.AddWithValue("$rolledTo", rolledTo);
             cmd.Parameters.AddWithValue("$liveFrom", liveFromMs);
             cmd.Parameters.AddWithValue("$toEx", toMsExcl);
+            AddSource(cmd, source);
             var result = new List<DailyStat>();
             using var r = cmd.ExecuteReader();
             while (r.Read())
@@ -1180,6 +1223,32 @@ SELECT {dayCol}, SUM(Searches), SUM(ZeroHits), SUM(Clicked), SUM(Sel), SUM(Conv)
                 result.Add(new DailyStat(r.GetInt64(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3),
                     r.GetInt64(4), r.GetInt64(5), r.GetDouble(6), r.GetInt64(7), r.GetInt64(8), r.GetInt64(9)));
             }
+            return result;
+        }
+
+        /// <summary>
+        /// The surfaces searches came from in [fromDay, toDay], most searched first: each
+        /// <c>?source=</c> with its counted searches (as the overview counts them), and a row with
+        /// a null source for the searches that named none. From the raw rows, like every read for
+        /// one surface.
+        /// </summary>
+        public List<SourceStat> Sources(string teamId, string dataSet, long fromDay, long toDay)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+SELECT c.Source, COUNT(*) AS N FROM {CountedSearches(LiveWhere)} c
+ WHERE trim(c.QueryText) <> ''
+ GROUP BY c.Source
+ ORDER BY N DESC, c.Source IS NULL, c.Source";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$liveFrom", fromDay * 86_400_000L);
+            cmd.Parameters.AddWithValue("$toEx", (toDay + 1) * 86_400_000L);
+            var result = new List<SourceStat>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                result.Add(new SourceStat(r.IsDBNull(0) ? null : r.GetString(0), r.GetInt64(1)));
             return result;
         }
 

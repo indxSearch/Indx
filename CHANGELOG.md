@@ -71,6 +71,12 @@ in the AI skill.
 
 ### Added
 
+- **Statistics for one search surface.** `overview`, `timeseries`, `queries`,
+  `queries/documents`, `documents` and `filters` take `?source=` and count only the searches sent
+  with it; a click or conversion counts for the surface of the search it names by `queryId`.
+  `GET statistics/sources` lists the surfaces with their searches. The `source` parameter was
+  accepted before and ignored, so every surface read as the dataset's totals. The console's
+  Statistics tab gets a surface selector.
 - **Monitor.** A live view of the instance: dataset states, document counts, idle-eviction
   countdowns, process and native memory, filter-cache routing, and an event stream carrying state
   changes, field configuration changes and anything the server logs.

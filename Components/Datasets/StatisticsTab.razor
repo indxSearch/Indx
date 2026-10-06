@@ -32,6 +32,13 @@ else
     <div class="indx-list-toolbar">
         <Tabs Items="WindowItems" Active="@_days.ToString()" ActiveChanged="@(v => SetWindow(v))"
               Size="micro" Variant="button" />
+        @* Shown once any search named its surface (?source=, intrface's source prop): the
+           numbers below for one surface alone. The changes are the owners', not a surface's,
+           so they stay whole. *@
+        @if (SourceOptions.Count > 1)
+        {
+            <div class="indx-list-toolbar-filter"><SelectField Size="micro" Options="SourceOptions" Value="@(_source ?? "")" ValueChanged="SetSource" aria-label="Search surface" /></div>
+        }
         @if (_loaded && !Empty)
         {
             <span class="indx-list-toolbar-end">last @_days days</span>
@@ -44,10 +51,17 @@ else
     }
     else if (Empty)
     {
-        <p class="stats-empty">No statistics in the last @_days days.</p>
+        <p class="stats-empty">@(_source == null ? $"No statistics in the last {_days} days." : $"No searches from {_source} in the last {_days} days.")</p>
     }
     else
     {
+        @if (_source != null)
+        {
+            <p class="stats-help">
+                Searches sent with source <code>@_source</code>. A click or conversion counts here when it names its search by <code>queryId</code>.
+                @if (Stats.RetentionDays < _days) { <text>One surface is read from the last @Stats.RetentionDays days, as far back as single searches are kept.</text> }
+            </p>
+        }
         <div class="stats-tiles">
             <Surface Class="stats-tile">
                 <Tooltip Content="Every search with text in the window, keystrokes collapsed."><span class="stats-tile-label">Searches</span></Tooltip>
@@ -252,6 +266,9 @@ else
     private bool _fuzzyAll;
     private bool _documentsByConverts;
     private string? _changeKind;
+    // The surface the numbers are for (?source=), null for every surface.
+    private string? _source;
+    private List<SourceStat> _sources = [];
 
     private static readonly List<SelectField.SelectOption> QueryOrderOptions =
     [
@@ -275,6 +292,19 @@ else
             .Select(k => new SelectField.SelectOption(ChangeDescriptions.KindLabel(k), k))
             .OrderBy(o => o.Label),
     ];
+
+    /// <summary>"All surfaces" and the surfaces searched from in the window, most searched first.
+    /// A chosen surface stays listed when the window holds none of its searches, so the select
+    /// still says what the zeros are for.</summary>
+    private List<SelectField.SelectOption> SourceOptions
+    {
+        get
+        {
+            var named = _sources.Where(x => x.Source != null).Select(x => x.Source!).ToList();
+            if (_source != null && !named.Contains(_source)) named.Add(_source);
+            return [new("All surfaces", ""), .. named.Select(n => new SelectField.SelectOption(n, n))];
+        }
+    }
 
     private IEnumerable<ChangeStat> ShownChanges =>
         _changeKind == null ? _changes : _changes.Where(c => c.Kind == _changeKind);
@@ -352,21 +382,22 @@ else
         var store = Stats.Store;
         if (store == null) return;
         _loaded = false;
-        var (team, ds, days) = (Ctx.TeamId, Ctx.Name, _days);
+        var (team, ds, days, source) = (Ctx.TeamId, Ctx.Name, _days, _source);
         await Task.Run(() =>
         {
             long toDay = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
             long fromDay = toDay - days + 1;
             (_fromDay, _toDay) = (fromDay, toDay);
-            _overview = store.Overview(team, ds, fromDay, toDay);
+            _sources = store.Sources(team, ds, fromDay, toDay);
+            _overview = store.Overview(team, ds, fromDay, toDay, source);
             LoadLists(store);
-            _topFilters = store.TopFilters(team, ds, fromDay, toDay, 10);
+            _topFilters = store.TopFilters(team, ds, fromDay, toDay, 10, source);
             _changes = store.Changes(team, ds, fromDay, toDay);
             if (_changeKind != null && !_changes.Any(c => c.Kind == _changeKind)) _changeKind = null;
             var documentDays = store.DocumentChanges(team, ds, fromDay, toDay);
             _documentTotals = (documentDays.Sum(d => d.Inserted), documentDays.Sum(d => d.Updated), documentDays.Sum(d => d.Deleted));
 
-            var byDay = store.TimeSeries(team, ds, fromDay, toDay).ToDictionary(r => r.Day);
+            var byDay = store.TimeSeries(team, ds, fromDay, toDay, source).ToDictionary(r => r.Day);
             var searches = new double[days];
             var selects = new double[days];
             var labels = new string[days];
@@ -393,14 +424,14 @@ else
     /// <summary>The lists whose rows depend on a section's view settings.</summary>
     private void LoadLists(StatisticsStore store)
     {
-        var (team, ds) = (Ctx.TeamId, Ctx.Name);
+        var (team, ds, source) = (Ctx.TeamId, Ctx.Name, _source);
         // One row past the page says whether there is another page.
-        var queries = store.TopQueries(team, ds, _fromDay, _toDay, _queryRows + 1, order: _queryOrder);
+        var queries = store.TopQueries(team, ds, _fromDay, _toDay, _queryRows + 1, order: _queryOrder, source: source);
         _moreQueries = queries.Count > _queryRows;
         _topQueries = _moreQueries ? queries[.._queryRows] : queries;
         _fuzzy = store.TopQueries(team, ds, _fromDay, _toDay, 10, uncoveredOnly: true,
-            order: _fuzzyAll ? QueryOrder.Searches : QueryOrder.ChosenAnyway);
-        _topDocuments = store.TopDocuments(team, ds, _fromDay, _toDay, 10, byConverts: _documentsByConverts);
+            order: _fuzzyAll ? QueryOrder.Searches : QueryOrder.ChosenAnyway, source: source);
+        _topDocuments = store.TopDocuments(team, ds, _fromDay, _toDay, 10, byConverts: _documentsByConverts, source: source);
     }
 
     private async Task ReloadListsAsync()
@@ -438,6 +469,15 @@ else
         if (byConverts == _documentsByConverts) return Task.CompletedTask;
         _documentsByConverts = byConverts;
         return ReloadListsAsync();
+    }
+
+    private Task SetSource(string? value)
+    {
+        var source = string.IsNullOrEmpty(value) ? null : value;
+        if (source == _source) return Task.CompletedTask;
+        _source = source;
+        _queryRows = QueryPage;
+        return LoadAsync();
     }
 
     private void SetChangeKind(string? value) => _changeKind = string.IsNullOrEmpty(value) ? null : value;

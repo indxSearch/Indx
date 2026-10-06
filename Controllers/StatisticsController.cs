@@ -11,6 +11,11 @@ namespace IndxServer.Controllers
     /// EXPLICIT operation the design trades for survival across dataset delete/recreate — see
     /// Notes/statistics-design.md. Statistics disabled on the instance answers 404 problem+json
     /// with code <c>statisticsDisabled</c> on every route here.
+    /// <para>The reads of searches, clicks and conversions take an optional <c>source</c>: the
+    /// <c>?source=</c> the searches were sent with. With it they count that surface alone, read
+    /// from the raw rows, so as far back as those are kept (90 days by default); a select or
+    /// conversion counts for the surface of the search it names by queryId. A source no search
+    /// was sent with gives zeros, not the totals. <c>statistics/sources</c> lists the surfaces.</para>
     /// </summary>
     public class StatisticsController(TeamContextResolver resolver, StatisticsService statistics)
         : DatasetApiController(resolver)
@@ -19,13 +24,14 @@ namespace IndxServer.Controllers
         /// computed here so every consumer shares the definitions (see the response type).</summary>
         [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/statistics/overview")]
-        public ActionResult<StatisticsOverviewResponse> Overview(string teamName, string dataSetName, int days = 30)
+        public ActionResult<StatisticsOverviewResponse> Overview(string teamName, string dataSetName, int days = 30,
+            string? source = null)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (Disabled(out var off)) return off!;
             var (fromDay, toDay) = Window(days);
-            var o = statistics.Store!.Overview(ctx.OwnerKey, dataSetName, fromDay, toDay);
+            var o = statistics.Store!.Overview(ctx.OwnerKey, dataSetName, fromDay, toDay, Source(source));
             return new StatisticsOverviewResponse(
                 o.Searches, o.ZeroHits, o.ClickedSearches, o.Selects, o.Converts, o.ConvertValueSum,
                 Rate(o.ZeroHits, o.Searches), Rate(o.ClickedSearches, o.Searches),
@@ -37,13 +43,14 @@ namespace IndxServer.Controllers
         /// Days without events are served as zero rows, so a chart never has holes.</summary>
         [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/statistics/timeseries")]
-        public ActionResult<StatisticsDayResponse[]> TimeSeries(string teamName, string dataSetName, int days = 30)
+        public ActionResult<StatisticsDayResponse[]> TimeSeries(string teamName, string dataSetName, int days = 30,
+            string? source = null)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (Disabled(out var off)) return off!;
             var (fromDay, toDay) = Window(days);
-            var byDay = statistics.Store!.TimeSeries(ctx.OwnerKey, dataSetName, fromDay, toDay)
+            var byDay = statistics.Store!.TimeSeries(ctx.OwnerKey, dataSetName, fromDay, toDay, Source(source))
                 .ToDictionary(r => r.Day);
             var series = new List<StatisticsDayResponse>((int)(toDay - fromDay + 1));
             for (long day = fromDay; day <= toDay; day++)
@@ -74,14 +81,14 @@ namespace IndxServer.Controllers
         [HttpGet(DataSetRoute + "/statistics/queries")]
         public ActionResult<QueryStat[]> Queries(string teamName, string dataSetName,
             int days = 30, int limit = 50, bool zeroHitsOnly = false, bool uncoveredOnly = false,
-            QueryOrder order = QueryOrder.Searches)
+            QueryOrder order = QueryOrder.Searches, string? source = null)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (Disabled(out var off)) return off!;
             var (fromDay, toDay) = Window(days);
             return statistics.Store!.TopQueries(ctx.OwnerKey, dataSetName, fromDay, toDay,
-                Math.Clamp(limit, 1, 1000), zeroHitsOnly, uncoveredOnly, order).ToArray();
+                Math.Clamp(limit, 1, 1000), zeroHitsOnly, uncoveredOnly, order, Source(source)).ToArray();
         }
 
         /// <summary>For one query (<paramref name="text"/>, compared lowercased like the query
@@ -93,7 +100,7 @@ namespace IndxServer.Controllers
         [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/statistics/queries/documents")]
         public ActionResult<QueryDocumentStat[]> QueryDocuments(string teamName, string dataSetName,
-            string? text, int days = 30, int limit = 50)
+            string? text, int days = 30, int limit = 50, string? source = null)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
@@ -102,7 +109,7 @@ namespace IndxServer.Controllers
                 return ApiProblems.InvalidArgument("text is required: the query whose chosen documents to list");
             var (fromDay, toDay) = Window(days);
             return statistics.Store!.QueryDocuments(ctx.OwnerKey, dataSetName, text, fromDay, toDay,
-                Math.Clamp(limit, 1, 1000)).ToArray();
+                Math.Clamp(limit, 1, 1000), Source(source)).ToArray();
         }
 
         /// <summary>Browsing in the window: how often people narrowed by each filter value, with
@@ -111,14 +118,14 @@ namespace IndxServer.Controllers
         [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/statistics/filters")]
         public ActionResult<FilterStat[]> Filters(string teamName, string dataSetName,
-            int days = 30, int limit = 50)
+            int days = 30, int limit = 50, string? source = null)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (Disabled(out var off)) return off!;
             var (fromDay, toDay) = Window(days);
             return statistics.Store!.TopFilters(ctx.OwnerKey, dataSetName, fromDay, toDay,
-                Math.Clamp(limit, 1, 1000)).ToArray();
+                Math.Clamp(limit, 1, 1000), Source(source)).ToArray();
         }
 
         /// <summary>Top documents in the window: selects, converts and summed convert value per
@@ -126,14 +133,28 @@ namespace IndxServer.Controllers
         [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/statistics/documents")]
         public ActionResult<DocumentStat[]> Documents(string teamName, string dataSetName,
-            int days = 30, int limit = 50)
+            int days = 30, int limit = 50, string? source = null)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (Disabled(out var off)) return off!;
             var (fromDay, toDay) = Window(days);
             return statistics.Store!.TopDocuments(ctx.OwnerKey, dataSetName, fromDay, toDay,
-                Math.Clamp(limit, 1, 1000)).ToArray();
+                Math.Clamp(limit, 1, 1000), source: Source(source)).ToArray();
+        }
+
+        /// <summary>The surfaces searches came from in the window, most searched first: each
+        /// <c>?source=</c> with its searches, counted as the overview counts them, and a row with
+        /// a null source for the searches that named none. From the raw rows (90 days by default).</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/sources")]
+        public ActionResult<SourceStat[]> Sources(string teamName, string dataSetName, int days = 30)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var (fromDay, toDay) = Window(days);
+            return statistics.Store!.Sources(ctx.OwnerKey, dataSetName, fromDay, toDay).ToArray();
         }
 
         /// <summary>One subject's lifetime top documents — the personalization read
@@ -238,6 +259,10 @@ namespace IndxServer.Controllers
                 "Statistics are switched off on this instance (Statistics:Enabled=false).");
             return true;
         }
+
+        /// <summary>A source as the search stored it (trimmed, at most 40 characters), so a read
+        /// finds what was written; blank means every surface.</summary>
+        private static string? Source(string? source) => StatisticsService.CleanSource(source);
 
         private static (long FromDay, long ToDay) Window(int days)
         {
