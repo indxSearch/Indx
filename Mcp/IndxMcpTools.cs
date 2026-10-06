@@ -278,7 +278,13 @@ namespace IndxServer.Mcp
             try
             {
                 var engine = IndxServerInternalApi.Manager.ResolveEngine(dataset, ownerKey);
-                if (engine is SearchEngine se) o["scoringMode"] = se.ScoringMode.ToString();
+                if (engine != null)
+                {
+                    o["scoringMode"] = engine.Scoring.Mode.ToString();
+                    // BM25F has one k1 for the dataset; in BM25PerField each field has its own,
+                    // in get_field_configuration.
+                    if (engine.Scoring.Mode == ScoringMode.BM25F) o["bm25fK1"] = engine.Scoring.BM25FK1;
+                }
             }
             catch { /* state is the answer here; a scoring mode we cannot read is not an error */ }
 

@@ -26,6 +26,7 @@
 else if (Ctx.EditedFields is { } fields)
 {
     <FieldConfigTable Fields="fields" Editable="@Ctx.IsEditor" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced" Filter="@_filter"
+                      Scoring="@(Ctx.FindEngine()?.Scoring ?? ScoringSetup.Default)"
                       @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged" />
     @* The page action pattern (app.css): Save / Cancel in a bar that appears once something
        changed and sticks to the window bottom, since this table is often taller than the screen.
