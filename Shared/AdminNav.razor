@@ -16,8 +16,15 @@
     [Parameter] public string Active { get; set; } = "";
 
     // Version banner (moved here from the Datasets page so it heads the admin area).
+    // The product version (5.0.1), not the assembly version: IndxSearchLib pins AssemblyVersion
+    // at 5.0.0.0 so an application built on 5.0.0 loads every 5.0.x unchanged, which made this
+    // read "Core 5.0.0" on every patch release. The informational version carries the release,
+    // with "+<commit>" after it when the build adds one.
     private static readonly string _indxVersion =
-        Assembly.GetAssembly(typeof(SearchEngine))?.GetName().Version?.ToString(3) ?? "";
+        Assembly.GetAssembly(typeof(SearchEngine)) is { } indx
+            ? indx.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0]
+              ?? indx.GetName().Version?.ToString(3) ?? ""
+            : "";
 
     private static readonly string _apiVersion = GetApiVersion();
 
