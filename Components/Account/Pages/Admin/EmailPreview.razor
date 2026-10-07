@@ -2,6 +2,7 @@
 @using Microsoft.AspNetCore.Authorization
 @using IndxServer.Services
 @attribute [Authorize(Roles = "Admin")]
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
 @inject InstanceSettingsService InstanceSettingsService
 
 <PageTitle>Admin — Email Preview</PageTitle>

@@ -63,8 +63,8 @@
                 var status = RuleStatus(rule);
                 <div class="boost-rule @(status?.Label.StartsWith("Expired") == true ? "boost-rule--expired" : "")">
                     <div class="boost-rule-head">
-                        <ToggleSwitch @bind-Checked="rule.Enabled" />
-                        <div class="boost-grow"><InputField placeholder="Rule name" @bind-Value="rule.Name" /></div>
+                        <ToggleSwitch @bind-Checked="rule.Enabled" AriaLabel="@(string.IsNullOrWhiteSpace(rule.Name) ? "Rule enabled" : $"Rule enabled: {rule.Name}")" />
+                        <div class="boost-grow"><InputField placeholder="Rule name" aria-label="Rule name" @bind-Value="rule.Name" /></div>
                         @if (status != null)
                         {
                             <Chip Color="@status.Value.Color" TextColor="@status.Value.TextColor">@status.Value.Label</Chip>
@@ -117,8 +117,8 @@
                             @if (IsTimeLimited(rule))
                             {
                                 <div class="boost-dates">
-                                    <div><span class="boost-date-label">Active from</span><DatePicker @bind-Value="rule.ActiveFrom" /></div>
-                                    <div><span class="boost-date-label">Active until</span><DatePicker @bind-Value="rule.ActiveUntil" /></div>
+                                    <div><span class="boost-date-label">Active from</span><DatePicker @bind-Value="rule.ActiveFrom" AriaLabel="Active from" /></div>
+                                    <div><span class="boost-date-label">Active until</span><DatePicker @bind-Value="rule.ActiveUntil" AriaLabel="Active until" /></div>
                                 </div>
                             }
                             else

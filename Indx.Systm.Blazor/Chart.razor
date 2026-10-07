@@ -275,7 +275,25 @@
             idx = (int)Math.Floor((mouseX - PadLeft) / (colW <= 0 ? 1 : colW));
         }
         idx = Math.Max(0, Math.Min(_dataLen - 1, idx));
-        _tooltip = new TooltipState(idx, mouseX, mouseY);
+        // Every pointermove is a round-trip, and a render re-diffs the whole svg. Only a move to
+        // another point changes anything: the tooltip is anchored to the point's column, at the
+        // height the pointer entered it, so within one column there is nothing to redraw.
+        if (_tooltip?.Index == idx)
+        {
+            _skipRender = true;
+            return;
+        }
+        var x = Type == "line" ? ToX(idx) : PadLeft + (idx + 0.5) * (_cw / _dataLen);
+        _tooltip = new TooltipState(idx, x, mouseY);
+    }
+
+    private bool _skipRender;
+
+    protected override bool ShouldRender()
+    {
+        if (!_skipRender) return true;
+        _skipRender = false;
+        return false;
     }
 
     private void ClearTooltip() => _tooltip = null;

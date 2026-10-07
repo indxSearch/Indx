@@ -78,7 +78,20 @@ export function init(trigger) {
         options[next].focus();
     };
     trigger.addEventListener('keydown', keydown);
-    trigger._indxSelect = { observer, follow, keydown };
+    trigger._indxSelect = true;
+
+    // Disposed through this handle rather than through the element: on an enhanced navigation
+    // the element is already gone when .NET disposes, and the window listeners of an open menu
+    // would outlive the page.
+    return {
+        dispose() {
+            observer.disconnect();
+            window.removeEventListener('scroll', follow, true);
+            window.removeEventListener('resize', follow);
+            trigger.removeEventListener('keydown', keydown);
+            delete trigger._indxSelect;
+        }
+    };
 }
 
 // Focus the chosen option of an open menu, or the first: the field was opened from the keyboard.
@@ -89,13 +102,3 @@ export function focusOption(trigger) {
     (options.find(o => o.getAttribute('aria-selected') === 'true') ?? options[0])?.focus({ preventScroll: true });
 }
 
-export function dispose(trigger) {
-    // Null when Blazor tore the DOM down (navigation) before running disposal.
-    const s = trigger?._indxSelect;
-    if (!s) return;
-    s.observer.disconnect();
-    trigger.removeEventListener('keydown', s.keydown);
-    window.removeEventListener('scroll', s.follow, true);
-    window.removeEventListener('resize', s.follow);
-    delete trigger._indxSelect;
-}

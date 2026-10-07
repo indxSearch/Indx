@@ -90,8 +90,19 @@
 
     protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
 
-    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
-        => _ = InvokeAsync(Close);
+    // Always re-render, not only when a panel was open: the links resolve "current page" from the
+    // address when they render, so a persistent layout kept marking the old page until then.
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        try
+        {
+            await InvokeAsync(() => { _openId = null; StateHasChanged(); });
+        }
+        catch (Exception ex)
+        {
+            await DispatchExceptionAsync(ex);
+        }
+    }
 
     public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
 }

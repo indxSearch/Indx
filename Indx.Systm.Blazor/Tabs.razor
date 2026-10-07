@@ -97,7 +97,19 @@
     private ElementReference _listEl;
     private IJSObjectReference? _module;
     private readonly string _generatedId = $"indx-tabs-{Guid.NewGuid():N}";
-    private IReadOnlyList<TabItem> _items => Items as IReadOnlyList<TabItem> ?? Items.ToArray();
+    // Materialized once per parameter set: Items may be a lazy sequence, and it is read several
+    // times per tab per render.
+    private IReadOnlyList<TabItem> _items = [];
+    // What the fade edges depend on. A scrollable bar asks JS to recompute them only when this
+    // changes, not on every render of the parent.
+    private string _shape = "";
+    private string? _refreshedShape;
+
+    protected override void OnParametersSet()
+    {
+        _items = Items as IReadOnlyList<TabItem> ?? Items.ToArray();
+        _shape = string.Join("\u0001", _items.Select(i => i.Value + "\u0002" + i.Label + "\u0002" + i.Badge));
+    }
     private string _id => Id ?? _generatedId;
 
     private string TabId(TabItem item) => $"{_id}-tab-{item.Value}";
@@ -194,10 +206,12 @@
             if (_disposed) { await module.DisposeAsync(); return; }
             _module = module;
             await _module.InvokeVoidAsync("init", _listEl);
+            _refreshedShape = _shape;
         }
-        else if (Scrollable && _module is not null)
+        else if (Scrollable && _module is not null && _refreshedShape != _shape)
         {
-            // Tabs may have changed (e.g. a dataset added/removed) — recompute the fade edges.
+            // Tabs changed (e.g. a dataset added/removed) — recompute the fade edges.
+            _refreshedShape = _shape;
             await _module.InvokeVoidAsync("refresh", _listEl);
         }
 

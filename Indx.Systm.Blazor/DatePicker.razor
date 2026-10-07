@@ -4,7 +4,7 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-<div class="indx-datepicker-wrapper" @ref="_wrapper" @onkeydown="OnCalendarKeyDown">
+<div class="indx-datepicker-wrapper" @ref="_wrapper">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label for="@_inputId" class="indx-datepicker-label">@Label</label>
@@ -18,7 +18,8 @@
                     aria-expanded="@(_open ? "true" : "false")"
                     aria-controls="@_calendarId"
                     disabled="@Disabled"
-                    @onclick="ToggleCalendar">
+                    @onclick="ToggleCalendar"
+                    @onkeydown="OnCalendarKeyDown">
                 <HourGlass Size="14" />
             </button>
             <input id="@_inputId"
@@ -26,6 +27,7 @@
                    class="indx-datepicker-input"
                    value="@(Value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))"
                    disabled="@Disabled"
+                   aria-label="@(string.IsNullOrEmpty(Label) ? AriaLabel : null)"
                    aria-invalid="@(HasError ? "true" : "false")"
                    aria-describedby="@(!string.IsNullOrEmpty(Error) ? _errorId : null)"
                    @onchange="OnNativeChange" />
@@ -36,11 +38,11 @@
             <div class="indx-datepicker-backdrop" @onclick="CloseCalendar"></div>
             <div id="@_calendarId" class="indx-datepicker-calendar" role="dialog" aria-modal="false" aria-labelledby="@_monthLabelId">
                 <div class="indx-datepicker-header">
-                    <button type="button" class="indx-datepicker-nav" aria-label="Previous month" @onclick="PrevMonth">
+                    <button type="button" class="indx-datepicker-nav" aria-label="Previous month" @onclick="PrevMonth" @onkeydown="OnCalendarKeyDown">
                         <ChevronLeft Size="14" />
                     </button>
                     <span id="@_monthLabelId" class="indx-datepicker-month">@Months[_viewMonth - 1] @_viewYear</span>
-                    <button type="button" class="indx-datepicker-nav" aria-label="Next month" @onclick="NextMonth">
+                    <button type="button" class="indx-datepicker-nav" aria-label="Next month" @onclick="NextMonth" @onkeydown="OnCalendarKeyDown">
                         <ChevronRight Size="14" />
                     </button>
                 </div>
@@ -89,6 +91,8 @@
     [Parameter] public bool IsValid { get; set; } = true;
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public string? Id { get; set; }
+    /// <summary>Names the date input when there is no <see cref="Label"/>, as in a table row.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
 
     private static readonly string[] Weekdays = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
     private static readonly string[] Months =
@@ -98,7 +102,8 @@
     ];
 
     private bool _open;
-    private readonly DateOnly _today = DateOnly.FromDateTime(DateTime.Today);
+    // Read each time: a circuit can outlive midnight.
+    private static DateOnly _today => DateOnly.FromDateTime(DateTime.Today);
     private readonly string _generatedId = $"indx-datepicker-{Guid.NewGuid():N}";
     private IJSObjectReference? _module;
     private ElementReference _wrapper;
@@ -287,6 +292,8 @@
         }
     }
 
+    // On the trigger and the month buttons only. The day buttons handle Escape themselves, and on
+    // the wrapper this heard every key typed into the date input and every arrow twice.
     private void OnCalendarKeyDown(KeyboardEventArgs args)
     {
         if (_open && args.Key == "Escape") CloseCalendar();

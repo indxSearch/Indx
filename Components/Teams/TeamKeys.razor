@@ -154,8 +154,8 @@ else
         <div class="tk-field">
             <span class="tk-label">Datasets</span>
             <div class="tk-radios">
-                <RadioButton Id="tk-ds-all" Name="tk-datasets" Value="all" Label="All datasets in the team" Checked="@(!_limitDatasets)" CheckedChanged="@(_ => _limitDatasets = false)" />
-                <RadioButton Id="tk-ds-some" Name="tk-datasets" Value="some" Label="Only these datasets" Checked="@_limitDatasets" CheckedChanged="@(_ => _limitDatasets = true)" />
+                <RadioButton Id="tk-ds-all" Name="tk-datasets" Value="all" Label="All datasets in the team" Checked="@(!_limitDatasets)" OnChange="@(_ => _limitDatasets = false)" />
+                <RadioButton Id="tk-ds-some" Name="tk-datasets" Value="some" Label="Only these datasets" Checked="@_limitDatasets" OnChange="@(_ => _limitDatasets = true)" />
             </div>
             @if (_limitDatasets)
             {

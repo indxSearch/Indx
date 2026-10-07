@@ -5,12 +5,18 @@
 <div class="indx-select-wrapper @(Variant == "ghost" ? "indx-select-wrapper-ghost" : null)">
     @if (!string.IsNullOrEmpty(Label))
     {
-        <label for="@_id" class="indx-select-label">@Label</label>
+        <label id="@_id-label" for="@_id" class="indx-select-label">@Label</label>
     }
     <div class="indx-select-trigger" @ref="_trigger" @onkeydown="OnKeyDown">
         <button type="button" id="@_id" class="indx-select indx-select-@Size @(Variant == "ghost" ? "indx-select-ghost" : null)" @ref="_button"
-                aria-haspopup="listbox" aria-expanded="@(_open ? "true" : "false")" @onclick="Toggle" @attributes="AdditionalAttributes">
-            <span class="indx-select-value @(string.IsNullOrEmpty(Value) ? "indx-select-placeholder" : null)" style="display:inline-flex; align-items:center; gap:6px;">
+                aria-haspopup="listbox" aria-expanded="@(_open ? "true" : "false")"
+                aria-labelledby="@_labelledBy"
+                @onclick="Toggle" @attributes="_splat">
+            @if (_ariaLabel is not null)
+            {
+                <span id="@_id-name" hidden>@_ariaLabel</span>
+            }
+            <span id="@_id-value" class="indx-select-value @(string.IsNullOrEmpty(Value) ? "indx-select-placeholder" : null)" style="display:inline-flex; align-items:center; gap:6px;">
                 @if (SelectedOption?.Icon is { } selIcon)
                 {
                     @selIcon(_iconSize)
@@ -21,7 +27,7 @@
                        wide as its widest option, so a value never clips and the field does not
                        change width as the choice changes. *@
                     <span class="indx-select-sizer">
-                        @foreach (var option in Options)
+                        @foreach (var option in _options)
                         {
                             <span class="@(option.Value == Value ? null : "indx-select-sizer-hidden")" aria-hidden="@(option.Value == Value ? null : "true")">@option.Label</span>
                         }
@@ -42,7 +48,7 @@
         {
             <div class="indx-select-backdrop" @onclick="Close"></div>
             <div class="indx-select-menu" role="listbox">
-                @foreach (var option in Options)
+                @foreach (var option in _options)
                 {
                     <Button Variant="ghost" Size="@Size" role="option" aria-selected="@(Value == option.Value ? "true" : "false")"
                             @onclick="() => Pick(option.Value)" style="width:100%; justify-content:space-between;">
@@ -89,7 +95,23 @@
     // Match Button's icon sizing.
     private int _iconSize => Size == "large" ? 21 : 14;
 
-    private SelectOption? SelectedOption => Options.FirstOrDefault(o => o.Value == Value);
+    // Materialized once per parameter set: Options may be a lazy sequence, read several times a render.
+    private IReadOnlyList<SelectOption> _options = [];
+
+    // An aria-label on the field would replace its whole name, so a screen reader heard "Order"
+    // and never the current choice (the field is a button, named by its label alone). It is turned into a hidden name that the field is labelled by
+    // together with its value: "Order, Newest first".
+    private string? _ariaLabel => AdditionalAttributes is { } a && a.TryGetValue("aria-label", out var v) ? v?.ToString() : null;
+    // A visible Label has the same effect through <label for>, so it is referenced the same way.
+    private string? _labelledBy =>
+        _ariaLabel is not null ? $"{_id}-name {_id}-value"
+        : !string.IsNullOrEmpty(Label) ? $"{_id}-label {_id}-value"
+        : null;
+    private Dictionary<string, object>? _splat => _ariaLabel is null ? AdditionalAttributes
+        : AdditionalAttributes!.Where(p => p.Key != "aria-label").ToDictionary(p => p.Key, p => p.Value);
+    protected override void OnParametersSet() => _options = Options as IReadOnlyList<SelectOption> ?? Options.ToArray();
+
+    private SelectOption? SelectedOption => _options.FirstOrDefault(o => o.Value == Value);
     private string? SelectedLabel => SelectedOption?.Label;
 
     private void Toggle() => _open = !_open;
@@ -131,6 +153,7 @@
     // position under the field.
     private ElementReference _trigger;
     private IJSObjectReference? _module;
+    private IJSObjectReference? _handle;
 
     private bool _disposed;
 
@@ -143,7 +166,7 @@
                 var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Indx.Systm.Blazor/SelectField.razor.js");
                 if (_disposed) { await module.DisposeAsync(); return; }
                 _module = module;
-                await _module.InvokeVoidAsync("init", _trigger);
+                _handle = await _module.InvokeAsync<IJSObjectReference?>("init", _trigger);
             }
             if (_refocus)
             {
@@ -167,7 +190,11 @@
         if (_module is null) return;
         try
         {
-            await _module.InvokeVoidAsync("dispose", _trigger);
+            if (_handle is not null)
+            {
+                await _handle.InvokeVoidAsync("dispose");
+                await _handle.DisposeAsync();
+            }
             await _module.DisposeAsync();
         }
         catch (JSDisconnectedException) { }

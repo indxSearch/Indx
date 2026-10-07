@@ -11,12 +11,12 @@
         <input id="@_id"
                @key="_live.Key"
                name="@NameAttributeValue"
-               class="@_inputClass"
                value="@_rendered"
                @onchange="OnChange"
                aria-invalid="@(HasError ? "true" : "false")"
                aria-describedby="@(HasError && !string.IsNullOrEmpty(Error) ? $"{_id}-error" : null)"
-               @attributes="_attributes" />
+               @attributes="_attributes"
+               class="@_inputClass" />
         @if (!string.IsNullOrEmpty(Error))
         {
             <span id="@_id-error" class="indx-input-error-text" role="alert">@Error</span>
@@ -28,11 +28,11 @@ else
     <input id="@_id"
            @key="_live.Key"
            name="@NameAttributeValue"
-           class="@_inputClass"
            value="@_rendered"
            @onchange="OnChange"
            aria-invalid="@(HasError ? "true" : "false")"
-           @attributes="_attributes" />
+           @attributes="_attributes"
+           class="@_inputClass" />
 }
 
 @code {
@@ -48,7 +48,12 @@ else
     /// typing stays intact on a slow connection.</summary>
     [Parameter] public bool Immediate { get; set; }
 
-    private bool HasError => !string.IsNullOrEmpty(Error) || !IsValid;
+    // An EditForm's validation counts too: a field the form rejected is styled as one. The
+    // caller's own class is kept beside the system's (it is rendered after the splat, so it wins).
+    private bool HasError => !string.IsNullOrEmpty(Error) || !IsValid
+        || (EditContext?.GetValidationMessages(FieldIdentifier).Any() ?? false);
+
+    private string? _callerClass => AdditionalAttributes is { } a && a.TryGetValue("class", out var c) ? c?.ToString() : null;
 
     private string _id => Id ?? _generatedId;
     private readonly string _generatedId = $"input-{Guid.NewGuid():N}";
@@ -62,6 +67,7 @@ else
             var cls = "indx-input";
             if (Variant == "borderBottom") cls += " indx-input-border-bottom";
             if (HasError) cls += " indx-input-error";
+            if (!string.IsNullOrEmpty(_callerClass)) cls += " " + _callerClass;
             return cls;
         }
     }
