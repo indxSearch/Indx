@@ -3,7 +3,8 @@
 
 export function observe(el, dotNetRef) {
     if (!el) return;
-    const report = () => dotNetRef.invokeMethodAsync('OnResize', el.clientWidth);
+    // A resize after the circuit is gone, or after disposal, would reject unobserved.
+    const report = () => dotNetRef.invokeMethodAsync('OnResize', el.clientWidth).catch(() => { });
     const ro = new ResizeObserver(report);
     el._indxChartRO = ro;
     ro.observe(el);

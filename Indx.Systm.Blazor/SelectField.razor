@@ -7,8 +7,8 @@
     {
         <label for="@_id" class="indx-select-label">@Label</label>
     }
-    <div class="indx-select-trigger" @ref="_trigger">
-        <button type="button" id="@_id" class="indx-select indx-select-@Size @(Variant == "ghost" ? "indx-select-ghost" : null)" @onclick="Toggle" @onkeydown="OnKeyDown" @attributes="AdditionalAttributes">
+    <div class="indx-select-trigger" @ref="_trigger" @onkeydown="OnKeyDown">
+        <button type="button" id="@_id" class="indx-select indx-select-@Size @(Variant == "ghost" ? "indx-select-ghost" : null)" @onclick="Toggle" @attributes="AdditionalAttributes">
             <span class="indx-select-value @(string.IsNullOrEmpty(Value) ? "indx-select-placeholder" : null)" style="display:inline-flex; align-items:center; gap:6px;">
                 @if (SelectedOption?.Icon is { } selIcon)
                 {
@@ -99,7 +99,8 @@
         await ValueChanged.InvokeAsync(value);
     }
 
-    // v1 keyboard support: Escape closes. (Arrow-key navigation / type-ahead is a follow-up.)
+    // v1 keyboard support: Escape closes, from the trigger or from an option (the handler sits on
+    // the wrapper, which holds both). (Arrow-key navigation / type-ahead is a follow-up.)
     private void OnKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Escape") _open = false;

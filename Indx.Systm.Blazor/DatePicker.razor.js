@@ -3,6 +3,8 @@ export function focusById(id) {
 }
 
 export function init(el) {
+    // Null when the picker was removed before the module finished loading.
+    if (!el) return;
     const handler = event => {
         if (event.target.matches('.indx-datepicker-day') && ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) event.preventDefault();
     };
