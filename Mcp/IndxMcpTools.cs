@@ -167,7 +167,7 @@ namespace IndxServer.Mcp
                 Text = query ?? "",
                 MaxNumberOfRecordsToReturn = Math.Clamp(limit, 1, 100),
                 EnableCoverage = true,
-                CoverageSetup = new CoverageSetup { IncludePatternMatches = broaden },
+                CoverageSetup = new CoverageSetupProxy { IncludePatternMatches = broaden },
                 EnableBoost = true,
                 EnableFacets = facets || isBrowse,
             };

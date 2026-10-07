@@ -1,0 +1,319 @@
+@* The dataset's query parameters (QueryParameterStore): the coverage values a search takes when
+   its request leaves them out. Each value is "not set" (the engine default applies), or set
+   here; a request that sends the value still wins. A working copy saved with the SaveBar, as
+   boost rules are. Needs no engine, so it works while the dataset is asleep. *@
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@using Indx.Http
+@using IndxServer.Models
+@inherits DatasetTabBase
+@inject QueryParameterStore Store
+
+@if (!Active) { return; }
+
+<div class="qp-tab">
+    <p class="indx-section-help qp-intro">
+        What a search uses when its request leaves a value out. A value the request sends always wins,
+        so a search box that sets its own keeps it. Changes apply from the next search; nothing is reindexed.
+    </p>
+
+    @* Each table has one column: a setting's name and help, and its control on the last line
+       under them. Matching and Result list sit side by side where there is room for both, one
+       under the other where there is not. *@
+    <div class="qp-groups">
+        <Table AriaLabel="Matching" Class="qp-table">
+            @Head("Matching")
+            <tbody>
+                @foreach (var p in MatchingParams) { @BoolRow(p) }
+            </tbody>
+        </Table>
+
+        <Table AriaLabel="Result list" Class="qp-table">
+            @Head("Result list")
+            <tbody>
+                @foreach (var p in ResultParams) { @BoolRow(p) }
+                @IntRow(Depth)
+            </tbody>
+        </Table>
+    </div>
+
+    <div class="qp-advanced">
+        <Button Variant="ghost" Size="micro" IconRight="@(ShowAdvanced ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)"
+                @onclick="() => _showAdvanced = !ShowAdvanced">Advanced</Button>
+    </div>
+    @if (ShowAdvanced)
+    {
+        <Table AriaLabel="Advanced" Class="qp-table">
+            @Head("Advanced")
+            <tbody>
+                @foreach (var p in AdvancedParams) { @IntRow(p) }
+            </tbody>
+        </Table>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <p class="qp-error">@_error</p>
+    }
+
+    <SaveBar Visible="@IsDirty" Message="Unsaved changes">
+        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save</Button>
+        <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
+    </SaveBar>
+    @if (AnySet)
+    {
+        <div class="indx-file-actions">
+            <Button Variant="ghost" Size="micro" @onclick="ClearAll">Use engine defaults for all</Button>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+
+    private static readonly CoverageSetupDefaults Engine = new();
+
+    /// <summary>A yes/no coverage value. Get/Set work on the working copy's coverage setup.</summary>
+    /// <param name="Name">The parameter's own name, as in CoverageSetup: the toggle's label, so the
+    /// console and the API read the same.</param>
+    private sealed record BoolParam(string Name, string Label, string Help, bool EngineDefault,
+        Func<CoverageSetupProxy, bool?> Get, Action<CoverageSetupProxy, bool?> Set);
+
+    /// <summary>A number. Get/Set work on the whole working copy, so coverageDepth fits too.</summary>
+    private sealed record IntParam(string Key, string Label, string Help, int EngineDefault, int Min, int Max,
+        Func<DatasetQueryParameters, int?> Get, Action<DatasetQueryParameters, int?> Set);
+
+    private sealed class CoverageSetupDefaults
+    {
+        private readonly Indx.Api.CoverageSetup _s = new();
+        public bool IncludePatternMatches => _s.IncludePatternMatches;
+        public int LevenshteinMaxWordSize => _s.LevenshteinMaxWordSize;
+        public int MinWordSize => _s.MinWordSize;
+        public int TruncateWordHitLimit => _s.TruncateWordHitLimit;
+        public int TruncateWordHitTolerance => _s.TruncateWordHitTolerance;
+        public bool CoverWholeQuery => _s.CoverWholeQuery;
+        public bool CoverWholeWords => _s.CoverWholeWords;
+        public bool CoverFuzzyWords => _s.CoverFuzzyWords;
+        public bool CoverJoinedWords => _s.CoverJoinedWords;
+        public bool CoverPrefixSuffix => _s.CoverPrefixSuffix;
+        public bool Truncate => _s.Truncate;
+        public int TruncationScore => _s.TruncationScore;
+    }
+
+    private static readonly BoolParam[] MatchingParams =
+    [
+        new("CoverWholeQuery", "Whole query", "Ranks documents that contain the whole query, as typed, above the rest. This is what lets a half-typed query like \"knut h\" find Knut Hamsun.",
+            Engine.CoverWholeQuery, s => s.CoverWholeQuery, (s, v) => s.CoverWholeQuery = v),
+        new("CoverWholeWords", "Whole words", "Lifts documents where the query's words appear as whole words.",
+            Engine.CoverWholeWords, s => s.CoverWholeWords, (s, v) => s.CoverWholeWords = v),
+        new("CoverFuzzyWords", "Typos", "Accepts a word with one letter wrong, missing or extra.",
+            Engine.CoverFuzzyWords, s => s.CoverFuzzyWords, (s, v) => s.CoverFuzzyWords = v),
+        new("CoverJoinedWords", "Joined and split words", "Matches words written together or apart, so \"head set\" finds \"headset\" and the other way round.",
+            Engine.CoverJoinedWords, s => s.CoverJoinedWords, (s, v) => s.CoverJoinedWords = v),
+        new("CoverPrefixSuffix", "Start or end of a word", "Matches the start or end of a longer word, so \"phone\" finds \"headphone\".",
+            Engine.CoverPrefixSuffix, s => s.CoverPrefixSuffix, (s, v) => s.CoverPrefixSuffix = v),
+    ];
+
+    private static readonly BoolParam[] ResultParams =
+    [
+        new("Truncate", "Truncate", "Ends the result list after the last close match, so a search returns what it found rather than everything that looks a little like it.",
+            Engine.Truncate, s => s.Truncate, (s, v) => s.Truncate = v),
+        new("IncludePatternMatches", "Include pattern matches", "When no document is a close match, return the nearest patterns. Off returns nothing instead.",
+            Engine.IncludePatternMatches, s => s.IncludePatternMatches, (s, v) => s.IncludePatternMatches = v),
+    ];
+
+    private static readonly IntParam Depth = new("coverageDepth", "Coverage depth",
+        "How many of the best pattern matches are examined for close matches. It is also the most results a search can return. Higher finds more, and every search pays for it.",
+        QueryParameterResolution.EngineCoverageDepth, 1, QueryParameterResolution.MaxCoverageDepth,
+        p => p.CoverageDepth, (p, v) => p.CoverageDepth = v);
+
+    private static readonly IntParam[] AdvancedParams =
+    [
+        new("minWordSize", "Shortest whole word", "The fewest characters a word needs to count as a whole-word hit.",
+            Engine.MinWordSize, 1, 63, p => p.CoverageSetup?.MinWordSize, (p, v) => Cs(p).MinWordSize = v),
+        new("levenshteinMaxWordSize", "Longest word checked for typos", "Longer words are not checked for typos by this step. At most 63.",
+            Engine.LevenshteinMaxWordSize, 1, 63, p => p.CoverageSetup?.LevenshteinMaxWordSize, (p, v) => Cs(p).LevenshteinMaxWordSize = v),
+        new("truncateWordHitLimit", "Fewest words to keep", "A document must match at least this many of the query's words to stay above the cut.",
+            Engine.TruncateWordHitLimit, 0, 1000, p => p.CoverageSetup?.TruncateWordHitLimit, (p, v) => Cs(p).TruncateWordHitLimit = v),
+        new("truncateWordHitTolerance", "Word tolerance", "How many fewer words than the best match a document may match and still stay above the cut.",
+            Engine.TruncateWordHitTolerance, 0, 1000, p => p.CoverageSetup?.TruncateWordHitTolerance, (p, v) => Cs(p).TruncateWordHitTolerance = v),
+        new("truncationScore", "Always keep at score", "A document scoring at least this always stays above the cut. 0 to 65535.",
+            Engine.TruncationScore, 0, ushort.MaxValue, p => p.CoverageSetup?.TruncationScore, (p, v) => Cs(p).TruncationScore = v is { } n ? (ushort)n : null),
+    ];
+
+    /// <summary>"coverageDepth" → "CoverageDepth": the name as the C# API spells it, as the toggles show.</summary>
+    private static string ParamName(IntParam p) => char.ToUpperInvariant(p.Key[0]) + p.Key[1..];
+    private string InputId(IntParam p) => $"qp-{Ctx.Name}-{p.Key}";
+
+    private static CoverageSetupProxy Cs(DatasetQueryParameters p) => p.CoverageSetup ??= new CoverageSetupProxy();
+
+    private bool _loaded;
+    private DatasetQueryParameters _edit = new() { CoverageSetup = new() };
+    private string _savedJson = "{}";
+    // The number fields as typed, so an unparseable entry stays on screen with its error.
+    private readonly Dictionary<string, NumberEntry> _text = new();
+    private readonly Dictionary<string, string> _textErrors = new();
+    private string? _error;
+    private bool _saving;
+
+    protected override void OnParametersSet()
+    {
+        if (Active && !_loaded) Load();
+    }
+
+    private void Load()
+    {
+        _loaded = true;
+        var saved = Store.Load(Ctx.TeamId, Ctx.Name);
+        _savedJson = Json(saved ?? new DatasetQueryParameters());
+        Reset(saved);
+    }
+
+    private void Reset(DatasetQueryParameters? from)
+    {
+        // A copy: the store's instance is shared with every search.
+        _edit = from == null ? new() : JsonSerializer.Deserialize<DatasetQueryParameters>(Json(from), JsonOpts)!;
+        _edit.CoverageSetup ??= new();
+        _text.Clear();
+        _textErrors.Clear();
+        foreach (var p in AdvancedParams.Append(Depth))
+            _text[p.Key] = new NumberEntry { Text = p.Get(_edit)?.ToString() };
+        _error = null;
+    }
+
+    private static string Json(DatasetQueryParameters p)
+    {
+        var json = JsonSerializer.Serialize(p, JsonOpts);
+        // An empty coverage setup and none at all are the same thing.
+        return json.Replace(",\"coverageSetup\":{}", "").Replace("\"coverageSetup\":{}", "");
+    }
+
+    private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _textErrors.Count > 0);
+    private bool AnySet => QueryParameterResolution.SetNames(_edit).Count > 0;
+    private bool AdvancedSet => AdvancedParams.Any(p => p.Get(_edit) != null);
+    // Open by default when something in it is set, so a set value is never out of sight.
+    private bool? _showAdvanced;
+    private bool ShowAdvanced => _showAdvanced ?? AdvancedSet;
+
+    private RenderFragment BoolRow(BoolParam p) => __builder =>
+    {
+        var value = p.Get(_edit.CoverageSetup!);
+        <TableRow Class="@(value != null ? "qp-row--set" : null)">
+            <TableCell Class="qp-cell">
+                @Text(p.Label, p.Help)
+                <div class="qp-control">
+                    <ToggleSwitch Label="@p.Name" Checked="@(value ?? p.EngineDefault)"
+                                  CheckedChanged="@(v => p.Set(_edit.CoverageSetup!, v))" />
+                    @Restore(value != null, p.EngineDefault ? "on" : "off", () => p.Set(_edit.CoverageSetup!, null))
+                </div>
+            </TableCell>
+        </TableRow>
+    };
+
+    private static RenderFragment Head(string group) => __builder =>
+    {
+        <thead>
+            <tr><th>@group</th></tr>
+        </thead>
+    };
+
+    private static RenderFragment Text(string label, string help) => __builder =>
+    {
+        <span class="qp-label">@label</span>
+        <span class="qp-help">@help</span>
+    };
+
+    /// <summary>The ghost button that hands a value back to the engine default. Its place is kept
+    /// while nothing is set, so the controls stay in one column.</summary>
+    private RenderFragment Restore(bool set, string defaultValue, Action restore) => __builder =>
+    {
+        if (set)
+        {
+            <Tooltip Content="@($"Restore default value ({defaultValue})")" Position="left">
+                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Restore" aria-label="@($"Restore default value ({defaultValue})")" @onclick="restore" />
+            </Tooltip>
+        }
+        else
+        {
+            <span class="qp-restore-placeholder" aria-hidden="true"></span>
+        }
+    };
+
+    private RenderFragment IntRow(IntParam p) => __builder =>
+    {
+        var entry = Entry(p);
+        var set = p.Get(_edit) != null || !string.IsNullOrEmpty(entry.Text);
+        <TableRow Class="@(set ? "qp-row--set" : null)">
+            <TableCell Class="qp-cell">
+                @Text(p.Label, p.Help)
+                <div class="qp-control">
+                    <div class="qp-number">
+                        <InputField @bind-Value="entry.Text" @bind-Value:after="@(() => SetNumber(p, entry.Text))"
+                                    Error="@_textErrors.GetValueOrDefault(p.Key)" Id="@InputId(p)"
+                                    placeholder="@($"{p.EngineDefault:N0}")" inputmode="numeric" />
+                    </div>
+                    @* The parameter's own name, as on the toggles. *@
+                    <label class="qp-param-name" for="@InputId(p)">@ParamName(p)</label>
+                    @Restore(set, $"{p.EngineDefault:N0}", () => SetNumber(p, ""))
+                </div>
+            </TableCell>
+        </TableRow>
+    };
+
+    /// <summary>A number field's text as typed, so an entry that does not parse stays on screen.</summary>
+    private sealed class NumberEntry { public string? Text { get; set; } }
+
+    private NumberEntry Entry(IntParam p)
+    {
+        if (!_text.TryGetValue(p.Key, out var e)) _text[p.Key] = e = new NumberEntry();
+        return e;
+    }
+
+    private void SetNumber(IntParam p, string? text)
+    {
+        text = text?.Trim() ?? "";
+        Entry(p).Text = text;
+        _textErrors.Remove(p.Key);
+        if (text.Length == 0) { p.Set(_edit, null); return; }
+        if (!int.TryParse(text.Replace(" ", "").Replace(",", "").Replace(".", ""), out var n) || n < p.Min || n > p.Max)
+        {
+            _textErrors[p.Key] = $"A whole number from {p.Min:N0} to {p.Max:N0}";
+            return;
+        }
+        p.Set(_edit, n);
+    }
+
+    private void ClearAll()
+    {
+        _edit = new() { CoverageSetup = new() };
+        _text.Clear();
+        _textErrors.Clear();
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving) return;
+        _error = null;
+        if (_textErrors.Count > 0) { _error = "Fix the values marked above, or clear them to use the default."; return; }
+        if (QueryParameterResolution.Validate(_edit) is { } invalid) { _error = invalid; return; }
+        var toSave = JsonSerializer.Deserialize<DatasetQueryParameters>(Json(_edit), JsonOpts)!;
+        _saving = true;
+        try
+        {
+            await Task.Run(() => Store.Save(Ctx.TeamId, Ctx.Name, toSave));
+            _savedJson = Json(toSave);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not save: {ex.Message}";
+        }
+        finally { _saving = false; }
+    }
+
+    private void Cancel() => Reset(Store.Load(Ctx.TeamId, Ctx.Name));
+}

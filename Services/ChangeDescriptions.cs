@@ -15,6 +15,7 @@ namespace IndxServer.Services
         {
             DatasetChangeKind.Synonyms => "Synonyms",
             DatasetChangeKind.BoostRules => "Boost rules",
+            DatasetChangeKind.QueryParameters => "Query parameters",
             DatasetChangeKind.Fields => "Fields",
             DatasetChangeKind.Reindex => "Reindex",
             DatasetChangeKind.Replace => "Replace",
@@ -63,6 +64,14 @@ namespace IndxServer.Services
                     var enabled = N("enabled") ?? after;
                     var rules = before == after ? $"{Count(after)} rules" : $"{Count(before)} → {Count(after)} rules";
                     return $"Boost rules: {rules}, {Count(enabled)} enabled";
+                }
+                case DatasetChangeKind.QueryParameters:
+                {
+                    // Stored as "coverageDepth", "coverageSetup.truncate": the last part reads.
+                    var changed = A("changed").Select(n => n[(n.LastIndexOf('.') + 1)..]).ToArray();
+                    if (changed.Length == 0) return "Query parameters changed";
+                    var shown = string.Join(", ", changed.Take(3));
+                    return changed.Length > 3 ? $"Query parameters changed: {shown} and {changed.Length - 3} more" : $"Query parameters changed: {shown}";
                 }
                 case DatasetChangeKind.Fields:
                 {

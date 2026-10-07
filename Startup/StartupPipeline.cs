@@ -314,9 +314,12 @@ internal static class StartupPipeline
             boostStore.EnsureTable();
             var metadataStore = app.Services.GetRequiredService<IndxServer.Services.DatasetMetadataStore>();
             metadataStore.EnsureTable();
+            var queryParameterStore = app.Services.GetRequiredService<IndxServer.Services.QueryParameterStore>();
+            queryParameterStore.EnsureTable();
             var boostCeiling = app.Configuration.GetValue<int?>("Indx:BoostSaturationCeiling") ?? 6;
             IndxServerInternalApi.Manager.AttachBoostStore(boostStore, boostCeiling);
             IndxServerInternalApi.Manager.AttachMetadataStore(metadataStore);
+            IndxServerInternalApi.Manager.AttachQueryParameterStore(queryParameterStore);
 
             // Detect license file for summary
             if (!string.IsNullOrWhiteSpace(licensePath) && File.Exists(licensePath))

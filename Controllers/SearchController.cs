@@ -22,7 +22,8 @@ namespace IndxServer.Controllers
     /// Team scoping, authentication and the error contract are declared on
     /// <see cref="DatasetApiController"/>.
     /// </summary>
-    public class SearchController(TeamContextResolver resolver, StatisticsService statistics)
+    public class SearchController(TeamContextResolver resolver, StatisticsService statistics,
+        QueryParameterStore queryParameters)
         : DatasetApiController(resolver)
     {
         /// <summary>
@@ -44,6 +45,13 @@ namespace IndxServer.Controllers
             try
             {
                 Indx.Api.Result res = IndxServerInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey);
+                // Which values the dataset's query parameters decided, because the request left
+                // them out: "why does my search truncate" is answered by one response. Absent
+                // when the request (or the engine default) decided everything.
+                var fromDataset = QueryParameterResolution.Resolve(query,
+                    queryParameters.Load(ctx.OwnerKey, dataSetName)).FromDataset;
+                if (fromDataset.Count > 0)
+                    Response.Headers[QueryParameterResolution.ResponseHeader] = string.Join(", ", fromDataset);
                 // The search event is logged server-side - that is what makes the zero-hit list
                 // exist at all - and the minted queryId is what select/convert events reference.
                 // Cost on this path is a struct and a queue append (measured in

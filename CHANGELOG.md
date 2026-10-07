@@ -9,7 +9,7 @@ patch can pick up a newer core without changing the HTTP contract.
 
 ## [2.0.0-beta] - Unreleased
 
-Runs on IndxSearchLib 5.0.2. First public release of the v2 server; v1 users should read
+Runs on IndxSearchLib 5.0.3 or later. First public release of the v2 server; v1 users should read
 the [v1 → v2 migration guide](https://github.com/indxSearch/skill-indx-search/blob/main/references/migration-v4-to-v5.md)
 in the AI skill.
 
@@ -70,6 +70,15 @@ in the AI skill.
   searches, and dataset creation in the console.
 
 ### Added
+
+- **Query parameters per dataset.** A new tab on each dataset, and
+  `GET`/`PUT`/`DELETE …/query-parameters`, set the coverage values a search uses when it leaves
+  them out: typo tolerance, joined words, truncation, coverage depth and the rest. A value a
+  search sends still wins, one value at a time, so a search box that sets its own keeps it. A
+  search that used a dataset's value says which in the `Indx-Query-Parameters` response header.
+  Applies from the next search, without reindexing. Agents over MCP get the dataset's values too.
+  Sending the whole `coverageSetup` object, as intrface up to 3.10 does, overrides every value;
+  send only the ones a search needs to decide.
 
 - **Statistics for one search surface.** `overview`, `timeseries`, `queries`,
   `queries/documents`, `documents` and `filters` take `?source=` and count only the searches sent

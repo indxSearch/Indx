@@ -9,6 +9,7 @@ namespace IndxServer.Services
     {
         public const string Synonyms = "synonyms";
         public const string BoostRules = "boostRules";
+        public const string QueryParameters = "queryParameters";
         public const string Fields = "fields";
         public const string Reindex = "reindex";
         public const string Replace = "replace";

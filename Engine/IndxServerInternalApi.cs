@@ -807,6 +807,7 @@ namespace IndxServer.Engine
             DeleteSavedEmbeddings(dataSetName, teamId);
             _boostStore?.Delete(teamId, dataSetName);
             _metadataStore?.Delete(teamId, dataSetName);
+            _queryParameterStore?.Delete(teamId, dataSetName);
             // Statistics survive a delete by design, so the history says where the gap came from.
             ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Delete);
             return true;
@@ -1032,6 +1033,7 @@ namespace IndxServer.Engine
             db.RenameDataSet(dataSetName, teamId, newName);
             _boostStore?.Rename(teamId, dataSetName, newName);
             _metadataStore?.Rename(teamId, dataSetName, newName);
+            _queryParameterStore?.Rename(teamId, dataSetName, newName);
             MoveSavedEmbeddings(dataSetName, teamId, newName, teamId);
             _logger.LogInformation("{Prefix}renamed to '{NewName}'", MakeLogPrefix(teamId, dataSetName), newName);
 
@@ -1074,6 +1076,7 @@ namespace IndxServer.Engine
             db.TransferOwnership(dataSetName, currentTeamId, newTeamId);
             _boostStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _metadataStore?.Transfer(currentTeamId, newTeamId, dataSetName);
+            _queryParameterStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             MoveSavedEmbeddings(dataSetName, currentTeamId, dataSetName, newTeamId);
 
             // Warm up the engine for the new owning team, same as InitializeSystem does on startup.
@@ -1422,6 +1425,12 @@ namespace IndxServer.Engine
         /// <summary>Attaches the metadata store (description + declared key field) (startup-only).</summary>
         internal void AttachMetadataStore(Services.DatasetMetadataStore store) => _metadataStore = store;
 
+        // Per-dataset query parameters: the coverage values a search takes when it leaves them out.
+        private Services.QueryParameterStore? _queryParameterStore;
+
+        /// <summary>Attaches the query-parameter store to the search path (startup-only).</summary>
+        internal void AttachQueryParameterStore(Services.QueryParameterStore store) => _queryParameterStore = store;
+
         /// <summary>
         /// Applies the dataset's server-declared key field to the engine's <see cref="DocumentFields"/>
         /// just before an external Load assigns and persists document keys. The lib does not persist the
@@ -1644,11 +1653,15 @@ namespace IndxServer.Engine
 
         private Query FromQueryProxy(QueryProxy queryProxy, IServerSearchEngine engine, string teamId, string dataSetName)
         {
+            // Each coverage value: the request's if it sent one, else the dataset's query
+            // parameters, else the engine default. The engine always gets a complete setup.
+            var coverage = Services.QueryParameterResolution.Resolve(queryProxy,
+                _queryParameterStore?.Load(teamId, dataSetName));
             Query query = new Query(queryProxy.Text, queryProxy.MaxNumberOfRecordsToReturn)
             {
-                CoverageSetup = queryProxy.CoverageSetup,
+                CoverageSetup = coverage.CoverageSetup,
                 LogPrefix = queryProxy.LogPrefix,
-                CoverageDepth = queryProxy.CoverageDepth,
+                CoverageDepth = coverage.CoverageDepth,
                 RemoveDuplicates = queryProxy.RemoveDuplicates,
                 EnableBoost = queryProxy.EnableBoost,
                 EnableCoverage = queryProxy.EnableCoverage,

@@ -44,27 +44,18 @@ namespace IndxServer.Swagger
                     ["Full"] = new OpenApiExample
                     {
                         Summary = "Full Search",
-                        Description = "Complete search with all parameters and default values",
+                        Description = "A search with the commonly set parameters. Coverage values left out take the dataset's query parameters",
                         Value = new OpenApiObject
                         {
                             ["text"] = new OpenApiString("string"),
                             ["maxNumberOfRecordsToReturn"] = new OpenApiInteger(30),
                             ["enableCoverage"] = new OpenApiBoolean(true),
-                            ["coverageDepth"] = new OpenApiInteger(1000),
+                            // Coverage values left out come from the dataset's query parameters
+                            // (GET query-parameters). Each one sent here wins over the dataset's,
+                            // so send only what this search needs to decide for itself.
                             ["coverageSetup"] = new OpenApiObject
                             {
-                                ["levenshteinMaxWordSize"] = new OpenApiInteger(20),
-                                ["minWordSize"] = new OpenApiInteger(2),
-                                ["truncateWordHitLimit"] = new OpenApiInteger(1),
-                                ["truncateWordHitTolerance"] = new OpenApiInteger(0),
-                                ["coverWholeQuery"] = new OpenApiBoolean(true),
-                                ["coverWholeWords"] = new OpenApiBoolean(true),
-                                ["coverFuzzyWords"] = new OpenApiBoolean(true),
-                                ["coverJoinedWords"] = new OpenApiBoolean(true),
-                                ["coverPrefixSuffix"] = new OpenApiBoolean(true),
-                                ["truncate"] = new OpenApiBoolean(true),
-                                ["includePatternMatches"] = new OpenApiBoolean(true),
-                                ["truncationScore"] = new OpenApiInteger(255)
+                                ["truncate"] = new OpenApiBoolean(true)
                             },
                             ["enableFacets"] = new OpenApiBoolean(false),
                             ["enableBoost"] = new OpenApiBoolean(false),

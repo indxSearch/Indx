@@ -112,6 +112,7 @@ internal static class StartupServices
         builder.Services.AddSingleton<ITeamDatasets>(sp => sp.GetRequiredService<IDatasetEngines>());
         builder.Services.AddSingleton<IndxServer.Services.BoostRuleStore>();
         builder.Services.AddSingleton<IndxServer.Services.DatasetMetadataStore>();
+        builder.Services.AddSingleton<IndxServer.Services.QueryParameterStore>();
 
         // MCP server: read-only retrieval tools over /mcp (Streamable HTTP), behind JWT auth.
         builder.Services.AddHttpContextAccessor();
@@ -640,14 +641,14 @@ internal static class StartupServices
                     policy.AllowAnyOrigin()
                         .AllowAnyMethod()
                         .AllowAnyHeader()
-                        .WithExposedHeaders("Indx-Query-Id");
+                        .WithExposedHeaders("Indx-Query-Id", IndxServer.Services.QueryParameterResolution.ResponseHeader);
                 }
                 else if (corsAllowedOrigins.Length > 0)
                 {
                     policy.WithOrigins(corsAllowedOrigins)
                         .AllowAnyMethod()
                         .AllowAnyHeader()
-                        .WithExposedHeaders("Indx-Query-Id");
+                        .WithExposedHeaders("Indx-Query-Id", IndxServer.Services.QueryParameterResolution.ResponseHeader);
                 }
                 else
                 {
