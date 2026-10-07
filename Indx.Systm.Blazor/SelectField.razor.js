@@ -60,7 +60,33 @@ export function init(trigger) {
         }
     });
     observer.observe(trigger, { childList: true });
-    trigger._indxSelect = { observer, follow };
+
+    // Arrow keys inside the open menu, here rather than in .NET: moving focus needs no state the
+    // server holds, and a round-trip per key would lag. Escape and opening stay in .NET.
+    const keydown = event => {
+        const menu = state.menu;
+        if (!menu || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+        const options = [...menu.querySelectorAll('[role="option"]')];
+        if (options.length === 0) return;
+        event.preventDefault();
+        const at = options.indexOf(document.activeElement);
+        let next;
+        if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = options.length - 1;
+        else if (at < 0) next = Math.max(0, options.findIndex(o => o.getAttribute('aria-selected') === 'true'));
+        else next = Math.min(options.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)));
+        options[next].focus();
+    };
+    trigger.addEventListener('keydown', keydown);
+    trigger._indxSelect = { observer, follow, keydown };
+}
+
+// Focus the chosen option of an open menu, or the first: the field was opened from the keyboard.
+export function focusOption(trigger) {
+    const menu = trigger?.querySelector(':scope > .indx-select-menu');
+    if (!menu) return;
+    const options = [...menu.querySelectorAll('[role="option"]')];
+    (options.find(o => o.getAttribute('aria-selected') === 'true') ?? options[0])?.focus({ preventScroll: true });
 }
 
 export function dispose(trigger) {
@@ -68,6 +94,7 @@ export function dispose(trigger) {
     const s = trigger?._indxSelect;
     if (!s) return;
     s.observer.disconnect();
+    trigger.removeEventListener('keydown', s.keydown);
     window.removeEventListener('scroll', s.follow, true);
     window.removeEventListener('resize', s.follow);
     delete trigger._indxSelect;

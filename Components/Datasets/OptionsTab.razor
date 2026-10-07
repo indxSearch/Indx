@@ -277,7 +277,7 @@
 
     <ConfirmModal @bind-Open="_renameOpen" Title="@($"Rename {Ctx.Name}")" Consequences="RenameConsequences"
                   CanConfirm="RenameReady" ConfirmLabel="Rename dataset" ConfirmIcon="DatasetIcons.Tag" OnConfirm="RenameAsync">
-        <InputField Label="New name" @bind-Value="_renameInput" @oninput="e => _renameInput = e.Value?.ToString() ?? string.Empty" />
+        <InputField Label="New name" @bind-Value="_renameInput" Immediate />
     </ConfirmModal>
 </div>
 

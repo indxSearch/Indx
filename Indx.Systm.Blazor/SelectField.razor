@@ -8,7 +8,8 @@
         <label for="@_id" class="indx-select-label">@Label</label>
     }
     <div class="indx-select-trigger" @ref="_trigger" @onkeydown="OnKeyDown">
-        <button type="button" id="@_id" class="indx-select indx-select-@Size @(Variant == "ghost" ? "indx-select-ghost" : null)" @onclick="Toggle" @attributes="AdditionalAttributes">
+        <button type="button" id="@_id" class="indx-select indx-select-@Size @(Variant == "ghost" ? "indx-select-ghost" : null)" @ref="_button"
+                aria-haspopup="listbox" aria-expanded="@(_open ? "true" : "false")" @onclick="Toggle" @attributes="AdditionalAttributes">
             <span class="indx-select-value @(string.IsNullOrEmpty(Value) ? "indx-select-placeholder" : null)" style="display:inline-flex; align-items:center; gap:6px;">
                 @if (SelectedOption?.Icon is { } selIcon)
                 {
@@ -43,7 +44,8 @@
             <div class="indx-select-menu" role="listbox">
                 @foreach (var option in Options)
                 {
-                    <Button Variant="ghost" Size="@Size" @onclick="() => Pick(option.Value)" style="width:100%; justify-content:space-between;">
+                    <Button Variant="ghost" Size="@Size" role="option" aria-selected="@(Value == option.Value ? "true" : "false")"
+                            @onclick="() => Pick(option.Value)" style="width:100%; justify-content:space-between;">
                         <span style="display:inline-flex; align-items:center; gap:6px;">
                             @if (option.Icon is { } optIcon)
                             {
@@ -96,15 +98,33 @@
     private async Task Pick(string value)
     {
         _open = false;
+        // The option that had focus is gone with the menu; give it back to the field, or the
+        // next Tab starts from the top of the page.
+        _refocus = true;
         await ValueChanged.InvokeAsync(value);
     }
 
-    // v1 keyboard support: Escape closes, from the trigger or from an option (the handler sits on
-    // the wrapper, which holds both). (Arrow-key navigation / type-ahead is a follow-up.)
+    // The handler sits on the wrapper, which holds both the field and the menu, so it hears keys
+    // from either. Escape closes and returns focus to the field. ArrowDown/ArrowUp on a closed
+    // field opens it with the chosen option focused; inside an open menu the arrows, Home and
+    // End move focus in SelectField.razor.js, which can do it without a round-trip.
     private void OnKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape") _open = false;
+        if (e.Key == "Escape" && _open)
+        {
+            _open = false;
+            _refocus = true;
+        }
+        else if (!_open && e.Key is "ArrowDown" or "ArrowUp")
+        {
+            _open = true;
+            _focusOption = true;
+        }
     }
+
+    private ElementReference _button;
+    private bool _refocus;
+    private bool _focusOption;
 
     // The open menu is placed against the window by SelectField.razor.js, so a scrolling
     // ancestor (a Modal's content box) cannot clip it. Without JS it falls back to the CSS
@@ -112,13 +132,29 @@
     private ElementReference _trigger;
     private IJSObjectReference? _module;
 
+    private bool _disposed;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
         try
         {
-            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Indx.Systm.Blazor/SelectField.razor.js");
-            await _module.InvokeVoidAsync("init", _trigger);
+            if (firstRender)
+            {
+                var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Indx.Systm.Blazor/SelectField.razor.js");
+                if (_disposed) { await module.DisposeAsync(); return; }
+                _module = module;
+                await _module.InvokeVoidAsync("init", _trigger);
+            }
+            if (_refocus)
+            {
+                _refocus = false;
+                await _button.FocusAsync();
+            }
+            if (_focusOption && _module is not null)
+            {
+                _focusOption = false;
+                await _module.InvokeVoidAsync("focusOption", _trigger);
+            }
         }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }
@@ -127,6 +163,7 @@
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         if (_module is null) return;
         try
         {

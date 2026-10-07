@@ -88,8 +88,11 @@
     }
 
     /// <summary>The context switcher of one step: which option is current, the options, and
-    /// what to do when another is picked (typically navigate).</summary>
-    public sealed record BreadcrumbSwitcher(string Label, string? Value, IReadOnlyList<SelectField.SelectOption> Options, Func<string, Task> OnValueChange)
+    /// what to do when another is picked (typically navigate). The callbacks are EventCallbacks,
+    /// built with <c>EventCallback.Factory.Create(this, …)</c>, so the component that owns them
+    /// re-renders after they run: a plain delegate re-rendered only the trail, and an action that
+    /// opened a modal on its owner had to call StateHasChanged by hand to show it.</summary>
+    public sealed record BreadcrumbSwitcher(string Label, string? Value, IReadOnlyList<SelectField.SelectOption> Options, EventCallback<string> OnValueChange)
     {
         public bool Disabled { get; init; }
         /// <summary>Optional entry below the options — typically "New …" — that runs instead of
@@ -98,7 +101,7 @@
     }
 
     /// <summary>An action entry at the bottom of a switcher menu.</summary>
-    public sealed record BreadcrumbAction(string Label, Func<Task> OnSelect);
+    public sealed record BreadcrumbAction(string Label, EventCallback OnSelect);
 
     [Parameter, EditorRequired] public IReadOnlyList<BreadcrumbItem> Items { get; set; } = [];
 
@@ -135,13 +138,13 @@
     private async Task Run(BreadcrumbAction action)
     {
         _openId = null;
-        await action.OnSelect();
+        await action.OnSelect.InvokeAsync();
     }
 
     private async Task Pick(BreadcrumbSwitcher switcher, string value)
     {
         _openId = null;
-        if (value != switcher.Value) await switcher.OnValueChange(value);
+        if (value != switcher.Value) await switcher.OnValueChange.InvokeAsync(value);
     }
 
 }

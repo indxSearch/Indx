@@ -86,8 +86,8 @@
                 Href = TeamRoutes.Team(TeamName),
                 Icon = IconTeam,
                 Switcher = new Breadcrumbs.BreadcrumbSwitcher("Switch team", TeamName, teams,
-                    name => { NavigationManager.NavigateTo(TeamRoutes.Team(name)); return Task.CompletedTask; })
-                { Action = new Breadcrumbs.BreadcrumbAction("New team…", OpenNewTeam) },
+                    EventCallback.Factory.Create<string>(this, name => NavigationManager.NavigateTo(TeamRoutes.Team(name))))
+                { Action = new Breadcrumbs.BreadcrumbAction("New team…", EventCallback.Factory.Create(this, OpenNewTeam)) },
             },
         };
         if (Dataset != null)
@@ -98,8 +98,8 @@
                 Href = TeamRoutes.Dataset(TeamName, Dataset),
                 Icon = IconDataset,
                 Switcher = new Breadcrumbs.BreadcrumbSwitcher("Switch dataset", Dataset, datasets,
-                    name => { NavigationManager.NavigateTo(TeamRoutes.Dataset(TeamName, name)); return Task.CompletedTask; })
-                { Action = new Breadcrumbs.BreadcrumbAction("New dataset…", OpenNewDataset) },
+                    EventCallback.Factory.Create<string>(this, name => NavigationManager.NavigateTo(TeamRoutes.Dataset(TeamName, name))))
+                { Action = new Breadcrumbs.BreadcrumbAction("New dataset…", EventCallback.Factory.Create(this, OpenNewDataset)) },
             });
         }
         if (Page != null) _items.Add(new Breadcrumbs.BreadcrumbItem("page", Page));
@@ -107,12 +107,10 @@
 
     // ── New team ────────────────────────────────────────────────────────────
 
-    // Invoked from the Breadcrumbs component's click handler, which re-renders only that
-    // component — this one must re-render itself for the modal to appear.
-    private Task OpenNewTeam()
+    // An EventCallback from the trail, so this component re-renders after it and the modal shows.
+    private void OpenNewTeam()
     {
         _newTeamName = ""; _newTeamError = null; _newTeamOpen = true;
-        return InvokeAsync(StateHasChanged);
     }
 
     private async Task OnNewTeamKeyDown(KeyboardEventArgs e)
@@ -136,10 +134,9 @@
 
     // ── New dataset ─────────────────────────────────────────────────────────
 
-    private Task OpenNewDataset()
+    private void OpenNewDataset()
     {
         _newDatasetName = ""; _newDatasetError = null; _newDatasetOpen = true;
-        return InvokeAsync(StateHasChanged);
     }
 
     private async Task OnNewDatasetKeyDown(KeyboardEventArgs e)
