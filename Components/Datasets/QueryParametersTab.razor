@@ -206,7 +206,7 @@
             <TableCell Class="qp-cell">
                 @Text(p.Label, p.Help)
                 <div class="qp-control">
-                    <ToggleSwitch Label="@p.Name" Checked="@(value ?? p.EngineDefault)"
+                    <ToggleSwitch Label="@p.Name" Variant="positive" Checked="@(value ?? p.EngineDefault)"
                                   CheckedChanged="@(v => p.Set(_edit.CoverageSetup!, v))" />
                     @Restore(value != null, p.EngineDefault ? "on" : "off", () => p.Set(_edit.CoverageSetup!, null))
                 </div>

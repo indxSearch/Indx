@@ -65,6 +65,16 @@
     transform: translateX(10px);
 }
 
+/* Positive: on is --CPositive, green on light and teal on dark. Both are light enough that the
+   handle stays dark in both themes to keep its contrast. */
+.indx-toggle-positive .indx-toggle-input:checked + .indx-toggle-slider {
+    background-color: var(--CPositive);
+}
+
+.indx-toggle-positive .indx-toggle-input:checked + .indx-toggle-slider::before {
+    background-color: #080809;
+}
+
 .indx-toggle-input:disabled + .indx-toggle-slider {
     opacity: 0.5;
     pointer-events: none;
