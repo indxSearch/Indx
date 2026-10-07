@@ -78,8 +78,8 @@
     private static readonly CoverageSetupDefaults Engine = new();
 
     /// <summary>A yes/no coverage value. Get/Set work on the working copy's coverage setup.</summary>
-    /// <param name="Name">The parameter's own name, as in CoverageSetup: the toggle's label, so the
-    /// console and the API read the same.</param>
+    // Name is the parameter's own name, as in CoverageSetup: the toggle's label, so the console
+    // and the API read the same.
     private sealed record BoolParam(string Name, string Label, string Help, bool EngineDefault,
         Func<CoverageSetupProxy, bool?> Get, Action<CoverageSetupProxy, bool?> Set);
 
