@@ -597,13 +597,21 @@ the way it always was.
 
 ```bash
 # Run with hot reload
-dotnet watch run
+dotnet watch
 
 # Set secrets without editing appsettings.json
 dotnet user-secrets set "Jwt:Key" "your-dev-key-minimum-32-characters"
 dotnet user-secrets set "Authentication:Microsoft:ClientId" "your-client-id"
 dotnet user-secrets set "Email:Provider" "Console"
 ```
+
+`dotnet watch` applies most edits to a running server, so a dataset stays loaded and a console
+page keeps its state: markup and code in `.razor` files, method bodies in C#, and every stylesheet,
+scoped `.razor.css` included, which the browser picks up without a reload. An edit it cannot apply
+in place (a new field or parameter, a changed constructor or record, a new type in some cases) is
+reported in the terminal, and the server restarts. Set `DOTNET_WATCH_RESTART_ON_RUDE_EDIT=1` to
+restart without being asked. The terminal monitor is off under watch, since both want the
+console; `dotnet watch -- --monitor` turns it back on.
 
 The test suite lives in the full IndxSolutions repository and is not part of this repo; `dotnet test` here finds no tests.
 
