@@ -492,7 +492,7 @@ was last indexed, and its keep-alive policy:
 
 ![Admin, Datasets: every dataset across both teams with state, document count, last indexed and keep-alive](docs/images/admin-datasets.png)
 
-Over the HTTP API, the per-dataset `Hibernate`, `WakeUp`, and `LoadFromDatabase` operations control loading. See the [API reference](https://v5.docs.indx.co).
+Over the HTTP API, the per-dataset `Hibernate`, `WakeUp`, and `LoadFromDatabase` operations control loading. See the [API reference](https://docs.indx.co).
 
 ## Monitor
 
@@ -621,5 +621,5 @@ The test suite lives in the full IndxSolutions repository and is not part of thi
 - [`@indxsearch/indx-types`](https://www.npmjs.com/package/@indxsearch/indx-types): TypeScript types for every request, response and error code
 - [Indx Search skill](https://skills.sh/indxsearch/skill-indx-search/indx-search): teaches AI coding agents this API, including a v1 → v2 migration guide
 - [`IndxSearchLib`](https://www.nuget.org/packages/IndxSearchLib): the embedded C# search engine this server is built on
-- [Documentation](https://v5.docs.indx.co): guides, how-tos, and the full API reference
+- [Documentation](https://docs.indx.co): guides, how-tos, and the full API reference
 - [Changelog](CHANGELOG.md) and [release notes](docs/release-notes/)
