@@ -18,7 +18,7 @@ the repository root, or `../images/<name>.png` from inside `docs/release-notes/`
 | `admin-teams.png` | Admin → Teams: both teams with their members and team roles |
 | `admin-datasets.png` | Admin → Datasets: every dataset across every team, with keep-alive |
 | `admin-monitor.png` | Admin → Monitor: the in-memory event stream |
-| `tour.gif` | The README's opening image: nine of the console shots above, 1.2 s each with a short crossfade. Built from them by `capture.mjs`, never edited by hand |
+| `tour.gif` | The README's opening image: ten of the console shots above, 1.2 s each with a short crossfade, the dataset screens in the dataset page's own tab order. Built from them by `capture.mjs`, never edited by hand |
 | `tui.png` | The terminal monitor: instance figures, the dataset table, the event stream |
 
 The console shots are **2912x1660 PNG** — a 1456x830 viewport at `deviceScaleFactor: 2`, dark
