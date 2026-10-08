@@ -48,10 +48,17 @@
             }
             else if (_results.Count > 0)
             {
-                <div class="indx-search-results">
+                @* Hovering a hit shows its whole document in the panel to the right; clicking pins it
+                   there, so a long one can be scrolled. Keyboard: focus shows, Enter pins. *@
+                <div class="indx-search-results" @onmouseleave="() => _hovered = null">
                     @foreach (var hit in _results)
                     {
-                        <div class="indx-search-result-item">
+                        <div class="indx-search-result-item @(_pinned?.Key == hit.Key ? "indx-search-result-item--pinned" : null)"
+                             tabindex="0" role="button" aria-pressed="@(_pinned?.Key == hit.Key ? "true" : "false")"
+                             title="Click to keep this document in the panel"
+                             @onmouseenter="() => _hovered = hit" @onfocus="() => _hovered = hit"
+                             @onclick="() => TogglePin(hit)"
+                             @onkeydown="@(e => { if (e.Key is "Enter" or " ") TogglePin(hit); })">
                             <span class="indx-search-result-fields">
                                 @foreach (var prop in GetDisplayFields(hit.Doc))
                                 {
@@ -89,6 +96,23 @@
     <div class="indx-facets">
         @* Built like the search field above, measure for measure, so icon and heading sit at
            the same distance from the base's edges as the magnifier and the text do from the box's. *@
+        @{ var shown = _pinned ?? _hovered; }
+        @if (shown != null)
+        {
+            <div class="indx-facets-caption">
+                <span class="indx-facets-caption-icon"><Indx.Systm.Blazor.Icons.Json Size="16" Color="currentColor" /></span>
+                <span class="indx-facets-caption-text">Document @shown.Key</span>
+                @if (_pinned != null)
+                {
+                    <span class="indx-doc-unpin"><Button Variant="ghost" Size="micro" @onclick="() => _pinned = null">Unpin</Button></span>
+                }
+            </div>
+            <div class="indx-facets-body">
+                @DocumentPanel(shown)
+            </div>
+        }
+        else
+        {
         <div class="indx-facets-caption">
             <span class="indx-facets-caption-icon"><Indx.Systm.Blazor.Icons.Filter Size="16" Color="currentColor" /></span>
             <span class="indx-facets-caption-text">Facets</span>
@@ -109,7 +133,7 @@
             }
             else
             {
-                @foreach (var row in _facets)
+                @foreach (var row in _facets!)
                 {
                     <div class="indx-facet-row">
                         <span class="indx-facet-field" title="@row.Field">@row.Field</span>
@@ -127,6 +151,7 @@
                 }
             }
         </div>
+        }
     </div>
     </div>
     </div>
@@ -139,12 +164,19 @@ else
 
 @code {
 
-    private record PreviewHit(JsonElement Doc, ushort Score);
+    // Rank is the 1-based place in the list. CloseMatch: within the coverage truncation point, a
+    // near-exact match coverage confirmed, rather than a pattern match ranked below them.
+    private record PreviewHit(JsonElement Doc, ushort Score, long Key, int Rank, bool CloseMatch);
     private record PerfTestResult(int Iterations, double MedianMs, double P95Ms, double MinMs, double MaxMs, double PerSecond);
     private record DisplayField(string Name, string Value);
 
     private string _text = string.Empty;
     private List<PreviewHit>? _results;
+    // The document panel: the hit under the pointer (or focus), and the one clicked to keep.
+    private PreviewHit? _hovered;
+    private PreviewHit? _pinned;
+
+    private void TogglePin(PreviewHit hit) => _pinned = _pinned?.Key == hit.Key ? null : hit;
     private PerfTestResult? _perf;
     private bool _perfRunning;
 
@@ -162,6 +194,7 @@ else
         _facets = null;
         _facetsFor = null;
         _results = null;
+        _hovered = _pinned = null;
         _perf = null;
     }
 
@@ -199,6 +232,7 @@ else
         _focusBox = _box.Set(string.Empty);
         _text = string.Empty;
         _results = null;
+        _hovered = _pinned = null;
         _perf = null;
     }
 
@@ -233,7 +267,14 @@ else
         }
         var hits = await Task.Run(() => Search(text));
         if (!_searches.IsCurrent(ticket)) return; // a newer keystroke, Clear or Replace overtook this one
-        if (hits != null) _results = hits;
+        if (hits != null)
+        {
+            _results = hits;
+            // A pinned document stays while it is still among the hits, with its new rank; one
+            // that dropped out goes, rather than showing a rank and score from another search.
+            _pinned = _pinned == null ? null : hits.FirstOrDefault(h => h.Key == _pinned.Key);
+            _hovered = null;
+        }
     }
 
     // ── Facets ───────────────────────────────────────────────────────────────
@@ -292,12 +333,17 @@ else
         var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = PreviewHits, EnableBoost = true };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         var hits = new List<PreviewHit>();
-        foreach (var record in result.Records)
+        for (int i = 0; i < result.Records.Length; i++)
         {
+            var record = result.Records[i];
             var json = engine.GetJsonDataOfKey(record.DocumentKey);
             if (!string.IsNullOrEmpty(json))
             {
-                try { hits.Add(new PreviewHit(JsonDocument.Parse(json).RootElement.Clone(), record.Score)); }
+                try
+                {
+                    hits.Add(new PreviewHit(JsonDocument.Parse(json).RootElement.Clone(), record.Score,
+                        record.DocumentKey, i + 1, i <= result.TruncationIndex));
+                }
                 catch { }
             }
         }
@@ -422,6 +468,74 @@ else
         }
         return element.ValueKind == JsonValueKind.Object ? string.Empty : element.ToString();
     }
+
+    /// <summary>Longest value shown in full; past it the panel says how much was left out, so a
+    /// document of whole books does not put megabytes into the page.</summary>
+    private const int ValueChars = 5000;
+
+    private RenderFragment DocumentPanel(PreviewHit hit) => __builder =>
+    {
+        var fields = Ctx.SavedFields;
+        <p class="indx-doc-meta">
+            #@hit.Rank · score @hit.Score.ToString("N0") ·
+            @if (hit.CloseMatch)
+            {
+                <span title="Coverage found the query in this document, near-exact">close match</span>
+            }
+            else
+            {
+                <span title="Ranked by pattern matching only; coverage did not confirm the query here">pattern match</span>
+            }
+        </p>
+        @if (fields == null)
+        {
+            <pre class="indx-doc-json">@hit.Doc.ToString()</pre>
+            return;
+        }
+        var doc = DocumentInspection.Build(hit.Doc, fields);
+        @DocumentSection("Indexed for search", $"{doc.IndexedLength:N0} characters", doc.Indexed, showWeight: true)
+        @DocumentSection("Filters, facets and sorting", null, doc.Roles, showWeight: false)
+        @DocumentSection("Stored only", "not searchable or filterable", doc.Stored, showWeight: false)
+    };
+
+    private RenderFragment DocumentSection(string title, string? note, IReadOnlyList<InspectedField> fields, bool showWeight) => __builder =>
+    {
+        if (fields.Count == 0) return;
+        <div class="indx-doc-section">
+            <div class="indx-doc-section-title">@title@if (note != null) { <span class="indx-doc-section-note">@note</span> }</div>
+            @foreach (var f in fields)
+            {
+                <div class="indx-doc-field">
+                    <div class="indx-doc-field-head">
+                        <span class="indx-doc-field-name">@f.Name</span>
+                        @if (showWeight && f.Field.Weight is float w && w != 1f)
+                        {
+                            <span class="indx-doc-field-tag">weight @w.ToString("0.##")</span>
+                        }
+                        @foreach (var role in f.RoleNames)
+                        {
+                            <span class="indx-doc-field-tag">@role</span>
+                        }
+                    </div>
+                    @if (f.Values.Count == 0)
+                    {
+                        <div class="indx-doc-value indx-doc-value--empty">no value</div>
+                    }
+                    else if (f.Field.Embeddable == true)
+                    {
+                        <div class="indx-doc-value indx-doc-value--empty">vector, @f.Values.Count.ToString("N0") numbers</div>
+                    }
+                    else
+                    {
+                        @foreach (var v in f.Values)
+                        {
+                            <div class="indx-doc-value">@(v.Length > ValueChars ? v[..ValueChars] : v)@if (v.Length > ValueChars) { <span class="indx-doc-value-more">… @((v.Length - ValueChars).ToString("N0")) more characters</span> }</div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    };
 
     public override void Dispose()
     {
