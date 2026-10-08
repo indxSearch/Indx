@@ -75,7 +75,14 @@ internal static class StartupPipeline
 
         if (!app.Environment.IsDevelopment())
         {
-            app.UseExceptionHandler("/Error");
+            // The Razor error page is for pages, so it handles only what the API branch above does
+            // not. Registered for every path it sat INSIDE that branch's handler and caught API
+            // exceptions first: it re-ran the request as POST /Error, which answers 404, and .NET
+            // then threw InvalidOperationException around the original. The caller still got the
+            // JSON 500, but every incident was logged twice, under the wrapper rather than the
+            // cause, and the error alert saw the wrong exception (cloud.indx.co, 8 Oct 2026).
+            app.UseWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"),
+                branch => branch.UseExceptionHandler("/Error"));
             app.UseHsts();
         }
 
