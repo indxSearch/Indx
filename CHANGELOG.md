@@ -15,6 +15,13 @@ in the AI skill.
 
 ### Changed
 
+- **Large datasets load on Windows and IIS hosting.** `analyze`, `load` and `replace` take a whole
+  dataset in one request, and the server allows up to 2 GB. Under IIS, including Azure App Service
+  on Windows, two limits in front of it still stopped at about 28 MB: IIS refused larger bodies
+  with its own `413` page, and the in-process server had a 30 MB default of its own. A `web.config`
+  now raises the first and the server raises the second, so a catalogue of 80 MB or more loads and
+  replaces in one request there too. Kestrel, Docker and Linux hosting already allowed 2 GB.
+
 - **Field roles are written by one route, and it no longer waits for a rebuild.** The per-role
   setters are removed: `PUT fields/searchable`, `fields/filterable`, `fields/facetable`,
   `fields/sortable`, `fields/word-indexing` and `fields/embeddable` answer `405`. They set one

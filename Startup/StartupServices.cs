@@ -621,6 +621,11 @@ internal static class StartupServices
         builder.Services.Configure<IISServerOptions>(options =>
         {
             options.AllowSynchronousIO = true;
+            // Under IIS (Windows App Service) the app runs in-process and Kestrel's limit below does
+            // not apply; this one does, and it defaults to 30,000,000 bytes. Left unset it refused a
+            // 79 MB analyze on cloud.indx.co (Oct 2026) on every route without its own
+            // [RequestSizeLimit]. web.config raises IIS's request filtering, the limit in front.
+            options.MaxRequestBodySize = 2_000_000_000;
         });
 
         // CORS: permissive in dev/test for local frontend work; restricted to
