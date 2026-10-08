@@ -7,7 +7,7 @@ Versions: the server has its own line (2.x). It bundles the Indx core library (`
 5.x) and serves the HTTP API contract `v2.0-beta`, which is the version in every URL. A server
 patch can pick up a newer core without changing the HTTP contract.
 
-## [2.0.0-beta] - Unreleased
+## [2.0.0-beta.1] - Unreleased
 
 Runs on IndxSearchLib 5.0.4 or later. First public release of the v2 server; v1 users should read
 the [v1 → v2 migration guide](https://github.com/indxSearch/skill-indx-search/blob/main/references/migration-v4-to-v5.md)
