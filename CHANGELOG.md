@@ -9,11 +9,16 @@ patch can pick up a newer core without changing the HTTP contract.
 
 ## [2.0.0-beta] - Unreleased
 
-Runs on IndxSearchLib 5.0.3 or later. First public release of the v2 server; v1 users should read
+Runs on IndxSearchLib 5.0.4 or later. First public release of the v2 server; v1 users should read
 the [v1 → v2 migration guide](https://github.com/indxSearch/skill-indx-search/blob/main/references/migration-v4-to-v5.md)
 in the AI skill.
 
 ### Changed
+
+- **Searches starting with periods work.** A search such as `... og noen` answered `500` on a
+  dataset with a title that starts with an ellipsis. It now finds that title. A search of
+  punctuation only, such as `...`, returns no records with a `reason`, since it has no words to
+  search for.
 
 - **Large datasets load on Windows and IIS hosting.** `analyze`, `load` and `replace` take a whole
   dataset in one request, and the server allows up to 2 GB. Under IIS, including Azure App Service
