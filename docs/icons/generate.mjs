@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Writes the pixl icons the README uses as standalone SVG files, from the Blazor sources in
-// Indx.Systm.Blazor/Icons. Generated, never hand-edited, so there is one source for each icon.
+// Writes the pixl icons the README and the GitHub releases use as standalone SVG files, from the
+// Blazor sources in Indx.Systm.Blazor/Icons. Generated, never hand-edited, so there is one source for each icon.
 //
 //   node docs/icons/generate.mjs
 //
@@ -24,6 +24,8 @@ const SOURCE = join(HERE, '../../Indx.Systm.Blazor/Icons');
 const ICONS = [
   'IndxLogo', 'InternetBrowser', 'UserGroup', 'Api', 'DynamicJsonField', 'ShadowIndexing', 'Hibernate', 'Mcp',
   'Login', 'Boost', 'Synonym', 'Bell', 'Terminal',
+  // The 2.0 GitHub release, which links them by their raw.githubusercontent.com address.
+  'FuzzySearch', 'HybridSearch', 'Eye', 'Key', 'Speedometer', 'Github',
 ];
 
 const SCALE = 3;                 // CSS pixels per grid unit: a 7x5 icon becomes 21x15
