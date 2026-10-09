@@ -1,0 +1,47 @@
+.indx-codecopy {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    height: 40px;
+    max-width: 100%;
+    padding: 0 5px 0 15px;
+    box-sizing: border-box;
+    background: var(--lv3);
+    border: none;
+    border-radius: var(--radius);
+}
+
+/* One line always: a long command scrolls sideways rather than wrapping the field taller. */
+.indx-codecopy-code {
+    min-width: 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--lv8);
+    white-space: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.indx-codecopy ::deep .indx-btn {
+    flex: none;
+}
+
+/* Announces the copy to screen readers; takes no room. */
+.indx-codecopy-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+}
+
+/* --lv3 with --lv8 text: both switch with the theme, so one rule holds in light and dark. */
+.indx-codecopy ::deep .indx-btn {
+    color: var(--lv5);
+}
+
+.indx-codecopy ::deep .indx-btn:hover {
+    color: var(--lv8);
+}

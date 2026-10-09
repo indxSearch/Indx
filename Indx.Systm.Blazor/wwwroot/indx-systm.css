@@ -35,6 +35,8 @@
     /* The brand font where its files are present, Geist everywhere else (see fonts/fonts.css).
        Arial is the last resort should the Geist file itself fail to load. */
     --font-family: 'FunktionalGrotesk', 'Geist', Arial, sans-serif;
+    /* Code, commands, keys and file names. Geist Mono ships beside Geist (fonts/fonts.css). */
+    --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
     /* TEXT — line-height tuned per scale: looser for body (wraps to multiple lines),
        tighter for large display sizes. Controls (buttons/inputs) use fixed heights with

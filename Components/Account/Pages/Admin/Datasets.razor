@@ -68,7 +68,7 @@ else
             @foreach (var row in _rows)
             {
                 <tr>
-                    <td style="color: var(--lv6); font-family: monospace;">@row.DataSetName</td>
+                    <td style="color: var(--lv6); font-family: var(--font-mono);">@row.DataSetName</td>
                     <td style="color: var(--lv5);">@(row.TeamName ?? row.TeamId)</td>
                     <td>
                         @if (row.Unknown)

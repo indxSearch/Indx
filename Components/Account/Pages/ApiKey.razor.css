@@ -2,7 +2,7 @@
 .key-page { max-width: 880px; }
 .key-intro { color: var(--lv5); font: var(--text-sm); max-width: 640px; margin-bottom: calc(var(--spacing) * 6); }
 .key-muted { color: var(--lv5); }
-.key-suffix { margin-left: 8px; color: var(--lv5); font: 12px 'IBM Plex Mono', 'SF Mono', monospace; }
+.key-suffix { margin-left: 8px; color: var(--lv5); font: 12px var(--font-mono); }
 .key-expired { color: var(--CSignal); }
 
 ::deep .key-reveal { margin-bottom: calc(var(--spacing) * 4); }
@@ -12,7 +12,7 @@
     padding: 10px 12px;
     background: var(--lv0);
     border-radius: var(--radius);
-    font: 12px/1.5 'IBM Plex Mono', 'SF Mono', monospace;
+    font: 12px/1.5 var(--font-mono);
     color: var(--lv8);
     overflow-wrap: anywhere;
     user-select: all;
@@ -41,6 +41,6 @@
     padding: 14px 16px;
     background: var(--lv1);
     border-radius: var(--radius);
-    font: 12px/1.6 'IBM Plex Mono', 'SF Mono', monospace;
+    font: 12px/1.6 var(--font-mono);
     overflow-x: auto;
 }

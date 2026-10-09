@@ -1,0 +1,58 @@
+@* Port of indx-systm CodeCopy: a one-line command with a copy button, like the install line on a
+   package page. The icon turns into a check for two seconds after a copy. As tall as a default
+   Button, so it sits in a row of them. *@
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="indx-codecopy @Class">
+    <code class="indx-codecopy-code">@Code</code>
+    <Button Variant="ghost" Size="micro" IconLeft="@(_copied ? CheckIcon : CopyIcon)"
+            aria-label="@(_copied ? "Copied" : "Copy")" title="@(_copied ? "Copied" : "Copy")"
+            @onclick="CopyAsync" />
+    <span class="indx-codecopy-status" role="status">@(_copied ? "Copied" : "")</span>
+</div>
+
+@code {
+    /// <summary>The command or snippet, shown on one line and copied as is.</summary>
+    [Parameter, EditorRequired] public string Code { get; set; } = "";
+    [Parameter] public string? Class { get; set; }
+    /// <summary>Called after the code is on the clipboard.</summary>
+    [Parameter] public EventCallback OnCopy { get; set; }
+
+    private static readonly RenderFragment<int> CopyIcon = size => @<Copy Size="size" />;
+    private static readonly RenderFragment<int> CheckIcon = size => @<Check Size="size" />;
+
+    private IJSObjectReference? _module;
+    private CancellationTokenSource? _reset;
+    private bool _copied;
+
+    private async Task CopyAsync()
+    {
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Indx.Systm.Blazor/CodeCopy.razor.js");
+            if (!await _module.InvokeAsync<bool>("copy", Code)) return;
+        }
+        catch (JSException) { return; }
+        catch (JSDisconnectedException) { return; }
+
+        _copied = true;
+        await OnCopy.InvokeAsync();
+
+        _reset?.Cancel();
+        var reset = _reset = new CancellationTokenSource();
+        try { await Task.Delay(2000, reset.Token); }
+        catch (TaskCanceledException) { return; }
+        _copied = false;
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _reset?.Cancel();
+        if (_module == null) return;
+        try { await _module.DisposeAsync(); }
+        catch (JSDisconnectedException) { }
+    }
+}
