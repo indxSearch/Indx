@@ -26,6 +26,7 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> Statistics = Of<Icons.Graph>();
         public static readonly RenderFragment<int> Synonym = Of<Icons.Synonym>();
         public static readonly RenderFragment<int> QueryParameters = Of<Icons.Coverage>();
+        public static readonly RenderFragment<int> SearchOrAsk = Of<Icons.SearchOrAsk>();
         /// <summary>Hands a setting back to its default.</summary>
         public static readonly RenderFragment<int> Restore = Of<Icons.Refresh>();
         public static readonly RenderFragment<int> ChevronRight = Of<Icons.ChevronRight>();

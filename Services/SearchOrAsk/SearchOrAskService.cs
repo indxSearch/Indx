@@ -120,12 +120,16 @@ namespace IndxServer.Services.SearchOrAsk
 
         private static string Normalise(string text) => string.Join(' ', text.Trim().ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
 
+        /// <summary>Judges one pause. <c>trial</c> is the console's tester: settings not yet saved,
+        /// judged as if on, still limited and counted against the budget, since it costs the same.
+        /// <c>onState</c> receives the state the judge is sent, for the tester to show.</summary>
         public async Task<IntentOutcome> IntentAsync(string teamId, string dataSetName, IServerSearchEngine engine,
-            string text, string clientAddress, CancellationToken ct)
+            string text, string clientAddress, CancellationToken ct,
+            SearchOrAskSettings? trial = null, Action<JsonObject>? onState = null)
         {
             if (!_options.Available) return new IntentOutcome(IntentStatus.Unavailable);
-            var settings = Settings(teamId, dataSetName);
-            if (!settings.Enabled) return new IntentOutcome(IntentStatus.Disabled);
+            var settings = trial ?? Settings(teamId, dataSetName);
+            if (trial == null && !settings.Enabled) return new IntentOutcome(IntentStatus.Disabled);
 
             var started = Stopwatch.GetTimestamp();
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
@@ -150,6 +154,7 @@ namespace IndxServer.Services.SearchOrAsk
                 return new IntentOutcome(IntentStatus.BudgetSpent, RetryAfterSeconds: SecondsToUtcMidnight());
 
             var state = State(site, text, Search(engine, dataSetName, teamId, text, fields));
+            onState?.Invoke(state);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(_options.JudgeTimeoutMs);
             try
@@ -259,11 +264,11 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>Whether an ask may proceed: the same gates as intent, against the ask limit.
         /// Ask counts against the daily budget too: it is the expensive call.</summary>
-        public IntentOutcome CanAsk(string teamId, string dataSetName, string clientAddress)
+        public IntentOutcome CanAsk(string teamId, string dataSetName, string clientAddress, SearchOrAskSettings? trial = null)
         {
             if (!_options.Available) return new IntentOutcome(IntentStatus.Unavailable);
-            var settings = Settings(teamId, dataSetName);
-            if (!settings.Enabled) return new IntentOutcome(IntentStatus.Disabled);
+            var settings = trial ?? Settings(teamId, dataSetName);
+            if (trial == null && !settings.Enabled) return new IntentOutcome(IntentStatus.Disabled);
             using (var lease = _askLimiter.AttemptAcquire(clientAddress))
                 if (!lease.IsAcquired)
                     return new IntentOutcome(IntentStatus.RateLimited, RetryAfterSeconds: RetryAfter(lease));
@@ -298,10 +303,10 @@ namespace IndxServer.Services.SearchOrAsk
         /// interleaved so each contributes its best; then the model, held to the sources.
         /// </summary>
         public async Task AskAsync(string teamId, string dataSetName, IServerSearchEngine engine, string question,
-            Func<string, object, Task> send, CancellationToken ct)
+            Func<string, object, Task> send, CancellationToken ct, SearchOrAskSettings? trial = null)
         {
             var started = Stopwatch.GetTimestamp();
-            var settings = Settings(teamId, dataSetName);
+            var settings = trial ?? Settings(teamId, dataSetName);
             var fields = Fields(settings, engine.GetFieldList());
 
             var typed = Search(engine, dataSetName, teamId, question, fields, SourcesForAnswer).Top;

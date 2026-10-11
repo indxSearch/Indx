@@ -58,6 +58,7 @@
                 <BoostRulesTab Active="@(tab == "boosts")" />
                 <SynonymsTab Active="@(tab == "synonyms")" />
                 <QueryParametersTab Active="@(tab == "query-parameters")" />
+                <SearchOrAskTab Active="@(tab == "search-or-ask")" />
                 <StatisticsTab Active="@(tab == "statistics")" />
 
             </CascadingValue>
@@ -173,6 +174,9 @@
         // Configuration only, read on every search: needs no built index.
         if ((isReady || pending) && Ctx.IsEditor)
             items.Add(Tab("query-parameters", "Query parameters", DatasetIcons.QueryParameters, true));
+        // Settings need no built index; the tester inside the tab says when it needs one.
+        if ((isReady || pending) && Ctx.IsEditor)
+            items.Add(Tab("search-or-ask", "Search or ask", DatasetIcons.SearchOrAsk, true));
         if (isReady || pending) items.Add(Tab("search", "Search preview", DatasetIcons.Search, isReady));
         // Statistics live in their own store, so the tab works even for a hibernated dataset -
         // it reads no engine (titles fall back to keys) and must never wake one.

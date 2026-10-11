@@ -1,0 +1,49 @@
+.soa-tab { margin-top: 0; }
+.soa-intro { max-width: 640px; }
+::deep .soa-table { max-width: 640px; margin-bottom: 24px; }
+/* The settings groups: side by side where each can have 380px, else one under the other, as on
+   the Query parameters tab. */
+.soa-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
+    gap: 0 24px;
+    align-items: start;
+    max-width: 1304px;
+}
+::deep .soa-cell { padding: 12px 15px; }
+.soa-label { display: block; font: var(--text-sm); color: var(--lv7); }
+::deep .soa-row--set .soa-label { color: var(--lv8); font-weight: var(--med); }
+.soa-help { display: block; font: var(--text-xs); color: var(--lv5); margin-top: 2px; }
+.soa-control { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; min-height: 28px; }
+.soa-control > ::deep * { min-width: 0; }
+.soa-control ::deep textarea { width: 100%; }
+.soa-select { min-width: 260px; }
+.soa-number { width: 110px; }
+.soa-error { color: var(--CSignal); font: var(--text-sm); margin-top: 10px; }
+
+/* The tester */
+::deep .soa-try { max-width: 900px; }
+.soa-try-off { margin-top: 10px; }
+.soa-try-input { flex: 1 1 320px; }
+.soa-try-score { font: var(--text-xs); color: var(--lv6); font-variant-numeric: tabular-nums; }
+::deep .soa-offer--strong { background: var(--CPositive); color: var(--lv0); }
+::deep .soa-offer--invite { background: var(--lv3); color: var(--lv8); }
+::deep .soa-offer--none { background: var(--lv2); color: var(--lv6); }
+.soa-try-actions { display: flex; gap: 4px; margin-top: 8px; }
+.soa-state {
+    margin-top: 8px;
+    padding: 12px;
+    background: var(--lv1);
+    border-radius: 6px;
+    font: var(--text-xs);
+    font-family: var(--font-mono, monospace);
+    color: var(--lv7);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 360px;
+    overflow: auto;
+}
+.soa-answer { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--lv2); }
+.soa-answer-text { font: var(--text-sm); color: var(--lv8); white-space: pre-wrap; margin: 0; }
+.soa-sources { margin: 10px 0 0; padding-left: 20px; font: var(--text-xs); color: var(--lv6); }
+.soa-key { color: var(--lv5); margin-left: 6px; font-variant-numeric: tabular-nums; }
