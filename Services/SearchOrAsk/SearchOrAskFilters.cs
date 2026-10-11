@@ -148,8 +148,9 @@ namespace IndxServer.Services.SearchOrAsk
                 Use only these fields, and for a field with listed values only those values, written exactly as
                 listed (match what the visitor meant: a place name without its other-language part, a misspelling).
                 A number filter is a range, inclusive, either end open. Use a filter only for something the visitor
-                said; leave out what they did not ask for. Whatever the visitor typed that no filter covers goes in
-                "text" as words to search for; leave it empty when the filters cover it all.
+                said; leave out what they did not ask for. A word the notes about the fields explain is always a filter,
+                however many other things the visitor asked for, and never text. Whatever the visitor typed that no
+                filter covers goes in "text" as words to search for; leave it empty when the filters cover it all.
 
                 Answer with JSON only:
                 {"filters": [{"field": "<field>", "value": "<listed value, or true/false>"} | {"field": "<field>", "min": <number>, "max": <number>}], "text": "<words left, or empty>"}
