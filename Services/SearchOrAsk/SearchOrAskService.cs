@@ -30,6 +30,12 @@ namespace IndxServer.Services.SearchOrAsk
     /// <summary>One source handed to the answer model, as the visitor's client sees it.</summary>
     public sealed record AskSource(int N, long DocumentKey, string Title);
 
+    /// <summary>Where a judgement or an ask came from, for the statistics, as a search names it:
+    /// the page's search behind it (<c>?queryId=</c>), its session, its surface, an optional
+    /// subject, and whether it counts. None (null) records nothing: the console's tester, which
+    /// would only ever be uncounted.</summary>
+    public sealed record SearchOrAskOrigin(string? QueryId, string? Session, string? Source, string? Subject, bool Counted);
+
     /// <summary>
     /// Search or ask on the request path: the intent judgement on a typing pause, and the answer
     /// when the visitor asks. Notes/search-or-ask-server.md has the design; Notes/search-or-ask.md
@@ -43,6 +49,7 @@ namespace IndxServer.Services.SearchOrAsk
         private readonly ISearchOrAskModels _models;
         private readonly SearchOrAskOptions _options;
         private readonly ILogger<SearchOrAskService> _logger;
+        private readonly StatisticsService? _statistics;
 
         private readonly PartitionedRateLimiter<string> _intentLimiter;
         private readonly PartitionedRateLimiter<string> _askLimiter;
@@ -63,8 +70,9 @@ namespace IndxServer.Services.SearchOrAsk
         private const int SourceChars = 3000;
 
         public SearchOrAskService(SearchOrAskStore store, DatasetMetadataStore metadata, ISearchOrAskModels models,
-            SearchOrAskOptions options, ILogger<SearchOrAskService> logger)
+            SearchOrAskOptions options, ILogger<SearchOrAskService> logger, StatisticsService? statistics = null)
         {
+            _statistics = statistics;
             _store = store;
             _metadata = metadata;
             _models = models;
@@ -112,6 +120,10 @@ namespace IndxServer.Services.SearchOrAsk
         [GeneratedRegex(@"^[\d\s\-_.:/]+$|^\w+\.\w+|^[A-Za-z]*[a-z][A-Z]\w*$|^[A-Za-z]+[-_]?\d[\w-]*$")]
         private static partial Regex IdentifierShape();
 
+        private StatisticsWriter? Writer => _statistics is { Enabled: true } s ? s.Writer : null;
+
+        private static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
         public static bool IsIdentifier(string text)
         {
             var t = text.Trim();
@@ -125,7 +137,7 @@ namespace IndxServer.Services.SearchOrAsk
         /// <c>onState</c> receives the state the judge is sent, for the tester to show.</summary>
         public async Task<IntentOutcome> IntentAsync(string teamId, string dataSetName, IServerSearchEngine engine,
             string text, string clientAddress, CancellationToken ct,
-            SearchOrAskSettings? trial = null, Action<JsonObject>? onState = null)
+            SearchOrAskSettings? trial = null, Action<JsonObject>? onState = null, SearchOrAskOrigin? origin = null)
         {
             if (!_options.Available) return new IntentOutcome(IntentStatus.Unavailable);
             var settings = trial ?? Settings(teamId, dataSetName);
@@ -133,8 +145,17 @@ namespace IndxServer.Services.SearchOrAsk
 
             var started = Stopwatch.GetTimestamp();
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-            IntentResult Result(double p, double? answerable, bool cached, string? reason = null) =>
-                new(p, answerable, settings.Thresholds.OfferFor(p), settings.Thresholds, cached, Ms(), reason);
+            IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null)
+            {
+                var result = new IntentResult(p, answerable, settings.Thresholds.OfferFor(p), settings.Thresholds, cached, Ms(), reason);
+                // A judgement is recorded once the judge or its cache answered for it, a failing
+                // judge included (its reason says so); an identifier never reaches here.
+                if (reason != "identifier" && origin != null && Writer is { } w)
+                    w.RecordAskIntent(new AskIntentEventRow(teamId, dataSetName, Blank(origin.QueryId), p, answerable,
+                        result.Offer, cached, reason, cost, Blank(origin.Subject), Blank(origin.Session), origin.Source,
+                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted));
+                return result;
+            }
 
             // On the text as typed: lowercasing first would hide the camel case the rule looks for.
             if (IsIdentifier(text))
@@ -162,7 +183,7 @@ namespace IndxServer.Services.SearchOrAsk
                 var answer = await _models.JudgeAsync(state, SearchOrAskRecipes.Questions(settings.Kind), timeout.Token);
                 if (_cache.Count > MaxCached) _cache.Clear();
                 _cache[cacheKey] = answer;
-                return new IntentOutcome(IntentStatus.Ok, Result(answer[SearchOrAskRecipes.Asking] ?? 0, answer[SearchOrAskRecipes.Answerable], false));
+                return new IntentOutcome(IntentStatus.Ok, Result(answer[SearchOrAskRecipes.Asking] ?? 0, answer[SearchOrAskRecipes.Answerable], false, cost: answer.Cost));
             }
             // A judge that is slow, out of credit or down means no offer, never a failed search:
             // p = 0 with the reason, and the search the visitor already has is untouched.
@@ -320,59 +341,114 @@ namespace IndxServer.Services.SearchOrAsk
         /// interleaved so each contributes its best; then the model, held to the sources.
         /// </summary>
         public async Task AskAsync(string teamId, string dataSetName, IServerSearchEngine engine, string question,
-            Func<string, object, Task> send, CancellationToken ct, SearchOrAskSettings? trial = null)
+            Func<string, object, Task> send, CancellationToken ct, SearchOrAskSettings? trial = null,
+            string? askId = null, SearchOrAskOrigin? origin = null)
         {
             var started = Stopwatch.GetTimestamp();
+            long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             var settings = trial ?? Settings(teamId, dataSetName);
             var fields = Fields(settings, engine.GetFieldList());
-
-            var typed = Search(engine, dataSetName, teamId, question, fields, SourcesForAnswer, truncate: false).Top;
-            var keywords = KeywordsOf(question) is { } k ? Search(engine, dataSetName, teamId, k, fields, SourcesForAnswer, truncate: false).Top : [];
-            var merged = new List<long>();
-            for (int i = 0; merged.Count < SourcesForAnswer && (i < typed.Count || i < keywords.Count); i++)
-            {
-                if (i < keywords.Count && !merged.Contains(keywords[i].Key)) merged.Add(keywords[i].Key);
-                if (merged.Count < SourcesForAnswer && i < typed.Count && !merged.Contains(typed[i].Key)) merged.Add(typed[i].Key);
-            }
-            if (merged.Count == 0)
-            {
-                await send("error", new { code = "nothingFound", message = "The search found nothing to answer from." });
-                return;
-            }
-
-            // The sources in full (up to a ceiling), not the judge's snippets: the answer is written from them.
-            var sources = merged.Select((key, i) => (N: i + 1, Doc: Describe(engine, key, fields, SourceChars, forAnswer: true))).ToList();
-            await send("sources", sources.Select(s => new AskSource(s.N, s.Doc.Item1, s.Doc.Item2)).ToArray());
-
-            var user = new StringBuilder();
-            foreach (var (n, doc) in sources)
-            {
-                user.Append($"[{n}] {doc.Item2}");
-                if (doc.Item3.Length > 0) user.Append($" ({doc.Item3})");
-                user.Append('\n').Append(doc.Item4).Append("\n\n");
-            }
-            user.Append("Question: ").Append(question);
-            // Said again last, next to the question: from the system prompt alone, a site description
-            // naming its readers' languages still won 1 time in 10 (11 Oct 2026); with this, 0 in 10.
-            user.Append("\n\n").Append(SearchOrAskRecipes.AnswerLanguageReminder);
-
             var model = _options.AnswerModelFor(settings.Answers);
+            var outcome = "stopped";
+            long? firstText = null;
+            var usage = new AnswerUsage();
+            List<long> merged = [];
+            Task<JudgeAnswer?>? answerability = null;
             try
             {
-                await foreach (var delta in _models.AnswerAsync(model, SearchOrAskRecipes.AnswerSystemPrompt(SiteDescription(teamId, dataSetName, settings)),
-                                   user.ToString(), ct))
-                    await send("text", new { delta });
-                await send("done", new { model, latencyMs = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds });
+                var typedSearch = Search(engine, dataSetName, teamId, question, fields, SourcesForAnswer, truncate: false);
+                var typed = typedSearch.Top;
+                var keywords = KeywordsOf(question) is { } k ? Search(engine, dataSetName, teamId, k, fields, SourcesForAnswer, truncate: false).Top : [];
+                for (int i = 0; merged.Count < SourcesForAnswer && (i < typed.Count || i < keywords.Count); i++)
+                {
+                    if (i < keywords.Count && !merged.Contains(keywords[i].Key)) merged.Add(keywords[i].Key);
+                    if (merged.Count < SourcesForAnswer && i < typed.Count && !merged.Contains(typed[i].Key)) merged.Add(typed[i].Key);
+                }
+                if (merged.Count == 0)
+                {
+                    outcome = "nothingFound";
+                    await send("error", new { code = "nothingFound", message = "The search found nothing to answer from." });
+                    return;
+                }
+
+                // Whether these sources could answer the question, asked of the judge beside the
+                // answer (one more call, about $0.00004): a low score is a question the content
+                // does not cover, which is what the statistics list first. Only when recorded.
+                if (origin != null && Writer != null)
+                    answerability = AnswerabilityAsync(SiteDescription(teamId, dataSetName, settings), question,
+                        typedSearch with { Top = typedSearch.Top.Take(ResultsForJudge).ToList() }, settings.Kind);
+
+                // The sources in full (up to a ceiling), not the judge's snippets: the answer is written from them.
+                var sources = merged.Select((key, i) => (N: i + 1, Doc: Describe(engine, key, fields, SourceChars, forAnswer: true))).ToList();
+                await send("sources", sources.Select(s => new AskSource(s.N, s.Doc.Item1, s.Doc.Item2)).ToArray());
+
+                var user = new StringBuilder();
+                foreach (var (n, doc) in sources)
+                {
+                    user.Append($"[{n}] {doc.Item2}");
+                    if (doc.Item3.Length > 0) user.Append($" ({doc.Item3})");
+                    user.Append('\n').Append(doc.Item4).Append("\n\n");
+                }
+                user.Append("Question: ").Append(question);
+                // Said again last, next to the question: from the system prompt alone, a site description
+                // naming its readers' languages still won 1 time in 10 (11 Oct 2026); with this, 0 in 10.
+                user.Append("\n\n").Append(SearchOrAskRecipes.AnswerLanguageReminder);
+
+                try
+                {
+                    await foreach (var delta in _models.AnswerAsync(model, SearchOrAskRecipes.AnswerSystemPrompt(SiteDescription(teamId, dataSetName, settings)),
+                                       user.ToString(), usage, ct))
+                    {
+                        firstText ??= Ms();
+                        await send("text", new { delta });
+                    }
+                    outcome = "answered";
+                    await send("done", new { model, askId, latencyMs = Ms() });
+                }
+                catch (SearchOrAskModelException ex)
+                {
+                    outcome = "failed";
+                    _logger.LogWarning("Search or ask answer failed for {Team}/{Dataset}: {Status}", teamId, dataSetName, ex.Status);
+                    await send("error", new { code = ex.Status == 429 ? "upstreamBusy" : "failed", message = "The answer could not be written." });
+                }
+                catch (HttpRequestException ex)
+                {
+                    outcome = "failed";
+                    _logger.LogWarning(ex, "Search or ask answer model unreachable for {Team}/{Dataset}", teamId, dataSetName);
+                    await send("error", new { code = "failed", message = "The answer could not be written." });
+                }
             }
-            catch (SearchOrAskModelException ex)
+            finally
             {
-                _logger.LogWarning("Search or ask answer failed for {Team}/{Dataset}: {Status}", teamId, dataSetName, ex.Status);
-                await send("error", new { code = ex.Status == 429 ? "upstreamBusy" : "failed", message = "The answer could not be written." });
+                // Recorded however it ended, a visitor who went away included ("stopped").
+                if (origin != null && Writer is { } w)
+                {
+                    var judged = answerability == null ? null : await answerability;
+                    w.RecordAsk(new AskEventRow(askId ?? Guid.NewGuid().ToString("N"), teamId, dataSetName, Blank(origin.QueryId),
+                        question, model, string.Join(',', merged), outcome, firstText, Ms(),
+                        Sum(usage.Cost, judged?.Cost), judged?[SearchOrAskRecipes.Answerable],
+                        Blank(origin.Subject), Blank(origin.Session), origin.Source,
+                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted));
+                }
             }
-            catch (HttpRequestException ex)
+        }
+
+        private static double? Sum(double? a, double? b) => a == null && b == null ? null : (a ?? 0) + (b ?? 0);
+
+        /// <summary>The judge's answerable question alone, on the question and what its search
+        /// found. Never throws: no score is the outcome of a judge that fails, within its timeout.</summary>
+        private async Task<JudgeAnswer?> AnswerabilityAsync(string site, string question, SearchSummary search, string kind)
+        {
+            using var timeout = new CancellationTokenSource(_options.JudgeTimeoutMs);
+            try
             {
-                _logger.LogWarning(ex, "Search or ask answer model unreachable for {Team}/{Dataset}", teamId, dataSetName);
-                await send("error", new { code = "failed", message = "The answer could not be written." });
+                var questions = SearchOrAskRecipes.Questions(kind)
+                    .Where(q => q.Key == SearchOrAskRecipes.Answerable).ToDictionary(q => q.Key, q => q.Value);
+                return await _models.JudgeAsync(State(site, question, search), questions, timeout.Token);
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or SearchOrAskModelException or HttpRequestException)
+            {
+                return null;
             }
         }
 

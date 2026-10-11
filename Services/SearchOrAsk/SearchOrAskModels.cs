@@ -13,8 +13,9 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>Asks the judge the named questions about one state.</summary>
         Task<JudgeAnswer> JudgeAsync(JsonObject state, IReadOnlyDictionary<string, JsonObject> questions, CancellationToken ct);
 
-        /// <summary>Streams an answer from the named model as text deltas.</summary>
-        IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, CancellationToken ct);
+        /// <summary>Streams an answer from the named model as text deltas. The provider's cost, when
+        /// it reports one, is left in <paramref name="usage"/> once the stream ends.</summary>
+        IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, AnswerUsage usage, CancellationToken ct);
     }
 
     /// <summary>A judgement: the probability each question came back with (absent when the judge
@@ -22,6 +23,12 @@ namespace IndxServer.Services.SearchOrAsk
     public sealed record JudgeAnswer(IReadOnlyDictionary<string, double> Probabilities, double? Cost)
     {
         public double? this[string question] => Probabilities.TryGetValue(question, out var p) ? p : null;
+    }
+
+    /// <summary>What an answer cost, filled in by the model call as its stream ends.</summary>
+    public sealed class AnswerUsage
+    {
+        public double? Cost { get; set; }
     }
 
     /// <summary>A model call that failed, with the provider's status, so the caller can say why
@@ -84,13 +91,17 @@ namespace IndxServer.Services.SearchOrAsk
             return new JudgeAnswer(probabilities, cost);
         }
 
-        public async IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, [EnumeratorCancellation] CancellationToken ct)
+        public async IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, AnswerUsage usage,
+            [EnumeratorCancellation] CancellationToken ct)
         {
             var body = new JsonObject
             {
                 ["model"] = model,
                 ["stream"] = true,
                 ["max_tokens"] = 1500,
+                // The last chunk then carries the usage, with the cost in credits (USD): what the
+                // statistics show an owner the answers cost.
+                ["usage"] = new JsonObject { ["include"] = true },
                 ["messages"] = new JsonArray(
                     new JsonObject { ["role"] = "system", ["content"] = system },
                     new JsonObject { ["role"] = "user", ["content"] = user }),
@@ -112,7 +123,20 @@ namespace IndxServer.Services.SearchOrAsk
                 if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
                 var data = line[5..].Trim();
                 if (data == "[DONE]") yield break;
+                if (CostOf(data) is { } cost) usage.Cost = cost;
                 if (DeltaOf(data) is { Length: > 0 } delta) yield return delta;
+            }
+        }
+
+        public static double? CostOf(string chunkJson)
+        {
+            try
+            {
+                return JsonNode.Parse(chunkJson)?["usage"]?["cost"]?.GetValue<double>();
+            }
+            catch (Exception e) when (e is JsonException or InvalidOperationException or FormatException)
+            {
+                return null;
             }
         }
 

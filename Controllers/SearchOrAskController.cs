@@ -14,12 +14,21 @@ namespace IndxServer.Controllers
     /// Team scoping, authentication and the error contract are declared on
     /// <see cref="DatasetApiController"/>.
     /// </summary>
-    public class SearchOrAskController(TeamContextResolver resolver, SearchOrAskStore store, SearchOrAskService service)
+    public class SearchOrAskController(TeamContextResolver resolver, SearchOrAskStore store, SearchOrAskService service,
+        StatisticsService statistics)
         : DatasetApiController(resolver)
     {
         private const string Route = DataSetRoute + "/search-or-ask";
 
         public sealed record IntentRequest(string? Text);
+
+        /// <summary>The window's Search or ask statistics. Rates are null where nothing was offered
+        /// or asked. Cost is in USD as OpenRouter reports it, judge and answers together.</summary>
+        public sealed record SearchOrAskStatisticsResponse(
+            long Judged, long Offers, long StrongOffers, long Asks, double? TakeRate,
+            long Answered, long NothingFound, long Failed, long Stopped, long Unanswered, double? UnansweredRate,
+            long SourcesOpened, double? SourcesOpenedPerAnswer, double Cost, long? MedianFirstTextMs,
+            AskQuestionStat[] Questions, AskOfferStat[] Offered);
         public sealed record AskRequest(string? Question);
 
         /// <summary>
@@ -93,7 +102,7 @@ namespace IndxServer.Controllers
             if (ReadyEngine(dataSetName, ctx.OwnerKey, out var engineError) is not { } engine) return engineError!;
 
             var outcome = await service.IntentAsync(ctx.OwnerKey, dataSetName, engine, text,
-                AuthRateLimiting.ClientIp(HttpContext), HttpContext.RequestAborted);
+                AuthRateLimiting.ClientIp(HttpContext), HttpContext.RequestAborted, origin: Origin());
             return Refusal(outcome) ?? (ActionResult<IntentResult>)outcome.Result!;
         }
 
@@ -117,6 +126,10 @@ namespace IndxServer.Controllers
             if (Refusal(service.CanAsk(ctx.OwnerKey, dataSetName, AuthRateLimiting.ClientIp(HttpContext))) is { } refused)
                 return refused;
 
+            // Minted here so the page has it from the first byte: a select that sends it as its
+            // queryId is a cited source opened (Notes/search-or-ask-server.md, statistics).
+            var askId = Guid.NewGuid().ToString("N");
+            Response.Headers["Indx-Ask-Id"] = askId;
             Response.StatusCode = StatusCodes.Status200OK;
             Response.ContentType = "text/event-stream";
             Response.Headers.CacheControl = "no-cache";
@@ -129,13 +142,54 @@ namespace IndxServer.Controllers
             }
             try
             {
-                await service.AskAsync(ctx.OwnerKey, dataSetName, engine, question, Send, HttpContext.RequestAborted);
+                await service.AskAsync(ctx.OwnerKey, dataSetName, engine, question, Send, HttpContext.RequestAborted,
+                    askId: askId, origin: Origin());
             }
             catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
             {
                 // The visitor went away; there is no one to tell.
             }
             return new EmptyResult();
+        }
+
+        /// <summary>The statistics' view of the caller, read as a search reads it: <c>?queryId=</c>
+        /// (the page's search behind this, whose text the statistics show), <c>?session=</c>,
+        /// <c>?source=</c>, <c>?subject=</c> and <c>?count=false</c>.</summary>
+        private SearchOrAskOrigin Origin() => new(
+            Request.Query["queryId"].FirstOrDefault(),
+            Request.Query["session"].FirstOrDefault(),
+            StatisticsService.CleanSource(Request.Query["source"].FirstOrDefault()),
+            Request.Query["subject"].FirstOrDefault(),
+            !string.Equals(Request.Query["count"].FirstOrDefault()?.Trim(), "false", StringComparison.OrdinalIgnoreCase));
+
+        /// <summary>
+        /// What Search or ask did in the last <c>days</c> (today included, in the dataset's time
+        /// zone): offers shown and taken, questions asked and how they ended, cited sources opened,
+        /// and what it cost. <c>questions</c> lists the questions asked, the ones the content did not
+        /// answer first; <c>offered</c> the texts an offer was shown beside (from the searches the
+        /// page named), so a false offer can be found. Counted rows only, like every statistics read.
+        /// </summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/search-or-ask")]
+        public ActionResult<SearchOrAskStatisticsResponse> Statistics(string teamName, string dataSetName, int days = 30,
+            string? source = null, int limit = 50)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (!statistics.Enabled || statistics.Store is not { } s)
+                return ApiProblems.Problem(StatusCodes.Status404NotFound, "statisticsDisabled", "Statistics disabled",
+                    "Statistics are switched off on this instance (Statistics:Enabled=false).");
+            long today = s.Today(ctx.OwnerKey, dataSetName);
+            long fromDay = today - Math.Clamp(days, 1, 3650) + 1;
+            var src = StatisticsService.CleanSource(source);
+            limit = Math.Clamp(limit, 1, 500);
+            var o = s.AskOverview(ctx.OwnerKey, dataSetName, fromDay, today, src);
+            static double? Rate(double n, double d) => d == 0 ? null : n / d;
+            return new SearchOrAskStatisticsResponse(o.Judged, o.Offers, o.StrongOffers, o.Asks, Rate(o.Asks, o.Offers),
+                o.Answered, o.NothingFound, o.Failed, o.Stopped, o.Unanswered, Rate(o.Unanswered, o.Asks),
+                o.SourcesOpened, Rate(o.SourcesOpened, o.Answered), o.Cost, o.MedianFirstTextMs,
+                s.TopQuestions(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray(),
+                s.TopOffers(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray());
         }
 
         private IServerSearchEngine? ReadyEngine(string dataSetName, string teamId, out ActionResult? error)

@@ -111,7 +111,7 @@ namespace IndxServer.Services
     /// this file. Every access to statistics goes through this class (no SQL in controllers or
     /// pages): that is the N-tier rule from the design note, and it is load-bearing.
     /// </summary>
-    public sealed class StatisticsStore(string dbPath, ILogger<StatisticsStore> logger)
+    public sealed partial class StatisticsStore(string dbPath, ILogger<StatisticsStore> logger)
     {
         private readonly string _dbPath = dbPath;
 
@@ -272,6 +272,7 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
     PRIMARY KEY (TeamId, DataSet, Subject, DocumentKey)
 );";
             cmd.ExecuteNonQuery();
+            EnsureSearchOrAskSchema(conn);
             // Dev-file guard: adds the two rollup columns to a stats.db created in the days
             // before they existed. They shipped in no release, so this can go after one.
             foreach (var col in new[] { "ClickedSearches", "PositionSum", "Uncovered", "UncoveredChosen" })
@@ -690,7 +691,10 @@ UNION SELECT TeamId, DataSet FROM SelectEvents  WHERE Timestamp >= $a AND Timest
 UNION SELECT TeamId, DataSet FROM ConvertEvents WHERE Timestamp >= $a AND Timestamp < $b
 UNION SELECT TeamId, DataSet FROM DailyQueryStats    WHERE Day = $day
 UNION SELECT TeamId, DataSet FROM DailyDocumentStats WHERE Day = $day
-UNION SELECT TeamId, DataSet FROM DailyFilterStats   WHERE Day = $day";
+UNION SELECT TeamId, DataSet FROM DailyFilterStats   WHERE Day = $day
+UNION SELECT TeamId, DataSet FROM AskIntentEvents WHERE Timestamp >= $a AND Timestamp < $b
+UNION SELECT TeamId, DataSet FROM AskEvents       WHERE Timestamp >= $a AND Timestamp < $b
+UNION SELECT TeamId, DataSet FROM DailyAskStats   WHERE Day = $day";
                 cmd.Parameters.AddWithValue("$a", (day - 1) * 86_400_000L);
                 cmd.Parameters.AddWithValue("$b", (day + 2) * 86_400_000L);
                 cmd.Parameters.AddWithValue("$day", day);
@@ -760,6 +764,7 @@ GROUP BY TeamId, DataSet, DocumentKey;";
             cmd.Parameters.AddWithValue("$to", to);
             cmd.ExecuteNonQuery();
             RollupFilters(conn, tx, day, from, to, team, ds);
+            RollupSearchOrAsk(conn, tx, team, ds, day, from, to);
         }
 
         // ── Per-dataset settings ─────────────────────────────────────────────────────────
@@ -1148,6 +1153,10 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
             n += cmd.ExecuteNonQuery();
             cmd.CommandText = @"DELETE FROM ConvertEvents WHERE Timestamp < $cut;";
             n += cmd.ExecuteNonQuery();
+            cmd.CommandText = @"DELETE FROM AskIntentEvents WHERE Timestamp < $cut;";
+            n += cmd.ExecuteNonQuery();
+            cmd.CommandText = @"DELETE FROM AskEvents WHERE Timestamp < $cut;";
+            n += cmd.ExecuteNonQuery();
             return n;
         }
 
@@ -1167,6 +1176,9 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
                 "DatasetChanges" => "SELECT COUNT(*) FROM DatasetChanges",
                 "DailyDocumentChanges" => "SELECT COUNT(*) FROM DailyDocumentChanges",
                 "SubjectDocumentStats" => "SELECT COUNT(*) FROM SubjectDocumentStats",
+                "AskIntentEvents" => "SELECT COUNT(*) FROM AskIntentEvents",
+                "AskEvents" => "SELECT COUNT(*) FROM AskEvents",
+                "DailyAskStats" => "SELECT COUNT(*) FROM DailyAskStats",
                 _ => throw new ArgumentException($"Unknown statistics table '{table}'.", nameof(table)),
             };
             return (long)cmd.ExecuteScalar()!;
@@ -1523,20 +1535,22 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
                 var eventWhere = source == null
                     ? "TeamId = $t AND DataSet = $d AND Timestamp >= $from AND Timestamp < $to"
                     : $"TeamId = $t AND DataSet = $d AND QueryId IN (SELECT QueryId FROM SearchEvents WHERE {searchWhere})";
-                foreach (var table in new[] { "SearchEvents", "SelectEvents", "ConvertEvents" })
+                foreach (var table in new[] { "SearchEvents", "SelectEvents", "ConvertEvents", "AskIntentEvents", "AskEvents" })
                 {
                     // By quarter hour, which every zone's day boundary falls on, then to local days.
                     using var days = Command($"SELECT DISTINCT Timestamp / 900000 FROM {table} WHERE " +
-                                             (table == "SearchEvents" ? searchWhere : eventWhere));
+                                             (table is "SearchEvents" or "AskIntentEvents" or "AskEvents" ? searchWhere : eventWhere));
                     using var r = days.ExecuteReader();
                     while (r.Read()) touchedDays.Add(StatisticsDays.DayOf(tz, r.GetInt64(0) * 900_000L));
                 }
                 using (var cmd = Command($"DELETE FROM SelectEvents WHERE {eventWhere}")) cmd.ExecuteNonQuery();
                 using (var cmd = Command($"DELETE FROM ConvertEvents WHERE {eventWhere}")) cmd.ExecuteNonQuery();
                 using (var cmd = Command($"DELETE FROM SearchEvents WHERE {searchWhere}")) searches = cmd.ExecuteNonQuery();
+                using (var cmd = Command($"DELETE FROM AskIntentEvents WHERE {searchWhere}")) cmd.ExecuteNonQuery();
+                using (var cmd = Command($"DELETE FROM AskEvents WHERE {searchWhere}")) cmd.ExecuteNonQuery();
                 if (source == null)
                 {
-                    foreach (var table in new[] { "DailyQueryStats", "DailyDocumentStats", "DailyFilterStats" })
+                    foreach (var table in new[] { "DailyQueryStats", "DailyDocumentStats", "DailyFilterStats", "DailyAskStats" })
                     {
                         using var cmd = Command($"DELETE FROM {table} WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $toDay");
                         cmd.Parameters.AddWithValue("$fromDay", fromDay ?? long.MinValue);
@@ -1586,7 +1600,7 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
             cmd.Parameters.AddWithValue("$d", dataSet);
             cmd.Parameters.AddWithValue("$s", subject);
             int n = 0;
-            foreach (var table in new[] { "SearchEvents", "SelectEvents", "ConvertEvents" })
+            foreach (var table in new[] { "SearchEvents", "SelectEvents", "ConvertEvents", "AskIntentEvents", "AskEvents" })
             {
                 cmd.CommandText = $"UPDATE {table} SET Subject = NULL WHERE TeamId = $t AND DataSet = $d AND Subject = $s";
                 n += cmd.ExecuteNonQuery();
@@ -1659,7 +1673,8 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
              "DailyQueryStats", "DailyDocumentStats", "DailyFilterStats", "SubjectDocumentStats",
              // Deleting the statistics deletes their explanation too: starting the numbers over
              // starts the history of what moved them over (decided 1 Oct 2026).
-             "DatasetChanges", "DailyDocumentChanges"];
+             "DatasetChanges", "DailyDocumentChanges",
+             "AskIntentEvents", "AskEvents", "DailyAskStats"];
 
         private int ExecutePerTable(string where, string a, string? b)
         {

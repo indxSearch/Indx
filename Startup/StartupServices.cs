@@ -657,14 +657,14 @@ internal static class StartupServices
                     policy.AllowAnyOrigin()
                         .AllowAnyMethod()
                         .AllowAnyHeader()
-                        .WithExposedHeaders("Indx-Query-Id", IndxServer.Services.QueryParameterResolution.ResponseHeader);
+                        .WithExposedHeaders("Indx-Query-Id", "Indx-Ask-Id", IndxServer.Services.QueryParameterResolution.ResponseHeader);
                 }
                 else if (corsAllowedOrigins.Length > 0)
                 {
                     policy.WithOrigins(corsAllowedOrigins)
                         .AllowAnyMethod()
                         .AllowAnyHeader()
-                        .WithExposedHeaders("Indx-Query-Id", IndxServer.Services.QueryParameterResolution.ResponseHeader);
+                        .WithExposedHeaders("Indx-Query-Id", "Indx-Ask-Id", IndxServer.Services.QueryParameterResolution.ResponseHeader);
                 }
                 else
                 {
