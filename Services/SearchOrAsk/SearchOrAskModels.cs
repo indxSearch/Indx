@@ -52,14 +52,17 @@ namespace IndxServer.Services.SearchOrAsk
     /// completions. Raw HTTP, as JevProbe does: there is no .NET SDK for System One, and the wire
     /// shape is the contract (JevProbe's tests pin it against the documented bodies).
     /// </summary>
-    public sealed class OpenRouterModels(IHttpClientFactory http, SearchOrAskOptions options) : ISearchOrAskModels
+    public sealed class OpenRouterModels(IHttpClientFactory http, SearchOrAskOptions options, ISearchOrAskSwitch? instance = null)
+        : ISearchOrAskModels
     {
         public const string HttpClientName = "SearchOrAsk";
 
         private HttpClient Client()
         {
             var client = http.CreateClient(HttpClientName);
-            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
+            // The configuration's key wins; else the one set in the console.
+            var key = !string.IsNullOrWhiteSpace(options.ApiKey) ? options.ApiKey : instance?.ModelKey?.Trim();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
             return client;
         }
 

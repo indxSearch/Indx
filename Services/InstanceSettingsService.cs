@@ -23,6 +23,11 @@ internal class InstanceSettings
     /// instance needs a model key (Indx:SearchOrAsk:ApiKey).</summary>
     public bool SearchOrAskShown { get; set; } = false;
 
+    /// <summary>The OpenRouter key Search or ask uses, set in the console (Admin, Settings,
+    /// Experimental), so a self-hosted instance needs no server configuration for it. A key in the
+    /// configuration (Indx:SearchOrAsk:ApiKey, or its environment variable) wins over this one.</summary>
+    public string? SearchOrAskApiKey { get; set; }
+
     /// <summary>True once the first-run onboarding (admin account + team + instance settings)
     /// has completed. Until then, the app routes visitors into the setup flow. Gated on this
     /// flag rather than "are there users?" because OAuth creates the admin mid-flow.</summary>

@@ -53,7 +53,7 @@ namespace IndxServer.Services.SearchOrAsk
         public async Task<FiltersOutcome> FiltersAsync(string teamId, string dataSetName, IServerSearchEngine engine,
             string text, string clientAddress, CancellationToken ct, SearchOrAskSettings? trial = null)
         {
-            if (!_options.Available) return new FiltersOutcome(IntentStatus.Unavailable);
+            if (!Available) return new FiltersOutcome(IntentStatus.Unavailable);
             var settings = trial ?? Settings(teamId, dataSetName);
             if (trial == null && !settings.Enabled) return new FiltersOutcome(IntentStatus.Disabled);
 

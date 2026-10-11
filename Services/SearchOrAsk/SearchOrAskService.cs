@@ -36,12 +36,16 @@ namespace IndxServer.Services.SearchOrAsk
     public interface ISearchOrAskSwitch
     {
         bool Shown { get; }
+
+        /// <summary>The model key set in the console, if any.</summary>
+        string? ModelKey { get; }
     }
 
-    /// <summary>The switch as the instance settings file holds it.</summary>
+    /// <summary>The switch and the console's key, as the instance settings file holds them.</summary>
     internal sealed class InstanceSearchOrAskSwitch(InstanceSettingsService settings) : ISearchOrAskSwitch
     {
         public bool Shown => settings.Load().SearchOrAskShown;
+        public string? ModelKey => settings.Load().SearchOrAskApiKey;
     }
 
     /// <summary>An earlier question and its answer in the same conversation, for a follow-up.</summary>
@@ -118,7 +122,32 @@ namespace IndxServer.Services.SearchOrAsk
             PartitionedRateLimiter.Create<string, string>(address => RateLimitPartition.GetFixedWindowLimiter(address,
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = Math.Max(1, perMinute), Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 
-        public bool Available => _options.Available;
+        /// <summary>Whether this instance can run Search or ask: it has a model key, from its
+        /// configuration (which wins) or from the console.</summary>
+        public bool Available => ModelKey != null;
+
+        /// <summary>Where the key in use comes from, for the console: "configuration", "console" or null.</summary>
+        public string? ModelKeySource =>
+            !string.IsNullOrWhiteSpace(_options.ApiKey) ? "configuration" : ModelKey != null ? "console" : null;
+
+        private (string? Key, long At) _consoleKey;
+
+        /// <summary>The model key in use: the configuration's, else the console's (read at most every
+        /// five seconds, as the switch is).</summary>
+        public string? ModelKey
+        {
+            get
+            {
+                if (!string.IsNullOrWhiteSpace(_options.ApiKey)) return _options.ApiKey;
+                if (_instance == null) return null;
+                var now = Environment.TickCount64;
+                var cached = _consoleKey;
+                if (cached.At != 0 && now - cached.At < 5000) return cached.Key;
+                var key = string.IsNullOrWhiteSpace(_instance.ModelKey) ? null : _instance.ModelKey.Trim();
+                _consoleKey = (key, now);
+                return key;
+            }
+        }
 
         /// <summary>Whether the instance shows Search or ask at all: the experimental switch in the
         /// admin settings. Read from settings.json at most every five seconds, since the judge asks on
@@ -144,7 +173,7 @@ namespace IndxServer.Services.SearchOrAsk
             _instance == null || (Shown && (_store.Load(teamId, dataSetName)?.Shown ?? false));
 
         /// <summary>Forgets the cached switch, so a change in the admin settings applies at once.</summary>
-        public void InstanceSettingsChanged() => _shown = default;
+        public void InstanceSettingsChanged() { _shown = default; _consoleKey = default; }
 
         /// <summary>The dataset's saved settings, or the defaults (off) when none are saved.</summary>
         public SearchOrAskSettings Settings(string teamId, string dataSetName) =>
@@ -197,7 +226,7 @@ namespace IndxServer.Services.SearchOrAsk
             string text, string clientAddress, CancellationToken ct,
             SearchOrAskSettings? trial = null, Action<JsonObject>? onState = null, SearchOrAskOrigin? origin = null)
         {
-            if (!_options.Available) return new IntentOutcome(IntentStatus.Unavailable);
+            if (!Available) return new IntentOutcome(IntentStatus.Unavailable);
             var settings = trial ?? Settings(teamId, dataSetName);
             if (trial == null && !settings.Enabled) return new IntentOutcome(IntentStatus.Disabled);
 
@@ -372,7 +401,7 @@ namespace IndxServer.Services.SearchOrAsk
         /// Ask counts against the daily budget too: it is the expensive call.</summary>
         public IntentOutcome CanAsk(string teamId, string dataSetName, string clientAddress, SearchOrAskSettings? trial = null)
         {
-            if (!_options.Available) return new IntentOutcome(IntentStatus.Unavailable);
+            if (!Available) return new IntentOutcome(IntentStatus.Unavailable);
             var settings = trial ?? Settings(teamId, dataSetName);
             if (trial == null && !settings.Enabled) return new IntentOutcome(IntentStatus.Disabled);
             using (var lease = _askLimiter.AttemptAcquire(clientAddress))

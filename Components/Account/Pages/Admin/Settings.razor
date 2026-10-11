@@ -68,8 +68,39 @@
             <p style="font: var(--text-xs); color: var(--lv4); margin-top: 4px; margin-left: 48px;">
                 Offers to answer what visitors ask, written from a dataset's records. Adds a Search or ask tab to
                 each dataset, where it is switched on one dataset at a time. Sends what visitors type to
-                OpenRouter and the model providers, and needs a model key (<code>Indx:SearchOrAsk:ApiKey</code>).
+                OpenRouter and the model providers, and needs an OpenRouter key.
             </p>
+            @if (_searchOrAskShown)
+            {
+                <div style="margin: 16px 0 0 48px; display: flex; flex-direction: column; gap: 8px;">
+                    @if (SearchOrAsk.ModelKeySource == "configuration")
+                    {
+                        <p style="font: var(--text-xs); color: var(--lv5); margin: 0;">
+                            The key comes from the server's configuration (<code>Indx:SearchOrAsk:ApiKey</code>), which wins over one set here.
+                        </p>
+                    }
+                    else
+                    {
+                        <InputField Label="OpenRouter key" type="password" autocomplete="off" @bind-Value="_searchOrAskKey"
+                                    placeholder="@(_searchOrAskKeySaved && !_removeSearchOrAskKey ? "Saved; type to replace" : "sk-or-…")" />
+                        <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">
+                            @if (_searchOrAskKeySaved && !_removeSearchOrAskKey)
+                            {
+                                <text>A key is saved. It is stored in this instance's settings file, as the licence is.</text>
+                                <Button Variant="ghost" Size="micro" @onclick="() => _removeSearchOrAskKey = true">Remove key</Button>
+                            }
+                            else if (_removeSearchOrAskKey)
+                            {
+                                <text>The key will be removed when you save; Search or ask then stops.</text>
+                            }
+                            else
+                            {
+                                <text>Without a key Search or ask cannot run; nothing is sent anywhere. Get one at openrouter.ai.</text>
+                            }
+                        </p>
+                    }
+                </div>
+            }
         </div>
     </div>
 
@@ -111,6 +142,10 @@
     private bool _allowUserSelfDeletion = true;
     private bool _mcpEnabled = true;
     private bool _searchOrAskShown;
+    // The key is never shown again once saved: the field holds only a new one being typed.
+    private string? _searchOrAskKey;
+    private bool _searchOrAskKeySaved;
+    private bool _removeSearchOrAskKey;
     private string _registrationMode = "Open";
     private string _allowedDomainsText = "";
     private string? _successMessage;
@@ -128,7 +163,7 @@
     private (string, bool, bool, bool, bool, string, string) _saved;
     private (string, bool, bool, bool, bool, string, string) Current =>
         (_instanceName, _requireEmailVerification, _allowUserSelfDeletion, _mcpEnabled, _searchOrAskShown, _registrationMode, _allowedDomainsText);
-    private bool IsDirty => Current != _saved;
+    private bool IsDirty => Current != _saved || !string.IsNullOrWhiteSpace(_searchOrAskKey) || _removeSearchOrAskKey;
 
     protected override void OnInitialized() => LoadFromSettings();
 
@@ -147,6 +182,9 @@
         _allowUserSelfDeletion = settings.AllowUserSelfDeletion;
         _mcpEnabled = settings.McpEnabled;
         _searchOrAskShown = settings.SearchOrAskShown;
+        _searchOrAskKeySaved = !string.IsNullOrWhiteSpace(settings.SearchOrAskApiKey);
+        _searchOrAskKey = null;
+        _removeSearchOrAskKey = false;
         _registrationMode = settings.RegistrationMode.ToString();
         _allowedDomainsText = string.Join("\n", settings.AllowedDomains);
         _saved = Current;
@@ -181,10 +219,15 @@
             settings.AllowUserSelfDeletion = _allowUserSelfDeletion;
             settings.McpEnabled = _mcpEnabled;
             settings.SearchOrAskShown = _searchOrAskShown;
+            if (_removeSearchOrAskKey) settings.SearchOrAskApiKey = null;
+            else if (!string.IsNullOrWhiteSpace(_searchOrAskKey)) settings.SearchOrAskApiKey = _searchOrAskKey.Trim();
             settings.RegistrationMode = mode;
             settings.AllowedDomains = domains;
             SettingsService.Save(settings);
             SearchOrAsk.InstanceSettingsChanged();
+            _searchOrAskKeySaved = !string.IsNullOrWhiteSpace(settings.SearchOrAskApiKey);
+            _searchOrAskKey = null;
+            _removeSearchOrAskKey = false;
             _saved = Current;
 
             _successMessage = "Settings saved.";
