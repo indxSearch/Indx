@@ -25,6 +25,12 @@ namespace IndxServer.Services.SearchOrAsk
 
         public SearchOrAskThresholds Thresholds { get; set; } = new();
 
+        /// <summary>A catalogue's notes about its fields, for turning a description into filters:
+        /// what the values mean in this domain ("barneskole: grades 1 to 7"). Free text.</summary>
+        public string? FilterNotes { get; set; }
+
+        public const int MaxFilterNotes = 3000;
+
         public const string BestAnswers = "best";
         public const string FastAnswers = "fast";
 
@@ -47,6 +53,8 @@ namespace IndxServer.Services.SearchOrAsk
                 return $"siteDescription is at most {MaxSiteDescription} characters.";
             if (Answers is not (BestAnswers or FastAnswers))
                 return $"answers must be {BestAnswers} or {FastAnswers}.";
+            if (FilterNotes is { Length: > MaxFilterNotes })
+                return $"filterNotes is at most {MaxFilterNotes} characters.";
             if (DailyCallBudget < 0)
                 return "dailyCallBudget cannot be negative.";
             if (Thresholds == null)

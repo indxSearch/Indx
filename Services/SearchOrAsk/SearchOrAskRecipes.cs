@@ -13,13 +13,20 @@ namespace IndxServer.Services.SearchOrAsk
         /// questions answered, none of 20 lookups offered anything).</summary>
         public const string Documentation = "documentation";
 
-        public static readonly string[] Kinds = [Documentation];
+        /// <summary>A catalogue with good fields: catalogue-v1, measured on the school register (40 of
+        /// 40 descriptions recognised as criteria, none of 80 others; 36 of 40 questions). A
+        /// description of what to list becomes filters (<see cref="SearchOrAskFilters"/>).</summary>
+        public const string Catalogue = "catalogue";
+
+        public static readonly string[] Kinds = [Documentation, Catalogue];
 
         public static bool IsKnown(string? kind) => kind != null && Kinds.Contains(kind);
 
         /// <summary>The question whose probability drives the offer.</summary>
         public const string Asking = "asking";
         public const string Answerable = "answerable";
+        /// <summary>A catalogue's second question: is the visitor describing what to list?</summary>
+        public const string Criteria = "criteria";
 
         public static Dictionary<string, JsonObject> Questions(string kind) => kind switch
         {
@@ -43,6 +50,33 @@ namespace IndxServer.Services.SearchOrAsk
                     "One or more of the results covers what the visitor is asking about, closely enough that an answer could " +
                     "be written from them.",
                     "None of the results covers it, or the visitor is not asking anything that needs an answer."),
+            },
+            Catalogue => new()
+            {
+                [Asking] = Noul(
+                    "`request` is what a visitor has typed so far into the search field of `site`, possibly unfinished. " +
+                    "`search` is what the search found for it. Is the visitor asking a question about one particular item " +
+                    "that a short written answer would serve better than a list?",
+                    "The visitor asks something about one particular item: a fact about it, whether it has some property, " +
+                    "how much or how many, or which item it is from a description of it. Unfinished text counts when its " +
+                    "start already shows this, such as a question word or a sentence being formed. A yes/no question about " +
+                    "one named item counts even when it mentions a property others share.",
+                    "The visitor names the item they want to be taken to, or describes what kind of items to list, and a " +
+                    "list serves them."),
+                [Criteria] = Noul(
+                    "`request` is what a visitor has typed so far into the search field of `site`, possibly unfinished. Is " +
+                    "the visitor describing what kind of items they want listed, rather than naming one item or asking " +
+                    "about one?",
+                    "The visitor describes items by their properties, the kinds of things `site` says its records hold (a " +
+                    "type, a place, a size, a time, a language and so on), usually two or more together, and wants a list " +
+                    "of the items that fit.",
+                    "The visitor names an item or part of its name, possibly with a place, or asks a question about one item."),
+                [Answerable] = Noul(
+                    "`request` is what a visitor has typed so far into the search field of `site`, and `search.results` are " +
+                    "what the search found for it. Could these results answer what the visitor is asking?",
+                    "One or more of the results holds what the visitor is asking about, closely enough that an answer could " +
+                    "be written from it.",
+                    "None of the results holds it, or the visitor is not asking anything that needs an answer."),
             },
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown Search or ask kind."),
         };

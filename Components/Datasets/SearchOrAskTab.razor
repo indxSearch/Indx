@@ -45,6 +45,12 @@
                 @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold, in a sentence or two. Empty uses the dataset's description.",
                      !string.IsNullOrWhiteSpace(_edit.SiteDescription),
                      @<Textarea Rows="3" @bind-Value="_edit.SiteDescription" placeholder="@_effectiveSite" />)
+                @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                {
+                    @Row(Icon<Icons.Filter>(), "About the fields", "What the values mean here, for turning a description into filters. One per line, such as \"barneskole: grades 1 to 7\".",
+                         !string.IsNullOrWhiteSpace(_edit.FilterNotes),
+                         @<Textarea Rows="4" @bind-Value="_edit.FilterNotes" placeholder="friskole: private" />)
+                }
                 @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
                      _edit.Answers != SearchOrAskSettings.BestAnswers,
                      @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
@@ -126,7 +132,7 @@
                             @if (_try is { } r)
                             {
                                 <Chip Size="micro" Class="@($"soa-offer soa-offer--{r.Offer}")">@OfferLabel(r.Offer)</Chip>
-                                <span class="soa-try-score">p @r.P.ToString("0.00", CultureInfo.InvariantCulture)@(r.Answerable is { } a ? $" · answerable {a.ToString("0.00", CultureInfo.InvariantCulture)}" : "") · @(r.Cached ? "cached" : $"{r.Ms} ms")@(r.Reason is { } why ? $" · {why}" : "")</span>
+                                <span class="soa-try-score">p @r.P.ToString("0.00", CultureInfo.InvariantCulture)@(r.Answerable is { } a ? $" · answerable {a.ToString("0.00", CultureInfo.InvariantCulture)}" : "") · @(r.Cached ? "cached" : $"{r.Ms} ms")@(r.Criteria is { } c ? $" · description {c.ToString("0.00", CultureInfo.InvariantCulture)}" : "")@(r.Reason is { } why ? $" · {why}" : "")</span>
                             }
                             else if (_tryMessage != null)
                             {
@@ -137,6 +143,10 @@
                         {
                             <div class="soa-try-actions">
                                 <Button Variant="ghost" Size="micro" Loading="@_asking" @onclick="AskAsync">Ask</Button>
+                                @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                                {
+                                    <Button Variant="ghost" Size="micro" Loading="@_filtering" @onclick="FiltersAsync">Filters</Button>
+                                }
                                 <Button Variant="ghost" Size="micro" IconRight="@(_showState ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)"
                                         @onclick="() => _showState = !_showState">What the judge was sent</Button>
                             </div>
@@ -144,6 +154,23 @@
                         @if (_showState && _state != null)
                         {
                             <pre class="soa-state">@_state</pre>
+                        }
+                        @if (_filters is { } fr)
+                        {
+                            <div class="soa-answer">
+                                @if (fr.Filters.Length == 0)
+                                {
+                                    <p class="soa-help">No filters@(fr.Reason is { } why ? $" ({why})" : "").</p>
+                                }
+                                <div class="soa-control">
+                                    @foreach (var f in fr.Filters)
+                                    {
+                                        <Chip Size="micro">@FilterLabel(f)</Chip>
+                                    }
+                                    @if (fr.Text.Length > 0) { <span class="soa-help">search for "@fr.Text"</span> }
+                                    <span class="soa-try-score">@fr.Ms ms</span>
+                                </div>
+                            </div>
                         }
                         @if (_sources.Count > 0 || _answer.Length > 0 || _answerError != null)
                         {
@@ -178,7 +205,10 @@
     };
 
     private static readonly IEnumerable<SelectField.SelectOption> KindOptions =
-        [new("Documentation, help and reference", SearchOrAskRecipes.Documentation)];
+        [
+            new("Documentation, help and reference", SearchOrAskRecipes.Documentation),
+            new("Catalogue: a description becomes filters", SearchOrAskRecipes.Catalogue),
+        ];
 
     // First-word times measured on the docs with eight sources (Notes/search-or-ask-server.md).
     private IEnumerable<SelectField.SelectOption> AnswerOptions =>
@@ -462,6 +492,30 @@
         _answer = "";
         _answerError = null;
         _sources = [];
+        _filters = null;
+    }
+
+    private FiltersResult? _filters;
+    private bool _filtering;
+
+    private static string FilterLabel(FilterSuggestion f) =>
+        f.Value != null ? $"{f.Field}: {f.Value}"
+        : $"{f.Field}: {f.Min?.ToString(CultureInfo.InvariantCulture) ?? ""}–{f.Max?.ToString(CultureInfo.InvariantCulture) ?? ""}";
+
+    /// <summary>The tester's description, as the filters a page would apply, with the settings on screen.</summary>
+    private async Task FiltersAsync()
+    {
+        var engine = Ctx.FindEngine();
+        var text = _tryText?.Trim();
+        if (engine == null || string.IsNullOrEmpty(text) || _filtering) return;
+        _filtering = true;
+        try
+        {
+            var outcome = await Service.FiltersAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, CancellationToken.None, trial: _edit);
+            _filters = outcome.Result;
+            if (outcome.Result == null) _tryMessage = outcome.Status.ToString();
+        }
+        finally { _filtering = false; }
     }
 
     private async Task AskAsync()

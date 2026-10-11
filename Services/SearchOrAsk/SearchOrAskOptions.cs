@@ -27,6 +27,10 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>The model for <c>answers: fast</c>: first words after about 1.2 s, about $0.005.</summary>
         public string FastAnswerModel { get; set; } = "anthropic/claude-haiku-4.5";
 
+        /// <summary>Turns a catalogue visitor's description into filters, as JSON. Haiku kept the source
+        /// record in 40 of 40 descriptions on the school register, in 1.2 to 2 s.</summary>
+        public string FilterModel { get; set; } = "anthropic/claude-haiku-4.5";
+
         /// <summary>The model a dataset's <see cref="SearchOrAskSettings.Answers"/> choice names.</summary>
         public string AnswerModelFor(string answers) => answers == SearchOrAskSettings.FastAnswers ? FastAnswerModel : AnswerModel;
 

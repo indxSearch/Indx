@@ -16,6 +16,9 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>Streams an answer from the named model as text deltas. The provider's cost, when
         /// it reports one, is left in <paramref name="usage"/> once the stream ends.</summary>
         /// <paramref name="history"/> is the conversation so far, oldest first, sent before the question.
+        /// <summary>One completion, not streamed: the reply's text and its cost.</summary>
+        Task<(string Content, double? Cost)> CompleteAsync(string model, string system, string user, CancellationToken ct);
+
         IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, IReadOnlyList<AskTurn> history,
             AnswerUsage usage, CancellationToken ct);
     }
@@ -91,6 +94,32 @@ namespace IndxServer.Services.SearchOrAsk
             }
             double? cost = parsed?["usage"]?["cost"] is JsonValue c && c.TryGetValue<double>(out var usd) ? usd : null;
             return new JudgeAnswer(probabilities, cost);
+        }
+
+        public async Task<(string Content, double? Cost)> CompleteAsync(string model, string system, string user, CancellationToken ct)
+        {
+            var body = new JsonObject
+            {
+                ["model"] = model,
+                ["max_tokens"] = 600,
+                ["temperature"] = 0,
+                ["usage"] = new JsonObject { ["include"] = true },
+                ["messages"] = new JsonArray(
+                    new JsonObject { ["role"] = "system", ["content"] = system },
+                    new JsonObject { ["role"] = "user", ["content"] = user }),
+            };
+            using var request = new HttpRequestMessage(HttpMethod.Post, options.AnswerEndpoint)
+            {
+                Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
+            };
+            using var response = await Client().SendAsync(request, ct);
+            var text = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+                throw new SearchOrAskModelException((int)response.StatusCode, $"Model answered {(int)response.StatusCode}");
+            var reply = JsonNode.Parse(text);
+            var content = reply?["choices"]?[0]?["message"]?["content"]?.GetValue<string>() ?? "";
+            double? cost = reply?["usage"]?["cost"] is JsonValue c && c.TryGetValue<double>(out var usd) ? usd : null;
+            return (content, cost);
         }
 
         public async IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, IReadOnlyList<AskTurn> history,

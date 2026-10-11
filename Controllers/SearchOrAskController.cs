@@ -23,6 +23,7 @@ namespace IndxServer.Controllers
         private const string Route = DataSetRoute + "/search-or-ask";
 
         public sealed record IntentRequest(string? Text);
+        public sealed record FiltersRequest(string? Text);
 
         /// <summary>The window's Search or ask statistics. Rates are null where nothing was offered
         /// or asked. Cost is in USD as OpenRouter reports it, judge and answers together.</summary>
@@ -111,6 +112,30 @@ namespace IndxServer.Controllers
             var outcome = await service.IntentAsync(ctx.OwnerKey, dataSetName, engine, text,
                 AuthRateLimiting.ClientIp(HttpContext), HttpContext.RequestAborted, origin: Origin());
             return Refusal(outcome) ?? (ActionResult<IntentResult>)outcome.Result!;
+        }
+
+        /// <summary>
+        /// A catalogue's description of what to list, as filters on the dataset's own fields: call it
+        /// when intent's <c>criteria</c> reaches the strong threshold. Each filter is a value or a
+        /// number range on a Filterable field, checked against the values the dataset holds; a text
+        /// field also needs to be Facetable, which is where its values come from. <c>text</c> is what
+        /// no filter covers, to search for.
+        /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
+        [HttpPost(Route + "/filters")]
+        public async Task<ActionResult<FiltersResult>> Filters(string teamName, string dataSetName, [FromBody] FiltersRequest request)
+        {
+            if (!service.Shown) return NotFound();
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            var text = request?.Text ?? "";
+            if (text.Trim().Length == 0 || text.Length > SearchOrAskService.MaxText)
+                return ApiProblems.InvalidArgument($"Send {{ text }} of 1 to {SearchOrAskService.MaxText} characters.");
+            if (ReadyEngine(dataSetName, ctx.OwnerKey, out var engineError) is not { } engine) return engineError!;
+            var outcome = await service.FiltersAsync(ctx.OwnerKey, dataSetName, engine, text.Trim(),
+                AuthRateLimiting.ClientIp(HttpContext), HttpContext.RequestAborted);
+            return Refusal(new IntentOutcome(outcome.Status, RetryAfterSeconds: outcome.RetryAfterSeconds))
+                   ?? (ActionResult<FiltersResult>)outcome.Result!;
         }
 
         /// <summary>
