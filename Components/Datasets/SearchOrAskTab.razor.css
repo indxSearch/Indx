@@ -47,3 +47,26 @@
 .soa-answer-text { font: var(--text-sm); color: var(--lv8); white-space: pre-wrap; margin: 0; }
 .soa-sources { margin: 10px 0 0; padding-left: 20px; font: var(--text-xs); color: var(--lv6); }
 .soa-key { color: var(--lv5); margin-left: 6px; font-variant-numeric: tabular-nums; }
+
+/* A setting's row: its icon beside the name, help and control. */
+.soa-row { display: flex; gap: 12px; align-items: flex-start; }
+.soa-icon { color: var(--lv5); flex: none; margin-top: 1px; display: inline-flex; }
+::deep .soa-row--set .soa-icon { color: var(--lv8); }
+.soa-row-body { flex: 1; min-width: 0; }
+
+/* The 0 to 1 scale above the thresholds: nothing, invitation, offer. */
+.soa-scale { margin-top: 12px; }
+.soa-scale-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--lv2); }
+.soa-scale-none { background: var(--lv2); }
+.soa-scale-invite { background: var(--lv4); }
+.soa-scale-strong { background: var(--CPositive); }
+.soa-scale-ticks { position: relative; display: flex; justify-content: space-between; margin-top: 6px;
+    font: var(--text-xs); color: var(--lv5); font-variant-numeric: tabular-nums; }
+.soa-scale-mark { position: absolute; transform: translateX(-50%); color: var(--lv7); }
+
+/* One offer's pair of sliders. */
+.soa-thresholds { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.soa-threshold { display: grid; grid-template-columns: 96px 1fr 40px; align-items: center; gap: 10px; }
+.soa-threshold-label { font: var(--text-xs); color: var(--lv6); }
+.soa-threshold-value { font: var(--text-sm); color: var(--lv8); font-variant-numeric: tabular-nums; text-align: right; }
+.soa-threshold ::deep .soa-slider { width: 100%; }

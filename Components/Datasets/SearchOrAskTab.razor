@@ -8,6 +8,7 @@
 @using System.Text.Json.Serialization
 @using IndxServer.Services.SearchOrAsk
 @using Indx.Api
+@using Icons = Indx.Systm.Blazor.Icons
 @inherits DatasetTabBase
 @inject SearchOrAskStore Store
 @inject SearchOrAskService Service
@@ -36,18 +37,18 @@
         <Table AriaLabel="Search or ask" Class="soa-table">
             @Head("Search or ask")
             <tbody>
-                @Row("Offer answers",
-                     "What visitors type is sent to OpenRouter and TypeSafe to be judged, and the questions they ask to the answer model. Name this in your privacy notice.",
+                @Row(DatasetIcons.SearchOrAsk, "Offer answers",
+                     "Sends what visitors type to OpenRouter and TypeSafe, and their questions to the answer model. Name this in your privacy notice.",
                      _edit.Enabled, @<ToggleSwitch Label="Enabled" Variant="positive" Checked="@_edit.Enabled" CheckedChanged="@(v => _edit.Enabled = v)" />)
-                @Row("Kind of site", "Decides how the judge tells a question from a lookup. Documentation is the one measured so far.",
+                @Row(Icon<Icons.Book>(), "Kind of site", "How the judge tells a question from a lookup.",
                      false, @<div class="soa-select"><SelectField Size="micro" Options="KindOptions" Value="@_edit.Kind" ValueChanged="@(v => _edit.Kind = v ?? SearchOrAskRecipes.Documentation)" /></div>)
-                @Row("About the site", "One or two sentences the judge reads, such as who the readers are and what the records hold. Empty uses the dataset's description.",
+                @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold, in a sentence or two. Empty uses the dataset's description.",
                      !string.IsNullOrWhiteSpace(_edit.SiteDescription),
                      @<Textarea Rows="3" @bind-Value="_edit.SiteDescription" placeholder="@_effectiveSite" />)
-                @Row("Answers", "Best quality is the default. Fast starts writing sooner and costs about a third, with a smaller model.",
+                @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
                      _edit.Answers != SearchOrAskSettings.BestAnswers,
                      @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
-                @Row("Daily call budget", $"Judge and answer calls per day (UTC) for this dataset. {_callsToday:N0} used today.",
+                @Row(Icon<Icons.Coins>(), "Daily call budget", $"Calls per day (UTC). {_callsToday:N0} used today.",
                      _budgetText != null,
                      @<div class="soa-number"><InputField @bind-Value="_budgetText" @bind-Value:after="SetBudget" Error="@_budgetError" inputmode="numeric" placeholder="5,000" /></div>)
             </tbody>
@@ -56,22 +57,38 @@
         <Table AriaLabel="What the judge sees" Class="soa-table">
             @Head("What the judge sees of a result")
             <tbody>
-                @Row("Title", "The field shown as each result's title. Empty uses the highest-weighted searchable field.",
-                     _edit.TitleField != null,
-                     @<InputField @bind-Value="TitleText" placeholder="@(_effective?.TitleField ?? "")" />)
-                @Row("Section", "Fields that place a result, such as a category or year, separated by commas. Empty shows none.",
-                     _edit.SectionFields != null,
-                     @<InputField @bind-Value="SectionText" />)
-                @Row("Snippet", "Fields the judge reads a little of, separated by commas. Empty uses the next searchable fields.",
-                     _edit.SnippetFields != null,
-                     @<InputField @bind-Value="SnippetText" placeholder="@List(_effective?.SnippetFields)" />)
+                @if (TextFields.Count == 0)
+                {
+                    <TableRow><TableCell Class="soa-cell"><span class="soa-help">The fields can be chosen once the dataset has been analyzed.</span></TableCell></TableRow>
+                }
+                else
+                {
+                    @Row(Icon<Icons.TextSize>(), "Title", "Each result's name.",
+                         _edit.TitleField != null,
+                         @<div class="soa-select"><SelectField Size="micro" Options="TitleOptions" Value="@(_edit.TitleField ?? Automatic)" ValueChanged="@(v => _edit.TitleField = v == Automatic ? null : v)" /></div>)
+                    @Row(Icon<Icons.Tag>(), "Section", "Where a result belongs, such as a category or year.",
+                         _edit.SectionFields != null, FieldChoice(PlaceFields, () => _edit.SectionFields, v => _edit.SectionFields = v, _effective?.SectionFields))
+                    @Row(Icon<Icons.Paragraph>(), "Snippet", "The text the judge reads, and the answer is written from.",
+                         _edit.SnippetFields != null, FieldChoice(TextFields, () => _edit.SnippetFields, v => _edit.SnippetFields = v, _effective?.SnippetFields))
+                }
             </tbody>
         </Table>
 
-        <Table AriaLabel="Thresholds" Class="soa-table">
+        <Table AriaLabel="When to offer" Class="soa-table">
             @Head("When to offer")
             <tbody>
-                @foreach (var t in ThresholdParams) { @NumberRow(t) }
+                <TableRow>
+                    <TableCell Class="soa-cell">
+                        <span class="soa-help">On each pause the judge scores what is typed from 0, a lookup, to 1, a question.</span>
+                        @Scale()
+                    </TableCell>
+                </TableRow>
+                @ThresholdRow(Icon<Icons.ClickButton>(), "Answer offer", "A full offer to answer. Enter asks.",
+                    t => t.Strong, (t, v) => t.Strong = v, Defaults.Strong,
+                    t => t.StrongHide, (t, v) => t.StrongHide = v, Defaults.StrongHide)
+                @ThresholdRow(Icon<Icons.CommentChatMessage>(), "Invitation", "A quieter \"Ask about this\".",
+                    t => t.Invite, (t, v) => t.Invite = v, Defaults.Invite,
+                    t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide)
             </tbody>
         </Table>
     </div>
@@ -163,34 +180,125 @@
     private static readonly IEnumerable<SelectField.SelectOption> KindOptions =
         [new("Documentation, help and reference", SearchOrAskRecipes.Documentation)];
 
-    // Times and costs measured on the docs with eight sources (Notes/search-or-ask-server.md).
+    // First-word times measured on the docs with eight sources (Notes/search-or-ask-server.md).
     private IEnumerable<SelectField.SelectOption> AnswerOptions =>
     [
-        new($"Best quality: {ModelName(ModelOptions.AnswerModel)}, first words after 3 to 5 s, about 2 cents", SearchOrAskSettings.BestAnswers),
-        new($"Fast: {ModelName(ModelOptions.FastAnswerModel)}, first words after about 1 s, about half a cent", SearchOrAskSettings.FastAnswers),
+        new($"Best quality ({ModelName(ModelOptions.AnswerModel)}), first words in 3 to 5 s", SearchOrAskSettings.BestAnswers),
+        new($"Fast ({ModelName(ModelOptions.FastAnswerModel)}), first words in about 1 s", SearchOrAskSettings.FastAnswers),
     ];
 
     /// <summary>"anthropic/claude-sonnet-5.5" as "claude-sonnet-5.5": the provider adds nothing here.</summary>
     private static string ModelName(string model) => model[(model.IndexOf('/') + 1)..];
 
-    private sealed record NumberParam(string Key, string Label, string Help, double Default,
-        Func<SearchOrAskThresholds, double> Get, Action<SearchOrAskThresholds, double> Set);
-
-    private static readonly SearchOrAskThresholds Defaults = new();
-
     // The defaults were measured on the docs set (Notes/search-or-ask.md): no lookup there scored
     // above 0.22, and the lowest question that was not missed 0.47.
-    private static readonly NumberParam[] ThresholdParams =
-    [
-        new("strong", "Offer an answer", "The score at which the offer to answer is shown in full.",
-            Defaults.Strong, t => t.Strong, (t, v) => t.Strong = v),
-        new("strongHide", "Keep the offer", "Once shown, the offer stays until the score falls below this, so it does not blink while the visitor types.",
-            Defaults.StrongHide, t => t.StrongHide, (t, v) => t.StrongHide = v),
-        new("invite", "Invite to ask", "The score at which a quieter invitation is shown.",
-            Defaults.Invite, t => t.Invite, (t, v) => t.Invite = v),
-        new("inviteHide", "Keep the invitation", "Once shown, the invitation stays until the score falls below this.",
-            Defaults.InviteHide, t => t.InviteHide, (t, v) => t.InviteHide = v),
-    ];
+    private static readonly SearchOrAskThresholds Defaults = new();
+
+    private static RenderFragment<int> Icon<T>() where T : IComponent => size => builder =>
+    {
+        builder.OpenComponent<T>(0);
+        builder.AddAttribute(1, "Size", size);
+        builder.CloseComponent();
+    };
+
+    // ── Fields: chosen from the dataset's own, never typed ────────────────────────────────
+
+    private const string Automatic = "";
+
+    /// <summary>The dataset's text fields, searchable ones first by weight: what a title or a
+    /// snippet can be read from.</summary>
+    private List<string> TextFields => (Ctx.SavedFields ?? [])
+        .Where(f => f.FieldType == "String")
+        .OrderByDescending(f => f.Searchable == true).ThenByDescending(f => f.Weight ?? 0).ThenBy(f => f.FieldName)
+        .Select(f => f.FieldName).ToList();
+
+    /// <summary>What can place a result: text and numbers (a category, a year).</summary>
+    private List<string> PlaceFields => (Ctx.SavedFields ?? [])
+        .Where(f => f.FieldType is "String" or "Number")
+        .OrderBy(f => f.FieldName).Select(f => f.FieldName).ToList();
+
+    private IEnumerable<SelectField.SelectOption> TitleOptions =>
+        new[] { new SelectField.SelectOption($"Automatic ({AutoTitle})", Automatic) }
+            .Concat(TextFields.Select(f => new SelectField.SelectOption(f, f)));
+
+    /// <summary>The title the server picks when none is chosen, read with no title set.</summary>
+    private string AutoTitle
+    {
+        get
+        {
+            var engine = Ctx.FindEngine();
+            return SearchOrAskService.Fields(new SearchOrAskSettings(), engine?.DocumentFields == null ? null : engine.GetFieldList())
+                .TitleField ?? "none";
+        }
+    }
+
+    /// <summary>A field per checkbox. Untouched, the boxes show what the server picks on its own
+    /// (<paramref name="automatic"/>); the first click makes the choice the dataset's, and
+    /// "Automatic" hands it back.</summary>
+    private RenderFragment FieldChoice(List<string> fields, Func<List<string>?> get, Action<List<string>?> set,
+        IReadOnlyList<string>? automatic) => __builder =>
+    {
+        var chosen = get();
+        var shown = chosen ?? automatic?.ToList() ?? [];
+        @foreach (var f in fields)
+        {
+            var name = f;
+            <Checkbox Label="@name" Checked="@shown.Contains(name)"
+                      CheckedChanged="@(on => set(on ? [.. shown.Where(x => x != name), name] : [.. shown.Where(x => x != name)]))" />
+        }
+        @if (chosen != null)
+        {
+            <Button Variant="ghost" Size="micro" @onclick="() => set(null)">Automatic</Button>
+        }
+    };
+
+    // ── When to offer: scores from 0 to 1 ─────────────────────────────────────────────────
+
+    /// <summary>The scale the thresholds cut: lookups at 0, questions at 1, and where each offer
+    /// starts. Redrawn as the sliders move.</summary>
+    private RenderFragment Scale() => __builder =>
+    {
+        var t = _edit.Thresholds;
+        double invite = Math.Clamp(t.Invite, 0, 1), strong = Math.Clamp(Math.Max(t.Strong, t.Invite), 0, 1);
+        <div class="soa-scale" aria-hidden="true">
+            <div class="soa-scale-bar">
+                <span class="soa-scale-none" style="@($"width:{Pct(invite)}")"></span>
+                <span class="soa-scale-invite" style="@($"width:{Pct(strong - invite)}")"></span>
+                <span class="soa-scale-strong" style="@($"width:{Pct(1 - strong)}")"></span>
+            </div>
+            <div class="soa-scale-ticks">
+                <span>0 · lookup</span>
+                <span class="soa-scale-mark" style="@($"left:{Pct(invite)}")">@Two(invite)</span>
+                <span class="soa-scale-mark" style="@($"left:{Pct(strong)}")">@Two(strong)</span>
+                <span>question · 1</span>
+            </div>
+        </div>
+    };
+
+    private static string Pct(double fraction) => (fraction * 100).ToString("0.##", CultureInfo.InvariantCulture) + "%";
+    private static string Two(double v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+
+    /// <summary>One offer's pair: the score it shows from, and the score it is kept down to once
+    /// shown, each a slider from 0 to 1 in steps of 0.05.</summary>
+    private RenderFragment ThresholdRow(RenderFragment<int> icon, string label, string help,
+        Func<SearchOrAskThresholds, double> show, Action<SearchOrAskThresholds, double> setShow, double showDefault,
+        Func<SearchOrAskThresholds, double> keep, Action<SearchOrAskThresholds, double> setKeep, double keepDefault) => __builder =>
+    {
+        var t = _edit.Thresholds;
+        @Row(icon, label, help, show(t) != showDefault || keep(t) != keepDefault,
+            @<div class="soa-thresholds">
+                <div class="soa-threshold">
+                    <span class="soa-threshold-label">Show from</span>
+                    <Slider Min="0" Max="1" Step="0.05" Value="@show(t)" ValueChanged="@(v => setShow(_edit.Thresholds, Math.Round(v, 2)))" AriaLabel="@($"{label}: show from")" Class="soa-slider" />
+                    <span class="soa-threshold-value">@Two(show(t))</span>
+                </div>
+                <div class="soa-threshold">
+                    <span class="soa-threshold-label">Keep down to</span>
+                    <Slider Min="0" Max="1" Step="0.05" Value="@keep(t)" ValueChanged="@(v => setKeep(_edit.Thresholds, Math.Round(v, 2)))" AriaLabel="@($"{label}: keep down to")" Class="soa-slider" />
+                    <span class="soa-threshold-value">@Two(keep(t))</span>
+                </div>
+            </div>)
+    };
 
     private bool _loaded;
     private SearchOrAskSettings _edit = new();
@@ -200,12 +308,6 @@
     private int _callsToday;
     private string? _budgetText;
     private string? _budgetError;
-    // The field names as typed: one name, or a comma list. Empty is "use the default".
-    private string? TitleText { get => _edit.TitleField; set => _edit.TitleField = Blank(value); }
-    private string? SectionText { get => List(_edit.SectionFields); set => _edit.SectionFields = Fields(value); }
-    private string? SnippetText { get => List(_edit.SnippetFields); set => _edit.SnippetFields = Fields(value); }
-    private readonly Dictionary<string, string?> _numberText = new();
-    private readonly Dictionary<string, string> _numberErrors = new();
     private string? _error;
     private bool _saving;
 
@@ -217,6 +319,7 @@
     private void Load()
     {
         _loaded = true;
+        Ctx.EnsureFieldsLoaded();
         var saved = Store.Load(Ctx.TeamId, Ctx.Name);
         _savedJson = Json(saved ?? new SearchOrAskSettings());
         Reset(saved);
@@ -228,13 +331,6 @@
         _edit = JsonSerializer.Deserialize<SearchOrAskSettings>(Json(from ?? new SearchOrAskSettings()), JsonOpts)!;
         _budgetText = from == null || from.DailyCallBudget == Defaults2.DailyCallBudget ? null : from.DailyCallBudget.ToString(CultureInfo.InvariantCulture);
         _budgetError = null;
-        _numberText.Clear();
-        _numberErrors.Clear();
-        foreach (var p in ThresholdParams)
-        {
-            var v = p.Get(_edit.Thresholds);
-            _numberText[p.Key] = v == p.Default ? null : v.ToString("0.00", CultureInfo.InvariantCulture);
-        }
         _error = null;
         Refresh();
     }
@@ -252,15 +348,8 @@
     }
 
     private static string Json(SearchOrAskSettings s) => JsonSerializer.Serialize(s, JsonOpts);
-    private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _numberErrors.Count > 0 || _budgetError != null);
+    private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _budgetError != null);
 
-    private static string? Blank(string? v) => string.IsNullOrWhiteSpace(v) ? null : v.Trim();
-    private static string List(IEnumerable<string>? names) => names == null ? "" : string.Join(", ", names);
-    private static List<string>? Fields(string? text)
-    {
-        var names = (text ?? "").Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries).ToList();
-        return names.Count == 0 ? null : names;
-    }
 
     private static RenderFragment Head(string group) => __builder =>
     {
@@ -269,41 +358,24 @@
         </thead>
     };
 
-    private static RenderFragment Row(string label, string help, bool set, RenderFragment control) => __builder =>
+    /// <summary>A setting: its icon, its name in bold when changed from the default, one line of
+    /// help, and the control under them.</summary>
+    private static RenderFragment Row(RenderFragment<int> icon, string label, string help, bool set, RenderFragment control) => __builder =>
     {
         <TableRow Class="@(set ? "soa-row--set" : null)">
             <TableCell Class="soa-cell">
-                <span class="soa-label">@label</span>
-                <span class="soa-help">@help</span>
-                <div class="soa-control">@control</div>
+                <div class="soa-row">
+                    <span class="soa-icon">@icon(16)</span>
+                    <div class="soa-row-body">
+                        <span class="soa-label">@label</span>
+                        <span class="soa-help">@help</span>
+                        <div class="soa-control">@control</div>
+                    </div>
+                </div>
             </TableCell>
         </TableRow>
     };
 
-    private RenderFragment NumberRow(NumberParam p) => __builder =>
-    {
-        var text = _numberText.GetValueOrDefault(p.Key);
-        @Row(p.Label, p.Help, text != null,
-             @<div class="soa-number">
-                 <InputField Value="@text" ValueChanged="@(v => SetNumber(p, v))" ValueExpression="@(() => text)"
-                             Error="@_numberErrors.GetValueOrDefault(p.Key)" inputmode="decimal"
-                             placeholder="@p.Default.ToString("0.00", CultureInfo.InvariantCulture)" />
-             </div>)
-    };
-
-    private void SetNumber(NumberParam p, string? text)
-    {
-        text = text?.Trim();
-        _numberText[p.Key] = string.IsNullOrEmpty(text) ? null : text;
-        _numberErrors.Remove(p.Key);
-        if (string.IsNullOrEmpty(text)) { p.Set(_edit.Thresholds, p.Default); return; }
-        if (!double.TryParse(text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) || v < 0 || v > 1)
-        {
-            _numberErrors[p.Key] = "A number from 0 to 1";
-            return;
-        }
-        p.Set(_edit.Thresholds, v);
-    }
 
     private void SetBudget()
     {
@@ -318,7 +390,7 @@
     {
         if (_saving) return;
         _error = null;
-        if (_numberErrors.Count > 0 || _budgetError != null) { _error = "Fix the values marked above, or clear them to use the default."; return; }
+        if (_budgetError != null) { _error = "Fix the values marked above, or clear them to use the default."; return; }
         if (_edit.Validate() is { } invalid) { _error = invalid; return; }
         var toSave = JsonSerializer.Deserialize<SearchOrAskSettings>(Json(_edit), JsonOpts)!;
         _saving = true;
