@@ -15,7 +15,9 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>Streams an answer from the named model as text deltas. The provider's cost, when
         /// it reports one, is left in <paramref name="usage"/> once the stream ends.</summary>
-        IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, AnswerUsage usage, CancellationToken ct);
+        /// <paramref name="history"/> is the conversation so far, oldest first, sent before the question.
+        IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, IReadOnlyList<AskTurn> history,
+            AnswerUsage usage, CancellationToken ct);
     }
 
     /// <summary>A judgement: the probability each question came back with (absent when the judge
@@ -91,8 +93,8 @@ namespace IndxServer.Services.SearchOrAsk
             return new JudgeAnswer(probabilities, cost);
         }
 
-        public async IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, AnswerUsage usage,
-            [EnumeratorCancellation] CancellationToken ct)
+        public async IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, IReadOnlyList<AskTurn> history,
+            AnswerUsage usage, [EnumeratorCancellation] CancellationToken ct)
         {
             var body = new JsonObject
             {
@@ -102,9 +104,14 @@ namespace IndxServer.Services.SearchOrAsk
                 // The last chunk then carries the usage, with the cost in credits (USD): what the
                 // statistics show an owner the answers cost.
                 ["usage"] = new JsonObject { ["include"] = true },
-                ["messages"] = new JsonArray(
+                ["messages"] = new JsonArray([
                     new JsonObject { ["role"] = "system", ["content"] = system },
-                    new JsonObject { ["role"] = "user", ["content"] = user }),
+                    .. history.SelectMany(t => new JsonNode[]
+                    {
+                        new JsonObject { ["role"] = "user", ["content"] = t.Question },
+                        new JsonObject { ["role"] = "assistant", ["content"] = t.Answer },
+                    }),
+                    new JsonObject { ["role"] = "user", ["content"] = user }]),
             };
             using var request = new HttpRequestMessage(HttpMethod.Post, options.AnswerEndpoint)
             {

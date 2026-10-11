@@ -29,7 +29,8 @@ namespace IndxServer.Controllers
             long Answered, long NothingFound, long Failed, long Stopped, long Unanswered, double? UnansweredRate,
             long SourcesOpened, double? SourcesOpenedPerAnswer, double Cost, long? MedianFirstTextMs,
             AskQuestionStat[] Questions, AskOfferStat[] Offered);
-        public sealed record AskRequest(string? Question);
+        /// <summary>A question, and for a follow-up the conversation so far (the last three turns are used).</summary>
+        public sealed record AskRequest(string? Question, AskTurn[]? History = null);
 
         /// <summary>
         /// What the dataset sets, what it runs with (the site description and fields after defaults),
@@ -143,7 +144,7 @@ namespace IndxServer.Controllers
             try
             {
                 await service.AskAsync(ctx.OwnerKey, dataSetName, engine, question, Send, HttpContext.RequestAborted,
-                    askId: askId, origin: Origin());
+                    askId: askId, origin: Origin(), history: request!.History);
             }
             catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
             {

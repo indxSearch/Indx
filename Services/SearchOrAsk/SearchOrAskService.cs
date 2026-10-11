@@ -30,6 +30,9 @@ namespace IndxServer.Services.SearchOrAsk
     /// <summary>One source handed to the answer model, as the visitor's client sees it.</summary>
     public sealed record AskSource(int N, long DocumentKey, string Title);
 
+    /// <summary>An earlier question and its answer in the same conversation, for a follow-up.</summary>
+    public sealed record AskTurn(string Question, string Answer);
+
     /// <summary>Where a judgement or an ask came from, for the statistics, as a search names it:
     /// the page's search behind it (<c>?queryId=</c>), its session, its surface, an optional
     /// subject, and whether it counts. None (null) records nothing: the console's tester, which
@@ -342,8 +345,9 @@ namespace IndxServer.Services.SearchOrAsk
         /// </summary>
         public async Task AskAsync(string teamId, string dataSetName, IServerSearchEngine engine, string question,
             Func<string, object, Task> send, CancellationToken ct, SearchOrAskSettings? trial = null,
-            string? askId = null, SearchOrAskOrigin? origin = null)
+            string? askId = null, SearchOrAskOrigin? origin = null, IReadOnlyList<AskTurn>? history = null)
         {
+            history = Conversation(history);
             var started = Stopwatch.GetTimestamp();
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             var settings = trial ?? Settings(teamId, dataSetName);
@@ -359,11 +363,15 @@ namespace IndxServer.Services.SearchOrAsk
                 var typedSearch = Search(engine, dataSetName, teamId, question, fields, SourcesForAnswer, truncate: false);
                 var typed = typedSearch.Top;
                 var keywords = KeywordsOf(question) is { } k ? Search(engine, dataSetName, teamId, k, fields, SourcesForAnswer, truncate: false).Top : [];
-                for (int i = 0; merged.Count < SourcesForAnswer && (i < typed.Count || i < keywords.Count); i++)
-                {
-                    if (i < keywords.Count && !merged.Contains(keywords[i].Key)) merged.Add(keywords[i].Key);
-                    if (merged.Count < SourcesForAnswer && i < typed.Count && !merged.Contains(typed[i].Key)) merged.Add(typed[i].Key);
-                }
+                // A follow-up ("and over HTTP?") names too little to search on alone: the previous
+                // question's words and this one's together find what the conversation is about.
+                var context = history.Count > 0
+                    ? Search(engine, dataSetName, teamId, ContextSearch(history[^1].Question, question), fields, SourcesForAnswer, truncate: false).Top
+                    : [];
+                var lists = new[] { context, keywords, typed };
+                for (int i = 0; merged.Count < SourcesForAnswer && lists.Any(l => i < l.Count); i++)
+                    foreach (var list in lists)
+                        if (merged.Count < SourcesForAnswer && i < list.Count && !merged.Contains(list[i].Key)) merged.Add(list[i].Key);
                 if (merged.Count == 0)
                 {
                     outcome = "nothingFound";
@@ -404,7 +412,7 @@ namespace IndxServer.Services.SearchOrAsk
                 try
                 {
                     await foreach (var delta in _models.AnswerAsync(model, SearchOrAskRecipes.AnswerSystemPrompt(SiteDescription(teamId, dataSetName, settings)),
-                                       user.ToString(), usage, ct))
+                                       user.ToString(), history, usage, ct))
                     {
                         firstText ??= Ms();
                         await send("text", new { delta });
@@ -438,6 +446,30 @@ namespace IndxServer.Services.SearchOrAsk
                         DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted));
                 }
             }
+        }
+
+        public const int MaxHistoryTurns = 3;
+        public const int MaxHistoryAnswer = 4000;
+
+        /// <summary>The conversation as the models get it: the last three turns, blank ones dropped,
+        /// each answer cut to 4,000 characters and stripped of its [n] marks, which named the
+        /// sources of that turn and would point at the wrong records in this one.</summary>
+        public static IReadOnlyList<AskTurn> Conversation(IReadOnlyList<AskTurn>? history) =>
+            (history ?? [])
+                .Where(t => !string.IsNullOrWhiteSpace(t.Question) && !string.IsNullOrWhiteSpace(t.Answer))
+                .TakeLast(MaxHistoryTurns)
+                .Select(t => new AskTurn(Clip(t.Question.Trim(), MaxQuestion),
+                    Clip(Regex.Replace(t.Answer, @"\s*\[\d+\]", "").Trim(), MaxHistoryAnswer)))
+                .ToList();
+
+        private static string Clip(string s, int max) => s.Length <= max ? s : s[..max];
+
+        /// <summary>The search behind a follow-up: the words of the question before it and of this one,
+        /// within what a search may be sent.</summary>
+        public static string ContextSearch(string previous, string question)
+        {
+            var text = $"{KeywordsOf(previous) ?? previous} {KeywordsOf(question) ?? question}".Trim();
+            return text.Length <= MaxText ? text : text[..MaxText];
         }
 
         private static double? Sum(double? a, double? b) => a == null && b == null ? null : (a ?? 0) + (b ?? 0);
