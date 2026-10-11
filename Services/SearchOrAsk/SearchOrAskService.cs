@@ -188,21 +188,32 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>Runs the search the visitor's client already ran, here, so the judge sees the
         /// same results without the client sending results it could forge. Through the manager
         /// directly: not a visitor's search, so it never reaches the statistics.</summary>
+        /// <remarks>An ask passes <paramref name="truncate"/> false: a whole question has many words,
+        /// coverage cuts the list to the records that hold most of them, and the record that answers
+        /// can be ranked below that cut ("is there a limit on how many documents I can index for free"
+        /// kept one record on the docs, and not Licensing). The answer model reads the sources and
+        /// decides what is relevant, so it gets the best ranked eight either way.</remarks>
         private static SearchSummary Search(IServerSearchEngine engine, string dataSetName, string teamId, string text,
-            SearchOrAskFields fields, int top = ResultsForJudge)
+            SearchOrAskFields fields, int top = ResultsForJudge, bool truncate = true)
         {
             var result = IndxServerInternalApi.Manager.Search(new QueryProxy
             {
                 Text = text,
                 MaxNumberOfRecordsToReturn = 10,
                 EnableCoverage = true,
+                CoverageSetup = truncate ? null : new CoverageSetupProxy { Truncate = false },
             }, dataSetName, teamId);
             var records = result.Records ?? [];
-            var hits = records.Take(top).Select(r => Describe(engine, r.DocumentKey, fields, SnippetChars)).ToList();
+            var hits = records.Take(top).Select(r => Describe(engine, r.DocumentKey, fields, SnippetChars, forAnswer: false)).ToList();
             return new SearchSummary(records.Length, result.TruncationIndex >= 0, hits);
         }
 
-        private static (long, string, string, string) Describe(IServerSearchEngine engine, long key, SearchOrAskFields fields, int snippetChars)
+        /// <summary>A record as the models read it: key, title, sections and text. For the judge the
+        /// text is one line of all snippet fields, cut at <paramref name="chars"/>. For an answer each
+        /// field keeps its line breaks and gets <paramref name="chars"/> of its own, separated by a
+        /// blank line: a page's code (its own field on the docs) must arrive whole and formatted, not
+        /// flattened, and not crowded out by the prose before it.</summary>
+        private static (long, string, string, string) Describe(IServerSearchEngine engine, long key, SearchOrAskFields fields, int chars, bool forAnswer)
         {
             JsonNode? doc = null;
             try { doc = JsonNode.Parse(engine.GetJsonDataOfKey(key) ?? ""); }
@@ -214,8 +225,10 @@ namespace IndxServer.Services.SearchOrAsk
                     JsonNode v => v.ToString(),
                     null => "",
                 }).Where(s => s.Length > 0));
-            var snippet = Read(fields.SnippetFields, " ").ReplaceLineEndings(" ");
-            if (snippet.Length > snippetChars) snippet = snippet[..snippetChars] + "…";
+            string Cut(string s) => s.Length > chars ? s[..chars] + "…" : s;
+            var snippet = forAnswer
+                ? string.Join("\n\n", fields.SnippetFields.Select(f => Cut(Read([f], " ").Trim())).Where(s => s.Length > 0))
+                : Cut(Read(fields.SnippetFields, " ").ReplaceLineEndings(" "));
             return (key, fields.TitleField == null ? "" : Read([fields.TitleField], ""), Read(fields.SectionFields, "; "), snippet);
         }
 
@@ -281,8 +294,12 @@ namespace IndxServer.Services.SearchOrAsk
         {
             "how", "what", "whats", "why", "where", "which", "who", "when", "is", "are", "does", "do", "did", "can",
             "could", "should", "would", "will", "the", "a", "an", "about", "of", "to", "i", "me", "my", "it", "there",
+            // Filler that a whole question carries and a lookup does not: "how many documents" ranked
+            // pages about indexing above the one about the document limit.
+            "many", "much", "on", "in", "for", "with", "and", "or", "be", "this", "that", "any", "some",
             "hvordan", "hva", "hvorfor", "hvor", "hvilken", "hvilke", "hvilket", "hvem", "når", "kan", "skal", "må",
-            "bør", "er", "går", "det", "jeg", "den", "en", "et", "om", "for", "på", "til", "seg", "man",
+            "bør", "er", "går", "det", "jeg", "den", "en", "et", "om", "på", "til", "seg", "man",
+            "mange", "mye", "noen", "med", "og", "eller", "av", "min", "mitt", "mine",
         };
 
         /// <summary>The question without its question words, which match titles and push the record
@@ -309,8 +326,8 @@ namespace IndxServer.Services.SearchOrAsk
             var settings = trial ?? Settings(teamId, dataSetName);
             var fields = Fields(settings, engine.GetFieldList());
 
-            var typed = Search(engine, dataSetName, teamId, question, fields, SourcesForAnswer).Top;
-            var keywords = KeywordsOf(question) is { } k ? Search(engine, dataSetName, teamId, k, fields, SourcesForAnswer).Top : [];
+            var typed = Search(engine, dataSetName, teamId, question, fields, SourcesForAnswer, truncate: false).Top;
+            var keywords = KeywordsOf(question) is { } k ? Search(engine, dataSetName, teamId, k, fields, SourcesForAnswer, truncate: false).Top : [];
             var merged = new List<long>();
             for (int i = 0; merged.Count < SourcesForAnswer && (i < typed.Count || i < keywords.Count); i++)
             {
@@ -324,7 +341,7 @@ namespace IndxServer.Services.SearchOrAsk
             }
 
             // The sources in full (up to a ceiling), not the judge's snippets: the answer is written from them.
-            var sources = merged.Select((key, i) => (N: i + 1, Doc: Describe(engine, key, fields, SourceChars))).ToList();
+            var sources = merged.Select((key, i) => (N: i + 1, Doc: Describe(engine, key, fields, SourceChars, forAnswer: true))).ToList();
             await send("sources", sources.Select(s => new AskSource(s.N, s.Doc.Item1, s.Doc.Item2)).ToArray());
 
             var user = new StringBuilder();
