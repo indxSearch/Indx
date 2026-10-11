@@ -58,11 +58,9 @@ namespace IndxServer.Services.SearchOrAsk
             if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget))
                 return new FiltersOutcome(IntentStatus.BudgetSpent, RetryAfterSeconds: SecondsToUtcMidnight());
 
-            var system = FilterPrompt(SiteDescription(teamId, dataSetName, settings), settings.FilterNotes, fields);
             try
             {
-                var (content, _) = await _models.CompleteAsync(_options.FilterModel, system, text, ct);
-                var (filters, left) = ParseFilters(content, fields);
+                var (filters, left, _) = await SuggestFiltersAsync(teamId, dataSetName, settings, fields, text, ct);
                 return new FiltersOutcome(IntentStatus.Ok, new FiltersResult(filters, left, Ms()));
             }
             catch (SearchOrAskModelException ex)
@@ -74,6 +72,16 @@ namespace IndxServer.Services.SearchOrAsk
             {
                 return new FiltersOutcome(IntentStatus.Ok, new FiltersResult([], text, Ms(), "failed:unreachable"));
             }
+        }
+
+        /// <summary>The filter call itself, without the limits (an ask has passed them already).</summary>
+        private async Task<(FilterSuggestion[] Filters, string Text, double? Cost)> SuggestFiltersAsync(string teamId, string dataSetName,
+            SearchOrAskSettings settings, List<FilterField> fields, string text, CancellationToken ct)
+        {
+            var system = FilterPrompt(SiteDescription(teamId, dataSetName, settings), settings.FilterNotes, fields);
+            var (content, cost) = await _models.CompleteAsync(_options.FilterModel, system, text, ct);
+            var (filters, left) = ParseFilters(content, fields);
+            return (filters, left, cost);
         }
 
         /// <summary>The fields a filter may use: Filterable ones. A text field also needs to be

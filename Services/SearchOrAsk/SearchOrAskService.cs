@@ -418,6 +418,32 @@ namespace IndxServer.Services.SearchOrAsk
             Task<JudgeAnswer?>? answerability = null;
             try
             {
+                // A catalogue's description is answered with what it finds; a question about one item
+                // (no filter asked for) goes on to the ordinary answer below.
+                if (settings.Kind == SearchOrAskRecipes.Catalogue && history.Count == 0)
+                {
+                    CatalogueOutcome? catalogue;
+                    try
+                    {
+                        catalogue = await CatalogueAnswerAsync(teamId, dataSetName, engine, settings, fields, question, model, askId, send, started, ct);
+                    }
+                    catch (Exception ex) when (ex is SearchOrAskModelException or HttpRequestException)
+                    {
+                        outcome = "failed";
+                        _logger.LogWarning("Search or ask catalogue answer failed for {Team}/{Dataset}: {Error}", teamId, dataSetName, ex.Message);
+                        await send("error", new { code = ex is SearchOrAskModelException { Status: 429 } ? "upstreamBusy" : "failed", message = "The answer could not be written." });
+                        return;
+                    }
+                    if (catalogue != null)
+                    {
+                        outcome = catalogue.Outcome;
+                        merged = catalogue.Keys;
+                        firstText = catalogue.FirstTextMs;
+                        usage.Cost = catalogue.Cost;
+                        return;
+                    }
+                }
+
                 var typedSearch = Search(engine, dataSetName, teamId, question, fields, SourcesForAnswer, truncate: false);
                 var typed = typedSearch.Top;
                 var keywords = KeywordsOf(question) is { } k ? Search(engine, dataSetName, teamId, k, fields, SourcesForAnswer, truncate: false).Top : [];
