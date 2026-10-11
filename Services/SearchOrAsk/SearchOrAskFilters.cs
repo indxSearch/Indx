@@ -14,8 +14,13 @@ namespace IndxServer.Services.SearchOrAsk
     /// either end open. Field and value are the dataset's own, checked against what it holds.</summary>
     public sealed record FilterSuggestion(string Field, string? Value, double? Min, double? Max);
 
-    /// <summary>The filters, and the words no filter covers (to search for, or empty).</summary>
-    public sealed record FiltersResult(FilterSuggestion[] Filters, string Text, long Ms, string? Reason = null);
+    /// <summary>An order the description asked for ("størst", "flest elever"): a Sortable field.</summary>
+    public sealed record SortSuggestion(string Field, bool Descending);
+
+    /// <summary>The filters, the words no filter covers (to search for, or empty), and an order if one
+    /// was asked for.</summary>
+    public sealed record FiltersResult(FilterSuggestion[] Filters, string Text, long Ms, string? Reason = null,
+        SortSuggestion? Sort = null);
 
     public sealed record FiltersOutcome(IntentStatus Status, FiltersResult? Result = null, int RetryAfterSeconds = 0);
 
@@ -35,9 +40,15 @@ namespace IndxServer.Services.SearchOrAsk
 
         private sealed record FilterField(string Name, string Type, List<string>? Values, double? Min, double? Max);
 
-        // (team\0dataset) -> the fields and when they were read. Values change with the data, not per
-        // keystroke: read again after ten minutes.
-        private readonly ConcurrentDictionary<string, (List<FilterField> Fields, long At)> _filterFields = new();
+        /// <summary>What a description can become: the filter fields, and the fields it can sort by.</summary>
+        private sealed record FilterSchema(List<FilterField> Fields, List<string> Sortable)
+        {
+            public int Count => Fields.Count;
+        }
+
+        // (team\0dataset) -> the schema, the field roles it was read with, and when. Values change with
+        // the data, not per keystroke: read again after ten minutes, or at once when a role changed.
+        private readonly ConcurrentDictionary<string, (FilterSchema Schema, string Roles, long At)> _filterFields = new();
 
         public async Task<FiltersOutcome> FiltersAsync(string teamId, string dataSetName, IServerSearchEngine engine,
             string text, string clientAddress, CancellationToken ct, SearchOrAskSettings? trial = null)
@@ -60,8 +71,8 @@ namespace IndxServer.Services.SearchOrAsk
 
             try
             {
-                var (filters, left, _) = await SuggestFiltersAsync(teamId, dataSetName, settings, fields, text, ct);
-                return new FiltersOutcome(IntentStatus.Ok, new FiltersResult(filters, left, Ms()));
+                var (filters, left, sort, _) = await SuggestFiltersAsync(teamId, dataSetName, settings, fields, text, ct);
+                return new FiltersOutcome(IntentStatus.Ok, new FiltersResult(filters, left, Ms(), Sort: sort));
             }
             catch (SearchOrAskModelException ex)
             {
@@ -75,25 +86,27 @@ namespace IndxServer.Services.SearchOrAsk
         }
 
         /// <summary>The filter call itself, without the limits (an ask has passed them already).</summary>
-        private async Task<(FilterSuggestion[] Filters, string Text, double? Cost)> SuggestFiltersAsync(string teamId, string dataSetName,
-            SearchOrAskSettings settings, List<FilterField> fields, string text, CancellationToken ct)
+        private async Task<(FilterSuggestion[] Filters, string Text, SortSuggestion? Sort, double? Cost)> SuggestFiltersAsync(string teamId,
+            string dataSetName, SearchOrAskSettings settings, FilterSchema schema, string text, CancellationToken ct)
         {
-            var system = FilterPrompt(SiteDescription(teamId, dataSetName, settings), settings.FilterNotes, fields);
+            var system = FilterPrompt(SiteDescription(teamId, dataSetName, settings), settings.FilterNotes, schema);
             var (content, cost) = await _models.CompleteAsync(_options.FilterModel, system, text, ct);
-            var (filters, left) = ParseFilters(content, fields);
-            return (filters, left, cost);
+            var (filters, left, sort) = ParseFilters(content, schema);
+            return (filters, left, sort, cost);
         }
 
         /// <summary>The fields a filter may use: Filterable ones. A text field also needs to be
         /// Facetable, since its values come from the facets of an empty search; a number's range
         /// comes from them when it is facetable too.</summary>
-        private List<FilterField> FilterFields(string teamId, string dataSetName, IServerSearchEngine engine)
+        private FilterSchema FilterFields(string teamId, string dataSetName, IServerSearchEngine engine)
         {
             var key = $"{teamId}\0{dataSetName}";
-            if (_filterFields.TryGetValue(key, out var cached) && Environment.TickCount64 - cached.At < 600_000)
-                return cached.Fields;
+            var all = engine.GetFieldList();
+            var roles = string.Join('|', all.Select(f => $"{f.Name}:{(f.Filterable ? 'f' : '-')}{(f.Facetable ? 'a' : '-')}{(f.Sortable ? 's' : '-')}"));
+            if (_filterFields.TryGetValue(key, out var cached) && cached.Roles == roles && Environment.TickCount64 - cached.At < 600_000)
+                return cached.Schema;
 
-            var list = engine.GetFieldList().Where(f => f.Filterable).ToList();
+            var list = all.Where(f => f.Filterable).ToList();
             Dictionary<string, KeyValuePair<string, int>[]>? facets = null;
             if (list.Any(f => f.Facetable))
             {
@@ -129,15 +142,17 @@ namespace IndxServer.Services.SearchOrAsk
                         break;
                 }
             }
-            _filterFields[key] = (fields, Environment.TickCount64);
-            return fields;
+            var schema = new FilterSchema(fields, all.Where(f => f.Sortable).Select(f => f.Name).ToList());
+            _filterFields[key] = (schema, roles, Environment.TickCount64);
+            return schema;
         }
 
         /// <summary>Forgets a dataset's filter fields, after its field configuration changed.</summary>
         public void FilterFieldsChanged(string teamId, string dataSetName) => _filterFields.TryRemove($"{teamId}\0{dataSetName}", out _);
 
-        private static string FilterPrompt(string site, string? notes, List<FilterField> fields)
+        private static string FilterPrompt(string site, string? notes, FilterSchema schema)
         {
+            var fields = schema.Fields;
             var sb = new StringBuilder();
             sb.AppendLine("You turn what a visitor typed into a search field into filters on a dataset.");
             sb.AppendLine($"The dataset: {site}");
@@ -150,6 +165,8 @@ namespace IndxServer.Services.SearchOrAsk
                 else if (f.Min != null) sb.Append($": from {f.Min.Value.ToString(CultureInfo.InvariantCulture)} to {f.Max!.Value.ToString(CultureInfo.InvariantCulture)}");
                 sb.AppendLine();
             }
+            if (schema.Sortable.Count > 0)
+                sb.AppendLine().AppendLine($"The fields a list can be sorted by: {string.Join(", ", schema.Sortable)}.");
             if (!string.IsNullOrWhiteSpace(notes)) sb.AppendLine().AppendLine(notes.Trim());
             sb.AppendLine("""
 
@@ -159,21 +176,24 @@ namespace IndxServer.Services.SearchOrAsk
                 said; leave out what they did not ask for. A word the notes about the fields explain is always a filter,
                 however many other things the visitor asked for, and never text. Whatever the visitor typed that no
                 filter covers goes in "text" as words to search for; leave it empty when the filters cover it all.
+                When the visitor asks for an order (the largest, the smallest, the most, sorted by), give "sort" with one
+                of the sortable fields; otherwise leave it out.
 
                 Answer with JSON only:
-                {"filters": [{"field": "<field>", "value": "<listed value, or true/false>"} | {"field": "<field>", "min": <number>, "max": <number>}], "text": "<words left, or empty>"}
+                {"filters": [{"field": "<field>", "value": "<listed value, or true/false>"} | {"field": "<field>", "min": <number>, "max": <number>}], "text": "<words left, or empty>", "sort": {"field": "<sortable field>", "descending": true}}
                 """);
             return sb.ToString();
         }
 
-        private static (FilterSuggestion[], string) ParseFilters(string content, List<FilterField> fields)
+        private static (FilterSuggestion[], string, SortSuggestion?) ParseFilters(string content, FilterSchema schema)
         {
+            var fields = schema.Fields;
             // Some models fence their JSON despite being asked for JSON only: read the object out.
             int start = content.IndexOf('{'), end = content.LastIndexOf('}');
-            if (start < 0 || end < start) return ([], "");
+            if (start < 0 || end < start) return ([], "", null);
             JsonNode? root;
             try { root = JsonNode.Parse(content[start..(end + 1)]); }
-            catch (JsonException) { return ([], ""); }
+            catch (JsonException) { return ([], "", null); }
 
             var filters = new List<FilterSuggestion>();
             foreach (var n in root?["filters"]?.AsArray() ?? [])
@@ -196,7 +216,10 @@ namespace IndxServer.Services.SearchOrAsk
                         break;
                 }
             }
-            return (filters.ToArray(), root?["text"]?.ToString()?.Trim() ?? "");
+            SortSuggestion? sort = null;
+            if (root?["sort"]?["field"]?.ToString() is { } sortField && schema.Sortable.Contains(sortField))
+                sort = new SortSuggestion(sortField, root["sort"]!["descending"] is JsonValue d && d.TryGetValue<bool>(out var desc) && desc);
+            return (filters.ToArray(), root?["text"]?.ToString()?.Trim() ?? "", sort);
         }
     }
 }

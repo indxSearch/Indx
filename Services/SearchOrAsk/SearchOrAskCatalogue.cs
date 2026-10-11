@@ -32,9 +32,10 @@ namespace IndxServer.Services.SearchOrAsk
             Func<string, object, Task> send, long started, CancellationToken ct)
         {
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-            var filterFields = FilterFields(teamId, dataSetName, engine);
-            if (filterFields.Count == 0) return null;
-            var (suggested, left, filterCost) = await SuggestFiltersAsync(teamId, dataSetName, settings, filterFields, question, ct);
+            var schema = FilterFields(teamId, dataSetName, engine);
+            if (schema.Count == 0) return null;
+            var filterFields = schema.Fields;
+            var (suggested, left, sort, filterCost) = await SuggestFiltersAsync(teamId, dataSetName, settings, schema, question, ct);
             if (suggested.Length == 0) return null;
 
             // The filters as the engine builds them; one it refuses is left out, never widened to all.
@@ -55,9 +56,12 @@ namespace IndxServer.Services.SearchOrAsk
                 MaxNumberOfRecordsToReturn = CatalogueFound,
                 EnableFacets = true,
                 EnableCoverage = left.Length > 0,
+                // An order asked for ("the largest") puts those first: the summary reads the first 25.
+                SortBy = sort?.Field ?? string.Empty,
+                SortAscending = sort is { Descending: false },
             }, dataSetName, teamId);
             var keys = (result.Records ?? []).Select(r => r.DocumentKey).ToList();
-            await send("filters", new { filters = used, text = left, found = keys.Count, more = keys.Count >= CatalogueFound });
+            await send("filters", new { filters = used, text = left, sort, found = keys.Count, more = keys.Count >= CatalogueFound });
             if (keys.Count == 0)
             {
                 await send("error", new { code = "nothingFound", message = "Nothing matches all of that. Try fewer conditions." });
@@ -73,6 +77,7 @@ namespace IndxServer.Services.SearchOrAsk
             var user = new StringBuilder();
             user.AppendLine($"The visitor typed: {question}");
             user.AppendLine($"Searched with: {string.Join("; ", used.Select(Describe))}{(left.Length > 0 ? $"; and the words \"{left}\"" : "")}");
+            if (sort != null) user.AppendLine($"Sorted by {sort.Field}, {(sort.Descending ? "largest" : "smallest")} first; the page's list below shows them in that order.");
             user.AppendLine(keys.Count >= CatalogueFound
                 ? $"Found: {CatalogueFound} or more; the summary below covers the first {CatalogueFound}."
                 : $"Found: {keys.Count}.");
