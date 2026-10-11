@@ -144,7 +144,9 @@ namespace IndxServer.Mcp
             [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
             [System.ComponentModel.Description("Dataset name.")] string dataset,
             [System.ComponentModel.Description("What to search for, in the user's own words. Matched against every searchable field; do not add field names, " +
-                         "operators or quotes, and do not stem or normalise the words yourself.")] string query,
+                         "operators or quotes, and do not stem or normalise the words yourself. Leave it EMPTY to list everything " +
+                         "the filters match: words here narrow the list to documents that contain them, so a word repeating what a " +
+                         "filter already says (\"school\" beside a school-type filter) only loses results.")] string query,
             [System.ComponentModel.Description("Constraints combined with AND. Each is {field, value} for an exact match or {field, min, max} for a numeric range. " +
                          "The field must be one describe_dataset lists as filterable, and the value should be one it reports; " +
                          "an unknown field is an error and an unseen value simply matches nothing.")] McpFilter[]? filters = null,
