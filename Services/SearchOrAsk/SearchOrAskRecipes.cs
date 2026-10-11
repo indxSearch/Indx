@@ -57,6 +57,8 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>The answer model's instructions. It may use the numbered sources and nothing
         /// else: an answer from its own knowledge is the one failure this feature cannot have.</summary>
+        public const string AnswerLanguageReminder = "Write the answer in the language of the question.";
+
         public static string AnswerSystemPrompt(string siteDescription) =>
             $"""
             You answer a visitor's question on a website. About the site: {siteDescription}

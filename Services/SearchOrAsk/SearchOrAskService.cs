@@ -335,6 +335,9 @@ namespace IndxServer.Services.SearchOrAsk
                 user.Append('\n').Append(doc.Item4).Append("\n\n");
             }
             user.Append("Question: ").Append(question);
+            // Said again last, next to the question: from the system prompt alone, a site description
+            // naming its readers' languages still won 1 time in 10 (11 Oct 2026); with this, 0 in 10.
+            user.Append("\n\n").Append(SearchOrAskRecipes.AnswerLanguageReminder);
 
             var model = _options.AnswerModelFor(settings.Answers);
             try
