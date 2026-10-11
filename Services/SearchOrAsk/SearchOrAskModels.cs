@@ -16,6 +16,10 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>Streams an answer from the named model as text deltas. The provider's cost, when
         /// it reports one, is left in <paramref name="usage"/> once the stream ends.</summary>
         /// <paramref name="history"/> is the conversation so far, oldest first, sent before the question.
+        /// <summary>One turn of a conversation with tools: the assistant's message (its content, or its
+        /// tool_calls) and the turn's cost.</summary>
+        Task<(JsonNode Message, double? Cost)> ChatAsync(string model, JsonArray messages, JsonArray tools, CancellationToken ct);
+
         /// <summary>One completion, not streamed: the reply's text and its cost.</summary>
         Task<(string Content, double? Cost)> CompleteAsync(string model, string system, string user, CancellationToken ct);
 
@@ -94,6 +98,30 @@ namespace IndxServer.Services.SearchOrAsk
             }
             double? cost = parsed?["usage"]?["cost"] is JsonValue c && c.TryGetValue<double>(out var usd) ? usd : null;
             return new JudgeAnswer(probabilities, cost);
+        }
+
+        public async Task<(JsonNode Message, double? Cost)> ChatAsync(string model, JsonArray messages, JsonArray tools, CancellationToken ct)
+        {
+            var body = new JsonObject
+            {
+                ["model"] = model,
+                ["max_tokens"] = 1500,
+                ["usage"] = new JsonObject { ["include"] = true },
+                ["messages"] = messages.DeepClone(),
+                ["tools"] = tools.DeepClone(),
+            };
+            using var request = new HttpRequestMessage(HttpMethod.Post, options.AnswerEndpoint)
+            {
+                Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
+            };
+            using var response = await Client().SendAsync(request, ct);
+            var text = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+                throw new SearchOrAskModelException((int)response.StatusCode, $"Model answered {(int)response.StatusCode}");
+            var reply = JsonNode.Parse(text);
+            var message = reply?["choices"]?[0]?["message"] ?? throw new SearchOrAskModelException(502, "No message in the reply");
+            double? cost = reply?["usage"]?["cost"] is JsonValue c && c.TryGetValue<double>(out var usd) ? usd : null;
+            return (message.DeepClone(), cost);
         }
 
         public async Task<(string Content, double? Cost)> CompleteAsync(string model, string system, string user, CancellationToken ct)

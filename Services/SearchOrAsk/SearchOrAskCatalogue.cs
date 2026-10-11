@@ -38,29 +38,8 @@ namespace IndxServer.Services.SearchOrAsk
             var (suggested, left, sort, filterCost) = await SuggestFiltersAsync(teamId, dataSetName, settings, schema, question, ct);
             if (suggested.Length == 0) return null;
 
-            // The filters as the engine builds them; one it refuses is left out, never widened to all.
-            Filter? combined = null;
-            var used = new List<FilterSuggestion>();
-            foreach (var f in suggested)
-            {
-                if (FilterConditionBuilder.Build(engine, f.Field, f.Value, f.Min, f.Max) is not { } built) continue;
-                combined = combined == null ? built : combined & built;
-                used.Add(f);
-            }
-            if (combined == null) return null;
-
-            var result = IndxServerInternalApi.Manager.Search(new QueryProxy
-            {
-                Text = left,
-                Filter = new FilterProxy(combined.SerializedKey),
-                MaxNumberOfRecordsToReturn = CatalogueFound,
-                EnableFacets = true,
-                EnableCoverage = left.Length > 0,
-                // An order asked for ("the largest") puts those first: the summary reads the first 25.
-                SortBy = sort?.Field ?? string.Empty,
-                SortAscending = sort is { Descending: false },
-            }, dataSetName, teamId);
-            var keys = (result.Records ?? []).Select(r => r.DocumentKey).ToList();
+            var (used, keys) = RunFiltered(engine, teamId, dataSetName, suggested, left, sort, CatalogueFound);
+            if (used.Count == 0) return null;
             await send("filters", new { filters = used, text = left, sort, found = keys.Count, more = keys.Count >= CatalogueFound });
             if (keys.Count == 0)
             {
@@ -102,6 +81,35 @@ namespace IndxServer.Services.SearchOrAsk
             await send("done", new { model, askId, latencyMs = Ms() });
             return new CatalogueOutcome("answered", shown.Select(s => s.Key).ToList(), firstText,
                 usage.Cost == null && filterCost == null ? null : (usage.Cost ?? 0) + (filterCost ?? 0));
+        }
+
+        /// <summary>The search a description asks for: its filters as the engine builds them (one it
+        /// refuses is left out, never widened to all), the words left, an order. Returns the filters used
+        /// and the keys found, up to <paramref name="cap"/>.</summary>
+        private static (List<FilterSuggestion> Used, List<long> Keys) RunFiltered(IServerSearchEngine engine, string teamId,
+            string dataSetName, IEnumerable<FilterSuggestion> filters, string text, SortSuggestion? sort, int cap)
+        {
+            Filter? combined = null;
+            var used = new List<FilterSuggestion>();
+            foreach (var f in filters)
+            {
+                if (FilterConditionBuilder.Build(engine, f.Field, f.Value, f.Min, f.Max) is not { } built) continue;
+                combined = combined == null ? built : combined & built;
+                used.Add(f);
+            }
+            if (combined == null && string.IsNullOrWhiteSpace(text)) return (used, []);
+            var result = IndxServerInternalApi.Manager.Search(new QueryProxy
+            {
+                Text = text,
+                Filter = combined == null ? null : new FilterProxy(combined.SerializedKey),
+                MaxNumberOfRecordsToReturn = cap,
+                EnableFacets = true,
+                EnableCoverage = text.Length > 0,
+                // An order asked for ("the largest") puts those first: what is read first is what leads.
+                SortBy = sort?.Field ?? string.Empty,
+                SortAscending = sort is { Descending: false },
+            }, dataSetName, teamId);
+            return (used, (result.Records ?? []).Select(r => r.DocumentKey).ToList());
         }
 
         private static JsonNode? Parse(string? json)

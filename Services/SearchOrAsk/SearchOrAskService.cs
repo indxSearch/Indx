@@ -420,6 +420,19 @@ namespace IndxServer.Services.SearchOrAsk
             {
                 // A catalogue's description is answered with what it finds; a question about one item
                 // (no filter asked for) goes on to the ordinary answer below.
+                // With answers: best, a catalogue's question goes to the agent, which searches until it has
+                // the answer and puts the list on the page; it falls back to the quick summary below.
+                if (settings.Kind == SearchOrAskRecipes.Catalogue && history.Count == 0
+                    && settings.Answers == SearchOrAskSettings.BestAnswers
+                    && await AgentAnswerAsync(teamId, dataSetName, engine, settings, fields, question, model, askId, send, started, ct)
+                        is { } agent)
+                {
+                    outcome = agent.Outcome;
+                    merged = agent.Keys;
+                    firstText = agent.FirstTextMs;
+                    usage.Cost = agent.Cost;
+                    return;
+                }
                 if (settings.Kind == SearchOrAskRecipes.Catalogue && history.Count == 0)
                 {
                     CatalogueOutcome? catalogue;
