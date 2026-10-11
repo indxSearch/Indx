@@ -5,6 +5,7 @@
 @attribute [Authorize(Roles = "Admin")]
 @inject InstanceSettingsService SettingsService
 @inject ILogger<Settings> Logger
+@inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
 
 <PageTitle>Admin — Settings</PageTitle>
 
@@ -60,6 +61,19 @@
     </div>
 
     <div style="margin-bottom: 32px;">
+        <h3>Experimental</h3>
+        <p style="color: var(--lv5); margin: 8px 0 20px;">Features still being tried. Off until switched on here.</p>
+        <div>
+            <ToggleSwitch Label="Show Search or ask" @bind-Checked="_searchOrAskShown" />
+            <p style="font: var(--text-xs); color: var(--lv4); margin-top: 4px; margin-left: 48px;">
+                Offers to answer what visitors ask, written from a dataset's records. Adds a Search or ask tab to
+                each dataset, where it is switched on one dataset at a time. Sends what visitors type to
+                OpenRouter and the model providers, and needs a model key (<code>Indx:SearchOrAsk:ApiKey</code>).
+            </p>
+        </div>
+    </div>
+
+    <div style="margin-bottom: 32px;">
         <h3>Registration</h3>
         <p style="color: var(--lv5); margin: 8px 0 20px;">Control who can create accounts on this instance.</p>
 
@@ -96,6 +110,7 @@
     private bool _requireEmailVerification;
     private bool _allowUserSelfDeletion = true;
     private bool _mcpEnabled = true;
+    private bool _searchOrAskShown;
     private string _registrationMode = "Open";
     private string _allowedDomainsText = "";
     private string? _successMessage;
@@ -110,9 +125,9 @@
     ];
 
     // What the page last loaded or saved, to tell whether there is anything to save.
-    private (string, bool, bool, bool, string, string) _saved;
-    private (string, bool, bool, bool, string, string) Current =>
-        (_instanceName, _requireEmailVerification, _allowUserSelfDeletion, _mcpEnabled, _registrationMode, _allowedDomainsText);
+    private (string, bool, bool, bool, bool, string, string) _saved;
+    private (string, bool, bool, bool, bool, string, string) Current =>
+        (_instanceName, _requireEmailVerification, _allowUserSelfDeletion, _mcpEnabled, _searchOrAskShown, _registrationMode, _allowedDomainsText);
     private bool IsDirty => Current != _saved;
 
     protected override void OnInitialized() => LoadFromSettings();
@@ -131,6 +146,7 @@
         _requireEmailVerification = settings.RequireEmailVerification;
         _allowUserSelfDeletion = settings.AllowUserSelfDeletion;
         _mcpEnabled = settings.McpEnabled;
+        _searchOrAskShown = settings.SearchOrAskShown;
         _registrationMode = settings.RegistrationMode.ToString();
         _allowedDomainsText = string.Join("\n", settings.AllowedDomains);
         _saved = Current;
@@ -164,9 +180,11 @@
             settings.RequireEmailVerification = _requireEmailVerification;
             settings.AllowUserSelfDeletion = _allowUserSelfDeletion;
             settings.McpEnabled = _mcpEnabled;
+            settings.SearchOrAskShown = _searchOrAskShown;
             settings.RegistrationMode = mode;
             settings.AllowedDomains = domains;
             SettingsService.Save(settings);
+            SearchOrAsk.InstanceSettingsChanged();
             _saved = Current;
 
             _successMessage = "Settings saved.";

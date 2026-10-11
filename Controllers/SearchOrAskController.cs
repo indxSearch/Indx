@@ -14,6 +14,8 @@ namespace IndxServer.Controllers
     /// Team scoping, authentication and the error contract are declared on
     /// <see cref="DatasetApiController"/>.
     /// </summary>
+    // Experimental: kept out of the API description until it ships (Notes/search-or-ask-server.md).
+    [ApiExplorerSettings(IgnoreApi = true)]
     public class SearchOrAskController(TeamContextResolver resolver, SearchOrAskStore store, SearchOrAskService service,
         StatisticsService statistics)
         : DatasetApiController(resolver)
@@ -41,6 +43,7 @@ namespace IndxServer.Controllers
         [HttpGet(Route)]
         public ActionResult<SearchOrAskSettingsResponse> GetSettings(string teamName, string dataSetName)
         {
+            if (!service.Shown) return NotFound();
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
@@ -59,6 +62,7 @@ namespace IndxServer.Controllers
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult SetSettings(string teamName, string dataSetName, [FromBody] SearchOrAskSettings settings)
         {
+            if (!service.Shown) return NotFound();
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
@@ -76,6 +80,7 @@ namespace IndxServer.Controllers
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult DeleteSettings(string teamName, string dataSetName)
         {
+            if (!service.Shown) return NotFound();
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             if (!FileNameValidity.IsValid(dataSetName))
@@ -95,6 +100,7 @@ namespace IndxServer.Controllers
         [HttpPost(Route + "/intent")]
         public async Task<ActionResult<IntentResult>> Intent(string teamName, string dataSetName, [FromBody] IntentRequest request)
         {
+            if (!service.Shown) return NotFound();
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             var text = request?.Text ?? "";
@@ -118,6 +124,7 @@ namespace IndxServer.Controllers
         [Produces("text/event-stream")]
         public async Task<IActionResult> Ask(string teamName, string dataSetName, [FromBody] AskRequest request)
         {
+            if (!service.Shown) return NotFound();
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             var question = request?.Question?.Trim() ?? "";
@@ -175,6 +182,7 @@ namespace IndxServer.Controllers
         public ActionResult<SearchOrAskStatisticsResponse> Statistics(string teamName, string dataSetName, int days = 30,
             string? source = null, int limit = 50)
         {
+            if (!service.Shown) return NotFound();
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (!statistics.Enabled || statistics.Store is not { } s)

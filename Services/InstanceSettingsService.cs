@@ -17,6 +17,12 @@ internal class InstanceSettings
     /// a restart.</summary>
     public bool McpEnabled { get; set; } = true;
 
+    /// <summary>Shows Search or ask on this instance (Notes/search-or-ask-server.md). Experimental,
+    /// so off by default: while off, its dataset tab, its statistics and its routes are absent, and
+    /// nothing is sent to a model. On, each dataset still switches it on in its own tab, and the
+    /// instance needs a model key (Indx:SearchOrAsk:ApiKey).</summary>
+    public bool SearchOrAskShown { get; set; } = false;
+
     /// <summary>True once the first-run onboarding (admin account + team + instance settings)
     /// has completed. Until then, the app routes visitors into the setup flow. Gated on this
     /// flag rather than "are there users?" because OAuth creates the admin mid-flow.</summary>

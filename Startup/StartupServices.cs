@@ -123,6 +123,7 @@ internal static class StartupServices
             client => client.Timeout = TimeSpan.FromSeconds(120));
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.ISearchOrAskModels, IndxServer.Services.SearchOrAsk.OpenRouterModels>();
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskStore>();
+        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.ISearchOrAskSwitch, IndxServer.Services.SearchOrAsk.InstanceSearchOrAskSwitch>();
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskService>();
 
         // MCP server: read-only retrieval tools over /mcp (Streamable HTTP), behind JWT auth.

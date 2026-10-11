@@ -30,6 +30,18 @@ namespace IndxServer.Services.SearchOrAsk
     /// <summary>One source handed to the answer model, as the visitor's client sees it.</summary>
     public sealed record AskSource(int N, long DocumentKey, string Title);
 
+    /// <summary>The instance's experimental switch for Search or ask (admin settings).</summary>
+    public interface ISearchOrAskSwitch
+    {
+        bool Shown { get; }
+    }
+
+    /// <summary>The switch as the instance settings file holds it.</summary>
+    internal sealed class InstanceSearchOrAskSwitch(InstanceSettingsService settings) : ISearchOrAskSwitch
+    {
+        public bool Shown => settings.Load().SearchOrAskShown;
+    }
+
     /// <summary>An earlier question and its answer in the same conversation, for a follow-up.</summary>
     public sealed record AskTurn(string Question, string Answer);
 
@@ -53,6 +65,8 @@ namespace IndxServer.Services.SearchOrAsk
         private readonly SearchOrAskOptions _options;
         private readonly ILogger<SearchOrAskService> _logger;
         private readonly StatisticsService? _statistics;
+        private readonly ISearchOrAskSwitch? _instance;
+        private (bool Shown, long At) _shown;
 
         private readonly PartitionedRateLimiter<string> _intentLimiter;
         private readonly PartitionedRateLimiter<string> _askLimiter;
@@ -73,8 +87,10 @@ namespace IndxServer.Services.SearchOrAsk
         private const int SourceChars = 3000;
 
         public SearchOrAskService(SearchOrAskStore store, DatasetMetadataStore metadata, ISearchOrAskModels models,
-            SearchOrAskOptions options, ILogger<SearchOrAskService> logger, StatisticsService? statistics = null)
+            SearchOrAskOptions options, ILogger<SearchOrAskService> logger, StatisticsService? statistics = null,
+            ISearchOrAskSwitch? instance = null)
         {
+            _instance = instance;
             _statistics = statistics;
             _store = store;
             _metadata = metadata;
@@ -90,6 +106,26 @@ namespace IndxServer.Services.SearchOrAsk
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = Math.Max(1, perMinute), Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 
         public bool Available => _options.Available;
+
+        /// <summary>Whether the instance shows Search or ask at all: the experimental switch in the
+        /// admin settings. Read from settings.json at most every five seconds, since the judge asks on
+        /// every typing pause. Without an instance settings service (some tests), shown.</summary>
+        public bool Shown
+        {
+            get
+            {
+                if (_instance == null) return true;
+                var now = Environment.TickCount64;
+                var cached = _shown;
+                if (cached.At != 0 && now - cached.At < 5000) return cached.Shown;
+                var shown = _instance.Shown;
+                _shown = (shown, now);
+                return shown;
+            }
+        }
+
+        /// <summary>Forgets the cached switch, so a change in the admin settings applies at once.</summary>
+        public void InstanceSettingsChanged() => _shown = default;
 
         /// <summary>The dataset's saved settings, or the defaults (off) when none are saved.</summary>
         public SearchOrAskSettings Settings(string teamId, string dataSetName) =>

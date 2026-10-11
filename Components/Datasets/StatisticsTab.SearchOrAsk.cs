@@ -1,5 +1,7 @@
 using Indx.Systm.Blazor;
 using IndxServer.Services;
+using IndxServer.Services.SearchOrAsk;
+using Microsoft.AspNetCore.Components;
 
 namespace IndxServer.Components.Datasets
 {
@@ -17,7 +19,10 @@ namespace IndxServer.Components.Datasets
         private List<AskOfferStat> _askOffers = [];
         private string _askView = "questions";
 
-        private bool HasSearchOrAsk => _ask.Judged > 0 || _ask.Asks > 0;
+        [Inject] private SearchOrAskService SearchOrAsk { get; set; } = default!;
+
+        /// <summary>Only while the instance shows the feature, and once there is something to show.</summary>
+        private bool HasSearchOrAsk => SearchOrAsk.Shown && (_ask.Judged > 0 || _ask.Asks > 0);
 
         private IEnumerable<Tabs.TabItem> SearchOrAskSection =>
             HasSearchOrAsk ? [new("Search or ask", "search-or-ask", DatasetIcons.SearchOrAsk)] : [];

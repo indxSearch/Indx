@@ -11,6 +11,7 @@
 @inject IDatasetEngines Engines
 @inject BoostRuleStore BoostStore
 @inject NavigationManager Nav
+@inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
 
 @* The header slot (the console's breadcrumb row, with DatasetStatus in its actions) sits
    outside the Surface so it lands at exactly the same spot as on the team page — the
@@ -174,8 +175,9 @@
         // Configuration only, read on every search: needs no built index.
         if ((isReady || pending) && Ctx.IsEditor)
             items.Add(Tab("query-parameters", "Query parameters", DatasetIcons.QueryParameters, true));
-        // Settings need no built index; the tester inside the tab says when it needs one.
-        if ((isReady || pending) && Ctx.IsEditor)
+        // Settings need no built index; the tester inside the tab says when it needs one. Only
+        // while the instance shows the experimental feature (admin settings).
+        if ((isReady || pending) && Ctx.IsEditor && SearchOrAsk.Shown)
             items.Add(Tab("search-or-ask", "Search or ask", DatasetIcons.SearchOrAsk, true));
         if (isReady || pending) items.Add(Tab("search", "Search preview", DatasetIcons.Search, isReady));
         // Statistics live in their own store, so the tab works even for a hibernated dataset -
