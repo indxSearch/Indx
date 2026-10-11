@@ -28,14 +28,20 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>Answers a description with a summary of what it finds, or returns null when the
         /// text asks for no filter (a question about one item): the ordinary answer then follows.</summary>
         private async Task<CatalogueOutcome?> CatalogueAnswerAsync(string teamId, string dataSetName, IServerSearchEngine engine,
-            SearchOrAskSettings settings, SearchOrAskFields fields, string question, string model, string? askId,
-            Func<string, object, Task> send, long started, CancellationToken ct)
+            SearchOrAskSettings settings, SearchOrAskFields fields, string question, IReadOnlyList<AskTurn> history, string model,
+            string? askId, Func<string, object, Task> send, long started, CancellationToken ct)
         {
+            // A follow-up is read with the request before it and the list that put on the page, so
+            // "which is the largest?" after "skoler i bærum" becomes Bærum, sorted by size.
+            var earlier = history.Count > 0 ? history[^1] : null;
+            var described = earlier == null ? question
+                : $"Earlier the visitor asked: {earlier.Question}" +
+                  (earlier.Shown is { } was ? $" (the list shown: {was})" : "") + $"\nNow they ask: {question}";
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             var schema = FilterFields(teamId, dataSetName, engine);
             if (schema.Count == 0) return null;
             var filterFields = schema.Fields;
-            var (suggested, left, sort, filterCost) = await SuggestFiltersAsync(teamId, dataSetName, settings, schema, question, ct);
+            var (suggested, left, sort, filterCost) = await SuggestFiltersAsync(teamId, dataSetName, settings, schema, described, ct);
             if (suggested.Length == 0) return null;
 
             var (used, keys) = RunFiltered(engine, teamId, dataSetName, suggested, left, sort, CatalogueFound);
@@ -54,6 +60,7 @@ namespace IndxServer.Services.SearchOrAsk
             await send("sources", shown.Select(s => new AskSource(s.N, s.Key, titleOf(s.Doc))).ToArray());
 
             var user = new StringBuilder();
+            if (earlier != null) user.AppendLine($"Earlier the visitor asked: {earlier.Question}");
             user.AppendLine($"The visitor typed: {question}");
             user.AppendLine($"Searched with: {string.Join("; ", used.Select(Describe))}{(left.Length > 0 ? $"; and the words \"{left}\"" : "")}");
             if (sort != null) user.AppendLine($"Sorted by {sort.Field}, {(sort.Descending ? "largest" : "smallest")} first; the page's list below shows them in that order.");

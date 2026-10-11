@@ -51,16 +51,26 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>Answers on a catalogue as an agent. Null when it could not (a model failure, out of
         /// turns before an answer): the quick summary then answers instead.</summary>
         private async Task<AgentOutcome?> AgentAnswerAsync(string teamId, string dataSetName, IServerSearchEngine engine,
-            SearchOrAskSettings settings, SearchOrAskFields fields, string question, string model, string? askId,
-            Func<string, object, Task> send, long started, CancellationToken ct)
+            SearchOrAskSettings settings, SearchOrAskFields fields, string question, IReadOnlyList<AskTurn> history, string model,
+            string? askId, Func<string, object, Task> send, long started, CancellationToken ct)
         {
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             var schema = FilterFields(teamId, dataSetName, engine);
             if (schema.Count == 0) return null;
             var site = SiteDescription(teamId, dataSetName, settings);
-            var messages = new JsonArray(
-                new JsonObject { ["role"] = "system", ["content"] = AgentPrompt(site, settings.FilterNotes, schema) },
-                new JsonObject { ["role"] = "user", ["content"] = $"{question}\n\n{SearchOrAskRecipes.AnswerLanguageReminder}" });
+            var messages = new JsonArray(new JsonObject { ["role"] = "system", ["content"] = AgentPrompt(site, settings.FilterNotes, schema) });
+            // The conversation so far, with the list each answer put on the page: a follow-up ("which is
+            // the largest?") is about that list, and searching it again starts from those filters.
+            foreach (var t in history)
+            {
+                messages.Add(new JsonObject { ["role"] = "user", ["content"] = t.Question });
+                messages.Add(new JsonObject
+                {
+                    ["role"] = "assistant",
+                    ["content"] = t.Shown is { } shown ? $"{t.Answer}\n\n(The list I put on the page: {shown}.)" : t.Answer,
+                });
+            }
+            messages.Add(new JsonObject { ["role"] = "user", ["content"] = $"{question}\n\n{SearchOrAskRecipes.AnswerLanguageReminder}" });
             double cost = 0;
             List<long> shownKeys = [];
             var titleOf = (JsonNode? doc) => doc != null && fields.TitleField != null ? ReadField(doc, fields.TitleField) ?? "" : "";

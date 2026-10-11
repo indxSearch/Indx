@@ -45,7 +45,18 @@ namespace IndxServer.Services.SearchOrAsk
     }
 
     /// <summary>An earlier question and its answer in the same conversation, for a follow-up.</summary>
-    public sealed record AskTurn(string Question, string Answer);
+    public sealed record AskTurn(string Question, string Answer, AskShown? Shown = null);
+
+    /// <summary>On a catalogue, the list a turn put on the page: its filters, words and order. A
+    /// follow-up ("which is the largest?") is about that list.</summary>
+    public sealed record AskShown(FilterSuggestion[]? Filters, string? Text, SortSuggestion? Sort)
+    {
+        public override string ToString() =>
+            string.Join("; ", (Filters ?? []).Select(f => f.Value != null ? $"{f.Field} = {f.Value}"
+                : $"{f.Field} {f.Min?.ToString() ?? ""}..{f.Max?.ToString() ?? ""}"))
+            + (string.IsNullOrWhiteSpace(Text) ? "" : $"; words \"{Text}\"")
+            + (Sort == null ? "" : $"; sorted by {Sort.Field} {(Sort.Descending ? "descending" : "ascending")}");
+    }
 
     /// <summary>Where a judgement or an ask came from, for the statistics, as a search names it:
     /// the page's search behind it (<c>?queryId=</c>), its session, its surface, an optional
@@ -422,9 +433,9 @@ namespace IndxServer.Services.SearchOrAsk
                 // (no filter asked for) goes on to the ordinary answer below.
                 // With answers: best, a catalogue's question goes to the agent, which searches until it has
                 // the answer and puts the list on the page; it falls back to the quick summary below.
-                if (settings.Kind == SearchOrAskRecipes.Catalogue && history.Count == 0
+                if (settings.Kind == SearchOrAskRecipes.Catalogue
                     && settings.Answers == SearchOrAskSettings.BestAnswers
-                    && await AgentAnswerAsync(teamId, dataSetName, engine, settings, fields, question, model, askId, send, started, ct)
+                    && await AgentAnswerAsync(teamId, dataSetName, engine, settings, fields, question, history, model, askId, send, started, ct)
                         is { } agent)
                 {
                     outcome = agent.Outcome;
@@ -433,12 +444,12 @@ namespace IndxServer.Services.SearchOrAsk
                     usage.Cost = agent.Cost;
                     return;
                 }
-                if (settings.Kind == SearchOrAskRecipes.Catalogue && history.Count == 0)
+                if (settings.Kind == SearchOrAskRecipes.Catalogue)
                 {
                     CatalogueOutcome? catalogue;
                     try
                     {
-                        catalogue = await CatalogueAnswerAsync(teamId, dataSetName, engine, settings, fields, question, model, askId, send, started, ct);
+                        catalogue = await CatalogueAnswerAsync(teamId, dataSetName, engine, settings, fields, question, history, model, askId, send, started, ct);
                     }
                     catch (Exception ex) when (ex is SearchOrAskModelException or HttpRequestException)
                     {
@@ -563,7 +574,7 @@ namespace IndxServer.Services.SearchOrAsk
                 .Where(t => !string.IsNullOrWhiteSpace(t.Question) && !string.IsNullOrWhiteSpace(t.Answer))
                 .TakeLast(MaxHistoryTurns)
                 .Select(t => new AskTurn(Clip(t.Question.Trim(), MaxQuestion),
-                    Clip(Regex.Replace(t.Answer, @"\s*\[\d+\]", "").Trim(), MaxHistoryAnswer)))
+                    Clip(Regex.Replace(t.Answer, @"\s*\[\d+\]", "").Trim(), MaxHistoryAnswer), t.Shown))
                 .ToList();
 
         private static string Clip(string s, int max) => s.Length <= max ? s : s[..max];
