@@ -13,9 +13,6 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>Asks the judge the named questions about one state.</summary>
         Task<JudgeAnswer> JudgeAsync(JsonObject state, IReadOnlyDictionary<string, JsonObject> questions, CancellationToken ct);
 
-        /// <summary>Streams an answer from the named model as text deltas. The provider's cost, when
-        /// it reports one, is left in <paramref name="usage"/> once the stream ends.</summary>
-        /// <paramref name="history"/> is the conversation so far, oldest first, sent before the question.
         /// <summary>One turn of a conversation with tools: the assistant's message (its content, or its
         /// tool_calls) and the turn's cost.</summary>
         Task<(JsonNode Message, double? Cost)> ChatAsync(string model, JsonArray messages, JsonArray tools, CancellationToken ct);
@@ -23,6 +20,9 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>One completion, not streamed: the reply's text and its cost.</summary>
         Task<(string Content, double? Cost)> CompleteAsync(string model, string system, string user, CancellationToken ct);
 
+        /// <summary>Streams an answer from the named model as text deltas, after <paramref name="history"/>,
+        /// the conversation so far, oldest first. The provider's cost, when it reports one, is left in
+        /// <paramref name="usage"/> once the stream ends.</summary>
         IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, IReadOnlyList<AskTurn> history,
             AnswerUsage usage, CancellationToken ct);
     }

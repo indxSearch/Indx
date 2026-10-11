@@ -15,7 +15,7 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>A catalogue with good fields: catalogue-v1, measured on the school register (40 of
         /// 40 descriptions recognised as criteria, none of 80 others; 36 of 40 questions). A
-        /// description of what to list becomes filters (<see cref="SearchOrAskFilters"/>).</summary>
+        /// description of what to list becomes filters (<see cref="SearchOrAskService.FiltersAsync"/>).</summary>
         public const string Catalogue = "catalogue";
 
         public static readonly string[] Kinds = [Documentation, Catalogue];
