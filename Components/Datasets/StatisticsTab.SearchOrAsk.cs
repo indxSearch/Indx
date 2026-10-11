@@ -22,7 +22,7 @@ namespace IndxServer.Components.Datasets
         [Inject] private SearchOrAskService SearchOrAsk { get; set; } = default!;
 
         /// <summary>Only while the instance shows the feature, and once there is something to show.</summary>
-        private bool HasSearchOrAsk => SearchOrAsk.Shown && (_ask.Judged > 0 || _ask.Asks > 0);
+        private bool HasSearchOrAsk => SearchOrAsk.ShownFor(Ctx.TeamId, Ctx.Name) && (_ask.Judged > 0 || _ask.Asks > 0);
 
         private IEnumerable<Tabs.TabItem> SearchOrAskSection =>
             HasSearchOrAsk ? [new("Search or ask", "search-or-ask", DatasetIcons.SearchOrAsk)] : [];

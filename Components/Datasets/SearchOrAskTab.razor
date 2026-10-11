@@ -423,6 +423,8 @@
         if (_budgetError != null) { _error = "Fix the values marked above, or clear them to use the default."; return; }
         if (_edit.Validate() is { } invalid) { _error = invalid; return; }
         var toSave = JsonSerializer.Deserialize<SearchOrAskSettings>(Json(_edit), JsonOpts)!;
+        // The dataset's switch is the Options tab's (a team admin's): kept as it is now.
+        toSave.Shown = Store.Load(Ctx.TeamId, Ctx.Name)?.Shown ?? false;
         _saving = true;
         try
         {

@@ -72,6 +72,28 @@ namespace IndxServer.Controllers
                 return ApiProblems.InvalidArgument("A body with the settings is required.");
             if (settings.Validate() is { } invalid)
                 return ApiProblems.InvalidArgument(invalid);
+            // Whether the dataset has the feature is a team admin's (PUT shown), not an editor's.
+            settings.Shown = store.Load(ctx.OwnerKey, dataSetName)?.Shown ?? false;
+            store.Save(ctx.OwnerKey, dataSetName, settings);
+            return NoContent();
+        }
+
+        public sealed record ShownRequest(bool Shown);
+
+        /// <summary>Whether this dataset has Search or ask (its Options tab): a team admin's switch.
+        /// Experimental, so off by default; on, the dataset's tab and its visitor routes appear, and
+        /// <c>enabled</c> in the settings then takes it live.</summary>
+        [HttpPut(Route + "/shown")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public IActionResult SetShown(string teamName, string dataSetName, [FromBody] ShownRequest request)
+        {
+            if (!service.Shown) return NotFound();
+            var ctx = ResolveTeam(teamName, out var error, admin: true);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return ApiProblems.InvalidDatasetName(dataSetName);
+            var settings = store.Load(ctx.OwnerKey, dataSetName) ?? new SearchOrAskSettings();
+            settings.Shown = request?.Shown ?? false;
             store.Save(ctx.OwnerKey, dataSetName, settings);
             return NoContent();
         }
@@ -104,6 +126,8 @@ namespace IndxServer.Controllers
             if (!service.Shown) return NotFound();
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
+            // The dataset's own switch (its Options tab): as though the route were not there.
+            if (!service.ShownFor(ctx.OwnerKey, dataSetName)) return NotFound();
             var text = request?.Text ?? "";
             if (text.Trim().Length == 0 || text.Length > SearchOrAskService.MaxText)
                 return ApiProblems.InvalidArgument($"Send {{ text }} of 1 to {SearchOrAskService.MaxText} characters.");
@@ -128,6 +152,8 @@ namespace IndxServer.Controllers
             if (!service.Shown) return NotFound();
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
+            // The dataset's own switch (its Options tab): as though the route were not there.
+            if (!service.ShownFor(ctx.OwnerKey, dataSetName)) return NotFound();
             var text = request?.Text ?? "";
             if (text.Trim().Length == 0 || text.Length > SearchOrAskService.MaxText)
                 return ApiProblems.InvalidArgument($"Send {{ text }} of 1 to {SearchOrAskService.MaxText} characters.");
@@ -152,6 +178,8 @@ namespace IndxServer.Controllers
             if (!service.Shown) return NotFound();
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
+            // The dataset's own switch (its Options tab): as though the route were not there.
+            if (!service.ShownFor(ctx.OwnerKey, dataSetName)) return NotFound();
             var question = request?.Question?.Trim() ?? "";
             if (question.Length == 0 || question.Length > SearchOrAskService.MaxQuestion)
                 return ApiProblems.InvalidArgument($"Send {{ question }} of 1 to {SearchOrAskService.MaxQuestion} characters.");
@@ -210,6 +238,8 @@ namespace IndxServer.Controllers
             if (!service.Shown) return NotFound();
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
+            // The dataset's own switch (its Options tab): as though the route were not there.
+            if (!service.ShownFor(ctx.OwnerKey, dataSetName)) return NotFound();
             if (!statistics.Enabled || statistics.Store is not { } s)
                 return ApiProblems.Problem(StatusCodes.Status404NotFound, "statisticsDisabled", "Statistics disabled",
                     "Statistics are switched off on this instance (Statistics:Enabled=false).");

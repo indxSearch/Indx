@@ -7,6 +7,8 @@
 @inherits DatasetTabBase
 @inject DatasetMetadataStore DatasetMeta
 @inject StatisticsService Stats
+@inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
+@inject IndxServer.Services.SearchOrAsk.SearchOrAskStore SearchOrAskStore
 
 @if (!Active) { return; }
 
@@ -122,6 +124,27 @@
                              Value="@(_timeZone ?? "")" ValueChanged="SetTimeZone" disabled="@(!Ctx.IsAdmin || _savingZone)" />
             </div>
             @if (_savingZone) { <span class="opt-muted">Counting the days again…</span> }
+        </div>
+    }
+
+    @* ── Search or ask (experimental): whether this dataset has it. A team admin's call, as the
+       statistics' privacy settings are; only while the instance shows the feature. ── *@
+    @if (SearchOrAsk.Shown)
+    {
+        <h3 class="indx-section-heading">Search or ask <span class="opt-muted">experimental</span></h3>
+        <p class="indx-section-help">
+            Offers to answer what visitors ask, or turns a description of what to list into filters, from
+            this dataset's records. Switching it on adds a Search or ask tab, where editors set it up, try it,
+            and take it live. What visitors type is then sent to OpenRouter and the model providers.
+        </p>
+        <div class="opt-row">
+            <ToggleSwitch Label="Search or ask on this dataset"
+                          Checked="SearchOrAsk.ShownFor(Ctx.TeamId, Ctx.Name)"
+                          CheckedChanged="SetSearchOrAskShown" Disabled="!Ctx.IsAdmin" />
+            @if (!Ctx.IsAdmin)
+            {
+                <span class="opt-muted">Team admins can change this.</span>
+            }
         </div>
     }
 
@@ -282,6 +305,16 @@
 </div>
 
 @code {
+    private void SetSearchOrAskShown(bool shown)
+    {
+        if (!Ctx.IsAdmin) return;
+        var settings = SearchOrAskStore.Load(Ctx.TeamId, Ctx.Name) ?? new IndxServer.Services.SearchOrAsk.SearchOrAskSettings();
+        settings.Shown = shown;
+        SearchOrAskStore.Save(Ctx.TeamId, Ctx.Name, settings);
+        // The tab bar reads it: tell the panel.
+        Ctx.NotifyChanged();
+    }
+
     private bool _purgeOpen;
 
     private static readonly IReadOnlyList<string> PurgeConsequences =

@@ -126,6 +126,12 @@ namespace IndxServer.Services.SearchOrAsk
             }
         }
 
+        /// <summary>Whether a dataset has Search or ask: the instance shows it, and a team admin
+        /// switched it on in the dataset's Options tab. Without an instance switch (component tests,
+        /// which have no settings database either), shown, as <see cref="Shown"/> is.</summary>
+        public bool ShownFor(string teamId, string dataSetName) =>
+            _instance == null || (Shown && (_store.Load(teamId, dataSetName)?.Shown ?? false));
+
         /// <summary>Forgets the cached switch, so a change in the admin settings applies at once.</summary>
         public void InstanceSettingsChanged() => _shown = default;
 

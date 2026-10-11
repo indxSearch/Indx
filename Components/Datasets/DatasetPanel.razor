@@ -176,8 +176,9 @@
         if ((isReady || pending) && Ctx.IsEditor)
             items.Add(Tab("query-parameters", "Query parameters", DatasetIcons.QueryParameters, true));
         // Settings need no built index; the tester inside the tab says when it needs one. Only
-        // while the instance shows the experimental feature (admin settings).
-        if ((isReady || pending) && Ctx.IsEditor && SearchOrAsk.Shown)
+        // while the instance shows the experimental feature (admin settings) and a team admin has
+        // switched it on for this dataset (Options).
+        if ((isReady || pending) && Ctx.IsEditor && SearchOrAsk.ShownFor(Ctx.TeamId, Ctx.Name))
             items.Add(Tab("search-or-ask", "Search or ask", DatasetIcons.SearchOrAsk, true));
         if (isReady || pending) items.Add(Tab("search", "Search preview", DatasetIcons.Search, isReady));
         // Statistics live in their own store, so the tab works even for a hibernated dataset -

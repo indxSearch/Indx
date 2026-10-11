@@ -12,6 +12,12 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>Off until an owner switches it on: typed text leaves the server.</summary>
         public bool Enabled { get; set; }
 
+        /// <summary>Search or ask exists on this dataset: the switch in its Options tab, a team admin's
+        /// (PUT search-or-ask/shown). Experimental, so off by default. Shown, the dataset gets its
+        /// Search or ask tab to set up and try; <see cref="Enabled"/> then takes it live. A settings
+        /// save keeps what this was: it is not an editor's to change.</summary>
+        public bool Shown { get; set; }
+
         /// <summary>Which recipe the judge reads (<see cref="SearchOrAskRecipes"/>).</summary>
         public string Kind { get; set; } = SearchOrAskRecipes.Documentation;
 
