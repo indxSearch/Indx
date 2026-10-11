@@ -283,7 +283,7 @@ namespace IndxServer.Services.SearchOrAsk
             try { doc = JsonNode.Parse(engine.GetJsonDataOfKey(key) ?? ""); }
             catch (System.Text.Json.JsonException) { }
             string Read(IEnumerable<string> names, string separator) => doc == null ? "" :
-                string.Join(separator, names.Select(n => doc[n] switch
+                string.Join(separator, names.Select(n => FieldAt(doc, n) switch
                 {
                     JsonArray a => string.Join(", ", a.Select(x => x?.ToString())),
                     JsonNode v => v.ToString(),
@@ -295,6 +295,18 @@ namespace IndxServer.Services.SearchOrAsk
                 : Cut(Read(fields.SnippetFields, " ").ReplaceLineEndings(" "));
             return (key, fields.TitleField == null ? "" : Read([fields.TitleField], ""), Read(fields.SectionFields, "; "), snippet);
         }
+
+        /// <summary>A record's field by the engine's name for it, which for a nested field is a dotted
+        /// path ("Kommune.Navn").</summary>
+        private static JsonNode? FieldAt(JsonNode doc, string path)
+        {
+            JsonNode? n = doc;
+            foreach (var part in path.Split('.')) n = n is JsonObject o ? o[part] : null;
+            return n;
+        }
+
+        /// <summary>A record's field as text, for tests and the console: null when it is absent.</summary>
+        public static string? ReadField(JsonNode doc, string path) => FieldAt(doc, path)?.ToString();
 
         /// <summary>The state the judge reads: the shape every recipe was measured with.</summary>
         public static JsonObject State(string site, string text, SearchSummary search) => new()
