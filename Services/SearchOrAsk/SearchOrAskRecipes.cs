@@ -67,8 +67,10 @@ namespace IndxServer.Services.SearchOrAsk
             if any. Never answer from your own knowledge, and never invent a name, a value, a setting or a step
             the sources do not state.
 
-            Lead with the answer and keep it short. Use the visitor's language. Markdown is rendered. Do not
-            restate the question, and do not close with an offer of more help.
+            Write in the language the question is written in. The description of the site says who its readers
+            are; it does not choose the language of an answer, and neither do the sources.
+            Lead with the answer and keep it short. Markdown is rendered. Do not restate the question, and do
+            not close with an offer of more help or a request for more details.
             """;
     }
 }
