@@ -182,6 +182,82 @@ else
             }
         }
 
+        @if (_section == "search-or-ask")
+        {
+            @* Search or ask (Notes/search-or-ask-server.md). The questions the content did not
+               answer lead: they are what to write next. Offers lists the texts an offer was shown
+               beside, so a false one can be found. Code in StatisticsTab.SearchOrAsk.cs. *@
+            <div class="stats-tiles">
+                <Surface Class="stats-tile">
+                    <Tooltip Content="Searches an offer to ask was shown beside, each once however many pauses judged it."><span class="stats-tile-label">Offers shown</span></Tooltip>
+                    <span class="stats-tile-value">@N(_ask.Offers)</span>
+                </Surface>
+                <Surface Class="stats-tile">
+                    <Tooltip Content="Questions asked, and how many per offer shown."><span class="stats-tile-label">Questions asked</span></Tooltip>
+                    <span class="stats-tile-value">@N(_ask.Asks) <span class="stats-tile-sub">@Pct(_ask.Asks, _ask.Offers)</span></span>
+                </Surface>
+                <Surface Class="stats-tile">
+                    <Tooltip Content="Questions the search found nothing for, or whose sources the judge doubted could answer them."><span class="stats-tile-label">Not answered</span></Tooltip>
+                    <span class="stats-tile-value">@N(_ask.Unanswered) <span class="stats-tile-sub">@Pct(_ask.Unanswered, _ask.Asks)</span></span>
+                </Surface>
+                <Surface Class="stats-tile">
+                    <Tooltip Content="Cited sources opened from an answer."><span class="stats-tile-label">Sources opened</span></Tooltip>
+                    <span class="stats-tile-value">@N(_ask.SourcesOpened)</span>
+                </Surface>
+                <Surface Class="stats-tile">
+                    <Tooltip Content="What the judge and the answers cost, as OpenRouter reported it. Median time to an answer's first words beside it."><span class="stats-tile-label">Cost</span></Tooltip>
+                    <span class="stats-tile-value">@Usd(_ask.Cost) <span class="stats-tile-sub">@Seconds(_ask.MedianFirstTextMs)</span></span>
+                </Surface>
+            </div>
+            <div class="stats-view">
+                <Tabs Items="AskViewItems" Active="@_askView" ActiveChanged="@(v => _askView = v ?? "questions")" Size="micro" Variant="button" AriaLabel="Search or ask view" />
+            </div>
+            @if (_askView == "questions")
+            {
+                <p class="stats-help">The questions visitors asked. The ones the content did not answer come first: they are what to write next.</p>
+                @if (_askQuestions.Count == 0) { <p class="stats-empty">No questions asked in this period.</p> }
+                else {
+                <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Questions asked" Class="stats-table">
+                    <thead><tr><th>Question</th><th class="stats-num">Asked</th><th>Outcome</th><th class="stats-num">Answerable</th><th class="stats-num">Sources opened</th></tr></thead>
+                    <tbody>
+                        @foreach (var q in _askQuestions)
+                        {
+                            <tr>
+                                <td>@q.Question</td>
+                                <td class="stats-num">@N(q.Asks)</td>
+                                <td>@QuestionOutcome(q)</td>
+                                <td class="stats-num">@Score(q.Answerability)</td>
+                                <td class="stats-num">@(q.SourcesOpened > 0 ? N(q.SourcesOpened) : "–")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </Table>
+                }
+            }
+            else
+            {
+                <p class="stats-help">What visitors had typed when an offer to ask was shown. A lookup high on this list is a false offer: raise the thresholds or sharpen the site description.</p>
+                @if (_askOffers.Count == 0) { <p class="stats-empty">No offers shown in this period.</p> }
+                else {
+                <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Offers shown" Class="stats-table">
+                    <thead><tr><th>Typed</th><th class="stats-num">Offers</th><th class="stats-num">Strong</th><th class="stats-num">Highest score</th><th class="stats-num">Asked</th></tr></thead>
+                    <tbody>
+                        @foreach (var o in _askOffers)
+                        {
+                            <tr>
+                                <td>@QueryLabel(o.Text)</td>
+                                <td class="stats-num">@N(o.Offers)</td>
+                                <td class="stats-num">@N(o.Strong)</td>
+                                <td class="stats-num">@Score(o.MaxP)</td>
+                                <td class="stats-num">@(o.Asked > 0 ? N(o.Asked) : "–")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </Table>
+                }
+            }
+        }
+
         @if (_section == "browsing")
         {
             <p class="stats-help">What people narrowed the catalogue by, with or without typing, and how often it left them nothing.</p>
@@ -328,6 +404,7 @@ else
         new("Top queries", "queries", DatasetIcons.TopQueries),
         new("Fuzzy search", "fuzzy", DatasetIcons.FuzzySearch),
         new("Top documents", "documents", DatasetIcons.TopDocuments),
+        .. SearchOrAskSection,
         new("Browsing", "browsing", DatasetIcons.Browsing),
         new("Changes", "changes", DatasetIcons.Changes,
             Badge: _changes.Count switch { 0 => null, > 99 => "99+", var n => n.ToString() },
@@ -349,7 +426,7 @@ else
     ];
 
     private bool Empty => _overview.Searches == 0 && _overview.Selects == 0 && _overview.Converts == 0
-                          && _topFilters.Count == 0 && _changes.Count == 0
+                          && _topFilters.Count == 0 && _changes.Count == 0 && !HasSearchOrAsk
                           && _documentTotals.Inserted + _documentTotals.Updated + _documentTotals.Deleted == 0;
 
     protected override async Task OnParametersSetAsync()
@@ -389,6 +466,7 @@ else
             (_fromDay, _toDay) = (fromDay, toDay);
             _sources = store.Sources(team, ds, fromDay, toDay);
             _overview = store.Overview(team, ds, fromDay, toDay, source);
+            LoadSearchOrAsk(store, team, ds, fromDay, toDay, source);
             LoadLists(store);
             _topFilters = store.TopFilters(team, ds, fromDay, toDay, 10, source);
             _changes = store.Changes(team, ds, fromDay, toDay);

@@ -155,3 +155,11 @@
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
+
+/* A tile's second figure (Search or ask: per offer, of the asks, time to first words): smaller,
+   beside the value. */
+.stats-tile-sub {
+    font: var(--text-sm);
+    color: var(--lv5);
+    margin-left: 6px;
+}
