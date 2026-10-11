@@ -20,7 +20,15 @@ namespace IndxServer.Services.SearchOrAsk
         public string JudgeModel { get; set; } = "typesafe/jev-1.13";
 
         public string AnswerEndpoint { get; set; } = "https://openrouter.ai/api/v1/chat/completions";
+        /// <summary>The model a dataset's <c>answers: best</c> writes with, the default. Measured on
+        /// the docs (11 Oct 2026): first words after 3.5 to 5 s, about $0.018 an answer.</summary>
         public string AnswerModel { get; set; } = "anthropic/claude-sonnet-5.5";
+
+        /// <summary>The model for <c>answers: fast</c>: first words after about 1.2 s, about $0.005.</summary>
+        public string FastAnswerModel { get; set; } = "anthropic/claude-haiku-4.5";
+
+        /// <summary>The model a dataset's <see cref="SearchOrAskSettings.Answers"/> choice names.</summary>
+        public string AnswerModelFor(string answers) => answers == SearchOrAskSettings.FastAnswers ? FastAnswerModel : AnswerModel;
 
         /// <summary>A judgement later than this is no use to a visitor who has typed on; the
         /// search is never held up either way.</summary>

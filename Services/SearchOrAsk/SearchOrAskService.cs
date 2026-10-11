@@ -336,12 +336,13 @@ namespace IndxServer.Services.SearchOrAsk
             }
             user.Append("Question: ").Append(question);
 
+            var model = _options.AnswerModelFor(settings.Answers);
             try
             {
-                await foreach (var delta in _models.AnswerAsync(SearchOrAskRecipes.AnswerSystemPrompt(SiteDescription(teamId, dataSetName, settings)),
+                await foreach (var delta in _models.AnswerAsync(model, SearchOrAskRecipes.AnswerSystemPrompt(SiteDescription(teamId, dataSetName, settings)),
                                    user.ToString(), ct))
                     await send("text", new { delta });
-                await send("done", new { model = _models.AnswerModel, latencyMs = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds });
+                await send("done", new { model, latencyMs = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds });
             }
             catch (SearchOrAskModelException ex)
             {

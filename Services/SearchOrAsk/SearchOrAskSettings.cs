@@ -25,6 +25,14 @@ namespace IndxServer.Services.SearchOrAsk
 
         public SearchOrAskThresholds Thresholds { get; set; } = new();
 
+        public const string BestAnswers = "best";
+        public const string FastAnswers = "fast";
+
+        /// <summary>Which answer model writes: <c>best</c> (the default; quality first) or <c>fast</c>
+        /// (first words sooner, a third of the cost). The models are the instance's
+        /// (<see cref="SearchOrAskOptions.AnswerModel"/>, <see cref="SearchOrAskOptions.FastAnswerModel"/>).</summary>
+        public string Answers { get; set; } = BestAnswers;
+
         /// <summary>Judge calls per dataset per UTC day. Spend is bounded, not hoped for.</summary>
         public int DailyCallBudget { get; set; } = 5000;
 
@@ -37,6 +45,8 @@ namespace IndxServer.Services.SearchOrAsk
                 return $"kind must be one of: {string.Join(", ", SearchOrAskRecipes.Kinds)}.";
             if (SiteDescription is { Length: > MaxSiteDescription })
                 return $"siteDescription is at most {MaxSiteDescription} characters.";
+            if (Answers is not (BestAnswers or FastAnswers))
+                return $"answers must be {BestAnswers} or {FastAnswers}.";
             if (DailyCallBudget < 0)
                 return "dailyCallBudget cannot be negative.";
             if (Thresholds == null)

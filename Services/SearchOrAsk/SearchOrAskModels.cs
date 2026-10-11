@@ -13,10 +13,8 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>Asks the judge the named questions about one state.</summary>
         Task<JudgeAnswer> JudgeAsync(JsonObject state, IReadOnlyDictionary<string, JsonObject> questions, CancellationToken ct);
 
-        /// <summary>Streams an answer as text deltas.</summary>
-        IAsyncEnumerable<string> AnswerAsync(string system, string user, CancellationToken ct);
-
-        string AnswerModel { get; }
+        /// <summary>Streams an answer from the named model as text deltas.</summary>
+        IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, CancellationToken ct);
     }
 
     /// <summary>A judgement: the probability each question came back with (absent when the judge
@@ -41,8 +39,6 @@ namespace IndxServer.Services.SearchOrAsk
     public sealed class OpenRouterModels(IHttpClientFactory http, SearchOrAskOptions options) : ISearchOrAskModels
     {
         public const string HttpClientName = "SearchOrAsk";
-
-        public string AnswerModel => options.AnswerModel;
 
         private HttpClient Client()
         {
@@ -88,11 +84,11 @@ namespace IndxServer.Services.SearchOrAsk
             return new JudgeAnswer(probabilities, cost);
         }
 
-        public async IAsyncEnumerable<string> AnswerAsync(string system, string user, [EnumeratorCancellation] CancellationToken ct)
+        public async IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, [EnumeratorCancellation] CancellationToken ct)
         {
             var body = new JsonObject
             {
-                ["model"] = options.AnswerModel,
+                ["model"] = model,
                 ["stream"] = true,
                 ["max_tokens"] = 1500,
                 ["messages"] = new JsonArray(

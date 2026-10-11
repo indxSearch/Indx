@@ -11,6 +11,7 @@
 @inherits DatasetTabBase
 @inject SearchOrAskStore Store
 @inject SearchOrAskService Service
+@inject SearchOrAskOptions ModelOptions
 
 @if (!Active) { return; }
 
@@ -43,6 +44,9 @@
                 @Row("About the site", "One or two sentences the judge reads, such as who the readers are and what the records hold. Empty uses the dataset's description.",
                      !string.IsNullOrWhiteSpace(_edit.SiteDescription),
                      @<Textarea Rows="3" @bind-Value="_edit.SiteDescription" placeholder="@_effectiveSite" />)
+                @Row("Answers", "Best quality is the default. Fast starts writing sooner and costs about a third, with a smaller model.",
+                     _edit.Answers != SearchOrAskSettings.BestAnswers,
+                     @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
                 @Row("Daily call budget", $"Judge and answer calls per day (UTC) for this dataset. {_callsToday:N0} used today.",
                      _budgetText != null,
                      @<div class="soa-number"><InputField @bind-Value="_budgetText" @bind-Value:after="SetBudget" Error="@_budgetError" inputmode="numeric" placeholder="5,000" /></div>)
@@ -158,6 +162,16 @@
 
     private static readonly IEnumerable<SelectField.SelectOption> KindOptions =
         [new("Documentation, help and reference", SearchOrAskRecipes.Documentation)];
+
+    // Times and costs measured on the docs with eight sources (Notes/search-or-ask-server.md).
+    private IEnumerable<SelectField.SelectOption> AnswerOptions =>
+    [
+        new($"Best quality: {ModelName(ModelOptions.AnswerModel)}, first words after 3 to 5 s, about 2 cents", SearchOrAskSettings.BestAnswers),
+        new($"Fast: {ModelName(ModelOptions.FastAnswerModel)}, first words after about 1 s, about half a cent", SearchOrAskSettings.FastAnswers),
+    ];
+
+    /// <summary>"anthropic/claude-sonnet-5.5" as "claude-sonnet-5.5": the provider adds nothing here.</summary>
+    private static string ModelName(string model) => model[(model.IndexOf('/') + 1)..];
 
     private sealed record NumberParam(string Key, string Label, string Help, double Default,
         Func<SearchOrAskThresholds, double> Get, Action<SearchOrAskThresholds, double> Set);
