@@ -808,6 +808,7 @@ namespace IndxServer.Engine
             _boostStore?.Delete(teamId, dataSetName);
             _metadataStore?.Delete(teamId, dataSetName);
             _queryParameterStore?.Delete(teamId, dataSetName);
+            _searchOrAskStore?.Delete(teamId, dataSetName);
             // Statistics survive a delete by design, so the history says where the gap came from.
             ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Delete);
             return true;
@@ -1034,6 +1035,7 @@ namespace IndxServer.Engine
             _boostStore?.Rename(teamId, dataSetName, newName);
             _metadataStore?.Rename(teamId, dataSetName, newName);
             _queryParameterStore?.Rename(teamId, dataSetName, newName);
+            _searchOrAskStore?.Rename(teamId, dataSetName, newName);
             MoveSavedEmbeddings(dataSetName, teamId, newName, teamId);
             _logger.LogInformation("{Prefix}renamed to '{NewName}'", MakeLogPrefix(teamId, dataSetName), newName);
 
@@ -1077,6 +1079,7 @@ namespace IndxServer.Engine
             _boostStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _metadataStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _queryParameterStore?.Transfer(currentTeamId, newTeamId, dataSetName);
+            _searchOrAskStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             MoveSavedEmbeddings(dataSetName, currentTeamId, dataSetName, newTeamId);
 
             // Warm up the engine for the new owning team, same as InitializeSystem does on startup.
@@ -1430,6 +1433,12 @@ namespace IndxServer.Engine
 
         /// <summary>Attaches the query-parameter store to the search path (startup-only).</summary>
         internal void AttachQueryParameterStore(Services.QueryParameterStore store) => _queryParameterStore = store;
+
+        // Per-dataset Search or ask settings: follow the dataset through delete, rename and transfer.
+        private Services.SearchOrAsk.SearchOrAskStore? _searchOrAskStore;
+
+        /// <summary>Attaches the Search or ask store (startup-only).</summary>
+        internal void AttachSearchOrAskStore(Services.SearchOrAsk.SearchOrAskStore store) => _searchOrAskStore = store;
 
         /// <summary>
         /// Applies the dataset's server-declared key field to the engine's <see cref="DocumentFields"/>

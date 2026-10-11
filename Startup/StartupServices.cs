@@ -114,6 +114,17 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.DatasetMetadataStore>();
         builder.Services.AddSingleton<IndxServer.Services.QueryParameterStore>();
 
+        // Search or ask (Notes/search-or-ask-server.md): off unless Indx:SearchOrAsk:ApiKey is set,
+        // and then only for datasets an owner switches on. One OpenRouter key for judge and answer.
+        var searchOrAsk = builder.Configuration.GetSection(IndxServer.Services.SearchOrAsk.SearchOrAskOptions.Section)
+            .Get<IndxServer.Services.SearchOrAsk.SearchOrAskOptions>() ?? new();
+        builder.Services.AddSingleton(searchOrAsk);
+        builder.Services.AddHttpClient(IndxServer.Services.SearchOrAsk.OpenRouterModels.HttpClientName,
+            client => client.Timeout = TimeSpan.FromSeconds(120));
+        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.ISearchOrAskModels, IndxServer.Services.SearchOrAsk.OpenRouterModels>();
+        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskStore>();
+        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskService>();
+
         // MCP server: read-only retrieval tools over /mcp (Streamable HTTP), behind JWT auth.
         builder.Services.AddHttpContextAccessor();
         // ServerInstructions is sent once at the initialization handshake, so the workflow and the

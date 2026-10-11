@@ -1,0 +1,91 @@
+using System.Text.Json.Serialization;
+
+namespace IndxServer.Services.SearchOrAsk
+{
+    /// <summary>
+    /// A dataset's Search or ask settings (<see cref="SearchOrAskStore"/>). Text and numbers only:
+    /// the request the judge receives has a fixed shape, so an owner, or Observr after a yes, can
+    /// make the judge better or worse but cannot break the endpoint.
+    /// </summary>
+    public sealed class SearchOrAskSettings
+    {
+        /// <summary>Off until an owner switches it on: typed text leaves the server.</summary>
+        public bool Enabled { get; set; }
+
+        /// <summary>Which recipe the judge reads (<see cref="SearchOrAskRecipes"/>).</summary>
+        public string Kind { get; set; } = SearchOrAskRecipes.Documentation;
+
+        /// <summary>The sentence or two the judge reads about the site. Null: the dataset's description.</summary>
+        public string? SiteDescription { get; set; }
+
+        /// <summary>What the judge sees of each result. Null: chosen from the field configuration.</summary>
+        public string? TitleField { get; set; }
+        public List<string>? SectionFields { get; set; }
+        public List<string>? SnippetFields { get; set; }
+
+        public SearchOrAskThresholds Thresholds { get; set; } = new();
+
+        /// <summary>Judge calls per dataset per UTC day. Spend is bounded, not hoped for.</summary>
+        public int DailyCallBudget { get; set; } = 5000;
+
+        public const int MaxSiteDescription = 600;
+
+        /// <summary>Null when the settings can be saved, otherwise what is wrong, for a 400.</summary>
+        public string? Validate()
+        {
+            if (!SearchOrAskRecipes.IsKnown(Kind))
+                return $"kind must be one of: {string.Join(", ", SearchOrAskRecipes.Kinds)}.";
+            if (SiteDescription is { Length: > MaxSiteDescription })
+                return $"siteDescription is at most {MaxSiteDescription} characters.";
+            if (DailyCallBudget < 0)
+                return "dailyCallBudget cannot be negative.";
+            if (Thresholds == null)
+                return "thresholds are required.";
+            return Thresholds.Validate();
+        }
+    }
+
+    /// <summary>
+    /// Where Jev's probability becomes an offer. Entered at one value and left only below a lower
+    /// one, so the offer does not blink while a visitor types; the client applies that, since it
+    /// depends on what this visitor has been shown. Defaults measured on the docs set
+    /// (Notes/search-or-ask.md): no lookup scored above 0.22 there.
+    /// </summary>
+    public sealed class SearchOrAskThresholds
+    {
+        public double Strong { get; set; } = 0.65;
+        public double StrongHide { get; set; } = 0.45;
+        public double Invite { get; set; } = 0.40;
+        public double InviteHide { get; set; } = 0.30;
+
+        public string? Validate()
+        {
+            foreach (var (name, v) in new[] { ("strong", Strong), ("strongHide", StrongHide), ("invite", Invite), ("inviteHide", InviteHide) })
+                if (double.IsNaN(v) || v < 0 || v > 1)
+                    return $"thresholds.{name} must be between 0 and 1.";
+            if (StrongHide > Strong) return "thresholds.strongHide cannot be above thresholds.strong.";
+            if (InviteHide > Invite) return "thresholds.inviteHide cannot be above thresholds.invite.";
+            if (Invite > Strong) return "thresholds.invite cannot be above thresholds.strong.";
+            return null;
+        }
+
+        /// <summary>The offer for one judgement on its own, with no memory of the last one: what a
+        /// client with no logic of its own shows.</summary>
+        public string OfferFor(double p) => p >= Strong ? "strong" : p >= Invite ? "invite" : "none";
+    }
+
+    /// <summary>What a search result is reduced to for the judge, resolved from the settings and the
+    /// field configuration.</summary>
+    public sealed record SearchOrAskFields(string? TitleField, IReadOnlyList<string> SectionFields,
+        IReadOnlyList<string> SnippetFields);
+
+    /// <summary>GET …/search-or-ask: what the dataset sets, what it runs with, and whether the
+    /// instance can run it at all.</summary>
+    public sealed record SearchOrAskSettingsResponse(
+        SearchOrAskSettings Settings,
+        [property: JsonPropertyName("effective")] SearchOrAskEffective Effective,
+        bool Available);
+
+    public sealed record SearchOrAskEffective(string SiteDescription, string? TitleField,
+        IReadOnlyList<string> SectionFields, IReadOnlyList<string> SnippetFields);
+}

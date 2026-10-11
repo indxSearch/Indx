@@ -327,6 +327,9 @@ internal static class StartupPipeline
             IndxServerInternalApi.Manager.AttachBoostStore(boostStore, boostCeiling);
             IndxServerInternalApi.Manager.AttachMetadataStore(metadataStore);
             IndxServerInternalApi.Manager.AttachQueryParameterStore(queryParameterStore);
+            var searchOrAskStore = app.Services.GetRequiredService<IndxServer.Services.SearchOrAsk.SearchOrAskStore>();
+            searchOrAskStore.EnsureTable();
+            IndxServerInternalApi.Manager.AttachSearchOrAskStore(searchOrAskStore);
 
             // Detect license file for summary
             if (!string.IsNullOrWhiteSpace(licensePath) && File.Exists(licensePath))
