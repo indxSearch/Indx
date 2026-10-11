@@ -374,9 +374,16 @@ namespace IndxServer.Services.SearchOrAsk
                 // Whether these sources could answer the question, asked of the judge beside the
                 // answer (one more call, about $0.00004): a low score is a question the content
                 // does not cover, which is what the statistics list first. Only when recorded.
+                // On the sources the answer is written from, in their order, not on the typed
+                // search: "is there a limit on how many documents I can index for free" found
+                // Licensing through its keywords only, and judged on the typed search scored 0.13
+                // for a question the answer then answered in full.
                 if (origin != null && Writer != null)
                     answerability = AnswerabilityAsync(SiteDescription(teamId, dataSetName, settings), question,
-                        typedSearch with { Top = typedSearch.Top.Take(ResultsForJudge).ToList() }, settings.Kind);
+                        typedSearch with
+                        {
+                            Top = merged.Take(ResultsForJudge).Select(key => Describe(engine, key, fields, SnippetChars, forAnswer: false)).ToList(),
+                        }, settings.Kind);
 
                 // The sources in full (up to a ceiling), not the judge's snippets: the answer is written from them.
                 var sources = merged.Select((key, i) => (N: i + 1, Doc: Describe(engine, key, fields, SourceChars, forAnswer: true))).ToList();
