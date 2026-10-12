@@ -8,7 +8,7 @@
 .obs-changes { display: flex; flex-direction: column; gap: 10px; max-width: 960px; }
 .obs-changes-head { font: var(--text-xs); color: var(--lv5); }
 .obs-change { display: grid; grid-template-columns: auto minmax(120px, 220px) 1fr auto; column-gap: 12px; align-items: center; }
-.obs-change-field { font-family: var(--font-mono); font-size: 12px; color: var(--lv8); overflow-wrap: anywhere; }
+.obs-change-field { font: var(--text-sm); color: var(--lv8); overflow-wrap: anywhere; }
 .obs-change-why { font: var(--text-xs); color: var(--lv5); line-height: 1.4; }
 .obs-change-chips { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
 @media (max-width: 720px) {
