@@ -1,16 +1,17 @@
-@* "Send this week's summary now" on the Options tab, for a dataset with Observr on: the digest
-   the daily job would send, on demand, so an admin sees what Observr makes of the week without
-   waiting for the morning. Its own component so the tab needs no ObservrClient unless it is shown. *@
+@* "Send now" on the Admin Observr page, for a dataset with Observr on: the digest the daily job
+   would send, on demand, so an admin sees what Observr makes of the week without waiting for the
+   morning. *@
 @using IndxServer.Services.Observr
 @inject ObservrClient Observr
 
-<div class="opt-row">
-    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Loading="@_busy" @onclick="SendAsync">Send this week's summary now</Button>
+<span class="opt-row">
+    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Loading="@_busy" @onclick="SendAsync">Send this week's summary</Button>
     @if (_result != null) { <span class="opt-muted">@_result</span> }
-</div>
+</span>
 
 @code {
-    [CascadingParameter] public DatasetContext Ctx { get; set; } = default!;
+    [Parameter, EditorRequired] public string TeamId { get; set; } = "";
+    [Parameter, EditorRequired] public string DatasetName { get; set; } = "";
     private bool _busy;
     private string? _result;
 
@@ -20,7 +21,7 @@
         _result = null;
         try
         {
-            var o = await Observr.SendDigestAsync(Ctx.TeamId, Ctx.Name, CancellationToken.None);
+            var o = await Observr.SendDigestAsync(TeamId, DatasetName, CancellationToken.None);
             _result = o.Status == ObservrStatus.Ok
                 ? o.Count == 0 ? "Nothing new worth your attention." : o.Count == 1 ? "One thing, in the Observr menu." : $"{o.Count} things, in the Observr menu."
                 : ObservrText.Refusal(new ObservrOutcome(o.Status, Reason: o.Reason), "to summarise");

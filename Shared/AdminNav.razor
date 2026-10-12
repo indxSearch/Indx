@@ -12,7 +12,7 @@
 </div>
 
 @code {
-    /// <summary>Key of the active tab: Users | Teams | Datasets | Monitor | Settings | License | EmailPreview.</summary>
+    /// <summary>Key of the active tab: Users | Teams | Datasets | Monitor | Settings | License | Observr | EmailPreview.</summary>
     [Parameter] public string Active { get; set; } = "";
 
     // Version banner (moved here from the Datasets page so it heads the admin area).
@@ -52,6 +52,7 @@
         new("Monitor", "Monitor", Of<Terminal>(), Href: "/admin/monitor"),
         new("Settings", "Settings", Of<SlidersHorizontal>(), Href: "/admin/settings"),
         new("License", "License", Of<DocumentOrFile>(), Href: "/admin/license"),
+        new("Observr", "Observr", Of<Indx.Systm.Blazor.Icons.Observr>(), Href: "/admin/observr"),
         new("Email preview", "EmailPreview", Of<Bell>(), Href: "/admin/email-preview"),
     ];
 }

@@ -132,6 +132,7 @@ internal static class StartupServices
             .Get<IndxServer.Services.Observr.ObservrOptions>() ?? new());
         builder.Services.AddHttpClient(IndxServer.Services.Observr.ObservrClient.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(90));
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrFindingStore>();
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrSubscription>();
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrSummaryBuilder>();
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrClient>();
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrDigestJob>();

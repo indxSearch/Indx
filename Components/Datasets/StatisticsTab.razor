@@ -99,7 +99,7 @@ else
             </div>
             @if (_zeroHits)
             {
-                <p class="stats-help">Searches that found nothing, most often first.@(ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name) ? " Ask Observr what went wrong and what to do about it." : Ctx.IsAdmin ? " Switch Observr on under Options to ask what went wrong." : "")</p>
+                <p class="stats-help">Searches that found nothing, most often first.@(ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name) ? " Ask Observr what went wrong and what to do about it." : "")</p>
             }
             else if (_queryOrder != QueryOrder.Searches)
             {

@@ -5,8 +5,12 @@
 @using IndxServer.Services.Observr
 @inject ObservrFindingStore Findings
 @inject ObservrClient Observr
+@inject ObservrSubscription Subscription
 @inject TeamService Teams
 @inject AuthenticationStateProvider AuthState
+
+@* Nothing of Observr for an instance whose subscription does not include it: no icon, no menu. *@
+@if (!Subscription.Visible) { return; }
 
 <div class="obsv-wrapper">
     @if (_open)
@@ -93,6 +97,9 @@
 
     protected override async Task OnInitializedAsync()
     {
+        // The first page after a start asks the portal in the background; the icon appears on the next.
+        Subscription.EnsureChecked();
+        if (!Subscription.Visible) return;
         var auth = await AuthState.GetAuthenticationStateAsync();
         var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (userId == null) return;

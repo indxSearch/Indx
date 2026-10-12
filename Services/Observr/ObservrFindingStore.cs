@@ -31,7 +31,7 @@ namespace IndxServer.Services.Observr
     /// Observr's findings, a server-owned table in indx.db like the Search or ask settings: one row
     /// per answer Observr gave, with its proposals as JSON, its status, and no record of who decided
     /// (as change events record no one). Beside it, which datasets have Observr at all: it is opt-in
-    /// per dataset (a team admin's switch on the Options tab), since a setup holds datasets nobody
+    /// per dataset (an instance admin's switch, Admin, Observr), since a setup holds datasets nobody
     /// should be asked about, test copies and the like. Both follow the dataset through delete,
     /// rename and transfer.
     /// </summary>

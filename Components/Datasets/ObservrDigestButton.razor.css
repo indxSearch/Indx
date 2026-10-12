@@ -1,2 +1,2 @@
-.opt-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.opt-row { display: inline-flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .opt-muted { font: var(--text-xs); color: var(--lv5); }
