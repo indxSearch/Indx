@@ -5,7 +5,7 @@
 @inject ObservrClient Observr
 
 <span class="opt-row">
-    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Loading="@_busy" @onclick="SendAsync">Send this week's summary</Button>
+    <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Loading="@_busy" @onclick="SendAsync">Send this week's summary</Button></span>
     @if (_result != null) { <span class="opt-muted">@_result</span> }
 </span>
 

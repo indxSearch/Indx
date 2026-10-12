@@ -12,7 +12,7 @@
     <FieldConfigToolbar @bind-Filter="_filter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced">
         @if (Ctx.IsEditor && !_review && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
         {
-            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Disabled="@Ctx.IsDirty" @onclick="() => _review = true">Review my setup</Button>
+            <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Disabled="@Ctx.IsDirty" @onclick="() => _review = true">Review my setup</Button></span>
         }
     </FieldConfigToolbar>
 }

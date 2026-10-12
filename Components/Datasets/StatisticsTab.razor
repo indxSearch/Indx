@@ -120,7 +120,7 @@ else
                             <td class="stats-action">
                                 @if (Ctx.IsEditor && _observrQuery != q.QueryText && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
                                 {
-                                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => _observrQuery = q.QueryText">Ask Observr</Button>
+                                    <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => _observrQuery = q.QueryText">Ask Observr</Button></span>
                                 }
                             </td>
                         </tr>
@@ -152,7 +152,7 @@ else
                                 <td class="stats-action">
                                     @if (_observrQuery != q.QueryText)
                                     {
-                                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => _observrQuery = q.QueryText">Why isn't this working?</Button>
+                                        <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => _observrQuery = q.QueryText">Why isn't this working?</Button></span>
                                     }
                                 </td>
                             }
@@ -364,7 +364,7 @@ else
                                         @* A week after is what "help" is judged on; sooner there is nothing to compare. *@
                                         @if (_observrChange != c.Timestamp && c.Timestamp < DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeMilliseconds())
                                         {
-                                            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => _observrChange = c.Timestamp">Did this help?</Button>
+                                            <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => _observrChange = c.Timestamp">Did this help?</Button></span>
                                         }
                                     </td>
                                 }
