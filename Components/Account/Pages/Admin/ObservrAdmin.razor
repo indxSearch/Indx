@@ -37,6 +37,13 @@
     {
         <p style="color: var(--lv6); margin: 0 0 8px;">This instance uses an Observr token of its own (<code>Indx:Observr:Token</code>), which Observr trusts by configuration. No licence is checked.</p>
     }
+    else if (_state.EarlyAccess)
+    {
+        <p style="color: var(--lv6); margin: 0 0 8px;">
+            This licence has early access to Observr while it is in preview@(string.IsNullOrEmpty(_state.LicensedTo) ? "" : $" ({_state.LicensedTo})")@(_state.ExpiresAt is { } until ? $", until {until:d MMM yyyy}" : "").
+            <span style="color: var(--lv5);">Checked <TimeAgo Value="_state.CheckedUtc!.Value" />.</span>
+        </p>
+    }
     else if (_state.Included)
     {
         <p style="color: var(--lv6); margin: 0 0 8px;">
@@ -50,7 +57,7 @@
             @(_state.Reason switch
             {
                 "unknownToken" => "The licence portal does not recognise this instance's token. Check it under License.",
-                "expired" => "This licence has expired, so Observr is not included. Renew it to switch Observr on.",
+                "expired" => "This licence's Observr access has ended. Renew the subscription, or ask Indx for early access, to switch Observr on.",
                 _ => "Observr is part of the Pro and Enterprise subscriptions. This instance's licence does not include it, so nothing of Observr is shown to its users.",
             })
             <span style="color: var(--lv5);">Checked <TimeAgo Value="_state.CheckedUtc!.Value" />.</span>

@@ -8,9 +8,12 @@ namespace IndxServer.Services.Observr
     /// <summary>What the portal says about this instance's licence: whether its subscription includes
     /// Observr, which tier, whose it is, and why not when not. <see cref="Known"/> is false until the
     /// portal has answered once.</summary>
-    public sealed record ObservrSubscriptionState(bool Known, bool Included, string Tier, string LicensedTo, string? Reason, DateTime? CheckedUtc)
+    public sealed record ObservrSubscriptionState(bool Known, bool Included, string Tier, string LicensedTo, string? Reason, DateTime? CheckedUtc,
+        string? Access = null, DateTime? ExpiresAt = null)
     {
         public static readonly ObservrSubscriptionState Unknown = new(false, false, "", "", null, null);
+        /// <summary>Let in while Observr is in preview, without a paid edition.</summary>
+        public bool EarlyAccess => Access == "earlyAccess";
     }
 
     /// <summary>
@@ -67,7 +70,7 @@ namespace IndxServer.Services.Observr
                     return Current;
                 }
                 var body = await response.Content.ReadFromJsonAsync<PortalAnswer>(ct) ?? new PortalAnswer();
-                return _byToken[token] = new ObservrSubscriptionState(true, body.Valid, body.Tier ?? "", body.LicensedTo ?? "", body.Reason, DateTime.UtcNow);
+                return _byToken[token] = new ObservrSubscriptionState(true, body.Valid, body.Tier ?? "", body.LicensedTo ?? "", body.Reason, DateTime.UtcNow, body.Access, body.ExpiresAt);
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
@@ -95,6 +98,8 @@ namespace IndxServer.Services.Observr
             public string? Tier { get; set; }
             public string? LicensedTo { get; set; }
             public string? Reason { get; set; }
+            public string? Access { get; set; }
+            public DateTime? ExpiresAt { get; set; }
         }
     }
 }

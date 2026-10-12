@@ -116,7 +116,7 @@ namespace IndxServer.Services.Observr
             ObservrStatus.NoToken => "This instance has no licence token, so it cannot reach Observr. Add one under Admin, License.",
             ObservrStatus.UnknownToken => "Observr does not recognise this instance's licence token. Check it under Admin, License.",
             ObservrStatus.NoSubscription => o.Reason == "expired"
-                ? "This licence has expired, so Observr is not included. Renew it to ask."
+                ? "This licence's Observr access has ended, so Observr is not included."
                 : "Observr is part of the Pro and Enterprise subscriptions. This instance's licence does not include it.",
             ObservrStatus.Unavailable => "Observr cannot be reached right now. Try again in a moment.",
             _ => o.Reason == "datasetNotReady" ? $"The dataset is not ready to search, so there is nothing {nothingYet} yet."
