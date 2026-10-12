@@ -121,6 +121,7 @@ namespace IndxServer.Services.Observr
             ObservrStatus.Unavailable => "Observr cannot be reached right now. Try again in a moment.",
             _ => o.Reason == "datasetNotReady" ? $"The dataset is not ready to search, so there is nothing {nothingYet} yet."
                 : o.Reason == "noStatistics" ? "This instance keeps no statistics, so there is nothing to summarise."
+                : o.Reason == "quota" ? "This licence has used today's Observr allowance. It is back tomorrow."
                 : "Observr could not answer this time.",
         };
     }
@@ -312,7 +313,7 @@ namespace IndxServer.Services.Observr
                 string? reason = null;
                 try { reason = JsonDocument.Parse(body).RootElement.TryGetProperty("reason", out var r) ? r.GetString() : null; }
                 catch (JsonException) { }
-                if (response.StatusCode is not (HttpStatusCode.OK or HttpStatusCode.Unauthorized or HttpStatusCode.PaymentRequired or HttpStatusCode.ServiceUnavailable))
+                if (response.StatusCode is not (HttpStatusCode.OK or HttpStatusCode.Unauthorized or HttpStatusCode.PaymentRequired or HttpStatusCode.ServiceUnavailable or HttpStatusCode.TooManyRequests))
                     logger.LogWarning("Observr answered {Status} for {Team}/{Dataset}", (int)response.StatusCode, teamId, dataSetName);
                 return (response.StatusCode, body, reason ?? (response.StatusCode == HttpStatusCode.OK ? null : $"http{(int)response.StatusCode}"));
             }
