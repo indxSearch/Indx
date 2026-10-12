@@ -83,6 +83,13 @@
     }
 }
 
+/* Selected text: a level rather than the browser's blue, which sat badly on the dark theme. lv3 is the
+   fields' own selection; the text goes to lv8 so grey text stays readable on it in both themes. */
+::selection {
+    background: var(--lv3);
+    color: var(--lv8);
+}
+
 /* InputField — the text input box. A reusable class: used both by the InputField
    component and directly on raw <input> elements. The InputField wrapper/label
    live in InputField.razor.css (scoped); the box style is global so it can be
