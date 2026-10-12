@@ -40,14 +40,18 @@ else
                         }
                     </td>
                     <td style="white-space:nowrap;">
-                        @if (f.Status == ObservrFinding.Open)
+                        @if (f.Status == ObservrFinding.Open && f.Proposals.Count == 0)
+                        {
+                            <Button Variant="ghost" Size="micro" Loading="@(_busy == f.Id)" @onclick="() => DecideAsync(f, true)">Got it</Button>
+                        }
+                        else if (f.Status == ObservrFinding.Open)
                         {
                             <Button Variant="primary" Size="micro" Loading="@(_busy == f.Id)" @onclick="() => DecideAsync(f, true)">Yes</Button>
                             <Button Variant="ghost" Size="micro" Disabled="@(_busy == f.Id)" @onclick="() => DecideAsync(f, false)">No</Button>
                         }
                         else
                         {
-                            <span style="font:var(--text-xs); color:var(--lv5);">@(f.Proposals.Count == 0 ? "answered" : f.Status)</span>
+                            <span style="font:var(--text-xs); color:var(--lv5);">@(f.Proposals.Count == 0 ? "read" : f.Status)</span>
                         }
                     </td>
                 </tr>

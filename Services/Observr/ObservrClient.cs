@@ -175,7 +175,7 @@ namespace IndxServer.Services.Observr
             {
                 var where = DigestTabs.Contains(item.Where) ? item.Where : "statistics";
                 ids.Add(findings.Add(teamId, dataSetName, $"{DigestKind}/{where}", item.Title.Trim(),
-                    new ObservrAnswer(digest.AskId, digest.Outcome, item.Text, item.Proposals, digest.Model)));
+                    new ObservrAnswer(digest.AskId, digest.Outcome, item.Text, item.Proposals, digest.Model), unread: true));
             }
             return new ObservrDigestOutcome(ObservrStatus.Ok, FindingIds: ids);
         }

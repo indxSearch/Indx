@@ -61,8 +61,15 @@
                                 </div>
                             }
                             <div class="obsv-actions">
-                                <Button Variant="primary" Size="micro" Loading="@(_busy == f.Id)" @onclick="() => DecideAsync(f, true)">Yes</Button>
-                                <Button Variant="ghost" Size="micro" Disabled="@(_busy == f.Id)" @onclick="() => DecideAsync(f, false)">No</Button>
+                                @if (f.Proposals.Count == 0)
+                                {
+                                    <Button Variant="ghost" Size="micro" Loading="@(_busy == f.Id)" @onclick="() => DecideAsync(f, true)">Got it</Button>
+                                }
+                                else
+                                {
+                                    <Button Variant="primary" Size="micro" Loading="@(_busy == f.Id)" @onclick="() => DecideAsync(f, true)">Yes</Button>
+                                    <Button Variant="ghost" Size="micro" Disabled="@(_busy == f.Id)" @onclick="() => DecideAsync(f, false)">No</Button>
+                                }
                                 <span class="obsv-time"><TimeAgo Value="f.CreatedUtc" TooltipPosition="left" /></span>
                             </div>
                         </li>

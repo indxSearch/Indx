@@ -89,7 +89,10 @@ namespace IndxServer.Services.Observr
                 c => { c.Parameters.AddWithValue("$t", teamId); c.Parameters.AddWithValue("$d", dataSetName); c.Parameters.AddWithValue("$e", enabled ? 1 : 0); });
         }
 
-        public long Add(string teamId, string dataSetName, string kind, string query, ObservrAnswer answer)
+        /// <summary>Keeps an answer. Open when there is something to decide, or when nobody has read it
+        /// yet (<paramref name="unread"/>: a digest item), closed as answered otherwise (an answer shown
+        /// inline, with no proposal).</summary>
+        public long Add(string teamId, string dataSetName, string kind, string query, ObservrAnswer answer, bool unread = false)
         {
             new SqLiteManager(DbPath, createOrOpenDatabase: true);
             EnsureTable();
@@ -105,8 +108,8 @@ namespace IndxServer.Services.Observr
             cmd.Parameters.AddWithValue("$o", answer.Outcome);
             cmd.Parameters.AddWithValue("$a", answer.Answer);
             cmd.Parameters.AddWithValue("$p", JsonSerializer.Serialize(answer.Proposals, JsonOptions));
-            // A finding with nothing to decide is the answer itself: kept, but not open.
-            cmd.Parameters.AddWithValue("$s", answer.Proposals.Count > 0 ? ObservrFinding.Open : ObservrFinding.Accepted);
+            // A finding with nothing to decide that was read where it was asked is kept, but not open.
+            cmd.Parameters.AddWithValue("$s", answer.Proposals.Count > 0 || unread ? ObservrFinding.Open : ObservrFinding.Accepted);
             cmd.Parameters.AddWithValue("$ask", answer.AskId);
             cmd.Parameters.AddWithValue("$c", DateTime.UtcNow.ToString("o"));
             return (long)cmd.ExecuteScalar()!;
