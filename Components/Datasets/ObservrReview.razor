@@ -32,32 +32,30 @@
         }
         else
         {
-            @* One row per change, as a table with an Apply column: the field table below also has
-               checkboxes, and those switch roles on, so the header says what these ones do. A role is
-               shown as it would change: "+ searchable", "searchable off", "weight 1 → 3". *@
-            <Table AriaLabel="Observr's proposed field changes" Class="obs-table">
-                <thead><tr>@if (_decided == null) { <th class="obs-th-apply">Apply</th> }<th>Field</th><th>Change</th><th>Why</th></tr></thead>
-                <tbody>
-                    @foreach (var c in _changes)
-                    {
-                        <tr>
-                            @if (_decided == null)
+            @* One row per change: the checkbox is "apply this", labelled once above the rows since
+               the field table below has checkboxes too, and those switch roles on. Then the field,
+               its reason, and the change as chips: "+ searchable", "searchable off", "weight 1 → 3". *@
+            <div class="obs-changes">
+                @if (_decided == null) { <span class="obs-changes-head">Tick the changes to apply</span> }
+                @foreach (var c in _changes)
+                {
+                    <div class="obs-change">
+                        @if (_decided == null)
+                        {
+                            <Checkbox Checked="_selected.Contains(c.Field!.Name)" CheckedChanged="v => Select(c.Field!.Name, v)" Disabled="@_applying" aria-label="@($"Apply the change to {c.Field!.Name}")" />
+                        }
+                        <span class="obs-change-field">@c.Field!.Name</span>
+                        <span class="obs-change-why">@c.Reason</span>
+                        <span class="obs-change-chips">
+                            @foreach (var (text, on) in Parts(c.Field!))
                             {
-                                <td class="obs-td-apply"><Checkbox Checked="_selected.Contains(c.Field!.Name)" CheckedChanged="v => Select(c.Field!.Name, v)" Disabled="@_applying" aria-label="@($"Apply the change to {c.Field!.Name}")" /></td>
+                                @if (on) { <Chip Icon="DatasetIcons.ShowMore">@text</Chip> }
+                                else { <Chip Color="var(--lv2)" TextColor="var(--lv5)">@text</Chip> }
                             }
-                            <td class="obs-td-field">@c.Field!.Name</td>
-                            <td><span class="obs-td-change">
-                                @foreach (var (text, on) in Parts(c.Field!))
-                                {
-                                    @if (on) { <Chip Icon="DatasetIcons.ShowMore">@text</Chip> }
-                                    else { <Chip Color="var(--lv2)" TextColor="var(--lv5)">@text</Chip> }
-                                }
-                            </span></td>
-                            <td class="obs-td-why">@c.Reason</td>
-                        </tr>
-                    }
-                </tbody>
-            </Table>
+                        </span>
+                    </div>
+                }
+            </div>
             @if (_decided == "accepted")
             {
                 <span class="obs-done">@(_applied == 0 ? "Nothing applied." : _applied == 1 ? "Applied." : $"{_applied} changes applied.")</span>
