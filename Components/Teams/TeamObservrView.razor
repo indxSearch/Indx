@@ -62,7 +62,7 @@
                         <td>
                             @if (_canEdit && s.Enabled)
                             {
-                                <div style="width: 180px;"><SelectField Size="micro" Options="ReportOptions" Value="@s.Report" ValueChanged="v => Save(row, s with { Report = v })" aria-label="How often Observr reports" /></div>
+                                <SelectField Size="micro" Variant="ghost" Options="ReportOptions" Value="@s.Report" ValueChanged="v => Save(row, s with { Report = v })" aria-label="How often Observr reports" style="width: 100%;" />
                             }
                             else if (s.Enabled) { <span style="color: var(--lv6);">@ReportLabel(s.Report)</span> }
                             else { <span style="color: var(--lv4);">—</span> }
