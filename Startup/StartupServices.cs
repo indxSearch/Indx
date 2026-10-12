@@ -132,7 +132,10 @@ internal static class StartupServices
             .Get<IndxServer.Services.Observr.ObservrOptions>() ?? new());
         builder.Services.AddHttpClient(IndxServer.Services.Observr.ObservrClient.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(90));
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrFindingStore>();
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrSummaryBuilder>();
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrClient>();
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrDigestJob>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.Observr.ObservrDigestJob>());
 
         // MCP server: read-only retrieval tools over /mcp (Streamable HTTP), behind JWT auth.
         builder.Services.AddHttpContextAccessor();

@@ -76,7 +76,7 @@ else
     }
 
     private string TeamName(string teamId) => _teamNames.GetValueOrDefault(teamId, teamId);
-    private string Link(ObservrFinding f) => $"/teams/{Uri.EscapeDataString(TeamName(f.TeamId))}/datasets/{Uri.EscapeDataString(f.DataSetName)}?tab={(f.Kind == ObservrClient.FieldReviewKind ? "fields" : "statistics")}";
+    private string Link(ObservrFinding f) => $"/teams/{Uri.EscapeDataString(TeamName(f.TeamId))}/datasets/{Uri.EscapeDataString(f.DataSetName)}?tab={f.Tab}";
 
     private async Task DecideAsync(ObservrFinding f, bool yes)
     {

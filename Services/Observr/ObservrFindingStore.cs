@@ -13,6 +13,15 @@ namespace IndxServer.Services.Observr
         public const string Open = "open";
         public const string Accepted = "accepted";
         public const string Declined = "declined";
+
+        /// <summary>The dataset tab a finding points into: a digest item's kind names it
+        /// (<c>digest/fields</c>), a field review goes to the fields, the rest to the statistics.</summary>
+        public string Tab => Kind == ObservrClient.FieldReviewKind ? "fields"
+            : Kind.StartsWith(ObservrClient.DigestKind + "/") ? Kind[(ObservrClient.DigestKind.Length + 1)..] : "statistics";
+
+        /// <summary>What the menu shows it as: the query in quotes, a review by name, a digest item by its title.</summary>
+        public string Title => Kind == ObservrClient.FieldReviewKind ? "field review"
+            : Kind.StartsWith(ObservrClient.DigestKind) ? Query : $"“{Query}”";
     }
 
     /// <summary>
@@ -136,6 +145,10 @@ namespace IndxServer.Services.Observr
             }
             catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { return 0; }
         }
+
+        /// <summary>A dataset's latest findings, whatever their status: what Observr has said about it.</summary>
+        public List<ObservrFinding> ListForDataset(string teamId, string dataSetName, int limit = 20) =>
+            Query("WHERE TeamId = $t AND DatasetName = $d", cmd => { cmd.Parameters.AddWithValue("$t", teamId); cmd.Parameters.AddWithValue("$d", dataSetName); }, limit);
 
         /// <summary>Every finding of these teams, newest first: the history.</summary>
         public List<ObservrFinding> List(IReadOnlyCollection<string> teamIds, int limit = 200) =>

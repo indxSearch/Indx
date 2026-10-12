@@ -36,7 +36,7 @@
             </div>
             @if (_findings.Count == 0)
             {
-                <p class="obsv-empty">Nothing to decide. Ask Observr from a dataset's Statistics tab.</p>
+                <p class="obsv-empty">Nothing to decide. Observr reports here daily on the datasets it is on for, and answers from the Statistics and Fields tabs.</p>
             }
             else
             {
@@ -44,7 +44,7 @@
                     @foreach (var f in _findings)
                     {
                         <li class="obsv-row">
-                            <p class="obsv-where"><a href="@Link(f)" @onclick="Close">@TeamName(f.TeamId)/@f.DataSetName</a> · @(f.Kind == ObservrClient.FieldReviewKind ? "field review" : $"“{f.Query}”")</p>
+                            <p class="obsv-where"><a href="@Link(f)" @onclick="Close">@TeamName(f.TeamId)/@f.DataSetName</a> · @f.Title</p>
                             <p class="obsv-answer">@f.Answer</p>
                             @foreach (var p in f.Proposals)
                             {
@@ -110,7 +110,7 @@
     private void Close() => _open = false;
 
     private string TeamName(string teamId) => _teamNames.GetValueOrDefault(teamId, teamId);
-    private string Link(ObservrFinding f) => $"/teams/{Uri.EscapeDataString(TeamName(f.TeamId))}/datasets/{Uri.EscapeDataString(f.DataSetName)}?tab={(f.Kind == ObservrClient.FieldReviewKind ? "fields" : "statistics")}";
+    private string Link(ObservrFinding f) => $"/teams/{Uri.EscapeDataString(TeamName(f.TeamId))}/datasets/{Uri.EscapeDataString(f.DataSetName)}?tab={f.Tab}";
 
     private async Task DecideAsync(ObservrFinding f, bool yes)
     {

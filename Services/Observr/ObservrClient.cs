@@ -61,6 +61,17 @@ namespace IndxServer.Services.Observr
 
     public sealed record ObservrAnswer(int AskId, string Outcome, string Answer, List<ObservrProposal> Proposals, string Model);
 
+    /// <summary>One thing worth the owners' attention in a digest: a title, the text, which tab it
+    /// is about (statistics, fields, synonyms, search-or-ask) and any proposal.</summary>
+    public sealed record ObservrDigestItem(string Title, string Text, string Where, List<ObservrProposal> Proposals);
+    public sealed record ObservrDigest(int AskId, string Outcome, List<ObservrDigestItem> Items, string Model);
+
+    /// <summary>What came of a digest: a status as an ask's, and the findings it became.</summary>
+    public sealed record ObservrDigestOutcome(ObservrStatus Status, string? Reason = null, List<long>? FindingIds = null)
+    {
+        public int Count => FindingIds?.Count ?? 0;
+    }
+
     public enum ObservrStatus { Ok, NoToken, UnknownToken, NoSubscription, Unavailable, Failed }
 
     public static class ObservrText
@@ -76,6 +87,7 @@ namespace IndxServer.Services.Observr
                 : "Observr is part of the Pro and Enterprise subscriptions. This instance's licence does not include it.",
             ObservrStatus.Unavailable => "Observr cannot be reached right now. Try again in a moment.",
             _ => o.Reason == "datasetNotReady" ? $"The dataset is not ready to search, so there is nothing {nothingYet} yet."
+                : o.Reason == "noStatistics" ? "This instance keeps no statistics, so there is nothing to summarise."
                 : "Observr could not answer this time.",
         };
     }
@@ -95,11 +107,13 @@ namespace IndxServer.Services.Observr
     /// </summary>
     internal sealed class ObservrClient(IHttpClientFactory http, ObservrOptions options, InstanceSettingsService settings,
         IConfiguration configuration, IDatasetEngines engines, DatasetMetadataStore metadata, StatisticsService statistics,
-        ObservrFindingStore findings, ILogger<ObservrClient> logger)
+        ObservrFindingStore findings, ObservrSummaryBuilder summaries, ILogger<ObservrClient> logger)
     {
         public const string HttpClientName = "Observr";
         public const string ZeroHitKind = "zeroHitQuery";
         public const string FieldReviewKind = "fieldReview";
+        public const string DigestKind = "digest";
+        private static readonly string[] DigestTabs = ["statistics", "fields", "synonyms", "search-or-ask"];
         private const int NearMatches = 10;
         private const int PerWord = 3;
         private const int MaxWords = 8;
@@ -144,12 +158,46 @@ namespace IndxServer.Services.Observr
             return await SendAsync(token, teamId, dataSetName, FieldReviewKind, "", ask, ct);
         }
 
-        private async Task<ObservrOutcome> SendAsync(string token, string teamId, string dataSetName, string kind, string query, object ask, CancellationToken ct)
+        /// <summary>The digest: the bounded summary of the last week goes up (<see cref="ObservrSummary"/>),
+        /// and each thing Observr finds worth attention comes back as a finding of its own in the
+        /// menu. Run daily for every dataset with Observr on, and on the Options tab's button.</summary>
+        public async Task<ObservrDigestOutcome> SendDigestAsync(string teamId, string dataSetName, CancellationToken ct)
+        {
+            if (Token() is not { } token) return new ObservrDigestOutcome(ObservrStatus.NoToken);
+            var summary = summaries.Build(teamId, dataSetName);
+            if (summary == null) return new ObservrDigestOutcome(ObservrStatus.Failed, "noStatistics");
+            var (status, body, reason) = await PostAsync(token, "/api/summary", summary, teamId, dataSetName, ct);
+            if (status != HttpStatusCode.OK) return new ObservrDigestOutcome(Status(status), reason);
+            var digest = JsonSerializer.Deserialize<ObservrDigest>(body, Json);
+            if (digest == null) return new ObservrDigestOutcome(ObservrStatus.Failed, "badAnswer");
+            var ids = new List<long>();
+            foreach (var item in digest.Items)
+            {
+                var where = DigestTabs.Contains(item.Where) ? item.Where : "statistics";
+                ids.Add(findings.Add(teamId, dataSetName, $"{DigestKind}/{where}", item.Title.Trim(),
+                    new ObservrAnswer(digest.AskId, digest.Outcome, item.Text, item.Proposals, digest.Model)));
+            }
+            return new ObservrDigestOutcome(ObservrStatus.Ok, FindingIds: ids);
+        }
+
+        private static ObservrStatus Status(HttpStatusCode code) => code switch
+        {
+            HttpStatusCode.OK => ObservrStatus.Ok,
+            HttpStatusCode.Unauthorized => ObservrStatus.UnknownToken,
+            HttpStatusCode.PaymentRequired => ObservrStatus.NoSubscription,
+            HttpStatusCode.ServiceUnavailable => ObservrStatus.Unavailable,
+            _ => ObservrStatus.Failed,
+        };
+
+        /// <summary>One request to Observr with the licence token. A network failure is a 503 with
+        /// reason <c>unreachable</c>, so callers read one shape.</summary>
+        private async Task<(HttpStatusCode Status, string Body, string? Reason)> PostAsync(string token, string path, object payload,
+            string teamId, string dataSetName, CancellationToken ct)
         {
             var client = http.CreateClient(HttpClientName);
-            using var request = new HttpRequestMessage(HttpMethod.Post, $"{options.Url.TrimEnd('/')}/api/ask")
+            using var request = new HttpRequestMessage(HttpMethod.Post, $"{options.Url.TrimEnd('/')}{path}")
             {
-                Content = JsonContent.Create(ask, ask.GetType(), options: Json),
+                Content = JsonContent.Create(payload, payload.GetType(), options: Json),
             };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             try
@@ -159,7 +207,22 @@ namespace IndxServer.Services.Observr
                 string? reason = null;
                 try { reason = JsonDocument.Parse(body).RootElement.TryGetProperty("reason", out var r) ? r.GetString() : null; }
                 catch (JsonException) { }
-                switch (response.StatusCode)
+                if (response.StatusCode is not (HttpStatusCode.OK or HttpStatusCode.Unauthorized or HttpStatusCode.PaymentRequired or HttpStatusCode.ServiceUnavailable))
+                    logger.LogWarning("Observr answered {Status} for {Team}/{Dataset}", (int)response.StatusCode, teamId, dataSetName);
+                return (response.StatusCode, body, reason ?? (response.StatusCode == HttpStatusCode.OK ? null : $"http{(int)response.StatusCode}"));
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                logger.LogWarning(ex, "Observr unreachable");
+                return (HttpStatusCode.ServiceUnavailable, "", "unreachable");
+            }
+        }
+
+        private async Task<ObservrOutcome> SendAsync(string token, string teamId, string dataSetName, string kind, string query, object ask, CancellationToken ct)
+        {
+            var (status, body, reason) = await PostAsync(token, "/api/ask", ask, teamId, dataSetName, ct);
+            {
+                switch (status)
                 {
                     case HttpStatusCode.OK:
                         var answer = JsonSerializer.Deserialize<ObservrAnswer>(body, Json);
@@ -181,14 +244,8 @@ namespace IndxServer.Services.Observr
                     case HttpStatusCode.ServiceUnavailable:
                         return new ObservrOutcome(ObservrStatus.Unavailable, Reason: reason ?? "unavailable");
                     default:
-                        logger.LogWarning("Observr answered {Status} for {Team}/{Dataset}", (int)response.StatusCode, teamId, dataSetName);
-                        return new ObservrOutcome(ObservrStatus.Failed, Reason: reason ?? $"http{(int)response.StatusCode}");
+                        return new ObservrOutcome(ObservrStatus.Failed, Reason: reason);
                 }
-            }
-            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
-            {
-                logger.LogWarning(ex, "Observr unreachable");
-                return new ObservrOutcome(ObservrStatus.Unavailable, Reason: "unreachable");
             }
         }
 
@@ -259,7 +316,7 @@ namespace IndxServer.Services.Observr
             return string.IsNullOrWhiteSpace(site) ? "" : site.Trim();
         }
 
-        private static string TypeName(JsonValueKind kind) => kind switch
+        internal static string TypeName(JsonValueKind kind) => kind switch
         {
             JsonValueKind.Number => "number",
             JsonValueKind.True or JsonValueKind.False => "true/false",

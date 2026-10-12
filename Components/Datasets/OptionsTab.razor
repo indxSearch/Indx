@@ -153,9 +153,10 @@
        asked about (test copies, one-off imports); the buttons show only where this is on. ── *@
     <h3 class="indx-section-heading">Observr</h3>
     <p class="indx-section-help">
-        Lets editors ask Observr about this dataset: what went wrong with a search that found nothing, and
-        whether the fields are set up well. Each ask sends Observr what it needs to answer (a query, the
-        field roles, a few values), never the records. Part of the Pro and Enterprise subscriptions.
+        Observr reads a weekly summary of this dataset's statistics every day (top queries, what found
+        nothing, what was chosen, your changes; never a record or a visitor) and puts what is worth your
+        attention in the Observr menu. Editors can also ask it about a search that found nothing, and
+        have the field setup reviewed. Part of the Pro and Enterprise subscriptions.
     </p>
     <div class="opt-row">
         <ToggleSwitch Label="Observr on this dataset" Checked="ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name)"
@@ -165,6 +166,10 @@
             <span class="opt-muted">Team admins can change this.</span>
         }
     </div>
+    @if (Ctx.IsAdmin && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
+    {
+        <ObservrDigestButton />
+    }
 
     @* ── Replace data (atomic full reload) ── *@
     @if (Ctx.IsEditor)
