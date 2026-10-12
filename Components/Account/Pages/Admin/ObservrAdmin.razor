@@ -35,6 +35,10 @@
     {
         <p style="display:flex; align-items:center; gap:8px; color:var(--lv5);"><Spinner Size="14" /> Asking the licence portal…</p>
     }
+    else if (_state.Tier == "Internal")
+    {
+        <p style="color: var(--lv6); margin: 0 0 8px;">This instance uses an Observr token of its own (<code>Indx:Observr:Token</code>), which Observr trusts by configuration. No licence is checked.</p>
+    }
     else if (_state.Included)
     {
         <p style="color: var(--lv6); margin: 0 0 8px;">
@@ -54,7 +58,7 @@
             <span style="color: var(--lv5);">Checked <TimeAgo Value="_state.CheckedUtc!.Value" />.</span>
         </p>
     }
-    @if (Observr.HasToken)
+    @if (Observr.HasToken && _state.Tier != "Internal")
     {
         <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Restore" Loading="@_checking" @onclick="CheckAsync">Check again</Button>
     }

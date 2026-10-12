@@ -33,8 +33,14 @@ namespace IndxServer.Services.Observr
             return string.IsNullOrWhiteSpace(token) ? null : token.Trim();
         }
 
+        /// <summary>An instance with an Observr token of its own (Indx's, built from source) has no
+        /// licence to check: IndxObservr trusts the token by configuration.</summary>
+        private static readonly ObservrSubscriptionState Internal = new(true, true, "Internal", "this instance's own Observr token", null, DateTime.UtcNow);
+        private bool HasOwnToken => !string.IsNullOrWhiteSpace(options.Token);
+
         /// <summary>The last answer for the current token, without asking: what a page reads.</summary>
-        public ObservrSubscriptionState Current => Token() is { } t && _byToken.TryGetValue(t, out var s) ? s : ObservrSubscriptionState.Unknown;
+        public ObservrSubscriptionState Current => HasOwnToken ? Internal
+            : Token() is { } t && _byToken.TryGetValue(t, out var s) ? s : ObservrSubscriptionState.Unknown;
 
         /// <summary>Whether anything of Observr is shown on this instance: a token, and a subscription
         /// that includes it.</summary>
@@ -43,6 +49,7 @@ namespace IndxServer.Services.Observr
         /// <summary>Asks the portal when the answer is missing or old (or always, with <paramref name="force"/>).</summary>
         public async Task<ObservrSubscriptionState> GetAsync(bool force = false, CancellationToken ct = default)
         {
+            if (HasOwnToken) return Internal;
             if (Token() is not { } token) return ObservrSubscriptionState.Unknown;
             if (!force && _byToken.TryGetValue(token, out var cached) && cached.Known && DateTime.UtcNow - cached.CheckedUtc < Ttl)
                 return cached;

@@ -168,6 +168,7 @@ namespace IndxServer.Services.Observr
 
         private string? Token()
         {
+            if (!string.IsNullOrWhiteSpace(options.Token)) return options.Token.Trim();
             var token = settings.Load().LicenseToken;
             if (string.IsNullOrWhiteSpace(token)) token = configuration["Indx:LicenseToken"];
             return string.IsNullOrWhiteSpace(token) ? null : token.Trim();

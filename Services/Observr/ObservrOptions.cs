@@ -11,5 +11,11 @@ namespace IndxServer.Services.Observr
         /// <summary>The licence portal, asked whether this instance's subscription includes Observr.
         /// Only Indx issues licences, so this is the one portal; the setting exists for the tests.</summary>
         public string PortalUrl { get; set; } = "https://license.indx.co";
+
+        /// <summary>An Observr token of this instance's own, for Indx's instances built from source,
+        /// which have no licence token: it is sent instead of one, and the subscription check is not
+        /// made (IndxObservr trusts it by configuration, <c>Observr:TrustedTokens</c>). A customer's
+        /// instance leaves this empty.</summary>
+        public string? Token { get; set; }
     }
 }
