@@ -27,7 +27,11 @@ namespace IndxServer.Services.Observr
 
     /// <summary>What came of asking: an answer, or why there is none, in a word the console turns
     /// into a sentence (<see cref="Reason"/> is Observr's own word where it gave one).</summary>
-    public sealed record ObservrOutcome(ObservrStatus Status, ObservrAnswer? Answer = null, string? Reason = null);
+    public sealed record ObservrOutcome(ObservrStatus Status, ObservrAnswer? Answer = null, string? Reason = null, long FindingId = 0);
+
+    /// <summary>What a proposed synonym would do for the query, measured here before anyone says
+    /// yes: how many records the search then finds, and the first few by name.</summary>
+    public sealed record ObservrSynonymTest(int Found, List<string> Names);
 
     /// <summary>
     /// The instance's side of Observr: gathers what a question is about, sends it with the licence
@@ -36,7 +40,7 @@ namespace IndxServer.Services.Observr
     /// </summary>
     internal sealed class ObservrClient(IHttpClientFactory http, ObservrOptions options, InstanceSettingsService settings,
         IConfiguration configuration, IDatasetEngines engines, DatasetMetadataStore metadata, StatisticsService statistics,
-        ILogger<ObservrClient> logger)
+        ObservrFindingStore findings, ILogger<ObservrClient> logger)
     {
         public const string HttpClientName = "Observr";
         private const int NearMatches = 10;
@@ -79,7 +83,10 @@ namespace IndxServer.Services.Observr
                 {
                     case HttpStatusCode.OK:
                         var answer = JsonSerializer.Deserialize<ObservrAnswer>(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
-                        return answer == null ? new ObservrOutcome(ObservrStatus.Failed, Reason: "badAnswer") : new ObservrOutcome(ObservrStatus.Ok, answer);
+                        if (answer == null) return new ObservrOutcome(ObservrStatus.Failed, Reason: "badAnswer");
+                        // Kept as a finding: in the Observr menu while its proposal is open, in the history after.
+                        var id = findings.Add(teamId, dataSetName, "zeroHitQuery", query.Trim(), answer);
+                        return new ObservrOutcome(ObservrStatus.Ok, answer, FindingId: id);
                     case HttpStatusCode.Unauthorized:
                         return new ObservrOutcome(ObservrStatus.UnknownToken);
                     case HttpStatusCode.PaymentRequired:
@@ -124,9 +131,36 @@ namespace IndxServer.Services.Observr
                 fields, query.Trim(), searches, near, words);
         }
 
+        /// <summary>What the query would find with the proposed synonym, as visitors would get it:
+        /// the local test of a proposal, since only the instance can run it.</summary>
+        public ObservrSynonymTest TestSynonym(string teamId, string dataSetName, string query, string[] terms)
+        {
+            var engine = engines.FindSearchEngine(dataSetName, teamId);
+            if (engine == null) return new ObservrSynonymTest(0, []);
+            var list = new SynonymList { Entries = [new SynonymEntry { Direction = SynonymDirection.Multidirectional, Terms = terms }] };
+            var expanded = list.Expand(query);
+            var result = IndxServerInternalApi.Manager.Search(new QueryProxy { Text = expanded, MaxNumberOfRecordsToReturn = 5, EnableCoverage = true }, dataSetName, teamId);
+            var label = StatisticsLabels.For(engine, statistics.Store?.LabelField(teamId, dataSetName));
+            var records = result.Records ?? [];
+            return new ObservrSynonymTest(records.Length, records.Select(r => label(r.DocumentKey) ?? r.DocumentKey.ToString()).ToList());
+        }
+
         /// <summary>Carries out a synonym proposal: the terms as one entry in the dataset's list,
         /// through the same call the console's Synonyms tab makes, so the change is recorded. Does
         /// nothing when an entry already holds all the terms.</summary>
+        /// <summary>The owners' decision on a finding: a yes carries out its synonym proposals, a no
+        /// closes it. Returns false when a yes could not be carried out (the finding stays open).</summary>
+        public bool Decide(long findingId, bool yes)
+        {
+            var f = findings.Get(findingId);
+            if (f == null) return false;
+            if (yes)
+                foreach (var p in f.Proposals.Where(p => p.Kind == "synonym"))
+                    if (!ApplySynonym(f.TeamId, f.DataSetName, p.Terms)) return false;
+            findings.Decide(findingId, yes ? ObservrFinding.Accepted : ObservrFinding.Declined);
+            return true;
+        }
+
         public bool ApplySynonym(string teamId, string dataSetName, string[] terms)
         {
             var clean = terms.Select(t => t.Trim()).Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();

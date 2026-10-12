@@ -1,0 +1,171 @@
+using System.Text.Json;
+using Indx.Storage;
+using IndxServer.Engine;
+using Microsoft.Data.Sqlite;
+
+namespace IndxServer.Services.Observr
+{
+    /// <summary>One thing Observr found, with the proposal it carries and what the owners made of
+    /// it. Lives in the Observr menu until decided; the history keeps it after.</summary>
+    public sealed record ObservrFinding(long Id, string TeamId, string DataSetName, string Kind, string Query, string Outcome,
+        string Answer, List<ObservrProposal> Proposals, string Status, int AskId, DateTime CreatedUtc, DateTime? DecidedUtc)
+    {
+        public const string Open = "open";
+        public const string Accepted = "accepted";
+        public const string Declined = "declined";
+    }
+
+    /// <summary>
+    /// Observr's findings, a server-owned table in indx.db like the Search or ask settings: one row
+    /// per answer Observr gave, with its proposals as JSON, its status, and no record of who decided
+    /// (as change events record no one). Follows the dataset through delete, rename and transfer.
+    /// </summary>
+    public class ObservrFindingStore(ILogger<ObservrFindingStore> logger)
+    {
+        private const string Table = "ObservrFindings";
+        private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
+        private static string DbPath => IndxServerInternalApi.SearchDbConnectionString;
+        private static bool DbExists() => !string.IsNullOrEmpty(DbPath) && File.Exists(DbPath);
+        private static SqliteConnection Connection() => new($"Data Source={DbPath}");
+
+        private const string Columns = "Id, TeamId, DatasetName, Kind, Query, Outcome, Answer, ProposalsJson, Status, AskId, CreatedUtc, DecidedUtc";
+
+        public void EnsureTable()
+        {
+            if (!DbExists()) return;
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $@"CREATE TABLE IF NOT EXISTS {Table} (
+                    Id INTEGER PRIMARY KEY AUTOINCREMENT, TeamId TEXT NOT NULL, DatasetName TEXT NOT NULL, Kind TEXT NOT NULL,
+                    Query TEXT NOT NULL, Outcome TEXT NOT NULL, Answer TEXT NOT NULL, ProposalsJson TEXT NOT NULL,
+                    Status TEXT NOT NULL, AskId INTEGER NOT NULL, CreatedUtc TEXT NOT NULL, DecidedUtc TEXT NULL);
+                    CREATE INDEX IF NOT EXISTS IX_ObservrFindings_Team ON {Table} (TeamId, Status);";
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex) { logger.LogError(ex, "Failed to ensure {Table} table", Table); }
+        }
+
+        public long Add(string teamId, string dataSetName, string kind, string query, ObservrAnswer answer)
+        {
+            new SqLiteManager(DbPath, createOrOpenDatabase: true);
+            EnsureTable();
+            using var conn = Connection();
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"INSERT INTO {Table} (TeamId, DatasetName, Kind, Query, Outcome, Answer, ProposalsJson, Status, AskId, CreatedUtc)
+                VALUES ($t, $d, $k, $q, $o, $a, $p, $s, $ask, $c); SELECT last_insert_rowid();";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSetName);
+            cmd.Parameters.AddWithValue("$k", kind);
+            cmd.Parameters.AddWithValue("$q", query);
+            cmd.Parameters.AddWithValue("$o", answer.Outcome);
+            cmd.Parameters.AddWithValue("$a", answer.Answer);
+            cmd.Parameters.AddWithValue("$p", JsonSerializer.Serialize(answer.Proposals, JsonOptions));
+            // A finding with nothing to decide is the answer itself: kept, but not open.
+            cmd.Parameters.AddWithValue("$s", answer.Proposals.Count > 0 ? ObservrFinding.Open : ObservrFinding.Accepted);
+            cmd.Parameters.AddWithValue("$ask", answer.AskId);
+            cmd.Parameters.AddWithValue("$c", DateTime.UtcNow.ToString("o"));
+            return (long)cmd.ExecuteScalar()!;
+        }
+
+        public void Decide(long id, string status)
+        {
+            if (!DbExists()) return;
+            using var conn = Connection();
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"UPDATE {Table} SET Status = $s, DecidedUtc = $u WHERE Id = $id";
+            cmd.Parameters.AddWithValue("$s", status);
+            cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
+        }
+
+        public ObservrFinding? Get(long id) => Query($"WHERE Id = $id", cmd => cmd.Parameters.AddWithValue("$id", id), 1).FirstOrDefault();
+
+        /// <summary>The open findings of these teams, newest first.</summary>
+        public List<ObservrFinding> ListOpen(IReadOnlyCollection<string> teamIds, int limit = 20) =>
+            teamIds.Count == 0 ? [] : Query($"WHERE Status = 'open' AND TeamId IN ({Placeholders(teamIds.Count)})", cmd => AddTeams(cmd, teamIds), limit);
+
+        public int CountOpen(IReadOnlyCollection<string> teamIds)
+        {
+            if (teamIds.Count == 0 || !DbExists()) return 0;
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT COUNT(*) FROM {Table} WHERE Status = 'open' AND TeamId IN ({Placeholders(teamIds.Count)})";
+                AddTeams(cmd, teamIds);
+                return Convert.ToInt32(cmd.ExecuteScalar());
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { return 0; }
+        }
+
+        /// <summary>Every finding of these teams, newest first: the history.</summary>
+        public List<ObservrFinding> List(IReadOnlyCollection<string> teamIds, int limit = 200) =>
+            teamIds.Count == 0 ? [] : Query($"WHERE TeamId IN ({Placeholders(teamIds.Count)})", cmd => AddTeams(cmd, teamIds), limit);
+
+        private static string Placeholders(int n) => string.Join(",", Enumerable.Range(0, n).Select(i => $"$team{i}"));
+        private static void AddTeams(SqliteCommand cmd, IReadOnlyCollection<string> teamIds)
+        {
+            int i = 0;
+            foreach (var t in teamIds) cmd.Parameters.AddWithValue($"$team{i++}", t);
+        }
+
+        private List<ObservrFinding> Query(string where, Action<SqliteCommand> bind, int limit)
+        {
+            var list = new List<ObservrFinding>();
+            if (!DbExists()) return list;
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT {Columns} FROM {Table} {where} ORDER BY Id DESC LIMIT {limit}";
+                bind(cmd);
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    list.Add(new ObservrFinding(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4), r.GetString(5),
+                        r.GetString(6), JsonSerializer.Deserialize<List<ObservrProposal>>(r.GetString(7), JsonOptions) ?? [],
+                        r.GetString(8), r.GetInt32(9), DateTime.Parse(r.GetString(10), null, System.Globalization.DateTimeStyles.RoundtripKind),
+                        r.IsDBNull(11) ? null : DateTime.Parse(r.GetString(11), null, System.Globalization.DateTimeStyles.RoundtripKind)));
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { }
+            catch (Exception ex) { logger.LogError(ex, "Failed to read Observr findings"); }
+            return list;
+        }
+
+        private void Execute(string sql, Action<SqliteCommand> bind)
+        {
+            if (!DbExists()) return;
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = sql;
+                bind(cmd);
+                cmd.ExecuteNonQuery();
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { }
+            catch (Exception ex) { logger.LogWarning(ex, "Observr findings: {Sql}", sql); }
+        }
+
+        public void Delete(string teamId, string dataSetName) =>
+            Execute($"DELETE FROM {Table} WHERE TeamId = $t AND DatasetName = $d",
+                c => { c.Parameters.AddWithValue("$t", teamId); c.Parameters.AddWithValue("$d", dataSetName); });
+
+        public void Rename(string teamId, string dataSetName, string newName) =>
+            Execute($"UPDATE {Table} SET DatasetName = $n WHERE TeamId = $t AND DatasetName = $d",
+                c => { c.Parameters.AddWithValue("$n", newName); c.Parameters.AddWithValue("$t", teamId); c.Parameters.AddWithValue("$d", dataSetName); });
+
+        public void Transfer(string fromTeamId, string toTeamId, string dataSetName) =>
+            Execute($"UPDATE {Table} SET TeamId = $to WHERE TeamId = $from AND DatasetName = $d",
+                c => { c.Parameters.AddWithValue("$to", toTeamId); c.Parameters.AddWithValue("$from", fromTeamId); c.Parameters.AddWithValue("$d", dataSetName); });
+    }
+}

@@ -131,6 +131,7 @@ internal static class StartupServices
         builder.Services.AddSingleton(builder.Configuration.GetSection(IndxServer.Services.Observr.ObservrOptions.Section)
             .Get<IndxServer.Services.Observr.ObservrOptions>() ?? new());
         builder.Services.AddHttpClient(IndxServer.Services.Observr.ObservrClient.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(90));
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrFindingStore>();
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrClient>();
 
         // MCP server: read-only retrieval tools over /mcp (Streamable HTTP), behind JWT auth.

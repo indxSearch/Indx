@@ -330,6 +330,9 @@ internal static class StartupPipeline
             var searchOrAskStore = app.Services.GetRequiredService<IndxServer.Services.SearchOrAsk.SearchOrAskStore>();
             searchOrAskStore.EnsureTable();
             IndxServerInternalApi.Manager.AttachSearchOrAskStore(searchOrAskStore);
+            var observrStore = app.Services.GetRequiredService<IndxServer.Services.Observr.ObservrFindingStore>();
+            observrStore.EnsureTable();
+            IndxServerInternalApi.Manager.AttachObservrStore(observrStore);
 
             // Detect license file for summary
             if (!string.IsNullOrWhiteSpace(licensePath) && File.Exists(licensePath))

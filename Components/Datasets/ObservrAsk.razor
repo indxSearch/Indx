@@ -30,20 +30,27 @@
             <div class="obs-proposal">
                 <span class="obs-proposal-label">Synonym</span>
                 @foreach (var t in p.Terms) { <Chip>@t</Chip> }
-                @if (_applied == p)
+                @if (_decided == "accepted")
                 {
                     <span class="obs-done">Added. Applies from the next search.</span>
                 }
-                else if (_declined == p)
+                else if (_decided == "declined")
                 {
                     <span class="obs-done">Declined.</span>
                 }
                 else if (Ctx.IsEditor)
                 {
-                    <Button Variant="primary" Size="micro" Loading="@_applying" @onclick="() => ApplyAsync(p)">Yes, add it</Button>
-                    <Button Variant="ghost" Size="micro" @onclick="() => _declined = p">No</Button>
+                    <Button Variant="primary" Size="micro" Loading="@_applying" @onclick="() => DecideAsync(true)">Yes, add it</Button>
+                    <Button Variant="ghost" Size="micro" @onclick="() => DecideAsync(false)">No</Button>
                 }
             </div>
+            @if (_test != null && _decided == null)
+            {
+                <p class="obs-test">
+                    @if (_test.Found == 0) { <text>With it, “@Query” would still find nothing.</text> }
+                    else { <text>With it, “@Query” finds @_test.Found: @string.Join(", ", _test.Names)@(_test.Found > _test.Names.Count ? ", …" : "").</text> }
+                </p>
+            }
         }
         @if (_applyError != null) { <p class="obs-error">@_applyError</p> }
     }
@@ -56,23 +63,28 @@
     [Parameter] public EventCallback OnClose { get; set; }
 
     private ObservrOutcome? _outcome;
-    private ObservrProposal? _applied, _declined;
+    private ObservrSynonymTest? _test;
+    private string? _decided;
     private bool _applying;
     private string? _applyError;
 
     protected override async Task OnInitializedAsync()
     {
         _outcome = await Observr.AskZeroHitAsync(Ctx.TeamId, Ctx.Name, Query, Searches, CancellationToken.None);
+        // The local test of the proposal, before anyone says yes: what the query would find with it.
+        if (_outcome.Answer?.Proposals.FirstOrDefault(p => p.Kind == "synonym") is { } synonym)
+            _test = await Task.Run(() => Observr.TestSynonym(Ctx.TeamId, Ctx.Name, Query, synonym.Terms));
     }
 
-    private async Task ApplyAsync(ObservrProposal p)
+    private async Task DecideAsync(bool yes)
     {
+        if (_outcome?.FindingId is not > 0) return;
         _applying = true;
         _applyError = null;
         try
         {
-            var ok = await Task.Run(() => Observr.ApplySynonym(Ctx.TeamId, Ctx.Name, p.Terms));
-            if (ok) _applied = p; else _applyError = "The synonym could not be stored.";
+            var ok = await Task.Run(() => Observr.Decide(_outcome.FindingId, yes));
+            if (ok) _decided = yes ? "accepted" : "declined"; else _applyError = "The synonym could not be stored.";
         }
         finally { _applying = false; }
     }

@@ -9,3 +9,4 @@
 .obs-proposal-label { font: var(--text-xs); color: var(--lv5); margin-right: 4px; }
 .obs-done { font: var(--text-xs); color: var(--lv6); margin-left: 6px; }
 .obs-error { margin: 0; font: var(--text-sm); color: var(--CSignal); }
+.obs-test { margin: 0; font: var(--text-xs); color: var(--lv6); }

@@ -30,6 +30,7 @@
     <div class="nav-right">
         <AuthorizeView>
             <Authorized>
+                <ObservrPanel />
                 <NotificationPanel />
                 <NavDropdown Label="@ShortName(context.User.Identity?.Name)" Title="@context.User.Identity?.Name" Icon="_iconUser">
                     <Button Variant="ghost" Size="micro" Href="account/manage" IconLeft="_iconUser" >Account</Button>

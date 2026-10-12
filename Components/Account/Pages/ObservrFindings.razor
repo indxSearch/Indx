@@ -1,0 +1,85 @@
+@page "/account/observr"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@using IndxServer.Services
+@using IndxServer.Services.Observr
+@attribute [Authorize]
+@inject ObservrFindingStore Findings
+@inject ObservrClient Observr
+@inject TeamService Teams
+@inject AuthenticationStateProvider AuthState
+
+<PageTitle>Observr</PageTitle>
+
+<div style="margin-bottom:24px;">
+    <h2 style="margin-bottom:4px;">Observr</h2>
+    <p style="color:var(--lv5); margin:0;">Everything Observr found for your teams, newest first. Open findings wait for a yes or a no.</p>
+</div>
+
+@if (_loading) { <p style="color:var(--lv5);">Loading...</p> }
+else if (_all.Count == 0) { <p style="color:var(--lv5);">Nothing yet. Ask Observr from a dataset's Statistics tab, under Top queries, Found nothing.</p> }
+else
+{
+    <Table Scrollable AriaLabel="Observr findings">
+        <thead><tr><th>When</th><th>Dataset</th><th>Query</th><th>Answer</th><th>Proposal</th><th>Decision</th></tr></thead>
+        <tbody>
+            @foreach (var f in _all)
+            {
+                <tr>
+                    <td style="white-space:nowrap;"><TimeAgo Value="f.CreatedUtc" TooltipPosition="right" /></td>
+                    <td style="white-space:nowrap;"><a href="@Link(f)">@TeamName(f.TeamId)/@f.DataSetName</a></td>
+                    <td>@f.Query</td>
+                    <td style="max-width:420px;">@f.Answer</td>
+                    <td>
+                        @foreach (var p in f.Proposals)
+                        {
+                            <span style="display:inline-flex; gap:4px; flex-wrap:wrap;">@foreach (var t in p.Terms) { <Chip>@t</Chip> }</span>
+                        }
+                    </td>
+                    <td style="white-space:nowrap;">
+                        @if (f.Status == ObservrFinding.Open)
+                        {
+                            <Button Variant="primary" Size="micro" Loading="@(_busy == f.Id)" @onclick="() => DecideAsync(f, true)">Yes</Button>
+                            <Button Variant="ghost" Size="micro" Disabled="@(_busy == f.Id)" @onclick="() => DecideAsync(f, false)">No</Button>
+                        }
+                        else
+                        {
+                            <span style="font:var(--text-xs); color:var(--lv5);">@(f.Proposals.Count == 0 ? "answered" : f.Status)</span>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </Table>
+}
+
+@code {
+    private List<ObservrFinding> _all = [];
+    private Dictionary<string, string> _teamNames = [];
+    private bool _loading = true;
+    private long _busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId != null)
+        {
+            var teams = await Teams.GetTeamsForUserAsync(userId);
+            _teamNames = teams.ToDictionary(t => t.Team.Id.ToString(), t => t.Team.Name);
+            _all = Findings.List(_teamNames.Keys.ToList());
+        }
+        _loading = false;
+    }
+
+    private string TeamName(string teamId) => _teamNames.GetValueOrDefault(teamId, teamId);
+    private string Link(ObservrFinding f) => $"/teams/{Uri.EscapeDataString(TeamName(f.TeamId))}/datasets/{Uri.EscapeDataString(f.DataSetName)}?tab=statistics";
+
+    private async Task DecideAsync(ObservrFinding f, bool yes)
+    {
+        _busy = f.Id;
+        try { await Task.Run(() => Observr.Decide(f.Id, yes)); }
+        finally { _busy = 0; }
+        _all = Findings.List(_teamNames.Keys.ToList());
+    }
+}

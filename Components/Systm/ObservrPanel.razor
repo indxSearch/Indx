@@ -1,0 +1,115 @@
+@* Observr's own menu beside the notifications bell (Notes/Anders/observr-plan.md): the open
+   findings of the user's teams, each with its proposal and Yes / No, a blue count where the bell's
+   is red, so a run of findings never hides an expired key or a failed backup. *@
+@using IndxServer.Services
+@using IndxServer.Services.Observr
+@inject ObservrFindingStore Findings
+@inject ObservrClient Observr
+@inject TeamService Teams
+@inject AuthenticationStateProvider AuthState
+
+<div class="obsv-wrapper">
+    @if (_open)
+    {
+        <button class="nav-bell obsv-trigger obsv-trigger--active @(_openCount > 0 ? "obsv-trigger--has-open" : "")" aria-label="Observr" @onclick="Toggle">
+            <Observr Size="16" />
+            @if (_openCount > 0) { <span class="obsv-badge"></span> }
+        </button>
+    }
+    else
+    {
+        <Tooltip Content="Observr" Position="bottom">
+            <button class="nav-bell obsv-trigger @(_openCount > 0 ? "obsv-trigger--has-open" : "")" aria-label="Observr" @onclick="Toggle">
+                <Observr Size="16" />
+                @if (_openCount > 0) { <span class="obsv-badge"></span> }
+            </button>
+        </Tooltip>
+    }
+
+    @if (_open)
+    {
+        <div class="obsv-backdrop" @onclick="Close"></div>
+        <div class="obsv-panel" role="dialog" aria-label="Observr">
+            <div class="obsv-panel-header">
+                <span class="obsv-panel-title">Observr</span>
+                <span class="obsv-panel-count">@(_openCount == 0 ? "nothing open" : $"{_openCount} open")</span>
+            </div>
+            @if (_findings.Count == 0)
+            {
+                <p class="obsv-empty">Nothing to decide. Ask Observr from a dataset's Statistics tab.</p>
+            }
+            else
+            {
+                <ul class="obsv-list">
+                    @foreach (var f in _findings)
+                    {
+                        <li class="obsv-row">
+                            <p class="obsv-where"><a href="@Link(f)" @onclick="Close">@TeamName(f.TeamId)/@f.DataSetName</a> · “@f.Query”</p>
+                            <p class="obsv-answer">@f.Answer</p>
+                            @foreach (var p in f.Proposals)
+                            {
+                                <div class="obsv-proposal">
+                                    <span class="obsv-label">Synonym</span>
+                                    @foreach (var t in p.Terms) { <Chip>@t</Chip> }
+                                </div>
+                            }
+                            <div class="obsv-actions">
+                                <Button Variant="primary" Size="micro" Loading="@(_busy == f.Id)" @onclick="() => DecideAsync(f, true)">Yes</Button>
+                                <Button Variant="ghost" Size="micro" Disabled="@(_busy == f.Id)" @onclick="() => DecideAsync(f, false)">No</Button>
+                                <span class="obsv-time"><TimeAgo Value="f.CreatedUtc" TooltipPosition="left" /></span>
+                            </div>
+                        </li>
+                    }
+                </ul>
+            }
+            <div class="obsv-panel-footer">
+                <a href="/account/observr" @onclick="Close">Everything Observr found</a>
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    private bool _open;
+    private int _openCount;
+    private long _busy;
+    private List<ObservrFinding> _findings = [];
+    private Dictionary<string, string> _teamNames = [];
+    private List<string> _teamIds = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return;
+        var teams = await Teams.GetTeamsForUserAsync(userId);
+        _teamNames = teams.ToDictionary(t => t.Team.Id.ToString(), t => t.Team.Name);
+        _teamIds = _teamNames.Keys.ToList();
+        _openCount = Findings.CountOpen(_teamIds);
+    }
+
+    private void Toggle()
+    {
+        _open = !_open;
+        if (_open) Reload();
+    }
+
+    private void Reload()
+    {
+        _findings = Findings.ListOpen(_teamIds, 10);
+        _openCount = Findings.CountOpen(_teamIds);
+    }
+
+    private void Close() => _open = false;
+
+    private string TeamName(string teamId) => _teamNames.GetValueOrDefault(teamId, teamId);
+    private string Link(ObservrFinding f) => $"/teams/{Uri.EscapeDataString(TeamName(f.TeamId))}/datasets/{Uri.EscapeDataString(f.DataSetName)}?tab=statistics";
+
+    private async Task DecideAsync(ObservrFinding f, bool yes)
+    {
+        _busy = f.Id;
+        try { await Task.Run(() => Observr.Decide(f.Id, yes)); }
+        finally { _busy = 0; }
+        Reload();
+    }
+}
