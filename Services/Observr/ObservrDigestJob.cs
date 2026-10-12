@@ -5,8 +5,9 @@ namespace IndxServer.Services.Observr
     /// <summary>
     /// Sends every dataset with Observr on its daily summary (<see cref="ObservrSummary"/>) and
     /// turns what comes back into findings. Once a day at <c>Indx:Observr:DigestHourUtc</c> (default
-    /// 5), after the statistics' own day has rolled over everywhere west of UTC+5; a dataset that
-    /// has Observr off, or an instance with no licence token, sends nothing. Never loads a dataset.
+    /// 5), after the statistics' own day has rolled over everywhere west of UTC+5; a dataset reports
+    /// daily, weekly (Mondays) or not at all as its team chose, and an instance with no token, no
+    /// subscription or Observr not activated sends nothing. Never loads a dataset.
     /// </summary>
     internal sealed class ObservrDigestJob(ObservrClient client, ObservrFindingStore findings, ObservrSubscription subscription,
         IConfiguration configuration, ILogger<ObservrDigestJob> logger) : BackgroundService
@@ -30,12 +31,12 @@ namespace IndxServer.Services.Observr
         {
             if (!client.HasToken) return 0;
             // The day's check of the subscription, which is also what keeps the menu's answer fresh.
-            if (!(await subscription.GetAsync(force: true, ct)).Included) return 0;
+            if (!(await subscription.GetAsync(force: true, ct)).Included || !subscription.Visible) return 0;
             var sent = 0;
             foreach (var (dataSetName, teamId) in IndxServerInternalApi.ManagerOrNull?.GetAllDataSets() ?? [])
             {
                 if (ct.IsCancellationRequested) break;
-                if (!findings.IsEnabled(teamId, dataSetName)) continue;
+                if (!findings.Settings(teamId, dataSetName).ReportsOn(DateTime.UtcNow.DayOfWeek)) continue;
                 try
                 {
                     var outcome = await client.SendDigestAsync(teamId, dataSetName, ct);

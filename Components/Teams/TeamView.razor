@@ -5,10 +5,15 @@
 
 @inject HeaderState Header
 @inject NavigationManager NavigationManager
+@inject IndxServer.Services.Observr.ObservrSubscription Observr
 @implements IDisposable
 
 <DatasetList TeamId="@TeamId" TeamName="@TeamName" Role="@Role">
     <HeadingActions>
+        @if (Observr.Visible)
+        {
+            <Button Variant="secondary" Size="micro" Href="@TeamRoutes.TeamObservr(TeamName)" IconLeft="DatasetIcons.Observr">Observr</Button>
+        }
         <Button Variant="secondary" Size="micro" Href="@TeamRoutes.TeamSettings(TeamName)" IconLeft="_iconManage">Manage team</Button>
     </HeadingActions>
 </DatasetList>

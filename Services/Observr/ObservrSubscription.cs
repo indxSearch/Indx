@@ -42,9 +42,9 @@ namespace IndxServer.Services.Observr
         public ObservrSubscriptionState Current => HasOwnToken ? Internal
             : Token() is { } t && _byToken.TryGetValue(t, out var s) ? s : ObservrSubscriptionState.Unknown;
 
-        /// <summary>Whether anything of Observr is shown on this instance: a token, and a subscription
-        /// that includes it.</summary>
-        public bool Visible => Current.Included;
+        /// <summary>Whether anything of Observr is shown on this instance: an admin activated it, there
+        /// is a token, and the subscription includes it.</summary>
+        public bool Visible => settings.Load().ObservrEnabled && Current.Included;
 
         /// <summary>Asks the portal when the answer is missing or old (or always, with <paramref name="force"/>).</summary>
         public async Task<ObservrSubscriptionState> GetAsync(bool force = false, CancellationToken ct = default)

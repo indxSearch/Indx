@@ -27,6 +27,20 @@ namespace IndxServer.Services.Observr
             : Kind.StartsWith(ObservrClient.DigestKind) || Kind == ObservrClient.ChangeKind ? Query : $"“{Query}”";
     }
 
+    /// <summary>What Observr does on one dataset, chosen by the team's editors on the team's Observr
+    /// page: whether it is on at all, how often it reports (<c>daily</c>, <c>weekly</c> on Mondays,
+    /// <c>off</c>), and whether its buttons show in the dataset's tabs.</summary>
+    public sealed record ObservrDatasetSettings(bool Enabled, string Report, bool Buttons)
+    {
+        public const string Daily = "daily";
+        public const string Weekly = "weekly";
+        public const string Off = "off";
+        public static readonly ObservrDatasetSettings Default = new(false, Daily, true);
+
+        /// <summary>Whether the daily job reports this dataset today.</summary>
+        public bool ReportsOn(DayOfWeek day) => Enabled && (Report == Daily || Report == Weekly && day == DayOfWeek.Monday);
+    }
+
     /// <summary>
     /// Observr's findings, a server-owned table in indx.db like the Search or ask settings: one row
     /// per answer Observr gave, with its proposals as JSON, its status, and no record of who decided
@@ -61,36 +75,61 @@ namespace IndxServer.Services.Observr
                     Status TEXT NOT NULL, AskId INTEGER NOT NULL, CreatedUtc TEXT NOT NULL, DecidedUtc TEXT NULL);
                     CREATE INDEX IF NOT EXISTS IX_ObservrFindings_Team ON {Table} (TeamId, Status);
                     CREATE TABLE IF NOT EXISTS {Datasets} (TeamId TEXT NOT NULL, DatasetName TEXT NOT NULL, Enabled INTEGER NOT NULL,
-                    PRIMARY KEY (TeamId, DatasetName));";
+                    Report TEXT NOT NULL DEFAULT 'daily', Buttons INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (TeamId, DatasetName));";
                 cmd.ExecuteNonQuery();
+                // The two columns that came after the table (12 Oct 2026): added to a table that lacks them.
+                foreach (var add in new[] { $"ALTER TABLE {Datasets} ADD COLUMN Report TEXT NOT NULL DEFAULT 'daily'", $"ALTER TABLE {Datasets} ADD COLUMN Buttons INTEGER NOT NULL DEFAULT 1" })
+                {
+                    try { using var alter = conn.CreateCommand(); alter.CommandText = add; alter.ExecuteNonQuery(); }
+                    catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { }
+                }
             }
             catch (Exception ex) { logger.LogError(ex, "Failed to ensure {Table} table", Table); }
         }
 
-        /// <summary>Whether Observr is on for this dataset. Off until a team admin switches it on.</summary>
+        /// <summary>Whether Observr's buttons show in this dataset's tabs: on, with buttons on.</summary>
         public bool IsEnabled(string teamId, string dataSetName)
         {
-            if (!DbExists()) return false;
+            var s = Settings(teamId, dataSetName);
+            return s.Enabled && s.Buttons;
+        }
+
+        public ObservrDatasetSettings Settings(string teamId, string dataSetName) =>
+            SettingsForTeam(teamId).GetValueOrDefault(dataSetName, ObservrDatasetSettings.Default);
+
+        /// <summary>Every dataset of the team that has settings, by name; a dataset absent here has
+        /// <see cref="ObservrDatasetSettings.Default"/>.</summary>
+        public Dictionary<string, ObservrDatasetSettings> SettingsForTeam(string teamId)
+        {
+            var result = new Dictionary<string, ObservrDatasetSettings>();
+            if (!DbExists()) return result;
             try
             {
                 using var conn = Connection();
                 conn.Open();
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"SELECT Enabled FROM {Datasets} WHERE TeamId = $t AND DatasetName = $d";
+                cmd.CommandText = $"SELECT DatasetName, Enabled, Report, Buttons FROM {Datasets} WHERE TeamId = $t";
                 cmd.Parameters.AddWithValue("$t", teamId);
-                cmd.Parameters.AddWithValue("$d", dataSetName);
-                return Convert.ToInt32(cmd.ExecuteScalar() ?? 0) != 0;
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    result[r.GetString(0)] = new ObservrDatasetSettings(r.GetInt32(1) != 0, r.GetString(2), r.GetInt32(3) != 0);
             }
-            catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { return false; }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { }
+            return result;
         }
 
-        public void SetEnabled(string teamId, string dataSetName, bool enabled)
+        public void SaveSettings(string teamId, string dataSetName, ObservrDatasetSettings s)
         {
             new SqLiteManager(DbPath, createOrOpenDatabase: true);
             EnsureTable();
-            Execute($"INSERT INTO {Datasets} (TeamId, DatasetName, Enabled) VALUES ($t, $d, $e) ON CONFLICT(TeamId, DatasetName) DO UPDATE SET Enabled = $e",
-                c => { c.Parameters.AddWithValue("$t", teamId); c.Parameters.AddWithValue("$d", dataSetName); c.Parameters.AddWithValue("$e", enabled ? 1 : 0); });
+            var report = s.Report is ObservrDatasetSettings.Weekly or ObservrDatasetSettings.Off ? s.Report : ObservrDatasetSettings.Daily;
+            Execute($"INSERT INTO {Datasets} (TeamId, DatasetName, Enabled, Report, Buttons) VALUES ($t, $d, $e, $r, $b) ON CONFLICT(TeamId, DatasetName) DO UPDATE SET Enabled = $e, Report = $r, Buttons = $b",
+                c => { c.Parameters.AddWithValue("$t", teamId); c.Parameters.AddWithValue("$d", dataSetName); c.Parameters.AddWithValue("$e", s.Enabled ? 1 : 0); c.Parameters.AddWithValue("$r", report); c.Parameters.AddWithValue("$b", s.Buttons ? 1 : 0); });
         }
+
+        /// <summary>Switches Observr on or off for a dataset, keeping its other settings.</summary>
+        public void SetEnabled(string teamId, string dataSetName, bool enabled) =>
+            SaveSettings(teamId, dataSetName, Settings(teamId, dataSetName) with { Enabled = enabled });
 
         /// <summary>Keeps an answer. Open when there is something to decide, or when nobody has read it
         /// yet (<paramref name="unread"/>: a digest item), closed as answered otherwise (an answer shown

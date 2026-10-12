@@ -17,6 +17,11 @@ internal class InstanceSettings
     /// a restart.</summary>
     public bool McpEnabled { get; set; } = true;
 
+    /// <summary>Observr on this instance (Notes/Anders/observr-plan.md): an admin activates it once;
+    /// off, nothing of Observr is shown and nothing is sent, whatever the subscription. On, each team
+    /// chooses per dataset what Observr does on its own Observr page.</summary>
+    public bool ObservrEnabled { get; set; } = false;
+
     /// <summary>Shows Search or ask on this instance (Notes/search-or-ask-server.md). Experimental,
     /// so off by default: while off, its dataset tab, its statistics and its routes are absent, and
     /// nothing is sent to a model. On, each dataset still switches it on in its own tab, and the

@@ -1,0 +1,204 @@
+@using IndxServer.Engine
+@using IndxServer.Data
+@using IndxServer.Models
+@using IndxServer.Services
+@using IndxServer.Services.Observr
+@inject ObservrFindingStore Findings
+@inject ObservrClient Observr
+@inject HeaderState Header
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+<PageTitle>Observr · @Team.Name</PageTitle>
+
+@* The team's Observr page: [team ▾] › Observr (Notes/Anders/observr-plan.md). What Observr does on
+   each of the team's datasets, chosen by the team's editors: on or off, how often it reports, and
+   whether its buttons show in the dataset's tabs. Below, everything Observr has found for the
+   team, with Yes and No for editors. Viewers read both. Reached from the Observr button on the
+   team page, shown only while an admin has Observr on for the instance. Hosted by Pages/ConsolePage. *@
+
+<div>
+    <h2 class="indx-section-heading indx-section-heading--first">Observr</h2>
+    <p class="indx-section-help">
+        Observr reads a weekly summary of a dataset's statistics (top queries, what found nothing, what was chosen, your
+        changes; never a record, never a visitor) and puts what is worth your attention in the Observr menu. On a dataset
+        with buttons on, editors can also ask it about a search that found nothing, have the field setup reviewed, and get
+        synonyms suggested.
+    </p>
+
+    <h3 class="indx-section-heading">Datasets</h3>
+    @if (_rows == null)
+    {
+        <p style="display:flex; align-items:center; gap:8px; color:var(--lv5);"><Spinner Size="14" /> Loading…</p>
+    }
+    else if (_rows.Count == 0)
+    {
+        <p style="color: var(--lv5);">This team has no datasets yet.</p>
+    }
+    else
+    {
+        <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" AriaLabel="Observr per dataset">
+            <thead>
+                <tr>
+                    <th scope="col">Dataset</th><th scope="col">Observr</th><th scope="col">Reports</th><th scope="col">Buttons in the tabs</th>
+                    <th scope="col" style="text-align:right;">Open</th><th scope="col"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _rows)
+                {
+                    var s = row.Settings;
+                    <tr>
+                        <td><a href="@TeamRoutes.Dataset(Team.Name, row.DataSetName)">@row.DataSetName</a></td>
+                        <td>
+                            @if (_canEdit) { <ToggleSwitch Checked="s.Enabled" CheckedChanged="on => Save(row, s with { Enabled = on })" Label="@(s.Enabled ? "On" : "Off")" /> }
+                            else { <Chip Color="var(--lv2)" TextColor="var(--lv6)">@(s.Enabled ? "On" : "Off")</Chip> }
+                        </td>
+                        <td>
+                            @if (_canEdit && s.Enabled)
+                            {
+                                <div style="width: 180px;"><SelectField Size="micro" Options="ReportOptions" Value="@s.Report" ValueChanged="v => Save(row, s with { Report = v })" aria-label="How often Observr reports" /></div>
+                            }
+                            else if (s.Enabled) { <span style="color: var(--lv6);">@ReportLabel(s.Report)</span> }
+                            else { <span style="color: var(--lv4);">—</span> }
+                        </td>
+                        <td>
+                            @if (_canEdit && s.Enabled) { <ToggleSwitch Checked="s.Buttons" CheckedChanged="on => Save(row, s with { Buttons = on })" Label="@(s.Buttons ? "Shown" : "Hidden")" /> }
+                            else if (s.Enabled) { <span style="color: var(--lv6);">@(s.Buttons ? "Shown" : "Hidden")</span> }
+                            else { <span style="color: var(--lv4);">—</span> }
+                        </td>
+                        <td style="text-align:right; color: var(--lv5); font-variant-numeric: tabular-nums;">@row.Open</td>
+                        <td style="text-align:right;">
+                            @if (_canEdit && s.Enabled) { <ObservrDigestButton TeamId="@TeamId" DatasetName="@row.DataSetName" /> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </Table>
+        <p class="indx-section-help" style="margin-top: 8px;">
+            A daily report is sent every morning at @_digestHour:00 UTC, a weekly one on Mondays. Each report and each ask counts
+            against the licence's daily allowance.
+        </p>
+    }
+
+    <h3 class="indx-section-heading">What Observr found</h3>
+    @if (_findings.Count == 0)
+    {
+        <p style="color: var(--lv5);">Nothing yet. The first report comes the morning after a dataset is switched on; Send this week's summary brings it now.</p>
+    }
+    else
+    {
+        <Table Scrollable AriaLabel="Observr findings">
+            <thead><tr><th>When</th><th>Dataset</th><th>About</th><th>Answer</th><th>Proposal</th><th>Decision</th></tr></thead>
+            <tbody>
+                @foreach (var f in _findings)
+                {
+                    <tr>
+                        <td style="white-space:nowrap;"><TimeAgo Value="f.CreatedUtc" TooltipPosition="right" /></td>
+                        <td style="white-space:nowrap;"><a href="@($"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")">@f.DataSetName</a></td>
+                        <td>@f.Title</td>
+                        <td style="max-width:420px;">@f.Answer</td>
+                        <td>
+                            @foreach (var p in f.Proposals)
+                            {
+                                <span style="display:inline-flex; gap:4px; flex-wrap:wrap; align-items:center;">
+                                    @if (p.Field is { } change) { <Chip>@change.Name</Chip><span style="font:var(--text-xs); color:var(--lv5);">@change.Summary</span> }
+                                    else { @foreach (var t in p.Terms) { <Chip>@t</Chip> } }
+                                </span>
+                            }
+                        </td>
+                        <td style="white-space:nowrap;">
+                            @if (f.Status == ObservrFinding.Open && !_canEdit) { <span style="font:var(--text-xs); color:var(--lv5);">open</span> }
+                            else if (f.Status == ObservrFinding.Open && f.Proposals.Count == 0)
+                            {
+                                <Button Variant="ghost" Size="micro" Loading="@(_busy == f.Id)" @onclick="() => DecideAsync(f, true)">Got it</Button>
+                            }
+                            else if (f.Status == ObservrFinding.Open)
+                            {
+                                <Button Variant="primary" Size="micro" Loading="@(_busy == f.Id)" @onclick="() => DecideAsync(f, true)">Yes</Button>
+                                <Button Variant="ghost" Size="micro" Disabled="@(_busy == f.Id)" @onclick="() => DecideAsync(f, false)">No</Button>
+                            }
+                            else { <span style="font:var(--text-xs); color:var(--lv5);">@(f.Proposals.Count == 0 ? "read" : f.Status)</span> }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </Table>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Team Team { get; set; } = default!;
+    [Parameter] public string? Role { get; set; }
+    [Inject] private IConfiguration Configuration { get; set; } = default!;
+
+    private sealed record Row(string DataSetName, ObservrDatasetSettings Settings, int Open);
+
+    private string TeamId => Team.Id.ToString();
+    private bool _canEdit;
+    private List<Row>? _rows;
+    private List<ObservrFinding> _findings = [];
+    private long _busy;
+    private int _digestHour;
+    private Guid _loadedFor;
+
+    private static readonly List<SelectField.SelectOption> ReportOptions =
+    [
+        new("Every day", ObservrDatasetSettings.Daily),
+        new("Every Monday", ObservrDatasetSettings.Weekly),
+        new("Never", ObservrDatasetSettings.Off),
+    ];
+
+    private static string ReportLabel(string report) => ReportOptions.FirstOrDefault(o => o.Value == report)?.Label ?? report;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        Header.Set(this, b =>
+        {
+            b.OpenComponent<ConsoleBreadcrumb>(0);
+            b.AddAttribute(1, "TeamName", Team.Name);
+            b.AddAttribute(2, "Page", "Observr");
+            b.CloseComponent();
+        });
+        _canEdit = TeamRoles.CanWrite(Role);
+        _digestHour = Math.Clamp(Configuration.GetValue<int?>("Indx:Observr:DigestHourUtc") ?? 5, 0, 23);
+        if (_loadedFor == Team.Id) return;
+        _loadedFor = Team.Id;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        // The registry's list and the finding store only: never GetState, which loads a sleeping dataset.
+        var team = TeamId;
+        var (rows, findings) = await Task.Run(() =>
+        {
+            var settings = Findings.SettingsForTeam(team);
+            var all = Findings.List([team]);
+            var rows = (IndxServerInternalApi.ManagerOrNull?.GetAllDataSets() ?? []).Where(d => d.TeamId == team)
+                .Select(d => new Row(d.DataSetName, settings.GetValueOrDefault(d.DataSetName, ObservrDatasetSettings.Default),
+                    all.Count(f => f.DataSetName == d.DataSetName && f.Status == ObservrFinding.Open)))
+                .OrderByDescending(r => r.Settings.Enabled).ThenBy(r => r.DataSetName).ToList();
+            return (rows, all);
+        });
+        _rows = rows;
+        _findings = findings;
+    }
+
+    private void Save(Row row, ObservrDatasetSettings s)
+    {
+        if (!_canEdit) return;
+        Findings.SaveSettings(TeamId, row.DataSetName, s);
+        if (_rows != null) _rows[_rows.IndexOf(row)] = row with { Settings = s };
+    }
+
+    private async Task DecideAsync(ObservrFinding f, bool yes)
+    {
+        _busy = f.Id;
+        try { await Task.Run(() => Observr.Decide(f.Id, yes)); }
+        finally { _busy = 0; }
+        await LoadAsync();
+    }
+
+    public void Dispose() => Header.Clear(this, keepIf: NavigationManager.ToBaseRelativePath(NavigationManager.Uri).StartsWith("teams/", StringComparison.OrdinalIgnoreCase));
+}
