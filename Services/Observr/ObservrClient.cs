@@ -307,6 +307,10 @@ namespace IndxServer.Services.Observr
                 Content = JsonContent.Create(payload, payload.GetType(), options: Json),
             };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            // Which installation this is: Observr tells one licence used from several apart.
+            var (instanceId, instanceName) = Instance();
+            request.Headers.TryAddWithoutValidation("X-Indx-Instance", instanceId);
+            request.Headers.TryAddWithoutValidation("X-Indx-Instance-Name", instanceName);
             try
             {
                 using var response = await client.SendAsync(request, ct);
@@ -323,6 +327,19 @@ namespace IndxServer.Services.Observr
                 logger.LogWarning(ex, "Observr unreachable");
                 return (HttpStatusCode.ServiceUnavailable, "", "unreachable");
             }
+        }
+
+        /// <summary>The installation's id and name; the id is made once and kept in the settings.</summary>
+        private (string Id, string Name) Instance()
+        {
+            var s = settings.Load();
+            if (string.IsNullOrWhiteSpace(s.InstanceId))
+            {
+                s.InstanceId = Guid.NewGuid().ToString("N");
+                try { settings.Save(s); } catch (Exception ex) { logger.LogWarning(ex, "Could not keep the instance id"); }
+            }
+            var name = string.IsNullOrWhiteSpace(s.InstanceName) ? "Indx" : s.InstanceName.Trim();
+            return (s.InstanceId!, new string(name.Where(c => c < 128 && !char.IsControl(c)).ToArray()));
         }
 
         private async Task<ObservrOutcome> SendAsync(string token, string teamId, string dataSetName, string kind, string query, object ask, CancellationToken ct)

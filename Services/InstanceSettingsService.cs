@@ -12,6 +12,11 @@ internal class InstanceSettings
     public bool AllowUserSelfDeletion { get; set; } = true;
     public string InstanceName { get; set; } = "Indx";
 
+    /// <summary>A stable, random id for this installation, made the first time it is needed and
+    /// kept in settings.json. It tells Observr which installation an ask came from, so one licence
+    /// token used by several installations is seen as such. Not a secret, not shown to users.</summary>
+    public string? InstanceId { get; set; }
+
     /// <summary>Master switch for the MCP server (/mcp). On by default (frictionless self-host);
     /// admins can disable the agent-facing surface. Enforced at runtime, so it takes effect without
     /// a restart.</summary>
