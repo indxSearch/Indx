@@ -41,7 +41,7 @@
             <thead>
                 <tr>
                     <th scope="col">Dataset</th><th scope="col">Observr</th><th scope="col">Reports</th><th scope="col">Buttons in the tabs</th>
-                    <th scope="col" style="text-align:right;">Open</th><th scope="col"></th><th scope="col" aria-label="Open the dataset"></th>
+                    <th scope="col" style="text-align:right;">Open</th><th scope="col"></th>
                 </tr>
             </thead>
             <tbody>
@@ -49,9 +49,14 @@
                 {
                     var s = row.Settings;
                     <tr>
-                        <td style="color: var(--lv6);">@row.DataSetName</td>
+                        <td style="color: var(--lv6);">
+                            <span style="display:inline-flex; align-items:center; gap:4px;">
+                                @row.DataSetName
+                                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.ChevronRight" Href="@TeamRoutes.Dataset(Team.Name, row.DataSetName)" title="Open the dataset" aria-label="@($"Open {row.DataSetName}")" />
+                            </span>
+                        </td>
                         <td>
-                            @if (_canEdit) { <ToggleSwitch Checked="s.Enabled" CheckedChanged="on => Save(row, s with { Enabled = on })" Label="@(s.Enabled ? "On" : "Off")" /> }
+                            @if (_canEdit) { <ToggleSwitch Variant="positive" Checked="s.Enabled" CheckedChanged="on => Save(row, s with { Enabled = on })" Label="@(s.Enabled ? "On" : "Off")" /> }
                             else { <Chip Color="var(--lv2)" TextColor="var(--lv6)">@(s.Enabled ? "On" : "Off")</Chip> }
                         </td>
                         <td>
@@ -63,16 +68,13 @@
                             else { <span style="color: var(--lv4);">—</span> }
                         </td>
                         <td>
-                            @if (_canEdit && s.Enabled) { <ToggleSwitch Checked="s.Buttons" CheckedChanged="on => Save(row, s with { Buttons = on })" Label="@(s.Buttons ? "Shown" : "Hidden")" /> }
+                            @if (_canEdit && s.Enabled) { <ToggleSwitch Variant="positive" Checked="s.Buttons" CheckedChanged="on => Save(row, s with { Buttons = on })" Label="@(s.Buttons ? "Shown" : "Hidden")" /> }
                             else if (s.Enabled) { <span style="color: var(--lv6);">@(s.Buttons ? "Shown" : "Hidden")</span> }
                             else { <span style="color: var(--lv4);">—</span> }
                         </td>
                         <td style="text-align:right; color: var(--lv5); font-variant-numeric: tabular-nums;">@row.Open</td>
                         <td style="text-align:right;">
                             @if (_canEdit && s.Enabled) { <ObservrDigestButton TeamId="@TeamId" DatasetName="@row.DataSetName" /> }
-                        </td>
-                        <td style="text-align:right;">
-                            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.ChevronRight" Href="@TeamRoutes.Dataset(Team.Name, row.DataSetName)" title="Open the dataset" aria-label="@($"Open {row.DataSetName}")" />
                         </td>
                     </tr>
                 }
@@ -92,13 +94,18 @@
     else
     {
         <Table Scrollable AriaLabel="Observr findings">
-            <thead><tr><th>When</th><th>Dataset</th><th>About</th><th>Answer</th><th>Proposal</th><th>Decision</th><th aria-label="Open where it is about"></th></tr></thead>
+            <thead><tr><th>When</th><th>Dataset</th><th>About</th><th>Answer</th><th>Proposal</th><th>Decision</th></tr></thead>
             <tbody>
                 @foreach (var f in _findings)
                 {
                     <tr>
                         <td style="white-space:nowrap;"><TimeAgo Value="f.CreatedUtc" TooltipPosition="right" /></td>
-                        <td style="white-space:nowrap; color: var(--lv6);">@f.DataSetName</td>
+                        <td style="white-space:nowrap; color: var(--lv6);">
+                            <span style="display:inline-flex; align-items:center; gap:4px;">
+                                @f.DataSetName
+                                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.ChevronRight" Href="@($"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" title="Open the tab it is about" aria-label="@($"Open {f.DataSetName}, {f.Tab}")" />
+                            </span>
+                        </td>
                         <td>@f.Title</td>
                         <td style="max-width:420px;">@f.Answer</td>
                         <td>
@@ -122,9 +129,6 @@
                                 <Button Variant="ghost" Size="micro" Disabled="@(_busy == f.Id)" @onclick="() => DecideAsync(f, false)">No</Button>
                             }
                             else { <span style="font:var(--text-xs); color:var(--lv5);">@(f.Proposals.Count == 0 ? "read" : f.Status)</span> }
-                        </td>
-                        <td style="text-align:right;">
-                            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.ChevronRight" Href="@($"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" title="Open the tab it is about" aria-label="@($"Open {f.DataSetName}, {f.Tab}")" />
                         </td>
                     </tr>
                 }
