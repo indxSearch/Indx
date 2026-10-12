@@ -4,11 +4,22 @@
 @using IndxServer.Models
 
 @inherits DatasetTabBase
+@inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
 @if (!Active) { return; }
 
 @if (!Ctx.IsSaving)
 {
-    <FieldConfigToolbar @bind-Filter="_filter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced" />
+    <FieldConfigToolbar @bind-Filter="_filter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced">
+        @if (Ctx.IsEditor && !_review && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
+        {
+            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Disabled="@Ctx.IsDirty" @onclick="() => _review = true">Review my setup</Button>
+        }
+    </FieldConfigToolbar>
+}
+
+@if (_review)
+{
+    <ObservrReview OnClose="() => _review = false" />
 }
 
 @if (!string.IsNullOrEmpty(_saveError))
@@ -47,6 +58,7 @@ else if (Ctx.EditedFields is { } fields)
 @code {
 
     private bool _showUnused;
+    private bool _review;
 
     private string? _filter;
     private bool _showAdvanced;

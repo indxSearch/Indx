@@ -18,11 +18,15 @@ namespace IndxServer.Services.Observr
     /// <summary>
     /// Observr's findings, a server-owned table in indx.db like the Search or ask settings: one row
     /// per answer Observr gave, with its proposals as JSON, its status, and no record of who decided
-    /// (as change events record no one). Follows the dataset through delete, rename and transfer.
+    /// (as change events record no one). Beside it, which datasets have Observr at all: it is opt-in
+    /// per dataset (a team admin's switch on the Options tab), since a setup holds datasets nobody
+    /// should be asked about, test copies and the like. Both follow the dataset through delete,
+    /// rename and transfer.
     /// </summary>
     public class ObservrFindingStore(ILogger<ObservrFindingStore> logger)
     {
         private const string Table = "ObservrFindings";
+        private const string Datasets = "ObservrDatasets";
         private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
         private static string DbPath => IndxServerInternalApi.SearchDbConnectionString;
@@ -43,10 +47,37 @@ namespace IndxServer.Services.Observr
                     Id INTEGER PRIMARY KEY AUTOINCREMENT, TeamId TEXT NOT NULL, DatasetName TEXT NOT NULL, Kind TEXT NOT NULL,
                     Query TEXT NOT NULL, Outcome TEXT NOT NULL, Answer TEXT NOT NULL, ProposalsJson TEXT NOT NULL,
                     Status TEXT NOT NULL, AskId INTEGER NOT NULL, CreatedUtc TEXT NOT NULL, DecidedUtc TEXT NULL);
-                    CREATE INDEX IF NOT EXISTS IX_ObservrFindings_Team ON {Table} (TeamId, Status);";
+                    CREATE INDEX IF NOT EXISTS IX_ObservrFindings_Team ON {Table} (TeamId, Status);
+                    CREATE TABLE IF NOT EXISTS {Datasets} (TeamId TEXT NOT NULL, DatasetName TEXT NOT NULL, Enabled INTEGER NOT NULL,
+                    PRIMARY KEY (TeamId, DatasetName));";
                 cmd.ExecuteNonQuery();
             }
             catch (Exception ex) { logger.LogError(ex, "Failed to ensure {Table} table", Table); }
+        }
+
+        /// <summary>Whether Observr is on for this dataset. Off until a team admin switches it on.</summary>
+        public bool IsEnabled(string teamId, string dataSetName)
+        {
+            if (!DbExists()) return false;
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT Enabled FROM {Datasets} WHERE TeamId = $t AND DatasetName = $d";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSetName);
+                return Convert.ToInt32(cmd.ExecuteScalar() ?? 0) != 0;
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { return false; }
+        }
+
+        public void SetEnabled(string teamId, string dataSetName, bool enabled)
+        {
+            new SqLiteManager(DbPath, createOrOpenDatabase: true);
+            EnsureTable();
+            Execute($"INSERT INTO {Datasets} (TeamId, DatasetName, Enabled) VALUES ($t, $d, $e) ON CONFLICT(TeamId, DatasetName) DO UPDATE SET Enabled = $e",
+                c => { c.Parameters.AddWithValue("$t", teamId); c.Parameters.AddWithValue("$d", dataSetName); c.Parameters.AddWithValue("$e", enabled ? 1 : 0); });
         }
 
         public long Add(string teamId, string dataSetName, string kind, string query, ObservrAnswer answer)
@@ -157,15 +188,15 @@ namespace IndxServer.Services.Observr
         }
 
         public void Delete(string teamId, string dataSetName) =>
-            Execute($"DELETE FROM {Table} WHERE TeamId = $t AND DatasetName = $d",
+            Execute($"DELETE FROM {Table} WHERE TeamId = $t AND DatasetName = $d; DELETE FROM {Datasets} WHERE TeamId = $t AND DatasetName = $d",
                 c => { c.Parameters.AddWithValue("$t", teamId); c.Parameters.AddWithValue("$d", dataSetName); });
 
         public void Rename(string teamId, string dataSetName, string newName) =>
-            Execute($"UPDATE {Table} SET DatasetName = $n WHERE TeamId = $t AND DatasetName = $d",
+            Execute($"UPDATE {Table} SET DatasetName = $n WHERE TeamId = $t AND DatasetName = $d; UPDATE OR REPLACE {Datasets} SET DatasetName = $n WHERE TeamId = $t AND DatasetName = $d",
                 c => { c.Parameters.AddWithValue("$n", newName); c.Parameters.AddWithValue("$t", teamId); c.Parameters.AddWithValue("$d", dataSetName); });
 
         public void Transfer(string fromTeamId, string toTeamId, string dataSetName) =>
-            Execute($"UPDATE {Table} SET TeamId = $to WHERE TeamId = $from AND DatasetName = $d",
+            Execute($"UPDATE {Table} SET TeamId = $to WHERE TeamId = $from AND DatasetName = $d; UPDATE OR REPLACE {Datasets} SET TeamId = $to WHERE TeamId = $from AND DatasetName = $d",
                 c => { c.Parameters.AddWithValue("$to", toTeamId); c.Parameters.AddWithValue("$from", fromTeamId); c.Parameters.AddWithValue("$d", dataSetName); });
     }
 }

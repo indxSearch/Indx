@@ -25,6 +25,7 @@
     <div class="indx-field-config-toolbar-group indx-field-config-toolbar-group--wide">
         <ToggleSwitch Checked="@ShowUnused" CheckedChanged="ShowUnusedChanged" Label="Show unused fields" Elevated />
         <ToggleSwitch Checked="@ShowAdvanced" CheckedChanged="ShowAdvancedChanged" Label="Show advanced settings" Elevated />
+        @ChildContent
     </div>
 </div>
 
@@ -38,4 +39,6 @@
     [Parameter] public EventCallback<bool> ShowUnusedChanged { get; set; }
     [Parameter] public bool ShowAdvanced { get; set; }
     [Parameter] public EventCallback<bool> ShowAdvancedChanged { get; set; }
+    /// <summary>What the Ready view adds at the end of the row: Observr's Review my setup.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
 }

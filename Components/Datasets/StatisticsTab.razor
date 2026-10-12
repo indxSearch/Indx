@@ -8,6 +8,7 @@
 @using IndxServer.Services
 @inherits DatasetTabBase
 @inject StatisticsService Stats
+@inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
 
 @if (!Active) { return; }
 
@@ -97,7 +98,7 @@ else
             </div>
             @if (_zeroHits)
             {
-                <p class="stats-help">Searches that found nothing, most often first. Ask Observr what went wrong and what to do about it.</p>
+                <p class="stats-help">Searches that found nothing, most often first.@(ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name) ? " Ask Observr what went wrong and what to do about it." : Ctx.IsAdmin ? " Switch Observr on under Options to ask what went wrong." : "")</p>
             }
             else if (_queryOrder != QueryOrder.Searches)
             {
@@ -116,7 +117,7 @@ else
                             <td>@QueryLabel(q.QueryText)</td>
                             <td class="stats-num">@N(q.ZeroHits)</td>
                             <td class="stats-action">
-                                @if (Ctx.IsEditor && _observrQuery != q.QueryText)
+                                @if (Ctx.IsEditor && _observrQuery != q.QueryText && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
                                 {
                                     <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => _observrQuery = q.QueryText">Ask Observr</Button>
                                 }

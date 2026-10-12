@@ -19,7 +19,7 @@
     else if (_outcome.Status != ObservrStatus.Ok)
     {
         <Alert Variant="default" Icon="null">
-            <Description>@Refusal(_outcome)</Description>
+            <Description>@ObservrText.Refusal(_outcome, "to look at")</Description>
         </Alert>
     }
     else
@@ -83,21 +83,10 @@
         _applyError = null;
         try
         {
-            var ok = await Task.Run(() => Observr.Decide(_outcome.FindingId, yes));
-            if (ok) _decided = yes ? "accepted" : "declined"; else _applyError = "The synonym could not be stored.";
+            _applyError = await Task.Run(() => Observr.Decide(_outcome.FindingId, yes));
+            if (_applyError == null) _decided = yes ? "accepted" : "declined";
         }
         finally { _applying = false; }
     }
 
-    private static string Refusal(ObservrOutcome o) => o.Status switch
-    {
-        ObservrStatus.NoToken => "This instance has no licence token, so it cannot reach Observr. Add one under Admin, License.",
-        ObservrStatus.UnknownToken => "Observr does not recognise this instance's licence token. Check it under Admin, License.",
-        ObservrStatus.NoSubscription => o.Reason == "expired"
-            ? "This licence has expired, so Observr is not included. Renew it to ask."
-            : "Observr is part of the Pro and Enterprise subscriptions. This instance's licence does not include it.",
-        ObservrStatus.Unavailable => "Observr cannot be reached right now. Try again in a moment.",
-        _ => o.Reason == "datasetNotReady" ? "The dataset is not ready to search, so there is nothing to look at yet."
-            : "Observr could not answer this time.",
-    };
 }

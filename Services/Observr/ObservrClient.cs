@@ -1,11 +1,15 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using Indx.Api;
 using Indx.Http;
 using IndxServer.Engine;
+using IndxServer.Models;
 
 namespace IndxServer.Services.Observr
 {
@@ -19,11 +23,62 @@ namespace IndxServer.Services.Observr
     public sealed record ObservrZeroHitAsk(string Kind, string Team, string Dataset, string Site, List<string> Fields,
         string Query, long Searches, List<ObservrNamed> NearMatches, List<ObservrWordMatches> Words);
 
-    /// <summary>A proposal Observr made, which this instance can carry out after a yes.</summary>
-    public sealed record ObservrProposal(string Kind, string[] Terms, string Direction, string Reason);
+    /// <summary>One field as Observr reviews it: its roles today and what a sample of the records
+    /// holds in it. Values are the top few only, so a review sends little of the data.</summary>
+    public sealed record ObservrFieldEvidence(string Name, string Type, bool IsArray, bool Searchable, bool Filterable, bool Facetable,
+        bool Sortable, float Weight, int Filled, int Distinct, List<string> TopValues, double? Min, double? Max, int AvgLength);
+
+    /// <summary>The dataset's setup for review: every field with its evidence, the key field, and
+    /// what visitors searched for lately, which says what the fields are expected to answer.</summary>
+    public sealed record ObservrFieldReviewAsk(string Kind, string Team, string Dataset, string Site, string KeyField, long Records,
+        int Sampled, List<ObservrFieldEvidence> FieldEvidence, List<string> TopQueries);
+
+    /// <summary>A change to one field's roles: null leaves that role as it is.</summary>
+    public sealed record ObservrFieldChange(string Name, bool? Searchable, bool? Filterable, bool? Facetable, bool? Sortable, float? Weight)
+    {
+        /// <summary>The change in words: "Elevtall: sortable", "Navn: weight 2, no longer facetable".</summary>
+        [JsonIgnore]
+        public string Summary
+        {
+            get
+            {
+                var parts = new List<string>();
+                Role(Searchable, "searchable"); Role(Filterable, "filterable"); Role(Facetable, "facetable"); Role(Sortable, "sortable");
+                if (Weight != null) parts.Add($"weight {Weight.Value.ToString("0.##", CultureInfo.InvariantCulture)}");
+                return parts.Count == 0 ? "no change" : string.Join(", ", parts);
+                void Role(bool? v, string role) { if (v == true) parts.Add(role); else if (v == false) parts.Add($"no longer {role}"); }
+            }
+        }
+    }
+
+    /// <summary>A proposal Observr made, which this instance can carry out after a yes: a synonym
+    /// (<see cref="Terms"/>) or a field change (<see cref="Field"/>).</summary>
+    public sealed record ObservrProposal(string Kind, string[] Terms, string Direction, string Reason, ObservrFieldChange? Field = null)
+    {
+        public const string Synonym = "synonym";
+        public const string FieldKind = "field";
+    }
+
     public sealed record ObservrAnswer(int AskId, string Outcome, string Answer, List<ObservrProposal> Proposals, string Model);
 
     public enum ObservrStatus { Ok, NoToken, UnknownToken, NoSubscription, Unavailable, Failed }
+
+    public static class ObservrText
+    {
+        /// <summary>A refusal as the console says it; <paramref name="nothingYet"/> is the dataset-not-ready
+        /// sentence's tail ("to look at", "to review").</summary>
+        public static string Refusal(ObservrOutcome o, string nothingYet) => o.Status switch
+        {
+            ObservrStatus.NoToken => "This instance has no licence token, so it cannot reach Observr. Add one under Admin, License.",
+            ObservrStatus.UnknownToken => "Observr does not recognise this instance's licence token. Check it under Admin, License.",
+            ObservrStatus.NoSubscription => o.Reason == "expired"
+                ? "This licence has expired, so Observr is not included. Renew it to ask."
+                : "Observr is part of the Pro and Enterprise subscriptions. This instance's licence does not include it.",
+            ObservrStatus.Unavailable => "Observr cannot be reached right now. Try again in a moment.",
+            _ => o.Reason == "datasetNotReady" ? $"The dataset is not ready to search, so there is nothing {nothingYet} yet."
+                : "Observr could not answer this time.",
+        };
+    }
 
     /// <summary>What came of asking: an answer, or why there is none, in a word the console turns
     /// into a sentence (<see cref="Reason"/> is Observr's own word where it gave one).</summary>
@@ -43,9 +98,18 @@ namespace IndxServer.Services.Observr
         ObservrFindingStore findings, ILogger<ObservrClient> logger)
     {
         public const string HttpClientName = "Observr";
+        public const string ZeroHitKind = "zeroHitQuery";
+        public const string FieldReviewKind = "fieldReview";
         private const int NearMatches = 10;
         private const int PerWord = 3;
         private const int MaxWords = 8;
+        /// <summary>The records a field review reads: enough for fill rates and value counts, few
+        /// enough to read in a moment.</summary>
+        private const int ReviewSample = 300;
+        private const int ReviewTopValues = 8;
+        private const int ReviewTopQueries = 20;
+        private const int ReviewQueryDays = 30;
+        private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
         /// <summary>Whether this instance can ask at all: it has a licence token.</summary>
         public bool HasToken => Token() != null;
@@ -64,12 +128,28 @@ namespace IndxServer.Services.Observr
             var engine = engines.FindSearchEngine(dataSetName, teamId);
             if (engine == null || engine.Status.SystemState != SystemState.Ready)
                 return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
-
             var ask = BuildZeroHitAsk(teamId, dataSetName, engine, query, searches);
+            return await SendAsync(token, teamId, dataSetName, ZeroHitKind, query.Trim(), ask, ct);
+        }
+
+        /// <summary>Asks Observr to review the dataset's field setup ("Review my setup" on the
+        /// Fields tab): what it sends is the roles and a summary of a sample, never the records.</summary>
+        public async Task<ObservrOutcome> AskFieldReviewAsync(string teamId, string dataSetName, CancellationToken ct)
+        {
+            if (Token() is not { } token) return new ObservrOutcome(ObservrStatus.NoToken);
+            var engine = engines.FindSearchEngine(dataSetName, teamId);
+            if (engine == null || engine.Status.SystemState != SystemState.Ready)
+                return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
+            var ask = BuildFieldReviewAsk(teamId, dataSetName, engine);
+            return await SendAsync(token, teamId, dataSetName, FieldReviewKind, "", ask, ct);
+        }
+
+        private async Task<ObservrOutcome> SendAsync(string token, string teamId, string dataSetName, string kind, string query, object ask, CancellationToken ct)
+        {
             var client = http.CreateClient(HttpClientName);
             using var request = new HttpRequestMessage(HttpMethod.Post, $"{options.Url.TrimEnd('/')}/api/ask")
             {
-                Content = JsonContent.Create(ask, options: new JsonSerializerOptions(JsonSerializerDefaults.Web)),
+                Content = JsonContent.Create(ask, ask.GetType(), options: Json),
             };
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             try
@@ -82,10 +162,17 @@ namespace IndxServer.Services.Observr
                 switch (response.StatusCode)
                 {
                     case HttpStatusCode.OK:
-                        var answer = JsonSerializer.Deserialize<ObservrAnswer>(body, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                        var answer = JsonSerializer.Deserialize<ObservrAnswer>(body, Json);
                         if (answer == null) return new ObservrOutcome(ObservrStatus.Failed, Reason: "badAnswer");
+                        // A field change on a field this dataset does not have is dropped here: the
+                        // proposal would have nothing to apply to.
+                        if (kind == FieldReviewKind && engines.FindSearchEngine(dataSetName, teamId) is { } engine)
+                        {
+                            var names = engine.GetFieldList().Select(f => f.Name).ToHashSet();
+                            answer = answer with { Proposals = answer.Proposals.Where(p => p.Kind != ObservrProposal.FieldKind || p.Field != null && names.Contains(p.Field.Name)).ToList() };
+                        }
                         // Kept as a finding: in the Observr menu while its proposal is open, in the history after.
-                        var id = findings.Add(teamId, dataSetName, "zeroHitQuery", query.Trim(), answer);
+                        var id = findings.Add(teamId, dataSetName, kind, query, answer);
                         return new ObservrOutcome(ObservrStatus.Ok, answer, FindingId: id);
                     case HttpStatusCode.Unauthorized:
                         return new ObservrOutcome(ObservrStatus.UnknownToken);
@@ -126,9 +213,75 @@ namespace IndxServer.Services.Observr
                 .Where(w => w.Length >= 2).Distinct().Take(MaxWords)
                 .Select(w => new ObservrWordMatches(w, Named(Keys(w, PerWord, strict: true)))).ToList();
             var fields = engine.GetFieldList().Where(f => f.Searchable).Select(f => f.Name).ToList();
+            return new ObservrZeroHitAsk(ZeroHitKind, teamId, dataSetName, Site(teamId, dataSetName), fields, query.Trim(), searches, near, words);
+        }
+
+        /// <summary>The evidence for a field review: each field's roles and what a sample of the
+        /// records holds in it (how many have it, how many distinct values, the commonest few, a
+        /// number's range), with the key field and the month's top queries. The sample is read
+        /// through an empty search, which never reaches the statistics.</summary>
+        public ObservrFieldReviewAsk BuildFieldReviewAsk(string teamId, string dataSetName, IServerSearchEngine engine)
+        {
+            // An empty search lists records only as a faceted browse, and only where a field is
+            // facetable; without one the sample is empty and Observr is told so (Sampled = 0).
+            var keys = (IndxServerInternalApi.Manager.Search(new QueryProxy { Text = "", EnableFacets = true, MaxNumberOfRecordsToReturn = ReviewSample }, dataSetName, teamId)
+                .Records ?? []).Select(r => r.DocumentKey).ToList();
+            var docs = keys.Select(k => Parse(engine.GetJsonDataOfKey(k))).Where(d => d != null).ToList();
+            var evidence = new List<ObservrFieldEvidence>();
+            foreach (var f in engine.GetFieldList())
+            {
+                var values = docs.SelectMany(d => Leaves(d!, f.Name)).ToList();
+                var filled = docs.Count(d => Leaves(d!, f.Name).Any());
+                var texts = values.Select(v => v.ToString()).Where(s => s.Length > 0).ToList();
+                var distinct = texts.Distinct().Count();
+                // The commonest values only where values repeat (a category, a type): a field whose
+                // values are mostly their own (names, descriptions) sends none, so no record goes.
+                var top = distinct <= texts.Count / 2
+                    ? texts.GroupBy(s => s).OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
+                        .Take(ReviewTopValues).Select(g => g.Key.Length > 80 ? g.Key[..80] + "…" : g.Key).ToList()
+                    : [];
+                var numbers = f.Type == JsonValueKind.Number
+                    ? values.Select(v => v.TryGetValue<double>(out var n) ? n : (double?)null).Where(n => n != null).Select(n => n!.Value).ToList() : [];
+                evidence.Add(new ObservrFieldEvidence(f.Name, TypeName(f.Type), f.IsArray, f.Searchable, f.Filterable, f.Facetable, f.Sortable, f.Weight,
+                    filled, distinct, top, numbers.Count > 0 ? numbers.Min() : null, numbers.Count > 0 ? numbers.Max() : null,
+                    texts.Count == 0 ? 0 : (int)texts.Average(s => s.Length)));
+            }
+            var today = StatisticsDays.Today(TimeZoneInfo.Utc);
+            var queries = statistics.Store?.TopQueries(teamId, dataSetName, today - ReviewQueryDays, today, ReviewTopQueries)
+                .Select(q => q.QueryText).ToList() ?? [];
+            return new ObservrFieldReviewAsk(FieldReviewKind, teamId, dataSetName, Site(teamId, dataSetName), engine.DocumentFields?.NameOfDocumentKeyField ?? "",
+                engine.Status.DocumentCount, docs.Count, evidence, queries);
+        }
+
+        private string Site(string teamId, string dataSetName)
+        {
             var site = metadata.Load(teamId, dataSetName);
-            return new ObservrZeroHitAsk("zeroHitQuery", teamId, dataSetName, string.IsNullOrWhiteSpace(site) ? "" : site.Trim(),
-                fields, query.Trim(), searches, near, words);
+            return string.IsNullOrWhiteSpace(site) ? "" : site.Trim();
+        }
+
+        private static string TypeName(JsonValueKind kind) => kind switch
+        {
+            JsonValueKind.Number => "number",
+            JsonValueKind.True or JsonValueKind.False => "true/false",
+            JsonValueKind.String => "text",
+            _ => kind.ToString().ToLowerInvariant(),
+        };
+
+        private static JsonNode? Parse(string? json)
+        {
+            try { return string.IsNullOrEmpty(json) ? null : JsonNode.Parse(json); }
+            catch (JsonException) { return null; }
+        }
+
+        /// <summary>The values at a field's path in a record: a dotted name walks into objects, an
+        /// array along the way yields one value per element.</summary>
+        private static IEnumerable<JsonValue> Leaves(JsonNode node, string path)
+        {
+            static IEnumerable<JsonNode?> Flat(JsonNode? n) => n is JsonArray a ? a.AsEnumerable() : new[] { n };
+            IEnumerable<JsonNode?> current = new[] { node };
+            foreach (var part in path.Split('.'))
+                current = current.SelectMany(Flat).Select(n => n is JsonObject o ? o[part] : null).Where(n => n != null);
+            return current.SelectMany(Flat).OfType<JsonValue>();
         }
 
         /// <summary>What the query would find with the proposed synonym, as visitors would get it:
@@ -145,20 +298,23 @@ namespace IndxServer.Services.Observr
             return new ObservrSynonymTest(records.Length, records.Select(r => label(r.DocumentKey) ?? r.DocumentKey.ToString()).ToList());
         }
 
-        /// <summary>Carries out a synonym proposal: the terms as one entry in the dataset's list,
-        /// through the same call the console's Synonyms tab makes, so the change is recorded. Does
-        /// nothing when an entry already holds all the terms.</summary>
-        /// <summary>The owners' decision on a finding: a yes carries out its synonym proposals, a no
-        /// closes it. Returns false when a yes could not be carried out (the finding stays open).</summary>
-        public bool Decide(long findingId, bool yes)
+        /// <summary>The owners' decision on a finding: a yes carries out its proposals (the synonyms,
+        /// and the field changes, all of them or only <paramref name="onlyFields"/>), a no closes it.
+        /// Returns why a yes could not be carried out (the finding stays open), or null when done.</summary>
+        public string? Decide(long findingId, bool yes, IReadOnlyCollection<string>? onlyFields = null)
         {
             var f = findings.Get(findingId);
-            if (f == null) return false;
+            if (f == null) return "There is no such finding.";
             if (yes)
-                foreach (var p in f.Proposals.Where(p => p.Kind == "synonym"))
-                    if (!ApplySynonym(f.TeamId, f.DataSetName, p.Terms)) return false;
+            {
+                foreach (var p in f.Proposals.Where(p => p.Kind == ObservrProposal.Synonym))
+                    if (!ApplySynonym(f.TeamId, f.DataSetName, p.Terms)) return "The synonym could not be stored.";
+                var changes = f.Proposals.Where(p => p.Kind == ObservrProposal.FieldKind && p.Field != null)
+                    .Select(p => p.Field!).Where(c => onlyFields == null || onlyFields.Contains(c.Name)).ToList();
+                if (changes.Count > 0 && ApplyFields(f.TeamId, f.DataSetName, changes) is { } why) return why;
+            }
             findings.Decide(findingId, yes ? ObservrFinding.Accepted : ObservrFinding.Declined);
-            return true;
+            return null;
         }
 
         public bool ApplySynonym(string teamId, string dataSetName, string[] terms)
@@ -171,6 +327,41 @@ namespace IndxServer.Services.Observr
             list.Entries.Add(new SynonymEntry { Direction = SynonymDirection.Multidirectional, Terms = clean });
             list.Invalidate();
             return engines.SetSynonyms(dataSetName, teamId, list);
+        }
+
+        /// <summary>Carries out field changes as the Fields tab's Save does: refused as a whole when
+        /// invalid, announced, then on a shadow when the change needs a rebuild (this blocks until the
+        /// swap) or in place. Returns the reason it could not, or null.</summary>
+        public string? ApplyFields(string teamId, string dataSetName, IReadOnlyList<ObservrFieldChange> changes)
+        {
+            var engine = engines.FindSearchEngine(dataSetName, teamId);
+            if (engine == null || engine.Status.SystemState != SystemState.Ready) return "The dataset is not ready.";
+            var proposed = changes.GroupBy(c => c.Name).Select(g => new FieldProxy
+            {
+                FieldName = g.Key,
+                Searchable = g.Select(c => c.Searchable).LastOrDefault(v => v != null),
+                Filterable = g.Select(c => c.Filterable).LastOrDefault(v => v != null),
+                Facetable = g.Select(c => c.Facetable).LastOrDefault(v => v != null),
+                Sortable = g.Select(c => c.Sortable).LastOrDefault(v => v != null),
+                Weight = g.Select(c => c.Weight).LastOrDefault(v => v != null),
+            }).ToArray();
+            try
+            {
+                if (!engine.TryValidateFieldConfiguration(proposed, out var invalid)) return invalid;
+                var df = engine.DocumentFields;
+                FieldConfigurationChange.Announce(df, proposed, dataSetName, teamId);
+                if (df != null && FieldConfigurationChange.NeedsRebuild(df, proposed))
+                    engines.RunFieldConfigurationOnShadow(dataSetName, teamId, proposed);
+                else if (FieldConfigurationChange.ApplyInPlace(engine, proposed, dataSetName, teamId) is { } unknown)
+                    return $"Field '{unknown}' does not exist in this dataset.";
+                return null;
+            }
+            catch (ShadowBusyException) { return "A rebuild is already in progress. Try again when it is done."; }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Observr field change failed for {Team}/{Dataset}", teamId, dataSetName);
+                return ex.Message;
+            }
         }
     }
 }

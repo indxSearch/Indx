@@ -44,13 +44,20 @@
                     @foreach (var f in _findings)
                     {
                         <li class="obsv-row">
-                            <p class="obsv-where"><a href="@Link(f)" @onclick="Close">@TeamName(f.TeamId)/@f.DataSetName</a> · “@f.Query”</p>
+                            <p class="obsv-where"><a href="@Link(f)" @onclick="Close">@TeamName(f.TeamId)/@f.DataSetName</a> · @(f.Kind == ObservrClient.FieldReviewKind ? "field review" : $"“{f.Query}”")</p>
                             <p class="obsv-answer">@f.Answer</p>
                             @foreach (var p in f.Proposals)
                             {
                                 <div class="obsv-proposal">
-                                    <span class="obsv-label">Synonym</span>
-                                    @foreach (var t in p.Terms) { <Chip>@t</Chip> }
+                                    @if (p.Field is { } change)
+                                    {
+                                        <span class="obsv-label">Field</span><Chip>@change.Name</Chip><span class="obsv-label">@change.Summary</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="obsv-label">Synonym</span>
+                                        @foreach (var t in p.Terms) { <Chip>@t</Chip> }
+                                    }
                                 </div>
                             }
                             <div class="obsv-actions">
@@ -103,7 +110,7 @@
     private void Close() => _open = false;
 
     private string TeamName(string teamId) => _teamNames.GetValueOrDefault(teamId, teamId);
-    private string Link(ObservrFinding f) => $"/teams/{Uri.EscapeDataString(TeamName(f.TeamId))}/datasets/{Uri.EscapeDataString(f.DataSetName)}?tab=statistics";
+    private string Link(ObservrFinding f) => $"/teams/{Uri.EscapeDataString(TeamName(f.TeamId))}/datasets/{Uri.EscapeDataString(f.DataSetName)}?tab={(f.Kind == ObservrClient.FieldReviewKind ? "fields" : "statistics")}";
 
     private async Task DecideAsync(ObservrFinding f, bool yes)
     {

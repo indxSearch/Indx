@@ -9,6 +9,7 @@
 @inject StatisticsService Stats
 @inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
 @inject IndxServer.Services.SearchOrAsk.SearchOrAskStore SearchOrAskStore
+@inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
 
 @if (!Active) { return; }
 
@@ -147,6 +148,23 @@
             }
         </div>
     }
+
+    @* ── Observr: opt-in per dataset, a team admin's call. A setup holds datasets nobody should be
+       asked about (test copies, one-off imports); the buttons show only where this is on. ── *@
+    <h3 class="indx-section-heading">Observr</h3>
+    <p class="indx-section-help">
+        Lets editors ask Observr about this dataset: what went wrong with a search that found nothing, and
+        whether the fields are set up well. Each ask sends Observr what it needs to answer (a query, the
+        field roles, a few values), never the records. Part of the Pro and Enterprise subscriptions.
+    </p>
+    <div class="opt-row">
+        <ToggleSwitch Label="Observr on this dataset" Checked="ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name)"
+                      CheckedChanged="SetObservrEnabled" Disabled="!Ctx.IsAdmin" />
+        @if (!Ctx.IsAdmin)
+        {
+            <span class="opt-muted">Team admins can change this.</span>
+        }
+    </div>
 
     @* ── Replace data (atomic full reload) ── *@
     @if (Ctx.IsEditor)
@@ -305,6 +323,13 @@
 </div>
 
 @code {
+    private void SetObservrEnabled(bool enabled)
+    {
+        if (!Ctx.IsAdmin) return;
+        ObservrStore.SetEnabled(Ctx.TeamId, Ctx.Name, enabled);
+        Ctx.NotifyChanged();
+    }
+
     private void SetSearchOrAskShown(bool shown)
     {
         if (!Ctx.IsAdmin) return;
