@@ -17,11 +17,14 @@ namespace IndxServer.Services.Observr
         /// <summary>The dataset tab a finding points into: a digest item's kind names it
         /// (<c>digest/fields</c>), a field review goes to the fields, the rest to the statistics.</summary>
         public string Tab => Kind == ObservrClient.FieldReviewKind ? "fields"
+            : Kind == ObservrClient.SynonymsKind ? "synonyms"
             : Kind.StartsWith(ObservrClient.DigestKind + "/") ? Kind[(ObservrClient.DigestKind.Length + 1)..] : "statistics";
 
-        /// <summary>What the menu shows it as: the query in quotes, a review by name, a digest item by its title.</summary>
+        /// <summary>What the menu shows it as: the query in quotes, a review by name, a digest item or
+        /// a change by its title.</summary>
         public string Title => Kind == ObservrClient.FieldReviewKind ? "field review"
-            : Kind.StartsWith(ObservrClient.DigestKind) ? Query : $"“{Query}”";
+            : Kind == ObservrClient.SynonymsKind ? "synonym suggestions"
+            : Kind.StartsWith(ObservrClient.DigestKind) || Kind == ObservrClient.ChangeKind ? Query : $"“{Query}”";
     }
 
     /// <summary>

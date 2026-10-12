@@ -47,7 +47,7 @@
                         <span class="obs-change-field">@c.Field!.Name</span>
                         <span class="obs-change-why">@c.Reason</span>
                         <span class="obs-change-chips">
-                            @foreach (var (text, on) in Parts(c.Field!))
+                            @foreach (var (text, on) in ObservrText.Parts(c.Field!, Ctx.EditedFields?.FirstOrDefault(f => f.FieldName == c.Field!.Name)?.Weight))
                             {
                                 @if (on) { <Chip Icon="DatasetIcons.ShowMore">@text</Chip> }
                                 else { <Chip Color="var(--lv2)" TextColor="var(--lv5)">@text</Chip> }
@@ -98,21 +98,6 @@
         foreach (var c in _changes) _selected.Add(c.Field!.Name);
     }
 
-    /// <summary>A change as chips: a role switched on ("searchable", with a plus), one switched off
-    /// ("searchable off", muted), a weight with the value it has today.</summary>
-    private List<(string Text, bool On)> Parts(ObservrFieldChange c)
-    {
-        var parts = new List<(string, bool)>();
-        Role(c.Searchable, "searchable"); Role(c.Filterable, "filterable"); Role(c.Facetable, "facetable"); Role(c.Sortable, "sortable");
-        if (c.Weight is { } w)
-        {
-            var now = Ctx.EditedFields?.FirstOrDefault(f => f.FieldName == c.Name)?.Weight;
-            parts.Add((now is { } n ? $"weight {n:0.##} → {w:0.##}" : $"weight {w:0.##}", true));
-        }
-        return parts;
-        void Role(bool? v, string role) { if (v == true) parts.Add((role, true)); else if (v == false) parts.Add(($"{role} off", false)); }
-    }
-
     private void Select(string name, bool on)
     {
         if (on) _selected.Add(name); else _selected.Remove(name);
@@ -124,6 +109,7 @@
         _applying = true;
         _applyError = null;
         var chosen = _selected.ToList();
+        var indices = _outcome.Answer!.Proposals.Select((p, i) => (p, i)).Where(x => x.p.Field != null && _selected.Contains(x.p.Field.Name)).Select(x => x.i).ToList();
         // The tab shows the progress bar while a rebuild runs, as it does for its own Save.
         if (yes) { Ctx.IsSaving = true; Ctx.ShadowBuildPercent = 0; Ctx.NotifyChanged(); }
         using var polling = new CancellationTokenSource();
@@ -132,7 +118,7 @@
             () => InvokeAsync(() => { StateHasChanged(); Ctx.NotifyChanged(); }), polling.Token) : Task.CompletedTask;
         try
         {
-            _applyError = await Task.Run(() => Observr.Decide(_outcome.FindingId, yes, chosen));
+            _applyError = await Task.Run(() => Observr.Decide(_outcome.FindingId, yes, indices));
             if (_applyError == null) { _decided = yes ? "accepted" : "declined"; _applied = yes ? chosen.Count : 0; }
             if (yes && _applyError == null) Ctx.RefreshFieldsFromEngine();
         }

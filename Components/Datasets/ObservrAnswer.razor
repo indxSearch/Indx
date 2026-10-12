@@ -1,0 +1,129 @@
+@* An answer from Observr beside the thing it was asked about (Notes/Anders/observr-plan.md,
+   the buttons table): what it says, then its proposals, each a synonym or a field change the
+   editor ticks and applies, or Got it when there is nothing to decide. The question itself is the
+   owner's: it passes the call that asks. ObservrAsk and ObservrReview came first and keep their
+   own shape (the synonym's local test, the review's rows); this one serves the rest. *@
+@using IndxServer.Services.Observr
+@inject ObservrClient Observr
+
+<div class="obs">
+    <div class="obs-head">
+        <span class="obs-icon">@DatasetIcons.Observr(16)</span>
+        <span class="obs-title">@Title</span>
+        <span class="obs-spacer"></span>
+        <Button Variant="ghost" Size="micro" @onclick="() => OnClose.InvokeAsync()">Close</Button>
+    </div>
+    @if (_outcome == null)
+    {
+        <p class="obs-wait">@Waiting</p>
+    }
+    else if (_outcome.Status != ObservrStatus.Ok)
+    {
+        <Alert Variant="default" Icon="null">
+            <Description>@ObservrText.Refusal(_outcome, "to look at")</Description>
+        </Alert>
+    }
+    else
+    {
+        <p class="obs-answer">@_outcome.Answer!.Answer</p>
+        @if (_proposals.Count > 0)
+        {
+            <div class="obs-proposals">
+                @foreach (var (p, i) in _proposals.Select((p, i) => (p, i)))
+                {
+                    <div class="obs-proposal">
+                        @if (_decided == null && _proposals.Count > 1)
+                        {
+                            <Checkbox Checked="_selected.Contains(i)" CheckedChanged="v => Select(i, v)" Disabled="@_applying" aria-label="Apply this proposal" />
+                        }
+                        @if (p.Field is { } change)
+                        {
+                            <span class="obs-proposal-label">Field</span><Chip>@change.Name</Chip>
+                            @foreach (var (text, on) in ObservrText.Parts(change, Ctx.EditedFields?.FirstOrDefault(f => f.FieldName == change.Name)?.Weight))
+                            {
+                                @if (on) { <Chip Icon="DatasetIcons.ShowMore">@text</Chip> }
+                                else { <Chip Color="var(--lv2)" TextColor="var(--lv5)">@text</Chip> }
+                            }
+                        }
+                        else
+                        {
+                            <span class="obs-proposal-label">Synonym</span>
+                            @foreach (var t in p.Terms) { <Chip>@t</Chip> }
+                        }
+                        @if (!string.IsNullOrWhiteSpace(p.Reason) && p.Reason != _outcome.Answer.Answer) { <span class="obs-proposal-why">@p.Reason</span> }
+                    </div>
+                }
+            </div>
+        }
+        @if (_decided == "accepted")
+        {
+            <span class="obs-done">@(_proposals.Count == 0 ? "" : _applied == 0 ? "Nothing applied." : _applied == 1 ? "Applied." : $"{_applied} applied.")</span>
+        }
+        else if (_decided == "declined")
+        {
+            <span class="obs-done">Declined.</span>
+        }
+        else if (Ctx.IsEditor && _proposals.Count > 0)
+        {
+            <div class="obs-actions">
+                <Button Variant="primary" Size="micro" Loading="@_applying" Disabled="@(_selected.Count == 0)" @onclick="() => DecideAsync(true)">
+                    @(_proposals.Count == 1 ? "Yes, apply" : _selected.Count == _proposals.Count ? "Apply" : $"Apply {_selected.Count} of {_proposals.Count}")
+                </Button>
+                <Button Variant="ghost" Size="micro" Disabled="@_applying" @onclick="() => DecideAsync(false)">No</Button>
+            </div>
+        }
+        @if (_applyError != null) { <p class="obs-error">@_applyError</p> }
+    }
+</div>
+
+@code {
+    [CascadingParameter] public DatasetContext Ctx { get; set; } = default!;
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    [Parameter] public string Waiting { get; set; } = "Observr is looking at what the search knows…";
+    /// <summary>The question: the call that gathers the evidence and asks. The client is internal, so
+    /// a tab resolves it inside the call rather than injecting it, and a rendering test without the
+    /// service still renders the tab.</summary>
+    [Parameter, EditorRequired] public Func<CancellationToken, Task<ObservrOutcome>> Ask { get; set; } = default!;
+    [Parameter] public EventCallback OnClose { get; set; }
+    /// <summary>After a yes was carried out: the owner reloads what the proposal changed.</summary>
+    [Parameter] public EventCallback OnApplied { get; set; }
+
+    private ObservrOutcome? _outcome;
+    private List<ObservrProposal> _proposals = [];
+    private readonly HashSet<int> _selected = [];
+    private string? _decided;
+    private bool _applying;
+    private int _applied;
+    private string? _applyError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _outcome = await Ask(CancellationToken.None);
+        _proposals = _outcome.Answer?.Proposals ?? [];
+        for (var i = 0; i < _proposals.Count; i++) _selected.Add(i);
+    }
+
+    private void Select(int i, bool on)
+    {
+        if (on) _selected.Add(i); else _selected.Remove(i);
+    }
+
+    private async Task DecideAsync(bool yes)
+    {
+        if (_outcome?.FindingId is not > 0 || _applying) return;
+        _applying = true;
+        _applyError = null;
+        var chosen = _selected.ToList();
+        try
+        {
+            _applyError = await Task.Run(() => Observr.Decide(_outcome.FindingId, yes, chosen));
+            if (_applyError == null)
+            {
+                _decided = yes ? "accepted" : "declined";
+                _applied = yes ? chosen.Count : 0;
+                if (yes && chosen.Count > 0) await OnApplied.InvokeAsync();
+            }
+        }
+        finally { _applying = false; }
+    }
+}

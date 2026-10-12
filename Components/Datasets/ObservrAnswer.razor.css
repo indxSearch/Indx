@@ -1,0 +1,15 @@
+.obs { margin: 4px 0 8px; padding: 12px 14px; background: var(--lv1); border-radius: var(--radius); display: flex; flex-direction: column; gap: 10px; }
+.obs-head { display: flex; align-items: center; gap: 8px; }
+.obs-icon { display: inline-flex; color: var(--CInfo, var(--lv6)); }
+.obs-title { font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
+.obs-spacer { flex: 1; }
+.obs-wait { margin: 0; font: var(--text-sm); color: var(--lv5); }
+.obs-answer { margin: 0; font: var(--text-sm); line-height: 1.5; color: var(--lv8); max-width: 720px; }
+.obs-proposal { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.obs-proposal-label { font: var(--text-xs); color: var(--lv5); margin-right: 4px; }
+.obs-done { font: var(--text-xs); color: var(--lv6); margin-left: 6px; }
+.obs-error { margin: 0; font: var(--text-sm); color: var(--CSignal); }
+.obs-test { margin: 0; font: var(--text-xs); color: var(--lv6); }
+.obs-proposals { display: flex; flex-direction: column; gap: 8px; }
+.obs-proposal-why { font: var(--text-xs); color: var(--lv5); flex-basis: 100%; }
+.obs-actions { display: flex; align-items: center; gap: 6px; }

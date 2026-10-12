@@ -9,6 +9,7 @@
 @inherits DatasetTabBase
 @inject StatisticsService Stats
 @inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
+@inject IServiceProvider Services
 
 @if (!Active) { return; }
 
@@ -135,8 +136,9 @@ else
             }
             else
             {
+            var lowClick = _queryOrder == QueryOrder.LowestClickThrough && Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name);
             <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Top queries" Class="stats-table">
-                <thead><tr><th>Query</th><th class="stats-num">Searches</th><th class="stats-num">Click-through</th><th class="stats-num">Avg. position</th></tr></thead>
+                <thead><tr><th>Query</th><th class="stats-num">Searches</th><th class="stats-num">Click-through</th><th class="stats-num">Avg. position</th>@if (lowClick) { <th></th> }</tr></thead>
                 <tbody>
                     @foreach (var q in _topQueries)
                     {
@@ -145,7 +147,24 @@ else
                             <td class="stats-num">@N(q.Searches)</td>
                             <td class="stats-num">@Pct(q.ClickedSearches, q.Searches)</td>
                             <td class="stats-num">@(q.Selects > 0 ? ((double)q.PositionSum / q.Selects).ToString("0.0") : "–")</td>
+                            @if (lowClick)
+                            {
+                                <td class="stats-action">
+                                    @if (_observrQuery != q.QueryText)
+                                    {
+                                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => _observrQuery = q.QueryText">Why isn't this working?</Button>
+                                    }
+                                </td>
+                            }
                         </tr>
+                        @if (lowClick && _observrQuery == q.QueryText)
+                        {
+                            var stat = q;
+                            <tr class="stats-observr-row"><td colspan="5">
+                                <ObservrAnswer Title="@($"Observr on “{q.QueryText}”")" OnClose="() => _observrQuery = null"
+                                               Ask="ct => Observr().AskLowClickAsync(Ctx.TeamId, Ctx.Name, stat, _fromDay, _toDay, ct)" OnApplied="LoadAsync" />
+                            </td></tr>
+                        }
                     }
                 </tbody>
             </Table>
@@ -330,15 +349,34 @@ else
             @if (_changes.Count == 0) { <p class="stats-empty">No changes were made to the dataset in this period.</p> }
             @if (_changes.Count > 0)
             {
+                var askChange = Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name);
                 <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Changes" Class="stats-table">
-                    <thead><tr><th>When</th><th>What</th></tr></thead>
+                    <thead><tr><th>When</th><th>What</th>@if (askChange) { <th></th> }</tr></thead>
                     <tbody>
                         @foreach (var c in Enumerable.Reverse(ShownChanges))
                         {
                             <tr>
                                 <td><TimeAgo Value="DateTimeOffset.FromUnixTimeMilliseconds(c.Timestamp).UtcDateTime" TooltipPosition="left" /></td>
                                 <td>@ChangeDescriptions.Describe(c.Kind, c.Summary)</td>
+                                @if (askChange)
+                                {
+                                    <td class="stats-action">
+                                        @* A week after is what "help" is judged on; sooner there is nothing to compare. *@
+                                        @if (_observrChange != c.Timestamp && c.Timestamp < DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeMilliseconds())
+                                        {
+                                            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => _observrChange = c.Timestamp">Did this help?</Button>
+                                        }
+                                    </td>
+                                }
                             </tr>
+                            @if (askChange && _observrChange == c.Timestamp)
+                            {
+                                var change = c;
+                                <tr class="stats-observr-row"><td colspan="3">
+                                    <ObservrAnswer Title="@($"Observr on: {ChangeDescriptions.Describe(c.Kind, c.Summary)}")" Waiting="Observr is comparing the week before with the week after…"
+                                                   OnClose="() => _observrChange = null" Ask="ct => Observr().AskChangeAsync(Ctx.TeamId, Ctx.Name, change, ct)" />
+                                </td></tr>
+                            }
                         }
                     </tbody>
                 </Table>
@@ -389,6 +427,8 @@ else
     private const string ZeroHitsView = "ZeroHits";
     private bool _zeroHits;
     private string? _observrQuery;
+    private IndxServer.Services.Observr.ObservrClient Observr() => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IndxServer.Services.Observr.ObservrClient>(Services);
+    private long? _observrChange;
     private static readonly List<Tabs.TabItem> FuzzyItems =
         [new("Selected", "selected", DatasetIcons.FuzzySelected), new("All", "all", DatasetIcons.FuzzyAll)];
     private static readonly List<SelectField.SelectOption> DocumentOrderOptions =

@@ -51,6 +51,27 @@ namespace IndxServer.Services.Observr
         }
     }
 
+    /// <summary>A record with how often visitors chose it for a query, and where in the list it stood.</summary>
+    public sealed record ObservrChosen(long Key, string Name, long Selects, double? AvgPosition);
+
+    /// <summary>A query visitors search for often and rarely click on, with what the search returns
+    /// for it now and what the few who clicked chose. The format is the contract with IndxObservr.</summary>
+    public sealed record ObservrLowClickAsk(string Kind, string Team, string Dataset, string Site, List<string> Fields, string Query,
+        long Searches, long ClickedSearches, long Selects, double? AvgPosition, long Uncovered, List<ObservrNamed> Results, List<ObservrChosen> Chosen);
+
+    public sealed record ObservrZeroHitBrief(string Query, long Searches, List<ObservrNamed> NearMatches);
+    public sealed record ObservrFuzzyBrief(string Query, long Searches, string? Chosen);
+    /// <summary>What a synonym list could be built from: the queries that found nothing with their near
+    /// matches, the fuzzy finds with what was chosen, and the entries the list already has.</summary>
+    public sealed record ObservrSynonymsAsk(string Kind, string Team, string Dataset, string Site, List<string> Fields,
+        List<string[]> Existing, List<ObservrZeroHitBrief> ZeroHits, List<ObservrFuzzyBrief> Fuzzy);
+
+    public sealed record ObservrDay(DateOnly Date, long Searches, long ZeroHits, long ClickedSearches);
+    public sealed record ObservrChangeBrief(DateTime AtUtc, string Kind, string Summary);
+    /// <summary>A change the owners made, with the days around it: what the figures did before and after.</summary>
+    public sealed record ObservrChangeAsk(string Kind, string Team, string Dataset, string Site, ObservrChangeBrief Change,
+        List<ObservrDay> Before, List<ObservrDay> After, List<ObservrSummaryQuery> TopBefore, List<ObservrSummaryQuery> TopAfter);
+
     /// <summary>A proposal Observr made, which this instance can carry out after a yes: a synonym
     /// (<see cref="Terms"/>) or a field change (<see cref="Field"/>).</summary>
     public sealed record ObservrProposal(string Kind, string[] Terms, string Direction, string Reason, ObservrFieldChange? Field = null)
@@ -76,6 +97,18 @@ namespace IndxServer.Services.Observr
 
     public static class ObservrText
     {
+        /// <summary>A field change as chips: a role switched on (true), one switched off, a weight
+        /// with the value it has today when known.</summary>
+        public static List<(string Text, bool On)> Parts(ObservrFieldChange c, float? currentWeight)
+        {
+            var parts = new List<(string, bool)>();
+            Role(c.Searchable, "searchable"); Role(c.Filterable, "filterable"); Role(c.Facetable, "facetable"); Role(c.Sortable, "sortable");
+            if (c.Weight is { } w)
+                parts.Add((currentWeight is { } n ? $"weight {n:0.##} → {w:0.##}" : $"weight {w:0.##}", true));
+            return parts;
+            void Role(bool? v, string role) { if (v == true) parts.Add((role, true)); else if (v == false) parts.Add(($"{role} off", false)); }
+        }
+
         /// <summary>A refusal as the console says it; <paramref name="nothingYet"/> is the dataset-not-ready
         /// sentence's tail ("to look at", "to review").</summary>
         public static string Refusal(ObservrOutcome o, string nothingYet) => o.Status switch
@@ -113,6 +146,10 @@ namespace IndxServer.Services.Observr
         public const string ZeroHitKind = "zeroHitQuery";
         public const string FieldReviewKind = "fieldReview";
         public const string DigestKind = "digest";
+        public const string LowClickKind = "lowClickThrough";
+        public const string SynonymsKind = "synonyms";
+        public const string ChangeKind = "changeEffect";
+        private const int ChangeDays = 7;
         private static readonly string[] DigestTabs = ["statistics", "fields", "synonyms", "search-or-ask"];
         private const int NearMatches = 10;
         private const int PerWord = 3;
@@ -157,6 +194,74 @@ namespace IndxServer.Services.Observr
             var ask = BuildFieldReviewAsk(teamId, dataSetName, engine);
             return await SendAsync(token, teamId, dataSetName, FieldReviewKind, "", ask, ct);
         }
+
+        /// <summary>"Why isn't this working?" on a query searched often and rarely clicked.</summary>
+        public async Task<ObservrOutcome> AskLowClickAsync(string teamId, string dataSetName, QueryStat q, long fromDay, long toDay, CancellationToken ct)
+        {
+            if (Token() is not { } token) return new ObservrOutcome(ObservrStatus.NoToken);
+            var engine = engines.FindSearchEngine(dataSetName, teamId);
+            if (engine == null || engine.Status.SystemState != SystemState.Ready || statistics.Store is not { } store)
+                return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
+            var label = StatisticsLabels.For(engine, store.LabelField(teamId, dataSetName));
+            var results = (IndxServerInternalApi.Manager.Search(new QueryProxy { Text = q.QueryText, MaxNumberOfRecordsToReturn = 10, EnableCoverage = true }, dataSetName, teamId)
+                .Records ?? []).Select(r => new ObservrNamed(r.DocumentKey, label(r.DocumentKey) ?? r.DocumentKey.ToString())).ToList();
+            var chosen = store.QueryDocuments(teamId, dataSetName, q.QueryText, fromDay, toDay, 10)
+                .Select(d => new ObservrChosen(d.DocumentKey, d.Label ?? label(d.DocumentKey) ?? d.DocumentKey.ToString(), d.Selects,
+                    d.Selects > 0 ? Math.Round((double)d.PositionSum / d.Selects, 1) : null)).ToList();
+            var ask = new ObservrLowClickAsk(LowClickKind, teamId, dataSetName, Site(teamId, dataSetName), SearchableFields(engine), q.QueryText,
+                q.Searches, q.ClickedSearches, q.Selects, q.Selects > 0 ? Math.Round((double)q.PositionSum / q.Selects, 1) : null, q.Uncovered, results, chosen);
+            return await SendAsync(token, teamId, dataSetName, LowClickKind, q.QueryText, ask, ct);
+        }
+
+        /// <summary>"Suggest synonyms" on the Synonyms tab: from the period's zero hits and fuzzy finds.</summary>
+        public async Task<ObservrOutcome> AskSynonymsAsync(string teamId, string dataSetName, int days, CancellationToken ct)
+        {
+            if (Token() is not { } token) return new ObservrOutcome(ObservrStatus.NoToken);
+            var engine = engines.FindSearchEngine(dataSetName, teamId);
+            if (engine == null || engine.Status.SystemState != SystemState.Ready || statistics.Store is not { } store)
+                return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
+            var today = store.Today(teamId, dataSetName);
+            var label = StatisticsLabels.For(engine, store.LabelField(teamId, dataSetName));
+            List<ObservrNamed> Near(string text) => (IndxServerInternalApi.Manager.Search(new QueryProxy
+            {
+                Text = text, MaxNumberOfRecordsToReturn = 3, EnableCoverage = true,
+                CoverageSetup = new CoverageSetupProxy { Truncate = false, IncludePatternMatches = true },
+            }, dataSetName, teamId).Records ?? []).Select(r => new ObservrNamed(r.DocumentKey, label(r.DocumentKey) ?? r.DocumentKey.ToString())).ToList();
+            var zero = store.TopQueries(teamId, dataSetName, today - days + 1, today, 20, zeroHitsOnly: true)
+                .Select(q => new ObservrZeroHitBrief(q.QueryText, q.ZeroHits, Near(q.QueryText))).ToList();
+            var fuzzy = store.TopQueries(teamId, dataSetName, today - days + 1, today, 20, uncoveredOnly: true)
+                .Select(q => new ObservrFuzzyBrief(q.QueryText, q.Searches, q.MostChosenLabel ?? (q.MostChosenDocument is { } k ? label(k) : null))).ToList();
+            var existing = (engines.GetSynonyms(dataSetName, teamId)?.Entries ?? []).Select(e => e.Terms).ToList();
+            var ask = new ObservrSynonymsAsk(SynonymsKind, teamId, dataSetName, Site(teamId, dataSetName), SearchableFields(engine), existing, zero, fuzzy);
+            return await SendAsync(token, teamId, dataSetName, SynonymsKind, "", ask, ct);
+        }
+
+        /// <summary>"Did this help?" on a change the owners made: the week before against the week after.</summary>
+        public async Task<ObservrOutcome> AskChangeAsync(string teamId, string dataSetName, ChangeStat change, CancellationToken ct)
+        {
+            if (Token() is not { } token) return new ObservrOutcome(ObservrStatus.NoToken);
+            if (statistics.Store is not { } store) return new ObservrOutcome(ObservrStatus.Failed, Reason: "noStatistics");
+            var tz = store.ZoneOf(teamId, dataSetName);
+            var day = StatisticsDays.DayOf(tz, change.Timestamp);
+            DateOnly Date(long d) => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(DateTimeOffset.FromUnixTimeMilliseconds(StatisticsDays.Start(tz, d)), tz).DateTime);
+            // Every day of the range, a quiet one as zeros: the series itself lists only days with traffic.
+            List<ObservrDay> Days(long from, long to)
+            {
+                var byDay = store.TimeSeries(teamId, dataSetName, from, to).ToDictionary(d => d.Day);
+                return Enumerable.Range(0, (int)(to - from + 1)).Select(i => from + i)
+                    .Select(d => byDay.TryGetValue(d, out var x) ? new ObservrDay(Date(d), x.Searches, x.ZeroHits, x.ClickedSearches) : new ObservrDay(Date(d), 0, 0, 0)).ToList();
+            }
+            List<ObservrSummaryQuery> Top(long from, long to) => store.TopQueries(teamId, dataSetName, from, to, 10)
+                .Select(q => new ObservrSummaryQuery(q.QueryText, q.Searches, q.ZeroHits, q.ClickedSearches,
+                    q.Selects > 0 ? Math.Round((double)q.PositionSum / q.Selects, 1) : null, q.MostChosenLabel)).ToList();
+            var text = ChangeDescriptions.Describe(change.Kind, change.Summary);
+            var ask = new ObservrChangeAsk(ChangeKind, teamId, dataSetName, Site(teamId, dataSetName),
+                new ObservrChangeBrief(DateTimeOffset.FromUnixTimeMilliseconds(change.Timestamp).UtcDateTime, change.Kind, text),
+                Days(day - ChangeDays, day - 1), Days(day, day + ChangeDays - 1), Top(day - ChangeDays, day - 1), Top(day, day + ChangeDays - 1));
+            return await SendAsync(token, teamId, dataSetName, ChangeKind, text, ask, ct);
+        }
+
+        private static List<string> SearchableFields(IServerSearchEngine engine) => engine.GetFieldList().Where(f => f.Searchable).Select(f => f.Name).ToList();
 
         /// <summary>The digest: the bounded summary of the last week goes up (<see cref="ObservrSummary"/>),
         /// and each thing Observr finds worth attention comes back as a finding of its own in the
@@ -355,19 +460,19 @@ namespace IndxServer.Services.Observr
             return new ObservrSynonymTest(records.Length, records.Select(r => label(r.DocumentKey) ?? r.DocumentKey.ToString()).ToList());
         }
 
-        /// <summary>The owners' decision on a finding: a yes carries out its proposals (the synonyms,
-        /// and the field changes, all of them or only <paramref name="onlyFields"/>), a no closes it.
-        /// Returns why a yes could not be carried out (the finding stays open), or null when done.</summary>
-        public string? Decide(long findingId, bool yes, IReadOnlyCollection<string>? onlyFields = null)
+        /// <summary>The owners' decision on a finding: a yes carries out its proposals (all of them, or
+        /// only the ones at <paramref name="onlyProposals"/>, indices into the finding's list), a no
+        /// closes it. Returns why a yes could not be carried out (the finding stays open), or null.</summary>
+        public string? Decide(long findingId, bool yes, IReadOnlyCollection<int>? onlyProposals = null)
         {
             var f = findings.Get(findingId);
             if (f == null) return "There is no such finding.";
             if (yes)
             {
-                foreach (var p in f.Proposals.Where(p => p.Kind == ObservrProposal.Synonym))
+                var chosen = f.Proposals.Where((p, i) => onlyProposals == null || onlyProposals.Contains(i)).ToList();
+                foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.Synonym))
                     if (!ApplySynonym(f.TeamId, f.DataSetName, p.Terms)) return "The synonym could not be stored.";
-                var changes = f.Proposals.Where(p => p.Kind == ObservrProposal.FieldKind && p.Field != null)
-                    .Select(p => p.Field!).Where(c => onlyFields == null || onlyFields.Contains(c.Name)).ToList();
+                var changes = chosen.Where(p => p.Kind == ObservrProposal.FieldKind && p.Field != null).Select(p => p.Field!).ToList();
                 if (changes.Count > 0 && ApplyFields(f.TeamId, f.DataSetName, changes) is { } why) return why;
             }
             findings.Decide(findingId, yes ? ObservrFinding.Accepted : ObservrFinding.Declined);
