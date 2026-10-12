@@ -999,9 +999,11 @@ a.btn-danger:hover {
 }
 
 
-/* Observr's buttons are blue, like its badge: the one colour that says "this goes to Observr",
-   apart from the red of the notifications. A wrapper, since systm Button takes no colour. */
+/* Observr's buttons are blue: the one colour that says "this goes to Observr", apart from the red
+   of the notifications. A ghost button in a tab gets blue text; the primary one on the team page
+   the light blue of the Hibernated chip with dark text. A wrapper, since systm Button takes no
+   colour; the extra class in the selector outranks the component's own isolated rules. */
 .indx-observr { display: inline-flex; }
-.indx-observr .indx-btn { color: var(--CPureBlue); }
-.indx-observr .indx-btn-secondary { border-color: var(--CPureBlue); }
-.indx-observr .indx-btn:hover:not(:disabled) { color: var(--CPureBlue); filter: brightness(1.15); }
+.indx-observr .indx-btn.indx-btn-ghost { color: var(--CPureBlue); }
+.indx-observr .indx-btn.indx-btn-primary { background: var(--CLightBlue); color: #080809; }
+.indx-observr .indx-btn.indx-btn-primary:hover:not(:disabled):not([aria-disabled="true"]) { opacity: 0.85; }
