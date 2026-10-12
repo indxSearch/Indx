@@ -31,6 +31,8 @@ namespace IndxServer.Components.Datasets
         /// <summary>Hands a setting back to its default.</summary>
         public static readonly RenderFragment<int> Restore = Of<Icons.Refresh>();
         public static readonly RenderFragment<int> ChevronRight = Of<Icons.ChevronRight>();
+        /// <summary>"Open this", beside a name that is not itself a link.</summary>
+        public static readonly RenderFragment<int> Open = Of<Icons.ArrowUpRight>();
         public static readonly RenderFragment<int> ChevronDown = Of<Icons.ChevronDown>();
         public static readonly RenderFragment<int> Experimental = Of<Icons.LabExperiment>();
         public static readonly RenderFragment<int> Save = Of<Icons.Save>();

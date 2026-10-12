@@ -52,7 +52,7 @@
                         <td style="color: var(--lv6);">
                             <span style="display:inline-flex; align-items:center; gap:4px;">
                                 @row.DataSetName
-                                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.ChevronRight" Href="@TeamRoutes.Dataset(Team.Name, row.DataSetName)" title="Open the dataset" aria-label="@($"Open {row.DataSetName}")" />
+                                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" Href="@TeamRoutes.Dataset(Team.Name, row.DataSetName)" title="Open the dataset" aria-label="@($"Open {row.DataSetName}")" />
                             </span>
                         </td>
                         <td>
@@ -103,7 +103,7 @@
                         <td style="white-space:nowrap; color: var(--lv6);">
                             <span style="display:inline-flex; align-items:center; gap:4px;">
                                 @f.DataSetName
-                                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.ChevronRight" Href="@($"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" title="Open the tab it is about" aria-label="@($"Open {f.DataSetName}, {f.Tab}")" />
+                                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" Href="@($"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" title="Open the tab it is about" aria-label="@($"Open {f.DataSetName}, {f.Tab}")" />
                             </span>
                         </td>
                         <td>@f.Title</td>
