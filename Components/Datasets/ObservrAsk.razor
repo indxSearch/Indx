@@ -1,0 +1,91 @@
+@* "Ask Observr about this" on a query that found nothing (Notes/Anders/observr-plan.md): the
+   instance sends what it knows, Observr answers with what went wrong and, when it can, a synonym
+   the owner accepts or declines here. Yes applies it through the Synonyms tab's own path, so the
+   change is recorded as any other. *@
+@using IndxServer.Services.Observr
+@inject ObservrClient Observr
+
+<div class="obs">
+    <div class="obs-head">
+        <span class="obs-icon">@DatasetIcons.Observr(16)</span>
+        <span class="obs-title">Observr on “@Query”</span>
+        <span class="obs-spacer"></span>
+        <Button Variant="ghost" Size="micro" @onclick="() => OnClose.InvokeAsync()">Close</Button>
+    </div>
+    @if (_outcome == null)
+    {
+        <p class="obs-wait">Observr is looking at what the search knows…</p>
+    }
+    else if (_outcome.Status != ObservrStatus.Ok)
+    {
+        <Alert Variant="default" Icon="null">
+            <Description>@Refusal(_outcome)</Description>
+        </Alert>
+    }
+    else
+    {
+        <p class="obs-answer">@_outcome.Answer!.Answer</p>
+        @foreach (var p in _outcome.Answer.Proposals)
+        {
+            <div class="obs-proposal">
+                <span class="obs-proposal-label">Synonym</span>
+                @foreach (var t in p.Terms) { <Chip>@t</Chip> }
+                @if (_applied == p)
+                {
+                    <span class="obs-done">Added. Applies from the next search.</span>
+                }
+                else if (_declined == p)
+                {
+                    <span class="obs-done">Declined.</span>
+                }
+                else if (Ctx.IsEditor)
+                {
+                    <Button Variant="primary" Size="micro" Loading="@_applying" @onclick="() => ApplyAsync(p)">Yes, add it</Button>
+                    <Button Variant="ghost" Size="micro" @onclick="() => _declined = p">No</Button>
+                }
+            </div>
+        }
+        @if (_applyError != null) { <p class="obs-error">@_applyError</p> }
+    }
+</div>
+
+@code {
+    [CascadingParameter] public DatasetContext Ctx { get; set; } = default!;
+    [Parameter, EditorRequired] public string Query { get; set; } = "";
+    [Parameter] public long Searches { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private ObservrOutcome? _outcome;
+    private ObservrProposal? _applied, _declined;
+    private bool _applying;
+    private string? _applyError;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _outcome = await Observr.AskZeroHitAsync(Ctx.TeamId, Ctx.Name, Query, Searches, CancellationToken.None);
+    }
+
+    private async Task ApplyAsync(ObservrProposal p)
+    {
+        _applying = true;
+        _applyError = null;
+        try
+        {
+            var ok = await Task.Run(() => Observr.ApplySynonym(Ctx.TeamId, Ctx.Name, p.Terms));
+            if (ok) _applied = p; else _applyError = "The synonym could not be stored.";
+        }
+        finally { _applying = false; }
+    }
+
+    private static string Refusal(ObservrOutcome o) => o.Status switch
+    {
+        ObservrStatus.NoToken => "This instance has no licence token, so it cannot reach Observr. Add one under Admin, License.",
+        ObservrStatus.UnknownToken => "Observr does not recognise this instance's licence token. Check it under Admin, License.",
+        ObservrStatus.NoSubscription => o.Reason == "expired"
+            ? "This licence has expired, so Observr is not included. Renew it to ask."
+            : "Observr is part of the Pro and Enterprise subscriptions. This instance's licence does not include it.",
+        ObservrStatus.Unavailable => "Observr cannot be reached right now. Try again in a moment.",
+        _ => o.Reason == "datasetNotReady" ? "The dataset is not ready to search, so there is nothing to look at yet."
+            : "Observr could not answer this time.",
+    };
+}

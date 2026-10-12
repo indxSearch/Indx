@@ -163,3 +163,7 @@
     color: var(--lv5);
     margin-left: 6px;
 }
+
+/* The Observr row under a query that found nothing: full width, no cell padding of its own. */
+.stats-action { text-align: right; white-space: nowrap; }
+::deep .stats-observr-row td { padding-top: 0; }

@@ -93,14 +93,47 @@ else
         @if (_section == "queries")
         {
             <div class="stats-view">
-                <div class="stats-view-select"><SelectField Size="micro" Options="QueryOrderOptions" Value="@_queryOrder.ToString()" ValueChanged="SetQueryOrder" aria-label="Order" /></div>
+                <div class="stats-view-select"><SelectField Size="micro" Options="QueryOrderOptions" Value="@(_zeroHits ? ZeroHitsView : _queryOrder.ToString())" ValueChanged="SetQueryOrder" aria-label="Order" /></div>
             </div>
-            @if (_queryOrder != QueryOrder.Searches)
+            @if (_zeroHits)
+            {
+                <p class="stats-help">Searches that found nothing, most often first. Ask Observr what went wrong and what to do about it.</p>
+            }
+            else if (_queryOrder != QueryOrder.Searches)
             {
                 <p class="stats-help">Queries searched at least @StatisticsStore.ClickThroughMinSearches times.</p>
             }
-            @if (_topQueries.Count == 0) { <p class="stats-empty">No searches with text in this period.</p> }
+            @if (_topQueries.Count == 0) { <p class="stats-empty">@(_zeroHits ? "Every search found something in this period." : "No searches with text in this period.")</p> }
             else {
+            @if (_zeroHits)
+            {
+            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Searches that found nothing" Class="stats-table">
+                <thead><tr><th>Query</th><th class="stats-num">Found nothing</th><th></th></tr></thead>
+                <tbody>
+                    @foreach (var q in _topQueries)
+                    {
+                        <tr>
+                            <td>@QueryLabel(q.QueryText)</td>
+                            <td class="stats-num">@N(q.ZeroHits)</td>
+                            <td class="stats-action">
+                                @if (Ctx.IsEditor && _observrQuery != q.QueryText)
+                                {
+                                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => _observrQuery = q.QueryText">Ask Observr</Button>
+                                }
+                            </td>
+                        </tr>
+                        @if (_observrQuery == q.QueryText)
+                        {
+                            <tr class="stats-observr-row"><td colspan="3">
+                                <ObservrAsk Query="@q.QueryText" Searches="q.ZeroHits" OnClose="() => _observrQuery = null" />
+                            </td></tr>
+                        }
+                    }
+                </tbody>
+            </Table>
+            }
+            else
+            {
             <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Top queries" Class="stats-table">
                 <thead><tr><th>Query</th><th class="stats-num">Searches</th><th class="stats-num">Click-through</th><th class="stats-num">Avg. position</th></tr></thead>
                 <tbody>
@@ -115,6 +148,7 @@ else
                     }
                 </tbody>
             </Table>
+            }
             @if (_moreQueries)
             {
                 <div class="stats-more">
@@ -347,7 +381,13 @@ else
         new("Most searched", nameof(QueryOrder.Searches)),
         new("Highest click-through", nameof(QueryOrder.HighestClickThrough)),
         new("Lowest click-through", nameof(QueryOrder.LowestClickThrough)),
+        new("Found nothing", ZeroHitsView),
     ];
+    // The zero-hit report is a view of the same list, not an order: the searches that found nothing,
+    // most often first, each with Ask Observr for an editor.
+    private const string ZeroHitsView = "ZeroHits";
+    private bool _zeroHits;
+    private string? _observrQuery;
     private static readonly List<Tabs.TabItem> FuzzyItems =
         [new("Selected", "selected", DatasetIcons.FuzzySelected), new("All", "all", DatasetIcons.FuzzyAll)];
     private static readonly List<SelectField.SelectOption> DocumentOrderOptions =
@@ -503,7 +543,7 @@ else
     {
         var (team, ds, source) = (Ctx.TeamId, Ctx.Name, _source);
         // One row past the page says whether there is another page.
-        var queries = store.TopQueries(team, ds, _fromDay, _toDay, _queryRows + 1, order: _queryOrder, source: source);
+        var queries = store.TopQueries(team, ds, _fromDay, _toDay, _queryRows + 1, zeroHitsOnly: _zeroHits, order: _queryOrder, source: source);
         _moreQueries = queries.Count > _queryRows;
         _topQueries = _moreQueries ? queries[.._queryRows] : queries;
         _fuzzy = store.TopQueries(team, ds, _fromDay, _toDay, 10, uncoveredOnly: true,
@@ -521,7 +561,16 @@ else
 
     private Task SetQueryOrder(string? value)
     {
-        if (!Enum.TryParse<QueryOrder>(value, out var order) || order == _queryOrder) return Task.CompletedTask;
+        _observrQuery = null;
+        if (value == ZeroHitsView)
+        {
+            if (_zeroHits) return Task.CompletedTask;
+            _zeroHits = true;
+            _queryOrder = QueryOrder.Searches;
+            return ReloadListsAsync();
+        }
+        if (!Enum.TryParse<QueryOrder>(value, out var order) || (order == _queryOrder && !_zeroHits)) return Task.CompletedTask;
+        _zeroHits = false;
         _queryOrder = order;
         return ReloadListsAsync();
     }

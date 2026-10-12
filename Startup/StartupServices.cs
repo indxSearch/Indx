@@ -126,6 +126,13 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.ISearchOrAskSwitch, IndxServer.Services.SearchOrAsk.InstanceSearchOrAskSwitch>();
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskService>();
 
+        // Indx Observr (Notes/Anders/observr-plan.md): the instance reaches out with its licence
+        // token when an owner asks; nothing is sent without one.
+        builder.Services.AddSingleton(builder.Configuration.GetSection(IndxServer.Services.Observr.ObservrOptions.Section)
+            .Get<IndxServer.Services.Observr.ObservrOptions>() ?? new());
+        builder.Services.AddHttpClient(IndxServer.Services.Observr.ObservrClient.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(90));
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrClient>();
+
         // MCP server: read-only retrieval tools over /mcp (Streamable HTTP), behind JWT auth.
         builder.Services.AddHttpContextAccessor();
         // ServerInstructions is sent once at the initialization handshake, so the workflow and the
