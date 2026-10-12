@@ -1000,8 +1000,7 @@ a.btn-danger:hover {
 
 
 /* Observr's buttons wear its colour, so one glance says "this goes to Observr". The colour itself
-   is not decided (12 Oct 2026): not a traffic light, not the blue of the badge; the ghost text
-   is blue meanwhile, the primary on the team page is an ordinary primary. A wrapper, since systm
-   Button takes no colour; the extra class in the selector outranks the component's isolated rules. */
+   is not decided (12 Oct 2026): not a traffic light, not the blue of the badge; until it is, the
+   buttons look like any other and the wrapper only marks them. A wrapper, since systm Button takes
+   no colour; a selector with the extra class outranks the component's isolated rules. */
 .indx-observr { display: inline-flex; }
-.indx-observr .indx-btn.indx-btn-ghost { color: var(--CPureBlue); }
