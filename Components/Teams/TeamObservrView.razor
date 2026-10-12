@@ -113,7 +113,7 @@
                             {
                                 <span style="display:inline-flex; gap:4px; flex-wrap:wrap; align-items:center;">
                                     @if (p.Field is { } change) { <Chip>@change.Name</Chip><span style="font:var(--text-xs); color:var(--lv5);">@change.Summary</span> }
-                                    else { @foreach (var t in p.Terms) { <Chip>@t</Chip> } }
+                                    else { @foreach (var t in p.Describe()) { <Chip>@t</Chip> } }
                                 </span>
                             }
                         </td>

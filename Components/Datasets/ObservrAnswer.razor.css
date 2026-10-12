@@ -13,3 +13,4 @@
 .obs-proposals { display: flex; flex-direction: column; gap: 8px; }
 .obs-proposal-why { font: var(--text-xs); color: var(--lv5); flex-basis: 100%; }
 .obs-actions { display: flex; align-items: center; gap: 6px; }
+.obs-proposal-text { font: var(--text-xs); color: var(--lv6); flex-basis: 100%; white-space: pre-line; max-width: 720px; }

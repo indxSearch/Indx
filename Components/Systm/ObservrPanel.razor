@@ -59,8 +59,8 @@
                                     }
                                     else
                                     {
-                                        <span class="obsv-label">Synonym</span>
-                                        @foreach (var t in p.Terms) { <Chip>@t</Chip> }
+                                        <span class="obsv-label">@p.Label</span>
+                                        @foreach (var t in p.Describe()) { <Chip>@t</Chip> }
                                     }
                                 </div>
                             }

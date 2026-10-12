@@ -33,6 +33,18 @@ namespace IndxServer.Services.Observr
     public sealed record ObservrFieldReviewAsk(string Kind, string Team, string Dataset, string Site, string KeyField, long Records,
         int Sampled, List<ObservrFieldEvidence> FieldEvidence, List<string> TopQueries);
 
+    /// <summary>What Search or ask runs with today, for the setup help: the settings, the fields the
+    /// judge sees once the automatic choice is applied, and the query parameters.</summary>
+    public sealed record ObservrSearchOrAskCurrent(bool Shown, bool Enabled, string Kind, string? SiteDescription, string EffectiveSite,
+        string? TitleField, List<string>? SectionFields, List<string>? SnippetFields, string? EffectiveTitle, List<string> EffectiveSection,
+        List<string> EffectiveSnippet, string? FilterNotes, string Answers, double Strong, double Invite, int? CoverageDepth, bool? Truncate);
+
+    /// <summary>"Help me set this up" on the Search or ask tab: the dataset as the field review sees it,
+    /// a few record names, the queries, and the settings as they stand. No record bodies.</summary>
+    public sealed record ObservrSearchOrAskSetupAsk(string Kind, string Team, string Dataset, string Site, List<string> Fields, long Records,
+        int Sampled, List<ObservrFieldEvidence> FieldEvidence, List<string> Names, List<ObservrSummaryQuery> TopQueries,
+        List<string> ZeroHitQueries, ObservrSearchOrAskCurrent Current);
+
     /// <summary>A change to one field's roles: null leaves that role as it is.</summary>
     public sealed record ObservrFieldChange(string Name, bool? Searchable, bool? Filterable, bool? Facetable, bool? Sortable, float? Weight)
     {
@@ -72,12 +84,72 @@ namespace IndxServer.Services.Observr
     public sealed record ObservrChangeAsk(string Kind, string Team, string Dataset, string Site, ObservrChangeBrief Change,
         List<ObservrDay> Before, List<ObservrDay> After, List<ObservrSummaryQuery> TopBefore, List<ObservrSummaryQuery> TopAfter);
 
+    /// <summary>A change to the dataset's Search or ask settings: null leaves that setting as it is.
+    /// Never the switches (Shown, Enabled, the budget): switching on stays the owner's.</summary>
+    public sealed record ObservrSearchOrAskChange(string? Kind, string? SiteDescription, string? TitleField, List<string>? SectionFields,
+        List<string>? SnippetFields, string? FilterNotes, string? Answers)
+    {
+        [JsonIgnore]
+        public IEnumerable<string> Parts
+        {
+            get
+            {
+                if (Kind != null) yield return $"kind {Kind}";
+                if (TitleField != null) yield return $"title {TitleField}";
+                if (SectionFields != null) yield return $"section {(SectionFields.Count == 0 ? "none" : string.Join(", ", SectionFields))}";
+                if (SnippetFields != null) yield return $"snippet {(SnippetFields.Count == 0 ? "none" : string.Join(", ", SnippetFields))}";
+                if (Answers != null) yield return $"answers {Answers}";
+                if (SiteDescription != null) yield return "about the site";
+                if (FilterNotes != null) yield return "notes about the fields";
+            }
+        }
+    }
+
+    /// <summary>A change to the dataset's query parameters: null leaves that one as it is.</summary>
+    public sealed record ObservrQueryParametersChange(int? CoverageDepth, bool? Truncate)
+    {
+        [JsonIgnore]
+        public IEnumerable<string> Parts
+        {
+            get
+            {
+                if (CoverageDepth != null) yield return $"coverage depth {CoverageDepth}";
+                if (Truncate != null) yield return Truncate.Value ? "truncation on" : "truncation off";
+            }
+        }
+    }
+
     /// <summary>A proposal Observr made, which this instance can carry out after a yes: a synonym
-    /// (<see cref="Terms"/>) or a field change (<see cref="Field"/>).</summary>
-    public sealed record ObservrProposal(string Kind, string[] Terms, string Direction, string Reason, ObservrFieldChange? Field = null)
+    /// (<see cref="Terms"/>), a field change (<see cref="Field"/>), Search or ask settings
+    /// (<see cref="SearchOrAsk"/>) or query parameters (<see cref="QueryParameters"/>).</summary>
+    public sealed record ObservrProposal(string Kind, string[] Terms, string Direction, string Reason, ObservrFieldChange? Field = null,
+        ObservrSearchOrAskChange? SearchOrAsk = null, ObservrQueryParametersChange? QueryParameters = null)
     {
         public const string Synonym = "synonym";
         public const string FieldKind = "field";
+        public const string SearchOrAskKind = "searchOrAsk";
+        public const string QueryParametersKind = "queryParameters";
+
+        /// <summary>What the proposal is, as a label, for a panel that is not a synonym's or a field's.</summary>
+        [JsonIgnore]
+        public string Label => Kind switch
+        {
+            Synonym => "Synonym",
+            FieldKind => "Field",
+            SearchOrAskKind => "Search or ask",
+            QueryParametersKind => "Query parameters",
+            _ => Kind,
+        };
+
+        /// <summary>The proposal as chips, for a kind without a panel of its own.</summary>
+        public IEnumerable<string> Describe() => Kind switch
+        {
+            Synonym => Terms,
+            FieldKind when Field != null => [Field.Name + ": " + Field.Summary],
+            SearchOrAskKind when SearchOrAsk != null => SearchOrAsk.Parts,
+            QueryParametersKind when QueryParameters != null => QueryParameters.Parts,
+            _ => [],
+        };
     }
 
     public sealed record ObservrAnswer(int AskId, string Outcome, string Answer, List<ObservrProposal> Proposals, string Model);
@@ -141,7 +213,8 @@ namespace IndxServer.Services.Observr
     /// </summary>
     internal sealed class ObservrClient(IHttpClientFactory http, ObservrOptions options, InstanceSettingsService settings,
         IConfiguration configuration, IDatasetEngines engines, DatasetMetadataStore metadata, StatisticsService statistics,
-        ObservrFindingStore findings, ObservrSummaryBuilder summaries, ILogger<ObservrClient> logger)
+        ObservrFindingStore findings, ObservrSummaryBuilder summaries, SearchOrAsk.SearchOrAskStore searchOrAsk,
+        SearchOrAsk.SearchOrAskService searchOrAskService, QueryParameterStore queryParameters, ILogger<ObservrClient> logger)
     {
         public const string HttpClientName = "Observr";
         public const string ZeroHitKind = "zeroHitQuery";
@@ -150,6 +223,8 @@ namespace IndxServer.Services.Observr
         public const string LowClickKind = "lowClickThrough";
         public const string SynonymsKind = "synonyms";
         public const string ChangeKind = "changeEffect";
+        public const string SetupKind = "searchOrAskSetup";
+        private const int SetupNames = 12;
         private const int ChangeDays = 7;
         private static readonly string[] DigestTabs = ["statistics", "fields", "synonyms", "search-or-ask"];
         private const int NearMatches = 10;
@@ -263,6 +338,38 @@ namespace IndxServer.Services.Observr
             return await SendAsync(token, teamId, dataSetName, ChangeKind, text, ask, ct);
         }
 
+        /// <summary>"Help me set this up" on the Search or ask tab: what the field review sends, plus a
+        /// few record names, the month's queries, and the settings as they stand. Observr proposes the
+        /// configuration (kind, what the judge sees, the site sentence, notes, the answer model, field
+        /// roles, coverage), never the switches, and leaves thresholds to their measured defaults.</summary>
+        public async Task<ObservrOutcome> AskSearchOrAskSetupAsync(string teamId, string dataSetName, CancellationToken ct)
+        {
+            if (Token() is not { } token) return new ObservrOutcome(ObservrStatus.NoToken);
+            var engine = engines.FindSearchEngine(dataSetName, teamId);
+            if (engine == null || engine.Status.SystemState != SystemState.Ready)
+                return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
+            var review = BuildFieldReviewAsk(teamId, dataSetName, engine);
+            var label = StatisticsLabels.For(engine, statistics.Store?.LabelField(teamId, dataSetName));
+            var names = (IndxServerInternalApi.Manager.Search(new QueryProxy { Text = "", EnableFacets = true, MaxNumberOfRecordsToReturn = SetupNames }, dataSetName, teamId)
+                .Records ?? []).Select(r => label(r.DocumentKey)).Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n!).ToList();
+            var today = statistics.Store?.Today(teamId, dataSetName) ?? 0;
+            var top = statistics.Store?.TopQueries(teamId, dataSetName, today - 29, today, 30)
+                .Select(q => new ObservrSummaryQuery(q.QueryText, q.Searches, q.ZeroHits, q.ClickedSearches,
+                    q.Selects > 0 ? Math.Round((double)q.PositionSum / q.Selects, 1) : null, q.MostChosenLabel)).ToList() ?? [];
+            var zero = statistics.Store?.TopQueries(teamId, dataSetName, today - 29, today, 15, zeroHitsOnly: true).Select(q => q.QueryText).ToList() ?? [];
+
+            var settings = searchOrAsk.Load(teamId, dataSetName) ?? new SearchOrAsk.SearchOrAskSettings();
+            var effective = SearchOrAsk.SearchOrAskService.Fields(settings, engine.GetFieldList());
+            var qp = queryParameters.Load(teamId, dataSetName);
+            var current = new ObservrSearchOrAskCurrent(settings.Shown, settings.Enabled, settings.Kind, settings.SiteDescription,
+                searchOrAskService.SiteDescription(teamId, dataSetName, settings), settings.TitleField, settings.SectionFields, settings.SnippetFields,
+                effective.TitleField, effective.SectionFields.ToList(), effective.SnippetFields.ToList(), settings.FilterNotes, settings.Answers,
+                settings.Thresholds.Strong, settings.Thresholds.Invite, qp?.CoverageDepth, qp?.CoverageSetup?.Truncate);
+            var ask = new ObservrSearchOrAskSetupAsk(SetupKind, teamId, dataSetName, review.Site, review.FieldEvidence.Select(f => f.Name).ToList(),
+                review.Records, review.Sampled, review.FieldEvidence, names, top, zero, current);
+            return await SendAsync(token, teamId, dataSetName, SetupKind, "", ask, ct);
+        }
+
         private static List<string> SearchableFields(IServerSearchEngine engine) => engine.GetFieldList().Where(f => f.Searchable).Select(f => f.Name).ToList();
 
         /// <summary>The digest: the bounded summary of the last week goes up (<see cref="ObservrSummary"/>),
@@ -353,7 +460,7 @@ namespace IndxServer.Services.Observr
                         if (answer == null) return new ObservrOutcome(ObservrStatus.Failed, Reason: "badAnswer");
                         // A field change on a field this dataset does not have is dropped here: the
                         // proposal would have nothing to apply to.
-                        if (kind == FieldReviewKind && engines.FindSearchEngine(dataSetName, teamId) is { } engine)
+                        if (kind is FieldReviewKind or SetupKind && engines.FindSearchEngine(dataSetName, teamId) is { } engine)
                         {
                             var names = engine.GetFieldList().Select(f => f.Name).ToHashSet();
                             answer = answer with { Proposals = answer.Proposals.Where(p => p.Kind != ObservrProposal.FieldKind || p.Field != null && names.Contains(p.Field.Name)).ToList() };
@@ -493,6 +600,10 @@ namespace IndxServer.Services.Observr
                     if (!ApplySynonym(f.TeamId, f.DataSetName, p.Terms)) return "The synonym could not be stored.";
                 var changes = chosen.Where(p => p.Kind == ObservrProposal.FieldKind && p.Field != null).Select(p => p.Field!).ToList();
                 if (changes.Count > 0 && ApplyFields(f.TeamId, f.DataSetName, changes) is { } why) return why;
+                foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.SearchOrAskKind && p.SearchOrAsk != null))
+                    if (ApplySearchOrAsk(f.TeamId, f.DataSetName, p.SearchOrAsk!) is { } whyNot) return whyNot;
+                foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.QueryParametersKind && p.QueryParameters != null))
+                    ApplyQueryParameters(f.TeamId, f.DataSetName, p.QueryParameters!);
             }
             findings.Decide(findingId, yes ? ObservrFinding.Accepted : ObservrFinding.Declined);
             return null;
@@ -508,6 +619,39 @@ namespace IndxServer.Services.Observr
             list.Entries.Add(new SynonymEntry { Direction = SynonymDirection.Multidirectional, Terms = clean });
             list.Invalidate();
             return engines.SetSynonyms(dataSetName, teamId, list);
+        }
+
+        /// <summary>Carries out Search or ask settings as the tab's Save does: the stored settings with
+        /// the change laid over, validated as a whole, saved. The switches and the budget are never
+        /// touched. Returns why not, or null.</summary>
+        public string? ApplySearchOrAsk(string teamId, string dataSetName, ObservrSearchOrAskChange c)
+        {
+            var s = searchOrAsk.Load(teamId, dataSetName) ?? new SearchOrAsk.SearchOrAskSettings();
+            var engine = engines.FindSearchEngine(dataSetName, teamId);
+            var names = engine?.GetFieldList().Select(f => f.Name).ToHashSet() ?? [];
+            if (c.TitleField != null && !names.Contains(c.TitleField)) return $"Field '{c.TitleField}' does not exist in this dataset.";
+            if (c.SectionFields?.FirstOrDefault(n => !names.Contains(n)) is { } s1) return $"Field '{s1}' does not exist in this dataset.";
+            if (c.SnippetFields?.FirstOrDefault(n => !names.Contains(n)) is { } s2) return $"Field '{s2}' does not exist in this dataset.";
+            if (c.Kind != null) s.Kind = c.Kind;
+            if (c.SiteDescription != null) s.SiteDescription = c.SiteDescription.Trim().Length == 0 ? null : c.SiteDescription.Trim();
+            if (c.TitleField != null) s.TitleField = c.TitleField;
+            if (c.SectionFields != null) s.SectionFields = c.SectionFields;
+            if (c.SnippetFields != null) s.SnippetFields = c.SnippetFields;
+            if (c.FilterNotes != null) s.FilterNotes = c.FilterNotes.Trim().Length == 0 ? null : c.FilterNotes.Trim();
+            if (c.Answers != null) s.Answers = c.Answers;
+            if (s.Validate() is { } invalid) return invalid;
+            searchOrAsk.Save(teamId, dataSetName, s);
+            return null;
+        }
+
+        /// <summary>Carries out query parameters as the tab's Save does: the stored ones with the
+        /// change laid over, saved; the store records the change.</summary>
+        public void ApplyQueryParameters(string teamId, string dataSetName, ObservrQueryParametersChange c)
+        {
+            var p = queryParameters.Load(teamId, dataSetName) ?? new DatasetQueryParameters();
+            if (c.CoverageDepth != null) p.CoverageDepth = c.CoverageDepth.Value <= 0 ? null : c.CoverageDepth;
+            if (c.Truncate != null) { p.CoverageSetup ??= new CoverageSetupProxy(); p.CoverageSetup.Truncate = c.Truncate; }
+            queryParameters.Save(teamId, dataSetName, p);
         }
 
         /// <summary>Carries out field changes as the Fields tab's Save does: refused as a whole when

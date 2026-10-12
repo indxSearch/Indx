@@ -47,8 +47,10 @@
                         }
                         else
                         {
-                            <span class="obs-proposal-label">Synonym</span>
-                            @foreach (var t in p.Terms) { <Chip>@t</Chip> }
+                            <span class="obs-proposal-label">@p.Label</span>
+                            @foreach (var t in p.Describe()) { <Chip>@t</Chip> }
+                            @if (p.SearchOrAsk?.SiteDescription is { } site) { <span class="obs-proposal-text">“@site”</span> }
+                            @if (p.SearchOrAsk?.FilterNotes is { } notes) { <span class="obs-proposal-text">@notes</span> }
                         }
                         @if (!string.IsNullOrWhiteSpace(p.Reason) && p.Reason != _outcome.Answer.Answer) { <span class="obs-proposal-why">@p.Reason</span> }
                     </div>
