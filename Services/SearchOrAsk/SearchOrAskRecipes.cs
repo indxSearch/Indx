@@ -99,6 +99,31 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>A catalogue's answer to a description: a summary of what the search found with the
         /// filters it asked for. From the given facts only, as every answer is.</summary>
+        /// <summary>The sentence after the question that sets the answer's language: the visitor's, or
+        /// the one the site fixed.</summary>
+        public static string LanguageReminder(SearchOrAskSettings settings) =>
+            string.IsNullOrWhiteSpace(settings.AnswerLanguage) ? AnswerLanguageReminder
+            : $"Write the answer in {settings.AnswerLanguage.Trim()}, whatever language the question is written in.";
+
+        /// <summary>The site's own instructions and language, appended to every answer prompt below
+        /// ours. The order is the point: what the model may say is ours (the records, the citations,
+        /// nothing invented); how it says it is the site's.</summary>
+        public static string AnswerStyle(SearchOrAskSettings settings)
+        {
+            var sb = new System.Text.StringBuilder();
+            if (!string.IsNullOrWhiteSpace(settings.AnswerLanguage))
+                sb.Append($"\nEvery answer is written in {settings.AnswerLanguage.Trim()}, whatever language the question is in; names and values from the records stay as they are.");
+            if (!string.IsNullOrWhiteSpace(settings.AnswerInstructions))
+                sb.Append($"\n\nThe site's own instructions for its answers, which shape how you write but never what you may claim:\n{settings.AnswerInstructions.Trim()}");
+            return sb.ToString();
+        }
+
+        public static string CatalogueAnswerSystemPrompt(string siteDescription, SearchOrAskSettings settings) =>
+            CatalogueAnswerSystemPrompt(siteDescription) + AnswerStyle(settings);
+
+        public static string AnswerSystemPrompt(string siteDescription, SearchOrAskSettings settings) =>
+            AnswerSystemPrompt(siteDescription) + AnswerStyle(settings);
+
         public static string CatalogueAnswerSystemPrompt(string siteDescription) =>
             $"""
             You answer a visitor on a website who described what kind of items they want listed. About the site: {siteDescription}

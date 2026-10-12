@@ -37,7 +37,8 @@ namespace IndxServer.Services.Observr
     /// judge sees once the automatic choice is applied, and the query parameters.</summary>
     public sealed record ObservrSearchOrAskCurrent(bool Shown, bool Enabled, string Kind, string? SiteDescription, string EffectiveSite,
         string? TitleField, List<string>? SectionFields, List<string>? SnippetFields, string? EffectiveTitle, List<string> EffectiveSection,
-        List<string> EffectiveSnippet, string? FilterNotes, string Answers, double Strong, double Invite, int? CoverageDepth, bool? Truncate);
+        List<string> EffectiveSnippet, string? FilterNotes, string Answers, string? AnswerInstructions, string? AnswerLanguage, double Strong, double Invite,
+        int? CoverageDepth, bool? Truncate);
 
     /// <summary>"Help me set this up" on the Search or ask tab: the dataset as the field review sees it,
     /// a few record names, the queries, and the settings as they stand. No record bodies.</summary>
@@ -87,7 +88,7 @@ namespace IndxServer.Services.Observr
     /// <summary>A change to the dataset's Search or ask settings: null leaves that setting as it is.
     /// Never the switches (Shown, Enabled, the budget): switching on stays the owner's.</summary>
     public sealed record ObservrSearchOrAskChange(string? Kind, string? SiteDescription, string? TitleField, List<string>? SectionFields,
-        List<string>? SnippetFields, string? FilterNotes, string? Answers)
+        List<string>? SnippetFields, string? FilterNotes, string? Answers, string? AnswerInstructions = null, string? AnswerLanguage = null)
     {
         [JsonIgnore]
         public IEnumerable<string> Parts
@@ -99,8 +100,10 @@ namespace IndxServer.Services.Observr
                 if (SectionFields != null) yield return $"section {(SectionFields.Count == 0 ? "none" : string.Join(", ", SectionFields))}";
                 if (SnippetFields != null) yield return $"snippet {(SnippetFields.Count == 0 ? "none" : string.Join(", ", SnippetFields))}";
                 if (Answers != null) yield return $"answers {Answers}";
+                if (AnswerLanguage != null) yield return $"answers in {AnswerLanguage}";
                 if (SiteDescription != null) yield return "about the site";
                 if (FilterNotes != null) yield return "notes about the fields";
+                if (AnswerInstructions != null) yield return "answer instructions";
             }
         }
     }
@@ -364,7 +367,7 @@ namespace IndxServer.Services.Observr
             var current = new ObservrSearchOrAskCurrent(settings.Shown, settings.Enabled, settings.Kind, settings.SiteDescription,
                 searchOrAskService.SiteDescription(teamId, dataSetName, settings), settings.TitleField, settings.SectionFields, settings.SnippetFields,
                 effective.TitleField, effective.SectionFields.ToList(), effective.SnippetFields.ToList(), settings.FilterNotes, settings.Answers,
-                settings.Thresholds.Strong, settings.Thresholds.Invite, qp?.CoverageDepth, qp?.CoverageSetup?.Truncate);
+                settings.AnswerInstructions, settings.AnswerLanguage, settings.Thresholds.Strong, settings.Thresholds.Invite, qp?.CoverageDepth, qp?.CoverageSetup?.Truncate);
             var ask = new ObservrSearchOrAskSetupAsk(SetupKind, teamId, dataSetName, review.Site, review.FieldEvidence.Select(f => f.Name).ToList(),
                 review.Records, review.Sampled, review.FieldEvidence, names, top, zero, current);
             return await SendAsync(token, teamId, dataSetName, SetupKind, "", ask, ct);
@@ -639,6 +642,8 @@ namespace IndxServer.Services.Observr
             if (c.SnippetFields != null) s.SnippetFields = c.SnippetFields;
             if (c.FilterNotes != null) s.FilterNotes = c.FilterNotes.Trim().Length == 0 ? null : c.FilterNotes.Trim();
             if (c.Answers != null) s.Answers = c.Answers;
+            if (c.AnswerInstructions != null) s.AnswerInstructions = c.AnswerInstructions.Trim().Length == 0 ? null : c.AnswerInstructions.Trim();
+            if (c.AnswerLanguage != null) s.AnswerLanguage = c.AnswerLanguage.Trim().Length == 0 ? null : c.AnswerLanguage.Trim();
             if (s.Validate() is { } invalid) return invalid;
             searchOrAsk.Save(teamId, dataSetName, s);
             return null;

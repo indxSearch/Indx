@@ -551,11 +551,11 @@ namespace IndxServer.Services.SearchOrAsk
                 user.Append("Question: ").Append(question);
                 // Said again last, next to the question: from the system prompt alone, a site description
                 // naming its readers' languages still won 1 time in 10 (11 Oct 2026); with this, 0 in 10.
-                user.Append("\n\n").Append(SearchOrAskRecipes.AnswerLanguageReminder);
+                user.Append("\n\n").Append(SearchOrAskRecipes.LanguageReminder(settings));
 
                 try
                 {
-                    await foreach (var delta in _models.AnswerAsync(model, SearchOrAskRecipes.AnswerSystemPrompt(SiteDescription(teamId, dataSetName, settings)),
+                    await foreach (var delta in _models.AnswerAsync(model, SearchOrAskRecipes.AnswerSystemPrompt(SiteDescription(teamId, dataSetName, settings), settings),
                                        user.ToString(), history, usage, ct))
                     {
                         firstText ??= Ms();

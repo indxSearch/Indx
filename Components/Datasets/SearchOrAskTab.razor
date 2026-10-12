@@ -71,6 +71,12 @@
                 @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
                      _edit.Answers != SearchOrAskSettings.BestAnswers,
                      @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
+                @Row(Icon<Icons.Paragraph>(), "Answer instructions", "How the answers should speak: voice, house rules, what to say when nothing is found. They shape the wording; what an answer may claim stays bound to the records.",
+                     !string.IsNullOrWhiteSpace(_edit.AnswerInstructions),
+                     @<Textarea Rows="3" @bind-Value="_edit.AnswerInstructions" placeholder="Formal. Say du. Never recommend another shop." />)
+                @Row(Icon<Icons.UserText>(), "Answer language", "The visitor's language by default; or one language for every answer.",
+                     !string.IsNullOrWhiteSpace(_edit.AnswerLanguage),
+                     @<div class="soa-select"><SelectField Size="micro" Options="LanguageOptions" Value="@(_edit.AnswerLanguage ?? VisitorsLanguage)" ValueChanged="@(v => _edit.AnswerLanguage = v == VisitorsLanguage ? null : v)" /></div>)
                 @Row(Icon<Icons.Coins>(), "Daily call budget", $"Calls per day (UTC). {_callsToday:N0} used today.",
                      _budgetText != null,
                      @<div class="soa-number"><InputField @bind-Value="_budgetText" @bind-Value:after="SetBudget" Error="@_budgetError" inputmode="numeric" placeholder="5,000" /></div>)
@@ -383,6 +389,13 @@
     }
 
     private static readonly SearchOrAskSettings Defaults2 = new();
+    private const string VisitorsLanguage = "";
+    private static readonly List<SelectField.SelectOption> LanguageOptions =
+    [
+        new("The visitor's language", VisitorsLanguage),
+        .. new[] { "English", "Norwegian", "Swedish", "Danish", "Finnish", "German", "Dutch", "French", "Spanish", "Italian", "Portuguese", "Polish" }
+            .Select(l => new SelectField.SelectOption(l, l)),
+    ];
     private bool _setupHelp;
     private IndxServer.Services.Observr.ObservrClient Observr() => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IndxServer.Services.Observr.ObservrClient>(Services);
     private void Reload() { Load(); Ctx.NotifyChanged(); }

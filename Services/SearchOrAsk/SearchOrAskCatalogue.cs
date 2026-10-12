@@ -74,12 +74,12 @@ namespace IndxServer.Services.SearchOrAsk
             user.AppendLine(keys.Count > CatalogueShown ? $"The first {CatalogueShown}, numbered:" : "Each one, numbered:");
             foreach (var s in shown)
                 user.AppendLine($"[{s.N}] {titleOf(s.Doc)}: {Facts(s.Doc, filterFields)}");
-            user.AppendLine().Append(SearchOrAskRecipes.AnswerLanguageReminder);
+            user.AppendLine().Append(SearchOrAskRecipes.LanguageReminder(settings));
 
             var usage = new AnswerUsage();
             long? firstText = null;
             await foreach (var delta in _models.AnswerAsync(model,
-                               SearchOrAskRecipes.CatalogueAnswerSystemPrompt(SiteDescription(teamId, dataSetName, settings)),
+                               SearchOrAskRecipes.CatalogueAnswerSystemPrompt(SiteDescription(teamId, dataSetName, settings), settings),
                                user.ToString(), [], usage, ct))
             {
                 firstText ??= Ms();

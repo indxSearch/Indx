@@ -58,7 +58,7 @@ namespace IndxServer.Services.SearchOrAsk
             var schema = FilterFields(teamId, dataSetName, engine);
             if (schema.Count == 0) return null;
             var site = SiteDescription(teamId, dataSetName, settings);
-            var messages = new JsonArray(new JsonObject { ["role"] = "system", ["content"] = AgentPrompt(site, settings.FilterNotes, schema) });
+            var messages = new JsonArray(new JsonObject { ["role"] = "system", ["content"] = AgentPrompt(site, settings.FilterNotes, schema) + SearchOrAskRecipes.AnswerStyle(settings) });
             // The conversation so far, with the list each answer put on the page: a follow-up ("which is
             // the largest?") is about that list, and searching it again starts from those filters.
             foreach (var t in history)
@@ -70,7 +70,7 @@ namespace IndxServer.Services.SearchOrAsk
                     ["content"] = t.Shown is { } shown ? $"{t.Answer}\n\n(The list I put on the page: {shown}.)" : t.Answer,
                 });
             }
-            messages.Add(new JsonObject { ["role"] = "user", ["content"] = $"{question}\n\n{SearchOrAskRecipes.AnswerLanguageReminder}" });
+            messages.Add(new JsonObject { ["role"] = "user", ["content"] = $"{question}\n\n{SearchOrAskRecipes.LanguageReminder(settings)}" });
             double cost = 0;
             List<long> shownKeys = [];
             var titleOf = (JsonNode? doc) => doc != null && fields.TitleField != null ? ReadField(doc, fields.TitleField) ?? "" : "";

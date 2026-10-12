@@ -37,6 +37,20 @@ namespace IndxServer.Services.SearchOrAsk
 
         public const int MaxFilterNotes = 3000;
 
+        /// <summary>The site's own instructions for the answers: voice, house rules, what to say when
+        /// nothing is found ("formal", "say du", "never recommend another shop"). They go into the
+        /// answer prompts below ours, so they shape how an answer speaks and cannot loosen what it may
+        /// say: grounding in the records and the citations stay. Null: none.</summary>
+        public string? AnswerInstructions { get; set; }
+
+        public const int MaxAnswerInstructions = 1500;
+
+        /// <summary>The language every answer is written in, as a language name ("Norwegian"). Null:
+        /// the language the question was written in, which is the default.</summary>
+        public string? AnswerLanguage { get; set; }
+
+        public const int MaxAnswerLanguage = 40;
+
         public const string BestAnswers = "best";
         public const string FastAnswers = "fast";
 
@@ -61,6 +75,10 @@ namespace IndxServer.Services.SearchOrAsk
                 return $"answers must be {BestAnswers} or {FastAnswers}.";
             if (FilterNotes is { Length: > MaxFilterNotes })
                 return $"filterNotes is at most {MaxFilterNotes} characters.";
+            if (AnswerInstructions is { Length: > MaxAnswerInstructions })
+                return $"answerInstructions is at most {MaxAnswerInstructions} characters.";
+            if (AnswerLanguage is { Length: > MaxAnswerLanguage })
+                return $"answerLanguage is at most {MaxAnswerLanguage} characters.";
             if (DailyCallBudget < 0)
                 return "dailyCallBudget cannot be negative.";
             if (Thresholds == null)
