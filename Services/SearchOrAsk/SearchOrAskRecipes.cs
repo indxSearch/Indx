@@ -91,7 +91,11 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>The answer model's instructions. It may use the numbered sources and nothing
         /// else: an answer from its own knowledge is the one failure this feature cannot have.</summary>
-        public const string AnswerLanguageReminder = "Write the answer in the language of the question.";
+        /// <summary>Appended after the question. The second sentence is from a pokédex (12 Oct 2026): "what
+        /// pokemon is numer 40" was answered in Spanish, the typo read as a word of another language.</summary>
+        public const string AnswerLanguageReminder = "Write the answer in the language the question is written in. " +
+            "Judge the language by the whole question, not by one word: a misspelled word is still that language. " +
+            "When it is genuinely unclear, write in the language of the site description.";
 
         /// <summary>A catalogue's answer to a description: a summary of what the search found with the
         /// filters it asked for. From the given facts only, as every answer is.</summary>
