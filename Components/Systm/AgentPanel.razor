@@ -67,7 +67,7 @@
                         @ObservrMarkdown.Render(t.Text)
                         @if (t.FindingId is { } fid && _byId.TryGetValue(fid, out var finding) && finding.Status == ObservrFinding.Open)
                         {
-                            <ObservrFindingList Findings="@([finding])" Link="Link" CanDecide="_canDecide" Busy="_busy" OnDecide="d => DecideAsync(d.Finding, d.Yes)" Empty="" />
+                            <ObservrFindingList Findings="@([finding])" Link="Link" CanDecide="_canDecide" Busy="_busy" OnDecide="d => DecideAsync(d.Finding, d.Yes)" Empty="" ProposalsOnly />
                         }
                         else if (t.FindingId is { } did && _byId.TryGetValue(did, out var decided))
                         {

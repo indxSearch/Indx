@@ -318,18 +318,14 @@ a.btn-danger:hover {
     border-bottom: 1px solid var(--lv2);
 }
 
-/* The page goes all the way out; the content keeps its own maximum (below), and a page without
-   a column centres it. */
+/* The column sits at the window's left edge; the content is centred in what the column leaves,
+   up to its own maximum (below). */
 .shell {
     flex: 1;
     display: flex;
     align-items: stretch;
     min-height: 0;
     width: 100%;
-}
-
-.shell > .content:first-child {
-    margin: 0 auto;
 }
 
 /* The Agent panel (stage 5): the window's full height at the right, beside the page. Closed it has
@@ -350,11 +346,11 @@ a.btn-danger:hover {
 
 .shell-agent--open {
     width: 340px;
-    padding: 12px 12px 12px 0;
+    border-left: 1px solid var(--lv2);
 }
 
 .shell-agent > * {
-    width: 328px;
+    width: 340px;
     flex: none;
 }
 
@@ -387,6 +383,7 @@ a.btn-danger:hover {
     padding: calc(var(--spacing) * 4) var(--page-gutter) var(--page-gutter);
     max-width: var(--page-max);
     width: 100%;
+    margin: 0 auto;
 }
 
 /* No page adds its own space at the top: the content's padding is the top on every page. */
@@ -490,16 +487,23 @@ a.btn-danger:hover {
     white-space: nowrap;
 }
 
+/* The trail is centred in the header's second cell over the same maximum as the content, so it
+   starts where the content does whatever the window's width; the account's controls sit at the
+   window's edge, outside that box. */
 .nav-main {
     display: flex;
     align-items: center;
     min-width: 0;
     gap: 14px;
+    position: relative;
 }
 
 .nav-crumbs {
     flex: 1;
     min-width: 0;
+    max-width: var(--page-max);
+    margin: 0 auto;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
     /* The content's gutter less the first crumb's own padding, so its icon sits on the
@@ -513,6 +517,11 @@ a.btn-danger:hover {
     gap: 4px;
     padding-right: calc(var(--spacing) * 4);
     flex-shrink: 0;
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--lv1);
 }
 
 /* Between the team switcher and the account's controls. */
@@ -623,9 +632,12 @@ a.btn-danger:hover {
         order: -1;
         margin-left: auto;
         padding-right: calc(var(--spacing) * 2);
+        position: static;
+        transform: none;
     }
 
     .nav-crumbs {
+        margin: 0;
         flex: 1 1 100%;
         order: 1;
         padding-left: calc(var(--spacing) * 2);

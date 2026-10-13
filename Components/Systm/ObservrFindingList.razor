@@ -13,7 +13,9 @@ else
     <ol class="ofl">
         @foreach (var f in Findings)
         {
-            <li class="ofl-item @(f.Status == ObservrFinding.Open ? "ofl-item--open" : null)">
+            <li class="ofl-item @(f.Status == ObservrFinding.Open ? "ofl-item--open" : null) @(ProposalsOnly ? "ofl-item--proposals" : null)">
+                @if (!ProposalsOnly)
+                {
                 <div class="ofl-head">
                     <span class="ofl-title">@f.Title</span>
                     <span class="ofl-where">
@@ -25,7 +27,8 @@ else
                     @{ var status = f.Status == ObservrFinding.Open ? (f.Proposals.Count == 0 ? "unread" : "open") : f.Proposals.Count == 0 ? "read" : f.Status; }
                     <Chip Color="@StatusColor(status)" TextColor="@StatusText(status)">@status</Chip>
                 </div>
-                <p class="ofl-text">@f.Answer</p>
+                <div class="ofl-text">@ObservrMarkdown.Render(f.Answer)</div>
+                }
                 @if (f.Proposals.Count > 0)
                 {
                     <div class="ofl-proposals">
@@ -80,6 +83,9 @@ else
     [Parameter] public long Busy { get; set; }
     [Parameter] public EventCallback<(ObservrFinding Finding, bool Yes)> OnDecide { get; set; }
     [Parameter] public string Empty { get; set; } = "Nothing yet.";
+    /// <summary>Only the proposals and the decision: for a finding shown under the answer that
+    /// made it (the Agent panel), where the text is already on the page.</summary>
+    [Parameter] public bool ProposalsOnly { get; set; }
 
     // Decided ones in the chip colours the console uses elsewhere; an open one inverted (ink on
     // the page's darkest or lightest level), so the eye finds what still wants a decision. Observr's
