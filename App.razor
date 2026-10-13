@@ -1,4 +1,5 @@
-﻿<!DOCTYPE html>
+﻿@inject IWebHostEnvironment Env
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -23,10 +24,10 @@
     <link rel="icon" href="favicon.svg" type="image/svg+xml" media="(prefers-color-scheme: light)" />
     <link rel="icon" href="favicon_dark.svg" type="image/svg+xml" media="(prefers-color-scheme: dark)" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
-    <link rel="stylesheet" href="_content/Indx.Systm.Blazor/fonts/fonts.css" />
-    <link rel="stylesheet" href="_content/Indx.Systm.Blazor/indx-systm.css" />
-    <link rel="stylesheet" href="app.css" />
-    <link rel="stylesheet" href="IndxServer.styles.css" />
+    <link rel="stylesheet" href="@V("_content/Indx.Systm.Blazor/fonts/fonts.css")" />
+    <link rel="stylesheet" href="@V("_content/Indx.Systm.Blazor/indx-systm.css")" />
+    <link rel="stylesheet" href="@V("app.css")" />
+    <link rel="stylesheet" href="@V("IndxServer.styles.css")" />
 </head>
 <body>
     <CascadingAuthenticationState>
@@ -72,8 +73,20 @@
     </div>
 
     <script src="_framework/blazor.web.js"></script>
-    <script src="js/browser-files.js"></script>
-    <script src="js/fill-viewport.js"></script>
-    <script src="js/reveal-current.js"></script>
+    <script src="@V("js/browser-files.js")"></script>
+    <script src="@V("js/fill-viewport.js")"></script>
+    <script src="@V("js/reveal-current.js")"></script>
 </body>
 </html>
+
+@code {
+    /// <summary>The file's address with its last change in the query, so a browser fetches a
+    /// stylesheet or script again after a deploy or a restart instead of keeping the copy it has:
+    /// the files are served without a cache lifetime, and Chrome kept a phone layout fix away
+    /// from a reload (Oct 2026). A file the web root does not have is linked as it was.</summary>
+    private string V(string path)
+    {
+        var file = Env.WebRootFileProvider.GetFileInfo(path);
+        return file.Exists ? $"{path}?v={file.LastModified.UtcTicks:x}" : path;
+    }
+}

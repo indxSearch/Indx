@@ -625,15 +625,18 @@ a.btn-danger:hover {
    standing chip goes, and the trail's earlier steps keep their icon as the way back and lose
    their text and switcher, so the dataset's name has the room. */
 @media (max-width: 768px) {
-    .header {
-        height: auto;
-        padding: calc(var(--spacing) * 1.5) 0;
+    /* Narrow: one row, the header's own height, everything centred on it. The mark on the
+       content's gutter (15px: the logo sits 2px into its link), the trail beside it, the team's
+       icon and the account's controls at the right. The team's name and the divider go, and the
+       trail's earlier steps keep their icon as the way back, so the dataset's name has the room. */
+    .nav {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 4px;
+        align-items: center;
     }
 
-    .nav {
-        grid-template-columns: auto minmax(0, 1fr);
-        gap: 8px;
-        align-items: start;
+    .nav-brand {
+        padding-left: calc(var(--spacing) * 3 - 2px);
     }
 
     /* Three classes: the chip's own scoped rule has two, and is loaded after this file. */
@@ -641,37 +644,17 @@ a.btn-danger:hover {
         display: none;
     }
 
-    /* The trail's row spans the whole header, under the mark, rather than starting beside it:
-       nav-main steps aside so the trail and the right cluster are the grid's own items. */
-    .nav {
-        row-gap: 4px;
-    }
-
+    /* nav-main steps aside so the trail and the right cluster are the grid's own cells. */
     .nav-main {
         display: contents;
     }
 
-    .nav-right {
-        grid-column: 2;
-        grid-row: 1;
-        justify-self: end;
-        padding-right: calc(var(--spacing) * 2);
-        position: static;
-        transform: none;
-    }
-
-    /* The first crumb on the content's gutter, less its own 8px of padding, as on a wide screen. */
     .nav-crumbs {
-        grid-column: 1 / -1;
-        grid-row: 2;
+        grid-column: 2;
         margin: 0;
         max-width: none;
-        padding-left: calc(var(--spacing) * 3 - 8px);
+        padding-left: 0;
         overflow: hidden;
-    }
-
-    .nav-crumbs:empty {
-        display: none;
     }
 
     .nav-crumbs .indx-breadcrumbs-item:not(:last-child) .indx-breadcrumbs-text,
@@ -679,8 +662,36 @@ a.btn-danger:hover {
         display: none;
     }
 
+    /* The last icon's edge on the content's gutter: the gutter less the button's 10px padding. */
+    .nav-right {
+        grid-column: 3;
+        gap: 0;
+        padding-right: calc(var(--spacing) * 3 - 10px);
+        position: static;
+        transform: none;
+    }
+
+    .nav-team .indx-breadcrumbs-text,
     .nav-right-divider {
-        margin: 0 2px;
+        display: none;
+    }
+
+    /* With its name gone the team's crumb is its icon and caret: the truncating trail's room for
+       six characters of name (Breadcrumbs' --text-min) would leave a gap after it. Four classes:
+       that rule is scoped, so it carries an attribute too. */
+    .nav .nav-team .indx-breadcrumbs-item.indx-breadcrumbs-item {
+        min-width: 0;
+    }
+
+    /* Room for the dataset's name: the trails lose their box's side padding (the header has its
+       own) and the account menu its caret; the icon still opens it. */
+    .nav .nav-crumbs .indx-breadcrumbs.indx-breadcrumbs,
+    .nav .nav-team .indx-breadcrumbs.indx-breadcrumbs {
+        padding-inline: 0;
+    }
+
+    .nav .nav-dropdown .indx-btn .indx-btn-icon-right {
+        display: none;
     }
 
     /* The panel covers the page instead of sitting beside it. */
