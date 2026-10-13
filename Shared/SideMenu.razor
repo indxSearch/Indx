@@ -33,6 +33,10 @@
                     }
                 </span>
             }
+            @if (group.Note != null)
+            {
+                <div class="side-menu-note" title="@group.Note">@group.Note</div>
+            }
         </div>
     }
 </nav>

@@ -309,11 +309,25 @@ a.btn-danger:hover {
     border-bottom: 1px solid var(--lv2);
 }
 
+/* The header's grid and the shell share one centred box: the column's width plus the page's
+   maximum, so on a wide screen the brand, the column, the trail and the content move together
+   and stay aligned. A page without a column centres its content in the same box. */
+.nav,
+.shell {
+    max-width: calc(var(--side-width) + var(--page-max));
+    margin: 0 auto;
+}
+
 .shell {
     flex: 1;
     display: flex;
     align-items: stretch;
     min-height: 0;
+    width: 100%;
+}
+
+.shell > .content:first-child {
+    margin: 0 auto;
 }
 
 /* The side column, where a page has sections of its own; it sticks under the header. */
@@ -340,9 +354,17 @@ a.btn-danger:hover {
     --page-gutter: calc(var(--spacing) * 8);
     flex: 1;
     min-width: 0;
-    padding: calc(var(--spacing) * 5) var(--page-gutter) var(--page-gutter);
+    /* The same top as the column's menu (16px), so a page's first line and the column's first
+       title start together, whatever the page. */
+    padding: calc(var(--spacing) * 4) var(--page-gutter) var(--page-gutter);
     max-width: var(--page-max);
     width: 100%;
+}
+
+/* No page adds its own space at the top: the content's padding is the top on every page. */
+.content > :first-child,
+.content > :first-child > :first-child {
+    margin-top: 0;
 }
 
 /* Signed out: no column, no foot; the page is centred under the header as before. */

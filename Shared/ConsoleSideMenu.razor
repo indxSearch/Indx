@@ -59,7 +59,7 @@
         if (lower.StartsWith("admin"))
         {
             var active = AdminNav.Items.FirstOrDefault(i => i.Href != null && lower.StartsWith(i.Href.Trim('/').ToLowerInvariant()))?.Value;
-            return ([new SideMenuGroup("Admin", AdminNav.Items.Select(i => new SideMenuItem(i.Value, i.Label, i.Icon, i.Href)).ToList())], active);
+            return ([new SideMenuGroup("Admin", AdminNav.Items.Select(i => new SideMenuItem(i.Value, i.Label, i.Icon, i.Href)).ToList(), AdminNav.VersionLine)], active);
         }
         if (lower.StartsWith("account"))
         {

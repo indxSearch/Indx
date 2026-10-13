@@ -7,7 +7,9 @@ namespace IndxServer.Services
     public sealed record SideMenuItem(string Key, string Label, RenderFragment<int>? Icon = null, string? Href = null,
         bool Disabled = false, string? Title = null, string? Badge = null, string? BadgeTitle = null, bool Experimental = false);
 
-    public sealed record SideMenuGroup(string? Title, IReadOnlyList<SideMenuItem> Items);
+    /// <summary>A group of items under a title; <see cref="Note"/> is one quiet line under them
+    /// (the admin area's version).</summary>
+    public sealed record SideMenuGroup(string? Title, IReadOnlyList<SideMenuItem> Items, string? Note = null);
 
     /// <summary>
     /// Per-circuit slot for what the side column's menu shows, the way <see cref="HeaderState"/>

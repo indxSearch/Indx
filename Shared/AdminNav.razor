@@ -1,17 +1,10 @@
 @using System.Reflection
 @using Indx.Api
-@* The admin area: the same tab bar the dataset page uses (systm Tabs, button variant), here in
-   link mode since each section is its own route. The header's trail reads "Admin"; this bar is
-   the in-section navigation. Pass the active tab's key. The bar stays on one line and scrolls
-   sideways when it does not fit; the version text drops to its own line below it. *@
-@* The sections are in the side column now (ConsoleSideMenu reads Items); this keeps the version line. *@
-<div class="admin-nav">
-    <span class="admin-version" title="Server @_apiVersion · Core @_indxVersion">Indx @_apiVersion · Core @_indxVersion</span>
-</div>
-
+@* The admin area's sections and version, for the side column (ConsoleSideMenu reads Items and
+   VersionLine). Renders nothing itself: the sections are the column's, the version its note. *@
 @code {
-    /// <summary>Key of the active tab: Users | Teams | Datasets | Monitor | Settings | License | Observr | EmailPreview.</summary>
-    [Parameter] public string Active { get; set; } = "";
+    /// <summary>"Indx 2.0.0 · Core 5.0.5": the server and the library, for the column's note.</summary>
+    public static string VersionLine => $"Indx {_apiVersion} · Core {_indxVersion}";
 
     // Version banner (moved here from the Datasets page so it heads the admin area).
     // The product version (5.0.1), not the assembly version: IndxSearchLib pins AssemblyVersion
