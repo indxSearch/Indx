@@ -12,11 +12,13 @@ namespace IndxServer.Components.Datasets
     /// The colours mean one thing each:
     ///   teal        Ready, serving searches
     ///   yellow      something is working on it (loading, loaded and waiting, indexing, waking, rebuilding)
-    ///   light blue  asleep (hibernated, or on its way there)
+    ///   mid grey    asleep (hibernated, or on its way there): a solid chip with full-contrast ink
     ///   red         Error, needs someone
-    ///   grey        nothing in it yet
-    /// Light blue is reserved for hibernation on purpose. Used for Loading as well, the list could
-    /// not tell a dataset going to sleep from one waking up.
+    ///   faint grey  nothing in it yet
+    /// Hibernated was the light blue until 13 Oct 2026, when the blue was set aside for Observr's
+    /// possible colour: two greys a level apart tell asleep from empty, and no hue is spent on an
+    /// absence of activity. The amber is not used for Loading either, so the list can tell a dataset
+    /// going to sleep from one waking up.
     ///
     /// <para><b>Loading and Indexing share the amber deliberately</b>, and it was looked at again on
     /// 28 Sep 2026. They are one thing to the reader -- something is working on it, do not expect
@@ -46,7 +48,7 @@ namespace IndxServer.Components.Datasets
 
         /// <summary>Hibernated and "Hibernating". The console calls a Created engine with records on
         /// disk hibernated, so callers ask for this by name rather than through a SystemState.</summary>
-        public static DatasetStateChip Hibernated => new("var(--CLightBlue)", Dark, DatasetIcons.Hibernate);
+        public static DatasetStateChip Hibernated => new("var(--lv4)", "var(--lv8)", DatasetIcons.Hibernate);
 
         public static DatasetStateChip Empty => new("var(--lv3)", "var(--lv5)", DatasetIcons.ForState(SystemState.Created));
     }
