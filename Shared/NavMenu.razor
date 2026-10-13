@@ -42,7 +42,7 @@
             <Authorized>
                 @if (_admin)
                 {
-                    <Button Variant="ghost" Size="micro" Href="admin" IconLeft="_iconInstance" title="Admin" aria-label="Admin" />
+                    <Button Variant="ghost" Size="micro" Href="admin" IconLeft="_iconInstance" title="Admin" aria-label="Admin"><span class="nav-dropdown-label">Admin</span></Button>
                 }
                 <NotificationPanel />
                 <NavDropdown Label="@ShortName(_name)" Title="@_name" Icon="_iconUser">

@@ -14,22 +14,13 @@
 @if (!Subscription.Visible) { return; }
 
 <div class="obsv-wrapper">
-    @if (_open)
-    {
-        <button class="nav-bell obsv-trigger obsv-trigger--active @(_openCount > 0 ? "obsv-trigger--has-open" : "")" aria-label="Observr" @onclick="Toggle">
-            <Observr Size="16" />
-            @if (_openCount > 0) { <span class="obsv-badge"></span> }
-        </button>
-    }
-    else
-    {
-        <Tooltip Content="Observr" Position="bottom">
-            <button class="nav-bell obsv-trigger @(_openCount > 0 ? "obsv-trigger--has-open" : "")" aria-label="Observr" @onclick="Toggle">
-                <Observr Size="16" />
-                @if (_openCount > 0) { <span class="obsv-badge"></span> }
-            </button>
-        </Tooltip>
-    }
+    @* Labelled "Agent", as the plan names the panel it will become; the label goes on a phone,
+       the icon stays. *@
+    <button class="nav-bell obsv-trigger @(_open ? "obsv-trigger--active" : "") @(_openCount > 0 ? "obsv-trigger--has-open" : "")" aria-label="Agent" title="Observr" @onclick="Toggle">
+        <Observr Size="16" />
+        <span class="obsv-label nav-dropdown-label">Agent</span>
+        @if (_openCount > 0) { <span class="obsv-badge"></span> }
+    </button>
 
     @if (_open)
     {

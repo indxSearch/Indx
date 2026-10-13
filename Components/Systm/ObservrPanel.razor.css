@@ -6,6 +6,14 @@
 /* Bell trigger — override nav-bell so badge positioning works */
 .obsv-trigger {
     position: relative;
+    width: auto;
+    padding: 0 8px 0 6px;
+    gap: 6px;
+}
+
+.obsv-label {
+    font: var(--text-xs);
+    font-weight: var(--med);
 }
 
 .obsv-trigger--active {
@@ -13,10 +21,11 @@
     color: var(--lv8);
 }
 
+/* The mark sits by the icon, not at the label's end. */
 .obsv-badge {
     position: absolute;
     top: 4px;
-    right: 4px;
+    left: 17px;
     width: 7px;
     height: 7px;
     border-radius: 0;
