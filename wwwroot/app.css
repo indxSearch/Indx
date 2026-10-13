@@ -566,16 +566,45 @@ a.btn-danger:hover {
     color: var(--lv8);
 }
 
-/* Narrow: the header keeps the mark, the trail and the right slot's icons; the standing chip
-   goes, and the trail shows only its last step in full. The earlier steps keep their icon as the
-   way back and lose their text and switcher, so the dataset's name has the room. */
+/* Narrow: the header is two rows. The first is the mark and, at the right, the team switcher with
+   its name and the account's icons; the second, only where a page has one, the trail. The
+   standing chip goes, and the trail's earlier steps keep their icon as the way back and lose
+   their text and switcher, so the dataset's name has the room. */
 @media (max-width: 768px) {
     .header {
         padding: calc(var(--spacing) * 1.5) 0;
     }
 
+    .nav {
+        grid-template-columns: auto minmax(0, 1fr);
+        gap: 8px;
+        align-items: start;
+    }
+
     /* Three classes: the chip's own scoped rule has two, and is loaded after this file. */
     .nav .nav-brand .indx-chip {
+        display: none;
+    }
+
+    .nav-main {
+        flex-wrap: wrap;
+        gap: 4px 0;
+    }
+
+    .nav-right {
+        order: -1;
+        margin-left: auto;
+        padding-right: calc(var(--spacing) * 2);
+    }
+
+    .nav-crumbs {
+        flex: 1 1 100%;
+        order: 1;
+        padding-left: calc(var(--spacing) * 2);
+        overflow: hidden;
+    }
+
+    .nav-crumbs:empty {
         display: none;
     }
 
@@ -584,26 +613,8 @@ a.btn-danger:hover {
         display: none;
     }
 
-    /* The team switcher keeps its icon and caret, like the personal menu. */
-    .nav-team .indx-breadcrumbs-text {
-        display: none;
-    }
-
     .nav-right-divider {
         margin: 0 2px;
-    }
-
-    .nav {
-        grid-template-columns: auto minmax(0, 1fr);
-        gap: 8px;
-    }
-
-    .nav-crumbs {
-        padding-left: calc(var(--spacing) * 2);
-    }
-
-    .nav-right {
-        padding-right: calc(var(--spacing) * 2);
     }
 
     /* The column becomes a row above the content, scrolling sideways. */

@@ -10,6 +10,13 @@
     flex: 1;
 }
 
+/* Narrow: the title on its own line, the actions on a row under it, so no button wraps inside itself. */
+@media (max-width: 768px) {
+    .indx-datasets-heading { flex-wrap: wrap; gap: 10px 8px; }
+    .indx-datasets-heading h2 { flex: 1 1 100%; }
+    .indx-datasets-heading ::deep .indx-btn { white-space: nowrap; }
+}
+
 .indx-create-error {
     color: var(--CSignal);
     margin: 0;
