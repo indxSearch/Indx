@@ -1,7 +1,10 @@
 /* The panel fills its column (app.css .shell-agent) and the chat fills the panel. */
 ::deep .agent-chat { height: 100%; min-height: 0; border-radius: 0; }
 
-.agent-head { display: flex; align-items: center; gap: 8px; padding: 8px 0 8px 4px; border-bottom: 1px solid var(--lv2); }
+/* The head is the header's height, with the same edge, so the two read as one bar. */
+.agent-head { display: flex; align-items: center; gap: 8px; height: var(--header-height); box-sizing: border-box; padding: 0 0 0 4px; border-bottom: 1px solid var(--lv2); }
+::deep .agent-chat .indx-chat-header { padding-top: 0; }
+::deep .agent-chat .indx-chat-thread { overscroll-behavior: contain; }
 .agent-title { display: inline-flex; align-items: center; gap: 7px; font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
 .agent-context { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; font: var(--text-2xs); color: var(--lv5); background: var(--lv2); border-radius: 3px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-spacer { flex: 1; }

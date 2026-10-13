@@ -297,10 +297,17 @@ a.btn-danger:hover {
 
 /* The window: the page (header over the shell) and, at the right, the Agent panel the window's
    full height. The page takes what the panel leaves. */
+/* The window is the app's height: the page scrolls inside the shell, so the header stays and the
+   Agent panel's own scrolling never reaches the page. */
+:root {
+    --header-height: 60px;
+}
+
 .layout {
     display: flex;
     align-items: stretch;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
 }
 
 .layout-page {
@@ -308,12 +315,15 @@ a.btn-danger:hover {
     min-width: 0;
     display: flex;
     flex-direction: column;
+    min-height: 0;
 }
 
 .header {
     display: flex;
     align-items: center;
-    padding: calc(var(--spacing) * 3) 0;
+    flex: none;
+    height: var(--header-height);
+    box-sizing: border-box;
     background: var(--lv1);
     border-bottom: 1px solid var(--lv2);
 }
@@ -326,6 +336,8 @@ a.btn-danger:hover {
     align-items: stretch;
     min-height: 0;
     width: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 /* The Agent panel (stage 5): the window's full height at the right, beside the page. Closed it has
@@ -361,7 +373,7 @@ a.btn-danger:hover {
     position: sticky;
     top: 0;
     align-self: flex-start;
-    max-height: 100vh;
+    max-height: calc(100vh - var(--header-height));
     overflow-y: auto;
 }
 
@@ -609,6 +621,7 @@ a.btn-danger:hover {
    their text and switcher, so the dataset's name has the room. */
 @media (max-width: 768px) {
     .header {
+        height: auto;
         padding: calc(var(--spacing) * 1.5) 0;
     }
 
