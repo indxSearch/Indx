@@ -11,12 +11,15 @@
 
 @if (!Ctx.IsSaving)
 {
-    <FieldConfigToolbar @bind-Filter="_filter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced">
-        @if (Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
-        {
+    @* The whole-setup action first, on its own row at the left as on Search or ask; the toolbar's
+       right side is the view's own controls. *@
+    @if (Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
+    {
+        <div class="indx-list-toolbar">
             <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Disabled="@Ctx.IsDirty" @onclick="ReviewInAgent">Review my setup</Button></span>
-        }
-    </FieldConfigToolbar>
+        </div>
+    }
+    <FieldConfigToolbar @bind-Filter="_filter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced" />
 }
 
 @if (!string.IsNullOrEmpty(_saveError))
