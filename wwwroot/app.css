@@ -311,34 +311,36 @@ a.btn-danger:hover {
 
 .shell {
     flex: 1;
-    display: grid;
-    grid-template-columns: var(--side-width) minmax(0, 1fr);
+    display: flex;
+    align-items: stretch;
     min-height: 0;
 }
 
-/* The side column sticks under the header, the menu at its head and the foot pinned. */
+/* The side column, where a page has sections of its own; it sticks under the header. */
 .shell-side {
+    width: var(--side-width);
+    flex: none;
     position: sticky;
     top: 0;
-    align-self: start;
+    align-self: flex-start;
     max-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
     overflow-y: auto;
     border-right: 1px solid var(--lv2);
 }
 
+/* The foot: one row, fixed at the bottom left of the window, over everything. */
 .shell-foot {
+    position: fixed;
+    left: 10px;
+    bottom: 10px;
+    z-index: 60;
     display: flex;
-    flex-direction: column;
-    gap: 2px;
-    padding: 16px 0 16px 10px;
-}
-
-.shell-foot .nav-dropdown .indx-btn {
-    width: 100%;
-    justify-content: flex-start;
+    align-items: center;
+    gap: 4px;
+    padding: 4px;
+    background: var(--lv1);
+    border: 1px solid var(--lv2);
+    border-radius: var(--radius);
 }
 
 .nav-dropdown-menu--up {
@@ -361,12 +363,13 @@ a.btn-danger:hover {
     --page-gutter: calc(var(--spacing) * 8);
     flex: 1;
     min-width: 0;
-    padding: calc(var(--spacing) * 5) var(--page-gutter) var(--page-gutter);
+    /* Room at the bottom for the fixed foot. */
+    padding: calc(var(--spacing) * 5) var(--page-gutter) calc(var(--page-gutter) + 48px);
     max-width: var(--page-max);
     width: 100%;
 }
 
-/* Signed out: no column, the page centred under the header as before. */
+/* Signed out: no column, no foot; the page is centred under the header as before. */
 .content--alone {
     margin: 0 auto;
 }
@@ -548,36 +551,18 @@ a.btn-danger:hover {
         padding-right: calc(var(--spacing) * 2);
     }
 
+    /* The column becomes a row above the content, scrolling sideways. */
     .shell {
-        grid-template-columns: minmax(0, 1fr);
-        padding-bottom: 52px;
+        flex-direction: column;
     }
 
     .shell-side {
-        position: fixed;
-        top: auto;
-        bottom: 0;
-        left: 0;
-        right: 0;
-        max-height: none;
-        flex-direction: row;
-        align-items: center;
-        gap: 8px;
-        padding: 6px 12px;
-        background: var(--lv1);
-        border-right: none;
-        border-top: 1px solid var(--lv2);
-        z-index: 50;
-    }
-
-    .shell-foot {
-        flex-direction: row;
-        padding: 0;
-        flex-shrink: 0;
-    }
-
-    .shell-foot .nav-dropdown .indx-btn {
         width: auto;
+        position: static;
+        max-height: none;
+        border-right: none;
+        border-bottom: 1px solid var(--lv2);
+        padding: 6px 12px;
     }
 
     .nav-instance {

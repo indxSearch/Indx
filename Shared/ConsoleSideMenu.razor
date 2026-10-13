@@ -1,13 +1,17 @@
 @* The side column's menu (Notes/Anders/console-shell-plan-2026-10-13.md, stage 1): groups of
-   ghost Buttons straight on the page, the open one primary, as the active tab is today. What it
-   lists is the area's: a page with sections of its own sets them through SideMenuState (the
-   dataset page, from stage 2); otherwise the list is derived from the URL, as the header derives
-   its fallback trail. Role rules hide, "not yet" disables with the reason, as the tab bar did. *@
+   ghost Buttons straight on the page, the open one primary, as the active tab is today. Only a
+   page with sections of its own has it: one that sets them through SideMenuState (the dataset
+   page, from stage 2), or an area whose sections are read off the URL (admin, account). The team
+   page has no column; its pages are buttons on the page itself. Role rules hide, "not yet"
+   disables with the reason, as the tab bar did. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
 @inject NavigationManager NavigationManager
 @inject IndxServer.Services.SideMenuState Menu
 
+@if (_groups.Count > 0)
+{
+<aside class="shell-side">
 <nav class="side-menu" aria-label="Sections">
     @foreach (var group in _groups)
     {
@@ -35,13 +39,13 @@
         </div>
     }
 </nav>
+</aside>
+}
 
 @code {
     private IReadOnlyList<SideMenuGroup> _groups = [];
     private string? _active;
 
-    private static readonly RenderFragment<int> _iconUsers = size => @<Users Size="size" Color="currentColor" />;
-    private static readonly RenderFragment<int> _iconDatabase = size => @<Database Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconObservr = size => @<Observr Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconUser = size => @<UserId Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconKey = size => @<Key Size="size" Color="currentColor" />;
@@ -94,26 +98,15 @@
             _active = Menu.Active;
             return;
         }
-        (_groups, _active) = FromUrl();
+        (_groups, _active) = ForUrl(NavigationManager.Uri);
     }
 
-    /// <summary>The area's list when no page set one: the team's pages, the admin sections, the
-    /// account pages. Read off the URL so the hop between pages shows the right list in the gap.</summary>
-    private (IReadOnlyList<SideMenuGroup>, string?) FromUrl()
+    /// <summary>The area's sections when no page set them: admin, account. Read off the URL so the
+    /// hop between pages shows the right list in the gap.</summary>
+    public static (IReadOnlyList<SideMenuGroup> Groups, string? Active) ForUrl(string uri)
     {
-        var path = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/');
+        var path = new Uri(uri).AbsolutePath.Trim('/');
         var lower = path.ToLowerInvariant();
-        var seg = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
-        if (seg.Length >= 2 && seg[0].Equals("teams", StringComparison.OrdinalIgnoreCase))
-        {
-            var team = Uri.UnescapeDataString(seg[1]);
-            var active = seg.Length >= 3 ? seg[2].ToLowerInvariant() switch { "settings" => "settings", "observr" => "observr", _ => "datasets" } : "datasets";
-            return ([new SideMenuGroup(team, [
-                new("datasets", "Datasets", _iconDatabase, TeamRoutes.Team(team)),
-                new("observr", "Observr", _iconObservr, TeamRoutes.TeamObservr(team)),
-                new("settings", "Manage team", _iconUsers, TeamRoutes.TeamSettings(team)),
-            ])], active);
-        }
         if (lower.StartsWith("admin"))
         {
             var active = AdminNav.Items.FirstOrDefault(i => i.Href != null && lower.StartsWith(i.Href.Trim('/').ToLowerInvariant()))?.Value;
