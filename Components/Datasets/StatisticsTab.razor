@@ -21,20 +21,11 @@
 }
 else
 {
-    @* The contextual bar over the content (Notes/Anders/console-shell-plan-2026-10-13.md, stage
-       2): the detail sections as tabs, one at a time, so each can carry its own view settings
-       and a phone shows one table rather than five; at its end what belongs to all of them, the
-       surface and the period. The sections appear once there is something to show. *@
+    @* The bar over the content (Notes/Anders/console-shell-plan-2026-10-13.md, stage 2): what
+       belongs to everything below, the tiles and the chart included, the surface and the period.
+       The detail sections are tabs just above their table, further down. *@
     <div class="indx-context-bar">
-        @if (_loaded && !Empty)
-        {
-            <Tabs Items="SectionItems" Active="@_section" ActiveChanged="@(v => _section = v ?? "queries")"
-                  Scrollable AriaLabel="Statistics sections" />
-        }
-        else
-        {
-            <span></span>
-        }
+        <span></span>
         <div class="indx-context-bar-end">
             @* Shown once any search named its surface (?source=, intrface's source prop): the
                numbers below for one surface alone. The changes are the owners', not a surface's,
@@ -120,6 +111,13 @@ else
         </div>
 
         <Chart Series="_series" Labels="_labels" Type="line" Height="180" Markers="Markers" />
+
+        @* The detail sections, one at a time, just above the table they choose: each can carry its
+           own view settings, and a phone shows one table rather than five. *@
+        <div class="stats-sections">
+            <Tabs Items="SectionItems" Active="@_section" ActiveChanged="@(v => _section = v ?? "queries")"
+                  Scrollable AriaLabel="Statistics sections" />
+        </div>
 
         @if (_section == "queries")
         {

@@ -32,6 +32,11 @@
     margin: 18px 0;
 }
 
+/* The sections' tabs, between the chart and the table they choose. */
+.stats-sections {
+    margin-top: 24px;
+}
+
 /* The loading skeleton: tiles, chart and rows, spaced like the page that replaces it. */
 .stats-loading {
     display: flex;
