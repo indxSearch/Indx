@@ -350,6 +350,36 @@ a.btn-danger:hover {
     left: 0;
 }
 
+/* The contextual bar over a section's content (stage 2): the section's views as Tabs, and at its
+   end a setting that belongs to all of them (the statistics period). The tabs take the width and
+   scroll sideways; the end never shrinks. */
+.indx-context-bar {
+    display: flex;
+    align-items: flex-end;
+    gap: 16px;
+    border-bottom: 1px solid var(--lv2);
+    margin-bottom: 18px;
+    min-width: 0;
+}
+
+.indx-context-bar > :first-child {
+    flex: 1;
+    min-width: 0;
+}
+
+.indx-context-bar-end {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding-bottom: 4px;
+}
+
+@media (max-width: 768px) {
+    .indx-context-bar { flex-wrap: wrap; }
+    .indx-context-bar > :first-child { flex-basis: 100%; }
+}
+
 /* How wide the page gets before it stops growing and centres. One value for the header and the
    content, so they stay aligned. 1680px: wide enough that the field configuration's advanced
    columns have room on a large monitor, short of the point where a text line gets tiring. */

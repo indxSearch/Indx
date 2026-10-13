@@ -1,0 +1,70 @@
+@* The menu of the side column: groups of ghost Buttons straight on the page, the open one
+   primary, as the active tab was. Pure presentation, so the dataset page's rendering tests can
+   draw it from what the page published (SideMenuState) and the island (ConsoleSideMenu) can draw
+   it live. Role rules hide, "not yet" disables with the reason, as the tab bar did. *@
+
+<nav class="side-menu @Class" aria-label="Sections">
+    @foreach (var group in Groups)
+    {
+        <div class="side-menu-group">
+            @if (!string.IsNullOrEmpty(group.Title))
+            {
+                <div class="side-menu-title">@group.Title</div>
+            }
+            @foreach (var item in group.Items)
+            {
+                var active = item.Key == Active;
+                <span class="side-menu-item @(active ? "side-menu-item--active" : null)">
+                    @if (item.Disabled)
+                    {
+                        @* "Not yet": aria-disabled rather than disabled, so the item stays focusable and
+                           its title can say why, as the tab bar's did. Nothing happens on a click. *@
+                        <Button Variant="ghost" Size="micro" IconLeft="@item.Icon" aria-disabled="true" title="@item.Title">@Label(item)</Button>
+                    }
+                    else if (OnSelect != null && item.Href == null)
+                    {
+                        <Button Variant="@(active ? "primary" : "ghost")" Size="micro" IconLeft="@item.Icon" title="@item.Title"
+                                aria-current="@(active ? "page" : null)" @onclick="() => OnSelect?.Invoke(item.Key)">@Label(item)</Button>
+                    }
+                    else
+                    {
+                        <Button Variant="@(active ? "primary" : "ghost")" Size="micro" IconLeft="@item.Icon" title="@item.Title"
+                                aria-current="@(active ? "page" : null)" Href="@item.Href">@Label(item)</Button>
+                    }
+                </span>
+            }
+        </div>
+    }
+</nav>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<SideMenuGroup> Groups { get; set; } = [];
+    [Parameter] public string? Active { get; set; }
+    /// <summary>When set, an item without an Href calls this with its key instead of navigating.</summary>
+    [Parameter] public Action<string>? OnSelect { get; set; }
+    /// <summary>Extra class on the nav; the dataset page's is <c>indx-dataset-nav</c>.</summary>
+    [Parameter] public string? Class { get; set; }
+
+    private static readonly RenderFragment<int> _iconLab = size => @<LabExperiment Size="size" Color="currentColor" />;
+
+    private static RenderFragment Label(SideMenuItem item) => builder =>
+    {
+        builder.AddContent(0, item.Label);
+        if (item.Badge != null)
+        {
+            builder.OpenElement(1, "span");
+            builder.AddAttribute(2, "class", "side-menu-badge");
+            builder.AddAttribute(3, "title", item.BadgeTitle);
+            builder.AddContent(4, item.Badge);
+            builder.CloseElement();
+        }
+        if (item.Experimental)
+        {
+            builder.OpenElement(5, "span");
+            builder.AddAttribute(6, "class", "side-menu-experimental");
+            builder.AddAttribute(7, "title", "Experimental");
+            builder.AddContent(8, _iconLab(14));
+            builder.CloseElement();
+        }
+    };
+}

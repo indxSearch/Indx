@@ -104,10 +104,6 @@
 }
 
 /* The overview ends at the chart; the section bar starts the detail, so it stands apart. */
-.stats-sections {
-    margin-top: 18px;
-}
-
 /* The orders read as words ("Highest click-through"); micro's content width crams them. */
 .stats-view-select {
     width: 200px;

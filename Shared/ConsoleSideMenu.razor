@@ -1,9 +1,7 @@
-@* The side column's menu (Notes/Anders/console-shell-plan-2026-10-13.md, stage 1): groups of
-   ghost Buttons straight on the page, the open one primary, as the active tab is today. Only a
-   page with sections of its own has it: one that sets them through SideMenuState (the dataset
-   page, from stage 2), or an area whose sections are read off the URL (admin, account). The team
-   page has no column; its pages are buttons on the page itself. Role rules hide, "not yet"
-   disables with the reason, as the tab bar did. *@
+@* The side column (Notes/Anders/console-shell-plan-2026-10-13.md, stages 1 and 2): a SideMenu
+   drawn for a page with sections of its own. One that sets them through SideMenuState (the
+   dataset page), or an area whose sections are read off the URL (admin, account). The team page
+   has no column; its pages are buttons on the page itself. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
 @inject NavigationManager NavigationManager
@@ -12,33 +10,7 @@
 @if (_groups.Count > 0)
 {
 <aside class="shell-side">
-<nav class="side-menu" aria-label="Sections">
-    @foreach (var group in _groups)
-    {
-        <div class="side-menu-group">
-            @if (!string.IsNullOrEmpty(group.Title))
-            {
-                <div class="side-menu-title">@group.Title</div>
-            }
-            @foreach (var item in group.Items)
-            {
-                var active = item.Key == _active;
-                <span class="side-menu-item @(active ? "side-menu-item--active" : null)">
-                    @if (Menu.OnSelect != null && item.Href == null)
-                    {
-                        <Button Variant="@(active ? "primary" : "ghost")" Size="micro" IconLeft="@item.Icon" Disabled="@item.Disabled" title="@item.Title"
-                                aria-current="@(active ? "page" : null)" @onclick="() => Menu.OnSelect?.Invoke(item.Key)">@Label(item)</Button>
-                    }
-                    else
-                    {
-                        <Button Variant="@(active ? "primary" : "ghost")" Size="micro" IconLeft="@item.Icon" Disabled="@item.Disabled" title="@item.Title"
-                                aria-current="@(active ? "page" : null)" Href="@item.Href">@Label(item)</Button>
-                    }
-                </span>
-            }
-        </div>
-    }
-</nav>
+    <SideMenu Groups="_groups" Active="@_active" OnSelect="Menu.OnSelect" />
 </aside>
 }
 
@@ -51,29 +23,6 @@
     private static readonly RenderFragment<int> _iconKey = size => @<Key Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconBell = size => @<Bell Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconLock = size => @<Lock Size="size" Color="currentColor" />;
-    private static readonly RenderFragment<int> _iconLab = size => @<LabExperiment Size="size" Color="currentColor" />;
-
-    private static RenderFragment Label(SideMenuItem item) => builder =>
-    {
-        builder.AddContent(0, item.Label);
-        if (item.Badge != null)
-        {
-            builder.OpenElement(1, "span");
-            builder.AddAttribute(2, "class", "side-menu-badge");
-            builder.AddAttribute(3, "title", item.BadgeTitle);
-            builder.AddContent(4, item.Badge);
-            builder.CloseElement();
-        }
-        if (item.Experimental)
-        {
-            builder.OpenElement(5, "span");
-            builder.AddAttribute(6, "class", "side-menu-experimental");
-            builder.AddAttribute(7, "title", "Experimental");
-            builder.AddContent(8, _iconLab(14));
-            builder.CloseElement();
-        }
-    };
-
     protected override void OnInitialized()
     {
         NavigationManager.LocationChanged += OnLocationChanged;

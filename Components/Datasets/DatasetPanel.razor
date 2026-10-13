@@ -1,6 +1,7 @@
-﻿@* One dataset of the active team: status table, tab nav and the tab components. Owns the
-   DatasetContext the tabs share, loads status/field config on first display, and polls the
-   engine while it is loading or indexing in the background.
+﻿@* One dataset of the active team: alerts, the tab components, and the sections it publishes to
+   the console's side column (SideMenuState, Notes/Anders/console-shell-plan-2026-10-13.md, stage
+   2). Owns the DatasetContext the tabs share, loads status/field config on first display, and
+   polls the engine while it is loading or indexing in the background.
 
    Hosted by Pages/DatasetPage.razor, one panel per page. Visible is kept as a parameter so a
    host can mount the panel hidden and show it later (the tests do); status loads on the first
@@ -12,6 +13,7 @@
 @inject BoostRuleStore BoostStore
 @inject NavigationManager Nav
 @inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
+@inject IndxServer.Services.SideMenuState Menu
 
 @* The header slot (the console's breadcrumb row, with DatasetStatus in its actions) sits
    outside the Surface so it lands at exactly the same spot as on the team page — the
@@ -29,25 +31,19 @@
                 @* ── Alerts — only rendered when the engine reports one. ── *@
                 <DatasetAlerts Ctx="Ctx" />
 
-                @* ── Dataset tab nav (hidden when hibernated: that view is just Wake up / Delete) ── *@
+                @* ── The sections, in the side column (none when hibernated: that view is just
+                   Wake up / Delete). The full set is always laid out in the same order. Sections
+                   that need a built index are disabled (with the reason) until the dataset is
+                   Ready, so the column keeps its shape from the first upload onward. Error shows
+                   only what can act on it. Role rules hide, never disable: disabled means "not yet". ── *@
                 @{
                     var engineState = Ctx.EngineState;
                     var isReady = engineState == SystemState.Ready;
                     var showNav = isReady || (Ctx.IsAnalyzed && !Ctx.IsLoadIndexing && Ctx.IsEditor) || (engineState == SystemState.Error && Ctx.IsAdmin && !Ctx.IsLoadIndexing);
                     var tab = Ctx.ActiveTab;
-                    // Not Ready and not Error: the not-yet tabs are shown disabled.
+                    // Not Ready and not Error: the not-yet sections are shown disabled.
                     var pending = !isReady && engineState != SystemState.Error;
-                }
-                @if (showNav && Ctx.HasStatus)
-                {
-                    @* The full tab set is always laid out in the same order. Tabs that need a
-                       built index are disabled (with the reason) until the dataset is Ready, so
-                       the bar keeps its shape from the first upload onward. Error shows only what
-                       can act on it. Role rules hide, never disable: disabled means "not yet". *@
-                    <div class="indx-dataset-nav">
-                        <Tabs Items="NavItems(isReady, pending)" Active="@tab" ActiveChanged="@(v => SelectTab(v ?? tab))"
-                              Size="micro" Variant="button" Scrollable Bleed="calc(var(--page-gutter) + 5px)" />
-                    </div>
+                    PublishMenu(showNav && Ctx.HasStatus && Visible ? NavItems(isReady, pending) : null, tab);
                 }
 
                 @* ── Tabs. All stay mounted so edit state survives switching; only the active one renders. ── *@
@@ -126,11 +122,62 @@
         _ = InvokeAsync(() => { SyncAddress(); StateHasChanged(); });
     }
 
+    /// <summary>Chosen in the side column, which is another component: the context's event is
+    /// what re-renders this panel and its tabs, and keeps the address in step.</summary>
     private void SelectTab(string tab)
     {
+        if (Ctx.ActiveTab == tab) return;
         Ctx.ActiveTab = tab;
-        SyncAddress();
+        Ctx.NotifyChanged();
     }
+
+    private string? _published;
+
+    /// <summary>Hands the sections to the side column, grouped as the plan lays them out, with
+    /// the open one marked. Called from the render so the rendering tests see what the page
+    /// published; it tells the column only when something changed, since the column is another
+    /// component and re-renders on the event.</summary>
+    private void PublishMenu(List<Tabs.TabItem>? items, string active)
+    {
+        if (items == null)
+        {
+            if (_published != null) { _published = null; Menu.Clear(this); }
+            return;
+        }
+        var signature = active + "|" + string.Join(";", items.Select(i => $"{i.Value}:{i.Disabled}:{i.Badge}"));
+        if (signature == _published) return;
+        _published = signature;
+        Menu.Set(this, GroupSections(items), active, SelectTab);
+    }
+
+    /// <summary>Overview · Data · Relevance · Try it · Settings. A group with nothing in it (a
+    /// viewer's Relevance) is left out; an item no group names goes last, so a new tab is never lost.</summary>
+    internal static IReadOnlyList<SideMenuGroup> GroupSections(IReadOnlyList<Tabs.TabItem> items)
+    {
+        var layout = new (string Title, string[] Keys)[]
+        {
+            ("Overview", ["status", "statistics"]),
+            ("Data", ["fields"]),
+            ("Relevance", ["query-parameters", "boosts", "synonyms"]),
+            ("Try it", ["search", "search-or-ask"]),
+            ("Settings", ["options"]),
+        };
+        var groups = new List<SideMenuGroup>();
+        var placed = new HashSet<string>();
+        foreach (var (title, keys) in layout)
+        {
+            var members = keys.Select(k => items.FirstOrDefault(i => i.Value == k)).Where(i => i != null).Select(i => ToMenuItem(i!)).ToList();
+            if (members.Count == 0) continue;
+            foreach (var k in keys) placed.Add(k);
+            groups.Add(new SideMenuGroup(title, members));
+        }
+        var rest = items.Where(i => !placed.Contains(i.Value)).Select(ToMenuItem).ToList();
+        if (rest.Count > 0) groups.Add(new SideMenuGroup(null, rest));
+        return groups;
+    }
+
+    private static SideMenuItem ToMenuItem(Tabs.TabItem i) =>
+        new(i.Value, i.Label, i.Icon, Href: null, Disabled: i.Disabled, Title: i.Title, Badge: i.Badge, BadgeTitle: i.BadgeTitle);
 
     private const string TabQuery = "tab";
 
@@ -161,9 +208,8 @@
 
     private const string NotYet = "Available after the index is built";
 
-    /// <summary>The tab bar. One line at any width: systm Tabs scrolls sideways when it does not
-    /// fit, so the labels never wrap and the page never scrolls horizontally. A tab that needs a
-    /// Ready engine is disabled with the reason; role rules leave a tab out instead.</summary>
+    /// <summary>The sections, in the order the side column lays them out before grouping. One that
+    /// needs a Ready engine is disabled with the reason; role rules leave one out instead.</summary>
     private List<Tabs.TabItem> NavItems(bool isReady, bool pending)
     {
         var items = new List<Tabs.TabItem>(6);
@@ -230,6 +276,7 @@
 
     public void Dispose()
     {
+        Menu.Clear(this);
         Ctx.Changed -= OnCtxChanged;
         _pollCts?.Cancel();
         Ctx.Dispose();

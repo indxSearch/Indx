@@ -20,6 +20,33 @@
 }
 else
 {
+    @* The contextual bar over the content (Notes/Anders/console-shell-plan-2026-10-13.md, stage
+       2): the detail sections as tabs, one at a time, so each can carry its own view settings
+       and a phone shows one table rather than five; at its end what belongs to all of them, the
+       surface and the period. The sections appear once there is something to show. *@
+    <div class="indx-context-bar">
+        @if (_loaded && !Empty)
+        {
+            <Tabs Items="SectionItems" Active="@_section" ActiveChanged="@(v => _section = v ?? "queries")"
+                  Scrollable AriaLabel="Statistics sections" />
+        }
+        else
+        {
+            <span></span>
+        }
+        <div class="indx-context-bar-end">
+            @* Shown once any search named its surface (?source=, intrface's source prop): the
+               numbers below for one surface alone. The changes are the owners', not a surface's,
+               so they stay whole. *@
+            @if (SourceOptions.Count > 1)
+            {
+                <SelectField Size="micro" Variant="ghost" Options="SourceOptions" Value="@(_source ?? "")" ValueChanged="SetSource" aria-label="Search surface" />
+            }
+            <Tabs Items="WindowItems" Active="@_days.ToString()" ActiveChanged="@(v => SetWindow(v))"
+                  Size="micro" Variant="button" AriaLabel="Period" />
+        </div>
+    </div>
+
     @* The Synonyms tab's pattern: what the tab is, and the chip that says it may still change. *@
     <div class="stats-intro">
         <p>
@@ -28,19 +55,6 @@ else
             Experimental: the numbers and their definitions may change.
         </p>
         <Chip Size="large" Color="var(--CTeal)" TextColor="#080809" Icon="DatasetIcons.Experimental">Experimental</Chip>
-    </div>
-
-    <div class="indx-list-toolbar">
-        <Tabs Items="WindowItems" Active="@_days.ToString()" ActiveChanged="@(v => SetWindow(v))"
-              Size="micro" Variant="button" />
-        @* Shown once any search named its surface (?source=, intrface's source prop): the
-           numbers below for one surface alone. The changes are the owners', not a surface's,
-           so they stay whole. At the end of the row, where a "last 30 days" stood that only
-           repeated the period buttons. *@
-        @if (SourceOptions.Count > 1)
-        {
-            <div class="indx-list-toolbar-end"><SelectField Size="micro" Variant="ghost" Options="SourceOptions" Value="@(_source ?? "")" ValueChanged="SetSource" aria-label="Search surface" /></div>
-        }
     </div>
 
     @if (!_loaded)
@@ -84,13 +98,6 @@ else
         </div>
 
         <Chart Series="_series" Labels="_labels" Type="line" Height="180" Markers="Markers" />
-
-        @* The overview above stays put; the detail is one section at a time, so each can carry
-           its own view settings and a phone shows one table rather than five. *@
-        <div class="stats-sections">
-            <Tabs Items="SectionItems" Active="@_section" ActiveChanged="@(v => _section = v ?? "queries")"
-                  Scrollable AriaLabel="Statistics sections" />
-        </div>
 
         @if (_section == "queries")
         {
