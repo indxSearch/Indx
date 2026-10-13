@@ -1002,5 +1002,21 @@ a.btn-danger:hover {
 /* Observr's buttons wear its colour, so one glance says "this goes to Observr". The colour itself
    is not decided (12 Oct 2026): not a traffic light, not the blue of the badge; until it is, the
    buttons look like any other and the wrapper only marks them. A wrapper, since systm Button takes
-   no colour; a selector with the extra class outranks the component's isolated rules. */
+   no colour; a selector with the extra class outranks the component's isolated rules.
+   Trying (13 Oct 2026): the 1px checkerboard behind Observr's ghost buttons, as ProgressBar's
+   track has it, so the eye knows the button goes to Observr without a hue. */
 .indx-observr { display: inline-flex; }
+.indx-observr .indx-btn.indx-btn-ghost { position: relative; isolation: isolate; }
+.indx-observr .indx-btn.indx-btn-ghost::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background-image: var(--pattern-checkerboard-light);
+    background-repeat: repeat;
+    background-size: 2px 2px;
+    opacity: 0.18;
+    pointer-events: none;
+}
+.indx-observr .indx-btn.indx-btn-ghost:hover::before { opacity: 0.3; }
