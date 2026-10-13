@@ -128,6 +128,9 @@
                         <SelectField Label="The judge, Jev" Options="_judgeOptions" Value="@_judgeProvider" ValueChanged="@(v => _judgeProvider = v ?? "openrouter")" />
                         @if (_judgeProvider == "typesafe" || _provider != "openrouter")
                         {
+                            <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">
+                                Jev is served on OpenRouter and by TypeSafe only, so with the answers elsewhere it needs a key of its own. Search or ask does not run without the judge.
+                            </p>
                             <InputField Label="@(_judgeProvider == "typesafe" ? "TypeSafe key" : "OpenRouter key for the judge")" type="password" autocomplete="off" @bind-Value="_judgeKey"
                                         placeholder="@(_judgeKeySaved && !_removeJudgeKey ? "Saved; type to replace" : "")" />
                             <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">
@@ -138,11 +141,11 @@
                                 }
                                 else if (_removeJudgeKey)
                                 {
-                                    <text>The judge key will be removed when you save. Without a judge, answers still work on a visitor's explicit question; no typing pause leaves the server.</text>
+                                    <text>The judge key will be removed when you save; Search or ask then stops.</text>
                                 }
                                 else
                                 {
-                                    <text>Without a judge key, answers still work on a visitor's explicit question, and no typing pause leaves the server.</text>
+                                    <text>Required: without a judge key Search or ask cannot run.</text>
                                 }
                             </p>
                         }

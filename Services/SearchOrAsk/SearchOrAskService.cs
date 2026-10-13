@@ -141,12 +141,13 @@ namespace IndxServer.Services.SearchOrAsk
         /// configuration's values win over the console's. The clients read the same object.</summary>
         public SearchOrAskSetup Setup => _setup.Current;
 
-        /// <summary>Whether this instance can write answers: the answer provider has a key, from the
-        /// configuration (which wins) or from the console.</summary>
-        public bool Available => Setup.AnswersAvailable;
+        /// <summary>Whether this instance can run Search or ask: the answer provider has a key and so
+        /// has the judge's door, from the configuration (which wins) or from the console. The judge
+        /// is the feature; an answer without it is retrieval and a model, which is nobody's product
+        /// (decided 14 Oct 2026), so a missing judge key makes the whole thing unavailable.</summary>
+        public bool Available => Setup.AnswersAvailable && Setup.JudgeAvailable;
 
-        /// <summary>Whether the judge can be asked: Jev's door has a key. Without one, answers still
-        /// work on a visitor's explicit question (ask only) and no typing pause leaves the server.</summary>
+        /// <summary>Whether the judge can be asked: Jev's door has a key.</summary>
         public bool JudgeAvailable => Setup.JudgeAvailable;
 
         /// <summary>Where the key in use comes from, for the console: "configuration", "console" or null.</summary>
