@@ -465,6 +465,14 @@ a.btn-danger:hover {
     flex-shrink: 0;
 }
 
+/* Between the team switcher and the account's controls. */
+.nav-right-divider {
+    width: 1px;
+    height: 18px;
+    background: var(--lv3);
+    margin: 0 6px;
+}
+
 /* Header dropdowns (Instance, personal): trigger + right-anchored Surface of ghost buttons. */
 .nav-dropdown {
     position: relative;
@@ -552,6 +560,15 @@ a.btn-danger:hover {
     .nav-crumbs .indx-breadcrumbs-item:not(:last-child) .indx-breadcrumbs-text,
     .nav-crumbs .indx-breadcrumbs-item:not(:last-child) .indx-breadcrumbs-trigger {
         display: none;
+    }
+
+    /* The team switcher keeps its icon and caret, like the personal menu. */
+    .nav-team .indx-breadcrumbs-text {
+        display: none;
+    }
+
+    .nav-right-divider {
+        margin: 0 2px;
     }
 
     .nav {

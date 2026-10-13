@@ -2,7 +2,8 @@
    column: the Indx mark as the home link, with a chip for the instance's standing as the
    licence portal reports it (Free, Pro, Enterprise; Managed on a managed deployment). Then the
    trail, at the content's edge: whatever the current page put in HeaderState (the console's
-   team › dataset trail), else a label derived from the URL. Right: Admin (for instance admins;
+   dataset or page), else a label derived from the URL. Right: the team switcher (one team at a
+   time, so it is a global control, not the trail's first step), then Admin (for instance admins;
    it is a page that needs a role, not a personal page), the bell, the personal menu, Observr. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
@@ -40,6 +41,8 @@
     <div class="nav-right">
         <AuthorizeView>
             <Authorized>
+                <TeamSwitcher />
+                <span class="nav-right-divider" aria-hidden="true"></span>
                 @if (_admin)
                 {
                     <Button Variant="ghost" Size="micro" Href="admin" IconLeft="_iconInstance" title="Admin" aria-label="Admin"><span class="nav-dropdown-label">Admin</span></Button>
@@ -138,9 +141,9 @@
     }
 
     // The fallback trail when no page has set one. For console URLs it is read off the URL —
-    // team › dataset, linked but without switchers — so the hop between console pages (the
-    // island is rebuilt, and the new page sets its trail only after resolving the team) shows
-    // the right names in the gap rather than a placeholder. Other pages get one unlinked crumb.
+    // the dataset or the page, linked but without a switcher — so the hop between console pages
+    // (the island is rebuilt, and the new page sets its trail only after resolving the team)
+    // shows the right name in the gap rather than a placeholder. Other pages get one unlinked crumb.
     private List<Breadcrumbs.BreadcrumbItem> PageCrumb()
     {
         var path = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
@@ -148,20 +151,14 @@
         if (seg.Length >= 2 && seg[0] == "teams")
         {
             var team = Uri.UnescapeDataString(seg[1]);
-            var items = new List<Breadcrumbs.BreadcrumbItem>
-            {
-                new("team", team) { Href = TeamRoutes.Team(team), Icon = _iconUsers },
-            };
             if (seg.Length >= 4 && seg[2] == "datasets")
             {
                 var dataset = Uri.UnescapeDataString(seg[3]);
-                items.Add(new("dataset", dataset) { Href = TeamRoutes.Dataset(team, dataset), Icon = _iconDatabase });
+                return [new("dataset", dataset) { Href = TeamRoutes.Dataset(team, dataset), Icon = _iconDatabase }];
             }
-            else if (seg.Length >= 3 && seg[2] == "settings")
-            {
-                items.Add(new("page", "Settings"));
-            }
-            return items;
+            if (seg.Length >= 3 && seg[2] == "settings") return [new("page", "Settings")];
+            if (seg.Length >= 3 && seg[2] == "observr") return [new("page", "Observr")];
+            return [new("datasets", "Datasets") { Href = TeamRoutes.Team(team), Icon = _iconDatabase }];
         }
         (string label, RenderFragment<int> icon) = path switch
         {

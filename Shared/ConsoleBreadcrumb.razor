@@ -1,14 +1,13 @@
-@* The console's trail: [team ▾] › [dataset ▾] (› Page), rendered INSIDE THE HEADER — the
-   pages hand it up through HeaderState. Labels link to the team / dataset page; each caret
-   switches to a sibling or offers "New …", which opens a small name dialog. Built on the systm
-   Breadcrumbs; this only knows the routes and the active team's lists. *@
-@using System.Security.Claims
+@* The console's trail, rendered INSIDE THE HEADER — the pages hand it up through HeaderState.
+   It says where you are inside the team: [dataset ▾] on a dataset page, "Datasets" on the team
+   page, the page's name on its other pages (Observr, Settings). The team itself is not a step:
+   it is the switcher at the header's right (TeamSwitcher), since the console works with one team
+   at a time. The dataset's caret switches to a sibling or offers "New dataset…", which opens a
+   small name dialog. Built on the systm Breadcrumbs; this only knows the routes and the lists. *@
 @using IndxServer.Services
 @inject NavigationManager NavigationManager
 @inject ILogger<ConsoleBreadcrumb> Logger
 @inject ActiveTeamState ActiveTeam
-@inject TeamService TeamService
-@inject AuthenticationStateProvider AuthenticationStateProvider
 @implements IDisposable
 
 <div class="indx-console-header">
@@ -18,17 +17,6 @@
         <div class="indx-console-trailing">@Trailing</div>
     }
 </div>
-
-<Modal @bind-Open="_newTeamOpen" Title="New team" Description="A team owns datasets and the people who can work on them.">
-    <div class="indx-console-dialog">
-        <InputField Label="Team name" @bind-Value="_newTeamName" @oninput="e => _newTeamName = e.Value?.ToString() ?? string.Empty"
-                    @onkeydown="OnNewTeamKeyDown" Error="@_newTeamError" IsValid="@(_newTeamError == null)" />
-        <div class="indx-console-dialog-actions">
-            <Button Variant="ghost" Size="micro" @onclick="() => _newTeamOpen = false">Cancel</Button>
-            <Button Variant="primary" Size="micro" @onclick="CreateTeam" disabled="@string.IsNullOrWhiteSpace(_newTeamName)">Create team</Button>
-        </div>
-    </div>
-</Modal>
 
 <Modal @bind-Open="_newDatasetOpen" Title="New dataset" Description="A dataset holds your JSON documents and search index.">
     <div class="indx-console-dialog">
@@ -47,49 +35,27 @@
     [Parameter] public string? Dataset { get; set; }
     /// <summary>All datasets of the team, for the dataset crumb's switcher.</summary>
     [Parameter] public IReadOnlyList<string> Siblings { get; set; } = [];
-    /// <summary>A trailing, unlinked step for a sub-page ("Settings").</summary>
+    /// <summary>The page's name, unlinked, for a team page other than the datasets ("Observr", "Settings").</summary>
     [Parameter] public string? Page { get; set; }
     /// <summary>Shown directly after the trail, left-aligned (the dataset's state chip).</summary>
     [Parameter] public RenderFragment? Trailing { get; set; }
 
     private List<Breadcrumbs.BreadcrumbItem> _items = new();
-    private string _userId = "";
-
-    private bool _newTeamOpen;
-    private string _newTeamName = "";
-    private string? _newTeamError;
 
     private bool _newDatasetOpen;
     private string _newDatasetName = "";
     private string? _newDatasetError;
 
-    private static readonly RenderFragment<int> IconTeam = size => @<UserGroup Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> IconDataset = size => @<Database Size="size" Color="currentColor" />;
 
-    protected override async Task OnInitializedAsync()
-    {
-        ActiveTeam.OnChange += OnTeamsChanged;
-        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
-        _userId = authState.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
-    }
+    protected override void OnInitialized() => ActiveTeam.OnChange += OnTeamsChanged;
     protected override void OnParametersSet() => Build();
     private async void OnTeamsChanged() { Build(); await InvokeAsync(StateHasChanged); }
     public void Dispose() => ActiveTeam.OnChange -= OnTeamsChanged;
 
     private void Build()
     {
-        var teams = ActiveTeam.Teams.Select(t => new SelectField.SelectOption(t.Team.Name, t.Team.Name)).ToList();
-        _items = new()
-        {
-            new Breadcrumbs.BreadcrumbItem("team", TeamName)
-            {
-                Href = TeamRoutes.Team(TeamName),
-                Icon = IconTeam,
-                Switcher = new Breadcrumbs.BreadcrumbSwitcher("Switch team", TeamName, teams,
-                    EventCallback.Factory.Create<string>(this, name => NavigationManager.NavigateTo(TeamRoutes.Team(name))))
-                { Action = new Breadcrumbs.BreadcrumbAction("New team…", EventCallback.Factory.Create(this, OpenNewTeam)) },
-            },
-        };
+        _items = new();
         if (Dataset != null)
         {
             var datasets = Siblings.Select(d => new SelectField.SelectOption(d, d)).ToList();
@@ -102,34 +68,9 @@
                 { Action = new Breadcrumbs.BreadcrumbAction("New dataset…", EventCallback.Factory.Create(this, OpenNewDataset)) },
             });
         }
-        if (Page != null) _items.Add(new Breadcrumbs.BreadcrumbItem("page", Page));
-    }
-
-    // ── New team ────────────────────────────────────────────────────────────
-
-    // An EventCallback from the trail, so this component re-renders after it and the modal shows.
-    private void OpenNewTeam()
-    {
-        _newTeamName = ""; _newTeamError = null; _newTeamOpen = true;
-    }
-
-    private async Task OnNewTeamKeyDown(KeyboardEventArgs e)
-    {
-        if (e.Key == "Enter") await CreateTeam();
-    }
-
-    private async Task CreateTeam()
-    {
-        if (string.IsNullOrWhiteSpace(_newTeamName) || _userId.Length == 0) return;
-        _newTeamError = null;
-        try
-        {
-            var team = await TeamService.CreateTeamAsync(_newTeamName, _userId);
-            _newTeamOpen = false;
-            await ActiveTeam.ReloadAsync();
-            NavigationManager.NavigateTo(TeamRoutes.Team(team.Name));
-        }
-        catch (TeamService.TeamException ex) { _newTeamError = ex.Message; }
+        else if (Page != null) _items.Add(new Breadcrumbs.BreadcrumbItem("page", Page));
+        else _items.Add(new Breadcrumbs.BreadcrumbItem("datasets", "Datasets") { Href = TeamRoutes.Team(TeamName), Icon = IconDataset });
+        if (Dataset != null && Page != null) _items.Add(new Breadcrumbs.BreadcrumbItem("page", Page));
     }
 
     // ── New dataset ─────────────────────────────────────────────────────────
