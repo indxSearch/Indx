@@ -970,7 +970,9 @@ a.btn-danger:hover {
 .indx-table thead {
     position: sticky;
     top: 0;
-    z-index: 1;
+    /* Above the body's sticky first column (StickyFirstColumn, z-index 1), which otherwise paints
+       over the header's first cell as the rows scroll under it: equal z-index, later in the tree. */
+    z-index: 3;
 }
 
 .indx-table thead tr {
