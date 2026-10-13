@@ -32,7 +32,7 @@
         {
             @Header.Breadcrumb
         }
-        else
+        else if (_pageCrumb.Count > 0)
         {
             <Breadcrumbs Items="_pageCrumb" Size="micro" Overflow="truncate" />
         }
@@ -143,7 +143,8 @@
     // The fallback trail when no page has set one. For console URLs it is read off the URL —
     // the dataset or the page, linked but without a switcher — so the hop between console pages
     // (the island is rebuilt, and the new page sets its trail only after resolving the team)
-    // shows the right name in the gap rather than a placeholder. Other pages get one unlinked crumb.
+    // shows the right name in the gap rather than a placeholder. Areas with a column (admin,
+    // account) get one unlinked crumb; the team's own pages get none.
     private List<Breadcrumbs.BreadcrumbItem> PageCrumb()
     {
         var path = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
@@ -156,9 +157,8 @@
                 var dataset = Uri.UnescapeDataString(seg[3]);
                 return [new("dataset", dataset) { Href = TeamRoutes.Dataset(team, dataset), Icon = _iconDatabase }];
             }
-            if (seg.Length >= 3 && seg[2] == "settings") return [new("page", "Settings")];
-            if (seg.Length >= 3 && seg[2] == "observr") return [new("page", "Observr")];
-            return [new("datasets", "Datasets") { Href = TeamRoutes.Team(team), Icon = _iconDatabase }];
+            // The team's own pages have no column and no step; the switcher at the right names the team.
+            return [];
         }
         (string label, RenderFragment<int> icon) = path switch
         {
@@ -168,8 +168,9 @@
             var p when p.StartsWith("account/") => ("Account", _iconUser),
             var p when p.StartsWith("admin") => ("Admin", _iconInstance),
             var p when p.StartsWith("swagger") => ("Swagger", _iconApi),
-            _ => ("Datasets", _iconDatabase),
+            _ => ("", _iconDatabase),
         };
+        if (label.Length == 0) return [];
         return [new Breadcrumbs.BreadcrumbItem("page", label) { Icon = icon }];
     }
 }

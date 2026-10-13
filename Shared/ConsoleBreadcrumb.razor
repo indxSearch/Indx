@@ -1,6 +1,7 @@
 @* The console's trail, rendered INSIDE THE HEADER — the pages hand it up through HeaderState.
-   It says where you are inside the team: [dataset ▾] on a dataset page, "Datasets" on the team
-   page, the page's name on its other pages (Observr, Settings). The team itself is not a step:
+   It says where you are inside the team: [dataset ▾] on a dataset page, and nothing on the team's
+   own pages (Datasets, Observr, Settings), which have no column and need no step: the team at the
+   header's right and the page's own title say it. The team itself is not a step:
    it is the switcher at the header's right (TeamSwitcher), since the console works with one team
    at a time. The dataset's caret switches to a sibling or offers "New dataset…", which opens a
    small name dialog. Built on the systm Breadcrumbs; this only knows the routes and the lists. *@
@@ -11,7 +12,10 @@
 @implements IDisposable
 
 <div class="indx-console-header">
-    <Breadcrumbs Items="_items" Size="micro" Overflow="truncate" />
+    @if (_items.Count > 0)
+    {
+        <Breadcrumbs Items="_items" Size="micro" Overflow="truncate" />
+    }
     @if (Trailing != null)
     {
         <div class="indx-console-trailing">@Trailing</div>
@@ -35,7 +39,7 @@
     [Parameter] public string? Dataset { get; set; }
     /// <summary>All datasets of the team, for the dataset crumb's switcher.</summary>
     [Parameter] public IReadOnlyList<string> Siblings { get; set; } = [];
-    /// <summary>The page's name, unlinked, for a team page other than the datasets ("Observr", "Settings").</summary>
+    /// <summary>A trailing, unlinked step under the dataset. On a team page it is not shown.</summary>
     [Parameter] public string? Page { get; set; }
     /// <summary>Shown directly after the trail, left-aligned (the dataset's state chip).</summary>
     [Parameter] public RenderFragment? Trailing { get; set; }
@@ -68,8 +72,6 @@
                 { Action = new Breadcrumbs.BreadcrumbAction("New dataset…", EventCallback.Factory.Create(this, OpenNewDataset)) },
             });
         }
-        else if (Page != null) _items.Add(new Breadcrumbs.BreadcrumbItem("page", Page));
-        else _items.Add(new Breadcrumbs.BreadcrumbItem("datasets", "Datasets") { Href = TeamRoutes.Team(TeamName), Icon = IconDataset });
         if (Dataset != null && Page != null) _items.Add(new Breadcrumbs.BreadcrumbItem("page", Page));
     }
 
