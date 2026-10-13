@@ -98,7 +98,7 @@
         </ChildContent>
         <Composer>
             <Composer Value="@_draft" ValueChanged="v => _draft = v" OnSend="SendAsync" Streaming="@_running" Disabled="@(!_canAsk)"
-                      Placeholder="@(_canAsk ? (_ctx.HasDataset ? $"Ask about {_ctx.DataSetName}…" : $"Ask about {_ctx.TeamName}…") : "Editors can ask")" Icon="_iconObservr" />
+                      Placeholder="@(_canAsk ? (_ctx.HasDataset ? $"Ask about {_ctx.DataSetName}…" : $"Ask about {_ctx.TeamName}…") : "Editors can ask")" Icon="_iconComposer" />
         </Composer>
     </ChatPanel>
 }
@@ -122,6 +122,9 @@
     private string? _loadedFor;
 
     private static readonly RenderFragment<int> _iconObservr = size => @<Observr Size="size" Color="currentColor" />;
+    /// <summary>The composer's icon at 14px, as in the header and the message heads. The Composer asks
+    /// for 21, which suits the default AI agent (seven dots) but makes the solid Observr glyph loom.</summary>
+    private static readonly RenderFragment<int> _iconComposer = _ => @<Observr Size="14" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconClose = size => @<ChevronRight Size="size" Color="currentColor" />;
 
     protected override async Task OnInitializedAsync()
