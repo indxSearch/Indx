@@ -1,6 +1,8 @@
 .ofl { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; max-width: 860px; }
-.ofl-item { display: flex; flex-direction: column; gap: 8px; padding: 16px 0; border-bottom: 1px solid var(--lv2); }
-.ofl-item:first-child { padding-top: 4px; }
+.ofl-item { display: flex; flex-direction: column; gap: 8px; padding: 16px; margin: 0 -16px; border-bottom: 1px solid var(--lv2); border-radius: var(--radius); }
+/* An open finding waits for a decision: lifted one level, so it stands out from the history. */
+.ofl-item--open { background: var(--lv1); border-bottom-color: transparent; margin-bottom: 4px; }
+.ofl-item--open .ofl-text { color: var(--lv8); }
 .ofl-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
 .ofl-title { font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
 .ofl-where { display: inline-flex; align-items: center; gap: 2px; font: var(--text-xs); color: var(--lv5); }

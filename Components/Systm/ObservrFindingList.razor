@@ -13,7 +13,7 @@ else
     <ol class="ofl">
         @foreach (var f in Findings)
         {
-            <li class="ofl-item">
+            <li class="ofl-item @(f.Status == ObservrFinding.Open ? "ofl-item--open" : null)">
                 <div class="ofl-head">
                     <span class="ofl-title">@f.Title</span>
                     <span class="ofl-where">
@@ -22,10 +22,8 @@ else
                     </span>
                     <span class="ofl-spacer"></span>
                     <span class="ofl-time"><TimeAgo Value="f.CreatedUtc" TooltipPosition="left" /></span>
-                    @if (f.Status != ObservrFinding.Open)
-                    {
-                        <Chip Color="var(--lv2)" TextColor="var(--lv6)">@(f.Proposals.Count == 0 ? "read" : f.Status)</Chip>
-                    }
+                    @{ var status = f.Status == ObservrFinding.Open ? (f.Proposals.Count == 0 ? "unread" : "open") : f.Proposals.Count == 0 ? "read" : f.Status; }
+                    <Chip Color="@StatusColor(status)" TextColor="@StatusText(status)">@status</Chip>
                 </div>
                 <p class="ofl-text">@f.Answer</p>
                 @if (f.Proposals.Count > 0)
@@ -82,4 +80,20 @@ else
     [Parameter] public long Busy { get; set; }
     [Parameter] public EventCallback<(ObservrFinding Finding, bool Yes)> OnDecide { get; set; }
     [Parameter] public string Empty { get; set; } = "Nothing yet.";
+
+    // Decided ones in the chip colours the console uses elsewhere; an open one in the blue of
+    // Observr's badge, so the eye finds what still wants a decision.
+    private static string StatusColor(string status) => status switch
+    {
+        "accepted" => "var(--CTeal)",
+        "declined" => "var(--CWarning)",
+        "open" or "unread" => "var(--CPureBlue)",
+        _ => "var(--lv2)",
+    };
+    private static string StatusText(string status) => status switch
+    {
+        "open" or "unread" => "#ffffff",
+        "read" => "var(--lv6)",
+        _ => "#080809",
+    };
 }
