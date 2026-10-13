@@ -80,7 +80,43 @@
                     }
                     else
                     {
-                        @* The answers' door. The judge is Jev whichever door; its own choice is below. *@
+                        @* Two keys: one for the decisions (the judge on each typing pause), one for the
+                           answers. Both OpenRouter: one key serves both, and the decisions key may be left empty. *@
+                        <h4 class="soa-admin-head">Decisions</h4>
+                        <SelectField Label="The judge" Options="_judgeOptions" Value="@_judgeProvider" ValueChanged="@(v => _judgeProvider = v ?? "openrouter")" />
+                        <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">
+                            @if (_judgeProvider == "decisions")
+                            {
+                                <text>OpenAI's Decisions API in place of Jev: the same questions, far more decided. The thresholds were measured on Jev; Observr's replay tunes them per dataset.</text>
+                            }
+                            else
+                            {
+                                <text>Jev, TypeSafe's decision model, is served on OpenRouter and by TypeSafe directly.</text>
+                            }
+                        </p>
+                        @if (_judgeProvider == "openrouter" && _provider == "openrouter")
+                        {
+                            <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">Uses the answers' OpenRouter key below unless one is set here.</p>
+                        }
+                        <InputField Label="@JudgeKeyLabel" type="password" autocomplete="off" @bind-Value="_judgeKey"
+                                    placeholder="@(_judgeKeySaved && !_removeJudgeKey ? "Saved; type to replace" : JudgeKeyPlaceholder)" />
+                        <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">
+                            @if (_judgeKeySaved && !_removeJudgeKey)
+                            {
+                                <text>A decisions key is saved.</text>
+                                <Button Variant="ghost" Size="micro" @onclick="() => _removeJudgeKey = true">Remove key</Button>
+                            }
+                            else if (_removeJudgeKey)
+                            {
+                                <text>The decisions key will be removed when you save.</text>
+                            }
+                            else if (!(_judgeProvider == "openrouter" && _provider == "openrouter"))
+                            {
+                                <text>Required: Search or ask does not run without the judge.</text>
+                            }
+                        </p>
+
+                        <h4 class="soa-admin-head">Answers</h4>
                         <SelectField Label="Answers and filters" Options="_providerOptions" Value="@_provider" ValueChanged="@(v => _provider = v ?? "openrouter")" />
                         <InputField Label="@KeyLabel" type="password" autocomplete="off" @bind-Value="_searchOrAskKey"
                                     placeholder="@(_searchOrAskKeySaved && !_removeSearchOrAskKey ? "Saved; type to replace" : KeyPlaceholder)" />
@@ -96,14 +132,14 @@
                             }
                             else
                             {
-                                <text>Without a key Search or ask cannot run; nothing is sent anywhere.</text>
+                                <text>Required: without a key Search or ask cannot run; nothing is sent anywhere.</text>
                             }
                         </p>
                         @if (_provider == "openrouter")
                         {
                             <ToggleSwitch Label="Keep requests in the EU" @bind-Checked="_euRouting" />
                             <p style="font: var(--text-xs); color: var(--lv4); margin: -4px 0 0 48px;">
-                                OpenRouter's EU endpoint: requests are processed in the EU and go only to providers there. A model with no EU provider is refused rather than routed out.
+                                OpenRouter's EU endpoint, for the decisions and the answers alike: requests are processed in the EU and go only to providers there. A model with no EU provider is refused rather than routed out.
                             </p>
                         }
                         @if (_provider == "openai")
@@ -123,35 +159,6 @@
                             <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">
                                 Costs in the statistics are estimated from the tokens at list prices for the models we know; OpenRouter reports the real cost.
                             </p>
-                        }
-
-                        <SelectField Label="The judge, Jev" Options="_judgeOptions" Value="@_judgeProvider" ValueChanged="@(v => _judgeProvider = v ?? "openrouter")" />
-                        @if (_judgeProvider == "typesafe" || _provider != "openrouter")
-                        {
-                            <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">
-                                Jev is served on OpenRouter and by TypeSafe only, so with the answers elsewhere it needs a key of its own. Search or ask does not run without the judge.
-                            </p>
-                            <InputField Label="@(_judgeProvider == "typesafe" ? "TypeSafe key" : "OpenRouter key for the judge")" type="password" autocomplete="off" @bind-Value="_judgeKey"
-                                        placeholder="@(_judgeKeySaved && !_removeJudgeKey ? "Saved; type to replace" : "")" />
-                            <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">
-                                @if (_judgeKeySaved && !_removeJudgeKey)
-                                {
-                                    <text>A judge key is saved.</text>
-                                    <Button Variant="ghost" Size="micro" @onclick="() => _removeJudgeKey = true">Remove key</Button>
-                                }
-                                else if (_removeJudgeKey)
-                                {
-                                    <text>The judge key will be removed when you save; Search or ask then stops.</text>
-                                }
-                                else
-                                {
-                                    <text>Required: without a judge key Search or ask cannot run.</text>
-                                }
-                            </p>
-                        }
-                        else
-                        {
-                            <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">The judge uses the key above.</p>
                         }
                     }
                 </div>
@@ -218,9 +225,12 @@
     ];
     private static readonly IEnumerable<SelectField.SelectOption> _judgeOptions =
     [
-        new("Through OpenRouter", "openrouter"),
-        new("Through TypeSafe directly", "typesafe"),
+        new("Jev, through OpenRouter", "openrouter"),
+        new("Jev, through TypeSafe directly", "typesafe"),
+        new("OpenAI's Decisions API", "decisions"),
     ];
+    private string JudgeKeyLabel => _judgeProvider switch { "typesafe" => "TypeSafe key", "decisions" => "OpenAI key", _ => "OpenRouter key for the decisions" };
+    private string JudgeKeyPlaceholder => _judgeProvider switch { "decisions" => "sk-…", "typesafe" => "", _ => "sk-or-…" };
     private string KeyLabel => _provider switch { "anthropic" => "Anthropic key", "openai" => "API key", _ => "OpenRouter key" };
     private string KeyPlaceholder => _provider switch { "anthropic" => "sk-ant-…", "openai" => "", _ => "sk-or-…" };
     private (string Answer, string Fast, string Filter) _defaults => IndxServer.Services.SearchOrAsk.ModelPrices.DefaultModels(_provider);

@@ -15,13 +15,18 @@ namespace IndxServer.Services.SearchOrAsk
         public const string Anthropic = "anthropic";
         /// <summary>The judge through TypeSafe's own endpoint, with their key.</summary>
         public const string TypeSafe = "typesafe";
+        /// <summary>The judge as OpenAI's Decisions API (gpt-6-luna) instead of Jev: the same named
+        /// questions answered with a probability, far more decided (Notes/search-or-ask.md, "The
+        /// same run judged by OpenAI's Decisions API"); the thresholds were measured on Jev.</summary>
+        public const string OpenAiDecisions = "decisions";
 
         public static readonly string[] Answer = [OpenRouter, OpenAi, Anthropic];
-        public static readonly string[] Judge = [OpenRouter, TypeSafe];
+        public static readonly string[] Judge = [OpenRouter, TypeSafe, OpenAiDecisions];
 
         public const string OpenRouterGlobal = "https://openrouter.ai/api/v1";
         public const string OpenRouterEu = "https://eu.openrouter.ai/api/v1";
         public const string TypeSafeJudge = "https://api.typesafe.ai/v1/systemone";
+        public const string OpenAiDecisionsEndpoint = "https://api.openai.com/v1/decisions";
         public const string OpenAiDefault = "https://api.openai.com/v1";
         public const string AnthropicMessages = "https://api.anthropic.com/v1/messages";
 
@@ -31,6 +36,7 @@ namespace IndxServer.Services.SearchOrAsk
             OpenAi => "the OpenAI-compatible endpoint",
             Anthropic => "Anthropic",
             TypeSafe => "TypeSafe",
+            OpenAiDecisions => "OpenAI",
             _ => "OpenRouter",
         };
     }
@@ -101,8 +107,18 @@ namespace IndxServer.Services.SearchOrAsk
                 SearchOrAskProviders.Anthropic => SearchOrAskProviders.AnthropicMessages,
                 _ => Pick(o.BaseUrl, c.BaseUrl, SearchOrAskProviders.OpenAiDefault).TrimEnd('/'),
             };
-            var judgeEndpoint = judgeProvider == SearchOrAskProviders.TypeSafe ? SearchOrAskProviders.TypeSafeJudge : openRouter + "/systemone";
-            var judgeModel = judgeProvider == SearchOrAskProviders.TypeSafe ? o.TypeSafeJudgeModel : o.JudgeModel;
+            var judgeEndpoint = judgeProvider switch
+            {
+                SearchOrAskProviders.TypeSafe => SearchOrAskProviders.TypeSafeJudge,
+                SearchOrAskProviders.OpenAiDecisions => SearchOrAskProviders.OpenAiDecisionsEndpoint,
+                _ => openRouter + "/systemone",
+            };
+            var judgeModel = judgeProvider switch
+            {
+                SearchOrAskProviders.TypeSafe => o.TypeSafeJudgeModel,
+                SearchOrAskProviders.OpenAiDecisions => o.DecisionsModel,
+                _ => o.JudgeModel,
+            };
 
             var (answer, fast, filter) = ModelPrices.DefaultModels(provider);
             return new SearchOrAskSetup(provider, answerKey, answerBase, judgeProvider, judgeKey, judgeEndpoint, judgeModel,

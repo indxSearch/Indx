@@ -21,7 +21,7 @@ namespace IndxServer.Services.SearchOrAsk
         public string? BaseUrl { get; set; }
         /// <summary>OpenRouter's EU endpoint, where requests stay in the EU.</summary>
         public bool? EuRouting { get; set; }
-        /// <summary>openrouter or typesafe: Jev's door.</summary>
+        /// <summary>openrouter or typesafe (Jev), or openai (the Decisions API).</summary>
         public string? JudgeProvider { get; set; }
         /// <summary>The judge's own key, when its door is not the answer provider's.</summary>
         public string? JudgeApiKey { get; set; }
@@ -34,6 +34,10 @@ namespace IndxServer.Services.SearchOrAsk
         public string JudgeModel { get; set; } = "typesafe/jev-1.13";
         /// <summary>TypeSafe's spelling of the same pinned model, on their own endpoint.</summary>
         public string TypeSafeJudgeModel { get; set; } = "jev-1.13.0";
+        /// <summary>OpenAI's Decisions API model, when the judge is that instead of Jev.</summary>
+        public string DecisionsModel { get; set; } = "gpt-6-luna";
+        /// <summary>USD per million input tokens on the Decisions API, the only thing it bills.</summary>
+        public double DecisionsPricePerMillion { get; set; } = 0.10;
         /// <summary>The model a dataset's <c>answers: best</c> writes with, the default. Measured on
         /// the docs (11 Oct 2026): first words after 3.5 to 5 s, about $0.018 an answer.</summary>
         public string AnswerModel { get; set; } = "anthropic/claude-sonnet-5.5";

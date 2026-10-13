@@ -101,6 +101,7 @@ namespace IndxServer.Services.SearchOrAsk
         {
             var s = setup.Current;
             if (!s.JudgeAvailable) throw new SearchOrAskModelException(409, "No key for the judge");
+            if (s.JudgeProvider == SearchOrAskProviders.OpenAiDecisions) return await DecisionsAsync(s, state, questions, ct);
             var body = new JsonObject
             {
                 ["model"] = s.JudgeModel,
@@ -134,6 +135,51 @@ namespace IndxServer.Services.SearchOrAsk
             }
             double? cost = parsed?["usage"]?["cost"] is JsonValue c && c.TryGetValue<double>(out var usd) ? usd : null;
             return new JudgeAnswer(probabilities, cost);
+        }
+
+        /// <summary>OpenAI's Decisions API as the judge (JevProbe/Decisions.cs is the measured
+        /// client): the state goes as text, each question as a predicate with the recipe's two
+        /// criteria written into its instruction, the answers come back as an array by name.</summary>
+        private async Task<JudgeAnswer> DecisionsAsync(SearchOrAskSetup s, JsonObject state, IReadOnlyDictionary<string, JsonObject> questions, CancellationToken ct)
+        {
+            var body = new JsonObject
+            {
+                ["model"] = s.JudgeModel,
+                ["input"] = state.ToJsonString(),
+                ["questions"] = new JsonArray(questions.Select(q => (JsonNode)DecisionsPredicate(q.Key, q.Value)).ToArray()),
+            };
+            using var response = await Client(s.JudgeKey).PostAsync(s.JudgeEndpoint,
+                new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"), ct);
+            var text = await response.Content.ReadAsStringAsync(ct);
+            if (!response.IsSuccessStatusCode)
+                throw new SearchOrAskModelException((int)response.StatusCode, $"Judge answered {(int)response.StatusCode}");
+            return ParseDecisions(text, questions.Keys, options.DecisionsPricePerMillion);
+        }
+
+        /// <summary>A recipe question (Jev's noul: instructions and two criteria) as a Decisions
+        /// predicate, the criteria written into the one instruction in the same words.</summary>
+        public static JsonObject DecisionsPredicate(string name, JsonObject noul) => new()
+        {
+            ["name"] = name,
+            ["type"] = "predicate",
+            ["instructions"] = $"{noul["instructions"]?.GetValue<string>()}\n\nTrue when: {noul["criteria"]?["true"]?.GetValue<string>()}\n\nFalse when: {noul["criteria"]?["false"]?.GetValue<string>()}",
+        };
+
+        public static JudgeAnswer ParseDecisions(string json, IEnumerable<string> questions, double pricePerMillion)
+        {
+            var parsed = JsonNode.Parse(json);
+            var probabilities = new Dictionary<string, double>();
+            if (parsed?["answers"] is JsonArray answers)
+                foreach (var q in questions)
+                    foreach (var answer in answers)
+                        if (answer?["name"]?.GetValue<string>() == q && answer["probability"] is JsonValue v && v.TryGetValue<double>(out var p))
+                        {
+                            probabilities[q] = p;
+                            break;
+                        }
+            // The Decisions API bills input tokens only; the usage block names them one of two ways.
+            var tokens = (parsed?["usage"]?["input_tokens"] ?? parsed?["usage"]?["prompt_tokens"]) is JsonValue t && t.TryGetValue<long>(out var n) ? n : (long?)null;
+            return new JudgeAnswer(probabilities, tokens * pricePerMillion / 1_000_000);
         }
 
         // ── The answers: dispatch by provider ────────────────────────────────
