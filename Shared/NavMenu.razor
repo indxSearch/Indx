@@ -100,6 +100,7 @@
         _instanceName = InstanceSettingsService.Load().InstanceName;
         NavigationManager.LocationChanged += OnLocationChanged;
         Header.Changed += OnHeaderChanged;
+        Subscription.Changed += OnHeaderChanged;
         _pageCrumb = PageCrumb();
     }
 
@@ -121,6 +122,7 @@
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
         Header.Changed -= OnHeaderChanged;
+        Subscription.Changed -= OnHeaderChanged;
     }
 
     /// <summary>The chip beside the mark: the instance's standing. Nothing until the portal has

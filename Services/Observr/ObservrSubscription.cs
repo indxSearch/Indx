@@ -80,8 +80,12 @@ namespace IndxServer.Services.Observr
             }
         }
 
-        /// <summary>Starts a check in the background when none has answered yet: the menu calls this
-        /// on every page, so the first page after a start may not show Observr and the next does.</summary>
+        /// <summary>Raised when a background check has answered, so the header's button and chip,
+        /// which read <see cref="Current"/>, can show on the page that started it.</summary>
+        public event Action? Changed;
+
+        /// <summary>Starts a check in the background when none has answered yet: the header calls
+        /// this on every page and redraws on <see cref="Changed"/>.</summary>
         public void EnsureChecked()
         {
             if (Current.Known || Token() == null || Interlocked.Exchange(ref _refreshing, 1) == 1) return;
@@ -89,6 +93,7 @@ namespace IndxServer.Services.Observr
             {
                 try { await GetAsync(); }
                 finally { Interlocked.Exchange(ref _refreshing, 0); }
+                if (Current.Known) Changed?.Invoke();
             });
         }
 

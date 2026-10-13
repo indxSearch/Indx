@@ -122,11 +122,13 @@
         Agent.Changed += OnAgentChanged;
         Nav.LocationChanged += OnLocationChanged;
         ActiveTeam.OnChange += OnTeamChanged;
+        Subscription.Changed += OnTeamChanged;
         Resolve();
     }
 
     public void Dispose()
     {
+        Subscription.Changed -= OnTeamChanged;
         Agent.Changed -= OnAgentChanged;
         Nav.LocationChanged -= OnLocationChanged;
         ActiveTeam.OnChange -= OnTeamChanged;

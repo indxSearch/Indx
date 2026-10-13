@@ -25,7 +25,9 @@
 
     protected override void OnInitialized()
     {
-        // The first page after a start asks the portal in the background; the button appears on the next.
+        // The first page after a start asks the portal in the background and the button appears
+        // when it answers.
+        Subscription.Changed += OnChanged;
         Subscription.EnsureChecked();
         Agent.Changed += OnChanged;
         ActiveTeam.OnChange += OnChanged;
@@ -33,7 +35,7 @@
     }
 
     private void OnChanged() { Count(); _ = InvokeAsync(StateHasChanged); }
-    public void Dispose() { Agent.Changed -= OnChanged; ActiveTeam.OnChange -= OnChanged; }
+    public void Dispose() { Subscription.Changed -= OnChanged; Agent.Changed -= OnChanged; ActiveTeam.OnChange -= OnChanged; }
 
     private void Count() => _openCount = ActiveTeam.ActiveTeamId is { } id ? Findings.CountOpen([id.ToString()]) : 0;
 }
