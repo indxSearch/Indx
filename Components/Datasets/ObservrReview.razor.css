@@ -1,6 +1,6 @@
 .obs { margin: 4px 0 12px; padding: 12px 14px; background: var(--lv1); border-radius: var(--radius); display: flex; flex-direction: column; gap: 10px; }
 .obs-head { display: flex; align-items: center; gap: 8px; }
-.obs-icon { display: inline-flex; color: var(--CPureBlue); }
+.obs-icon { display: inline-flex; color: var(--lv6); }
 .obs-title { font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
 .obs-spacer { flex: 1; }
 .obs-wait { margin: 0; font: var(--text-sm); color: var(--lv5); }

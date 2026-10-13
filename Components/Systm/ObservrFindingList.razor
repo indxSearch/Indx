@@ -81,18 +81,19 @@ else
     [Parameter] public EventCallback<(ObservrFinding Finding, bool Yes)> OnDecide { get; set; }
     [Parameter] public string Empty { get; set; } = "Nothing yet.";
 
-    // Decided ones in the chip colours the console uses elsewhere; an open one in the blue of
-    // Observr's badge, so the eye finds what still wants a decision.
+    // Decided ones in the chip colours the console uses elsewhere; an open one inverted (ink on
+    // the page's darkest or lightest level), so the eye finds what still wants a decision. Observr's
+    // own colour is not chosen yet (Anders, 13 Oct 2026): monochrome until it is.
     private static string StatusColor(string status) => status switch
     {
         "accepted" => "var(--CTeal)",
         "declined" => "var(--CWarning)",
-        "open" or "unread" => "var(--CPureBlue)",
+        "open" or "unread" => "var(--lv7)",
         _ => "var(--lv2)",
     };
     private static string StatusText(string status) => status switch
     {
-        "open" or "unread" => "#ffffff",
+        "open" or "unread" => "var(--lv0)",
         "read" => "var(--lv6)",
         _ => "#080809",
     };

@@ -1,5 +1,5 @@
 .tov-tabs { margin: 8px 0 16px; }
 .tov-greeting { display: flex; gap: 16px; align-items: flex-start; max-width: 760px; padding: 20px 22px; margin: 8px 0 20px; background: var(--lv1); border-radius: var(--radius); }
-.tov-greeting-icon { display: inline-flex; color: var(--CPureBlue); flex: none; margin-top: 2px; }
+.tov-greeting-icon { display: inline-flex; color: var(--lv6); flex: none; margin-top: 2px; }
 .tov-greeting-title { margin: 0 0 6px; font: var(--text-base); font-weight: var(--med); color: var(--lv8); }
 .tov-greeting-text { margin: 0 0 6px; font: var(--text-sm); line-height: 1.55; color: var(--lv6); }

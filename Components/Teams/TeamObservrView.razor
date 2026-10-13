@@ -117,7 +117,7 @@
                                 <span style="display:inline-flex; align-items:center; gap:4px;">
                                     @row.DataSetName
                                     <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" Href="@TeamRoutes.Dataset(Team.Name, row.DataSetName)" title="Open the dataset" aria-label="@($"Open {row.DataSetName}")" />
-                                    @if (row.Open > 0) { <Chip Color="var(--CPureBlue)" TextColor="#ffffff">@row.Open open</Chip> }
+                                    @if (row.Open > 0) { <Chip Color="var(--lv3)" TextColor="var(--lv8)">@row.Open open</Chip> }
                                 </span>
                             </td>
                             <td>
@@ -152,8 +152,10 @@
 
     private static List<Tabs.TabItem> TabItems(int on, int all, int open) =>
     [
-        new("Findings", "findings", DatasetIcons.Observr, Badge: open == 0 ? null : open.ToString(), BadgeTitle: $"{open} open", BadgeTone: "info"),
-        new($"Datasets", "datasets", DatasetIcons.Fields, Title: $"Observr is on for {on} of {all}", Badge: all == 0 ? null : $"{on} of {all} on", BadgeTone: "info"),
+        // The counts in the labels, not in badges: the badge tones are red and blue, and Observr is
+        // monochrome until its colour is chosen.
+        new(open == 0 ? "Findings" : $"Findings · {open} open", "findings", DatasetIcons.Observr),
+        new(all == 0 ? "Datasets" : $"Datasets · {on} of {all} on", "datasets", DatasetIcons.Fields, Title: $"Observr is on for {on} of {all} datasets"),
     ];
 
     private string TeamId => Team.Id.ToString();
