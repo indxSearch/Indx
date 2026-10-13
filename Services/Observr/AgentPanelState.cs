@@ -1,8 +1,8 @@
 namespace IndxServer.Services.Observr
 {
-    /// <summary>An action a tab hands to the Agent: a label for the thread, the ask to run, and
-    /// what to do after a Yes (reload the tab).</summary>
-    public sealed record AgentAction(string Label, Func<CancellationToken, Task<ObservrOutcome>> Ask, Func<Task>? OnApplied = null);
+    /// <summary>An action a tab hands to the Agent: a label for the thread, the ask to run, what to
+    /// do while a Yes is being applied (show the tab's progress) and after it (reload the tab).</summary>
+    public sealed record AgentAction(string Label, Func<CancellationToken, Task<ObservrOutcome>> Ask, Func<Task>? OnApplied = null, Func<Task>? OnApplying = null);
 
     /// <summary>
     /// Per-circuit state of the Agent panel (Notes/Anders/console-shell-plan-2026-10-13.md, stage 5):

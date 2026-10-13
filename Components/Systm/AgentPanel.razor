@@ -18,6 +18,7 @@
 @inject ObservrChat Chat
 @inject ObservrClient Observr
 @inject AuthenticationStateProvider AuthState
+@inject IJSRuntime JS
 
 @if (!Subscription.Visible || _ctx == null) { return; }
 
@@ -52,7 +53,7 @@
             @if (_open.Count > 0)
             {
                 <AssistantMessage Label="@(_open.Count == 1 ? "Observr found" : $"Observr found, {_open.Count} waiting")" Icon="_iconObservr" Class="agent-findings">
-                    <ObservrFindingList Findings="_open" Link="Link" CanDecide="_canDecide" Busy="_busy" OnDecide="d => DecideAsync(d.Finding, d.Yes)" Empty="" />
+                    <ObservrFindingList Findings="_open" Link="Link" CanDecide="_canDecide" Busy="_busy" OnDecide="d => DecideAsync(d.Finding, d.Yes, d.Only)" Empty="" />
                 </AssistantMessage>
             }
             @foreach (var t in _turns)
@@ -67,7 +68,7 @@
                         @ObservrMarkdown.Render(t.Text)
                         @if (t.FindingId is { } fid && _byId.TryGetValue(fid, out var finding) && finding.Status == ObservrFinding.Open)
                         {
-                            <ObservrFindingList Findings="@([finding])" Link="Link" CanDecide="_canDecide" Busy="_busy" OnDecide="d => DecideAsync(d.Finding, d.Yes)" Empty="" ProposalsOnly />
+                            <ObservrFindingList Findings="@([finding])" Link="Link" CanDecide="_canDecide" Busy="_busy" OnDecide="d => DecideAsync(d.Finding, d.Yes, d.Only)" Empty="" ProposalsOnly />
                         }
                         else if (t.FindingId is { } did && _byId.TryGetValue(did, out var decided))
                         {
@@ -101,7 +102,8 @@
     private List<ObservrTurn> _turns = [];
     private List<ObservrFinding> _open = [];
     private Dictionary<long, ObservrFinding> _byId = [];
-    private readonly Dictionary<long, Func<Task>> _onApplied = [];
+    private readonly Dictionary<long, AgentAction> _actions = [];
+    private int _scrolledFor = -1;
     private string _draft = "";
     private bool _running;
     private string _status = "";
@@ -132,6 +134,19 @@
         Agent.Changed -= OnAgentChanged;
         Nav.LocationChanged -= OnLocationChanged;
         ActiveTeam.OnChange -= OnTeamChanged;
+    }
+
+    /// <summary>The newest turn into view, whenever the thread grew or the panel opened. The call
+    /// is the element's own scrollIntoView, reached through its prototype: no script of our own.</summary>
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!Agent.IsOpen) { _scrolledFor = -1; return; }
+        var mark = _turns.Count * 2 + (_running ? 1 : 0);
+        if (mark == _scrolledFor) return;
+        _scrolledFor = mark;
+        try { await JS.InvokeVoidAsync("HTMLElement.prototype.scrollIntoView.call", _end, new { block = "end" }); }
+        catch (JSException) { }
+        catch (InvalidOperationException) { }
     }
 
     private void OnAgentChanged() => _ = InvokeAsync(async () =>
@@ -228,7 +243,7 @@
             var outcome = await action.Ask(CancellationToken.None);
             var text = outcome.Status == ObservrStatus.Ok && outcome.Answer != null ? outcome.Answer.Answer : ObservrText.Refusal(outcome, "to look at");
             Conversations.Add(_userId, _ctx.TeamId, _ctx.DatasetKey, ObservrTurn.Assistant, text, outcome.FindingId > 0 ? outcome.FindingId : null);
-            if (outcome.FindingId > 0 && action.OnApplied != null) _onApplied[outcome.FindingId] = action.OnApplied;
+            if (outcome.FindingId > 0 && (action.OnApplied != null || action.OnApplying != null)) _actions[outcome.FindingId] = action;
         }
         catch (Exception ex) { _error = ex.Message; }
         finally
@@ -239,18 +254,21 @@
         }
     }
 
-    private async Task DecideAsync(ObservrFinding f, bool yes)
+    private async Task DecideAsync(ObservrFinding f, bool yes, IReadOnlyList<int>? only)
     {
         if (_busy != 0) return;
         _busy = f.Id;
         _error = null;
+        _actions.TryGetValue(f.Id, out var action);
         try
         {
-            _error = await Task.Run(() => Observr.Decide(f.Id, yes));
-            if (_error == null && yes && _onApplied.Remove(f.Id, out var after)) await after();
+            if (yes && action?.OnApplying != null) await action.OnApplying();
+            _error = await Task.Run(() => Observr.Decide(f.Id, yes, only));
         }
         finally
         {
+            if (yes && action?.OnApplied != null) await action.OnApplied();
+            _actions.Remove(f.Id);
             _busy = 0;
             Load();
         }

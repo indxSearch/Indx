@@ -32,9 +32,14 @@ else
                 @if (f.Proposals.Count > 0)
                 {
                     <div class="ofl-proposals">
-                        @foreach (var p in f.Proposals)
+                        @foreach (var (p, i) in f.Proposals.Select((p, i) => (p, i)))
                         {
                             <div class="ofl-proposal">
+                                @if (Selectable(f))
+                                {
+                                    var index = i;
+                                    <Checkbox Checked="@(!_unticked.Contains((f.Id, index)))" CheckedChanged="v => Tick(f.Id, index, v)" Disabled="@(Busy == f.Id)" aria-label="Apply this proposal" />
+                                }
                                 <span class="ofl-label">@p.Label</span>
                                 @if (p.Field is { } change)
                                 {
@@ -54,12 +59,13 @@ else
                     <div class="ofl-actions">
                         @if (f.Proposals.Count == 0)
                         {
-                            <Button Variant="ghost" Size="micro" Loading="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, true))">Got it</Button>
+                            <Button Variant="ghost" Size="micro" Loading="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, true, null))">Got it</Button>
                         }
                         else
                         {
-                            <Button Variant="primary" Size="micro" Loading="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, true))">Yes</Button>
-                            <Button Variant="ghost" Size="micro" Disabled="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, false))">No</Button>
+                            var chosen = Chosen(f);
+                            <Button Variant="primary" Size="micro" Loading="@(Busy == f.Id)" Disabled="@(chosen.Count == 0)" @onclick="() => OnDecide.InvokeAsync((f, true, chosen))">@(Selectable(f) && chosen.Count < f.Proposals.Count ? $"Yes, {chosen.Count} of {f.Proposals.Count}" : "Yes")</Button>
+                            <Button Variant="ghost" Size="micro" Disabled="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, false, null))">No</Button>
                         }
                     </div>
                 }
@@ -81,7 +87,16 @@ else
     [Parameter] public bool ShowTeam { get; set; }
     [Parameter] public bool CanDecide { get; set; }
     [Parameter] public long Busy { get; set; }
-    [Parameter] public EventCallback<(ObservrFinding Finding, bool Yes)> OnDecide { get; set; }
+    /// <summary>The decision, and for a Yes with several proposals which of them (by index); null
+    /// means all of them.</summary>
+    [Parameter] public EventCallback<(ObservrFinding Finding, bool Yes, IReadOnlyList<int>? Only)> OnDecide { get; set; }
+
+    /// <summary>A finding with several proposals lets the owner untick some before a Yes, as the
+    /// field review's rows did; every proposal starts ticked.</summary>
+    private readonly HashSet<(long, int)> _unticked = [];
+    private bool Selectable(ObservrFinding f) => CanDecide && f.Status == ObservrFinding.Open && f.Proposals.Count > 1;
+    private void Tick(long id, int index, bool on) { if (on) _unticked.Remove((id, index)); else _unticked.Add((id, index)); }
+    private List<int> Chosen(ObservrFinding f) => Enumerable.Range(0, f.Proposals.Count).Where(i => !_unticked.Contains((f.Id, i))).ToList();
     [Parameter] public string Empty { get; set; } = "Nothing yet.";
     /// <summary>Only the proposals and the decision: for a finding shown under the answer that
     /// made it (the Agent panel), where the text is already on the page.</summary>

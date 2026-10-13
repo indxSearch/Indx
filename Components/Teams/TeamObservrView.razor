@@ -85,7 +85,7 @@
     else
     {
         <ObservrFindingList Findings="_findings" Link="@(f => $"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" CanDecide="_canEdit" Busy="_busy"
-                            OnDecide="d => DecideAsync(d.Finding, d.Yes)"
+                            OnDecide="d => DecideAsync(d.Finding, d.Yes, d.Only)"
                             Empty="@(onCount == 0 ? "Nothing yet: Observr is on for none of the team's datasets. Switch some on under Datasets." : "Nothing yet. The first report comes the morning after a dataset is switched on; Send this week's summary under Datasets brings it now.")" />
     }
     }
@@ -216,10 +216,10 @@
         if (_rows != null) _rows[_rows.IndexOf(row)] = row with { Settings = s };
     }
 
-    private async Task DecideAsync(ObservrFinding f, bool yes)
+    private async Task DecideAsync(ObservrFinding f, bool yes, IReadOnlyList<int>? only)
     {
         _busy = f.Id;
-        try { await Task.Run(() => Observr.Decide(f.Id, yes)); }
+        try { await Task.Run(() => Observr.Decide(f.Id, yes, only)); }
         finally { _busy = 0; }
         await LoadAsync();
     }
