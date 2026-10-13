@@ -19,9 +19,12 @@
 @inject ObservrClient Observr
 @inject AuthenticationStateProvider AuthState
 
-@if (!Agent.IsOpen || !Subscription.Visible || _ctx == null) { return; }
+@if (!Subscription.Visible || _ctx == null) { return; }
 
-<aside class="shell-agent" aria-label="Agent">
+@* Always in the tree so the width can slide; the chat is built only while open. *@
+<aside class="shell-agent @(Agent.IsOpen ? "shell-agent--open" : null)" aria-label="Agent" aria-hidden="@(Agent.IsOpen ? null : "true")">
+@if (Agent.IsOpen)
+{
     <ChatPanel Class="agent-chat" Hints="false">
         <Header>
             <div class="agent-head">
@@ -88,6 +91,7 @@
                       Placeholder="@(_canAsk ? (_ctx.HasDataset ? $"Ask about {_ctx.DataSetName}…" : $"Ask about {_ctx.TeamName}…") : "Editors can ask")" Icon="_iconObservr" />
         </Composer>
     </ChatPanel>
+}
 </aside>
 
 @code {

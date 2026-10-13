@@ -295,10 +295,19 @@ a.btn-danger:hover {
     --side-width: 220px;
 }
 
+/* The window: the page (header over the shell) and, at the right, the Agent panel the window's
+   full height. The page takes what the panel leaves. */
 .layout {
     display: flex;
-    flex-direction: column;
+    align-items: stretch;
     min-height: 100vh;
+}
+
+.layout-page {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
 }
 
 .header {
@@ -309,15 +318,8 @@ a.btn-danger:hover {
     border-bottom: 1px solid var(--lv2);
 }
 
-/* The header's grid and the shell share one centred box: the column's width plus the page's
-   maximum, so on a wide screen the brand, the column, the trail and the content move together
-   and stay aligned. A page without a column centres its content in the same box. */
-.nav,
-.shell {
-    max-width: calc(var(--side-width) + var(--page-max));
-    margin: 0 auto;
-}
-
+/* The page goes all the way out; the content keeps its own maximum (below), and a page without
+   a column centres it. */
 .shell {
     flex: 1;
     display: flex;
@@ -330,18 +332,30 @@ a.btn-danger:hover {
     margin: 0 auto;
 }
 
-/* The Agent panel (stage 5): a column at the right, the content's height, sticky like the menu's. */
+/* The Agent panel (stage 5): the window's full height at the right, beside the page. Closed it has
+   no width; opening it pushes the page in, with a short slide. */
 .shell-agent {
-    width: 340px;
+    width: 0;
     flex: none;
     position: sticky;
     top: 0;
     align-self: flex-start;
     height: 100vh;
-    padding: 12px 12px 12px 0;
     box-sizing: border-box;
     display: flex;
     min-width: 0;
+    overflow: hidden;
+    transition: width 160ms ease-out;
+}
+
+.shell-agent--open {
+    width: 340px;
+    padding: 12px 12px 12px 0;
+}
+
+.shell-agent > * {
+    width: 328px;
+    flex: none;
 }
 
 /* The side column, where a page has sections of its own; it sticks under the header. */
@@ -631,8 +645,8 @@ a.btn-danger:hover {
         margin: 0 2px;
     }
 
-    /* The panel covers the content instead of sitting beside it. */
-    .shell-agent {
+    /* The panel covers the page instead of sitting beside it. */
+    .shell-agent--open {
         position: fixed;
         inset: 0 0 0 auto;
         width: min(340px, 100%);
@@ -641,6 +655,7 @@ a.btn-danger:hover {
         background: var(--lv0);
         padding: 8px;
     }
+    .shell-agent--open > * { width: 100%; }
 
     /* The column becomes a row above the content, scrolling sideways. */
     .shell {
