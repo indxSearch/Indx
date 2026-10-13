@@ -326,6 +326,11 @@ a.btn-danger:hover {
     box-sizing: border-box;
     background: var(--lv1);
     border-bottom: 1px solid var(--lv2);
+    /* Above the page: its menus open over the shell's sticky rows (the field table's header is
+       at 3), and the account controls' transform makes a stacking context of their own, so the
+       header needs one that outranks the page. Modals and tooltips sit far higher. */
+    position: relative;
+    z-index: 50;
 }
 
 /* The column sits at the window's left edge; the content is centred in what the column leaves,
