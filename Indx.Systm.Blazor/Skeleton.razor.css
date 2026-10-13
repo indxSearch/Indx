@@ -1,0 +1,36 @@
+@keyframes indx-skeleton-appear {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes indx-skeleton-pulse {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.4; }
+}
+
+.indx-skeleton {
+    display: block;
+    flex-shrink: 0;
+    max-width: 100%;
+    border-radius: 1px;
+    background: var(--lv2);
+    animation: indx-skeleton-pulse 2.4s ease-in-out var(--skeleton-delay, 0s) infinite;
+}
+
+.indx-skeleton--level3 {
+    background: var(--lv3);
+}
+
+/* Wait 0.15s, fade in over 0.2s, then pulse: a quick answer never shows a skeleton at all. */
+.indx-skeleton--appear {
+    animation:
+        indx-skeleton-appear 0.2s ease calc(0.15s + var(--skeleton-delay, 0s)) both,
+        indx-skeleton-pulse 2.4s ease-in-out calc(0.35s + var(--skeleton-delay, 0s)) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .indx-skeleton,
+    .indx-skeleton--appear {
+        animation: none;
+    }
+}
