@@ -33,6 +33,36 @@
         var onCount = _rows?.Count(r => r.Settings.Enabled) ?? 0;
         var openCount = _findings.Count(f => f.Status == ObservrFinding.Open);
     }
+    @if (_rows != null && onCount == 0 && _findings.Count == 0)
+    {
+        @* The first visit: nothing watched, nothing found. No tabs to an empty list; a greeting
+           that says what happens once a dataset is on, and the datasets right here to switch on. *@
+        <div class="tov-greeting">
+            <span class="tov-greeting-icon">@DatasetIcons.Observr(28)</span>
+            <div>
+                <h3 class="tov-greeting-title">Observr is not watching anything here yet</h3>
+                <p class="tov-greeting-text">
+                    Switch it on for a dataset and it reads that dataset's week every morning: what visitors searched for, what found
+                    nothing, what was chosen, what you changed. What is worth your attention lands in the Observr menu beside the bell,
+                    each with a proposal you say yes or no to. Nothing is sent before you switch a dataset on, and never a record or a visitor.
+                </p>
+                @if (!_canEdit)
+                {
+                    <p class="tov-greeting-text">An editor of this team switches it on.</p>
+                }
+            </div>
+        </div>
+        @if (_rows.Count == 0)
+        {
+            <p style="color: var(--lv5);">This team has no datasets yet.</p>
+        }
+        else
+        {
+            @DatasetsTable
+        }
+    }
+    else
+    {
     <div class="tov-tabs">
         <Tabs Items="@TabItems(onCount, _rows?.Count ?? 0, openCount)" Active="@_tab" ActiveChanged="@(v => _tab = v ?? "findings")" Size="micro" Variant="button" AriaLabel="Observr sections" />
     </div>
@@ -49,7 +79,30 @@
         }
         else
         {
-            <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" AriaLabel="Observr per dataset">
+            @DatasetsTable
+        }
+    }
+    else
+    {
+        <ObservrFindingList Findings="_findings" Link="@(f => $"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" CanDecide="_canEdit" Busy="_busy"
+                            OnDecide="d => DecideAsync(d.Finding, d.Yes)"
+                            Empty="@(onCount == 0 ? "Nothing yet: Observr is on for none of the team's datasets. Switch some on under Datasets." : "Nothing yet. The first report comes the morning after a dataset is switched on; Send this week's summary under Datasets brings it now.")" />
+    }
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Team Team { get; set; } = default!;
+    [Parameter] public string? Role { get; set; }
+    [Inject] private IConfiguration Configuration { get; set; } = default!;
+
+    private sealed record Row(string DataSetName, ObservrDatasetSettings Settings, int Open);
+
+    private string _tab = "findings";
+
+    /// <summary>The per-dataset settings, as a table: on the Datasets tab, and on the first visit right under the greeting.</summary>
+    private RenderFragment DatasetsTable => @<text>
+        <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" AriaLabel="Observr per dataset">
                 <thead>
                     <tr>
                         <th scope="col">Dataset</th><th scope="col">Observr</th><th scope="col">Reports</th><th scope="col">Buttons in the tabs</th><th scope="col"></th>
@@ -95,24 +148,7 @@
                 A daily report is sent every morning at @_digestHour:00 UTC, a weekly one on Mondays. Each report and each ask counts
                 against the licence's daily allowance.
             </p>
-        }
-    }
-    else
-    {
-        <ObservrFindingList Findings="_findings" Link="@(f => $"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" CanDecide="_canEdit" Busy="_busy"
-                            OnDecide="d => DecideAsync(d.Finding, d.Yes)"
-                            Empty="@(onCount == 0 ? "Nothing yet: Observr is on for none of the team's datasets. Switch some on under Datasets." : "Nothing yet. The first report comes the morning after a dataset is switched on; Send this week's summary under Datasets brings it now.")" />
-    }
-</div>
-
-@code {
-    [Parameter, EditorRequired] public Team Team { get; set; } = default!;
-    [Parameter] public string? Role { get; set; }
-    [Inject] private IConfiguration Configuration { get; set; } = default!;
-
-    private sealed record Row(string DataSetName, ObservrDatasetSettings Settings, int Open);
-
-    private string _tab = "findings";
+    </text>;
 
     private static List<Tabs.TabItem> TabItems(int on, int all, int open) =>
     [
