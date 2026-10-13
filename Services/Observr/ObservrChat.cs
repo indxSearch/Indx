@@ -78,7 +78,9 @@ namespace IndxServer.Services.Observr
                 foreach (var use in reply.ToolUses)
                 {
                     string content;
-                    if (use.Name == "propose")
+                    // A tool the service ran itself (propose, docs) comes with its result.
+                    if (use.Result != null) content = use.Result;
+                    else if (use.Name == "propose")
                         content = reply.Problem ?? "Recorded. Now answer the owner and say what you proposed.";
                     else
                     {
@@ -110,6 +112,7 @@ namespace IndxServer.Services.Observr
                 "findings" => "Reading what Observr found earlier",
                 "datasets" => "Reading the team's datasets",
                 "zero_hit_evidence" => $"Looking at what \"{Arg("query")}\" nearly finds",
+                "docs" => $"Reading up on {Arg("topic").Replace('-', ' ')}",
                 _ => "Reading",
             };
         }

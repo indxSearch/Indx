@@ -206,7 +206,7 @@ namespace IndxServer.Services.Observr
     public sealed record ObservrOutcome(ObservrStatus Status, ObservrAnswer? Answer = null, string? Reason = null, long FindingId = 0);
 
     /// <summary>The wire of one chat turn, as IndxObservr's ChatResponse.</summary>
-    public sealed record ObservrChatToolUse(string Id, string Name, Dictionary<string, JsonElement> Input);
+    public sealed record ObservrChatToolUse(string Id, string Name, Dictionary<string, JsonElement> Input, string? Result = null);
     public sealed record ObservrChatReply(int AskId, string Text, List<ObservrChatToolUse> ToolUses, List<ObservrProposal> Proposals, string Model, string? Problem);
 
     /// <summary>What a proposed synonym would do for the query, measured here before anyone says
