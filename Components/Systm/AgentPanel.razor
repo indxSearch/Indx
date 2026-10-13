@@ -79,7 +79,16 @@
             }
             @if (_running)
             {
-                <StreamStatus>@_status…</StreamStatus>
+                @* Observr's answer on its way, as its own message: the step it is on, then a few
+                   skeleton lines where the answer will land. Writing gets the grow spinner. *@
+                <AssistantMessage Label="Observr" Icon="_iconObservr" Class="agent-pending">
+                    <StreamStatus SpinnerName="@(_status == "Writing" ? "grow" : Spinners.Names.First())">@_status…</StreamStatus>
+                    <div class="agent-pending-lines">
+                        <Skeleton Width="92%" />
+                        <Skeleton Width="78%" Delay="0.05" />
+                        <Skeleton Width="54%" Delay="0.1" />
+                    </div>
+                </AssistantMessage>
             }
             @if (_error != null)
             {
@@ -210,6 +219,7 @@
         if (_running || _ctx == null || !_canAsk || string.IsNullOrWhiteSpace(text)) return;
         _draft = "";
         _running = true;
+        _status = "Reading the question";   // until Observr reports its first step, never a bare "…"
         _error = null;
         _turns.Add(new ObservrTurn(0, ObservrTurn.User, text.Trim(), null, DateTime.UtcNow));
         StateHasChanged();
