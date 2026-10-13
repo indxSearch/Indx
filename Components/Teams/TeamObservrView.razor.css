@@ -1,0 +1,4 @@
+.tov-datasets { margin-top: 32px; }
+.tov-summary { display: inline-flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.tov-summary-title { font: var(--text-base); font-weight: var(--med); color: var(--lv8); }
+.tov-summary-text { font: var(--text-xs); color: var(--lv5); }
