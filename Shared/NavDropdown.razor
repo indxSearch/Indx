@@ -10,7 +10,7 @@
     @if (_open)
     {
         <div class="nav-dropdown-backdrop" @onclick="() => _open = false"></div>
-        <Surface Class="@(Up ? "nav-dropdown-menu nav-dropdown-menu--up" : "nav-dropdown-menu")">@ChildContent</Surface>
+        <Surface Class="nav-dropdown-menu">@ChildContent</Surface>
     }
 </div>
 
@@ -19,8 +19,6 @@
     [Parameter] public string? Title { get; set; }
     [Parameter] public RenderFragment<int>? Icon { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
-    /// <summary>Opens above the trigger: for a menu at the foot of the side column.</summary>
-    [Parameter] public bool Up { get; set; }
 
     private bool _open;
     private static readonly RenderFragment<int> _caret = size => @<ChevronDown Size="size" Color="currentColor" />;

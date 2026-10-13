@@ -327,58 +327,6 @@ a.btn-danger:hover {
     overflow-y: auto;
 }
 
-/* The foot: one row, fixed at the bottom left of the window, over everything. */
-.shell-foot {
-    position: fixed;
-    left: 10px;
-    bottom: 10px;
-    z-index: 60;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px;
-    background: var(--lv1);
-    border: 1px solid var(--lv2);
-    border-radius: var(--radius);
-}
-
-.nav-dropdown-menu.nav-dropdown-menu--up {
-    top: auto;
-    bottom: calc(100% + 4px);
-    right: auto;
-    left: 0;
-}
-
-/* The contextual bar over a section's content (stage 2): the section's views as Tabs, and at its
-   end a setting that belongs to all of them (the statistics period). The tabs take the width and
-   scroll sideways; the end never shrinks. */
-.indx-context-bar {
-    display: flex;
-    align-items: flex-end;
-    gap: 16px;
-    border-bottom: 1px solid var(--lv2);
-    margin-bottom: 18px;
-    min-width: 0;
-}
-
-.indx-context-bar > :first-child {
-    flex: 1;
-    min-width: 0;
-}
-
-.indx-context-bar-end {
-    flex: none;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding-bottom: 4px;
-}
-
-@media (max-width: 768px) {
-    .indx-context-bar { flex-wrap: wrap; }
-    .indx-context-bar > :first-child { flex-basis: 100%; }
-}
-
 /* How wide the page gets before it stops growing and centres. One value for the header and the
    content, so they stay aligned. 1680px: wide enough that the field configuration's advanced
    columns have room on a large monitor, short of the point where a text line gets tiring. */
@@ -392,8 +340,7 @@ a.btn-danger:hover {
     --page-gutter: calc(var(--spacing) * 8);
     flex: 1;
     min-width: 0;
-    /* Room at the bottom for the fixed foot. */
-    padding: calc(var(--spacing) * 5) var(--page-gutter) calc(var(--page-gutter) + 48px);
+    padding: calc(var(--spacing) * 5) var(--page-gutter) var(--page-gutter);
     max-width: var(--page-max);
     width: 100%;
 }
@@ -401,6 +348,33 @@ a.btn-danger:hover {
 /* Signed out: no column, no foot; the page is centred under the header as before. */
 .content--alone {
     margin: 0 auto;
+}
+
+/* Tiles: a label over a value, on a surface (the dataset's Status, the statistics overview). */
+.indx-tiles {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 8px;
+}
+
+.indx-tiles .indx-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+}
+
+.indx-tile-label {
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+.indx-tile-value {
+    font: var(--text-2xl);
+    color: var(--lv8);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
 }
 
 /* Section rhythm on dense pages (dataset Options, Manage team, …). One scale, on the spacing
@@ -562,11 +536,22 @@ a.btn-danger:hover {
     color: var(--lv8);
 }
 
-/* Mobile: the header shrinks to the mark, the trail and Observr; the side column becomes a bar
-   at the foot of the window, the menu one row across it with the bell and the account at the end. */
+/* Narrow: the header keeps the mark, the trail and the right slot's icons; the standing chip
+   goes, and the trail shows only its last step in full. The earlier steps keep their icon as the
+   way back and lose their text and switcher, so the dataset's name has the room. */
 @media (max-width: 768px) {
     .header {
         padding: calc(var(--spacing) * 1.5) 0;
+    }
+
+    /* Three classes: the chip's own scoped rule has two, and is loaded after this file. */
+    .nav .nav-brand .indx-chip {
+        display: none;
+    }
+
+    .nav-crumbs .indx-breadcrumbs-item:not(:last-child) .indx-breadcrumbs-text,
+    .nav-crumbs .indx-breadcrumbs-item:not(:last-child) .indx-breadcrumbs-trigger {
+        display: none;
     }
 
     .nav {

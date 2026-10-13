@@ -2,8 +2,8 @@
    column: the Indx mark as the home link, with a chip for the instance's standing as the
    licence portal reports it (Free, Pro, Enterprise; Managed on a managed deployment). Then the
    trail, at the content's edge: whatever the current page put in HeaderState (the console's
-   team › dataset trail), else a label derived from the URL. Right: Observr. Notifications and the
-   personal menu live at the foot of the side column (MainLayout). *@
+   team › dataset trail), else a label derived from the URL. Right: Admin (for instance admins;
+   it is a page that needs a role, not a personal page), the bell, the personal menu, Observr. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
 @inject NavigationManager NavigationManager
@@ -11,6 +11,7 @@
 @inject IndxServer.Services.IEditionService Edition
 @inject IndxServer.Services.HeaderState Header
 @inject IndxServer.Services.Observr.ObservrSubscription Subscription
+@inject AuthenticationStateProvider AuthState
 
 <nav class="nav">
     <div class="nav-brand">
@@ -39,6 +40,24 @@
     <div class="nav-right">
         <AuthorizeView>
             <Authorized>
+                @if (_admin)
+                {
+                    <Button Variant="ghost" Size="micro" Href="admin" IconLeft="_iconInstance" title="Admin" aria-label="Admin" />
+                }
+                <NotificationPanel />
+                <NavDropdown Label="@ShortName(_name)" Title="@_name" Icon="_iconUser">
+                    <Button Variant="ghost" Size="micro" Href="account/manage" IconLeft="_iconUser">Account</Button>
+                    <Button Variant="ghost" Size="micro" Href="account/api-key" IconLeft="_iconKey">API keys</Button>
+                    <div class="nav-menu-divider"></div>
+                    <Button Variant="ghost" Size="micro" Href="https://docs.indx.co" IconLeft="_iconBook">Docs ↗</Button>
+                    <Button Variant="ghost" Size="micro" Href="swagger" IconLeft="_iconApi">Swagger ↗</Button>
+                    <div class="nav-menu-divider"></div>
+                    <form method="post" action="account/logout" class="nav-menu-form">
+                        <AntiforgeryToken />
+                        <input type="hidden" name="returnUrl" value="" />
+                        <Button Type="submit" Variant="ghost" Size="micro" IconLeft="_iconLogout">Log out</Button>
+                    </form>
+                </NavDropdown>
                 <ObservrPanel />
             </Authorized>
             <NotAuthorized>
@@ -53,6 +72,8 @@
 @code {
     private string _instanceName = "Indx";
     private List<Breadcrumbs.BreadcrumbItem> _pageCrumb = new();
+    private string _name = "Account";
+    private bool _admin;
 
     private RenderFragment<int> _iconInstance => size => @<Shield Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconUsers    => size => @<Users Size="size" Color="currentColor" />;
@@ -65,8 +86,14 @@
     private RenderFragment<int> _iconBook     => size => @<Book Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconLogout   => size => @<Logout Size="size" Color="currentColor" />;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        if (auth.User.Identity?.IsAuthenticated == true)
+        {
+            _name = auth.User.Identity.Name ?? "Account";
+            _admin = auth.User.IsInRole("Admin");
+        }
         _instanceName = InstanceSettingsService.Load().InstanceName;
         NavigationManager.LocationChanged += OnLocationChanged;
         Header.Changed += OnHeaderChanged;
@@ -80,6 +107,12 @@
     }
 
     private void OnHeaderChanged() => _ = InvokeAsync(StateHasChanged);
+
+    private static string ShortName(string name)
+    {
+        var at = name.IndexOf('@');
+        return at > 0 ? name[..at] : name;
+    }
 
     public void Dispose()
     {

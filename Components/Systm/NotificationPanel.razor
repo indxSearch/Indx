@@ -15,7 +15,7 @@
     }
     else
     {
-        <Tooltip Content="Notifications" Position="@(Up ? "right" : "bottom")">
+        <Tooltip Content="Notifications" Position="bottom">
             <button class="nav-bell notif-trigger @(_unreadCount > 0 ? "notif-trigger--has-unread" : "")" aria-label="Notifications" @onclick="Toggle">
                 <Bell Size="16" />
                 @if (_unreadCount > 0)
@@ -30,7 +30,7 @@
     {
         <div class="notif-backdrop" @onclick="Close"></div>
 
-        <div class="notif-panel @(Up ? "notif-panel--up" : null)" role="dialog" aria-label="Notifications">
+        <div class="notif-panel" role="dialog" aria-label="Notifications">
             <div class="notif-panel-header">
                 <span class="notif-panel-title">Notifications</span>
                 @if (_unreadCount > 0)
@@ -75,7 +75,6 @@
 
 @code {
     /// <summary>Opens above the bell, to its right: for the foot of the side column.</summary>
-    [Parameter] public bool Up { get; set; }
 
     private bool _open;
     private int _unreadCount;

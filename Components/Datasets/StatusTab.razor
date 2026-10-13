@@ -30,37 +30,36 @@
             </Alert>
         }
 
+        @* Tiles, as the statistics overview: a label over a value, the width of the page. *@
         <h3 class="status-heading@(string.IsNullOrEmpty(status.ErrorMessage) ? "" : " status-heading--section")">Index</h3>
-        <table class="status-table">
-            <tbody>
-                <tr>
-                    <td>State</td>
-                    @{ var stateChip = DatasetStateChip.For(status.SystemState); }
-                    <td><Chip Size="large" Color="@stateChip.Color" TextColor="@stateChip.TextColor" Icon="@stateChip.Icon">@status.SystemState</Chip></td>
-                </tr>
-                <tr><td>Documents</td><td>@status.DocumentCount.ToString("N0")</td></tr>
-                <tr><td>Records on disk</td><td>@((ka?.RecordCount ?? 0).ToString("N0"))</td></tr>
-                <tr><td>Last index build</td><td><TimeAgo Value="status.TimeOfLastIndexBuild" /></td></tr>
-                <tr><td>Seconds to index</td><td>@status.SecondsToIndex.ToString("0.##")s</td></tr>
-                <tr><td>Instance created</td><td><TimeAgo Value="status.TimeOfInstanceCreation" /></td></tr>
-            </tbody>
-        </table>
+        <div class="indx-tiles status-tiles">
+            @{ var stateChip = DatasetStateChip.For(status.SystemState); }
+            @Tile("State", @<Chip Size="large" Color="@stateChip.Color" TextColor="@stateChip.TextColor" Icon="@stateChip.Icon">@status.SystemState</Chip>)
+            @Tile("Documents", @<text>@status.DocumentCount.ToString("N0")</text>)
+            @Tile("Records on disk", @<text>@((ka?.RecordCount ?? 0).ToString("N0"))</text>)
+            @Tile("Last index build", @<TimeAgo Value="status.TimeOfLastIndexBuild" />)
+            @Tile("Seconds to index", @<text>@status.SecondsToIndex.ToString("0.##")s</text>)
+            @Tile("Instance created", @<TimeAgo Value="status.TimeOfInstanceCreation" />)
+        </div>
 
         <h3 class="status-heading status-heading--section">Usage</h3>
-        <table class="status-table">
-            <tbody>
-                <tr><td>Searches since load</td><td>@status.SearchCounter.ToString("N0")</td></tr>
-                <tr><td>Keep-alive</td><td>@KeepAliveLabel(ka)</td></tr>
-                @if (ka?.LastUsedUtc is { } used)
-                {
-                    <tr><td>Last used</td><td><TimeAgo At="used" /></td></tr>
-                }
-            </tbody>
-        </table>
+        <div class="indx-tiles status-tiles">
+            @Tile("Searches since load", @<text>@status.SearchCounter.ToString("N0")</text>)
+            @Tile("Keep-alive", @<text>@KeepAliveLabel(ka)</text>)
+            @if (ka?.LastUsedUtc is { } used)
+            {
+                @Tile("Last used", @<TimeAgo At="used" />)
+            }
+        </div>
     </div>
 }
 
 @code {
+    private static RenderFragment Tile(string label, RenderFragment value) => @<Surface Class="indx-tile">
+        <span class="indx-tile-label">@label</span>
+        <span class="indx-tile-value">@value</span>
+    </Surface>;
+
     // ClearErrorMessage raises Changed, which re-renders this tab and the rest of the panel.
     private void ClearError() => Ctx.ClearErrorMessage();
 
