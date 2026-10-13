@@ -31,11 +31,13 @@
                 @* ── Alerts — only rendered when the engine reports one. ── *@
                 <DatasetAlerts Ctx="Ctx" />
 
-                @* ── The sections, in the side column (none when hibernated: that view is just
-                   Wake up / Delete). The full set is always laid out in the same order. Sections
-                   that need a built index are disabled (with the reason) until the dataset is
-                   Ready, so the column keeps its shape from the first upload onward. Error shows
-                   only what can act on it. Role rules hide, never disable: disabled means "not yet". ── *@
+                @* ── The sections, in the side column. The full set is always laid out in the
+                   same order. Sections that need a built index are disabled (with the reason)
+                   until the dataset is Ready, so the column keeps its shape from the first upload
+                   onward. Error shows only what can act on it. A sleeping dataset (hibernated, or
+                   created and not yet loaded) shows the whole menu disabled with nothing open: the
+                   view is Wake up / Delete or the upload, and the column keeps the page's shape.
+                   Role rules hide, never disable: disabled means "not yet". ── *@
                 @{
                     var engineState = Ctx.EngineState;
                     var isReady = engineState == SystemState.Ready;
@@ -43,7 +45,9 @@
                     var tab = Ctx.ActiveTab;
                     // Not Ready and not Error: the not-yet sections are shown disabled.
                     var pending = !isReady && engineState != SystemState.Error;
-                    PublishMenu(showNav && Ctx.HasStatus && Visible ? NavItems(isReady, pending) : null, tab);
+                    if (!Ctx.HasStatus || !Visible) PublishMenu(null, tab);
+                    else if (showNav) PublishMenu(NavItems(isReady, pending), tab);
+                    else PublishMenu(SleepingItems(), null);
                 }
 
                 @* ── Tabs. All stay mounted so edit state survives switching; only the active one renders. ── *@
@@ -137,7 +141,7 @@
     /// the open one marked. Called from the render so the rendering tests see what the page
     /// published; it tells the column only when something changed, since the column is another
     /// component and re-renders on the event.</summary>
-    private void PublishMenu(List<Tabs.TabItem>? items, string active)
+    private void PublishMenu(List<Tabs.TabItem>? items, string? active)
     {
         if (items == null)
         {
@@ -207,6 +211,18 @@
     }
 
     private const string NotYet = "Available after the index is built";
+    private const string Asleep = "Available once the dataset is awake";
+
+    /// <summary>The menu of a dataset that cannot be worked on yet: every section the role would
+    /// see, disabled with the reason, so the column holds the page's shape while the content is
+    /// the wake view or the upload.</summary>
+    private List<Tabs.TabItem> SleepingItems()
+    {
+        var reason = Ctx.IsHibernated ? Asleep : NotYet;
+        return NavItems(isReady: false, pending: true)
+            .Select(i => i with { Disabled = true, Title = reason, Badge = null, BadgeTitle = null })
+            .ToList();
+    }
 
     /// <summary>The sections, in the order the side column lays them out before grouping. One that
     /// needs a Ready engine is disabled with the reason; role rules leave one out instead.</summary>
