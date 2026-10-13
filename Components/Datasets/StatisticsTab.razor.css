@@ -32,6 +32,20 @@
     margin: 18px 0;
 }
 
+/* The loading skeleton: tiles, chart and rows, spaced like the page that replaces it. */
+.stats-loading {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.stats-loading-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding-top: 8px;
+}
+
 /* Five tiles: one row on a wide screen, then three, then two with the last one spanning. */
 .stats-tiles {
     display: grid;

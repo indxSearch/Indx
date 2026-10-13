@@ -60,7 +60,28 @@ else
 
     @if (!_loaded)
     {
-        <p class="stats-empty">Loading statistics…</p>
+        @* The shape of what is coming: the five tiles, the chart and the first rows of a table, so
+           nothing jumps when the numbers land. Skeleton waits 0.15s before it shows, so a quick
+           load (most of them) never flashes it. *@
+        <div class="stats-loading" role="status" aria-busy="true" aria-label="Loading statistics">
+            <div class="stats-tiles">
+                @for (var i = 0; i < 5; i++)
+                {
+                    var delay = i * 0.05;
+                    <Surface Class="stats-tile">
+                        <Skeleton Level="3" Width="60%" Delay="delay" />
+                        <Skeleton Level="3" Height="24px" Width="40%" Delay="delay" />
+                    </Surface>
+                }
+            </div>
+            <Skeleton Height="180px" Delay="0.1" />
+            <div class="stats-loading-rows">
+                @foreach (var (width, i) in LoadingRowWidths.Select((w, i) => (w, i)))
+                {
+                    <Skeleton Width="@($"{width}%")" Delay="@(0.15 + i * 0.05)" />
+                }
+            </div>
+        </div>
     }
     else if (Empty)
     {
@@ -383,6 +404,8 @@ else
 @code {
     private int _days = 30;
     private bool _loaded;
+    /// <summary>The loading skeleton's table rows, as wide as query text tends to be.</summary>
+    private static readonly int[] LoadingRowWidths = [58, 72, 46, 64, 52, 68];
     private OverviewStat _overview;
     private List<QueryStat> _topQueries = [];
     private List<QueryStat> _fuzzy = [];
