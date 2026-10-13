@@ -8,6 +8,7 @@
 @inherits DatasetTabBase
 @inject BrowserFiles Files
 @inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
+@inject IndxServer.Services.Observr.AgentPanelState Agent
 @inject IServiceProvider Services
 
 @if (!Active) { return; }
@@ -31,9 +32,9 @@
 
     <div class="indx-list-toolbar">
         <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="@(() => OpenModal(null))">New synonym</Button>
-        @if (Ctx.IsEditor && !_suggesting && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
+        @if (Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
         {
-            <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => _suggesting = true">Suggest synonyms</Button></span>
+            <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="SuggestInAgent">Suggest synonyms</Button></span>
         }
         @if (_list != null && _list.Entries.Count > 0)
         {
@@ -44,12 +45,6 @@
             <span class="indx-list-toolbar-end">@matched.Count of @_list.Entries.Count entries</span>
         }
     </div>
-
-    @if (_suggesting)
-    {
-        <ObservrAnswer Title="Observr on synonyms" Waiting="Observr is reading the month's searches that found nothing, and the fuzzy finds…"
-                       OnClose="() => _suggesting = false" Ask="ct => Observr().AskSynonymsAsync(Ctx.TeamId, Ctx.Name, 30, ct)" OnApplied="Load" />
-    }
 
     @if (_list == null || _list.Entries.Count == 0)
     {
@@ -274,7 +269,8 @@
         _modalOpen = true;
     }
 
-    private bool _suggesting;
+    private void SuggestInAgent() => Agent.Run(new IndxServer.Services.Observr.AgentAction("Suggest synonyms from the month's searches",
+        ct => Observr().AskSynonymsAsync(Ctx.TeamId, Ctx.Name, 30, ct), () => InvokeAsync(Load)));
     private IndxServer.Services.Observr.ObservrClient Observr() => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IndxServer.Services.Observr.ObservrClient>(Services);
     private bool _saving; // the modal's Save is applying to the live engine
 

@@ -1,0 +1,39 @@
+@* The header's Agent button (Notes/Anders/console-shell-plan-2026-10-13.md, stage 5): opens the
+   Agent panel at the right. Ghost closed, primary open, with Observr's look; a mark by the icon
+   while the active team has findings waiting for a yes or a no. Monochrome until Observr's colour
+   is chosen (13 Oct 2026). Nothing of it for an instance whose subscription does not include
+   Observr. *@
+@using IndxServer.Services
+@using IndxServer.Services.Observr
+@implements IDisposable
+@inject ObservrFindingStore Findings
+@inject ObservrSubscription Subscription
+@inject ActiveTeamState ActiveTeam
+@inject AgentPanelState Agent
+
+@if (!Subscription.Visible) { return; }
+
+<span class="indx-observr agent-button">
+    <Button Variant="@(Agent.IsOpen ? "primary" : "ghost")" Size="micro" IconLeft="DatasetIcons.Observr" aria-label="Agent" aria-expanded="@(Agent.IsOpen ? "true" : "false")" @onclick="Agent.Toggle">
+        <span class="nav-dropdown-label">Agent</span>
+        @if (_openCount > 0) { <span class="agent-mark" title="@($"{_openCount} waiting for a decision")"></span> }
+    </Button>
+</span>
+
+@code {
+    private int _openCount;
+
+    protected override void OnInitialized()
+    {
+        // The first page after a start asks the portal in the background; the button appears on the next.
+        Subscription.EnsureChecked();
+        Agent.Changed += OnChanged;
+        ActiveTeam.OnChange += OnChanged;
+        Count();
+    }
+
+    private void OnChanged() { Count(); _ = InvokeAsync(StateHasChanged); }
+    public void Dispose() { Agent.Changed -= OnChanged; ActiveTeam.OnChange -= OnChanged; }
+
+    private void Count() => _openCount = ActiveTeam.ActiveTeamId is { } id ? Findings.CountOpen([id.ToString()]) : 0;
+}

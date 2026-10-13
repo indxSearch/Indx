@@ -14,6 +14,7 @@
 @inject SearchOrAskService Service
 @inject SearchOrAskOptions ModelOptions
 @inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
+@inject IndxServer.Services.Observr.AgentPanelState Agent
 @inject IServiceProvider Services
 
 @if (!Active) { return; }
@@ -38,16 +39,8 @@
     @if (Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
     {
         <div class="indx-list-toolbar">
-            @if (!_setupHelp)
-            {
-                <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Disabled="@IsDirty" @onclick="() => _setupHelp = true">Help me set this up</Button></span>
-            }
+            <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Disabled="@IsDirty" @onclick="SetupInAgent">Help me set this up</Button></span>
         </div>
-    }
-    @if (_setupHelp)
-    {
-        <ObservrAnswer Title="Observr on setting up Search or ask" Waiting="Observr is reading the fields, a few record names and the month's searches…"
-                       OnClose="() => _setupHelp = false" Ask="ct => Observr().AskSearchOrAskSetupAsync(Ctx.TeamId, Ctx.Name, ct)" OnApplied="Reload" />
     }
 
     <div class="soa-groups">
@@ -396,7 +389,8 @@
         .. new[] { "English", "Norwegian", "Swedish", "Danish", "Finnish", "German", "Dutch", "French", "Spanish", "Italian", "Portuguese", "Polish" }
             .Select(l => new SelectField.SelectOption(l, l)),
     ];
-    private bool _setupHelp;
+    private void SetupInAgent() => Agent.Run(new IndxServer.Services.Observr.AgentAction("Help me set up Search or ask",
+        ct => Observr().AskSearchOrAskSetupAsync(Ctx.TeamId, Ctx.Name, ct), () => InvokeAsync(Reload)));
     private IndxServer.Services.Observr.ObservrClient Observr() => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IndxServer.Services.Observr.ObservrClient>(Services);
     private void Reload() { Load(); Ctx.NotifyChanged(); }
 

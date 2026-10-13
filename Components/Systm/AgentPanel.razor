@@ -1,0 +1,260 @@
+@* The Agent panel (Notes/Anders/console-shell-plan-2026-10-13.md, stage 5): Observr as a
+   conversation about what the owner is looking at, in a column at the right. Scoped to the
+   context: on a dataset page that dataset, elsewhere the active team. The open findings of the
+   context come first with their Yes / No, then the conversation, newest at the bottom, then the
+   composer. The tabs' buttons (Review my setup, Ask about this query, …) run their ask here, as a
+   turn of the same thread. An island of its own: the layout renders statically. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IDisposable
+@using System.Security.Claims
+@using IndxServer.Services
+@using IndxServer.Services.Observr
+@inject NavigationManager Nav
+@inject ActiveTeamState ActiveTeam
+@inject AgentPanelState Agent
+@inject ObservrSubscription Subscription
+@inject ObservrFindingStore Findings
+@inject ObservrConversationStore Conversations
+@inject ObservrChat Chat
+@inject ObservrClient Observr
+@inject AuthenticationStateProvider AuthState
+
+@if (!Agent.IsOpen || !Subscription.Visible || _ctx == null) { return; }
+
+<aside class="shell-agent" aria-label="Agent">
+    <ChatPanel Class="agent-chat" Hints="false">
+        <Header>
+            <div class="agent-head">
+                <span class="agent-title"><Observr Size="14" Color="currentColor" /> Agent</span>
+                <span class="agent-context" title="@(_ctx.HasDataset ? $"About the dataset {_ctx.DataSetName}" : $"About the team {_ctx.TeamName}")">
+                    @if (_ctx.HasDataset) { <Database Size="12" Color="currentColor" /> } else { <UserGroup Size="12" Color="currentColor" /> }
+                    @(_ctx.HasDataset ? _ctx.DataSetName : _ctx.TeamName)
+                </span>
+                <span class="agent-spacer"></span>
+                @if (_turns.Count > 0)
+                {
+                    <Button Variant="ghost" Size="micro" title="Start over" @onclick="ClearAsync" Disabled="@_running">Clear</Button>
+                }
+                <Button Variant="ghost" Size="micro" aria-label="Close" IconLeft="_iconClose" @onclick="Agent.Close" />
+            </div>
+        </Header>
+        <ChildContent>
+            @if (_turns.Count == 0 && _open.Count == 0)
+            {
+                <AssistantMessage Label="Observr" Icon="_iconObservr">
+                    <p>@Intro()</p>
+                </AssistantMessage>
+                <Suggestions Items="Suggested()" OnPick="SendAsync" />
+            }
+            @if (_open.Count > 0)
+            {
+                <AssistantMessage Label="@(_open.Count == 1 ? "Observr found" : $"Observr found, {_open.Count} waiting")" Icon="_iconObservr" Class="agent-findings">
+                    <ObservrFindingList Findings="_open" Link="Link" CanDecide="_canDecide" Busy="_busy" OnDecide="d => DecideAsync(d.Finding, d.Yes)" Empty="" />
+                </AssistantMessage>
+            }
+            @foreach (var t in _turns)
+            {
+                if (t.Role == ObservrTurn.User)
+                {
+                    <UserMessage>@t.Text</UserMessage>
+                }
+                else
+                {
+                    <AssistantMessage Label="Observr" Icon="_iconObservr">
+                        @ObservrMarkdown.Render(t.Text)
+                        @if (t.FindingId is { } fid && _byId.TryGetValue(fid, out var finding) && finding.Status == ObservrFinding.Open)
+                        {
+                            <ObservrFindingList Findings="@([finding])" Link="Link" CanDecide="_canDecide" Busy="_busy" OnDecide="d => DecideAsync(d.Finding, d.Yes)" Empty="" />
+                        }
+                        else if (t.FindingId is { } did && _byId.TryGetValue(did, out var decided))
+                        {
+                            <span class="agent-decided">@(decided.Status == ObservrFinding.Accepted ? "Applied." : "Declined.")</span>
+                        }
+                    </AssistantMessage>
+                }
+            }
+            @if (_running)
+            {
+                <StreamStatus>@_status…</StreamStatus>
+            }
+            @if (_error != null)
+            {
+                <p class="agent-error">@_error</p>
+            }
+            <div @ref="_end"></div>
+        </ChildContent>
+        <Composer>
+            <Composer Value="@_draft" ValueChanged="v => _draft = v" OnSend="SendAsync" Streaming="@_running" Disabled="@(!_canAsk)"
+                      Placeholder="@(_canAsk ? (_ctx.HasDataset ? $"Ask about {_ctx.DataSetName}…" : $"Ask about {_ctx.TeamName}…") : "Editors can ask")" Icon="_iconObservr" />
+        </Composer>
+    </ChatPanel>
+</aside>
+
+@code {
+    private ObservrChatContext? _ctx;
+    private string _userId = "";
+    private bool _canDecide, _canAsk;
+    private List<ObservrTurn> _turns = [];
+    private List<ObservrFinding> _open = [];
+    private Dictionary<long, ObservrFinding> _byId = [];
+    private readonly Dictionary<long, Func<Task>> _onApplied = [];
+    private string _draft = "";
+    private bool _running;
+    private string _status = "";
+    private string? _error;
+    private long _busy;
+    private ElementReference _end;
+    private string? _loadedFor;
+
+    private static readonly RenderFragment<int> _iconObservr = size => @<Observr Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconClose = size => @<ChevronRight Size="size" Color="currentColor" />;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Subscription.EnsureChecked();
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+        if (_userId.Length > 0) await ActiveTeam.EnsureInitializedAsync(_userId);
+        Agent.Changed += OnAgentChanged;
+        Nav.LocationChanged += OnLocationChanged;
+        ActiveTeam.OnChange += OnTeamChanged;
+        Resolve();
+    }
+
+    public void Dispose()
+    {
+        Agent.Changed -= OnAgentChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+        ActiveTeam.OnChange -= OnTeamChanged;
+    }
+
+    private void OnAgentChanged() => _ = InvokeAsync(async () =>
+    {
+        Resolve();
+        if (Agent.TakePrefill() is { } prefill) _draft = prefill;
+        StateHasChanged();
+        if (Agent.IsOpen && Agent.TakePending() is { } action) await RunActionAsync(action);
+    });
+    private void OnLocationChanged(object? s, LocationChangedEventArgs e) { Resolve(); _ = InvokeAsync(StateHasChanged); }
+    private void OnTeamChanged() { Resolve(); _ = InvokeAsync(StateHasChanged); }
+
+    /// <summary>Where the owner is, from the URL: a dataset of a team, or the active team.</summary>
+    private void Resolve()
+    {
+        var path = Nav.ToBaseRelativePath(Nav.Uri);
+        var seg = path.Split('?')[0].Split('/', StringSplitOptions.RemoveEmptyEntries);
+        (Data.Team Team, string Role)? team = null;
+        string? dataset = null, tab = null;
+        if (seg.Length >= 2 && seg[0].Equals("teams", StringComparison.OrdinalIgnoreCase))
+        {
+            team = ActiveTeam.Find(Uri.UnescapeDataString(seg[1]));
+            dataset = TeamRoutes.DatasetFromPath(path);
+            tab = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query).TryGetValue("tab", out var v) ? v.ToString() : null;
+        }
+        team ??= ActiveTeam.ActiveTeamId is { } id ? ActiveTeam.Teams.FirstOrDefault(t => t.Team.Id == id) : null;
+        if (team?.Team == null) { _ctx = null; return; }
+        _ctx = new ObservrChatContext(team.Value.Team.Id.ToString(), team.Value.Team.Name, dataset, dataset != null ? tab ?? "status" : null);
+        _canDecide = TeamRoles.CanWrite(team.Value.Role);
+        _canAsk = _canDecide;
+        var key = _ctx.TeamId + "/" + _ctx.DatasetKey;
+        if (key != _loadedFor) { _loadedFor = key; Load(); }
+    }
+
+    private void Load()
+    {
+        if (_ctx == null) return;
+        _turns = Conversations.List(_userId, _ctx.TeamId, _ctx.DatasetKey);
+        var all = _ctx.HasDataset ? Findings.ListForDataset(_ctx.TeamId, _ctx.DataSetName!, 50) : Findings.List([_ctx.TeamId], 50);
+        var referenced = _turns.Where(t => t.FindingId != null).Select(t => t.FindingId!.Value).ToHashSet();
+        _byId = all.ToDictionary(f => f.Id);
+        foreach (var id in referenced.Where(id => !_byId.ContainsKey(id)))
+            if (Findings.Get(id) is { } f) _byId[f.Id] = f;
+        // The findings block shows what waits that the thread does not already show under a turn.
+        _open = all.Where(f => f.Status == ObservrFinding.Open && !referenced.Contains(f.Id)).Take(10).ToList();
+        _error = null;
+    }
+
+    private string Intro() => _ctx!.HasDataset
+        ? $"I watch {_ctx.DataSetName}: what visitors search for, how the fields are set up, and what changed. Ask me about any of it."
+        : $"I watch the datasets of {_ctx.TeamName}. Open one to ask about it, or ask me about the team's.";
+
+    private List<string> Suggested() => _ctx!.HasDataset
+        ? ["What did visitors search for this week?", "Which searches found nothing?", "Is my field setup sensible?"]
+        : ["Which datasets are hibernated?", "What did you find this week?"];
+
+    private string Link(ObservrFinding f) => $"{TeamRoutes.Dataset(_ctx!.TeamName, f.DataSetName)}?tab={f.Tab}";
+
+    private async Task SendAsync(string text)
+    {
+        if (_running || _ctx == null || !_canAsk || string.IsNullOrWhiteSpace(text)) return;
+        _draft = "";
+        _running = true;
+        _error = null;
+        _turns.Add(new ObservrTurn(0, ObservrTurn.User, text.Trim(), null, DateTime.UtcNow));
+        StateHasChanged();
+        try
+        {
+            var outcome = await Chat.AskAsync(_ctx, _userId, text, s => InvokeAsync(() => { _status = s; StateHasChanged(); }), CancellationToken.None);
+            if (outcome.Status != ObservrStatus.Ok && outcome.Status != ObservrStatus.Failed)
+                _error = null; // the refusal is a turn of the thread already
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally
+        {
+            _running = false;
+            Load();
+            StateHasChanged();
+        }
+    }
+
+    /// <summary>A tab's button: its ask runs here as a turn, the label as the question.</summary>
+    private async Task RunActionAsync(AgentAction action)
+    {
+        if (_running || _ctx == null) return;
+        _running = true;
+        _status = "Observr is looking";
+        _error = null;
+        Conversations.Add(_userId, _ctx.TeamId, _ctx.DatasetKey, ObservrTurn.User, action.Label);
+        _turns.Add(new ObservrTurn(0, ObservrTurn.User, action.Label, null, DateTime.UtcNow));
+        StateHasChanged();
+        try
+        {
+            var outcome = await action.Ask(CancellationToken.None);
+            var text = outcome.Status == ObservrStatus.Ok && outcome.Answer != null ? outcome.Answer.Answer : ObservrText.Refusal(outcome, "to look at");
+            Conversations.Add(_userId, _ctx.TeamId, _ctx.DatasetKey, ObservrTurn.Assistant, text, outcome.FindingId > 0 ? outcome.FindingId : null);
+            if (outcome.FindingId > 0 && action.OnApplied != null) _onApplied[outcome.FindingId] = action.OnApplied;
+        }
+        catch (Exception ex) { _error = ex.Message; }
+        finally
+        {
+            _running = false;
+            Load();
+            StateHasChanged();
+        }
+    }
+
+    private async Task DecideAsync(ObservrFinding f, bool yes)
+    {
+        if (_busy != 0) return;
+        _busy = f.Id;
+        _error = null;
+        try
+        {
+            _error = await Task.Run(() => Observr.Decide(f.Id, yes));
+            if (_error == null && yes && _onApplied.Remove(f.Id, out var after)) await after();
+        }
+        finally
+        {
+            _busy = 0;
+            Load();
+        }
+    }
+
+    private Task ClearAsync()
+    {
+        if (_ctx == null) return Task.CompletedTask;
+        Conversations.Clear(_userId, _ctx.TeamId, _ctx.DatasetKey);
+        Load();
+        return Task.CompletedTask;
+    }
+}

@@ -3,9 +3,10 @@
 @* The console's frame (Notes/Anders/console-shell-plan-2026-10-13.md, stage 1): a header with the
    brand over the column's width and the trail at the content's edge; a side column with the
    page's sections where the page has any (the dataset page, the admin and account areas), none
-   on the team page. Notifications, the account and Observr are at the header's right. The layout
-   itself renders statically; the header and the column are interactive islands that decide what
-   they show. *@
+   on the team page; and, at the right when it is open, the Agent panel (stage 5). Notifications,
+   the account and the Agent button are at the header's right. The layout itself renders
+   statically; the header, the column and the panel are interactive islands that decide what they
+   show. *@
 
 <PageTitle>indx Rest API</PageTitle>
 
@@ -19,5 +20,6 @@
         <main class="content">
             @Body
         </main>
+        <AgentPanel />
     </div>
 </div>

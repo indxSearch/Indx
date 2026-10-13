@@ -9,6 +9,7 @@
 @inherits DatasetTabBase
 @inject StatisticsService Stats
 @inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
+@inject IndxServer.Services.Observr.AgentPanelState Agent
 @inject IServiceProvider Services
 
 @if (!Active) { return; }
@@ -125,18 +126,13 @@ else
                             <td>@QueryLabel(q.QueryText)</td>
                             <td class="stats-num">@N(q.ZeroHits)</td>
                             <td class="stats-action">
-                                @if (Ctx.IsEditor && _observrQuery != q.QueryText && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
+                                @if (Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
                                 {
-                                    <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => _observrQuery = q.QueryText">Ask Observr</Button></span>
+                                    var zero = q;
+                                    <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => AskZeroHit(zero)">Why nothing?</Button></span>
                                 }
                             </td>
                         </tr>
-                        @if (_observrQuery == q.QueryText)
-                        {
-                            <tr class="stats-observr-row"><td colspan="3">
-                                <ObservrAsk Query="@q.QueryText" Searches="q.ZeroHits" OnClose="() => _observrQuery = null" />
-                            </td></tr>
-                        }
                     }
                 </tbody>
             </Table>
@@ -157,21 +153,11 @@ else
                             @if (lowClick)
                             {
                                 <td class="stats-action">
-                                    @if (_observrQuery != q.QueryText)
-                                    {
-                                        <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => _observrQuery = q.QueryText">Why isn't this working?</Button></span>
-                                    }
+                                    @{ var stat = q; }
+                                    <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => AskLowClick(stat)">Why isn't this working?</Button></span>
                                 </td>
                             }
                         </tr>
-                        @if (lowClick && _observrQuery == q.QueryText)
-                        {
-                            var stat = q;
-                            <tr class="stats-observr-row"><td colspan="5">
-                                <ObservrAnswer Title="@($"Observr on “{q.QueryText}”")" OnClose="() => _observrQuery = null"
-                                               Ask="ct => Observr().AskLowClickAsync(Ctx.TeamId, Ctx.Name, stat, _fromDay, _toDay, ct)" OnApplied="LoadAsync" />
-                            </td></tr>
-                        }
                     }
                 </tbody>
             </Table>
@@ -369,21 +355,14 @@ else
                                 {
                                     <td class="stats-action">
                                         @* A week after is what "help" is judged on; sooner there is nothing to compare. *@
-                                        @if (_observrChange != c.Timestamp && c.Timestamp < DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeMilliseconds())
+                                        @if (c.Timestamp < DateTimeOffset.UtcNow.AddDays(-1).ToUnixTimeMilliseconds())
                                         {
-                                            <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => _observrChange = c.Timestamp">Did this help?</Button></span>
+                                            var change = c;
+                                            <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => AskChange(change)">Did this help?</Button></span>
                                         }
                                     </td>
                                 }
                             </tr>
-                            @if (askChange && _observrChange == c.Timestamp)
-                            {
-                                var change = c;
-                                <tr class="stats-observr-row"><td colspan="3">
-                                    <ObservrAnswer Title="@($"Observr on: {ChangeDescriptions.Describe(c.Kind, c.Summary)}")" Waiting="Observr is comparing the week before with the week after…"
-                                                   OnClose="() => _observrChange = null" Ask="ct => Observr().AskChangeAsync(Ctx.TeamId, Ctx.Name, change, ct)" />
-                                </td></tr>
-                            }
                         }
                     </tbody>
                 </Table>
@@ -433,9 +412,15 @@ else
     // most often first, each with Ask Observr for an editor.
     private const string ZeroHitsView = "ZeroHits";
     private bool _zeroHits;
-    private string? _observrQuery;
     private IndxServer.Services.Observr.ObservrClient Observr() => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IndxServer.Services.Observr.ObservrClient>(Services);
-    private long? _observrChange;
+    // The Observr buttons run their ask in the Agent panel, as a turn of its thread; a Yes there
+    // applies the proposal and the tab reloads.
+    private void AskZeroHit(QueryStat q) => Agent.Run(new IndxServer.Services.Observr.AgentAction($"Why does \"{q.QueryText}\" find nothing?",
+        ct => Observr().AskZeroHitAsync(Ctx.TeamId, Ctx.Name, q.QueryText, q.ZeroHits, ct), () => InvokeAsync(LoadAsync)));
+    private void AskLowClick(QueryStat q) => Agent.Run(new IndxServer.Services.Observr.AgentAction($"Why isn't \"{q.QueryText}\" working?",
+        ct => Observr().AskLowClickAsync(Ctx.TeamId, Ctx.Name, q, _fromDay, _toDay, ct), () => InvokeAsync(LoadAsync)));
+    private void AskChange(ChangeStat c) => Agent.Run(new IndxServer.Services.Observr.AgentAction($"Did this help: {ChangeDescriptions.Describe(c.Kind, c.Summary)}?",
+        ct => Observr().AskChangeAsync(Ctx.TeamId, Ctx.Name, c, ct)));
     private static readonly List<Tabs.TabItem> FuzzyItems =
         [new("Selected", "selected", DatasetIcons.FuzzySelected), new("All", "all", DatasetIcons.FuzzyAll)];
     private static readonly List<SelectField.SelectOption> DocumentOrderOptions =
@@ -609,7 +594,6 @@ else
 
     private Task SetQueryOrder(string? value)
     {
-        _observrQuery = null;
         if (value == ZeroHitsView)
         {
             if (_zeroHits) return Task.CompletedTask;

@@ -135,6 +135,11 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrSubscription>();
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrSummaryBuilder>();
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrClient>();
+        // The Agent (stage 5 of the console shell): the conversations, the tools and the loop.
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrConversationStore>();
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrTools>();
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrChat>();
+        builder.Services.AddScoped<IndxServer.Services.Observr.AgentPanelState>();
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrDigestJob>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.Observr.ObservrDigestJob>());
 

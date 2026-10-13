@@ -205,6 +205,10 @@ namespace IndxServer.Services.Observr
     /// into a sentence (<see cref="Reason"/> is Observr's own word where it gave one).</summary>
     public sealed record ObservrOutcome(ObservrStatus Status, ObservrAnswer? Answer = null, string? Reason = null, long FindingId = 0);
 
+    /// <summary>The wire of one chat turn, as IndxObservr's ChatResponse.</summary>
+    public sealed record ObservrChatToolUse(string Id, string Name, Dictionary<string, JsonElement> Input);
+    public sealed record ObservrChatReply(int AskId, string Text, List<ObservrChatToolUse> ToolUses, List<ObservrProposal> Proposals, string Model, string? Problem);
+
     /// <summary>What a proposed synonym would do for the query, measured here before anyone says
     /// yes: how many records the search then finds, and the first few by name.</summary>
     public sealed record ObservrSynonymTest(int Found, List<string> Names);
@@ -243,6 +247,17 @@ namespace IndxServer.Services.Observr
 
         /// <summary>Whether this instance can ask at all: it has a licence token.</summary>
         public bool HasToken => Token() != null;
+
+        /// <summary>One model turn of the Agent chat (POST /api/chat): the conversation as the
+        /// instance keeps it goes up, the model's message comes back. The loop is ObservrChat's.</summary>
+        public async Task<(ObservrStatus Status, ObservrChatReply? Reply, string? Reason)> ChatTurnAsync(object payload, string teamId, string dataSetName, CancellationToken ct)
+        {
+            if (Token() is not { } token) return (ObservrStatus.NoToken, null, null);
+            var (status, body, reason) = await PostAsync(token, "/api/chat", payload, teamId, dataSetName, ct);
+            if (status != HttpStatusCode.OK) return (Status(status), null, reason);
+            var reply = JsonSerializer.Deserialize<ObservrChatReply>(body, Json);
+            return reply == null ? (ObservrStatus.Failed, null, "badAnswer") : (ObservrStatus.Ok, reply, null);
+        }
 
         private string? Token()
         {

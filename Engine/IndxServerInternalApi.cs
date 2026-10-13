@@ -810,6 +810,7 @@ namespace IndxServer.Engine
             _queryParameterStore?.Delete(teamId, dataSetName);
             _searchOrAskStore?.Delete(teamId, dataSetName);
             _observrStore?.Delete(teamId, dataSetName);
+            _observrConversations?.Delete(teamId, dataSetName);
             // Statistics survive a delete by design, so the history says where the gap came from.
             ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Delete);
             return true;
@@ -1038,6 +1039,7 @@ namespace IndxServer.Engine
             _queryParameterStore?.Rename(teamId, dataSetName, newName);
             _searchOrAskStore?.Rename(teamId, dataSetName, newName);
             _observrStore?.Rename(teamId, dataSetName, newName);
+            _observrConversations?.Rename(teamId, dataSetName, newName);
             MoveSavedEmbeddings(dataSetName, teamId, newName, teamId);
             _logger.LogInformation("{Prefix}renamed to '{NewName}'", MakeLogPrefix(teamId, dataSetName), newName);
 
@@ -1083,6 +1085,7 @@ namespace IndxServer.Engine
             _queryParameterStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _searchOrAskStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _observrStore?.Transfer(currentTeamId, newTeamId, dataSetName);
+            _observrConversations?.Transfer(currentTeamId, newTeamId, dataSetName);
             MoveSavedEmbeddings(dataSetName, currentTeamId, dataSetName, newTeamId);
 
             // Warm up the engine for the new owning team, same as InitializeSystem does on startup.
@@ -1446,6 +1449,8 @@ namespace IndxServer.Engine
         // Observr's findings follow the dataset the same way.
         private Services.Observr.ObservrFindingStore? _observrStore;
         internal void AttachObservrStore(Services.Observr.ObservrFindingStore store) => _observrStore = store;
+        private Services.Observr.ObservrConversationStore? _observrConversations;
+        internal void AttachObservrConversations(Services.Observr.ObservrConversationStore store) => _observrConversations = store;
 
         /// <summary>
         /// Applies the dataset's server-declared key field to the engine's <see cref="DocumentFields"/>

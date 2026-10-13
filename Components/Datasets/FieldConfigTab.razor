@@ -5,21 +5,18 @@
 
 @inherits DatasetTabBase
 @inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
+@inject IndxServer.Services.Observr.AgentPanelState Agent
+@inject IServiceProvider Services
 @if (!Active) { return; }
 
 @if (!Ctx.IsSaving)
 {
     <FieldConfigToolbar @bind-Filter="_filter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced">
-        @if (Ctx.IsEditor && !_review && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
+        @if (Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
         {
-            <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Disabled="@Ctx.IsDirty" @onclick="() => _review = true">Review my setup</Button></span>
+            <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Disabled="@Ctx.IsDirty" @onclick="ReviewInAgent">Review my setup</Button></span>
         }
     </FieldConfigToolbar>
-}
-
-@if (_review)
-{
-    <ObservrReview OnClose="() => _review = false" />
 }
 
 @if (!string.IsNullOrEmpty(_saveError))
@@ -58,7 +55,12 @@ else if (Ctx.EditedFields is { } fields)
 @code {
 
     private bool _showUnused;
-    private bool _review;
+    /// <summary>The review runs in the Agent panel as a turn; a Yes there applies the field
+    /// changes through the same path as Save, and the tab then re-reads the engine's fields.</summary>
+    private void ReviewInAgent() => Agent.Run(new IndxServer.Services.Observr.AgentAction("Review my field setup",
+        ct => Observr().AskFieldReviewAsync(Ctx.TeamId, Ctx.Name, ct),
+        () => InvokeAsync(() => { Ctx.RefreshFieldsFromEngine(); Ctx.RefreshStatus(); Ctx.NotifyChanged(); })));
+    private IndxServer.Services.Observr.ObservrClient Observr() => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IndxServer.Services.Observr.ObservrClient>(Services);
 
     private string? _filter;
     private bool _showAdvanced;
