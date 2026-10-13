@@ -18,13 +18,22 @@ namespace IndxServer.Services.Observr
         /// (<c>digest/fields</c>), a field review goes to the fields, the rest to the statistics.</summary>
         public string Tab => Kind == ObservrClient.FieldReviewKind ? "fields"
             : Kind == ObservrClient.SynonymsKind ? "synonyms"
+            : Kind == ObservrClient.SetupKind ? "search-or-ask"
             : Kind.StartsWith(ObservrClient.DigestKind + "/") ? Kind[(ObservrClient.DigestKind.Length + 1)..] : "statistics";
 
         /// <summary>What the menu shows it as: the query in quotes, a review by name, a digest item or
         /// a change by its title.</summary>
-        public string Title => Kind == ObservrClient.FieldReviewKind ? "field review"
-            : Kind == ObservrClient.SynonymsKind ? "synonym suggestions"
-            : Kind.StartsWith(ObservrClient.DigestKind) || Kind == ObservrClient.ChangeKind ? Query : $"“{Query}”";
+        public string Title => Kind switch
+        {
+            ObservrClient.FieldReviewKind => "Field review",
+            ObservrClient.SynonymsKind => "Synonym suggestions",
+            ObservrClient.SetupKind => "Search or ask setup",
+            ObservrClient.ChangeKind => $"Did this help: {Query}",
+            ObservrClient.LowClickKind => $"Why isn't this working: “{Query}”",
+            ObservrClient.ZeroHitKind => $"Found nothing: “{Query}”",
+            _ when Kind.StartsWith(ObservrClient.DigestKind) => Query,
+            _ => $"“{Query}”",
+        };
     }
 
     /// <summary>What Observr does on one dataset, chosen by the team's editors on the team's Observr

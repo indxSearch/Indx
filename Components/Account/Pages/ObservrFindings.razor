@@ -17,47 +17,10 @@
 </div>
 
 @if (_loading) { <p style="color:var(--lv5);">Loading...</p> }
-else if (_all.Count == 0) { <p style="color:var(--lv5);">Nothing yet. Ask Observr from a dataset's Statistics tab, under Top queries, Found nothing.</p> }
 else
 {
-    <Table Scrollable AriaLabel="Observr findings">
-        <thead><tr><th>When</th><th>Dataset</th><th>Query</th><th>Answer</th><th>Proposal</th><th>Decision</th></tr></thead>
-        <tbody>
-            @foreach (var f in _all)
-            {
-                <tr>
-                    <td style="white-space:nowrap;"><TimeAgo Value="f.CreatedUtc" TooltipPosition="right" /></td>
-                    <td style="white-space:nowrap;"><a href="@Link(f)">@TeamName(f.TeamId)/@f.DataSetName</a></td>
-                    <td>@(f.Kind == ObservrClient.FieldReviewKind ? "field review" : f.Query)</td>
-                    <td style="max-width:420px;">@f.Answer</td>
-                    <td>
-                        @foreach (var p in f.Proposals)
-                        {
-                            <span style="display:inline-flex; gap:4px; flex-wrap:wrap; align-items:center;">
-                                @if (p.Field is { } change) { <Chip>@change.Name</Chip><span style="font:var(--text-xs); color:var(--lv5);">@change.Summary</span> }
-                                else { @foreach (var t in p.Describe()) { <Chip>@t</Chip> } }
-                            </span>
-                        }
-                    </td>
-                    <td style="white-space:nowrap;">
-                        @if (f.Status == ObservrFinding.Open && f.Proposals.Count == 0)
-                        {
-                            <Button Variant="ghost" Size="micro" Loading="@(_busy == f.Id)" @onclick="() => DecideAsync(f, true)">Got it</Button>
-                        }
-                        else if (f.Status == ObservrFinding.Open)
-                        {
-                            <Button Variant="primary" Size="micro" Loading="@(_busy == f.Id)" @onclick="() => DecideAsync(f, true)">Yes</Button>
-                            <Button Variant="ghost" Size="micro" Disabled="@(_busy == f.Id)" @onclick="() => DecideAsync(f, false)">No</Button>
-                        }
-                        else
-                        {
-                            <span style="font:var(--text-xs); color:var(--lv5);">@(f.Proposals.Count == 0 ? "read" : f.Status)</span>
-                        }
-                    </td>
-                </tr>
-            }
-        </tbody>
-    </Table>
+    <ObservrFindingList Findings="_all" Link="Link" TeamName="TeamName" ShowTeam CanDecide Busy="_busy" OnDecide="d => DecideAsync(d.Finding, d.Yes)"
+                        Empty="Nothing yet. Observr reports here daily on the datasets it is on for, and answers from the Statistics, Fields, Synonyms and Search or ask tabs." />
 }
 
 @code {

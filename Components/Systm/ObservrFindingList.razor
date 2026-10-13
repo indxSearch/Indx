@@ -1,0 +1,85 @@
+@* The findings as a list, one block each: what it is about, where and when on one line, the
+   text at reading width, the proposal as chips, the decision. A table put two paragraphs in a
+   narrow column beside five empty cells; this is what a finding actually looks like. Used by the
+   team's Observr page and the account's history; the menu keeps its own, shorter shape. *@
+@using IndxServer.Services.Observr
+
+@if (Findings.Count == 0)
+{
+    <p class="ofl-empty">@Empty</p>
+}
+else
+{
+    <ol class="ofl">
+        @foreach (var f in Findings)
+        {
+            <li class="ofl-item">
+                <div class="ofl-head">
+                    <span class="ofl-title">@f.Title</span>
+                    <span class="ofl-where">
+                        @if (ShowTeam) { <text>@TeamName(f.TeamId) / </text> }@f.DataSetName
+                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" Href="@Link(f)" title="Open where it is about" aria-label="@($"Open {f.DataSetName}, {f.Tab}")" />
+                    </span>
+                    <span class="ofl-spacer"></span>
+                    <span class="ofl-time"><TimeAgo Value="f.CreatedUtc" TooltipPosition="left" /></span>
+                    @if (f.Status != ObservrFinding.Open)
+                    {
+                        <Chip Color="var(--lv2)" TextColor="var(--lv6)">@(f.Proposals.Count == 0 ? "read" : f.Status)</Chip>
+                    }
+                </div>
+                <p class="ofl-text">@f.Answer</p>
+                @if (f.Proposals.Count > 0)
+                {
+                    <div class="ofl-proposals">
+                        @foreach (var p in f.Proposals)
+                        {
+                            <div class="ofl-proposal">
+                                <span class="ofl-label">@p.Label</span>
+                                @if (p.Field is { } change)
+                                {
+                                    <Chip>@change.Name</Chip><span class="ofl-label">@change.Summary</span>
+                                }
+                                else
+                                {
+                                    @foreach (var t in p.Describe()) { <Chip>@t</Chip> }
+                                }
+                                @if (!string.IsNullOrWhiteSpace(p.Reason) && p.Reason != f.Answer) { <span class="ofl-why">@p.Reason</span> }
+                            </div>
+                        }
+                    </div>
+                }
+                @if (f.Status == ObservrFinding.Open && CanDecide)
+                {
+                    <div class="ofl-actions">
+                        @if (f.Proposals.Count == 0)
+                        {
+                            <Button Variant="ghost" Size="micro" Loading="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, true))">Got it</Button>
+                        }
+                        else
+                        {
+                            <Button Variant="primary" Size="micro" Loading="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, true))">Yes</Button>
+                            <Button Variant="ghost" Size="micro" Disabled="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, false))">No</Button>
+                        }
+                    </div>
+                }
+                else if (f.Status == ObservrFinding.Open)
+                {
+                    <span class="ofl-label">open</span>
+                }
+            </li>
+        }
+    </ol>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<ObservrFinding> Findings { get; set; } = [];
+    /// <summary>Where a finding points: the dataset's page, on the tab it is about.</summary>
+    [Parameter, EditorRequired] public Func<ObservrFinding, string> Link { get; set; } = default!;
+    [Parameter] public Func<string, string> TeamName { get; set; } = id => id;
+    /// <summary>Name the team beside the dataset: the account's history spans teams, a team's page does not.</summary>
+    [Parameter] public bool ShowTeam { get; set; }
+    [Parameter] public bool CanDecide { get; set; }
+    [Parameter] public long Busy { get; set; }
+    [Parameter] public EventCallback<(ObservrFinding Finding, bool Yes)> OnDecide { get; set; }
+    [Parameter] public string Empty { get; set; } = "Nothing yet.";
+}
