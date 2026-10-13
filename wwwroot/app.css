@@ -325,7 +325,6 @@ a.btn-danger:hover {
     align-self: flex-start;
     max-height: 100vh;
     overflow-y: auto;
-    border-right: 1px solid var(--lv2);
 }
 
 /* The foot: one row, fixed at the bottom left of the window, over everything. */
@@ -479,7 +478,9 @@ a.btn-danger:hover {
     min-width: 0;
     display: flex;
     align-items: center;
-    padding-left: calc(var(--spacing) * 8);
+    /* The content's gutter less the first crumb's own padding, so its icon sits on the
+       content's left edge rather than one button-padding in from it. */
+    padding-left: calc(var(--spacing) * 8 - 8px);
 }
 
 .nav-right {
@@ -590,7 +591,6 @@ a.btn-danger:hover {
         width: auto;
         position: static;
         max-height: none;
-        border-right: none;
         border-bottom: 1px solid var(--lv2);
         padding: 6px 12px;
     }
