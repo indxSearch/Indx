@@ -1006,7 +1006,8 @@ a.btn-danger:hover {
    Trying (13 Oct 2026): the 1px checkerboard behind Observr's ghost buttons, as ProgressBar's
    track has it, so the eye knows the button goes to Observr without a hue. */
 .indx-observr { display: inline-flex; }
-.indx-observr .indx-btn.indx-btn-ghost { position: relative; isolation: isolate; }
+.indx-observr .indx-btn.indx-btn-ghost { position: relative; isolation: isolate; color: var(--lv8); }
+.indx-observr .indx-btn.indx-btn-ghost:hover:not(:disabled) { color: var(--lv8); }
 .indx-observr .indx-btn.indx-btn-ghost::before {
     content: '';
     position: absolute;
@@ -1020,3 +1021,19 @@ a.btn-danger:hover {
     pointer-events: none;
 }
 .indx-observr .indx-btn.indx-btn-ghost:hover::before { opacity: 0.3; }
+/* And a 2x2 lv8 square in each corner: four radial gradients, one per corner, on the same layer. */
+.indx-observr .indx-btn.indx-btn-ghost::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+        linear-gradient(var(--lv8), var(--lv8)),
+        linear-gradient(var(--lv8), var(--lv8)),
+        linear-gradient(var(--lv8), var(--lv8)),
+        linear-gradient(var(--lv8), var(--lv8));
+    background-size: 2px 2px;
+    background-repeat: no-repeat;
+    background-position: top left, top right, bottom left, bottom right;
+}
