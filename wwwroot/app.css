@@ -641,24 +641,32 @@ a.btn-danger:hover {
         display: none;
     }
 
+    /* The trail's row spans the whole header, under the mark, rather than starting beside it:
+       nav-main steps aside so the trail and the right cluster are the grid's own items. */
+    .nav {
+        row-gap: 4px;
+    }
+
     .nav-main {
-        flex-wrap: wrap;
-        gap: 4px 0;
+        display: contents;
     }
 
     .nav-right {
-        order: -1;
-        margin-left: auto;
+        grid-column: 2;
+        grid-row: 1;
+        justify-self: end;
         padding-right: calc(var(--spacing) * 2);
         position: static;
         transform: none;
     }
 
+    /* The first crumb on the content's gutter, less its own 8px of padding, as on a wide screen. */
     .nav-crumbs {
+        grid-column: 1 / -1;
+        grid-row: 2;
         margin: 0;
-        flex: 1 1 100%;
-        order: 1;
-        padding-left: calc(var(--spacing) * 2);
+        max-width: none;
+        padding-left: calc(var(--spacing) * 3 - 8px);
         overflow: hidden;
     }
 
@@ -681,19 +689,31 @@ a.btn-danger:hover {
         inset: 0 0 0 auto;
         width: min(340px, 100%);
         height: 100vh;
+        height: 100dvh;   /* a phone's browser bars come off the panel, so the composer stays in sight */
         z-index: 70;
         background: var(--lv0);
         padding: 8px;
     }
     .shell-agent--open > * { width: 100%; }
 
+    /* A phone: the whole screen. 340px left a sliver of page beside it that did nothing. */
+    @media (max-width: 560px) {
+        .shell-agent--open { width: 100%; border-left: none; }
+    }
+
     /* The column becomes a row above the content, scrolling sideways. */
     .shell {
         flex-direction: column;
     }
 
+    /* The row is the screen's width and the menu scrolls inside it. The wide rule's
+       align-self: flex-start made it as wide as its content here (971px on a phone), so the
+       whole page scrolled sideways with it. */
     .shell-side {
         width: auto;
+        align-self: stretch;
+        min-width: 0;
+        overflow: visible;
         position: static;
         max-height: none;
         border-bottom: 1px solid var(--lv2);
