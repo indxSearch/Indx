@@ -26,85 +26,83 @@
         synonyms suggested.
     </p>
 
-    @* The findings first: what a person comes here for. The per-dataset settings are rarely
-       touched after the first day, so they sit folded below, their summary saying what is on. *@
-    <h3 class="indx-section-heading">What Observr found</h3>
-    <ObservrFindingList Findings="_findings" Link="@(f => $"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" CanDecide="_canEdit" Busy="_busy"
-                        OnDecide="d => DecideAsync(d.Finding, d.Yes)"
-                        Empty="Nothing yet. The first report comes the morning after a dataset is switched on; Send this week's summary brings it now." />
-
-    <div class="tov-datasets">
-    @if (_rows == null)
-    {
-        <p style="display:flex; align-items:center; gap:8px; color:var(--lv5);"><Spinner Size="14" /> Loading…</p>
+    @* Two tabs, as the dataset page has its sections: the findings, which a person comes here for
+       daily, and the per-dataset settings, rarely touched after the first day but one click away
+       and named with what is on, so nobody has to open them to know. *@
+    @{
+        var onCount = _rows?.Count(r => r.Settings.Enabled) ?? 0;
+        var openCount = _findings.Count(f => f.Status == ObservrFinding.Open);
     }
-    else if (_rows.Count == 0)
+    <div class="tov-tabs">
+        <Tabs Items="@TabItems(onCount, _rows?.Count ?? 0, openCount)" Active="@_tab" ActiveChanged="@(v => _tab = v ?? "findings")" Size="micro" Variant="button" AriaLabel="Observr sections" />
+    </div>
+
+    @if (_tab == "datasets")
     {
-        <p style="color: var(--lv5);">This team has no datasets yet.</p>
+        @if (_rows == null)
+        {
+            <p style="display:flex; align-items:center; gap:8px; color:var(--lv5);"><Spinner Size="14" /> Loading…</p>
+        }
+        else if (_rows.Count == 0)
+        {
+            <p style="color: var(--lv5);">This team has no datasets yet.</p>
+        }
+        else
+        {
+            <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" AriaLabel="Observr per dataset">
+                <thead>
+                    <tr>
+                        <th scope="col">Dataset</th><th scope="col">Observr</th><th scope="col">Reports</th><th scope="col">Buttons in the tabs</th><th scope="col"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in _rows)
+                    {
+                        var s = row.Settings;
+                        <tr>
+                            <td style="color: var(--lv6);">
+                                <span style="display:inline-flex; align-items:center; gap:4px;">
+                                    @row.DataSetName
+                                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" Href="@TeamRoutes.Dataset(Team.Name, row.DataSetName)" title="Open the dataset" aria-label="@($"Open {row.DataSetName}")" />
+                                    @if (row.Open > 0) { <Chip Color="var(--CPureBlue)" TextColor="#ffffff">@row.Open open</Chip> }
+                                </span>
+                            </td>
+                            <td>
+                                @if (_canEdit) { <ToggleSwitch Variant="positive" Checked="s.Enabled" CheckedChanged="on => Save(row, s with { Enabled = on })" Label="@(s.Enabled ? "On" : "Off")" /> }
+                                else { <Chip Color="var(--lv2)" TextColor="var(--lv6)">@(s.Enabled ? "On" : "Off")</Chip> }
+                            </td>
+                            <td>
+                                @if (_canEdit && s.Enabled)
+                                {
+                                    <SelectField Size="micro" Variant="ghost" Options="ReportOptions" Value="@s.Report" ValueChanged="v => Save(row, s with { Report = v })" aria-label="How often Observr reports" style="width: 100%;" />
+                                }
+                                else if (s.Enabled) { <span style="color: var(--lv6);">@ReportLabel(s.Report)</span> }
+                                else { <span style="color: var(--lv4);">—</span> }
+                            </td>
+                            <td>
+                                @if (_canEdit && s.Enabled) { <ToggleSwitch Variant="positive" Checked="s.Buttons" CheckedChanged="on => Save(row, s with { Buttons = on })" Label="@(s.Buttons ? "Shown" : "Hidden")" /> }
+                                else if (s.Enabled) { <span style="color: var(--lv6);">@(s.Buttons ? "Shown" : "Hidden")</span> }
+                                else { <span style="color: var(--lv4);">—</span> }
+                            </td>
+                            <td style="text-align:right;">
+                                @if (_canEdit && s.Enabled) { <ObservrDigestButton TeamId="@TeamId" DatasetName="@row.DataSetName" /> }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </Table>
+            <p class="indx-section-help" style="margin-top: 8px;">
+                A daily report is sent every morning at @_digestHour:00 UTC, a weekly one on Mondays. Each report and each ask counts
+                against the licence's daily allowance.
+            </p>
+        }
     }
     else
     {
-        var on = _rows.Where(r => r.Settings.Enabled).Select(r => r.DataSetName).ToList();
-        <Disclosure DefaultOpen="@(on.Count == 0)">
-            <Summary>
-                <span class="tov-summary">
-                    <span class="tov-summary-title">Datasets</span>
-                    <span class="tov-summary-text">
-                        @(on.Count == 0 ? "Observr is on for none of the team's datasets yet." : $"Observr is on for {on.Count} of {_rows.Count}: {string.Join(", ", on)}.")
-                    </span>
-                </span>
-            </Summary>
-            <ChildContent>
-                <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" AriaLabel="Observr per dataset">
-                    <thead>
-                        <tr>
-                            <th scope="col">Dataset</th><th scope="col">Observr</th><th scope="col">Reports</th><th scope="col">Buttons in the tabs</th><th scope="col"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var row in _rows)
-                        {
-                            var s = row.Settings;
-                            <tr>
-                                <td style="color: var(--lv6);">
-                                    <span style="display:inline-flex; align-items:center; gap:4px;">
-                                        @row.DataSetName
-                                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" Href="@TeamRoutes.Dataset(Team.Name, row.DataSetName)" title="Open the dataset" aria-label="@($"Open {row.DataSetName}")" />
-                                        @if (row.Open > 0) { <Chip Color="var(--CPureBlue)" TextColor="#ffffff">@row.Open open</Chip> }
-                                    </span>
-                                </td>
-                                <td>
-                                    @if (_canEdit) { <ToggleSwitch Variant="positive" Checked="s.Enabled" CheckedChanged="on => Save(row, s with { Enabled = on })" Label="@(s.Enabled ? "On" : "Off")" /> }
-                                    else { <Chip Color="var(--lv2)" TextColor="var(--lv6)">@(s.Enabled ? "On" : "Off")</Chip> }
-                                </td>
-                                <td>
-                                    @if (_canEdit && s.Enabled)
-                                    {
-                                        <SelectField Size="micro" Variant="ghost" Options="ReportOptions" Value="@s.Report" ValueChanged="v => Save(row, s with { Report = v })" aria-label="How often Observr reports" style="width: 100%;" />
-                                    }
-                                    else if (s.Enabled) { <span style="color: var(--lv6);">@ReportLabel(s.Report)</span> }
-                                    else { <span style="color: var(--lv4);">—</span> }
-                                </td>
-                                <td>
-                                    @if (_canEdit && s.Enabled) { <ToggleSwitch Variant="positive" Checked="s.Buttons" CheckedChanged="on => Save(row, s with { Buttons = on })" Label="@(s.Buttons ? "Shown" : "Hidden")" /> }
-                                    else if (s.Enabled) { <span style="color: var(--lv6);">@(s.Buttons ? "Shown" : "Hidden")</span> }
-                                    else { <span style="color: var(--lv4);">—</span> }
-                                </td>
-                                <td style="text-align:right;">
-                                    @if (_canEdit && s.Enabled) { <ObservrDigestButton TeamId="@TeamId" DatasetName="@row.DataSetName" /> }
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </Table>
-                <p class="indx-section-help" style="margin-top: 8px;">
-                    A daily report is sent every morning at @_digestHour:00 UTC, a weekly one on Mondays. Each report and each ask counts
-                    against the licence's daily allowance.
-                </p>
-            </ChildContent>
-        </Disclosure>
+        <ObservrFindingList Findings="_findings" Link="@(f => $"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" CanDecide="_canEdit" Busy="_busy"
+                            OnDecide="d => DecideAsync(d.Finding, d.Yes)"
+                            Empty="@(onCount == 0 ? "Nothing yet: Observr is on for none of the team's datasets. Switch some on under Datasets." : "Nothing yet. The first report comes the morning after a dataset is switched on; Send this week's summary under Datasets brings it now.")" />
     }
-    </div>
 </div>
 
 @code {
@@ -113,6 +111,14 @@
     [Inject] private IConfiguration Configuration { get; set; } = default!;
 
     private sealed record Row(string DataSetName, ObservrDatasetSettings Settings, int Open);
+
+    private string _tab = "findings";
+
+    private static List<Tabs.TabItem> TabItems(int on, int all, int open) =>
+    [
+        new("Findings", "findings", DatasetIcons.Observr, Badge: open == 0 ? null : open.ToString(), BadgeTitle: $"{open} open", BadgeTone: "info"),
+        new($"Datasets", "datasets", DatasetIcons.Fields, Title: $"Observr is on for {on} of {all}", Badge: all == 0 ? null : $"{on} of {all} on", BadgeTone: "info"),
+    ];
 
     private string TeamId => Team.Id.ToString();
     private bool _canEdit;
