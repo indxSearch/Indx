@@ -1,0 +1,63 @@
+@* Port of indx-systm Composer: the message field. Enter sends, Shift+Enter breaks the line; the
+   field grows with its text up to MaxLines. Send becomes Stop while an answer is in flight. Enter
+   is read by the browser (a conditional preventDefault is not Blazor's), which clicks the Send
+   button, so the send goes through the same handler as a click. *@
+
+<div class="indx-composer @Class">
+    <div class="indx-composer-field">
+        @if (!HideIcon)
+        {
+            <span class="indx-composer-icon" aria-hidden="true">
+                @if (Icon != null) { @Icon(21) } else { <AiAgent Size="21" Color="currentColor" /> }
+            </span>
+        }
+        <textarea class="indx-composer-input" rows="@Rows" value="@Value" placeholder="@Placeholder" disabled="@Disabled" aria-label="@AriaLabel"
+                  @oninput="OnInput" autofocus="@AutoFocus"
+                  onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();this.closest('.indx-composer').querySelector('[data-send]')?.click();}"></textarea>
+    </div>
+    <div class="indx-composer-button">
+        @if (Streaming)
+        {
+            <Button Variant="secondary" Size="micro" aria-label="Stop" IconLeft="_stop" @onclick="() => OnStop.InvokeAsync()" />
+        }
+        else
+        {
+            <Button Variant="primary" Size="micro" aria-label="Send" IconLeft="_send" Disabled="@(!CanSend)" data-send @onclick="SendAsync" />
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Value { get; set; } = "";
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    /// <summary>Called with the trimmed text on Enter or the send button. Not while Streaming.</summary>
+    [Parameter] public EventCallback<string> OnSend { get; set; }
+    /// <summary>Called by the Stop button, which replaces Send while Streaming.</summary>
+    [Parameter] public EventCallback OnStop { get; set; }
+    /// <summary>An answer is in flight: the send button becomes Stop and Enter does nothing.</summary>
+    [Parameter] public bool Streaming { get; set; }
+    [Parameter] public string Placeholder { get; set; } = "Ask a question…";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public bool AutoFocus { get; set; }
+    /// <summary>Leading icon; the pixl AI agent by default. HideIcon leaves it out.</summary>
+    [Parameter] public RenderFragment<int>? Icon { get; set; }
+    [Parameter] public bool HideIcon { get; set; }
+    /// <summary>Tallest the field grows before it scrolls, in lines.</summary>
+    [Parameter] public int MaxLines { get; set; } = 6;
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string AriaLabel { get; set; } = "Message";
+
+    private static readonly RenderFragment<int> _send = size => @<ArrowUp Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _stop = size => @<Stop Size="size" Color="currentColor" />;
+
+    private bool CanSend => !Streaming && !Disabled && !string.IsNullOrWhiteSpace(Value);
+    private int Rows => Math.Clamp(Value.Count(c => c == '\n') + 1, 1, Math.Max(1, MaxLines));
+
+    private Task OnInput(ChangeEventArgs e) => ValueChanged.InvokeAsync(e.Value?.ToString() ?? "");
+
+    private async Task SendAsync()
+    {
+        if (!CanSend) return;
+        await OnSend.InvokeAsync(Value.Trim());
+    }
+}

@@ -1,0 +1,41 @@
+@* Port of indx-systm ChatPanel: the frame of a conversation. An optional header, a scrolling
+   thread, the composer and a hints row. Sized by its container: give it a height and the thread
+   scrolls. One surface; the parts are told apart by tone and spacing, never by shadows. *@
+
+<div class="indx-chat @Class" aria-label="@AriaLabel">
+    @if (Header != null)
+    {
+        <div class="indx-chat-header">@Header</div>
+    }
+    <div class="indx-chat-thread" role="log" aria-live="polite">@ChildContent</div>
+    @if (Composer != null)
+    {
+        <div class="indx-chat-footer">@Composer</div>
+    }
+    @if (Hints)
+    {
+        <div class="indx-chat-hints">
+            @if (HintsContent != null) { @HintsContent }
+            else
+            {
+                <span><kbd class="indx-chat-kbd">↵</kbd> send</span>
+                <span><kbd class="indx-chat-kbd">⇧↵</kbd> new line</span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>Rendered above the thread, typically a mode Tabs.</summary>
+    [Parameter] public RenderFragment? Header { get; set; }
+    /// <summary>The conversation: messages, status lines, suggestions. Scrolls independently.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Rendered below the thread, typically a Composer.</summary>
+    [Parameter] public RenderFragment? Composer { get; set; }
+    /// <summary>The keyboard hints row under the composer; false hides it.</summary>
+    [Parameter] public bool Hints { get; set; } = true;
+    /// <summary>Hints of the caller's own in place of the default row.</summary>
+    [Parameter] public RenderFragment? HintsContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+}

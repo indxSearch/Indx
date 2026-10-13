@@ -1,0 +1,40 @@
+/* The field is drawn like Textarea: an outline on the panel's own tone, lv3, lv5 on hover and focus. */
+.indx-composer {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    padding: 5px 8px 5px 11px;
+    background: transparent;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    transition: border-color 0.2s;
+}
+.indx-composer:hover,
+.indx-composer:focus-within { border-color: var(--lv5); }
+.indx-composer-field { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 8px; }
+.indx-composer-icon { display: inline-flex; align-items: center; height: 30px; flex-shrink: 0; color: var(--lv4); transition: color 0.2s; }
+.indx-composer-field:focus-within .indx-composer-icon { color: var(--lv7); }
+.indx-composer-input {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    box-sizing: border-box;
+    padding: 6px 0;
+    min-height: 30px;
+    max-height: 160px;
+    font: var(--text-sm);
+    font-family: inherit;
+    line-height: 18px;
+    color: var(--lv8);
+    caret-color: var(--lv7);
+    background: none;
+    border: none;
+    resize: none;
+    overflow-y: auto;
+}
+.indx-composer-input:focus { outline: none; }
+.indx-composer-input::placeholder { color: var(--lv4); }
+.indx-composer-input:disabled { opacity: 0.6; cursor: not-allowed; }
+/* Send and Stop are a 24px square around the 14px arrow, 3px up so it centres on the last line. */
+.indx-composer-button { flex-shrink: 0; padding-bottom: 3px; }
+.indx-composer-button ::deep .indx-btn { height: 24px; width: 24px; padding: 0; justify-content: center; }
