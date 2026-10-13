@@ -13,8 +13,9 @@
 
 <PageTitle>Manage @Team.Name</PageTitle>
 
-@* Team settings: [team ▾] › Settings. Members and roles, team API keys, and a danger zone that
-   renames or deletes the team. Reached from the "Manage team" button on the team page. Hosted by
+@* Team settings: [team ▾] › Settings. Members and roles, and a danger zone that renames or
+   deletes the team. The team's API keys have a page of their own (TeamKeysView). Reached from
+   the "Manage team" button on the team page. Hosted by
    Pages/ConsolePage. *@
 
 <div>
@@ -101,12 +102,6 @@
             </div>
         </div>
     </Modal>
-
-    @* ── Team keys (Admin): keys the team owns, for deployed sites and servers ── *@
-    @if (_canAdmin)
-    {
-        <TeamKeys Team="Team" UserId="@UserId" />
-    }
 
     @* ── Danger zone (Admin): rename and delete, each confirmed in a modal that says what breaks.
        Rename is here because the name is in every API path (/api/teams/{name}/…), so renaming

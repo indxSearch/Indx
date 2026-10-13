@@ -11,15 +11,9 @@
 
 @* Team keys: API keys the team owns rather than a person, for deployed sites and servers. They keep
    working when whoever made them leaves, and every Admin of the team can see and revoke them.
-   Admin only; TeamSettingsView decides whether to render this at all, and ApiKeyService checks
-   the role again on every create and revoke. Personal keys stay on Account, API keys. *@
-
-<h3 class="indx-section-heading">API keys</h3>
-<p class="indx-section-help">
-    Keys the team owns, for a production website or a server. They keep working when the person who created them
-    leaves the team, and every Admin can see and revoke them. Your own keys, for scripts and AI agents, are under
-    <a href="/account/api-key">Account, API keys</a>.
-</p>
+   Admin only; TeamKeysView decides whether to render this at all, and ApiKeyService checks the
+   role again on every create and revoke. The page's title and help are the view's. Personal keys
+   stay on Account, API keys. *@
 
 @if (!string.IsNullOrEmpty(_error) && !_showCreate)
 {
