@@ -271,7 +271,7 @@ else
                     <span class="stats-tile-value">@N(_ask.SourcesOpened)</span>
                 </Surface>
                 <Surface Class="stats-tile">
-                    <Tooltip Content="What the judge and the answers cost, as OpenRouter reported it. Median time to an answer's first words beside it."><span class="stats-tile-label">Cost</span></Tooltip>
+                    <Tooltip Content="What the judge and the answers cost: as OpenRouter reports it, or estimated from the tokens at list prices on another provider. Median time to an answer's first words beside it."><span class="stats-tile-label">Cost</span></Tooltip>
                     <span class="stats-tile-value">@Usd(_ask.Cost) <span class="stats-tile-sub">@Seconds(_ask.MedianFirstTextMs)</span></span>
                 </Surface>
             </div>

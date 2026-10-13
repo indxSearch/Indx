@@ -66,22 +66,24 @@
             <ToggleSwitch Label="Show Search or ask" @bind-Checked="_searchOrAskShown" />
             <p style="font: var(--text-xs); color: var(--lv4); margin-top: 4px; margin-left: 48px;">
                 Offers to answer what visitors ask, written from a dataset's records. Adds a Search or ask tab to
-                each dataset, where it is switched on one dataset at a time. Sends what visitors type to
-                OpenRouter and the model providers, and needs an OpenRouter key.
+                each dataset, where it is switched on one dataset at a time. Sends what visitors type to the model
+                provider you choose, with your own key.
             </p>
             @if (_searchOrAskShown)
             {
-                <div style="margin: 16px 0 0 48px; display: flex; flex-direction: column; gap: 8px;">
+                <div class="soa-admin">
                     @if (SearchOrAsk.ModelKeySource == "configuration")
                     {
                         <p style="font: var(--text-xs); color: var(--lv5); margin: 0;">
-                            The key comes from the server's configuration (<code>Indx:SearchOrAsk:ApiKey</code>), which wins over one set here.
+                            The provider and the key come from the server's configuration (<code>Indx:SearchOrAsk</code>), which wins over what is set here.
                         </p>
                     }
                     else
                     {
-                        <InputField Label="OpenRouter key" type="password" autocomplete="off" @bind-Value="_searchOrAskKey"
-                                    placeholder="@(_searchOrAskKeySaved && !_removeSearchOrAskKey ? "Saved; type to replace" : "sk-or-…")" />
+                        @* The answers' door. The judge is Jev whichever door; its own choice is below. *@
+                        <SelectField Label="Answers and filters" Options="_providerOptions" Value="@_provider" ValueChanged="@(v => _provider = v ?? "openrouter")" />
+                        <InputField Label="@KeyLabel" type="password" autocomplete="off" @bind-Value="_searchOrAskKey"
+                                    placeholder="@(_searchOrAskKeySaved && !_removeSearchOrAskKey ? "Saved; type to replace" : KeyPlaceholder)" />
                         <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">
                             @if (_searchOrAskKeySaved && !_removeSearchOrAskKey)
                             {
@@ -94,9 +96,60 @@
                             }
                             else
                             {
-                                <text>Without a key Search or ask cannot run; nothing is sent anywhere. Get one at openrouter.ai.</text>
+                                <text>Without a key Search or ask cannot run; nothing is sent anywhere.</text>
                             }
                         </p>
+                        @if (_provider == "openrouter")
+                        {
+                            <ToggleSwitch Label="Keep requests in the EU" @bind-Checked="_euRouting" />
+                            <p style="font: var(--text-xs); color: var(--lv4); margin: -4px 0 0 48px;">
+                                OpenRouter's EU endpoint: requests are processed in the EU and go only to providers there. A model with no EU provider is refused rather than routed out.
+                            </p>
+                        }
+                        @if (_provider == "openai")
+                        {
+                            <InputField Label="Base URL" @bind-Value="_baseUrl" placeholder="https://api.openai.com/v1" />
+                            <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">
+                                Any endpoint that speaks OpenAI's chat completions: OpenAI, Azure OpenAI, Mistral, Groq, a local model. Name its models below.
+                            </p>
+                        }
+                        @if (_provider != "openrouter")
+                        {
+                            <div class="soa-admin-models">
+                                <InputField Label="Answer model" @bind-Value="_answerModel" placeholder="@_defaults.Answer" />
+                                <InputField Label="Fast answer model" @bind-Value="_fastModel" placeholder="@_defaults.Fast" />
+                                <InputField Label="Filter model" @bind-Value="_filterModel" placeholder="@_defaults.Filter" />
+                            </div>
+                            <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">
+                                Costs in the statistics are estimated from the tokens at list prices for the models we know; OpenRouter reports the real cost.
+                            </p>
+                        }
+
+                        <SelectField Label="The judge, Jev" Options="_judgeOptions" Value="@_judgeProvider" ValueChanged="@(v => _judgeProvider = v ?? "openrouter")" />
+                        @if (_judgeProvider == "typesafe" || _provider != "openrouter")
+                        {
+                            <InputField Label="@(_judgeProvider == "typesafe" ? "TypeSafe key" : "OpenRouter key for the judge")" type="password" autocomplete="off" @bind-Value="_judgeKey"
+                                        placeholder="@(_judgeKeySaved && !_removeJudgeKey ? "Saved; type to replace" : "")" />
+                            <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">
+                                @if (_judgeKeySaved && !_removeJudgeKey)
+                                {
+                                    <text>A judge key is saved.</text>
+                                    <Button Variant="ghost" Size="micro" @onclick="() => _removeJudgeKey = true">Remove key</Button>
+                                }
+                                else if (_removeJudgeKey)
+                                {
+                                    <text>The judge key will be removed when you save. Without a judge, answers still work on a visitor's explicit question; no typing pause leaves the server.</text>
+                                }
+                                else
+                                {
+                                    <text>Without a judge key, answers still work on a visitor's explicit question, and no typing pause leaves the server.</text>
+                                }
+                            </p>
+                        }
+                        else
+                        {
+                            <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">The judge uses the key above.</p>
+                        }
                     }
                 </div>
             }
@@ -145,6 +198,29 @@
     private string? _searchOrAskKey;
     private bool _searchOrAskKeySaved;
     private bool _removeSearchOrAskKey;
+    private string _provider = "openrouter";
+    private string _baseUrl = "";
+    private bool _euRouting;
+    private string _judgeProvider = "openrouter";
+    private string? _judgeKey;
+    private bool _judgeKeySaved;
+    private bool _removeJudgeKey;
+    private string _answerModel = "", _fastModel = "", _filterModel = "";
+
+    private static readonly IEnumerable<SelectField.SelectOption> _providerOptions =
+    [
+        new("OpenRouter", "openrouter"),
+        new("An OpenAI-compatible endpoint", "openai"),
+        new("Anthropic", "anthropic"),
+    ];
+    private static readonly IEnumerable<SelectField.SelectOption> _judgeOptions =
+    [
+        new("Through OpenRouter", "openrouter"),
+        new("Through TypeSafe directly", "typesafe"),
+    ];
+    private string KeyLabel => _provider switch { "anthropic" => "Anthropic key", "openai" => "API key", _ => "OpenRouter key" };
+    private string KeyPlaceholder => _provider switch { "anthropic" => "sk-ant-…", "openai" => "", _ => "sk-or-…" };
+    private (string Answer, string Fast, string Filter) _defaults => IndxServer.Services.SearchOrAsk.ModelPrices.DefaultModels(_provider);
     private string _registrationMode = "Open";
     private string _allowedDomainsText = "";
     private string? _successMessage;
@@ -159,10 +235,12 @@
     ];
 
     // What the page last loaded or saved, to tell whether there is anything to save.
-    private (string, bool, bool, bool, bool, string, string) _saved;
-    private (string, bool, bool, bool, bool, string, string) Current =>
-        (_instanceName, _requireEmailVerification, _allowUserSelfDeletion, _mcpEnabled, _searchOrAskShown, _registrationMode, _allowedDomainsText);
-    private bool IsDirty => Current != _saved || !string.IsNullOrWhiteSpace(_searchOrAskKey) || _removeSearchOrAskKey;
+    private (string, bool, bool, bool, bool, string, string, string) _saved;
+    private (string, bool, bool, bool, bool, string, string, string) Current =>
+        (_instanceName, _requireEmailVerification, _allowUserSelfDeletion, _mcpEnabled, _searchOrAskShown, _registrationMode, _allowedDomainsText,
+         string.Join('\n', _provider, _baseUrl, _euRouting, _judgeProvider, _answerModel, _fastModel, _filterModel));
+    private bool IsDirty => Current != _saved || !string.IsNullOrWhiteSpace(_searchOrAskKey) || _removeSearchOrAskKey
+        || !string.IsNullOrWhiteSpace(_judgeKey) || _removeJudgeKey;
 
     protected override void OnInitialized() => LoadFromSettings();
 
@@ -184,6 +262,16 @@
         _searchOrAskKeySaved = !string.IsNullOrWhiteSpace(settings.SearchOrAskApiKey);
         _searchOrAskKey = null;
         _removeSearchOrAskKey = false;
+        _provider = settings.SearchOrAskProvider ?? "openrouter";
+        _baseUrl = settings.SearchOrAskBaseUrl ?? "";
+        _euRouting = settings.SearchOrAskEuRouting;
+        _judgeProvider = settings.SearchOrAskJudgeProvider ?? "openrouter";
+        _judgeKeySaved = !string.IsNullOrWhiteSpace(settings.SearchOrAskJudgeApiKey);
+        _judgeKey = null;
+        _removeJudgeKey = false;
+        _answerModel = settings.SearchOrAskAnswerModel ?? "";
+        _fastModel = settings.SearchOrAskFastAnswerModel ?? "";
+        _filterModel = settings.SearchOrAskFilterModel ?? "";
         _registrationMode = settings.RegistrationMode.ToString();
         _allowedDomainsText = string.Join("\n", settings.AllowedDomains);
         _saved = Current;
@@ -220,6 +308,15 @@
             settings.SearchOrAskShown = _searchOrAskShown;
             if (_removeSearchOrAskKey) settings.SearchOrAskApiKey = null;
             else if (!string.IsNullOrWhiteSpace(_searchOrAskKey)) settings.SearchOrAskApiKey = _searchOrAskKey.Trim();
+            settings.SearchOrAskProvider = _provider;
+            settings.SearchOrAskBaseUrl = string.IsNullOrWhiteSpace(_baseUrl) ? null : _baseUrl.Trim();
+            settings.SearchOrAskEuRouting = _euRouting;
+            settings.SearchOrAskJudgeProvider = _judgeProvider;
+            if (_removeJudgeKey) settings.SearchOrAskJudgeApiKey = null;
+            else if (!string.IsNullOrWhiteSpace(_judgeKey)) settings.SearchOrAskJudgeApiKey = _judgeKey.Trim();
+            settings.SearchOrAskAnswerModel = string.IsNullOrWhiteSpace(_answerModel) ? null : _answerModel.Trim();
+            settings.SearchOrAskFastAnswerModel = string.IsNullOrWhiteSpace(_fastModel) ? null : _fastModel.Trim();
+            settings.SearchOrAskFilterModel = string.IsNullOrWhiteSpace(_filterModel) ? null : _filterModel.Trim();
             settings.RegistrationMode = mode;
             settings.AllowedDomains = domains;
             SettingsService.Save(settings);
@@ -227,6 +324,9 @@
             _searchOrAskKeySaved = !string.IsNullOrWhiteSpace(settings.SearchOrAskApiKey);
             _searchOrAskKey = null;
             _removeSearchOrAskKey = false;
+            _judgeKeySaved = !string.IsNullOrWhiteSpace(settings.SearchOrAskJudgeApiKey);
+            _judgeKey = null;
+            _removeJudgeKey = false;
             _saved = Current;
 
             _successMessage = "Settings saved.";

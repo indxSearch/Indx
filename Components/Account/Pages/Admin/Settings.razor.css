@@ -1,0 +1,4 @@
+
+/* Search or ask's provider block: one column of fields under the switch, the model names in a row. */
+.soa-admin { margin: 16px 0 0 48px; display: flex; flex-direction: column; gap: 10px; max-width: 560px; }
+.soa-admin-models { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }

@@ -39,13 +39,25 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>The model key set in the console, if any.</summary>
         string? ModelKey { get; }
+
+        /// <summary>The console's provider settings, the key among them.</summary>
+        SearchOrAskProviderSettings Providers => new(ApiKey: ModelKey);
     }
 
-    /// <summary>The switch and the console's key, as the instance settings file holds them.</summary>
+    /// <summary>The switch and the console's provider settings, as the instance settings file holds them.</summary>
     internal sealed class InstanceSearchOrAskSwitch(InstanceSettingsService settings) : ISearchOrAskSwitch
     {
         public bool Shown => settings.Load().SearchOrAskShown;
         public string? ModelKey => settings.Load().SearchOrAskApiKey;
+        public SearchOrAskProviderSettings Providers
+        {
+            get
+            {
+                var s = settings.Load();
+                return new SearchOrAskProviderSettings(s.SearchOrAskProvider, s.SearchOrAskApiKey, s.SearchOrAskBaseUrl, s.SearchOrAskEuRouting,
+                    s.SearchOrAskJudgeProvider, s.SearchOrAskJudgeApiKey, s.SearchOrAskAnswerModel, s.SearchOrAskFastAnswerModel, s.SearchOrAskFilterModel);
+            }
+        }
     }
 
     /// <summary>An earlier question and its answer in the same conversation, for a follow-up.</summary>
@@ -105,9 +117,10 @@ namespace IndxServer.Services.SearchOrAsk
 
         public SearchOrAskService(SearchOrAskStore store, DatasetMetadataStore metadata, ISearchOrAskModels models,
             SearchOrAskOptions options, ILogger<SearchOrAskService> logger, StatisticsService? statistics = null,
-            ISearchOrAskSwitch? instance = null)
+            ISearchOrAskSwitch? instance = null, SearchOrAskSetupProvider? setup = null)
         {
             _instance = instance;
+            _setup = setup ?? new SearchOrAskSetupProvider(options, instance);
             _statistics = statistics;
             _store = store;
             _metadata = metadata;
@@ -122,32 +135,26 @@ namespace IndxServer.Services.SearchOrAsk
             PartitionedRateLimiter.Create<string, string>(address => RateLimitPartition.GetFixedWindowLimiter(address,
                 _ => new FixedWindowRateLimiterOptions { PermitLimit = Math.Max(1, perMinute), Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 
-        /// <summary>Whether this instance can run Search or ask: it has a model key, from its
+        private readonly SearchOrAskSetupProvider _setup;
+
+        /// <summary>Where each call goes and with which key (Notes/search-or-ask-server.md): the
+        /// configuration's values win over the console's. The clients read the same object.</summary>
+        public SearchOrAskSetup Setup => _setup.Current;
+
+        /// <summary>Whether this instance can write answers: the answer provider has a key, from the
         /// configuration (which wins) or from the console.</summary>
-        public bool Available => ModelKey != null;
+        public bool Available => Setup.AnswersAvailable;
+
+        /// <summary>Whether the judge can be asked: Jev's door has a key. Without one, answers still
+        /// work on a visitor's explicit question (ask only) and no typing pause leaves the server.</summary>
+        public bool JudgeAvailable => Setup.JudgeAvailable;
 
         /// <summary>Where the key in use comes from, for the console: "configuration", "console" or null.</summary>
         public string? ModelKeySource =>
             !string.IsNullOrWhiteSpace(_options.ApiKey) ? "configuration" : ModelKey != null ? "console" : null;
 
-        private (string? Key, long At) _consoleKey;
-
-        /// <summary>The model key in use: the configuration's, else the console's (read at most every
-        /// five seconds, as the switch is).</summary>
-        public string? ModelKey
-        {
-            get
-            {
-                if (!string.IsNullOrWhiteSpace(_options.ApiKey)) return _options.ApiKey;
-                if (_instance == null) return null;
-                var now = Environment.TickCount64;
-                var cached = _consoleKey;
-                if (cached.At != 0 && now - cached.At < 5000) return cached.Key;
-                var key = string.IsNullOrWhiteSpace(_instance.ModelKey) ? null : _instance.ModelKey.Trim();
-                _consoleKey = (key, now);
-                return key;
-            }
-        }
+        /// <summary>The answer provider's key in use.</summary>
+        public string? ModelKey => Setup.AnswerKey;
 
         /// <summary>Whether the instance shows Search or ask at all: the experimental switch in the
         /// admin settings. Read from settings.json at most every five seconds, since the judge asks on
@@ -173,7 +180,7 @@ namespace IndxServer.Services.SearchOrAsk
             _instance == null || (Shown && (_store.Load(teamId, dataSetName)?.Shown ?? false));
 
         /// <summary>Forgets the cached switch, so a change in the admin settings applies at once.</summary>
-        public void InstanceSettingsChanged() { _shown = default; _consoleKey = default; }
+        public void InstanceSettingsChanged() { _shown = default; _setup.Changed(); }
 
         /// <summary>The dataset's saved settings, or the defaults (off) when none are saved.</summary>
         public SearchOrAskSettings Settings(string teamId, string dataSetName) =>
@@ -226,7 +233,7 @@ namespace IndxServer.Services.SearchOrAsk
             string text, string clientAddress, CancellationToken ct,
             SearchOrAskSettings? trial = null, Action<JsonObject>? onState = null, SearchOrAskOrigin? origin = null)
         {
-            if (!Available) return new IntentOutcome(IntentStatus.Unavailable);
+            if (!JudgeAvailable) return new IntentOutcome(IntentStatus.Unavailable);
             var settings = trial ?? Settings(teamId, dataSetName);
             if (trial == null && !settings.Enabled) return new IntentOutcome(IntentStatus.Disabled);
 
@@ -450,7 +457,7 @@ namespace IndxServer.Services.SearchOrAsk
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             var settings = trial ?? Settings(teamId, dataSetName);
             var fields = Fields(settings, engine.GetFieldList());
-            var model = _options.AnswerModelFor(settings.Answers);
+            var model = Setup.AnswerModelFor(settings.Answers);
             var outcome = "stopped";
             long? firstText = null;
             var usage = new AnswerUsage();

@@ -90,7 +90,7 @@ namespace IndxServer.Services.SearchOrAsk
             string dataSetName, SearchOrAskSettings settings, FilterSchema schema, string text, CancellationToken ct)
         {
             var system = FilterPrompt(SiteDescription(teamId, dataSetName, settings), settings.FilterNotes, schema);
-            var (content, cost) = await _models.CompleteAsync(_options.FilterModel, system, text, ct);
+            var (content, cost) = await _models.CompleteAsync(Setup.FilterModel, system, text, ct);
             var (filters, left, sort) = ParseFilters(content, schema);
             return (filters, left, sort, cost);
         }

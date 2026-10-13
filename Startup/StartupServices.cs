@@ -114,16 +114,21 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.DatasetMetadataStore>();
         builder.Services.AddSingleton<IndxServer.Services.QueryParameterStore>();
 
-        // Search or ask (Notes/search-or-ask-server.md): off unless Indx:SearchOrAsk:ApiKey is set,
-        // and then only for datasets an owner switches on. One OpenRouter key for judge and answer.
+        // Search or ask (Notes/search-or-ask-server.md): off unless a key is set (configuration or
+        // console), and then only for datasets an owner switches on. The customer's own key with
+        // the provider they choose: OpenRouter by default, else an OpenAI-compatible endpoint or
+        // Anthropic for the answers, Jev through OpenRouter or TypeSafe.
         var searchOrAsk = builder.Configuration.GetSection(IndxServer.Services.SearchOrAsk.SearchOrAskOptions.Section)
             .Get<IndxServer.Services.SearchOrAsk.SearchOrAskOptions>() ?? new();
         builder.Services.AddSingleton(searchOrAsk);
-        builder.Services.AddHttpClient(IndxServer.Services.SearchOrAsk.OpenRouterModels.HttpClientName,
+        builder.Services.AddHttpClient(IndxServer.Services.SearchOrAsk.SearchOrAskModelClients.HttpClientName,
             client => client.Timeout = TimeSpan.FromSeconds(120));
-        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.ISearchOrAskModels, IndxServer.Services.SearchOrAsk.OpenRouterModels>();
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskStore>();
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.ISearchOrAskSwitch, IndxServer.Services.SearchOrAsk.InstanceSearchOrAskSwitch>();
+        // Where each call goes (the customer's provider and key): one resolved setup, read by the
+        // service and the clients alike, so a request sees one consistent choice.
+        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskSetupProvider>();
+        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.ISearchOrAskModels, IndxServer.Services.SearchOrAsk.SearchOrAskModelClients>();
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskService>();
 
         // Indx Observr (Notes/Anders/observr-plan.md): the instance reaches out with its licence

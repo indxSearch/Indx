@@ -30,8 +30,8 @@
     {
         <Alert Variant="warning">
             <Description>
-                This instance has no model key, so Search or ask cannot run. An instance admin adds an OpenRouter key
-                in Admin, Settings, Experimental. The settings below are kept until then.
+                This instance has no model key, so Search or ask cannot run. An instance admin adds one, with the
+                provider of their choice, in Admin, Settings, Experimental. The settings below are kept until then.
             </Description>
         </Alert>
     }
@@ -48,7 +48,7 @@
             @Head("Search or ask")
             <tbody>
                 @Row(DatasetIcons.SearchOrAsk, "Offer answers",
-                     "Sends what visitors type to OpenRouter and TypeSafe, and their questions to the answer model. Name this in your privacy notice.",
+                     $"Sends what visitors type to {Service.Setup.Receivers}, and their questions to the answer model. Name this in your privacy notice.",
                      _edit.Enabled, @<ToggleSwitch Label="Enabled" Variant="positive" Checked="@_edit.Enabled" CheckedChanged="@(v => _edit.Enabled = v)" />)
                 @Row(Icon<Icons.Book>(), "Kind of site", "How the judge tells a question from a lookup.",
                      false, @<div class="soa-select"><SelectField Size="micro" Options="KindOptions" Value="@_edit.Kind" ValueChanged="@(v => _edit.Kind = v ?? SearchOrAskRecipes.Documentation)" /></div>)

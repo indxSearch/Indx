@@ -38,6 +38,19 @@ internal class InstanceSettings
     /// configuration (Indx:SearchOrAsk:ApiKey, or its environment variable) wins over this one.</summary>
     public string? SearchOrAskApiKey { get; set; }
 
+    /// <summary>The provider choices beside the key (<see cref="SearchOrAsk.SearchOrAskProviderSettings"/>):
+    /// the answer provider (openrouter, openai, anthropic), the OpenAI-compatible base URL, EU
+    /// routing on OpenRouter, the judge's door (openrouter, typesafe) and its own key when it has
+    /// one, and model names where the provider's defaults are not wanted. Configuration wins.</summary>
+    public string? SearchOrAskProvider { get; set; }
+    public string? SearchOrAskBaseUrl { get; set; }
+    public bool SearchOrAskEuRouting { get; set; }
+    public string? SearchOrAskJudgeProvider { get; set; }
+    public string? SearchOrAskJudgeApiKey { get; set; }
+    public string? SearchOrAskAnswerModel { get; set; }
+    public string? SearchOrAskFastAnswerModel { get; set; }
+    public string? SearchOrAskFilterModel { get; set; }
+
     /// <summary>True once the first-run onboarding (admin account + team + instance settings)
     /// has completed. Until then, the app routes visitors into the setup flow. Gated on this
     /// flag rather than "are there users?" because OAuth creates the admin mid-flow.</summary>
