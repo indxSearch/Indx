@@ -343,7 +343,7 @@ a.btn-danger:hover {
     border-radius: var(--radius);
 }
 
-.nav-dropdown-menu--up {
+.nav-dropdown-menu.nav-dropdown-menu--up {
     top: auto;
     bottom: calc(100% + 4px);
     right: auto;
