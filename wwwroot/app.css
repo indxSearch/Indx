@@ -649,12 +649,13 @@ a.btn-danger:hover {
         display: contents;
     }
 
+    /* Not overflow: hidden. The step's switcher menu hangs below it, positioned inside it, and
+       clipping here hid the menu on a phone; the label ellipsizes on its own. */
     .nav-crumbs {
         grid-column: 2;
         margin: 0;
         max-width: none;
         padding-left: 0;
-        overflow: hidden;
     }
 
     .nav-crumbs .indx-breadcrumbs-item:not(:last-child) .indx-breadcrumbs-text,
