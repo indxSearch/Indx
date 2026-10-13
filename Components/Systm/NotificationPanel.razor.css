@@ -177,3 +177,7 @@
 .notif-panel-footer a:hover {
     color: var(--lv7);
 }
+
+/* From the foot of the side column: above the bell, opening to the right. */
+.notif-panel--up { top: auto; bottom: 0; right: auto; left: calc(100% + 8px); }
+@media (max-width: 768px) { .notif-panel--up { left: 0; bottom: calc(100% + 8px); } }

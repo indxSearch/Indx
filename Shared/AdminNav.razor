@@ -4,10 +4,8 @@
    link mode since each section is its own route. The header's trail reads "Admin"; this bar is
    the in-section navigation. Pass the active tab's key. The bar stays on one line and scrolls
    sideways when it does not fit; the version text drops to its own line below it. *@
+@* The sections are in the side column now (ConsoleSideMenu reads Items); this keeps the version line. *@
 <div class="admin-nav">
-    <div class="admin-nav-tabs">
-        <Tabs Items="_items" Active="@Active" Size="micro" Variant="button" Scrollable Bleed="var(--page-gutter)" AriaLabel="Admin sections" />
-    </div>
     <span class="admin-version" title="Server @_apiVersion · Core @_indxVersion">Indx @_apiVersion · Core @_indxVersion</span>
 </div>
 
@@ -44,7 +42,8 @@
         b.CloseComponent();
     };
 
-    private static readonly Tabs.TabItem[] _items =
+    /// <summary>The admin sections, in order; the side column's menu lists them.</summary>
+    public static readonly Tabs.TabItem[] Items =
     [
         new("Users", "Users", Of<Users>(), Href: "/admin/users"),
         new("Teams", "Teams", Of<UserGroup>(), Href: "/admin/teams"),

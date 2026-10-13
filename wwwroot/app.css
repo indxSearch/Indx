@@ -288,7 +288,13 @@ a.btn-danger:hover {
 /* Font @font-face declarations (FunktionalGrotesk + Geist) live in the
    Indx.Systm.Blazor RCL: _content/Indx.Systm.Blazor/fonts/fonts.css */
 
-/* Layout */
+/* Layout (Notes/Anders/console-shell-plan-2026-10-13.md, stage 1): a header over a side column
+   and the page. The column is one width, named once, so the header's brand cell sits exactly over
+   it and the trail starts where the content does. */
+:root {
+    --side-width: 220px;
+}
+
 .layout {
     display: flex;
     flex-direction: column;
@@ -298,9 +304,48 @@ a.btn-danger:hover {
 .header {
     display: flex;
     align-items: center;
-    padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4);
+    padding: calc(var(--spacing) * 3) 0;
     background: var(--lv1);
     border-bottom: 1px solid var(--lv2);
+}
+
+.shell {
+    flex: 1;
+    display: grid;
+    grid-template-columns: var(--side-width) minmax(0, 1fr);
+    min-height: 0;
+}
+
+/* The side column sticks under the header, the menu at its head and the foot pinned. */
+.shell-side {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    max-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    overflow-y: auto;
+    border-right: 1px solid var(--lv2);
+}
+
+.shell-foot {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 16px 0 16px 10px;
+}
+
+.shell-foot .nav-dropdown .indx-btn {
+    width: 100%;
+    justify-content: flex-start;
+}
+
+.nav-dropdown-menu--up {
+    top: auto;
+    bottom: calc(100% + 4px);
+    right: auto;
+    left: 0;
 }
 
 /* How wide the page gets before it stops growing and centres. One value for the header and the
@@ -315,9 +360,14 @@ a.btn-danger:hover {
        Tabs, Bleed) by exactly this much. */
     --page-gutter: calc(var(--spacing) * 8);
     flex: 1;
-    padding: var(--page-gutter);
+    min-width: 0;
+    padding: calc(var(--spacing) * 5) var(--page-gutter) var(--page-gutter);
     max-width: var(--page-max);
     width: 100%;
+}
+
+/* Signed out: no column, the page centred under the header as before. */
+.content--alone {
     margin: 0 auto;
 }
 
@@ -344,15 +394,22 @@ a.btn-danger:hover {
     max-width: 560px;
 }
 
-/* Navigation — the header is the breadcrumb. */
+/* Navigation — the header is the breadcrumb. The brand cell is the side column's width, so the
+   mark sits over the menu's icons and the trail starts at the content's edge. */
 .nav {
-    display: flex;
+    display: grid;
+    grid-template-columns: var(--side-width) minmax(0, 1fr);
     align-items: center;
     width: 100%;
-    gap: 14px;
-    max-width: var(--page-max);
-    margin: 0 auto;
     min-height: 30px;
+}
+
+.nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 10px;
+    min-width: 0;
 }
 
 .nav-home {
@@ -377,18 +434,26 @@ a.btn-danger:hover {
     white-space: nowrap;
 }
 
+.nav-main {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 14px;
+}
+
 .nav-crumbs {
     flex: 1;
     min-width: 0;
     display: flex;
     align-items: center;
+    padding-left: calc(var(--spacing) * 8);
 }
 
 .nav-right {
     display: flex;
     align-items: center;
     gap: 4px;
-    margin-left: auto;
+    padding-right: calc(var(--spacing) * 4);
     flex-shrink: 0;
 }
 
@@ -463,14 +528,56 @@ a.btn-danger:hover {
     color: var(--lv8);
 }
 
-/* Mobile */
+/* Mobile: the header shrinks to the mark, the trail and Observr; the side column becomes a bar
+   at the foot of the window, the menu one row across it with the bell and the account at the end. */
 @media (max-width: 768px) {
     .header {
-        padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 3);
+        padding: calc(var(--spacing) * 1.5) 0;
     }
 
     .nav {
+        grid-template-columns: auto minmax(0, 1fr);
         gap: 8px;
+    }
+
+    .nav-crumbs {
+        padding-left: calc(var(--spacing) * 2);
+    }
+
+    .nav-right {
+        padding-right: calc(var(--spacing) * 2);
+    }
+
+    .shell {
+        grid-template-columns: minmax(0, 1fr);
+        padding-bottom: 52px;
+    }
+
+    .shell-side {
+        position: fixed;
+        top: auto;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        max-height: none;
+        flex-direction: row;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 12px;
+        background: var(--lv1);
+        border-right: none;
+        border-top: 1px solid var(--lv2);
+        z-index: 50;
+    }
+
+    .shell-foot {
+        flex-direction: row;
+        padding: 0;
+        flex-shrink: 0;
+    }
+
+    .shell-foot .nav-dropdown .indx-btn {
+        width: auto;
     }
 
     .nav-instance {

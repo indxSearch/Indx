@@ -1,5 +1,10 @@
 @inherits LayoutComponentBase
 
+@* The console's frame (Notes/Anders/console-shell-plan-2026-10-13.md, stage 1): a header with the
+   brand over a side column and the trail at the content's edge; the side column with the area's
+   menu and, at its foot, notifications and the account; the page beside it. Signed out, there is
+   no column: the login and setup pages stand alone under the header. *@
+
 <PageTitle>indx Rest API</PageTitle>
 
 <div class="layout">
@@ -7,7 +12,57 @@
         <NavMenu />
     </header>
 
-    <main class="content">
-        @Body
-    </main>
+    <AuthorizeView>
+        <Authorized>
+            <div class="shell">
+                <aside class="shell-side">
+                    <ConsoleSideMenu />
+                    <div class="shell-foot">
+                        <NotificationPanel Up />
+                        <NavDropdown Label="@ShortName(context.User.Identity?.Name)" Title="@context.User.Identity?.Name" Icon="_iconUser" Up>
+                            <Button Variant="ghost" Size="micro" Href="account/manage" IconLeft="_iconUser">Account</Button>
+                            <Button Variant="ghost" Size="micro" Href="account/api-key" IconLeft="_iconKey">API keys</Button>
+                            <AuthorizeView Roles="Admin" Context="admin">
+                                <div class="nav-menu-divider"></div>
+                                <Button Variant="ghost" Size="micro" Href="admin" IconLeft="_iconInstance">Admin</Button>
+                            </AuthorizeView>
+                            <div class="nav-menu-divider"></div>
+                            <Button Variant="ghost" Size="micro" Href="https://docs.indx.co" IconLeft="_iconBook">Docs ↗</Button>
+                            <Button Variant="ghost" Size="micro" Href="swagger" IconLeft="_iconApi">Swagger ↗</Button>
+                            <div class="nav-menu-divider"></div>
+                            <form method="post" action="account/logout" class="nav-menu-form">
+                                <AntiforgeryToken />
+                                <input type="hidden" name="returnUrl" value="" />
+                                <Button Type="submit" Variant="ghost" Size="micro" IconLeft="_iconLogout">Log out</Button>
+                            </form>
+                        </NavDropdown>
+                    </div>
+                </aside>
+                <main class="content">
+                    @Body
+                </main>
+            </div>
+        </Authorized>
+        <NotAuthorized>
+            <main class="content content--alone">
+                @Body
+            </main>
+        </NotAuthorized>
+    </AuthorizeView>
 </div>
+
+@code {
+    private RenderFragment<int> _iconInstance => size => @<Shield Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconKey      => size => @<Key Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconUser     => size => @<UserId Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconApi      => size => @<Api Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconBook     => size => @<Book Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconLogout   => size => @<Logout Size="size" Color="currentColor" />;
+
+    private static string ShortName(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return "Account";
+        var at = name.IndexOf('@');
+        return at > 0 ? name[..at] : name;
+    }
+}
