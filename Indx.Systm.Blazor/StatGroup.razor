@@ -1,0 +1,18 @@
+@* Port of indx-systm StatGroup: Stats in a grid. As many as fit at 180px each, or Columns across
+   on a wide screen: more than three step down to three under 1100px, and anything to two on a
+   phone, where a last odd one spans the row. *@
+
+<div class="indx-stat-group @_columnsClass @Class" style="@(Columns is { } c ? $"--stat-columns: {c};" : null)">
+    @ChildContent
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>How many across on a wide screen. Without it, as many as fit.</summary>
+    [Parameter] public int? Columns { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private string? _columnsClass => Columns is { } c
+        ? "indx-stat-group--fixed" + (c > 3 ? " indx-stat-group--many" : "") + (c > 2 ? " indx-stat-group--pairs" : "")
+        : null;
+}

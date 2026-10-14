@@ -54,16 +54,16 @@ else
            nothing jumps when the numbers land. Skeleton waits 0.15s before it shows, so a quick
            load (most of them) never flashes it. *@
         <div class="stats-loading" role="status" aria-busy="true" aria-label="Loading statistics">
-            <div class="stats-tiles">
+            <StatGroup Columns="5">
                 @for (var i = 0; i < 5; i++)
                 {
                     var delay = i * 0.05;
-                    <Surface Class="stats-tile">
-                        <Skeleton Level="3" Width="60%" Delay="delay" />
-                        <Skeleton Level="3" Height="24px" Width="40%" Delay="delay" />
-                    </Surface>
+                    <Stat>
+                        <LabelContent><Skeleton Level="3" Width="60%" Delay="delay" /></LabelContent>
+                        <ValueContent><Skeleton Level="3" Height="24px" Width="40%" Delay="delay" /></ValueContent>
+                    </Stat>
                 }
-            </div>
+            </StatGroup>
             <Skeleton Height="180px" Delay="0.1" />
             <div class="stats-loading-rows">
                 @foreach (var (width, i) in LoadingRowWidths.Select((w, i) => (w, i)))
@@ -86,28 +86,13 @@ else
                 @if (Stats.RetentionDays < _days) { <text>One surface is read from the last @Stats.RetentionDays days, as far back as single searches are kept.</text> }
             </p>
         }
-        <div class="stats-tiles">
-            <Surface Class="stats-tile">
-                <Tooltip Content="Every search with text in the window, keystrokes collapsed."><span class="stats-tile-label">Searches</span></Tooltip>
-                <span class="stats-tile-value">@N(_overview.Searches)</span>
-            </Surface>
-            <Surface Class="stats-tile">
-                <Tooltip Content="Searches with typos too large for an exact match, where the visitor still chose a result fuzzy search found."><span class="stats-tile-label">Fuzzy finds</span></Tooltip>
-                <span class="stats-tile-value">@N(_overview.UncoveredChosen)</span>
-            </Surface>
-            <Surface Class="stats-tile">
-                <Tooltip Content="Share of searches that ended in a chosen result."><span class="stats-tile-label">Click-through</span></Tooltip>
-                <span class="stats-tile-value">@Pct(_overview.ClickedSearches, _overview.Searches)</span>
-            </Surface>
-            <Surface Class="stats-tile">
-                <Tooltip Content="Mean position of the chosen result. Lower means the right hit is nearer the top."><span class="stats-tile-label">Avg. click position</span></Tooltip>
-                <span class="stats-tile-value">@AvgPos()</span>
-            </Surface>
-            <Surface Class="stats-tile">
-                <Tooltip Content="Conversions the storefront reported for results found here."><span class="stats-tile-label">Conversions</span></Tooltip>
-                <span class="stats-tile-value">@N(_overview.Converts)</span>
-            </Surface>
-        </div>
+        <StatGroup Columns="5">
+            <Stat Label="Searches" Hint="Every search with text in the window, keystrokes collapsed."><ValueContent>@N(_overview.Searches)</ValueContent></Stat>
+            <Stat Label="Fuzzy finds" Hint="Searches with typos too large for an exact match, where the visitor still chose a result fuzzy search found."><ValueContent>@N(_overview.UncoveredChosen)</ValueContent></Stat>
+            <Stat Label="Click-through" Hint="Share of searches that ended in a chosen result."><ValueContent>@Pct(_overview.ClickedSearches, _overview.Searches)</ValueContent></Stat>
+            <Stat Label="Avg. click position" Hint="Mean position of the chosen result. Lower means the right hit is nearer the top."><ValueContent>@AvgPos()</ValueContent></Stat>
+            <Stat Label="Conversions" Hint="Conversions the storefront reported for results found here."><ValueContent>@N(_overview.Converts)</ValueContent></Stat>
+        </StatGroup>
 
         <Chart Series="_series" Labels="_labels" Type="line" Height="180" Markers="Markers" />
 
@@ -252,28 +237,13 @@ else
             @* Search or ask (Notes/search-or-ask-server.md). The questions the content did not
                answer lead: they are what to write next. Offers lists the texts an offer was shown
                beside, so a false one can be found. Code in StatisticsTab.SearchOrAsk.cs. *@
-            <div class="stats-tiles">
-                <Surface Class="stats-tile">
-                    <Tooltip Content="Searches an offer to ask was shown beside, each once however many pauses judged it."><span class="stats-tile-label">Offers shown</span></Tooltip>
-                    <span class="stats-tile-value">@N(_ask.Offers)</span>
-                </Surface>
-                <Surface Class="stats-tile">
-                    <Tooltip Content="Questions asked, and how many per offer shown."><span class="stats-tile-label">Questions asked</span></Tooltip>
-                    <span class="stats-tile-value">@N(_ask.Asks) <span class="stats-tile-sub">@Pct(_ask.Asks, _ask.Offers)</span></span>
-                </Surface>
-                <Surface Class="stats-tile">
-                    <Tooltip Content="Questions the search found nothing for, or whose sources the judge doubted could answer them."><span class="stats-tile-label">Not answered</span></Tooltip>
-                    <span class="stats-tile-value">@N(_ask.Unanswered) <span class="stats-tile-sub">@Pct(_ask.Unanswered, _ask.Asks)</span></span>
-                </Surface>
-                <Surface Class="stats-tile">
-                    <Tooltip Content="Cited sources opened from an answer."><span class="stats-tile-label">Sources opened</span></Tooltip>
-                    <span class="stats-tile-value">@N(_ask.SourcesOpened)</span>
-                </Surface>
-                <Surface Class="stats-tile">
-                    <Tooltip Content="What the judge and the answers cost: as OpenRouter reports it, or estimated from the tokens at list prices on another provider. Median time to an answer's first words beside it."><span class="stats-tile-label">Cost</span></Tooltip>
-                    <span class="stats-tile-value">@Usd(_ask.Cost) <span class="stats-tile-sub">@Seconds(_ask.MedianFirstTextMs)</span></span>
-                </Surface>
-            </div>
+            <StatGroup Columns="5">
+                <Stat Label="Offers shown" Hint="Searches an offer to ask was shown beside, each once however many pauses judged it."><ValueContent>@N(_ask.Offers)</ValueContent></Stat>
+                <Stat Label="Questions asked" Hint="Questions asked, and how many per offer shown."><ValueContent>@N(_ask.Asks) <span class="stats-tile-sub">@Pct(_ask.Asks, _ask.Offers)</span></ValueContent></Stat>
+                <Stat Label="Not answered" Hint="Questions the search found nothing for, or whose sources the judge doubted could answer them."><ValueContent>@N(_ask.Unanswered) <span class="stats-tile-sub">@Pct(_ask.Unanswered, _ask.Asks)</span></ValueContent></Stat>
+                <Stat Label="Sources opened" Hint="Cited sources opened from an answer."><ValueContent>@N(_ask.SourcesOpened)</ValueContent></Stat>
+                <Stat Label="Cost" Hint="What the judge and the answers cost: as OpenRouter reports it, or estimated from the tokens at list prices on another provider. Median time to an answer's first words beside it."><ValueContent>@Usd(_ask.Cost) <span class="stats-tile-sub">@Seconds(_ask.MedianFirstTextMs)</span></ValueContent></Stat>
+            </StatGroup>
             <div class="stats-view">
                 <Tabs Items="AskViewItems" Active="@_askView" ActiveChanged="@(v => _askView = v ?? "questions")" Size="micro" Variant="button" AriaLabel="Search or ask view" />
             </div>

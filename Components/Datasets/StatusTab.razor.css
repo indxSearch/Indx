@@ -2,8 +2,6 @@
 .status-heading { margin-top: 8px; margin-bottom: 6px; }
 .status-heading--section { margin-top: 24px; }
 
-/* The state chip is a value too; a chip inside a tile sits on the value line. */
-.status-tiles ::deep .indx-tile-value .indx-chip { vertical-align: middle; }
 
 .status-alert { color: var(--CSignal); }
 

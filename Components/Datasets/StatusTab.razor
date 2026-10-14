@@ -30,9 +30,9 @@
             </Alert>
         }
 
-        @* Tiles, as the statistics overview: a label over a value, the width of the page. *@
+        @* Stats, as the statistics overview: a label over a value, the width of the page. *@
         <h3 class="status-heading@(string.IsNullOrEmpty(status.ErrorMessage) ? "" : " status-heading--section")">Index</h3>
-        <div class="indx-tiles status-tiles">
+        <StatGroup>
             @{ var stateChip = DatasetStateChip.For(status.SystemState); }
             @Tile("State", @<Chip Size="large" Color="@stateChip.Color" TextColor="@stateChip.TextColor" Icon="@stateChip.Icon">@status.SystemState</Chip>)
             @Tile("Documents", @<text>@status.DocumentCount.ToString("N0")</text>)
@@ -40,25 +40,22 @@
             @Tile("Last index build", @<TimeAgo Value="status.TimeOfLastIndexBuild" />)
             @Tile("Seconds to index", @<text>@status.SecondsToIndex.ToString("0.##")s</text>)
             @Tile("Instance created", @<TimeAgo Value="status.TimeOfInstanceCreation" />)
-        </div>
+        </StatGroup>
 
         <h3 class="status-heading status-heading--section">Usage</h3>
-        <div class="indx-tiles status-tiles">
+        <StatGroup>
             @Tile("Searches since load", @<text>@status.SearchCounter.ToString("N0")</text>)
             @Tile("Keep-alive", @<text>@KeepAliveLabel(ka)</text>)
             @if (ka?.LastUsedUtc is { } used)
             {
                 @Tile("Last used", @<TimeAgo At="used" />)
             }
-        </div>
+        </StatGroup>
     </div>
 }
 
 @code {
-    private static RenderFragment Tile(string label, RenderFragment value) => @<Surface Class="indx-tile">
-        <span class="indx-tile-label">@label</span>
-        <span class="indx-tile-value">@value</span>
-    </Surface>;
+    private static RenderFragment Tile(string label, RenderFragment value) => @<Stat Label="@label" ValueContent="value" />;
 
     // ClearErrorMessage raises Changed, which re-renders this tab and the rest of the panel.
     private void ClearError() => Ctx.ClearErrorMessage();

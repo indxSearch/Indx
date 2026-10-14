@@ -1,0 +1,36 @@
+@* Port of indx-systm Stat: one number with its label, on the Base surface tone. A count, a KPI, a
+   state (pass a Chip as ValueContent). Put several in a StatGroup. *@
+
+<div class="indx-stat @Class">
+    @if (!string.IsNullOrEmpty(Hint))
+    {
+        <Tooltip Content="@Hint"><span class="indx-stat-label indx-stat-label--hint">@LabelBody</span></Tooltip>
+    }
+    else
+    {
+        <span class="indx-stat-label">@LabelBody</span>
+    }
+    <span class="indx-stat-value">@(ValueContent ?? (RenderFragment)(b => b.AddContent(0, Value)))</span>
+    @if (ChildContent != null)
+    {
+        <span class="indx-stat-foot">@ChildContent</span>
+    }
+</div>
+
+@code {
+    /// <summary>What the number is: "Searches", "Click-through".</summary>
+    [Parameter] public string? Label { get; set; }
+    /// <summary>The label as markup, in place of Label (a skeleton while it loads).</summary>
+    [Parameter] public RenderFragment? LabelContent { get; set; }
+    /// <summary>The number, formatted.</summary>
+    [Parameter] public string? Value { get; set; }
+    /// <summary>The value as markup, in place of Value: a chip for a state, a skeleton while it loads.</summary>
+    [Parameter] public RenderFragment? ValueContent { get; set; }
+    /// <summary>Shown on the label, which gets a dotted underline to say there is more.</summary>
+    [Parameter] public string? Hint { get; set; }
+    /// <summary>A line under the value: a change against the previous period, a unit, a note.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private RenderFragment LabelBody => LabelContent ?? (b => b.AddContent(0, Label));
+}

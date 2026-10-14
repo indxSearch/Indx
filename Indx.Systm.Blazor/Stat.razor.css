@@ -1,0 +1,69 @@
+/* One number with its label, on the Base surface tone (lv2, lv1 in the dark theme). */
+.indx-stat {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+    padding: calc(var(--spacing) * 2);
+    background: var(--lv2);
+    border-radius: var(--radius);
+}
+
+@media (prefers-color-scheme: dark) {
+    .indx-stat { background: var(--lv1); }
+}
+
+.indx-stat-label {
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+/* A label with a hint says so: a dotted underline and the help cursor. */
+.indx-stat-label--hint {
+    cursor: help;
+    border-bottom: 1px dotted var(--lv3);
+}
+
+.indx-stat-value {
+    max-width: 100%;
+    font: var(--text-2xl);
+    color: var(--lv8);
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+/* A chip is a value too (a state): it sits on the value's line. */
+.indx-stat-value ::deep .indx-chip {
+    vertical-align: middle;
+}
+
+.indx-stat-foot {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+/* The hint spans the stat rather than centring on its label. Labels sit at the start, so a
+   centred bubble on a phone ran off the left edge in the first column and off the right in the
+   second (the Statistics tiles, Oct 2026); the stat is always on screen, so a bubble its width
+   is too. React's Tooltip finds room by itself. */
+.indx-stat ::deep .indx-tooltip-wrapper {
+    position: static;
+}
+
+.indx-stat ::deep .indx-tooltip {
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: none;
+    transform: none;
+}
+
+.indx-stat ::deep .indx-tooltip::after {
+    left: 24px;
+}

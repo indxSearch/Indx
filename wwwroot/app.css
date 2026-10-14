@@ -414,33 +414,6 @@ a.btn-danger:hover {
     margin: 0 auto;
 }
 
-/* Tiles: a label over a value, on a surface (the dataset's Status, the statistics overview). */
-.indx-tiles {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-    gap: 8px;
-}
-
-.indx-tiles .indx-tile {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 4px;
-    min-width: 0;
-}
-
-.indx-tile-label {
-    font: var(--text-xs);
-    color: var(--lv5);
-}
-
-.indx-tile-value {
-    font: var(--text-2xl);
-    color: var(--lv8);
-    font-variant-numeric: tabular-nums;
-    overflow-wrap: anywhere;
-}
-
 /* Section rhythm on dense pages (dataset Options, Manage team, …). One scale, on the spacing
    token: 8× between sections, 2× from a heading to its help text or first control. The first
    section in a page or tab carries no top margin — the title or tab bar above it spaces it. */
