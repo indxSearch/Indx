@@ -111,30 +111,42 @@
                 @ThresholdRow(Icon<Icons.CommentChatMessage>(), "Invitation", "A quieter \"Ask about this\".",
                     t => t.Invite, (t, v) => t.Invite = v, Defaults.Invite,
                     t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide)
-                @Row(DatasetIcons.QueryParameters, "The list while asking", "With a full offer up, the list keeps only the results that still match: those scoring a share of the top result, and only when the top result scores enough at all. A flat, weak list is hidden and the offer stands alone. Off keeps the whole list.",
-                     !_edit.CutWhileAsking, @<ToggleSwitch Label="Strong matches only" Checked="@_edit.CutWhileAsking" CheckedChanged="@(v => _edit.CutWhileAsking = v)" />)
-                @if (_edit.CutWhileAsking)
-                {
-                    @Row(Icon<Icons.SlidersHorizontal>(), "Which matches stay", "A result stays while it scores at least this share of the top result; the list shows at all only when the top result scores at least the floor, on a scale of 0 to 1.",
-                         _edit.CutShareOfTop != 0.5 || _edit.CutTopFloor != 0.2,
-                         @<div class="soa-thresholds">
-                             <div class="soa-threshold">
-                                 <span class="soa-threshold-label">Share of top</span>
-                                 <Slider Min="0" Max="1" Step="0.05" Value="@_edit.CutShareOfTop" ValueChanged="@(v => _edit.CutShareOfTop = Math.Round(v, 2))" AriaLabel="Keep results scoring at least this share of the top" Class="soa-slider" />
-                                 <span class="soa-threshold-value">@Two(_edit.CutShareOfTop)</span>
+            </tbody>
+        </Table>
+
+        <Table AriaLabel="While asking" Class="soa-table">
+            @Head("While asking")
+            <tbody>
+                <TableRow>
+                    <TableCell Class="soa-cell">
+                        <span class="soa-help">What the page does with its list while a full offer is up.</span>
+                    </TableCell>
+                </TableRow>
+                @Row(DatasetIcons.QueryParameters, "The list", "Keep only the results that still match: those scoring a share of the top result, and only when the top result scores enough. Off keeps the whole list.",
+                     _edit.CutWhileAsking != true || _edit.CutShareOfTop != 0.5 || _edit.CutTopFloor != 0.2,
+                     @<div class="soa-stack">
+                         <ToggleSwitch Label="Strong matches only" Checked="@_edit.CutWhileAsking" CheckedChanged="@(v => _edit.CutWhileAsking = v)" />
+                         @if (_edit.CutWhileAsking)
+                         {
+                             <div class="soa-thresholds">
+                                 <div class="soa-threshold">
+                                     <span class="soa-threshold-label">Share of top</span>
+                                     <Slider Min="0" Max="1" Step="0.05" Value="@_edit.CutShareOfTop" ValueChanged="@(v => _edit.CutShareOfTop = Math.Round(v, 2))" AriaLabel="Keep results scoring at least this share of the top" Class="soa-slider" />
+                                     <span class="soa-threshold-value">@Two(_edit.CutShareOfTop)</span>
+                                 </div>
+                                 <div class="soa-threshold">
+                                     <span class="soa-threshold-label">Top at least</span>
+                                     <Slider Min="0" Max="1" Step="0.05" Value="@_edit.CutTopFloor" ValueChanged="@(v => _edit.CutTopFloor = Math.Round(v, 2))" AriaLabel="Show the list only when the top result scores at least this" Class="soa-slider" />
+                                     <span class="soa-threshold-value">@Two(_edit.CutTopFloor)</span>
+                                 </div>
                              </div>
-                             <div class="soa-threshold">
-                                 <span class="soa-threshold-label">Top at least</span>
-                                 <Slider Min="0" Max="1" Step="0.05" Value="@_edit.CutTopFloor" ValueChanged="@(v => _edit.CutTopFloor = Math.Round(v, 2))" AriaLabel="Show the list only when the top result scores at least this" Class="soa-slider" />
-                                 <span class="soa-threshold-value">@Two(_edit.CutTopFloor)</span>
-                             </div>
-                         </div>)
-                }
-                @Row(Icon<Icons.TextSize>(), "Matching while asking", "With a full offer up, the page's own searches match whole words only, no typos, prefixes or joined words, and the list is searched once more as the offer appears. The answer still searches with the full setup, so a typo in a name still finds the record.",
+                         }
+                     </div>)
+                @Row(Icon<Icons.TextSize>(), "Matching", "The page's own searches match whole words only: no typos, prefixes or joined words. The answer still searches with the full setup, so a typo in a name still finds the record.",
                      !_edit.StrictCoverageWhileAsking, @<ToggleSwitch Label="Whole words only" Checked="@_edit.StrictCoverageWhileAsking" CheckedChanged="@(v => _edit.StrictCoverageWhileAsking = v)" />)
                 @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
                 {
-                    @Row(Icon<Icons.Filter>(), "Filters while typing", "With a full offer up, whether the text asks or describes: leave the list alone until the visitor asks, or narrow it at once. From facet values is instant and needs no model: a typed word that equals a value becomes that filter. With the model also asks the filters route for what the values could not name in a description, about a second and a half.",
+                    @Row(Icon<Icons.Filter>(), "Filters", "When the text describes what to list: leave the list alone until the visitor asks, or narrow it at once. From facet values is instant: a typed word that equals a value becomes that filter. With the model also asks for what the values could not name, about a second and a half.",
                          _edit.FiltersWhileTyping != SearchOrAskSettings.FiltersOff,
                          @<div class="soa-select"><SelectField Size="micro" Options="FiltersWhileTypingOptions" Value="@_edit.FiltersWhileTyping" ValueChanged="@(v => _edit.FiltersWhileTyping = v ?? SearchOrAskSettings.FiltersOff)" /></div>)
                 }
