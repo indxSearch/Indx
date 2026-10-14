@@ -55,6 +55,17 @@ namespace IndxServer.Services.SearchOrAsk
         /// answer still searches with the full setup, so a typo in a name still finds the record.</summary>
         public bool StrictCoverageWhileAsking { get; set; } = true;
 
+        /// <summary>On a catalogue, what the page does with a description while the visitor types
+        /// (the judge's criteria score strong): <c>off</c>, filters only after Ask, as before;
+        /// <c>facets</c>, a typed word that equals a facet value becomes that filter at once, no
+        /// model; <c>model</c>, the facet pass first, and the filters route (a model call, about
+        /// 1.5 s) for what it could not name. A filter applied while typing is a strong move, so
+        /// off by default; the active filters panel shows every one with its remove (14 Oct 2026).</summary>
+        public string FiltersWhileTyping { get; set; } = FiltersOff;
+        public const string FiltersOff = "off";
+        public const string FiltersFromFacets = "facets";
+        public const string FiltersWithModel = "model";
+
         /// <summary>A catalogue's notes about its fields, for turning a description into filters:
         /// what the values mean in this domain ("barneskole: grades 1 to 7"). Free text.</summary>
         public string? FilterNotes { get; set; }
@@ -97,6 +108,8 @@ namespace IndxServer.Services.SearchOrAsk
                 return $"siteDescription is at most {MaxSiteDescription} characters.";
             if (Answers is not (BestAnswers or FastAnswers))
                 return $"answers must be {BestAnswers} or {FastAnswers}.";
+            if (FiltersWhileTyping is not (FiltersOff or FiltersFromFacets or FiltersWithModel))
+                return $"filtersWhileTyping must be {FiltersOff}, {FiltersFromFacets} or {FiltersWithModel}.";
             foreach (var (name, v) in new[] { ("cutShareOfTop", CutShareOfTop), ("cutTopFloor", CutTopFloor) })
                 if (double.IsNaN(v) || v < 0 || v > 1)
                     return $"{name} must be between 0 and 1.";

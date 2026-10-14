@@ -132,6 +132,12 @@
                 }
                 @Row(Icon<Icons.TextSize>(), "Matching while asking", "With a full offer up, the page's own searches match whole words only, no typos, prefixes or joined words, and the list is searched once more as the offer appears. The answer still searches with the full setup, so a typo in a name still finds the record.",
                      !_edit.StrictCoverageWhileAsking, @<ToggleSwitch Label="Whole words only" Checked="@_edit.StrictCoverageWhileAsking" CheckedChanged="@(v => _edit.StrictCoverageWhileAsking = v)" />)
+                @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                {
+                    @Row(Icon<Icons.Filter>(), "Descriptions while typing", "When the judge reads the text as a description of what to list: leave the list alone until the visitor asks, or narrow it at once. From facet values is instant and needs no model: a typed word that equals a value becomes that filter. With the model also asks the filters route for what the values could not name, about a second and a half.",
+                         _edit.FiltersWhileTyping != SearchOrAskSettings.FiltersOff,
+                         @<div class="soa-select"><SelectField Size="micro" Options="FiltersWhileTypingOptions" Value="@_edit.FiltersWhileTyping" ValueChanged="@(v => _edit.FiltersWhileTyping = v ?? SearchOrAskSettings.FiltersOff)" /></div>)
+                }
             </tbody>
         </Table>
     </div>
@@ -240,6 +246,13 @@
         WriteIndented = true,
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
     };
+
+    private static readonly IEnumerable<SelectField.SelectOption> FiltersWhileTypingOptions =
+        [
+            new("Only after Ask", SearchOrAskSettings.FiltersOff),
+            new("From facet values, at once", SearchOrAskSettings.FiltersFromFacets),
+            new("With the model, for the rest", SearchOrAskSettings.FiltersWithModel),
+        ];
 
     private static readonly IEnumerable<SelectField.SelectOption> KindOptions =
         [
