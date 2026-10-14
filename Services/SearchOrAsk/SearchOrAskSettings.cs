@@ -42,7 +42,8 @@ namespace IndxServer.Services.SearchOrAsk
         /// too lenient, coverage confirms a record on a two-letter word). While asking, a result is
         /// kept while it scores at least <see cref="CutShareOfTop"/> of the top result, and only when
         /// the top result itself scores at least <see cref="CutTopFloor"/> of the scale; a flat, low
-        /// list is nothing. Both 0 to 1; measured on the replay's labelled sequences.</summary>
+        /// list is nothing. Both 0 to 1; measured on the replay's labelled sequences. The truncation
+        /// index the client bounds by is the position of the last confirmed result, -1 for none.</summary>
         public double CutShareOfTop { get; set; } = 0.5;
         public double CutTopFloor { get; set; } = 0.2;
 
