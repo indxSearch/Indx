@@ -134,7 +134,7 @@
                      !_edit.StrictCoverageWhileAsking, @<ToggleSwitch Label="Whole words only" Checked="@_edit.StrictCoverageWhileAsking" CheckedChanged="@(v => _edit.StrictCoverageWhileAsking = v)" />)
                 @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
                 {
-                    @Row(Icon<Icons.Filter>(), "Descriptions while typing", "When the judge reads the text as a description of what to list: leave the list alone until the visitor asks, or narrow it at once. From facet values is instant and needs no model: a typed word that equals a value becomes that filter. With the model also asks the filters route for what the values could not name, about a second and a half.",
+                    @Row(Icon<Icons.Filter>(), "Filters while typing", "With a full offer up, whether the text asks or describes: leave the list alone until the visitor asks, or narrow it at once. From facet values is instant and needs no model: a typed word that equals a value becomes that filter. With the model also asks the filters route for what the values could not name in a description, about a second and a half.",
                          _edit.FiltersWhileTyping != SearchOrAskSettings.FiltersOff,
                          @<div class="soa-select"><SelectField Size="micro" Options="FiltersWhileTypingOptions" Value="@_edit.FiltersWhileTyping" ValueChanged="@(v => _edit.FiltersWhileTyping = v ?? SearchOrAskSettings.FiltersOff)" /></div>)
                 }
