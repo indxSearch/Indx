@@ -140,6 +140,11 @@ namespace IndxServer.Services.Observr
         public void SetEnabled(string teamId, string dataSetName, bool enabled) =>
             SaveSettings(teamId, dataSetName, Settings(teamId, dataSetName) with { Enabled = enabled });
 
+        /// <summary>A finding was added, decided, deleted or moved to another team: what shows an open
+        /// count (the header's Agent button) counts again. Raised on the writer's thread, after the
+        /// write; a listener marshals to its own.</summary>
+        public event Action? Changed;
+
         /// <summary>Keeps an answer. Open when there is something to decide, or when nobody has read it
         /// yet (<paramref name="unread"/>: a digest item), closed as answered otherwise (an answer shown
         /// inline, with no proposal).</summary>
@@ -163,7 +168,9 @@ namespace IndxServer.Services.Observr
             cmd.Parameters.AddWithValue("$s", answer.Proposals.Count > 0 || unread ? ObservrFinding.Open : ObservrFinding.Accepted);
             cmd.Parameters.AddWithValue("$ask", answer.AskId);
             cmd.Parameters.AddWithValue("$c", DateTime.UtcNow.ToString("o"));
-            return (long)cmd.ExecuteScalar()!;
+            var id = (long)cmd.ExecuteScalar()!;
+            Changed?.Invoke();
+            return id;
         }
 
         public void Decide(long id, string status)
@@ -177,6 +184,7 @@ namespace IndxServer.Services.Observr
             cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
             cmd.Parameters.AddWithValue("$id", id);
             cmd.ExecuteNonQuery();
+            Changed?.Invoke();
         }
 
         public ObservrFinding? Get(long id) => Query($"WHERE Id = $id", cmd => cmd.Parameters.AddWithValue("$id", id), 1).FirstOrDefault();
@@ -254,16 +262,22 @@ namespace IndxServer.Services.Observr
             catch (Exception ex) { logger.LogWarning(ex, "Observr findings: {Sql}", sql); }
         }
 
-        public void Delete(string teamId, string dataSetName) =>
+        public void Delete(string teamId, string dataSetName)
+        {
             Execute($"DELETE FROM {Table} WHERE TeamId = $t AND DatasetName = $d; DELETE FROM {Datasets} WHERE TeamId = $t AND DatasetName = $d",
                 c => { c.Parameters.AddWithValue("$t", teamId); c.Parameters.AddWithValue("$d", dataSetName); });
+            Changed?.Invoke();
+        }
 
         public void Rename(string teamId, string dataSetName, string newName) =>
             Execute($"UPDATE {Table} SET DatasetName = $n WHERE TeamId = $t AND DatasetName = $d; UPDATE OR REPLACE {Datasets} SET DatasetName = $n WHERE TeamId = $t AND DatasetName = $d",
                 c => { c.Parameters.AddWithValue("$n", newName); c.Parameters.AddWithValue("$t", teamId); c.Parameters.AddWithValue("$d", dataSetName); });
 
-        public void Transfer(string fromTeamId, string toTeamId, string dataSetName) =>
+        public void Transfer(string fromTeamId, string toTeamId, string dataSetName)
+        {
             Execute($"UPDATE {Table} SET TeamId = $to WHERE TeamId = $from AND DatasetName = $d; UPDATE OR REPLACE {Datasets} SET TeamId = $to WHERE TeamId = $from AND DatasetName = $d",
                 c => { c.Parameters.AddWithValue("$to", toTeamId); c.Parameters.AddWithValue("$from", fromTeamId); c.Parameters.AddWithValue("$d", dataSetName); });
+            Changed?.Invoke();
+        }
     }
 }

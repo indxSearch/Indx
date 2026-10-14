@@ -1,6 +1,8 @@
 @* The header's Agent button (Notes/Anders/console-shell-plan-2026-10-13.md, stage 5): opens the
-   Agent panel at the right. Ghost closed, primary open, with Observr's look; a mark by the icon
-   while the active team has findings waiting for a yes or a no. Monochrome until Observr's colour
+   Agent panel at the right. Ghost closed, primary open, with Observr's look; after the label, how
+   many of the active team's findings wait for a yes or a no, kept current as they come and go (the
+   store's Changed). A 7px mark by the icon said it before; it was easy to miss, vanished on the
+   open button's fill and went stale until the panel was toggled. Monochrome until Observr's colour
    is chosen (13 Oct 2026). Nothing of it for an instance whose subscription does not include
    Observr. *@
 @using IndxServer.Services
@@ -16,7 +18,7 @@
 <span class="indx-observr agent-button">
     <Button Variant="@(Agent.IsOpen ? "primary" : "ghost")" Size="micro" IconLeft="DatasetIcons.Observr" aria-label="Agent" aria-expanded="@(Agent.IsOpen ? "true" : "false")" @onclick="Agent.Toggle">
         <span class="nav-dropdown-label">Agent</span>
-        @if (_openCount > 0) { <span class="agent-mark" title="@($"{_openCount} waiting for a decision")"></span> }
+        @if (_openCount > 0) { <span class="agent-count" title="@($"{_openCount} waiting for a decision")">@(_openCount > 99 ? "99+" : _openCount.ToString())</span> }
     </Button>
 </span>
 
@@ -31,11 +33,12 @@
         Subscription.EnsureChecked();
         Agent.Changed += OnChanged;
         ActiveTeam.OnChange += OnChanged;
+        Findings.Changed += OnChanged;
         Count();
     }
 
     private void OnChanged() { Count(); _ = InvokeAsync(StateHasChanged); }
-    public void Dispose() { Subscription.Changed -= OnChanged; Agent.Changed -= OnChanged; ActiveTeam.OnChange -= OnChanged; }
+    public void Dispose() { Subscription.Changed -= OnChanged; Agent.Changed -= OnChanged; ActiveTeam.OnChange -= OnChanged; Findings.Changed -= OnChanged; }
 
     private void Count() => _openCount = ActiveTeam.ActiveTeamId is { } id ? Findings.CountOpen([id.ToString()]) : 0;
 }
