@@ -111,6 +111,8 @@
                 @ThresholdRow(Icon<Icons.CommentChatMessage>(), "Invitation", "A quieter \"Ask about this\".",
                     t => t.Invite, (t, v) => t.Invite = v, Defaults.Invite,
                     t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide)
+                @Row(DatasetIcons.QueryParameters, "The list while asking", "With a full offer up, the list shows the coverage hits only: the pattern matches go, and with none confirmed the offer stands alone. Off keeps the whole list.",
+                     !_edit.CutWhileAsking, @<ToggleSwitch Label="Coverage hits only" Checked="@_edit.CutWhileAsking" CheckedChanged="@(v => _edit.CutWhileAsking = v)" />)
             </tbody>
         </Table>
     </div>

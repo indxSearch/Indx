@@ -31,6 +31,13 @@ namespace IndxServer.Services.SearchOrAsk
 
         public SearchOrAskThresholds Thresholds { get; set; } = new();
 
+        /// <summary>While the offer is strong (the judge says the visitor is asking), the page shows
+        /// the result list only up to the truncation point: the coverage hits stay, the pattern
+        /// tail goes, and with nothing confirmed the offer stands alone. The rule runs in the
+        /// client, which has the offer's hysteresis and the truncation index; this only says
+        /// whether to apply it. Off keeps the whole list (decided 14 Oct 2026, the "mixer").</summary>
+        public bool CutWhileAsking { get; set; } = true;
+
         /// <summary>A catalogue's notes about its fields, for turning a description into filters:
         /// what the values mean in this domain ("barneskole: grades 1 to 7"). Free text.</summary>
         public string? FilterNotes { get; set; }
