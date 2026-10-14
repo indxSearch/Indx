@@ -26,9 +26,13 @@
     border-bottom: 1px dotted var(--lv3);
 }
 
+/* Light (300) rather than the token's Book (350): this library draws FunktionalGrotesk, whose
+   Book reads heavier at 24px than the Inter the React systm draws, and the number is the one
+   large thing on the stat. Geist, where the brand font is absent, has a 300 too. */
 .indx-stat-value {
     max-width: 100%;
     font: var(--text-2xl);
+    font-weight: 300;
     color: var(--lv8);
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
