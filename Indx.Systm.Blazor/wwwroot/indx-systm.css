@@ -107,6 +107,13 @@
     }
 }
 
+/* Pixl icons are pixel art on a 7x5 grid. Text widths beside them (a label, a name) leave them on a
+   fraction of a pixel, which a 1x screen draws as a soft edge; crispEdges snaps their edges to
+   the screen's pixels wherever they land. Every pixl icon shares this viewBox. */
+svg[viewBox="0 0 7 5"] {
+    shape-rendering: crispEdges;
+}
+
 /* Selected text: a level rather than the browser's blue, which sat badly on the dark theme. lv3 is the
    fields' own selection; the text goes to lv8 so grey text stays readable on it in both themes. */
 ::selection {

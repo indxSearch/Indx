@@ -320,7 +320,10 @@ a.btn-danger:hover {
 
 .header {
     display: flex;
-    align-items: center;
+    /* Not centred: the header is 60px with a 1px border, so centring a 30px row put it at 14.5 and
+       every pixel icon in it on a half pixel, soft on a 1x screen. The row sits at a whole 15px. */
+    align-items: flex-start;
+    padding-top: calc((var(--header-height) - 30px) / 2);
     flex: none;
     height: var(--header-height);
     box-sizing: border-box;
