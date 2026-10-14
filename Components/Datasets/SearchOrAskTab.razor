@@ -130,6 +130,8 @@
                              </div>
                          </div>)
                 }
+                @Row(Icon<Icons.TextSize>(), "Matching while asking", "With a full offer up, the page's own searches match whole words only, no typos, prefixes or joined words, and the list is searched once more as the offer appears. The answer still searches with the full setup, so a typo in a name still finds the record.",
+                     !_edit.StrictCoverageWhileAsking, @<ToggleSwitch Label="Whole words only" Checked="@_edit.StrictCoverageWhileAsking" CheckedChanged="@(v => _edit.StrictCoverageWhileAsking = v)" />)
             </tbody>
         </Table>
     </div>

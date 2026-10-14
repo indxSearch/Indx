@@ -47,6 +47,14 @@ namespace IndxServer.Services.SearchOrAsk
         public double CutShareOfTop { get; set; } = 0.5;
         public double CutTopFloor { get; set; } = 0.2;
 
+        /// <summary>While asking, the page's own searches run with coverage on whole words only (no
+        /// fuzzy, prefix or joined matching, words of three letters or more), and the list is
+        /// searched once more when the offer turns strong. The forgiving matching that is right for a
+        /// typed name is wrong under a question: on the school register "ullern videregående" confirmed
+        /// seven other schools by prefix and fuzzy matches of the second word (14 Oct 2026). The
+        /// answer still searches with the full setup, so a typo in a name still finds the record.</summary>
+        public bool StrictCoverageWhileAsking { get; set; } = true;
+
         /// <summary>A catalogue's notes about its fields, for turning a description into filters:
         /// what the values mean in this domain ("barneskole: grades 1 to 7"). Free text.</summary>
         public string? FilterNotes { get; set; }
