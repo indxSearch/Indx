@@ -38,6 +38,14 @@ namespace IndxServer.Services.SearchOrAsk
         /// whether to apply it. Off keeps the whole list (decided 14 Oct 2026, the "mixer").</summary>
         public bool CutWhileAsking { get; set; } = true;
 
+        /// <summary>The cut's two lines, on the scores (14 Oct 2026: the truncation index alone was
+        /// too lenient, coverage confirms a record on a two-letter word). While asking, a result is
+        /// kept while it scores at least <see cref="CutShareOfTop"/> of the top result, and only when
+        /// the top result itself scores at least <see cref="CutTopFloor"/> of the scale; a flat, low
+        /// list is nothing. Both 0 to 1; measured on the replay's labelled sequences.</summary>
+        public double CutShareOfTop { get; set; } = 0.5;
+        public double CutTopFloor { get; set; } = 0.2;
+
         /// <summary>A catalogue's notes about its fields, for turning a description into filters:
         /// what the values mean in this domain ("barneskole: grades 1 to 7"). Free text.</summary>
         public string? FilterNotes { get; set; }
@@ -80,6 +88,9 @@ namespace IndxServer.Services.SearchOrAsk
                 return $"siteDescription is at most {MaxSiteDescription} characters.";
             if (Answers is not (BestAnswers or FastAnswers))
                 return $"answers must be {BestAnswers} or {FastAnswers}.";
+            foreach (var (name, v) in new[] { ("cutShareOfTop", CutShareOfTop), ("cutTopFloor", CutTopFloor) })
+                if (double.IsNaN(v) || v < 0 || v > 1)
+                    return $"{name} must be between 0 and 1.";
             if (FilterNotes is { Length: > MaxFilterNotes })
                 return $"filterNotes is at most {MaxFilterNotes} characters.";
             if (AnswerInstructions is { Length: > MaxAnswerInstructions })

@@ -28,7 +28,8 @@ namespace IndxServer.Services.SearchOrAsk
     /// <summary><c>Criteria</c>, for a catalogue: the probability the visitor describes what to list,
     /// which the page turns into filters (POST filters) when it reaches the strong threshold.</summary>
     public sealed record IntentResult(double P, double? Answerable, string Offer, SearchOrAskThresholds Thresholds,
-        bool Cached, long Ms, string? Reason = null, double? Criteria = null, bool CutWhileAsking = true);
+        bool Cached, long Ms, string? Reason = null, double? Criteria = null, bool CutWhileAsking = true,
+        double CutShareOfTop = 0.5, double CutTopFloor = 0.2);
 
     /// <summary>One source handed to the answer model, as the visitor's client sees it.</summary>
     public sealed record AskSource(int N, long DocumentKey, string Title);
@@ -243,7 +244,8 @@ namespace IndxServer.Services.SearchOrAsk
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null, double? criteria = null)
             {
-                var result = new IntentResult(p, answerable, settings.Thresholds.OfferFor(p), settings.Thresholds, cached, Ms(), reason, criteria, settings.CutWhileAsking);
+                var result = new IntentResult(p, answerable, settings.Thresholds.OfferFor(p), settings.Thresholds, cached, Ms(), reason, criteria,
+                    settings.CutWhileAsking, settings.CutShareOfTop, settings.CutTopFloor);
                 // A judgement is recorded once the judge or its cache answered for it, a failing
                 // judge included (its reason says so); an identifier never reaches here.
                 if (reason != "identifier" && origin != null && Writer is { } w)

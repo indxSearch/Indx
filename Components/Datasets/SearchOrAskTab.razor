@@ -111,8 +111,25 @@
                 @ThresholdRow(Icon<Icons.CommentChatMessage>(), "Invitation", "A quieter \"Ask about this\".",
                     t => t.Invite, (t, v) => t.Invite = v, Defaults.Invite,
                     t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide)
-                @Row(DatasetIcons.QueryParameters, "The list while asking", "With a full offer up, the list shows the coverage hits only: the pattern matches go, and with none confirmed the offer stands alone. Off keeps the whole list.",
-                     !_edit.CutWhileAsking, @<ToggleSwitch Label="Coverage hits only" Checked="@_edit.CutWhileAsking" CheckedChanged="@(v => _edit.CutWhileAsking = v)" />)
+                @Row(DatasetIcons.QueryParameters, "The list while asking", "With a full offer up, the list keeps only the results that still match: those scoring a share of the top result, and only when the top result scores enough at all. A flat, weak list is hidden and the offer stands alone. Off keeps the whole list.",
+                     !_edit.CutWhileAsking, @<ToggleSwitch Label="Strong matches only" Checked="@_edit.CutWhileAsking" CheckedChanged="@(v => _edit.CutWhileAsking = v)" />)
+                @if (_edit.CutWhileAsking)
+                {
+                    @Row(Icon<Icons.SlidersHorizontal>(), "Which matches stay", "A result stays while it scores at least this share of the top result; the list shows at all only when the top result scores at least the floor, on a scale of 0 to 1.",
+                         _edit.CutShareOfTop != 0.5 || _edit.CutTopFloor != 0.2,
+                         @<div class="soa-thresholds">
+                             <div class="soa-threshold">
+                                 <span class="soa-threshold-label">Share of top</span>
+                                 <Slider Min="0" Max="1" Step="0.05" Value="@_edit.CutShareOfTop" ValueChanged="@(v => _edit.CutShareOfTop = Math.Round(v, 2))" AriaLabel="Keep results scoring at least this share of the top" Class="soa-slider" />
+                                 <span class="soa-threshold-value">@Two(_edit.CutShareOfTop)</span>
+                             </div>
+                             <div class="soa-threshold">
+                                 <span class="soa-threshold-label">Top at least</span>
+                                 <Slider Min="0" Max="1" Step="0.05" Value="@_edit.CutTopFloor" ValueChanged="@(v => _edit.CutTopFloor = Math.Round(v, 2))" AriaLabel="Show the list only when the top result scores at least this" Class="soa-slider" />
+                                 <span class="soa-threshold-value">@Two(_edit.CutTopFloor)</span>
+                             </div>
+                         </div>)
+                }
             </tbody>
         </Table>
     </div>
