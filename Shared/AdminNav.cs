@@ -47,7 +47,7 @@ namespace IndxServer.Shared
             new("Users", "Users", Of<Users>(), Href: "/admin/users"),
             new("Teams", "Teams", Of<UserGroup>(), Href: "/admin/teams"),
             new("Datasets", "Datasets", Of<Database>(), Href: "/admin/datasets"),
-            new("Monitor", "Monitor", Of<Indx.Systm.Blazor.Icons.Terminal>(), Href: "/admin/monitor"),
+            new("Monitor", "Monitor", Of<Indx.Systm.Blazor.Icons.Server>(), Href: "/admin/monitor"),
             new("Settings", "Settings", Of<SlidersHorizontal>(), Href: "/admin/settings"),
             new("License", "License", Of<DocumentOrFile>(), Href: "/admin/license"),
             new("Observr", "Observr", Of<Indx.Systm.Blazor.Icons.Observr>(), Href: "/admin/observr"),
