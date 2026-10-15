@@ -15,7 +15,7 @@
     @* The page action pattern (app.css): the primary "New" leads, right by the heading it adds to,
        the team's other actions at the end of the row. The empty state carries the button itself,
        as its call to action, so it is not repeated here. *@
-    @if (CanCreate && _rows.Count > 0 && !_previewEmpty)
+    @if (CanCreate && _rows.Count > 0)
     {
         <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset" title="New dataset">New</Button>
     }
@@ -23,10 +23,9 @@
     @HeadingActions
 </div>
 
-@if (_rows.Count == 0 || _previewEmpty)
+@if (_rows.Count == 0)
 {
-    @* The first visit: no dataset yet, so the page is the guide. ?preview=empty shows it on a
-       team that has datasets, to look at it without making a team. What a dataset is, then the
+    @* The first visit: no dataset yet, so the page is the guide. What a dataset is, then the
        three steps from nothing to a search, each with the action it takes, the first of them the
        only thing to do right now. The skill for a developer whose LLM does the setting up. *@
     <div class="indx-empty-state">
@@ -267,7 +266,6 @@ else
     private CancellationTokenSource? _describeCts;
 
     private List<Row> _rows = new();
-    private bool _previewEmpty;
     private Dictionary<string, int> _open = new();
     private string _newDatasetName = string.Empty;
     private bool _showNewDatasetForm;
@@ -289,8 +287,6 @@ else
     /// on disk — cheap, but not free on a large dataset, and never worth blocking the page for).</summary>
     public void Reload()
     {
-        _previewEmpty = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(NavigationManager.Uri).Query)
-            .TryGetValue("preview", out var preview) && preview == "empty";
         List<string> names;
         try { names = string.IsNullOrEmpty(TeamId) ? [] : Engines.GetTeamDataSets(TeamId); }
         catch { names = []; }
