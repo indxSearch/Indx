@@ -15,7 +15,7 @@
     @* The page action pattern (app.css): the primary "New" leads, right by the heading it adds to,
        the team's other actions at the end of the row. The empty state carries the button itself,
        as its call to action, so it is not repeated here. *@
-    @if (CanCreate && _rows.Count > 0)
+    @if (CanCreate && _rows.Count > 0 && !_previewEmpty)
     {
         <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset" title="New dataset">New</Button>
     }
@@ -23,27 +23,18 @@
     @HeadingActions
 </div>
 
-@if (_rows.Count == 0)
+@if (_rows.Count == 0 || _previewEmpty)
 {
-    @* The first visit: no dataset yet, so the page is the guide. What a dataset is, then the
+    @* The first visit: no dataset yet, so the page is the guide. ?preview=empty shows it on a
+       team that has datasets, to look at it without making a team. What a dataset is, then the
        three steps from nothing to a search, each with the action it takes, the first of them the
        only thing to do right now. The skill for a developer whose LLM does the setting up. *@
     <div class="indx-empty-state">
-        <div class="indx-empty-greeting">
-            <span class="indx-empty-greeting-icon"><Database Size="28" Color="currentColor" /></span>
-            <div>
-                <h3 class="indx-empty-greeting-title">No datasets yet</h3>
-                <p class="indx-empty-greeting-text">
-                    A dataset is one collection of JSON documents and the search index built from it. Three steps take
-                    it from a name to a search your visitors can use: create it, upload the JSON and choose what each
-                    field does, then search it from the console or your own app.
-                </p>
-                @if (!CanCreate)
-                {
-                    <p class="indx-empty-greeting-text">An editor of this team creates the first one.</p>
-                }
-            </div>
-        </div>
+        <p class="indx-empty-greeting">
+            A dataset is one collection of JSON documents and the search index built from it. Three steps take it from
+            a name to a search your visitors can use: create it, upload the JSON and choose what each field does, then
+            search it from the console or your own app.@if (!CanCreate) { <text> An editor of this team creates the first one.</text> }
+        </p>
         <ol class="indx-empty-steps">
             <li class="indx-empty-step">
                 <span class="indx-empty-step-number">1</span>
@@ -61,8 +52,8 @@
                 <h4 class="indx-empty-step-title">Upload the JSON and set the fields</h4>
                 <p class="indx-empty-step-text">An array of objects, nested fields welcome. Indx reads the fields it finds; you say which are searchable, which can filter and facet, which can sort, and the weight of each. Then load and index.</p>
                 <pre class="indx-empty-step-code">[
-  { "id": 1, "title": "Trail shoe", "price": 120, "specs": { "color": "red" } },
-  { "id": 2, "title": "Road shoe",  "price": 95,  "specs": { "color": "blue" } }
+  { "id": 1, "title": "Trail shoe", "price": 120 },
+  { "id": 2, "title": "Road shoe", "price": 95 }
 ]</pre>
             </li>
             <li class="indx-empty-step">
@@ -273,6 +264,7 @@ else
     private CancellationTokenSource? _describeCts;
 
     private List<Row> _rows = new();
+    private bool _previewEmpty;
     private Dictionary<string, int> _open = new();
     private string _newDatasetName = string.Empty;
     private bool _showNewDatasetForm;
@@ -294,6 +286,8 @@ else
     /// on disk — cheap, but not free on a large dataset, and never worth blocking the page for).</summary>
     public void Reload()
     {
+        _previewEmpty = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(NavigationManager.Uri).Query)
+            .TryGetValue("preview", out var preview) && preview == "empty";
         List<string> names;
         try { names = string.IsNullOrEmpty(TeamId) ? [] : Engines.GetTeamDataSets(TeamId); }
         catch { names = []; }

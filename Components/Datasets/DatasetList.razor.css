@@ -24,16 +24,22 @@
     margin: 0;
 }
 
-/* The guide a team sees before its first dataset: a greeting, the three steps as cards, the skill. */
+/* The guide a team sees before its first dataset: a word on what one is, the three steps as
+   cards, the skill. Centred on the page, since it is the page. */
 .indx-empty-state {
-    margin-top: 8px;
-    max-width: 1100px;
+    margin: 24px auto 0;
+    max-width: 1040px;
 }
 
-.indx-empty-greeting { display: flex; gap: 16px; align-items: flex-start; max-width: 760px; padding: 20px 22px; margin: 0 0 20px; background: var(--lv1); border-radius: var(--radius); }
-.indx-empty-greeting-icon { display: inline-flex; color: var(--lv6); flex: none; margin-top: 2px; }
-.indx-empty-greeting-title { margin: 0 0 6px; font: var(--text-base); font-weight: var(--med); color: var(--lv8); }
-.indx-empty-greeting-text { margin: 0 0 6px; font: var(--text-sm); line-height: 1.55; color: var(--lv6); }
+.indx-empty-greeting {
+    margin: 0 0 12px;
+    padding: 18px 22px;
+    font: var(--text-sm);
+    line-height: 1.6;
+    color: var(--lv6);
+    background: var(--lv1);
+    border-radius: var(--radius);
+}
 
 .indx-empty-steps {
     list-style: none;
@@ -97,7 +103,8 @@
 }
 
 .indx-empty-skill {
-    margin-top: 24px;
+    margin-top: 28px;
+    text-align: center;
 }
 
 /* 260px rather than 220px puts five cards on a row where six used to fit. Six left the footer too
