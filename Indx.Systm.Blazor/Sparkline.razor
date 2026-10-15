@@ -30,9 +30,23 @@ else
          aria-hidden="@(AriaLabel == null ? "true" : null)" focusable="false">
         @if (_points.Count >= 2)
         {
+            @* The idle fade: a gradient across the viewBox with a stop at every point, the colour where
+               it is above zero and IdleColor where it is zero, easing between them, so the line fades
+               rather than switching. userSpaceOnUse keeps it the same across the split line's parts. *@
+            @if (_idle)
+            {
+                <defs>
+                    <linearGradient id="@_gradientId" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="@F(VbW)" y2="0">
+                        @for (var i = 0; i < _points.Count; i++)
+                        {
+                            <stop offset="@F((double)i / (_points.Count - 1))" style="stop-color:@(_points[i] == 0 ? IdleColor : "currentColor")" />
+                        }
+                    </linearGradient>
+                </defs>
+            }
             @if (Fill)
             {
-                <polygon class="indx-sparkline-fill" points="@AreaPoints()" />
+                <polygon class="indx-sparkline-fill" points="@AreaPoints()" style="@FillPaint" />
             }
             @* non-scaling-stroke: preserveAspectRatio="none" stretches the viewBox, which would
                otherwise stretch the stroke with it and give a line thicker one way than the other. *@
@@ -42,13 +56,13 @@ else
                    into it, so "so far" does not read as a fall. *@
                 @if (_points.Count > 2)
                 {
-                    <polyline class="indx-sparkline-line" points="@LinePoints(0, _points.Count - 1)" vector-effect="non-scaling-stroke" />
+                    <polyline class="indx-sparkline-line" points="@LinePoints(0, _points.Count - 1)" vector-effect="non-scaling-stroke" style="@LinePaint" />
                 }
-                <polyline class="indx-sparkline-line indx-sparkline-partial" points="@LinePoints(_points.Count - 2, 2)" vector-effect="non-scaling-stroke" />
+                <polyline class="indx-sparkline-line indx-sparkline-partial" points="@LinePoints(_points.Count - 2, 2)" vector-effect="non-scaling-stroke" style="@LinePaint" />
             }
             else
             {
-                <polyline class="indx-sparkline-line" points="@LinePoints()" vector-effect="non-scaling-stroke" />
+                <polyline class="indx-sparkline-line" points="@LinePoints()" vector-effect="non-scaling-stroke" style="@LinePaint" />
             }
         }
         @if (Baseline)
@@ -87,6 +101,11 @@ else
     /// <summary>Bar only: the gap between bars, in real pixels whatever the width.</summary>
     [Parameter] public double Gap { get; set; } = 1;
 
+    /// <summary>Line only: where the series is zero, the line and its fill fade to this colour, and
+    /// back where it rises, so a quiet stretch reads as quiet rather than as a line like any other.
+    /// Most useful on many sparklines at once, where most are idle. Off when null.</summary>
+    [Parameter] public string? IdleColor { get; set; }
+
     /// <summary>What the graph says, for anyone who cannot see it. Without one the SVG is hidden
     /// from assistive technology, which is right for decoration and wrong for a graph carrying a
     /// fact nothing else on the page carries.</summary>
@@ -110,6 +129,11 @@ else
 
     private List<double> _points = [];
     private double _min, _span;
+    private bool _idle;
+    private readonly string _gradientId = "spark-" + Guid.NewGuid().ToString("N")[..10];
+    // As styles: the classes' currentColor would otherwise win over a stroke or fill attribute.
+    private string? LinePaint => _idle ? $"stroke:url(#{_gradientId})" : null;
+    private string? FillPaint => _idle ? $"fill:url(#{_gradientId})" : null;
 
     protected override void OnParametersSet()
     {
@@ -118,6 +142,7 @@ else
         _min = _points.Count > 0 ? _points.Min() : 0;
         // A flat series still draws: without this, max == min divides by zero and the shape vanishes.
         _span = max - _min == 0 ? 1 : max - _min;
+        _idle = IdleColor != null && Type != "bar" && _points.Contains(0);
     }
 
     private double Y(double v) => Inset + (VbH - Inset * 2) - ((v - _min) / _span) * (VbH - Inset * 2);

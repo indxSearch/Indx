@@ -160,8 +160,10 @@ else
                         <span class="indx-dataset-card-activity-label">
                             Search activity<span class="indx-dataset-card-activity-today"> · @(((long)activity[^1]).ToString("N0")) today</span>
                         </span>
+                        @* IdleColor: days without a search fade to a weaker tone, so the many idle
+                           datasets step back and the busy ones stand out (the mockup's D). *@
                         <Sparkline Values="activity" Height="22" Color="var(--lv5)" Fill Baseline LastIsPartial
-                                   AriaLabel="@ActivityLabel(activity)" />
+                                   IdleColor="var(--lv3)" AriaLabel="@ActivityLabel(activity)" />
                     </span>
                 }
                 <span class="indx-dataset-card-foot">
