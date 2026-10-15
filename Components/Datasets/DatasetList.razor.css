@@ -24,22 +24,18 @@
     margin: 0;
 }
 
-/* The guide a team sees before its first dataset: a word on what one is, the three steps as
-   cards, the skill. Centred on the page, since it is the page. */
+/* The guide a team sees before its first dataset: an opening in the shape of intrface's result
+   messages, the three steps as cards, the skill. Centred on the page, since it is the page. */
 .indx-empty-state {
-    margin: 24px auto 0;
+    margin: 0 auto;
     max-width: 1040px;
 }
 
-.indx-empty-greeting {
-    margin: 0 0 12px;
-    padding: 18px 22px;
-    font: var(--text-sm);
-    line-height: 1.6;
-    color: var(--lv6);
-    background: var(--lv1);
-    border-radius: var(--radius);
-}
+/* The opening, as intrface's SearchResultsMessage: icon, title, detail, centred, with air. */
+.indx-empty-message { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 48px 24px 40px; }
+.indx-empty-message-icon { display: flex; margin-bottom: 10px; }
+.indx-empty-message-title { font: var(--text-lg); color: var(--lv7); }
+.indx-empty-message-detail { font: var(--text-sm); color: var(--lv5); max-width: 60ch; }
 
 .indx-empty-steps {
     list-style: none;
