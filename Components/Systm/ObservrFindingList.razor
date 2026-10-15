@@ -37,25 +37,27 @@ else
                 }
                 @if (f.Proposals.Count > 0)
                 {
+                    @* The proposals as sentences, each with its reason under it: "Make [Pokedex
+                       number] sortable", "Ordering by Pokedex number is the natural way to browse". *@
                     <div class="ofl-proposals">
+                        <span class="ofl-proposals-head">@(f.Proposals.Count == 1 ? "Suggested change" : "Suggested changes")</span>
                         @foreach (var (p, i) in f.Proposals.Select((p, i) => (p, i)))
                         {
+                            var (before, names, after) = p.Sentence;
                             <div class="ofl-proposal">
                                 @if (Selectable(f))
                                 {
                                     var index = i;
                                     <Checkbox Checked="@(!_unticked.Contains((f.Id, index)))" CheckedChanged="v => Tick(f.Id, index, v)" Disabled="@(Busy == f.Id)" aria-label="Apply this proposal" />
                                 }
-                                <span class="ofl-label">@p.Label</span>
-                                @if (p.Field is { } change)
-                                {
-                                    <Chip>@change.Name</Chip><span class="ofl-label">@change.Summary</span>
-                                }
-                                else
-                                {
-                                    @foreach (var t in p.Describe()) { <Chip>@t</Chip> }
-                                }
-                                @if (!string.IsNullOrWhiteSpace(p.Reason) && p.Reason != f.Answer) { <span class="ofl-why">@p.Reason</span> }
+                                <div class="ofl-proposal-body">
+                                    <span class="ofl-sentence">
+                                        @before
+                                        @foreach (var n in names) { <Chip>@n</Chip> }
+                                        @after
+                                    </span>
+                                    @if (!string.IsNullOrWhiteSpace(p.Reason) && p.Reason != f.Answer) { <span class="ofl-why">@p.Reason</span> }
+                                </div>
                             </div>
                         }
                     </div>

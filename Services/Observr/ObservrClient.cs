@@ -128,6 +128,44 @@ namespace IndxServer.Services.Observr
     public sealed record ObservrProposal(string Kind, string[] Terms, string Direction, string Reason, ObservrFieldChange? Field = null,
         ObservrSearchOrAskChange? SearchOrAsk = null, ObservrQueryParametersChange? QueryParameters = null)
     {
+        /// <summary>The proposal as a sentence an owner reads at a glance: the words before the
+        /// names, the names (fields or terms, drawn as chips), the words after. "Make [Pokedex
+        /// number] sortable"; "Treat [bike] [bicycle] as the same word"; "Change Search or ask:
+        /// [kind catalogue] [title Navn]".</summary>
+        [JsonIgnore]
+        public (string Before, IReadOnlyList<string> Names, string After) Sentence
+        {
+            get
+            {
+                switch (Kind)
+                {
+                    case Synonym:
+                        return (Terms.Length == 1 ? "Add the synonym" : "Treat as the same word:", Terms, "");
+                    case FieldKind when Field != null:
+                    {
+                        var c = Field;
+                        var on = new List<string>(); var off = new List<string>();
+                        Role(c.Searchable, "searchable"); Role(c.Filterable, "filterable"); Role(c.Facetable, "facetable"); Role(c.Sortable, "sortable");
+                        var tail = new List<string>();
+                        if (on.Count > 0) tail.Add(Join(on));
+                        if (off.Count > 0) tail.Add("no longer " + Join(off));
+                        var weight = c.Weight is { } w ? $"weight {w.ToString("0.##", CultureInfo.InvariantCulture)}" : null;
+                        if (tail.Count == 0 && weight != null) return ("Give", [c.Name], weight);
+                        if (weight != null) tail.Add("with " + weight);
+                        return ("Make", [c.Name], tail.Count == 0 ? "as it is" : string.Join(", ", tail));
+                        void Role(bool? v, string role) { if (v == true) on.Add(role); else if (v == false) off.Add(role); }
+                        static string Join(List<string> roles) => roles.Count == 1 ? roles[0] : string.Join(", ", roles[..^1]) + " and " + roles[^1];
+                    }
+                    case SearchOrAskKind when SearchOrAsk != null:
+                        return ("Change Search or ask:", SearchOrAsk.Parts.ToList(), "");
+                    case QueryParametersKind when QueryParameters != null:
+                        return ("Change the query parameters:", QueryParameters.Parts.ToList(), "");
+                    default:
+                        return (Label, [], "");
+                }
+            }
+        }
+
         public const string Synonym = "synonym";
         public const string FieldKind = "field";
         public const string SearchOrAskKind = "searchOrAsk";
