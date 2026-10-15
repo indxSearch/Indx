@@ -597,6 +597,32 @@ a.btn-danger:hover {
     color: var(--lv8);
 }
 
+/* In between (a tablet, a narrow window): the account's controls take their room in the row
+   instead of floating over the trail, which they covered at these widths, cutting a long
+   dataset name; the trail truncates with an ellipsis instead. The trail's centring is for the
+   wide window where the content stands at its maximum; here the content is narrower than that
+   and sits at the left either way, so nothing moves. */
+@media (max-width: 1280px) {
+    .nav-right {
+        position: static;
+        transform: none;
+    }
+
+    .nav-crumbs {
+        margin: 0;
+        max-width: none;
+    }
+}
+
+/* Narrower still: the account's controls keep their icons and lose their words (Admin, the
+   name, Agent), so the dataset's name keeps its. The team's name stays: it is the one word in
+   the cluster that says where you are. */
+@media (max-width: 1000px) {
+    .nav-right .nav-dropdown-label {
+        display: none;
+    }
+}
+
 /* Narrow: the header is two rows. The first is the mark and, at the right, the team switcher with
    its name and the account's icons; the second, only where a page has one, the trail. The
    standing chip goes, and the trail's earlier steps keep their icon as the way back and lose
