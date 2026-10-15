@@ -590,7 +590,10 @@ internal static class StartupServices
         {
             options.JsonSerializerOptions.IncludeFields = true;
             options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-        });
+        })
+        // A request that does not bind gets the API's error shape, with its code (ApiProblems).
+        .ConfigureApiBehaviorOptions(options =>
+            options.InvalidModelStateResponseFactory = context => ApiProblems.InvalidModelState(context.ModelState));
 
         // API versioning: default 2.0-beta. Header/query-based so the existing
         // /api/... URLs stay unchanged (no breaking change for clients). Clients
