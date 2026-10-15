@@ -83,7 +83,7 @@ else
                         @if (OnHide.HasDelegate)
                         {
                             <span class="ofl-spacer"></span>
-                            <Button Variant="ghost" Size="micro" Disabled="@(Busy == f.Id)" IconLeft="DatasetIcons.Erase" title="Take it off this page" aria-label="Hide" @onclick="() => OnHide.InvokeAsync(f)" />
+                            <Button Variant="ghost" Size="micro" Disabled="@(Busy == f.Id)" title="Take it off this page" @onclick="() => OnHide.InvokeAsync(f)">Hide</Button>
                         }
                     </div>
                 }
