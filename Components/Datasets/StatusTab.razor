@@ -12,7 +12,6 @@
 @using IndxServer.Engine
 @using IndxServer.Services.Observr
 @inherits DatasetTabBase
-@implements IDisposable
 @inject ObservrFindingStore Findings
 @inject AgentPanelState Agent
 @inject IServiceProvider Services
@@ -52,7 +51,7 @@
                     }
                 </div>
             </div>
-            <ObservrFindingList Findings="shown" Grid Link="@(f => $"{TeamRoutes.Dataset(Ctx.TeamName, f.DataSetName)}?tab={f.Tab}")" CanDecide="Ctx.IsEditor" Busy="_busy"
+            <ObservrFindingList Findings="shown" Grid Link="@(f => $"{TeamRoutes.Dataset(Ctx.TeamName ?? "", f.DataSetName)}?tab={f.Tab}")" CanDecide="Ctx.IsEditor" Busy="_busy"
                                 OnDecide="d => DecideAsync(d.Finding, d.Yes, d.Only)" OnDiscuss="Discuss"
                                 Empty="@(_view == Open ? (_findings.Count == 0 ? "Nothing yet. Observr reads this dataset's statistics each morning and puts what is worth your attention here." : "Nothing waiting for a decision.") : "Nothing decided yet.")" />
         }
@@ -95,11 +94,16 @@
 
     protected override void OnInitialized()
     {
+        base.OnInitialized();
         Findings.Changed += OnFindingsChanged;
         LoadFindings();
     }
 
-    public void Dispose() => Findings.Changed -= OnFindingsChanged;
+    public override void Dispose()
+    {
+        Findings.Changed -= OnFindingsChanged;
+        base.Dispose();
+    }
 
     private void OnFindingsChanged() => _ = InvokeAsync(() => { LoadFindings(); StateHasChanged(); });
 

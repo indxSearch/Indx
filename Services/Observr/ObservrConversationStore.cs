@@ -23,6 +23,7 @@ namespace IndxServer.Services.Observr
     /// their last turns, so a chat that goes on for months does not grow the file. Follows the
     /// dataset through delete, rename and transfer as the findings do.
     /// </summary>
+    /// <param name="logger">Where a failed read or write is reported.</param>
     /// <param name="dbPath">A file of its own, for a test; the server's indx.db otherwise.</param>
     public class ObservrConversationStore(ILogger<ObservrConversationStore> logger, string? dbPath = null)
     {
