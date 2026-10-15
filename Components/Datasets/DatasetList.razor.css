@@ -24,9 +24,67 @@
     margin: 0;
 }
 
+/* The guide a team sees before its first dataset: a greeting, the three steps as cards, the skill. */
 .indx-empty-state {
-    margin-top: 40px;
-    max-width: 520px;
+    margin-top: 8px;
+    max-width: 1100px;
+}
+
+.indx-empty-greeting { display: flex; gap: 16px; align-items: flex-start; max-width: 760px; padding: 20px 22px; margin: 0 0 20px; background: var(--lv1); border-radius: var(--radius); }
+.indx-empty-greeting-icon { display: inline-flex; color: var(--lv6); flex: none; margin-top: 2px; }
+.indx-empty-greeting-title { margin: 0 0 6px; font: var(--text-base); font-weight: var(--med); color: var(--lv8); }
+.indx-empty-greeting-text { margin: 0 0 6px; font: var(--text-sm); line-height: 1.55; color: var(--lv6); }
+
+.indx-empty-steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.indx-empty-step {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 18px 20px;
+    background: var(--lv1);
+    border-radius: var(--radius);
+    min-width: 0;
+}
+
+.indx-empty-step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--lv7);
+    color: var(--lv0);
+    font: var(--text-xs);
+    font-weight: var(--med);
+    font-variant-numeric: tabular-nums;
+}
+
+.indx-empty-step-title { margin: 2px 0 0; font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
+.indx-empty-step-text { margin: 0; font: var(--text-sm); line-height: 1.55; color: var(--lv6); }
+.indx-empty-step-code {
+    margin: 4px 0 0;
+    padding: 10px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--lv6);
+    background: var(--lv2);
+    border-radius: var(--radius);
+    overflow-x: auto;
+}
+.indx-empty-step-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 6px; }
+
+@media (max-width: 900px) {
+    .indx-empty-steps { grid-template-columns: minmax(0, 1fr); }
 }
 
 .indx-empty-intro {

@@ -17,7 +17,7 @@
        as its call to action, so it is not repeated here. *@
     @if (CanCreate && _rows.Count > 0)
     {
-        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset" title="New dataset">New</Button>
+        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset" title="New dataset">New</Button>
     }
     <span class="indx-datasets-heading-spacer"></span>
     @HeadingActions
@@ -25,14 +25,58 @@
 
 @if (_rows.Count == 0)
 {
+    @* The first visit: no dataset yet, so the page is the guide. What a dataset is, then the
+       three steps from nothing to a search, each with the action it takes, the first of them the
+       only thing to do right now. The skill for a developer whose LLM does the setting up. *@
     <div class="indx-empty-state">
-        <p class="indx-empty-intro">A dataset holds your JSON documents and search index. Create one here to get started.</p>
-        @if (CanCreate)
-        {
-            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset">New dataset</Button>
-        }
+        <div class="indx-empty-greeting">
+            <span class="indx-empty-greeting-icon"><Database Size="28" Color="currentColor" /></span>
+            <div>
+                <h3 class="indx-empty-greeting-title">No datasets yet</h3>
+                <p class="indx-empty-greeting-text">
+                    A dataset is one collection of JSON documents and the search index built from it. Three steps take
+                    it from a name to a search your visitors can use: create it, upload the JSON and choose what each
+                    field does, then search it from the console or your own app.
+                </p>
+                @if (!CanCreate)
+                {
+                    <p class="indx-empty-greeting-text">An editor of this team creates the first one.</p>
+                }
+            </div>
+        </div>
+        <ol class="indx-empty-steps">
+            <li class="indx-empty-step">
+                <span class="indx-empty-step-number">1</span>
+                <h4 class="indx-empty-step-title">Create a dataset</h4>
+                <p class="indx-empty-step-text">Name it after what it holds: products, articles, schools. The name is part of its address, so keep it short and plain.</p>
+                @if (CanCreate)
+                {
+                    <div class="indx-empty-step-actions">
+                        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset">New dataset</Button>
+                    </div>
+                }
+            </li>
+            <li class="indx-empty-step">
+                <span class="indx-empty-step-number">2</span>
+                <h4 class="indx-empty-step-title">Upload the JSON and set the fields</h4>
+                <p class="indx-empty-step-text">An array of objects, nested fields welcome. Indx reads the fields it finds; you say which are searchable, which can filter and facet, which can sort, and the weight of each. Then load and index.</p>
+                <pre class="indx-empty-step-code">[
+  { "id": 1, "title": "Trail shoe", "price": 120, "specs": { "color": "red" } },
+  { "id": 2, "title": "Road shoe",  "price": 95,  "specs": { "color": "blue" } }
+]</pre>
+            </li>
+            <li class="indx-empty-step">
+                <span class="indx-empty-step-number">3</span>
+                <h4 class="indx-empty-step-title">Search it</h4>
+                <p class="indx-empty-step-text">Try it in the dataset's Search preview as soon as it is indexed. For your own site or app, an API key with the Search scope and the intrface React components, or the HTTP API from anything else.</p>
+                <div class="indx-empty-step-actions">
+                    <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Lock" Href="@TeamRoutes.TeamKeys(TeamName)">API keys</Button>
+                    <Button Variant="ghost" Size="micro" Href="https://docs.indx.co">Docs ↗</Button>
+                </div>
+            </li>
+        </ol>
         <div class="indx-empty-skill">
-            <p class="indx-empty-intro indx-empty-intro--tight">Using an LLM to set up your search? Get the skill.</p>
+            <p class="indx-empty-intro indx-empty-intro--tight">Using an LLM to set up your search? The skill teaches it the API and the field roles.</p>
             <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Agent" Href="https://www.skills.sh/indxsearch/skill-indx-search/indx-search">Indx Agent Skill ↗</Button>
         </div>
     </div>
