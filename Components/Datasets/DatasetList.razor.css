@@ -32,7 +32,7 @@
 }
 
 /* The opening, as intrface's SearchResultsMessage: icon, title, detail, centred, with air. */
-.indx-empty-message { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 48px 24px 40px; }
+.indx-empty-message { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 56px 24px 64px; }
 .indx-empty-message-icon { display: flex; margin-bottom: 10px; }
 .indx-empty-message-title { font: var(--text-lg); color: var(--lv7); }
 .indx-empty-message-detail { font: var(--text-sm); color: var(--lv5); max-width: 60ch; }

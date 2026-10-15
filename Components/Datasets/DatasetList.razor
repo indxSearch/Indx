@@ -32,11 +32,10 @@
     <div class="indx-empty-state">
         @* The opening, in the shape of intrface's result messages: a large icon, a line, a detail. *@
         <div class="indx-empty-message">
-            <span class="indx-empty-message-icon"><Database Size="70" Color="var(--lv4)" /></span>
+            <span class="indx-empty-message-icon"><Empty Size="70" Color="var(--lv4)" /></span>
             <div class="indx-empty-message-title">Nothing here yet</div>
             <div class="indx-empty-message-detail">
-                A dataset is one collection of JSON documents and the search index built from it.
-                @if (!CanCreate) { <text>An editor of this team creates the first one.</text> }
+                @(CanCreate ? "Three steps to your first search." : "An editor of this team creates the first dataset.")
             </div>
         </div>
         <ol class="indx-empty-steps">
