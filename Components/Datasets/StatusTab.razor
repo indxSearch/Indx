@@ -78,7 +78,7 @@
                 </div>
             </div>
             <ObservrFindingList Findings="shown" Grid Link="@(f => $"{TeamRoutes.Dataset(Ctx.TeamName ?? "", f.DataSetName)}?tab={f.Tab}")" CanDecide="Ctx.IsEditor" Busy="_busy"
-                                OnDecide="d => DecideAsync(d.Finding, d.Yes, d.Only)" OnDiscuss="Discuss" KindIcon="KindIcon"
+                                OnDecide="d => DecideAsync(d.Finding, d.Yes, d.Only)" OnDiscuss="Discuss" OnHide="Hide" KindIcon="KindIcon"
                                 Empty="@(_view == Open ? (_findings.Count == 0 ? "Nothing yet. Observr reads this dataset's statistics each morning and puts what is worth your attention here." : "Nothing waiting for a decision.") : "Nothing decided yet.")" />
         }
 
@@ -186,6 +186,9 @@
             LoadFindings();
         }
     }
+
+    /// <summary>Off the page for good; an open one goes undecided.</summary>
+    private void Hide(ObservrFinding f) { if (Ctx.IsEditor) Findings.Remove(f.Id); }
 
     /// <summary>Into the Agent panel, with the finding named, so the owner can ask about it before deciding.</summary>
     private void Discuss(ObservrFinding f) => Agent.Open($"About your finding \u201c{f.Title}\u201d: ");

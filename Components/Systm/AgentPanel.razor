@@ -151,7 +151,16 @@
         if (!Agent.IsOpen) { _scrolledFor = -1; return; }
         var mark = _turns.Count * 2 + (_running ? 1 : 0);
         if (mark == _scrolledFor) return;
+        var opening = _scrolledFor == -1;
         _scrolledFor = mark;
+        await ScrollToEndAsync();
+        // The panel slides in over 160ms (app.css .shell-agent); a scroll asked for while it is
+        // still 0px wide is lost, so once more when it stands.
+        if (opening) { await Task.Delay(240); await ScrollToEndAsync(); }
+    }
+
+    private async Task ScrollToEndAsync()
+    {
         try { await JS.InvokeVoidAsync("HTMLElement.prototype.scrollIntoView.call", _end, new { block = "end" }); }
         catch (JSException) { }
         catch (InvalidOperationException) { }

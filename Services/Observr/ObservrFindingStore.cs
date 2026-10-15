@@ -187,6 +187,15 @@ namespace IndxServer.Services.Observr
             Changed?.Invoke();
         }
 
+        /// <summary>Takes a finding off the dataset's page for good: an owner's Hide. An open one
+        /// goes undecided; Observr is not told, since a finding it hears nothing about is one it
+        /// may raise again if the data still says so.</summary>
+        public void Remove(long id)
+        {
+            Execute($"DELETE FROM {Table} WHERE Id = $id", cmd => cmd.Parameters.AddWithValue("$id", id));
+            Changed?.Invoke();
+        }
+
         public ObservrFinding? Get(long id) => Query($"WHERE Id = $id", cmd => cmd.Parameters.AddWithValue("$id", id), 1).FirstOrDefault();
 
         /// <summary>The open findings of these teams, newest first.</summary>

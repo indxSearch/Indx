@@ -60,9 +60,11 @@ else
                         }
                     </div>
                 }
-                @if (f.Status == ObservrFinding.Open && CanDecide)
+                @if (CanDecide && (f.Status == ObservrFinding.Open || OnHide.HasDelegate))
                 {
                     <div class="ofl-actions">
+                        @if (f.Status == ObservrFinding.Open)
+                        {
                         @if (f.Proposals.Count == 0)
                         {
                             <Button Variant="ghost" Size="micro" Loading="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, true, null))">Got it</Button>
@@ -76,6 +78,12 @@ else
                         @if (OnDiscuss.HasDelegate)
                         {
                             <Button Variant="ghost" Size="micro" Disabled="@(Busy == f.Id)" @onclick="() => OnDiscuss.InvokeAsync(f)">Discuss</Button>
+                        }
+                        }
+                        @if (OnHide.HasDelegate)
+                        {
+                            <span class="ofl-spacer"></span>
+                            <Button Variant="ghost" Size="micro" Disabled="@(Busy == f.Id)" IconLeft="DatasetIcons.Erase" title="Take it off this page" aria-label="Hide" @onclick="() => OnHide.InvokeAsync(f)" />
                         }
                     </div>
                 }
@@ -113,6 +121,8 @@ else
     [Parameter] public bool Grid { get; set; }
     /// <summary>An icon before the title, by the finding's kind, when the page wants one.</summary>
     [Parameter] public Func<ObservrFinding, RenderFragment<int>>? KindIcon { get; set; }
+    /// <summary>With it, every finding has a Hide button for an editor: off the page for good.</summary>
+    [Parameter] public EventCallback<ObservrFinding> OnHide { get; set; }
     /// <summary>With it, an open finding has a Discuss button: the Agent panel, with the finding.</summary>
     [Parameter] public EventCallback<ObservrFinding> OnDiscuss { get; set; }
     /// <summary>Only the proposals and the decision: for a finding shown under the answer that
