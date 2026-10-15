@@ -26,6 +26,15 @@ namespace IndxServer.Services.Observr
         private sealed record Turn(string Role, string? Text = null, List<ObservrChatToolUse>? ToolUses = null, List<ToolResult>? ToolResults = null);
         private sealed record ToolResult(string Id, string Content);
 
+        /// <summary>A user turn as the model reads it: prefixed with where it was asked when that
+        /// is not where the owner is now.</summary>
+        internal static string Placed(ObservrTurn t, ObservrChatContext ctx)
+        {
+            if (t.TeamId == ctx.TeamId && t.DatasetName == ctx.DatasetKey) return t.Text;
+            if (t.TeamId == ctx.TeamId) return t.DatasetName.Length > 0 ? $"(about the dataset {t.DatasetName}) {t.Text}" : $"(about the team) {t.Text}";
+            return t.DatasetName.Length > 0 ? $"(about the dataset {t.DatasetName} of another team) {t.Text}" : "(about another team) " + t.Text;
+        }
+
         /// <summary>Asks, and tells <paramref name="status"/> what is being read along the way.</summary>
         public async Task<ObservrChatOutcome> AskAsync(ObservrChatContext ctx, string userId, string question, Func<string, Task> status, CancellationToken ct)
         {
@@ -34,10 +43,12 @@ namespace IndxServer.Services.Observr
             if (!client.HasToken) return new ObservrChatOutcome(ObservrStatus.NoToken);
             conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.User, question);
 
-            var history = conversations.List(userId, ctx.TeamId, ctx.DatasetKey, HistoryTurns + 1);
+            // One thread per user, so an earlier turn may be about another dataset or team; a
+            // user turn from elsewhere says where, so the model does not read it as this one.
+            var history = conversations.List(userId, HistoryTurns + 1);
             var messages = new List<Turn>();
             foreach (var t in history.Take(history.Count - 1))
-                if (t.Text.Length > 0) messages.Add(new Turn(t.Role, t.Text));
+                if (t.Text.Length > 0) messages.Add(new Turn(t.Role, t.Role == ObservrTurn.User ? Placed(t, ctx) : t.Text));
             messages.Add(new Turn(ObservrTurn.User, question));
 
             var definitions = tools.Definitions(ctx);

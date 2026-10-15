@@ -77,6 +77,22 @@
     color: var(--lv7);
 }
 
+/* Observr's count at the head's end: the icon and the number, quiet until hovered for the title. */
+.indx-dataset-card-observr {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--lv2);
+    font: var(--text-2xs);
+    font-weight: var(--med);
+    font-variant-numeric: tabular-nums;
+    color: var(--lv7);
+    flex: none;
+}
+
 .indx-dataset-card-name {
     font-weight: var(--med);
     overflow: hidden;

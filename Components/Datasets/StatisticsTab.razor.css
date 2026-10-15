@@ -1,18 +1,3 @@
-/* The bar over the content: the surface and the period on one line, on a phone too. */
-.indx-context-bar {
-    display: flex;
-    align-items: center;
-    margin-bottom: 12px;
-}
-
-.indx-context-bar-end {
-    display: flex;
-    align-items: center;
-    flex-wrap: nowrap;
-    gap: 8px;
-    min-width: 0;
-}
-
 /* Statistics dashboard tab. Tiles and tables sit on tone, never elevation — the indx design
    uses no box-shadows anywhere. Numbers wear text tokens, not series colors (dataviz rule:
    color belongs to marks; text stays ink). */

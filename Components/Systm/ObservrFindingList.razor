@@ -1,7 +1,9 @@
 @* The findings as a list, one block each: what it is about, where and when on one line, the
    text at reading width, the proposal as chips, the decision. A table put two paragraphs in a
    narrow column beside five empty cells; this is what a finding actually looks like. Used by the
-   team's Observr page and the account's history; the menu keeps its own, shorter shape. *@
+   team's Observr page and the account's history as a list, by a dataset's Status page as a grid
+   of cards (Grid, where the dataset need not be named), and by the Agent panel for the proposals
+   under the answer that made them. *@
 @using IndxServer.Services.Observr
 
 @if (Findings.Count == 0)
@@ -10,7 +12,7 @@
 }
 else
 {
-    <ol class="ofl">
+    <ol class="ofl @(Grid ? "ofl--grid" : null)">
         @foreach (var f in Findings)
         {
             <li class="ofl-item @(f.Status == ObservrFinding.Open ? "ofl-item--open" : null) @(ProposalsOnly ? "ofl-item--proposals" : null)">
@@ -19,8 +21,11 @@ else
                 <div class="ofl-head">
                     <span class="ofl-title">@f.Title</span>
                     <span class="ofl-where">
-                        @if (ShowTeam) { <text>@TeamName(f.TeamId) / </text> }@f.DataSetName
-                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" Href="@Link(f)" title="Open where it is about" aria-label="@($"Open {f.DataSetName}, {f.Tab}")" />
+                        @if (!Grid)
+                        {
+                            @if (ShowTeam) { <text>@TeamName(f.TeamId) / </text> }@f.DataSetName
+                        }
+                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" Href="@Link(f)" title="@(Grid ? "Open the section it is about" : "Open where it is about")" aria-label="@($"Open {f.DataSetName}, {f.Tab}")" />
                     </span>
                     <span class="ofl-spacer"></span>
                     <span class="ofl-time"><TimeAgo Value="f.CreatedUtc" TooltipPosition="left" /></span>
@@ -67,6 +72,10 @@ else
                             <Button Variant="primary" Size="micro" Loading="@(Busy == f.Id)" Disabled="@(chosen.Count == 0)" @onclick="() => OnDecide.InvokeAsync((f, true, chosen))">@(Selectable(f) && chosen.Count < f.Proposals.Count ? $"Yes, {chosen.Count} of {f.Proposals.Count}" : "Yes")</Button>
                             <Button Variant="ghost" Size="micro" Disabled="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, false, null))">No</Button>
                         }
+                        @if (OnDiscuss.HasDelegate)
+                        {
+                            <Button Variant="ghost" Size="micro" Disabled="@(Busy == f.Id)" @onclick="() => OnDiscuss.InvokeAsync(f)">Discuss</Button>
+                        }
                     </div>
                 }
                 else if (f.Status == ObservrFinding.Open)
@@ -98,6 +107,11 @@ else
     private void Tick(long id, int index, bool on) { if (on) _unticked.Remove((id, index)); else _unticked.Add((id, index)); }
     private List<int> Chosen(ObservrFinding f) => Enumerable.Range(0, f.Proposals.Count).Where(i => !_unticked.Contains((f.Id, i))).ToList();
     [Parameter] public string Empty { get; set; } = "Nothing yet.";
+    /// <summary>Cards in a grid rather than blocks in a column, on a page about one dataset: the
+    /// dataset is not named, the open button goes to the section.</summary>
+    [Parameter] public bool Grid { get; set; }
+    /// <summary>With it, an open finding has a Discuss button: the Agent panel, with the finding.</summary>
+    [Parameter] public EventCallback<ObservrFinding> OnDiscuss { get; set; }
     /// <summary>Only the proposals and the decision: for a finding shown under the answer that
     /// made it (the Agent panel), where the text is already on the page.</summary>
     [Parameter] public bool ProposalsOnly { get; set; }

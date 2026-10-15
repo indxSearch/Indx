@@ -1,9 +1,11 @@
 @* The Agent panel (Notes/Anders/console-shell-plan-2026-10-13.md, stage 5): Observr as a
-   conversation about what the owner is looking at, in a column at the right. Scoped to the
-   context: on a dataset page that dataset, elsewhere the active team. The open findings of the
-   context come first with their Yes / No, then the conversation, newest at the bottom, then the
-   composer. The tabs' buttons (Review my setup, Ask about this query, …) run their ask here, as a
-   turn of the same thread. An island of its own: the layout renders statically. *@
+   conversation, in a column at the right. One thread per user (15 Oct 2026): the context, on a
+   dataset page that dataset, elsewhere the active team, is what the agent looks at, shown in the
+   head, not a key that swaps the transcript. The findings are not here: a dataset's wait on its
+   Status page, a team's on its Observr page, each with Yes and No; Discuss there brings one into
+   this thread. The conversation, newest at the bottom, then the composer. The tabs' buttons
+   (Review my setup, Ask about this query, …) run their ask here, as a turn of the same thread. An
+   island of its own: the layout renders statically. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
 @using System.Security.Claims
@@ -43,24 +45,19 @@
             </div>
         </Header>
         <ChildContent>
-            @if (_turns.Count == 0 && _open.Count == 0)
+            @if (_turns.Count == 0)
             {
                 <AssistantMessage Label="Observr" Icon="_iconObservr">
                     <p>@Intro()</p>
                 </AssistantMessage>
                 <Suggestions Items="Suggested()" OnPick="SendAsync" />
             }
-            @if (_open.Count > 0)
-            {
-                <AssistantMessage Label="@(_open.Count == 1 ? "Observr found" : $"Observr found, {_open.Count} waiting")" Icon="_iconObservr" Class="agent-findings">
-                    <ObservrFindingList Findings="_open" Link="Link" CanDecide="_canDecide" Busy="_busy" OnDecide="d => DecideAsync(d.Finding, d.Yes, d.Only)" Empty="" />
-                </AssistantMessage>
-            }
             @foreach (var t in _turns)
             {
                 if (t.Role == ObservrTurn.User)
                 {
-                    <UserMessage>@t.Text</UserMessage>
+                    @* A turn asked elsewhere says where, quietly, since the thread is one. *@
+                    <UserMessage>@if (Elsewhere(t) is { } where) { <span class="agent-where">@where</span> }@t.Text</UserMessage>
                 }
                 else
                 {
@@ -109,7 +106,6 @@
     private string _userId = "";
     private bool _canDecide, _canAsk;
     private List<ObservrTurn> _turns = [];
-    private List<ObservrFinding> _open = [];
     private Dictionary<long, ObservrFinding> _byId = [];
     private readonly Dictionary<long, AgentAction> _actions = [];
     private int _scrolledFor = -1;
@@ -119,7 +115,7 @@
     private string? _error;
     private long _busy;
     private ElementReference _end;
-    private string? _loadedFor;
+    private bool _loaded;
 
     private static readonly RenderFragment<int> _iconObservr = size => @<Observr Size="size" Color="currentColor" />;
     /// <summary>The composer's icon at 14px, as in the header and the message heads. The Composer asks
@@ -189,23 +185,28 @@
         _ctx = new ObservrChatContext(team.Value.Team.Id.ToString(), team.Value.Team.Name, dataset, dataset != null ? tab ?? "status" : null);
         _canDecide = TeamRoles.CanWrite(team.Value.Role);
         _canAsk = _canDecide;
-        var key = _ctx.TeamId + "/" + _ctx.DatasetKey;
-        if (key != _loadedFor) { _loadedFor = key; Load(); }
+        if (!_loaded) { _loaded = true; Load(); }
     }
 
     private void Load()
     {
-        if (_ctx == null) return;
-        _turns = Conversations.List(_userId, _ctx.TeamId, _ctx.DatasetKey);
-        var all = _ctx.HasDataset ? Findings.ListForDataset(_ctx.TeamId, _ctx.DataSetName!, 50) : Findings.List([_ctx.TeamId], 50);
-        var referenced = _turns.Where(t => t.FindingId != null).Select(t => t.FindingId!.Value).ToHashSet();
-        _byId = all.ToDictionary(f => f.Id);
-        foreach (var id in referenced.Where(id => !_byId.ContainsKey(id)))
+        _turns = Conversations.List(_userId);
+        _byId = [];
+        foreach (var id in _turns.Where(t => t.FindingId != null).Select(t => t.FindingId!.Value).Distinct())
             if (Findings.Get(id) is { } f) _byId[f.Id] = f;
-        // The findings block shows what waits that the thread does not already show under a turn.
-        _open = all.Where(f => f.Status == ObservrFinding.Open && !referenced.Contains(f.Id)).Take(10).ToList();
         _error = null;
     }
+
+    /// <summary>Where a turn was asked, when that is not where the owner is now.</summary>
+    private string? Elsewhere(ObservrTurn t)
+    {
+        if (_ctx == null || (t.TeamId == _ctx.TeamId && t.DatasetName == _ctx.DatasetKey)) return null;
+        if (t.DatasetName.Length > 0) return t.DatasetName;
+        return ActiveTeam.Teams.FirstOrDefault(x => x.Team.Id.ToString() == t.TeamId).Team?.Name ?? "another team";
+    }
+
+    private string TeamNameOf(string teamId) =>
+        ActiveTeam.Teams.FirstOrDefault(x => x.Team.Id.ToString() == teamId).Team?.Name ?? _ctx?.TeamName ?? "";
 
     private string Intro() => _ctx!.HasDataset
         ? $"I watch {_ctx.DataSetName}: what visitors search for, how the fields are set up, and what changed. Ask me about any of it."
@@ -215,7 +216,7 @@
         ? ["What did visitors search for this week?", "Which searches found nothing?", "Is my field setup sensible?"]
         : ["Which datasets are hibernated?", "What did you find this week?"];
 
-    private string Link(ObservrFinding f) => $"{TeamRoutes.Dataset(_ctx!.TeamName, f.DataSetName)}?tab={f.Tab}";
+    private string Link(ObservrFinding f) => $"{TeamRoutes.Dataset(TeamNameOf(f.TeamId), f.DataSetName)}?tab={f.Tab}";
 
     private async Task SendAsync(string text)
     {
@@ -289,8 +290,7 @@
 
     private Task ClearAsync()
     {
-        if (_ctx == null) return Task.CompletedTask;
-        Conversations.Clear(_userId, _ctx.TeamId, _ctx.DatasetKey);
+        Conversations.Clear(_userId);
         Load();
         return Task.CompletedTask;
     }

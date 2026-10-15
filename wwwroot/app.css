@@ -1274,3 +1274,8 @@ a.btn-danger:hover {
     background-repeat: no-repeat;
     background-position: top left, top right, bottom left, bottom right;
 }
+
+/* The bar over a tab's content (Statistics, Status): what belongs to everything below, on one
+   line, on a phone too. The end cluster holds the controls at the right. */
+.indx-context-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.indx-context-bar-end { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; min-width: 0; margin-left: auto; }

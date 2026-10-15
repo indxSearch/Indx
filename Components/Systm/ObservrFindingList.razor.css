@@ -19,3 +19,13 @@
 .ofl-why { font: var(--text-xs); color: var(--lv5); }
 .ofl-actions { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 .ofl-empty { color: var(--lv5); }
+
+/* The grid: cards on the Status page, two across, one on a phone. Every card sits on lv1 whatever
+   its status; an open one is told by its chip and its buttons, since the whole grid is the
+   page's content rather than a history to pick the open ones out of. */
+.ofl--grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; max-width: none; }
+.ofl--grid .ofl-item { margin: 0; padding: 14px 16px; background: var(--lv1); border-bottom: none; }
+.ofl--grid .ofl-item--open { margin-bottom: 0; }
+.ofl--grid .ofl-text { max-width: none; }
+.ofl--grid .ofl-actions { margin-top: auto; padding-top: 4px; }
+@media (max-width: 760px) { .ofl--grid { grid-template-columns: minmax(0, 1fr); } }

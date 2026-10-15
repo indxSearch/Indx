@@ -23,7 +23,7 @@
         {
             var o = await Observr.SendDigestAsync(TeamId, DatasetName, CancellationToken.None);
             _result = o.Status == ObservrStatus.Ok
-                ? o.Count == 0 ? "Nothing new worth your attention." : o.Count == 1 ? "One thing, in the Observr menu." : $"{o.Count} things, in the Observr menu."
+                ? o.Count == 0 ? "Nothing new worth your attention." : o.Count == 1 ? "One thing, on the Status page." : $"{o.Count} things, on the Status page."
                 : ObservrText.Refusal(new ObservrOutcome(o.Status, Reason: o.Reason), "to summarise");
         }
         finally { _busy = false; }

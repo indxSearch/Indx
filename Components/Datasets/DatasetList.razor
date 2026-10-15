@@ -7,6 +7,7 @@
 @inject NavigationManager NavigationManager
 @inject ILogger<DatasetList> Logger
 @inject StatisticsService Stats
+@inject IndxServer.Services.Observr.ObservrFindingStore Findings
 @implements IDisposable
 
 <div class="indx-datasets-heading">
@@ -43,6 +44,12 @@ else
                 <span class="indx-dataset-card-head">
                     <Database Size="14" Color="currentColor" />
                     <span class="indx-dataset-card-name">@row.Name</span>
+                    @if (_open.TryGetValue(row.Name, out var open) && open > 0)
+                    {
+                        @* What Observr found on a watched dataset and nobody has decided: at the
+                           corner, in Observr's look, the way the side menu counts the same. *@
+                        <span class="indx-dataset-card-observr indx-observr" title="@($"{open} Observr finding(s) waiting for a decision")">@DatasetIcons.Observr(12)<span>@open</span></span>
+                    }
                 </span>
                 @* Everything below is read from the keep-alive view and the in-memory instance, so
                    a hibernated dataset simply has less to show rather than being woken to fill it.
@@ -220,6 +227,7 @@ else
     private CancellationTokenSource? _describeCts;
 
     private List<Row> _rows = new();
+    private Dictionary<string, int> _open = new();
     private string _newDatasetName = string.Empty;
     private bool _showNewDatasetForm;
     private string? _createError;
@@ -244,6 +252,7 @@ else
         try { names = string.IsNullOrEmpty(TeamId) ? [] : Engines.GetTeamDataSets(TeamId); }
         catch { names = []; }
         _rows = names.Select(Row.PendingFor).ToList();
+        _open = string.IsNullOrEmpty(TeamId) ? new() : Findings.CountOpenByDataset(TeamId);
 
         _describeCts?.Cancel();
         var cts = _describeCts = new CancellationTokenSource();

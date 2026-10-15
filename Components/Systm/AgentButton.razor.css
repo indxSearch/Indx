@@ -1,13 +1,1 @@
 .agent-button { position: relative; display: inline-flex; }
-/* The count after the label, as the side menu's counts: on a phone, where the label goes, it stays
-   by the icon. */
-.agent-count {
-    font: var(--text-2xs);
-    font-weight: var(--med);
-    font-variant-numeric: tabular-nums;
-    padding: 0 5px;
-    border-radius: 3px;
-    background: var(--CSignal);
-    color: var(--lv0);
-    pointer-events: none;
-}

@@ -6,7 +6,7 @@ using Microsoft.Data.Sqlite;
 namespace IndxServer.Services.Observr
 {
     /// <summary>One thing Observr found, with the proposal it carries and what the owners made of
-    /// it. Lives in the Observr menu until decided; the history keeps it after.</summary>
+    /// it. Waits on the dataset's Status page until decided; the archive there keeps it after.</summary>
     public sealed record ObservrFinding(long Id, string TeamId, string DataSetName, string Kind, string Query, string Outcome,
         string Answer, List<ObservrProposal> Proposals, string Status, int AskId, DateTime CreatedUtc, DateTime? DecidedUtc)
     {
@@ -207,6 +207,28 @@ namespace IndxServer.Services.Observr
             }
             catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { return 0; }
         }
+
+        /// <summary>How many findings wait for a decision on each of a team's datasets (datasets
+        /// with none are absent): the dataset cards and the Status item in the side menu.</summary>
+        public Dictionary<string, int> CountOpenByDataset(string teamId)
+        {
+            var counts = new Dictionary<string, int>();
+            if (!DbExists()) return counts;
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT DatasetName, COUNT(*) FROM {Table} WHERE Status = 'open' AND TeamId = $t GROUP BY DatasetName";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                using var r = cmd.ExecuteReader();
+                while (r.Read()) counts[r.GetString(0)] = r.GetInt32(1);
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { }
+            return counts;
+        }
+
+        public int CountOpen(string teamId, string dataSetName) => CountOpenByDataset(teamId).GetValueOrDefault(dataSetName);
 
         /// <summary>A dataset's latest findings, whatever their status: what Observr has said about it.</summary>
         public List<ObservrFinding> ListForDataset(string teamId, string dataSetName, int limit = 20) =>

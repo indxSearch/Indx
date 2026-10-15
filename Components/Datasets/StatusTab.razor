@@ -1,11 +1,21 @@
-@* Diagnostics for a Ready dataset: counts, timings, keep-alive, and the engine's last error.
-   Everyone on the team can read it; the only action is clearing the last error, for editors
-   (keep-alive is changed under Options). Licensing is instance-wide and lives on the License
-   page; a limit breach still surfaces in the alert banner. *@
+@* A Ready dataset's Status page: what Observr found about it, to decide here, over its
+   diagnostics (counts, timings, keep-alive, the engine's last error). The findings as cards in
+   a grid under a bar that picks open or archive and a kind, the way the Statistics page has its
+   bar over its content; Yes and No for editors, Discuss brings one into the Agent panel. The
+   findings moved here from the Agent panel on 15 Oct 2026: the panel is one conversation, and a
+   dataset's findings belong where the dataset is. Everyone on the team can read it; the only
+   other action is clearing the last error, for editors (keep-alive is changed under Options).
+   Licensing is instance-wide and lives on the License page; a limit breach still surfaces in
+   the alert banner. *@
 @using Indx.Api
 @using IndxServer.Models
 @using IndxServer.Engine
+@using IndxServer.Services.Observr
 @inherits DatasetTabBase
+@implements IDisposable
+@inject ObservrFindingStore Findings
+@inject AgentPanelState Agent
+@inject IServiceProvider Services
 
 @if (!Active) { return; }
 
@@ -30,10 +40,27 @@
             </Alert>
         }
 
+        @if (_observr)
+        {
+            var shown = Shown();
+            <div class="indx-context-bar">
+                <Tabs Items="StatusItems" Active="@_view" ActiveChanged="@(v => _view = v ?? Open)" Size="micro" Variant="button" AriaLabel="Findings shown" />
+                <div class="indx-context-bar-end">
+                    @if (KindOptions.Count > 1)
+                    {
+                        <SelectField Size="micro" Variant="ghost" Options="KindOptions" Value="@(_kind ?? "")" ValueChanged="v => _kind = string.IsNullOrEmpty(v) ? null : v" aria-label="Kind of finding" />
+                    }
+                </div>
+            </div>
+            <ObservrFindingList Findings="shown" Grid Link="@(f => $"{TeamRoutes.Dataset(Ctx.TeamName, f.DataSetName)}?tab={f.Tab}")" CanDecide="Ctx.IsEditor" Busy="_busy"
+                                OnDecide="d => DecideAsync(d.Finding, d.Yes, d.Only)" OnDiscuss="Discuss"
+                                Empty="@(_view == Open ? (_findings.Count == 0 ? "Nothing yet. Observr reads this dataset's statistics each morning and puts what is worth your attention here." : "Nothing waiting for a decision.") : "Nothing decided yet.")" />
+        }
+
         @* Stats, as the statistics overview: a label over a value, the width of the page. Fixed
            columns, so the Agent panel sliding in resizes the tiles rather than reflowing them;
            the as-many-as-fit grid snapped through 6, 5 and 4 columns during the slide. *@
-        <h3 class="status-heading@(string.IsNullOrEmpty(status.ErrorMessage) ? "" : " status-heading--section")">Index</h3>
+        <h3 class="status-heading@(string.IsNullOrEmpty(status.ErrorMessage) && !_observr ? "" : " status-heading--section")">Index</h3>
         <StatGroup Columns="6">
             @{ var stateChip = DatasetStateChip.For(status.SystemState); }
             @Tile("State", @<Chip Size="large" Color="@stateChip.Color" TextColor="@stateChip.TextColor" Icon="@stateChip.Icon">@status.SystemState</Chip>)
@@ -57,7 +84,90 @@
 }
 
 @code {
+    private const string Open = "open", Archive = "archive";
+    private bool _observr;
+    private List<ObservrFinding> _findings = [];
+    private string _view = Open;
+    private string? _kind;
+    private long _busy;
+
     private static RenderFragment Tile(string label, RenderFragment value) => @<Stat Label="@label" ValueContent="value" />;
+
+    protected override void OnInitialized()
+    {
+        Findings.Changed += OnFindingsChanged;
+        LoadFindings();
+    }
+
+    public void Dispose() => Findings.Changed -= OnFindingsChanged;
+
+    private void OnFindingsChanged() => _ = InvokeAsync(() => { LoadFindings(); StateHasChanged(); });
+
+    /// <summary>What Observr has found about this dataset, and whether it watches it at all: with
+    /// neither, the page is the diagnostics alone.</summary>
+    private void LoadFindings()
+    {
+        _findings = Findings.ListForDataset(Ctx.TeamId, Ctx.Name, 200);
+        _observr = _findings.Count > 0 || Findings.IsEnabled(Ctx.TeamId, Ctx.Name);
+    }
+
+    private List<ObservrFinding> Shown() => _findings
+        .Where(f => _view == Open ? f.Status == ObservrFinding.Open : f.Status != ObservrFinding.Open)
+        .Where(f => _kind == null || KindOf(f) == _kind)
+        .ToList();
+
+    private List<Tabs.TabItem> StatusItems
+    {
+        get
+        {
+            var open = _findings.Count(f => f.Status == ObservrFinding.Open);
+            return [new("Open", Open, Badge: open > 0 ? open.ToString() : null, BadgeTone: "info"), new("Archive", Archive)];
+        }
+    }
+
+    /// <summary>The kinds present, each once, by the name a reader knows them by.</summary>
+    private List<SelectField.SelectOption> KindOptions =>
+        new List<SelectField.SelectOption> { new("All kinds", "") }
+            .Concat(_findings.Select(KindOf).Distinct().OrderBy(k => KindLabel(k)).Select(k => new SelectField.SelectOption(KindLabel(k), k)))
+            .ToList();
+
+    /// <summary>A digest's items share a kind, whatever tab each points at.</summary>
+    private static string KindOf(ObservrFinding f) => f.Kind.StartsWith(ObservrClient.DigestKind) ? ObservrClient.DigestKind : f.Kind;
+
+    internal static string KindLabel(string kind) => kind switch
+    {
+        ObservrClient.ZeroHitKind => "Found nothing",
+        ObservrClient.LowClickKind => "Low click-through",
+        ObservrClient.FieldReviewKind => "Field review",
+        ObservrClient.SynonymsKind => "Synonyms",
+        ObservrClient.ChangeKind => "Changes",
+        ObservrClient.SetupKind => "Search or ask",
+        ObservrClient.DigestKind => "Digest",
+        ObservrChat.Kind => "Conversation",
+        _ => kind,
+    };
+
+    private async Task DecideAsync(ObservrFinding f, bool yes, IReadOnlyList<int>? only)
+    {
+        if (_busy != 0 || !Ctx.IsEditor) return;
+        _busy = f.Id;
+        try
+        {
+            // The client talks to the Observr service; it is absent where the service is not configured.
+            if (Services.GetService(typeof(ObservrClient)) is ObservrClient observr)
+                await Task.Run(() => observr.Decide(f.Id, yes, only));
+            else
+                Findings.Decide(f.Id, yes ? ObservrFinding.Accepted : ObservrFinding.Declined);
+        }
+        finally
+        {
+            _busy = 0;
+            LoadFindings();
+        }
+    }
+
+    /// <summary>Into the Agent panel, with the finding named, so the owner can ask about it before deciding.</summary>
+    private void Discuss(ObservrFinding f) => Agent.Open($"About your finding \u201c{f.Title}\u201d: ");
 
     // ClearErrorMessage raises Changed, which re-renders this tab and the rest of the panel.
     private void ClearError() => Ctx.ClearErrorMessage();
