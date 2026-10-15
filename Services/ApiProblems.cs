@@ -80,6 +80,32 @@ namespace IndxServer.Services
             Problem(StatusCodes.Status400BadRequest, "invalidArgument", "Invalid request", detail);
 
         /// <summary>
+        /// A request that does not bind (a number given as text, a body that is not JSON): the same
+        /// problem as <see cref="InvalidArgument"/>, with the field errors kept under "errors". Until
+        /// Oct 2026 ASP.NET answered it with its own validation problem, the one error without a code.
+        /// </summary>
+        public static ObjectResult InvalidModelState(Microsoft.AspNetCore.Mvc.ModelBinding.ModelStateDictionary modelState)
+        {
+            var problem = new ValidationProblemDetails(modelState)
+            {
+                Status = StatusCodes.Status400BadRequest,
+                Title = "Invalid request",
+                Detail = "The request could not be read: " + string.Join(" ", modelState
+                    .Where(entry => entry.Value is { Errors.Count: > 0 })
+                    .Select(entry => $"{(string.IsNullOrEmpty(entry.Key) ? "body" : entry.Key)}: {Describe(entry.Value!.Errors[0])}")),
+                Extensions = { ["code"] = "invalidArgument" }
+            };
+            return new ObjectResult(problem)
+            {
+                StatusCode = StatusCodes.Status400BadRequest,
+                ContentTypes = { "application/problem+json" }
+            };
+
+            static string Describe(Microsoft.AspNetCore.Mvc.ModelBinding.ModelError error) =>
+                !string.IsNullOrEmpty(error.ErrorMessage) ? error.ErrorMessage : error.Exception?.Message ?? "invalid value";
+        }
+
+        /// <summary>
         /// A referenced filter token could not be resolved. Distinct from invalidArgument
         /// because the recovery is specific: re-create the filter and retry with the new
         /// token, rather than fix the shape of the request.

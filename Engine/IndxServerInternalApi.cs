@@ -1635,10 +1635,10 @@ namespace IndxServer.Engine
             // Caught here so it is a 400 like every other unusable token rather than a 500 - and
             // it is reachable by default, FilterFieldUpdateProxy.Filter initialises to exactly this.
             if (string.IsNullOrWhiteSpace(proxy.HashString))
-                throw new UnknownFilterException(proxy.HashString);
-            var filter = engine.GetFilterFromKey(proxy.HashString);
+                throw new UnknownFilterException(proxy.HashString, "the key is empty.");
+            var filter = engine.GetFilterFromKey(proxy.HashString, out var reason);
             if (filter == null)
-                throw new UnknownFilterException(proxy.HashString);
+                throw new UnknownFilterException(proxy.HashString, reason);
             return filter;
         }
 

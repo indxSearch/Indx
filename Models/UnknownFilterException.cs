@@ -16,11 +16,12 @@ namespace IndxServer.Models
     /// </summary>
     public sealed class UnknownFilterException : Exception
     {
-        /// <summary>Creates the exception, naming the token that could not be resolved.</summary>
-        public UnknownFilterException(string hashString)
-            : base($"The filter '{Describe(hashString)}' could not be resolved. " +
-                   "Create the filter first and reference it by the returned hashString; " +
-                   "a filter also stops resolving if its field was removed or is no longer Filterable.")
+        /// <summary>Creates the exception, naming the token that could not be resolved and why
+        /// (<c>GetFilterFromKey</c>'s reason, Oct 2026: before it, every failure read alike).</summary>
+        public UnknownFilterException(string hashString, string reason)
+            : base($"The filter '{Describe(hashString)}' could not be resolved: " +
+                   (string.IsNullOrEmpty(reason) ? "the key makes no filter." : reason) +
+                   " Create the filter first and reference it by the returned hashString.")
         { }
 
         /// <summary>

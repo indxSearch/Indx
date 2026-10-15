@@ -96,11 +96,11 @@ namespace IndxServer.Controllers
                 error = ApiProblems.InvalidArgument($"'{operand}' is required and must carry a hashString.");
                 return null;
             }
-            var filter = engine.GetFilterFromKey(proxy.HashString);
+            var filter = engine.GetFilterFromKey(proxy.HashString, out var reason);
             if (filter == null)
                 error = ApiProblems.UnknownFilter(
-                    $"'{operand}' could not be resolved. Create the filter first, then reference it by the returned hashString; " +
-                    "a filter also stops resolving if its field was removed or is no longer Filterable.");
+                    $"'{operand}' could not be resolved: {(string.IsNullOrEmpty(reason) ? "the key makes no filter." : reason)} " +
+                    "Create the filter first, then reference it by the returned hashString.");
             return filter;
         }
 

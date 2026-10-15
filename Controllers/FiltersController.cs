@@ -46,7 +46,10 @@ namespace IndxServer.Controllers
             if (fa == null) return errorA!;
             var fb = ResolveFilter(matcher, combineFilters.B, "b", out var errorB);
             if (fb == null) return errorB!;
-            matcher.LoadFilters(new Filter[] { fa, fb });
+            // The operands' masks must be there before they are combined; a load that failed was
+            // ignored until Oct 2026, and the combination was built on whatever the masks held.
+            if (!matcher.LoadFilters(new Filter[] { fa, fb }, out var loadError))
+                return ApiProblems.OperationFailed(loadError);
             Filter result;
             if (combineFilters.UseAndOperation)
                 result = fa & fb;
@@ -76,7 +79,8 @@ namespace IndxServer.Controllers
                 return stateError;
             var filter = ResolveFilter(matcher, filterProxy, "filter", out var filterError);
             if (filter == null) return filterError!;
-            matcher.LoadFilters(new Filter[] { filter });
+            if (!matcher.LoadFilters(new Filter[] { filter }, out var loadError))
+                return ApiProblems.OperationFailed(loadError);
             var result = !filter;
             return Ok(new FilterProxy(result.SerializedKey));
         }
