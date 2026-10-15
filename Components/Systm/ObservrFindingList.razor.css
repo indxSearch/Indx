@@ -4,6 +4,7 @@
 .ofl-item--open { background: var(--lv1); border-bottom-color: transparent; margin-bottom: 4px; }
 .ofl-item--open .ofl-text { color: var(--lv8); }
 .ofl-head { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; }
+.ofl-kind { display: inline-flex; align-items: center; color: var(--lv6); }
 .ofl-title { font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
 .ofl-where { display: inline-flex; align-items: center; gap: 2px; font: var(--text-xs); color: var(--lv5); }
 .ofl-spacer { flex: 1; }

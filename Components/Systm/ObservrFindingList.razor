@@ -19,6 +19,7 @@ else
                 @if (!ProposalsOnly)
                 {
                 <div class="ofl-head">
+                    @if (KindIcon != null) { <span class="ofl-kind">@KindIcon(f)(14)</span> }
                     <span class="ofl-title">@f.Title</span>
                     <span class="ofl-where">
                         @if (!Grid)
@@ -110,6 +111,8 @@ else
     /// <summary>Cards in a grid rather than blocks in a column, on a page about one dataset: the
     /// dataset is not named, the open button goes to the section.</summary>
     [Parameter] public bool Grid { get; set; }
+    /// <summary>An icon before the title, by the finding's kind, when the page wants one.</summary>
+    [Parameter] public Func<ObservrFinding, RenderFragment<int>>? KindIcon { get; set; }
     /// <summary>With it, an open finding has a Discuss button: the Agent panel, with the finding.</summary>
     [Parameter] public EventCallback<ObservrFinding> OnDiscuss { get; set; }
     /// <summary>Only the proposals and the decision: for a finding shown under the answer that

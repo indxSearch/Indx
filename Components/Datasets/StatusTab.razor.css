@@ -1,6 +1,8 @@
 
 .status-heading { margin-top: 8px; margin-bottom: 6px; }
 .status-heading--section { margin-top: 24px; }
+.status-heading--observr { display: flex; align-items: center; gap: 8px; }
+.status-heading--observr > span { display: inline-flex; }
 
 
 .status-alert { color: var(--CSignal); }
