@@ -1,7 +1,7 @@
 @if (Open)
 {
     <div class="indx-modal-overlay" @onclick="HandleOverlayClick">
-        <div class="indx-modal-content"
+        <div class="indx-modal-content @Class"
              role="dialog"
              aria-modal="true"
              aria-label="@(Title ?? "Dialog")"
@@ -32,6 +32,8 @@
     [Parameter] public string? Description { get; set; }
     [Parameter] public bool ShowClose { get; set; } = true;
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>On the dialog itself, as the React Modal's className: a page widens it for a table.</summary>
+    [Parameter] public string? Class { get; set; }
 
     private async Task Close()
     {

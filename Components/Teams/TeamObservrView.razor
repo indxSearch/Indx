@@ -20,14 +20,25 @@
    team page, shown only while an admin has Observr on for the instance. Hosted by Pages/ConsolePage. *@
 
 <div>
-    <h2 class="indx-section-heading indx-section-heading--first">Observr</h2>
+    @{
+        var onCount = _rows?.Count(r => r.Settings.Enabled) ?? 0;
+        var allCount = _rows?.Count ?? 0;
+    }
+    <div class="tov-heading">
+        <h2 class="indx-section-heading indx-section-heading--first">Observr</h2>
+        @if (_rows != null && allCount > 0)
+        {
+            @* Which datasets Observr watches: a dialog, since it is set once and read rarely,
+               and the page is the findings. The label says what is on, so nobody opens it to know. *@
+            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Fields" @onclick="() => _datasetsOpen = true" title="Which datasets Observr watches">Datasets · @onCount of @allCount on</Button>
+        }
+    </div>
     <p class="indx-section-help">
         Observr reads each watched dataset's statistics every morning, never a record, never a visitor, and puts what is
         worth your attention here and on the dataset's Status page.
     </p>
 
     @{
-        var onCount = _rows?.Count(r => r.Settings.Enabled) ?? 0;
         var openCount = _findings.Count(f => f.Status == ObservrFinding.Open);
         var weekAgo = DateTime.UtcNow.AddDays(-7);
         var decidedThisWeek = _findings.Count(f => f.Status != ObservrFinding.Open && f.DecidedUtc >= weekAgo);
@@ -66,58 +77,36 @@
         </StatGroup>
 
         <div class="indx-context-bar tov-bar">
-            <Tabs Items="@ViewItems(openCount, onCount, _rows?.Count ?? 0)" Active="@_view" ActiveChanged="@(v => _view = v ?? Open)" Size="micro" Variant="button" AriaLabel="Observr sections" />
-            @if (_view != Datasets)
-            {
-                <div class="indx-context-bar-end">
-                    @if (DatasetOptions.Count > 2)
-                    {
-                        <SelectField Size="micro" Variant="ghost" Options="DatasetOptions" Value="@(_dataset ?? "")" ValueChanged="v => _dataset = string.IsNullOrEmpty(v) ? null : v" aria-label="Dataset" />
-                    }
-                    @if (KindOptions.Count > 2)
-                    {
-                        <SelectField Size="micro" Variant="ghost" Options="KindOptions" Value="@(_kind ?? "")" ValueChanged="v => _kind = string.IsNullOrEmpty(v) ? null : v" aria-label="Kind of finding" />
-                    }
-                </div>
-            }
+            <Tabs Items="@ViewItems(openCount)" Active="@_view" ActiveChanged="@(v => _view = v ?? Open)" Size="micro" Variant="button" AriaLabel="Findings shown" />
+            <div class="indx-context-bar-end">
+                @if (DatasetOptions.Count > 2)
+                {
+                    <SelectField Size="micro" Variant="ghost" Options="DatasetOptions" Value="@(_dataset ?? "")" ValueChanged="v => _dataset = string.IsNullOrEmpty(v) ? null : v" aria-label="Dataset" />
+                }
+                @if (KindOptions.Count > 2)
+                {
+                    <SelectField Size="micro" Variant="ghost" Options="KindOptions" Value="@(_kind ?? "")" ValueChanged="v => _kind = string.IsNullOrEmpty(v) ? null : v" aria-label="Kind of finding" />
+                }
+            </div>
         </div>
 
-        @if (_view == Datasets)
-        {
-            @if (_rows == null)
-            {
-                @* The table's shape while the datasets load: a row per dataset-to-be, the name column wider. *@
-                <div class="tov-loading" role="status" aria-busy="true" aria-label="Loading datasets">
-                    @for (var i = 0; i < 4; i++)
-                    {
-                        var delay = i * 0.06;
-                        <div class="tov-loading-row">
-                            <Skeleton Width="70%" Delay="delay" /><Skeleton Width="50%" Delay="delay" /><Skeleton Width="60%" Delay="delay" /><Skeleton Width="80%" Delay="delay" />
-                        </div>
-                    }
-                </div>
-            }
-            else if (_rows.Count == 0)
-            {
-                <p style="color: var(--lv5);">This team has no datasets yet.</p>
-            }
-            else
-            {
-                @DatasetsTable
-            }
-        }
-        else
-        {
-            <ObservrFindingList Findings="Shown()" Grid Link="@(f => $"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" CanDecide="_canEdit" Busy="_busy"
+        <ObservrFindingList Findings="Shown()" Grid Link="@(f => $"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" CanDecide="_canEdit" Busy="_busy"
                                 OnDecide="d => DecideAsync(d.Finding, d.Yes, d.Only)" OnDiscuss="Discuss" OnHide="HideAsync" KindIcon="StatusTab.KindIcon"
                                 Empty="@(_view == Open
                                     ? (_findings.Count == 0
                                         ? (onCount == 0 ? "Nothing yet: Observr is on for none of the team's datasets. Switch some on under Datasets." : "Nothing yet. The first report comes the morning after a dataset is switched on; Send this week's summary under Datasets brings it now.")
                                         : "Nothing waiting for a decision.")
                                     : "Nothing decided yet.")" />
-        }
     }
 </div>
+
+<Modal Open="_datasetsOpen" OpenChanged="v => _datasetsOpen = v" Title="Datasets" Class="tov-modal"
+       Description="Which datasets Observr watches, how often it reports, and whether its buttons show in their tabs.">
+    @if (_rows is { Count: > 0 })
+    {
+        @DatasetsTable
+    }
+</Modal>
 
 @code {
     [Parameter, EditorRequired] public Team Team { get; set; } = default!;
@@ -177,13 +166,13 @@
             </p>
     </text>;
 
-    private const string Open = "open", Archive = "archive", Datasets = "datasets";
+    private const string Open = "open", Archive = "archive";
+    private bool _datasetsOpen;
 
-    private static List<Tabs.TabItem> ViewItems(int open, int on, int all) =>
+    private static List<Tabs.TabItem> ViewItems(int open) =>
     [
         new("Open", Open, DatasetIcons.OpenFinding, Badge: open > 0 ? open.ToString() : null, BadgeTone: "info"),
         new("Archive", Archive, DatasetIcons.Archive),
-        new("Datasets", Datasets, DatasetIcons.Fields, Title: $"Observr is on for {on} of {all} datasets"),
     ];
 
     private static RenderFragment Tile(string text) => @<text>@text</text>;

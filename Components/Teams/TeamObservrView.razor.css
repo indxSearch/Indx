@@ -1,3 +1,9 @@
+/* The heading with the Datasets dialog's button at its end. */
+.tov-heading { display: flex; align-items: center; gap: 12px; }
+.tov-heading h2 { flex: 1; }
+/* The dialog holds the datasets table: wider than a form. */
+::deep .tov-modal { max-width: 860px; }
+
 /* Four numbers over the content, then the bar and the cards, as the Statistics page is built. */
 ::deep .tov-stats { margin: 8px 0 20px; }
 .tov-bar { margin-bottom: 16px; }
