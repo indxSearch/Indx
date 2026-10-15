@@ -57,17 +57,18 @@
         if (item.Badge != null)
         {
             builder.OpenElement(1, "span");
-            builder.AddAttribute(2, "class", "side-menu-badge");
+            builder.AddAttribute(2, "class", item.BadgeIcon != null ? "side-menu-badge side-menu-badge--icon" : "side-menu-badge");
             builder.AddAttribute(3, "title", item.BadgeTitle);
-            builder.AddContent(4, item.Badge);
+            if (item.BadgeIcon != null) builder.AddContent(4, item.BadgeIcon(12));
+            builder.AddContent(5, item.Badge);
             builder.CloseElement();
         }
         if (item.Experimental)
         {
-            builder.OpenElement(5, "span");
-            builder.AddAttribute(6, "class", "side-menu-experimental");
-            builder.AddAttribute(7, "title", "Experimental");
-            builder.AddContent(8, _iconLab(14));
+            builder.OpenElement(6, "span");
+            builder.AddAttribute(7, "class", "side-menu-experimental");
+            builder.AddAttribute(8, "title", "Experimental");
+            builder.AddContent(9, _iconLab(14));
             builder.CloseElement();
         }
     };

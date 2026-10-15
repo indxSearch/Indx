@@ -6,6 +6,8 @@
 .side-menu-item ::deep .indx-btn { width: 100%; justify-content: flex-start; }
 .side-menu-note { padding: 6px 10px 0; font: var(--text-2xs); color: var(--lv4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .side-menu-badge { margin-left: auto; font: var(--text-2xs); font-weight: var(--med); padding: 0 5px; border-radius: 3px; background: var(--CSignal); color: var(--lv0); }
+/* A count with its icon: a quiet chip that says whose it is, readable at a glance. */
+.side-menu-badge--icon { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; font: var(--text-xs); font-weight: var(--med); font-variant-numeric: tabular-nums; background: var(--lv2); color: var(--lv7); }
 .side-menu-experimental { display: inline-flex; margin-left: auto; color: var(--lv5); }
 
 /* Narrow: the column is a bar at the foot of the window (see app.css), and the menu one row that scrolls sideways. */

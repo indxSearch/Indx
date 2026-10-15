@@ -128,7 +128,7 @@
         get
         {
             var open = _findings.Count(f => f.Status == ObservrFinding.Open);
-            return [new("Open", Open, Badge: open > 0 ? open.ToString() : null, BadgeTone: "info"), new("Archive", Archive)];
+            return [new("Open", Open, DatasetIcons.OpenFinding, Badge: open > 0 ? open.ToString() : null, BadgeTone: "info"), new("Archive", Archive, DatasetIcons.Archive)];
         }
     }
 

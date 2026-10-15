@@ -67,13 +67,13 @@ else
                         {
                         @if (f.Proposals.Count == 0)
                         {
-                            <Button Variant="ghost" Size="micro" Loading="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, true, null))">Got it</Button>
+                            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Yes" Loading="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, true, null))">Got it</Button>
                         }
                         else
                         {
                             var chosen = Chosen(f);
-                            <Button Variant="primary" Size="micro" Loading="@(Busy == f.Id)" Disabled="@(chosen.Count == 0)" @onclick="() => OnDecide.InvokeAsync((f, true, chosen))">@(Selectable(f) && chosen.Count < f.Proposals.Count ? $"Yes, {chosen.Count} of {f.Proposals.Count}" : "Yes")</Button>
-                            <Button Variant="ghost" Size="micro" Disabled="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, false, null))">No</Button>
+                            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Yes" Loading="@(Busy == f.Id)" Disabled="@(chosen.Count == 0)" @onclick="() => OnDecide.InvokeAsync((f, true, chosen))">@(Selectable(f) && chosen.Count < f.Proposals.Count ? $"Yes, {chosen.Count} of {f.Proposals.Count}" : "Yes")</Button>
+                            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.No" Disabled="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, false, null))">No</Button>
                         }
                         @if (OnDiscuss.HasDelegate)
                         {

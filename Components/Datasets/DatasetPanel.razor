@@ -182,7 +182,9 @@
     }
 
     private static SideMenuItem ToMenuItem(Tabs.TabItem i) =>
-        new(i.Value, i.Label, i.Icon, Href: null, Disabled: i.Disabled, Title: i.Title, Badge: i.Badge, BadgeTitle: i.BadgeTitle);
+        new(i.Value, i.Label, i.Icon, Href: null, Disabled: i.Disabled, Title: i.Title, Badge: i.Badge, BadgeTitle: i.BadgeTitle,
+            // The Status count is Observr's: its icon says so, where a bare number said nothing.
+            BadgeIcon: i.Value == "status" ? DatasetIcons.Observr : null);
 
     private const string TabQuery = "tab";
 

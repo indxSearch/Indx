@@ -52,6 +52,10 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> ShowMore = Of<Icons.Plus>();
         /// <summary>Erasing data, as opposed to <see cref="Delete"/>, which removes the dataset.</summary>
         public static readonly RenderFragment<int> Erase = Of<Icons.Delete>();
+        public static readonly RenderFragment<int> Yes = Of<Icons.Check>();
+        public static readonly RenderFragment<int> No = Of<Icons.XOrError>();
+        public static readonly RenderFragment<int> OpenFinding = Of<Icons.GitIssue>();
+        public static readonly RenderFragment<int> Archive = Of<Icons.Clock>();
 
         /// <summary>The speedometer as a running spinner — the benchmark button swaps to this
         /// while a run is in progress, so the icon itself says "measuring".</summary>
