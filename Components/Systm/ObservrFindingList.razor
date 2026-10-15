@@ -22,11 +22,11 @@ else
                     @if (KindIcon != null) { <span class="ofl-kind">@KindIcon(f)(14)</span> }
                     <span class="ofl-title">@f.Title</span>
                     <span class="ofl-where">
-                        @if (!Grid)
+                        @if (NameDataset)
                         {
                             @if (ShowTeam) { <text>@TeamName(f.TeamId) / </text> }@f.DataSetName
                         }
-                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" Href="@Link(f)" title="@(Grid ? "Open the section it is about" : "Open where it is about")" aria-label="@($"Open {f.DataSetName}, {f.Tab}")" />
+                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" Href="@Link(f)" title="@(NameDataset ? "Open where it is about" : "Open the section it is about")" aria-label="@($"Open {f.DataSetName}, {f.Tab}")" />
                     </span>
                     <span class="ofl-spacer"></span>
                     <span class="ofl-time"><TimeAgo Value="f.CreatedUtc" TooltipPosition="left" /></span>
@@ -118,9 +118,11 @@ else
     private void Tick(long id, int index, bool on) { if (on) _unticked.Remove((id, index)); else _unticked.Add((id, index)); }
     private List<int> Chosen(ObservrFinding f) => Enumerable.Range(0, f.Proposals.Count).Where(i => !_unticked.Contains((f.Id, i))).ToList();
     [Parameter] public string Empty { get; set; } = "Nothing yet.";
-    /// <summary>Cards in a grid rather than blocks in a column, on a page about one dataset: the
-    /// dataset is not named, the open button goes to the section.</summary>
+    /// <summary>Cards in a grid rather than blocks in a column.</summary>
     [Parameter] public bool Grid { get; set; }
+    /// <summary>The dataset's name on each finding; off on a page about one dataset, where the
+    /// open button goes to the section instead.</summary>
+    [Parameter] public bool NameDataset { get; set; } = true;
     /// <summary>An icon before the title, by the finding's kind, when the page wants one.</summary>
     [Parameter] public Func<ObservrFinding, RenderFragment<int>>? KindIcon { get; set; }
     /// <summary>With it, every finding has a Hide button for an editor: off the page for good.</summary>

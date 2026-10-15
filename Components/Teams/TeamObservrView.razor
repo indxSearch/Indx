@@ -3,8 +3,10 @@
 @using IndxServer.Models
 @using IndxServer.Services
 @using IndxServer.Services.Observr
+@using IndxServer.Components.Datasets
 @inject ObservrFindingStore Findings
 @inject ObservrClient Observr
+@inject AgentPanelState Agent
 @inject HeaderState Header
 @inject NavigationManager NavigationManager
 @implements IDisposable
@@ -20,36 +22,28 @@
 <div>
     <h2 class="indx-section-heading indx-section-heading--first">Observr</h2>
     <p class="indx-section-help">
-        Observr reads a weekly summary of a dataset's statistics (top queries, what found nothing, what was chosen, your
-        changes; never a record, never a visitor) and puts what is worth your attention on the dataset's Status page. On a dataset
-        with buttons on, editors can also ask it about a search that found nothing, have the field setup reviewed, and get
-        synonyms suggested.
+        Observr reads each watched dataset's statistics every morning, never a record, never a visitor, and puts what is
+        worth your attention here and on the dataset's Status page.
     </p>
 
-    @* Two tabs, as the dataset page has its sections: the findings, which a person comes here for
-       daily, and the per-dataset settings, rarely touched after the first day but one click away
-       and named with what is on, so nobody has to open them to know. *@
     @{
         var onCount = _rows?.Count(r => r.Settings.Enabled) ?? 0;
         var openCount = _findings.Count(f => f.Status == ObservrFinding.Open);
+        var weekAgo = DateTime.UtcNow.AddDays(-7);
+        var decidedThisWeek = _findings.Count(f => f.Status != ObservrFinding.Open && f.DecidedUtc >= weekAgo);
+        var latest = _findings.Count > 0 ? _findings.Max(f => f.CreatedUtc) : (DateTime?)null;
     }
     @if (_rows != null && onCount == 0 && _findings.Count == 0)
     {
-        @* The first visit: nothing watched, nothing found. No tabs to an empty list; a greeting
-           that says what happens once a dataset is on, and the datasets right here to switch on. *@
-        <div class="tov-greeting">
-            <span class="tov-greeting-icon">@DatasetIcons.Observr(28)</span>
-            <div>
-                <h3 class="tov-greeting-title">Observr is not watching anything here yet</h3>
-                <p class="tov-greeting-text">
-                    Switch it on for a dataset and it reads that dataset's week every morning: what visitors searched for, what found
-                    nothing, what was chosen, what you changed. What is worth your attention lands on the dataset's Status page,
-                    each with a proposal you say yes or no to. Nothing is sent before you switch a dataset on, and never a record or a visitor.
-                </p>
-                @if (!_canEdit)
-                {
-                    <p class="tov-greeting-text">An editor of this team switches it on.</p>
-                }
+        @* The first visit: nothing watched, nothing found. No tabs to an empty list; what happens
+           once a dataset is on, in the shape of the console's other empty pages, and the datasets
+           right here to switch on. *@
+        <div class="tov-empty">
+            <span class="tov-empty-icon"><Observr Size="70" Color="var(--lv4)" /></span>
+            <div class="tov-empty-title">Observr is not watching anything here yet</div>
+            <div class="tov-empty-detail">
+                Switch it on for a dataset and it reads that dataset's week every morning. What is worth your attention lands on
+                the dataset's Status page, each with a proposal you say yes or no to.@if (!_canEdit) { <text> An editor of this team switches it on.</text> }
             </div>
         </div>
         @if (_rows.Count == 0)
@@ -63,40 +57,65 @@
     }
     else
     {
-    <div class="tov-tabs">
-        <Tabs Items="@TabItems(onCount, _rows?.Count ?? 0, openCount)" Active="@_tab" ActiveChanged="@(v => _tab = v ?? "findings")" Size="micro" Variant="button" AriaLabel="Observr sections" />
-    </div>
+        @* The team's week in four numbers, as the Statistics page opens. *@
+        <StatGroup Columns="4" Class="tov-stats">
+            <Stat Label="Watched" ValueContent="@(Tile($"{onCount} of {_rows?.Count ?? 0}"))" />
+            <Stat Label="Waiting for a decision" ValueContent="@(Tile(openCount.ToString()))" />
+            <Stat Label="Decided this week" ValueContent="@(Tile(decidedThisWeek.ToString()))" />
+            <Stat Label="Latest finding" ValueContent="@LatestTile(latest)" />
+        </StatGroup>
 
-    @if (_tab == "datasets")
-    {
-        @if (_rows == null)
+        <div class="indx-context-bar tov-bar">
+            <Tabs Items="@ViewItems(openCount, onCount, _rows?.Count ?? 0)" Active="@_view" ActiveChanged="@(v => _view = v ?? Open)" Size="micro" Variant="button" AriaLabel="Observr sections" />
+            @if (_view != Datasets)
+            {
+                <div class="indx-context-bar-end">
+                    @if (DatasetOptions.Count > 2)
+                    {
+                        <SelectField Size="micro" Variant="ghost" Options="DatasetOptions" Value="@(_dataset ?? "")" ValueChanged="v => _dataset = string.IsNullOrEmpty(v) ? null : v" aria-label="Dataset" />
+                    }
+                    @if (KindOptions.Count > 2)
+                    {
+                        <SelectField Size="micro" Variant="ghost" Options="KindOptions" Value="@(_kind ?? "")" ValueChanged="v => _kind = string.IsNullOrEmpty(v) ? null : v" aria-label="Kind of finding" />
+                    }
+                </div>
+            }
+        </div>
+
+        @if (_view == Datasets)
         {
-            @* The table's shape while the datasets load: a row per dataset-to-be, the name column wider. *@
-            <div class="tov-loading" role="status" aria-busy="true" aria-label="Loading datasets">
-                @for (var i = 0; i < 4; i++)
-                {
-                    var delay = i * 0.06;
-                    <div class="tov-loading-row">
-                        <Skeleton Width="70%" Delay="delay" /><Skeleton Width="50%" Delay="delay" /><Skeleton Width="60%" Delay="delay" /><Skeleton Width="80%" Delay="delay" />
-                    </div>
-                }
-            </div>
-        }
-        else if (_rows.Count == 0)
-        {
-            <p style="color: var(--lv5);">This team has no datasets yet.</p>
+            @if (_rows == null)
+            {
+                @* The table's shape while the datasets load: a row per dataset-to-be, the name column wider. *@
+                <div class="tov-loading" role="status" aria-busy="true" aria-label="Loading datasets">
+                    @for (var i = 0; i < 4; i++)
+                    {
+                        var delay = i * 0.06;
+                        <div class="tov-loading-row">
+                            <Skeleton Width="70%" Delay="delay" /><Skeleton Width="50%" Delay="delay" /><Skeleton Width="60%" Delay="delay" /><Skeleton Width="80%" Delay="delay" />
+                        </div>
+                    }
+                </div>
+            }
+            else if (_rows.Count == 0)
+            {
+                <p style="color: var(--lv5);">This team has no datasets yet.</p>
+            }
+            else
+            {
+                @DatasetsTable
+            }
         }
         else
         {
-            @DatasetsTable
+            <ObservrFindingList Findings="Shown()" Grid Link="@(f => $"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" CanDecide="_canEdit" Busy="_busy"
+                                OnDecide="d => DecideAsync(d.Finding, d.Yes, d.Only)" OnDiscuss="Discuss" OnHide="HideAsync" KindIcon="StatusTab.KindIcon"
+                                Empty="@(_view == Open
+                                    ? (_findings.Count == 0
+                                        ? (onCount == 0 ? "Nothing yet: Observr is on for none of the team's datasets. Switch some on under Datasets." : "Nothing yet. The first report comes the morning after a dataset is switched on; Send this week's summary under Datasets brings it now.")
+                                        : "Nothing waiting for a decision.")
+                                    : "Nothing decided yet.")" />
         }
-    }
-    else
-    {
-        <ObservrFindingList Findings="_findings" Link="@(f => $"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" CanDecide="_canEdit" Busy="_busy"
-                            OnDecide="d => DecideAsync(d.Finding, d.Yes, d.Only)"
-                            Empty="@(onCount == 0 ? "Nothing yet: Observr is on for none of the team's datasets. Switch some on under Datasets." : "Nothing yet. The first report comes the morning after a dataset is switched on; Send this week's summary under Datasets brings it now.")" />
-    }
     }
 </div>
 
@@ -107,7 +126,6 @@
 
     private sealed record Row(string DataSetName, ObservrDatasetSettings Settings, int Open);
 
-    private string _tab = "findings";
 
     /// <summary>The per-dataset settings, as a table: on the Datasets tab, and on the first visit right under the greeting.</summary>
     private RenderFragment DatasetsTable => @<text>
@@ -159,13 +177,48 @@
             </p>
     </text>;
 
-    private static List<Tabs.TabItem> TabItems(int on, int all, int open) =>
+    private const string Open = "open", Archive = "archive", Datasets = "datasets";
+
+    private static List<Tabs.TabItem> ViewItems(int open, int on, int all) =>
     [
-        // The counts in the labels, not in badges: the badge tones are red and blue, and Observr is
-        // monochrome until its colour is chosen.
-        new(open == 0 ? "Findings" : $"Findings · {open} open", "findings", DatasetIcons.Observr),
-        new(all == 0 ? "Datasets" : $"Datasets · {on} of {all} on", "datasets", DatasetIcons.Fields, Title: $"Observr is on for {on} of {all} datasets"),
+        new("Open", Open, DatasetIcons.OpenFinding, Badge: open > 0 ? open.ToString() : null, BadgeTone: "info"),
+        new("Archive", Archive, DatasetIcons.Archive),
+        new("Datasets", Datasets, DatasetIcons.Fields, Title: $"Observr is on for {on} of {all} datasets"),
     ];
+
+    private static RenderFragment Tile(string text) => @<text>@text</text>;
+    private static RenderFragment LatestTile(DateTime? at) => at is { } t ? @<TimeAgo Value="t" /> : Tile("—");
+
+    private string _view = Open;
+    private string? _dataset, _kind;
+
+    private List<ObservrFinding> Shown() => _findings
+        .Where(f => _view == Open ? f.Status == ObservrFinding.Open : f.Status != ObservrFinding.Open)
+        .Where(f => _dataset == null || f.DataSetName == _dataset)
+        .Where(f => _kind == null || KindOf(f) == _kind)
+        .ToList();
+
+    private static string KindOf(ObservrFinding f) => f.Kind.StartsWith(ObservrClient.DigestKind) ? ObservrClient.DigestKind : f.Kind;
+
+    private List<SelectField.SelectOption> DatasetOptions =>
+        new List<SelectField.SelectOption> { new("All datasets", "") }
+            .Concat(_findings.Select(f => f.DataSetName).Distinct().OrderBy(n => n).Select(n => new SelectField.SelectOption(n, n)))
+            .ToList();
+
+    private List<SelectField.SelectOption> KindOptions =>
+        new List<SelectField.SelectOption> { new("All kinds", "") }
+            .Concat(_findings.Select(KindOf).Distinct().OrderBy(k => StatusTab.KindLabel(k)).Select(k => new SelectField.SelectOption(StatusTab.KindLabel(k), k)))
+            .ToList();
+
+    /// <summary>Into the Agent panel, with the finding named.</summary>
+    private void Discuss(ObservrFinding f) => Agent.Open($"About your finding \u201c{f.Title}\u201d on {f.DataSetName}: ");
+
+    private async Task HideAsync(ObservrFinding f)
+    {
+        if (!_canEdit) return;
+        Findings.Remove(f.Id);
+        await LoadAsync();
+    }
 
     private string TeamId => Team.Id.ToString();
     private bool _canEdit;
