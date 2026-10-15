@@ -1,0 +1,39 @@
+@* The team's Observr datasets page: [team ▾] › Observr › Datasets. Which datasets Observr watches,
+   how often it reports and whether its buttons show in their tabs; set once, read rarely, so it
+   is a page of its own rather than a tab beside the findings. Reached from the Datasets button
+   on the Observr page. Hosted by Pages/ConsolePage. *@
+@using IndxServer.Data
+@using IndxServer.Services
+@using IndxServer.Components.Datasets
+@inject HeaderState Header
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+<PageTitle>Observr datasets · @Team.Name</PageTitle>
+
+<div>
+    <div class="tod-heading">
+        <h2 class="indx-section-heading indx-section-heading--first">Observr datasets</h2>
+        <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Href="@TeamRoutes.TeamObservr(Team.Name)">Observr</Button></span>
+    </div>
+    <p class="indx-section-help">
+        Which datasets Observr watches, how often it reports, and whether its buttons show in the dataset's tabs. Nothing
+        is sent for a dataset until it is on, and never a record or a visitor.
+    </p>
+    <ObservrDatasetsTable Team="Team" Role="@Role" />
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Team Team { get; set; } = default!;
+    [Parameter] public string? Role { get; set; }
+
+    protected override void OnParametersSet() => Header.Set(this, b =>
+    {
+        b.OpenComponent<ConsoleBreadcrumb>(0);
+        b.AddAttribute(1, "TeamName", Team.Name);
+        b.AddAttribute(2, "Page", "Observr");
+        b.CloseComponent();
+    });
+
+    public void Dispose() => Header.Clear(this, keepIf: NavigationManager.ToBaseRelativePath(NavigationManager.Uri).StartsWith("teams/", StringComparison.OrdinalIgnoreCase));
+}

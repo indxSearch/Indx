@@ -17,7 +17,8 @@
    each of the team's datasets, chosen by the team's editors: on or off, how often it reports, and
    whether its buttons show in the dataset's tabs. Below, everything Observr has found for the
    team, with Yes and No for editors. Viewers read both. Reached from the Observr button on the
-   team page, shown only while an admin has Observr on for the instance. Hosted by Pages/ConsolePage. *@
+   team page, shown only while an admin has Observr on for the instance. Which datasets it watches
+   is its own page beside this one (TeamObservrDatasetsView). Hosted by Pages/ConsolePage. *@
 
 <div>
     @{
@@ -30,7 +31,7 @@
         {
             @* Which datasets Observr watches: a dialog, since it is set once and read rarely,
                and the page is the findings. The label says what is on, so nobody opens it to know. *@
-            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Fields" @onclick="() => _datasetsOpen = true" title="Which datasets Observr watches">Datasets · @onCount of @allCount on</Button>
+            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Fields" Href="@TeamRoutes.TeamObservrDatasets(Team.Name)" title="Which datasets Observr watches">Datasets · @onCount of @allCount on</Button>
         }
     </div>
     <p class="indx-section-help">
@@ -57,14 +58,7 @@
                 the dataset's Status page, each with a proposal you say yes or no to.@if (!_canEdit) { <text> An editor of this team switches it on.</text> }
             </div>
         </div>
-        @if (_rows.Count == 0)
-        {
-            <p style="color: var(--lv5);">This team has no datasets yet.</p>
-        }
-        else
-        {
-            @DatasetsTable
-        }
+        <ObservrDatasetsTable Team="Team" Role="@Role" OnChanged="LoadAsync" />
     }
     else
     {
@@ -100,74 +94,14 @@
     }
 </div>
 
-<Modal Open="_datasetsOpen" OpenChanged="v => _datasetsOpen = v" Title="Datasets" Class="tov-modal"
-       Description="Which datasets Observr watches, how often it reports, and whether its buttons show in their tabs.">
-    @if (_rows is { Count: > 0 })
-    {
-        @DatasetsTable
-    }
-</Modal>
-
 @code {
     [Parameter, EditorRequired] public Team Team { get; set; } = default!;
     [Parameter] public string? Role { get; set; }
-    [Inject] private IConfiguration Configuration { get; set; } = default!;
 
     private sealed record Row(string DataSetName, ObservrDatasetSettings Settings, int Open);
 
 
-    /// <summary>The per-dataset settings, as a table: on the Datasets tab, and on the first visit right under the greeting.</summary>
-    private RenderFragment DatasetsTable => @<text>
-        <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" AriaLabel="Observr per dataset">
-                <thead>
-                    <tr>
-                        <th scope="col">Dataset</th><th scope="col">Observr</th><th scope="col">Reports</th><th scope="col">Buttons in the tabs</th><th scope="col"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var row in _rows!)
-                    {
-                        var s = row.Settings;
-                        <tr>
-                            <td style="color: var(--lv6);">
-                                <span style="display:inline-flex; align-items:center; gap:4px;">
-                                    @row.DataSetName
-                                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" Href="@TeamRoutes.Dataset(Team.Name, row.DataSetName)" title="Open the dataset" aria-label="@($"Open {row.DataSetName}")" />
-                                    @if (row.Open > 0) { <Chip Color="var(--lv3)" TextColor="var(--lv8)">@row.Open open</Chip> }
-                                </span>
-                            </td>
-                            <td>
-                                @if (_canEdit) { <ToggleSwitch Variant="positive" Checked="s.Enabled" CheckedChanged="on => Save(row, s with { Enabled = on })" Label="@(s.Enabled ? "On" : "Off")" /> }
-                                else { <Chip Color="var(--lv2)" TextColor="var(--lv6)">@(s.Enabled ? "On" : "Off")</Chip> }
-                            </td>
-                            <td>
-                                @if (_canEdit && s.Enabled)
-                                {
-                                    <SelectField Size="micro" Variant="ghost" Options="ReportOptions" Value="@s.Report" ValueChanged="v => Save(row, s with { Report = v })" aria-label="How often Observr reports" style="width: 100%;" />
-                                }
-                                else if (s.Enabled) { <span style="color: var(--lv6);">@ReportLabel(s.Report)</span> }
-                                else { <span style="color: var(--lv4);">—</span> }
-                            </td>
-                            <td>
-                                @if (_canEdit && s.Enabled) { <ToggleSwitch Variant="positive" Checked="s.Buttons" CheckedChanged="on => Save(row, s with { Buttons = on })" Label="@(s.Buttons ? "Shown" : "Hidden")" /> }
-                                else if (s.Enabled) { <span style="color: var(--lv6);">@(s.Buttons ? "Shown" : "Hidden")</span> }
-                                else { <span style="color: var(--lv4);">—</span> }
-                            </td>
-                            <td style="text-align:right;">
-                                @if (_canEdit && s.Enabled) { <ObservrDigestButton TeamId="@TeamId" DatasetName="@row.DataSetName" /> }
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </Table>
-            <p class="indx-section-help" style="margin-top: 8px;">
-                A daily report is sent every morning at @_digestHour:00 UTC, a weekly one on Mondays. Each report and each ask counts
-                against the licence's daily allowance.
-            </p>
-    </text>;
-
     private const string Open = "open", Archive = "archive";
-    private bool _datasetsOpen;
 
     private static List<Tabs.TabItem> ViewItems(int open) =>
     [
@@ -214,17 +148,7 @@
     private List<Row>? _rows;
     private List<ObservrFinding> _findings = [];
     private long _busy;
-    private int _digestHour;
     private Guid _loadedFor;
-
-    private static readonly List<SelectField.SelectOption> ReportOptions =
-    [
-        new("Every day", ObservrDatasetSettings.Daily),
-        new("Every Monday", ObservrDatasetSettings.Weekly),
-        new("Never", ObservrDatasetSettings.Off),
-    ];
-
-    private static string ReportLabel(string report) => ReportOptions.FirstOrDefault(o => o.Value == report)?.Label ?? report;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -236,7 +160,6 @@
             b.CloseComponent();
         });
         _canEdit = TeamRoles.CanWrite(Role);
-        _digestHour = Math.Clamp(Configuration.GetValue<int?>("Indx:Observr:DigestHourUtc") ?? 5, 0, 23);
         if (_loadedFor == Team.Id) return;
         _loadedFor = Team.Id;
         await LoadAsync();
@@ -258,13 +181,6 @@
         });
         _rows = rows;
         _findings = findings;
-    }
-
-    private void Save(Row row, ObservrDatasetSettings s)
-    {
-        if (!_canEdit) return;
-        Findings.SaveSettings(TeamId, row.DataSetName, s);
-        if (_rows != null) _rows[_rows.IndexOf(row)] = row with { Settings = s };
     }
 
     private async Task DecideAsync(ObservrFinding f, bool yes, IReadOnlyList<int>? only)

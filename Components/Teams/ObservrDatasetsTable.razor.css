@@ -1,0 +1,4 @@
+/* The table's shape while it loads. */
+.odt-loading { display: flex; flex-direction: column; gap: 18px; padding-top: 12px; }
+.odt-loading-row { display: grid; grid-template-columns: 2fr 1fr 1fr 2fr; gap: 24px; align-items: center; }
+.odt-empty { color: var(--lv5); }

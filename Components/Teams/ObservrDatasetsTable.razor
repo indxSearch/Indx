@@ -1,0 +1,134 @@
+@* Which datasets Observr watches, as a table: on or off, how often it reports, whether its buttons
+   show in the dataset's tabs, and Send this week's summary. Editors change it; viewers read it. On
+   the team's Observr datasets page, and under the greeting on the Observr page's first visit, so a
+   dataset can be switched on right there. *@
+@using IndxServer.Data
+@using IndxServer.Engine
+@using IndxServer.Models
+@using IndxServer.Services
+@using IndxServer.Services.Observr
+@using IndxServer.Components.Datasets
+@inject ObservrFindingStore Findings
+
+@if (_rows == null)
+{
+    @* The table's shape while the datasets load: a row per dataset-to-be, the name column wider. *@
+    <div class="odt-loading" role="status" aria-busy="true" aria-label="Loading datasets">
+        @for (var i = 0; i < 4; i++)
+        {
+            var delay = i * 0.06;
+            <div class="odt-loading-row">
+                <Skeleton Width="70%" Delay="delay" /><Skeleton Width="50%" Delay="delay" /><Skeleton Width="60%" Delay="delay" /><Skeleton Width="80%" Delay="delay" />
+            </div>
+        }
+    </div>
+}
+else if (_rows.Count == 0)
+{
+    <p class="odt-empty">This team has no datasets yet.</p>
+}
+else
+{
+    <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" AriaLabel="Observr per dataset">
+        <thead>
+            <tr>
+                <th scope="col">Dataset</th><th scope="col">Observr</th><th scope="col">Reports</th><th scope="col">Buttons in the tabs</th><th scope="col"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in _rows)
+            {
+                var s = row.Settings;
+                <tr>
+                    <td style="color: var(--lv6);">
+                        <span style="display:inline-flex; align-items:center; gap:4px;">
+                            @row.DataSetName
+                            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" Href="@TeamRoutes.Dataset(Team.Name, row.DataSetName)" title="Open the dataset" aria-label="@($"Open {row.DataSetName}")" />
+                            @if (row.Open > 0) { <Chip Color="var(--lv3)" TextColor="var(--lv8)">@row.Open open</Chip> }
+                        </span>
+                    </td>
+                    <td>
+                        @if (_canEdit) { <ToggleSwitch Variant="positive" Checked="s.Enabled" CheckedChanged="on => Save(row, s with { Enabled = on })" Label="@(s.Enabled ? "On" : "Off")" /> }
+                        else { <Chip Color="var(--lv2)" TextColor="var(--lv6)">@(s.Enabled ? "On" : "Off")</Chip> }
+                    </td>
+                    <td>
+                        @if (_canEdit && s.Enabled)
+                        {
+                            <SelectField Size="micro" Variant="ghost" Options="ReportOptions" Value="@s.Report" ValueChanged="v => Save(row, s with { Report = v })" aria-label="How often Observr reports" style="width: 100%;" />
+                        }
+                        else if (s.Enabled) { <span style="color: var(--lv6);">@ReportLabel(s.Report)</span> }
+                        else { <span style="color: var(--lv4);">—</span> }
+                    </td>
+                    <td>
+                        @if (_canEdit && s.Enabled) { <ToggleSwitch Variant="positive" Checked="s.Buttons" CheckedChanged="on => Save(row, s with { Buttons = on })" Label="@(s.Buttons ? "Shown" : "Hidden")" /> }
+                        else if (s.Enabled) { <span style="color: var(--lv6);">@(s.Buttons ? "Shown" : "Hidden")</span> }
+                        else { <span style="color: var(--lv4);">—</span> }
+                    </td>
+                    <td style="text-align:right;">
+                        @if (_canEdit && s.Enabled) { <ObservrDigestButton TeamId="@TeamId" DatasetName="@row.DataSetName" /> }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </Table>
+    <p class="indx-section-help" style="margin-top: 8px;">
+        A daily report is sent every morning at @_digestHour:00 UTC, a weekly one on Mondays. Each report and each ask counts
+        against the licence's daily allowance.
+    </p>
+}
+
+@code {
+    [Parameter, EditorRequired] public Team Team { get; set; } = default!;
+    [Parameter] public string? Role { get; set; }
+    /// <summary>After a setting changed, for a page that counts what is on.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+    [Inject] private IConfiguration Configuration { get; set; } = default!;
+
+    private sealed record Row(string DataSetName, ObservrDatasetSettings Settings, int Open);
+
+    private string TeamId => Team.Id.ToString();
+    private bool _canEdit;
+    private List<Row>? _rows;
+    private int _digestHour;
+    private Guid _loadedFor;
+
+    private static readonly List<SelectField.SelectOption> ReportOptions =
+    [
+        new("Every day", ObservrDatasetSettings.Daily),
+        new("Every Monday", ObservrDatasetSettings.Weekly),
+        new("Never", ObservrDatasetSettings.Off),
+    ];
+
+    private static string ReportLabel(string report) => ReportOptions.FirstOrDefault(o => o.Value == report)?.Label ?? report;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _canEdit = TeamRoles.CanWrite(Role);
+        _digestHour = Math.Clamp(Configuration.GetValue<int?>("Indx:Observr:DigestHourUtc") ?? 5, 0, 23);
+        if (_loadedFor == Team.Id) return;
+        _loadedFor = Team.Id;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        // The registry's list and the finding store only: never GetState, which loads a sleeping dataset.
+        var team = TeamId;
+        _rows = await Task.Run(() =>
+        {
+            var settings = Findings.SettingsForTeam(team);
+            var open = Findings.CountOpenByDataset(team);
+            return (IndxServerInternalApi.ManagerOrNull?.GetAllDataSets() ?? []).Where(d => d.TeamId == team)
+                .Select(d => new Row(d.DataSetName, settings.GetValueOrDefault(d.DataSetName, ObservrDatasetSettings.Default), open.GetValueOrDefault(d.DataSetName)))
+                .OrderByDescending(r => r.Settings.Enabled).ThenBy(r => r.DataSetName).ToList();
+        });
+    }
+
+    private async Task Save(Row row, ObservrDatasetSettings s)
+    {
+        if (!_canEdit || _rows == null) return;
+        Findings.SaveSettings(TeamId, row.DataSetName, s);
+        _rows[_rows.IndexOf(row)] = row with { Settings = s };
+        await OnChanged.InvokeAsync();
+    }
+}

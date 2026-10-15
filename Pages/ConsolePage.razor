@@ -4,6 +4,7 @@
 @page "/teams/{TeamName}"
 @page "/teams/{TeamName}/settings"
 @page "/teams/{TeamName}/observr"
+@page "/teams/{TeamName}/observr/datasets"
 @page "/teams/{TeamName}/keys"
 @page "/teams/{TeamName}/datasets/{Dataset}"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
@@ -56,6 +57,9 @@ else if (TeamResolved)
         case View.Observr:
             <TeamObservrView Team="@(Team!)" Role="@Role" />
             break;
+        case View.ObservrDatasets:
+            <TeamObservrDatasetsView Team="@(Team!)" Role="@Role" />
+            break;
         case View.Keys:
             <TeamKeysView Team="@(Team!)" Role="@Role" UserId="@UserId" />
             break;
@@ -91,7 +95,7 @@ else if (TeamResolved)
     /// <summary>The open dataset. Under /datasets/{x} (legacy) it is forwarded to the team.</summary>
     [Parameter] public string? Dataset { get; set; }
 
-    private enum View { Team, Settings, Observr, Keys, Dataset }
+    private enum View { Team, Settings, Observr, ObservrDatasets, Keys, Dataset }
     private View _view;
 
     protected override void OnInitialized()
@@ -115,6 +119,7 @@ else if (TeamResolved)
         var path = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).TrimEnd('/');
         if (path.EndsWith("/settings", StringComparison.OrdinalIgnoreCase)) return View.Settings;
         if (path.EndsWith("/observr", StringComparison.OrdinalIgnoreCase)) return View.Observr;
+        if (path.EndsWith("/observr/datasets", StringComparison.OrdinalIgnoreCase)) return View.ObservrDatasets;
         if (path.EndsWith("/keys", StringComparison.OrdinalIgnoreCase)) return View.Keys;
         if (path.Contains("/datasets/", StringComparison.OrdinalIgnoreCase)) return View.Dataset;
         return View.Team;
