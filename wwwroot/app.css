@@ -461,7 +461,8 @@ a.btn-danger:hover {
 .nav-home {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    /* 12px: four of the logo's own 3px cells between the mark and the name. */
+    gap: 12px;
     flex-shrink: 0;
     color: var(--lv7);
     text-decoration: none;
