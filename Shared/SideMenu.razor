@@ -57,10 +57,9 @@
         if (item.Badge != null)
         {
             builder.OpenElement(1, "span");
-            builder.AddAttribute(2, "class", item.BadgeIcon != null ? "side-menu-badge side-menu-badge--icon" : "side-menu-badge");
+            builder.AddAttribute(2, "class", "side-menu-badge");
             builder.AddAttribute(3, "title", item.BadgeTitle);
-            if (item.BadgeIcon != null) builder.AddContent(4, item.BadgeIcon(12));
-            builder.AddContent(5, item.Badge);
+            builder.AddContent(4, item.Badge);
             builder.CloseElement();
         }
         if (item.Experimental)

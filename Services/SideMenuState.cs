@@ -4,13 +4,8 @@ namespace IndxServer.Services
 {
     /// <summary>One entry of the side column's menu. <see cref="Href"/> navigates; a page that owns
     /// the menu may instead handle the choice through <see cref="SideMenuState.OnSelect"/>.</summary>
-    /// <summary>A section of the side column. <paramref name="Badge"/> is a count at the end of the
-    /// row: a signal pill by default (something to act on, the boost rules' expired count), or
-    /// with <paramref name="BadgeIcon"/> a quiet chip with that icon before the number (what
-    /// Observr found, in Observr's look), which says whose count it is.</summary>
     public sealed record SideMenuItem(string Key, string Label, RenderFragment<int>? Icon = null, string? Href = null,
-        bool Disabled = false, string? Title = null, string? Badge = null, string? BadgeTitle = null, bool Experimental = false,
-        RenderFragment<int>? BadgeIcon = null);
+        bool Disabled = false, string? Title = null, string? Badge = null, string? BadgeTitle = null, bool Experimental = false);
 
     /// <summary>A group of items under a title; <see cref="Note"/> is one quiet line under them
     /// (the admin area's version).</summary>
