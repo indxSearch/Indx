@@ -31,9 +31,8 @@ else
         @if (_points.Count >= 2)
         {
             @* The idle stretches: a gradient across the viewBox painted segment by segment, with hard
-               edges. A segment between two zero points is IdleColor; one that touches a non-zero point
-               keeps the colour. Each segment's two stops sit at its ends, so the colour switches where
-               the next begins rather than easing (an eased fade read as a soft gradient).
+               edges softened. A segment between two zero points is IdleColor; one that touches a
+               non-zero point keeps the colour, with a short blend where the two meet.
                userSpaceOnUse keeps it the same across the split line's parts. *@
             @if (_idle)
             {
@@ -41,9 +40,15 @@ else
                     <linearGradient id="@_gradientId" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="@F(VbW)" y2="0">
                         @for (var i = 0; i < _points.Count - 1; i++)
                         {
-                            var color = _points[i] == 0 && _points[i + 1] == 0 ? IdleColor : "currentColor";
-                            <stop offset="@F((double)i / (_points.Count - 1))" style="stop-color:@color" />
-                            <stop offset="@F((double)(i + 1) / (_points.Count - 1))" style="stop-color:@color" />
+                            var n = _points.Count - 1;
+                            var color = SegmentColor(i);
+                            // A fifth of a segment on each side of a change blends: a hard switch read
+                            // as too sharp, an eased one per point as a gradient.
+                            var soft = 0.2 / n;
+                            var start = (double)i / n + (i > 0 && SegmentColor(i - 1) != color ? soft : 0);
+                            var end = (double)(i + 1) / n - (i < n - 1 && SegmentColor(i + 1) != color ? soft : 0);
+                            <stop offset="@F4(start)" style="stop-color:@color" />
+                            <stop offset="@F4(end)" style="stop-color:@color" />
                         }
                     </linearGradient>
                 </defs>
@@ -154,6 +159,8 @@ else
     /// <summary>Invariant, always: a Norwegian locale writes 12,5 into an SVG coordinate, and the
     /// browser reads that as two numbers.</summary>
     private static string F(double d) => d.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+    private static string F4(double d) => d.ToString("0.####", System.Globalization.CultureInfo.InvariantCulture);
+    private string SegmentColor(int i) => _points[i] == 0 && _points[i + 1] == 0 ? IdleColor! : "currentColor";
 
     private string LinePoints() => LinePoints(0, _points.Count);
 
