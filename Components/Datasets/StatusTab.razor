@@ -30,9 +30,11 @@
             </Alert>
         }
 
-        @* Stats, as the statistics overview: a label over a value, the width of the page. *@
+        @* Stats, as the statistics overview: a label over a value, the width of the page. Fixed
+           columns, so the Agent panel sliding in resizes the tiles rather than reflowing them;
+           the as-many-as-fit grid snapped through 6, 5 and 4 columns during the slide. *@
         <h3 class="status-heading@(string.IsNullOrEmpty(status.ErrorMessage) ? "" : " status-heading--section")">Index</h3>
-        <StatGroup>
+        <StatGroup Columns="6">
             @{ var stateChip = DatasetStateChip.For(status.SystemState); }
             @Tile("State", @<Chip Size="large" Color="@stateChip.Color" TextColor="@stateChip.TextColor" Icon="@stateChip.Icon">@status.SystemState</Chip>)
             @Tile("Documents", @<text>@status.DocumentCount.ToString("N0")</text>)
@@ -43,7 +45,7 @@
         </StatGroup>
 
         <h3 class="status-heading status-heading--section">Usage</h3>
-        <StatGroup>
+        <StatGroup Columns="3">
             @Tile("Searches since load", @<text>@status.SearchCounter.ToString("N0")</text>)
             @Tile("Keep-alive", @<text>@KeepAliveLabel(ka)</text>)
             @if (ka?.LastUsedUtc is { } used)
