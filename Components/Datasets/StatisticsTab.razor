@@ -25,6 +25,8 @@ else
        belongs to everything below, the tiles and the chart included, the surface and the period.
        The detail sections are tabs just above their table, further down. *@
     <div class="indx-context-bar">
+        <Tabs Items="WindowItems" Active="@_days.ToString()" ActiveChanged="@(v => SetWindow(v))"
+              Size="micro" Variant="button" AriaLabel="Period" />
         <div class="indx-context-bar-end">
             @* Shown once any search named its surface (?source=, intrface's source prop): the
                numbers below for one surface alone. The changes are the owners', not a surface's,
@@ -33,8 +35,6 @@ else
             {
                 <SelectField Size="micro" Variant="ghost" Options="SourceOptions" Value="@(_source ?? "")" ValueChanged="SetSource" aria-label="Search surface" />
             }
-            <Tabs Items="WindowItems" Active="@_days.ToString()" ActiveChanged="@(v => SetWindow(v))"
-                  Size="micro" Variant="button" AriaLabel="Period" />
         </div>
     </div>
 

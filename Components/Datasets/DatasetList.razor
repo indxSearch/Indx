@@ -12,12 +12,14 @@
 
 <div class="indx-datasets-heading">
     <h2>Datasets</h2>
-    @* The page action pattern (app.css): the primary "New …" leads the actions on top. The empty
-       state carries the button itself, as its call to action, so it is not repeated here. *@
+    @* The page action pattern (app.css): the primary "New" leads, right by the heading it adds to,
+       the team's other actions at the end of the row. The empty state carries the button itself,
+       as its call to action, so it is not repeated here. *@
     @if (CanCreate && _rows.Count > 0)
     {
-        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset">New dataset</Button>
+        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset" title="New dataset">New</Button>
     }
+    <span class="indx-datasets-heading-spacer"></span>
     @HeadingActions
 </div>
 

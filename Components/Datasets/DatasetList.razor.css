@@ -7,13 +7,15 @@
 
 .indx-datasets-heading h2 {
     margin: 0;
-    flex: 1;
 }
+
+.indx-datasets-heading-spacer { flex: 1; }
 
 /* Narrow: the title on its own line, the actions on a row under it, so no button wraps inside itself. */
 @media (max-width: 768px) {
     .indx-datasets-heading { flex-wrap: wrap; gap: 10px 8px; }
     .indx-datasets-heading h2 { flex: 1 1 100%; }
+    .indx-datasets-heading-spacer { display: none; }
     .indx-datasets-heading ::deep .indx-btn { white-space: nowrap; }
 }
 
