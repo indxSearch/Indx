@@ -125,7 +125,7 @@
     /// <summary>The composer's icon at 14px, as in the header and the message heads. The Composer asks
     /// for 21, which suits the default AI agent (seven dots) but makes the solid Observr glyph loom.</summary>
     private static readonly RenderFragment<int> _iconComposer = _ => @<Observr Size="14" Color="currentColor" />;
-    private static readonly RenderFragment<int> _iconClose = size => @<ChevronRight Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconClose = size => @<IndentRight Size="size" Color="currentColor" />;
 
     protected override async Task OnInitializedAsync()
     {
