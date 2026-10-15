@@ -30,16 +30,20 @@ else
          aria-hidden="@(AriaLabel == null ? "true" : null)" focusable="false">
         @if (_points.Count >= 2)
         {
-            @* The idle fade: a gradient across the viewBox with a stop at every point, the colour where
-               it is above zero and IdleColor where it is zero, easing between them, so the line fades
-               rather than switching. userSpaceOnUse keeps it the same across the split line's parts. *@
+            @* The idle stretches: a gradient across the viewBox painted segment by segment, with hard
+               edges. A segment between two zero points is IdleColor; one that touches a non-zero point
+               keeps the colour. Each segment's two stops sit at its ends, so the colour switches where
+               the next begins rather than easing (an eased fade read as a soft gradient).
+               userSpaceOnUse keeps it the same across the split line's parts. *@
             @if (_idle)
             {
                 <defs>
                     <linearGradient id="@_gradientId" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="@F(VbW)" y2="0">
-                        @for (var i = 0; i < _points.Count; i++)
+                        @for (var i = 0; i < _points.Count - 1; i++)
                         {
-                            <stop offset="@F((double)i / (_points.Count - 1))" style="stop-color:@(_points[i] == 0 ? IdleColor : "currentColor")" />
+                            var color = _points[i] == 0 && _points[i + 1] == 0 ? IdleColor : "currentColor";
+                            <stop offset="@F((double)i / (_points.Count - 1))" style="stop-color:@color" />
+                            <stop offset="@F((double)(i + 1) / (_points.Count - 1))" style="stop-color:@color" />
                         }
                     </linearGradient>
                 </defs>
@@ -101,8 +105,8 @@ else
     /// <summary>Bar only: the gap between bars, in real pixels whatever the width.</summary>
     [Parameter] public double Gap { get; set; } = 1;
 
-    /// <summary>Line only: where the series is zero, the line and its fill fade to this colour, and
-    /// back where it rises, so a quiet stretch reads as quiet rather than as a line like any other.
+    /// <summary>Line only: where the series stays at zero, the line and its fill take this colour,
+    /// switching sharply where it rises, so a quiet stretch reads as quiet rather than as a line like any other.
     /// Most useful on many sparklines at once, where most are idle. Off when null.</summary>
     [Parameter] public string? IdleColor { get; set; }
 
