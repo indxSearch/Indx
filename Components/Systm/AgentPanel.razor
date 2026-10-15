@@ -52,16 +52,20 @@
                 </AssistantMessage>
                 <Suggestions Items="Suggested()" OnPick="SendAsync" />
             }
-            @foreach (var t in _turns)
+            @{ var current = _turns.FindLastIndex(t => t.Role == ObservrTurn.User); }
+            @foreach (var (t, i) in _turns.Select((t, i) => (t, i)))
             {
+                @* The exchange under way reads as the present; what came before it is history and
+                   steps back a tone, since the thread is one and has no other break. *@
+                var past = i < current ? "agent-past" : null;
                 if (t.Role == ObservrTurn.User)
                 {
                     @* A turn asked elsewhere says where, quietly, since the thread is one. *@
-                    <UserMessage>@if (Elsewhere(t) is { } where) { <span class="agent-where">@where</span> }@t.Text</UserMessage>
+                    <UserMessage Class="@past">@if (Elsewhere(t) is { } where) { <span class="agent-where">@where</span> }@t.Text</UserMessage>
                 }
                 else
                 {
-                    <AssistantMessage Label="Observr" Icon="_iconObservr">
+                    <AssistantMessage Label="Observr" Icon="_iconObservr" Class="@past">
                         @ObservrMarkdown.Render(t.Text)
                         @if (t.FindingId is { } fid && _byId.TryGetValue(fid, out var finding) && finding.Status == ObservrFinding.Open)
                         {
