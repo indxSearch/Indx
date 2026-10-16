@@ -450,11 +450,13 @@ a.btn-danger:hover {
     min-height: 30px;
 }
 
+/* 18px: with the link's own 2px the mark starts at 20px, on the side menu's icon line (the
+   menu's 10px of padding plus its buttons' 10px). It sat 8px left of that until 16 Oct 2026. */
 .nav-brand {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding-left: 10px;
+    padding-left: 18px;
     min-width: 0;
 }
 
