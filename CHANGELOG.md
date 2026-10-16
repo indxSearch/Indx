@@ -66,6 +66,14 @@ in the AI skill.
 
 ### Added
 
+- **`POST filters/position`: documents within a distance of a position** - "a shop within 1 km".
+  The body is `{fieldName, latitude, longitude, withinMeter}`: `fieldName` names an object holding
+  the numbers `latitude` and `longitude` in decimal degrees (`location` for
+  `{"location": {"latitude": 59.91, "longitude": 10.75}}`), and both `location.latitude` and
+  `location.longitude` must be Filterable. The distance is measured on a sphere, the short way
+  round across the antimeridian, both ends inclusive. Like a range filter's, the token describes
+  the filter and is honoured after the cache has let it go. A position off the Earth, a negative
+  distance, or a field without a position is a `400` with the reason.
 - **Monitor.** A live view of the instance: dataset states, document counts, idle-eviction
   countdowns, process and native memory, filter-cache routing, and an event stream carrying state
   changes, field configuration changes and anything the server logs.

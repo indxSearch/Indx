@@ -109,6 +109,33 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
+        /// Creates a filter matching documents whose position lies within a distance, in metres, of
+        /// the given position. The position field is an object with the numbers <c>latitude</c> and
+        /// <c>longitude</c>, both Filterable. Like a range filter, its token describes it.
+        /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
+        [HttpPost(DataSetRoute + "/filters/position")]
+        public ActionResult<FilterProxy> CreatePositionFilter(string teamName, string dataSetName, [FromBody] PositionFilterProxy positionFilter)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return ApiProblems.InvalidDatasetName(dataSetName);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
+            if (RequireState(matcher, "CreatePositionFilter", SystemState.Ready) is { } stateError)
+                return stateError;
+            if (positionFilter == null)
+                return ApiProblems.InvalidArgument("A body with fieldName, latitude, longitude and withinMeter is required.");
+            var filter = matcher.CreatePositionFilter(positionFilter.FieldName,
+                new GeoPosition(positionFilter.Latitude, positionFilter.Longitude), positionFilter.WithinMeter, out var filterError);
+            if (filter == null)
+                return ApiProblems.InvalidArgument(filterError ?? "invalid filter arguments");
+            return Ok(new FilterProxy(filter.SerializedKey));
+        }
+
+        /// <summary>
         /// CreateValueFilter will create a ValueFilter which may be passed to any search.
         /// Case-insensitive unless <c>isCaseSensitive</c> is set; see <see cref="ValueFilterProxy"/>
         /// for when it should be, and what it costs.
