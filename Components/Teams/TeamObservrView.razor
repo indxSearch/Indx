@@ -31,7 +31,7 @@
         {
             @* Which datasets Observr watches: a dialog, since it is set once and read rarely,
                and the page is the findings. The label says what is on, so nobody opens it to know. *@
-            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Fields" Href="@TeamRoutes.TeamObservrDatasets(Team.Name)" title="Which datasets Observr watches">Datasets · @onCount of @allCount on</Button>
+            <Button Variant="ghost" Size="micro" IconLeft="_iconRecorder" Href="@TeamRoutes.TeamObservrDatasets(Team.Name)" title="Which datasets Observr watches">Datasets · @onCount of @allCount on</Button>
         }
     </div>
     <p class="indx-section-help">
@@ -95,6 +95,9 @@
 </div>
 
 @code {
+    /// <summary>The Datasets button's icon: the recorder, for what Observr watches and records, not
+    /// the fields icon it borrowed.</summary>
+    private static readonly RenderFragment<int> _iconRecorder = size => @<Recorder Size="size" Color="currentColor" />;
     [Parameter, EditorRequired] public Team Team { get; set; } = default!;
     [Parameter] public string? Role { get; set; }
 
