@@ -3,12 +3,13 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Components;
 
-namespace IndxServer.Services.Observr
+namespace Indx.Systm.Blazor
 {
-    /// <summary>The little markdown the Agent's prompt allows (bold, code, a list, paragraphs),
-    /// rendered from text that is encoded first, so nothing in an answer reaches the page as
-    /// markup. Not a markdown engine, and not meant to grow into one.</summary>
-    public static partial class ObservrMarkdown
+    /// <summary>The little markdown an assistant's answer may carry (bold, italic, code, a list,
+    /// paragraphs), rendered from text that is encoded first, so nothing in an answer reaches the
+    /// page as markup. For the console's Agent panel and findings and the Observr admin's Asks page
+    /// alike. Not a markdown engine, and not meant to grow into one.</summary>
+    public static partial class ChatMarkdown
     {
         public static MarkupString Render(string text)
         {

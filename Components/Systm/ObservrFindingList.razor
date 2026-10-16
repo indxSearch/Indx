@@ -33,7 +33,7 @@ else
                     @{ var status = f.Status == ObservrFinding.Open ? (f.Proposals.Count == 0 ? "unread" : "open") : f.Proposals.Count == 0 ? "read" : f.Status; }
                     <Chip Color="@StatusColor(status)" TextColor="@StatusText(status)">@status</Chip>
                 </div>
-                <div class="ofl-text">@ObservrMarkdown.Render(f.Answer)</div>
+                <div class="ofl-text">@ChatMarkdown.Render(f.Answer)</div>
                 }
                 @if (f.Proposals.Count > 0)
                 {
