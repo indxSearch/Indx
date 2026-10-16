@@ -14,7 +14,8 @@
 <div>
     <div class="tod-heading">
         <h2 class="indx-section-heading indx-section-heading--first">Observr datasets</h2>
-        <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Href="@TeamRoutes.TeamObservr(Team.Name)">Observr</Button></span>
+        @* Back to the Observr page this was opened from: a plain way back, not another Observr button. *@
+        <Button Variant="ghost" Size="micro" IconLeft="_iconBack" Href="@TeamRoutes.TeamObservr(Team.Name)">Back</Button>
     </div>
     <p class="indx-section-help">
         Which datasets Observr watches, how often it reports, and whether its buttons show in the dataset's tabs. Nothing
@@ -26,6 +27,8 @@
 @code {
     [Parameter, EditorRequired] public Team Team { get; set; } = default!;
     [Parameter] public string? Role { get; set; }
+
+    private static readonly RenderFragment<int> _iconBack = size => @<ArrowLeft Size="size" Color="currentColor" />;
 
     protected override void OnParametersSet() => Header.Set(this, b =>
     {
