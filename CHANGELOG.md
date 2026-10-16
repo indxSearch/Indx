@@ -66,6 +66,12 @@ in the AI skill.
 
 ### Added
 
+- **`POST filters/in`: documents whose field holds one of a set of values.** The body is
+  `{fieldName, values, isCaseSensitive}`. One request and one filter for the whole set, where
+  value filters combined with OR were a request per value and per combine - and on a field with
+  no index (an array) a walk of the documents per value, against one for the set. On a numeric
+  field the values compare as numbers. The token describes the filter. An empty list, a value
+  that is not a number on a numeric field, or case sensitivity on one is a `400` with the reason.
 - **`POST filters/position`: documents within a distance of a position** - "a shop within 1 km".
   The body is `{fieldName, latitude, longitude, withinMeter}`: `fieldName` names an object holding
   the numbers `latitude` and `longitude` in decimal degrees (`location` for

@@ -109,6 +109,34 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
+        /// Creates a filter matching documents whose field holds one of a set of values - one filter
+        /// for the whole set, where value filters combined with OR are 2n - 1 requests and filters.
+        /// Like a value or range filter, its token describes it.
+        /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
+        [HttpPost(DataSetRoute + "/filters/in")]
+        public ActionResult<FilterProxy> CreateInFilter(string teamName, string dataSetName, [FromBody] InFilterProxy inFilter)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return ApiProblems.InvalidDatasetName(dataSetName);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
+            if (RequireState(matcher, "CreateInFilter", SystemState.Ready) is { } stateError)
+                return stateError;
+            if (inFilter == null || inFilter.Values == null)
+                return ApiProblems.InvalidArgument("A body with fieldName and a list of values is required.");
+            // Each value arrives as a JsonElement; unwrapped as filters/value unwraps its one value.
+            var values = inFilter.Values.Select(v => UnwrapJsonElement(v)!).ToArray();
+            var filter = matcher.CreateInFilter(inFilter.FieldName, values, inFilter.IsCaseSensitive, out var filterError);
+            if (filter == null)
+                return ApiProblems.InvalidArgument(filterError ?? "invalid filter arguments");
+            return Ok(new FilterProxy(filter.SerializedKey));
+        }
+
+        /// <summary>
         /// Creates a filter matching documents whose position lies within a distance, in metres, of
         /// the given position. The position field is an object with the numbers <c>latitude</c> and
         /// <c>longitude</c>, both Filterable. Like a range filter, its token describes it.
