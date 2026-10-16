@@ -30,12 +30,23 @@
    Book reads heavier at 24px than the Inter the React systm draws, and the number is the one
    large thing on the stat. Geist, where the brand font is absent, has a 300 too. */
 .indx-stat-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     max-width: 100%;
     font: var(--text-2xl);
     font-weight: 300;
     color: var(--lv8);
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
+}
+
+/* The icon before a state's word, in the value's colour; it sits on the cap height, so a touch
+   down from the line box's centre. */
+.indx-stat-icon {
+    display: inline-flex;
+    flex: none;
+    margin-top: 2px;
 }
 
 /* A chip is a value too (a state): it sits on the value's line. */

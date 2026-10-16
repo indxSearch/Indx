@@ -1,5 +1,5 @@
 @* Port of indx-systm Stat: one number with its label, on the Base surface tone. A count, a KPI, a
-   state (pass a Chip as ValueContent). Put several in a StatGroup. *@
+   state (pass a Chip as ValueContent, or a word with an Icon). Put several in a StatGroup. *@
 
 <div class="indx-stat @Class">
     @if (!string.IsNullOrEmpty(Hint))
@@ -10,7 +10,10 @@
     {
         <span class="indx-stat-label">@LabelBody</span>
     }
-    <span class="indx-stat-value">@(ValueContent ?? (RenderFragment)(b => b.AddContent(0, Value)))</span>
+    <span class="indx-stat-value" style="@(Color != null ? $"color: {Color};" : null)">
+        @if (Icon != null) { <span class="indx-stat-icon" aria-hidden="true">@Icon(IconSize)</span> }
+        @(ValueContent ?? (RenderFragment)(b => b.AddContent(0, Value)))
+    </span>
     @if (ChildContent != null)
     {
         <span class="indx-stat-foot">@ChildContent</span>
@@ -26,6 +29,14 @@
     [Parameter] public string? Value { get; set; }
     /// <summary>The value as markup, in place of Value: a chip for a state, a skeleton while it loads.</summary>
     [Parameter] public RenderFragment? ValueContent { get; set; }
+    /// <summary>A pixl icon before the value, for a state ("Up", "Key set"): drawn at <see cref="IconSize"/>
+    /// in the value's colour. A good state stays in the ink; the icon says it.</summary>
+    [Parameter] public RenderFragment<int>? Icon { get; set; }
+    /// <summary>The value's colour, and the icon's: the signal red for a state that is wrong.</summary>
+    [Parameter] public string? Color { get; set; }
+    /// <summary>The pixl grid is 7 cells by 5, so an icon is crisp at a width that is a multiple of 7: 14,
+    /// 21, 28, 35. The value is set at 24px; 28 wide (20 tall) sits on its cap height.</summary>
+    public const int IconSize = 28;
     /// <summary>Shown on the label, which gets a dotted underline to say there is more.</summary>
     [Parameter] public string? Hint { get; set; }
     /// <summary>A line under the value: a change against the previous period, a unit, a note.</summary>
