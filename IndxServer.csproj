@@ -50,10 +50,11 @@
 		     the developer's copy over the server's: registration mode, instance name and the
 		     pending-invite list (RegistrationMode.Invite keeps invites in AllowedEmails) all
 		     reset, and LicenseToken/Plan nulled. IndxData is runtime state, never build
-		     output; the license is the one file that ships. -->
+		     output. The licence does not ship either (16 Oct 2026): the server fetches its
+		     own with its token into its own IndxData, and a developer's licence deployed over
+		     it would be the wrong licence. deploy/prepare.sh refuses any IndxData in the output. -->
 		<Content Remove="IndxData\**" />
 		<None Remove="IndxData\**" />
-		<Content Include="IndxData\*.license" CopyToPublishDirectory="PreserveNewest" />
 	</ItemGroup>
 
 	<PropertyGroup Condition=" '$(RunConfiguration)' == 'IndxServer' " />
