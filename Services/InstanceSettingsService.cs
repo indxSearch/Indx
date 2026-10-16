@@ -3,6 +3,18 @@ using Microsoft.Extensions.Options;
 
 namespace IndxServer.Services;
 
+internal sealed class ObservrSubscriptionMemo
+{
+    public string TokenHash { get; set; } = "";
+    public bool Included { get; set; }
+    public string Tier { get; set; } = "";
+    public string LicensedTo { get; set; } = "";
+    public string? Reason { get; set; }
+    public string? Access { get; set; }
+    public DateTime? ExpiresAt { get; set; }
+    public DateTime CheckedUtc { get; set; }
+}
+
 internal class InstanceSettings
 {
     public RegistrationMode RegistrationMode { get; set; } = RegistrationMode.Open;
@@ -60,6 +72,11 @@ internal class InstanceSettings
     /// Indx:LicenseToken app setting. Stored locally (settings.json) like other secrets.
     /// The portal URL itself is hardcoded (see LicenseBootstrapper.DefaultDownloadUrl).</summary>
     public string? LicenseToken { get; set; }
+
+    /// <summary>The licence portal's last answer about Observr, kept so a restart during a portal
+    /// outage keeps Observr as a running instance would (ObservrSubscription): the answer, when it
+    /// came, and a hash of the token it was for, so a new token asks afresh.</summary>
+    public ObservrSubscriptionMemo? ObservrSubscription { get; set; }
 
     /// <summary>App-owned subscription plan for Managed (Azure) deployments. Null until an
     /// in-app upgrade sets it, in which case ManagedEditionService falls back to the ARM-injected

@@ -286,6 +286,30 @@ namespace IndxServer.Services.Observr
         /// <summary>Whether this instance can ask at all: it has a licence token.</summary>
         public bool HasToken => Token() != null;
 
+        /// <summary>The last time Observr could not be reached or refused to serve (when, and the
+        /// reason), until a call goes through again; and the last time one did. The admin page
+        /// reads both, so an outage is visible somewhere other than the log.</summary>
+        public ObservrPortalFailure? LastFailure { get; private set; }
+        public DateTime? LastOkUtc { get; private set; }
+
+        /// <summary>Asks Observr whether it is up (GET /health), without a token or an ask: the admin
+        /// page's Try again. Records the outcome as a call would.</summary>
+        public async Task<bool> PingAsync(CancellationToken ct)
+        {
+            var client = http.CreateClient(HttpClientName);
+            try
+            {
+                using var response = await client.GetAsync($"{options.Url.TrimEnd('/')}/health", ct);
+                if (response.IsSuccessStatusCode) { LastOkUtc = DateTime.UtcNow; LastFailure = null; return true; }
+                LastFailure = new ObservrPortalFailure(DateTime.UtcNow, $"http{(int)response.StatusCode}");
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                LastFailure = new ObservrPortalFailure(DateTime.UtcNow, "unreachable");
+            }
+            return false;
+        }
+
         /// <summary>One model turn of the Agent chat (POST /api/chat): the conversation as the
         /// instance keeps it goes up, the model's message comes back. The loop is ObservrChat's.</summary>
         public async Task<(ObservrStatus Status, ObservrChatReply? Reply, string? Reason)> ChatTurnAsync(object payload, string teamId, string dataSetName, CancellationToken ct)
@@ -483,11 +507,16 @@ namespace IndxServer.Services.Observr
                 catch (JsonException) { }
                 if (response.StatusCode is not (HttpStatusCode.OK or HttpStatusCode.Unauthorized or HttpStatusCode.PaymentRequired or HttpStatusCode.ServiceUnavailable or HttpStatusCode.TooManyRequests))
                     logger.LogWarning("Observr answered {Status} for {Team}/{Dataset}", (int)response.StatusCode, teamId, dataSetName);
+                // Health: the service answered, whatever it said about this licence; a 503 is the
+                // service (or its portal) being down, which is the one thing the admin page reports.
+                if (response.StatusCode == HttpStatusCode.ServiceUnavailable) LastFailure = new ObservrPortalFailure(DateTime.UtcNow, reason ?? "unavailable");
+                else { LastOkUtc = DateTime.UtcNow; LastFailure = null; }
                 return (response.StatusCode, body, reason ?? (response.StatusCode == HttpStatusCode.OK ? null : $"http{(int)response.StatusCode}"));
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
                 logger.LogWarning(ex, "Observr unreachable");
+                LastFailure = new ObservrPortalFailure(DateTime.UtcNow, "unreachable");
                 return (HttpStatusCode.ServiceUnavailable, "", "unreachable");
             }
         }

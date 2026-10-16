@@ -7,6 +7,7 @@
 @attribute [Authorize(Roles = "Admin")]
 @inject ObservrSubscription Subscription
 @inject ObservrClient Observr
+@inject ObservrDigestJob Digest
 
 <PageTitle>Admin — Observr</PageTitle>
 
@@ -28,9 +29,25 @@
     {
         <p style="color: var(--lv5);">This instance has no licence token, so it cannot reach Observr. Add one under <a href="/admin/license">License</a>.</p>
     }
+    else if (!_state.Known && Subscription.PortalFailure is { } noAnswer)
+    {
+        @* The portal could not be asked and has never answered: nothing of Observr is shown, and
+           this page says why instead of waiting. *@
+        <p style="color: var(--lv6); margin: 0 0 8px;">
+            The licence portal could not be reached (@PortalReason(noAnswer.Reason)), last tried <TimeAgo Value="noAnswer.AtUtc" />.
+            It has not answered yet, so nothing of Observr is shown until it does.
+        </p>
+    }
     else if (!_state.Known)
     {
         <p style="display:flex; align-items:center; gap:8px; color:var(--lv5);"><Spinner Size="14" /> Asking the licence portal…</p>
+    }
+    else if (_state.Lapsed)
+    {
+        <p style="color: var(--lv6); margin: 0 0 8px;">
+            The licence portal has not answered for @ObservrSubscription.Grace.TotalDays days, so its last answer, from <TimeAgo Value="_state.CheckedUtc!.Value" />, no longer stands and nothing of Observr is shown.
+            @if (Subscription.PortalFailure is { } lapsed) { <span style="color: var(--lv5);">Last tried <TimeAgo Value="lapsed.AtUtc" /> (@PortalReason(lapsed.Reason)).</span> }
+        </p>
     }
     else if (_state.Tier == "Internal")
     {
@@ -62,11 +79,55 @@
             <span style="color: var(--lv5);">Checked <TimeAgo Value="_state.CheckedUtc!.Value" />.</span>
         </p>
     }
+    @if (_state.Known && !_state.Lapsed && Subscription.PortalFailure is { } standing)
+    {
+        @* The answer above stands through the outage, for the grace. *@
+        <p style="color: var(--lv5); margin: 0 0 8px;">
+            The licence portal could not be reached (@PortalReason(standing.Reason)), last tried <TimeAgo Value="standing.AtUtc" />.
+            The answer above stands for @ObservrSubscription.Grace.TotalDays days from when it was given.
+        </p>
+    }
     @if (Observr.HasToken && _state.Tier != "Internal")
     {
         <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Restore" Loading="@_checking" @onclick="CheckAsync">Check again</Button>
     }
 </div>
+
+@* ── The service: whether Observr itself answers, and the day's reports. ── *@
+@if (Observr.HasToken && _state.Included)
+{
+    <div style="max-width: 720px; margin-bottom: 32px;">
+        <h3>Service</h3>
+        @if (Observr.LastFailure is { } down)
+        {
+            <p style="color: var(--lv6); margin: 0 0 8px;">
+                Observr could not be reached (@PortalReason(down.Reason)), last tried <TimeAgo Value="down.AtUtc" />.
+                Asks from the console get a short refusal until it is back; findings already made stay readable.
+            </p>
+        }
+        else if (Observr.LastOkUtc is { } ok)
+        {
+            <p style="color: var(--lv6); margin: 0 0 8px;">Observr answered <TimeAgo Value="ok" />.</p>
+        }
+        else
+        {
+            <p style="color: var(--lv5); margin: 0 0 8px;">Observr has not been asked since this instance started.</p>
+        }
+        @if (Digest.LastRound is { } round)
+        {
+            <p style="color: var(--lv5); margin: 0 0 8px;">
+                @(round.StoppedBy switch
+                {
+                    null => $"The last round of reports went through, {round.Sent} sent,",
+                    ObservrStatus.Unavailable => $"The last round of reports stopped because Observr could not be reached, {round.Sent} sent before that; it is tried again every hour until it goes through,",
+                    ObservrStatus.NoSubscription => "The last round of reports sent nothing: the subscription does not include Observr or it is off here,",
+                    var other => $"The last round of reports stopped: {other},",
+                }) <TimeAgo Value="round.AtUtc" />.
+            </p>
+        }
+        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Restore" Loading="@_pinging" @onclick="PingAsync">Try again</Button>
+    </div>
+}
 
 @* ── The instance switch: an admin activates Observr once; the teams choose per dataset. ── *@
 @if (_state.Included)
@@ -101,6 +162,22 @@
         try { _state = await Subscription.GetAsync(force: true); }
         finally { _checking = false; }
     }
+
+    private bool _pinging;
+    private async Task PingAsync()
+    {
+        _pinging = true;
+        try { await Observr.PingAsync(CancellationToken.None); }
+        finally { _pinging = false; }
+    }
+
+    private static string PortalReason(string reason) => reason switch
+    {
+        "unreachable" => "no connection, or no answer in time",
+        "portalUnavailable" => "its licence portal could not be reached",
+        var r when r.StartsWith("http") => $"it answered {r[4..]}",
+        var r => r,
+    };
 
     private void SetEnabled(bool on)
     {

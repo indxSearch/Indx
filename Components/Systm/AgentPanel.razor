@@ -234,10 +234,15 @@
         try
         {
             var outcome = await Chat.AskAsync(_ctx, _userId, text, s => InvokeAsync(() => { _status = s; StateHasChanged(); }), CancellationToken.None);
-            if (outcome.Status != ObservrStatus.Ok && outcome.Status != ObservrStatus.Failed)
-                _error = null; // the refusal is a turn of the thread already
+            if (outcome.Status != ObservrStatus.Ok)
+            {
+                // A refusal is not a turn of the thread: it shows here, and the question goes back
+                // into the composer so it can be sent again when Observr is back.
+                _error = ObservrText.Refusal(new ObservrOutcome(outcome.Status, Reason: outcome.Reason), "to answer");
+                _draft = text;
+            }
         }
-        catch (Exception ex) { _error = ex.Message; }
+        catch (Exception ex) { _error = ex.Message; _draft = text; }
         finally
         {
             _running = false;
@@ -253,15 +258,20 @@
         _running = true;
         _status = "Observr is looking";
         _error = null;
-        Conversations.Add(_userId, _ctx.TeamId, _ctx.DatasetKey, ObservrTurn.User, action.Label);
         _turns.Add(new ObservrTurn(0, ObservrTurn.User, action.Label, null, DateTime.UtcNow));
         StateHasChanged();
         try
         {
             var outcome = await action.Ask(CancellationToken.None);
-            var text = outcome.Status == ObservrStatus.Ok && outcome.Answer != null ? outcome.Answer.Answer : ObservrText.Refusal(outcome, "to look at");
-            Conversations.Add(_userId, _ctx.TeamId, _ctx.DatasetKey, ObservrTurn.Assistant, text, outcome.FindingId > 0 ? outcome.FindingId : null);
-            if (outcome.FindingId > 0 && (action.OnApplied != null || action.OnApplying != null)) _actions[outcome.FindingId] = action;
+            if (outcome.Status == ObservrStatus.Ok && outcome.Answer != null)
+            {
+                // The exchange goes into the thread only once it exists; a refusal shows here and
+                // leaves the button to press again.
+                Conversations.Add(_userId, _ctx.TeamId, _ctx.DatasetKey, ObservrTurn.User, action.Label);
+                Conversations.Add(_userId, _ctx.TeamId, _ctx.DatasetKey, ObservrTurn.Assistant, outcome.Answer.Answer, outcome.FindingId > 0 ? outcome.FindingId : null);
+                if (outcome.FindingId > 0 && (action.OnApplied != null || action.OnApplying != null)) _actions[outcome.FindingId] = action;
+            }
+            else _error = ObservrText.Refusal(outcome, "to look at");
         }
         catch (Exception ex) { _error = ex.Message; }
         finally

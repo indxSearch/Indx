@@ -41,15 +41,18 @@ namespace IndxServer.Services.Observr
             question = question.Trim();
             if (question.Length == 0) return new ObservrChatOutcome(ObservrStatus.Failed, Reason: "empty");
             if (!client.HasToken) return new ObservrChatOutcome(ObservrStatus.NoToken);
-            conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.User, question);
 
             // One thread per user, so an earlier turn may be about another dataset or team; a
             // user turn from elsewhere says where, so the model does not read it as this one.
-            var history = conversations.List(userId, HistoryTurns + 1);
+            // The question itself is kept only once Observr has answered a turn: a refusal (the
+            // service down, the licence refused) is shown in the panel and leaves no trace in the
+            // thread, which the model would otherwise read as conversation.
+            var history = conversations.List(userId, HistoryTurns);
             var messages = new List<Turn>();
-            foreach (var t in history.Take(history.Count - 1))
+            foreach (var t in history)
                 if (t.Text.Length > 0) messages.Add(new Turn(t.Role, t.Role == ObservrTurn.User ? Placed(t, ctx) : t.Text));
             messages.Add(new Turn(ObservrTurn.User, question));
+            var kept = false;
 
             var definitions = tools.Definitions(ctx);
             var context = tools.Describe(ctx);
@@ -68,9 +71,12 @@ namespace IndxServer.Services.Observr
                 var (st, reply, reason) = await client.ChatTurnAsync(payload, ctx.TeamId, ctx.DatasetKey, ct);
                 if (st != ObservrStatus.Ok || reply == null)
                 {
-                    conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.Assistant, ObservrText.Refusal(new ObservrOutcome(st, Reason: reason), "to answer"));
+                    // Mid-conversation (after a tool turn) the question is already in the thread, so
+                    // the refusal closes it; before any answer, nothing is written.
+                    if (kept) conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.Assistant, ObservrText.Refusal(new ObservrOutcome(st, Reason: reason), "to answer"));
                     return new ObservrChatOutcome(st, Reason: reason);
                 }
+                if (!kept) { conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.User, question); kept = true; }
                 askId = reply.AskId;
                 proposals.AddRange(reply.Proposals);
                 if (reply.ToolUses.Count == 0)
