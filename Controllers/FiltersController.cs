@@ -110,6 +110,49 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
+        /// Creates the filter a filter expression describes, e.g.
+        /// <c>brand IN ["nike", "puma"] AND price BETWEEN 100 AND 2000</c>, and answers its token and
+        /// the expression as the engine reads it. The token is the one the other filter routes make
+        /// for the same filter. An expression that makes none is 400 <c>invalidFilterExpression</c>
+        /// with every error and its place; a placeholder's token that does not resolve is 400
+        /// <c>unknownFilter</c>.
+        /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
+        [HttpPost(DataSetRoute + "/filters/expression")]
+        public ActionResult<FilterExpressionResultProxy> CreateFilterFromExpression(string teamName, string dataSetName, [FromBody] FilterExpressionProxy body)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return ApiProblems.InvalidDatasetName(dataSetName);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
+            if (RequireState(matcher, "CreateFilterFromExpression", SystemState.Ready) is { } stateError)
+                return stateError;
+            if (body == null)
+                return ApiProblems.InvalidArgument("A body with an expression is required.");
+            Filter filter;
+            try
+            {
+                filter = IndxServerInternalApi.ResolveRequestFilter(matcher, null, body.Expression ?? string.Empty, body.Parameters)!;
+            }
+            catch (UnknownFilterException ex)
+            {
+                return ApiProblems.UnknownFilter(ex.Message);
+            }
+            catch (InvalidFilterExpressionException ex)
+            {
+                return ApiProblems.InvalidFilterExpression(ex.Expression, ex.Errors);
+            }
+            // Loaded here, as filters/combine loads, so an operand that cannot load is this
+            // request's 400 and not a later search's.
+            if (!matcher.LoadFilters([filter], out var loadError))
+                return ApiProblems.OperationFailed(loadError);
+            return Ok(new FilterExpressionResultProxy { HashString = filter.SerializedKey, Canonical = filter.ToExpression() });
+        }
+
+        /// <summary>
         /// Creates a filter matching documents whose field holds one of a set of values - one filter
         /// for the whole set, where value filters combined with OR are 2n - 1 requests and filters.
         /// Like a value or range filter, its token describes it.

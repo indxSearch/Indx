@@ -88,6 +88,10 @@ namespace IndxServer.Controllers
             {
                 return ApiProblems.UnknownFilter(ex.Message);
             }
+            catch (InvalidFilterExpressionException ex)
+            {
+                return ApiProblems.InvalidFilterExpression(ex.Expression, ex.Errors);
+            }
             // PrepareSorting throws ArgumentException("invalid type") for a SortBy field whose type
             // is not one it can compare. Reaching it takes a field that is Sortable and untyped, which
             // the Field setters now refuse and Deserialize strips, and Search nulls a SortBy that is
@@ -126,6 +130,10 @@ namespace IndxServer.Controllers
             catch (UnknownFilterException ex)
             {
                 return ApiProblems.UnknownFilter(ex.Message);
+            }
+            catch (InvalidFilterExpressionException ex)
+            {
+                return ApiProblems.InvalidFilterExpression(ex.Expression, ex.Errors);
             }
             catch (UnknownEmbeddingFieldException ex)
             {
@@ -170,6 +178,10 @@ namespace IndxServer.Controllers
             catch (UnknownFilterException ex)
             {
                 return ApiProblems.UnknownFilter(ex.Message);
+            }
+            catch (InvalidFilterExpressionException ex)
+            {
+                return ApiProblems.InvalidFilterExpression(ex.Expression, ex.Errors);
             }
             catch (UnknownEmbeddingFieldException ex)
             {

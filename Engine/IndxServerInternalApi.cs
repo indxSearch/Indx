@@ -472,7 +472,7 @@ namespace IndxServer.Engine
                 Query query = FromQueryProxy(queryProxy, engine, teamId, dataSetName);
                 return engine.Search(query);
             }
-            catch (UnknownFilterException)
+            catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException)
             {
                 // A client error, answered 400 by the controller - not a fault worth an error log.
                 throw;
@@ -821,13 +821,11 @@ namespace IndxServer.Engine
                     return [];
                 if (!engine.EmbeddingFields.TryGetValue(query.FieldName, out var index))
                     throw new UnknownEmbeddingFieldException(query.FieldName, engine.EmbeddingFields.Keys);
-                Filter? filter = query.Filter != null
-                    ? ResolveFilterOrThrow(engine, query.Filter)
-                    : null;
+                Filter? filter = ResolveRequestFilter(engine, query.Filter, query.FilterExpression, query.FilterParameters);
                 var results = index.Search(query.Vector, query.MaxResults, filter);
                 return results.Select(r => new EmbeddingResultEntry(r.documentKey, r.score)).ToArray();
             }
-            catch (UnknownFilterException)
+            catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException)
             {
                 throw;
             }
@@ -862,6 +860,8 @@ namespace IndxServer.Engine
                     Text = query.Text,
                     MaxNumberOfRecordsToReturn = poolSize,
                     Filter = query.Filter,
+                    FilterExpression = query.FilterExpression,
+                    FilterParameters = query.FilterParameters,
                     TimeOutLimitMilliseconds = query.TimeOutLimitMilliseconds,
                     EnableCoverage = false,
                     RemoveDuplicates = true
@@ -870,9 +870,7 @@ namespace IndxServer.Engine
                 var textResult = engine.Search(textQuery);
 
                 // Embedding search — also fetch a larger pool
-                Filter? filter = query.Filter != null
-                    ? ResolveFilterOrThrow(engine, query.Filter)
-                    : null;
+                Filter? filter = ResolveRequestFilter(engine, query.Filter, query.FilterExpression, query.FilterParameters);
                 var embeddingResults = index.Search(query.Vector, poolSize, filter);
 
                 // Merge and trim
@@ -882,7 +880,7 @@ namespace IndxServer.Engine
                     .Select(r => new EmbeddingResultEntry(r.documentKey, r.score))
                     .ToArray();
             }
-            catch (UnknownFilterException)
+            catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException)
             {
                 throw;
             }
@@ -1628,6 +1626,28 @@ namespace IndxServer.Engine
         /// a filter that cannot be honoured must not be silently dropped.
         /// </para>
         /// </summary>
+        /// <summary>
+        /// The filter a request asks for: its token, its filter expression, or both - a document
+        /// must then match both. Null when it asks for neither. Throws
+        /// <see cref="UnknownFilterException"/> for a token, or a placeholder's token, that does not
+        /// resolve, and <see cref="InvalidFilterExpressionException"/> for an expression that makes
+        /// no filter: never null for a filter that was asked for (see ResolveFilterOrThrow).
+        /// </summary>
+        internal static Filter? ResolveRequestFilter(IServerSearchEngine engine, FilterProxy? token, string? expression,
+            Dictionary<string, FilterProxy>? parameters)
+        {
+            var byToken = token != null ? ResolveFilterOrThrow(engine, token) : null;
+            if (expression == null)
+                return byToken;
+            var bound = new Dictionary<string, Filter>();
+            if (parameters != null)
+                foreach (var (name, proxy) in parameters)
+                    bound[name] = ResolveFilterOrThrow(engine, proxy ?? new FilterProxy(string.Empty));
+            var byExpression = engine.CreateFilter(expression, bound, out var errors)
+                ?? throw new InvalidFilterExpressionException(expression, errors);
+            return byToken == null ? byExpression : Filter.And(byToken, byExpression);
+        }
+
         private static Filter ResolveFilterOrThrow(IServerSearchEngine engine, FilterProxy proxy)
         {
             // An empty token never reaches a filter, and it does not merely fail to resolve: the
@@ -1659,8 +1679,7 @@ namespace IndxServer.Engine
             };
             if (queryProxy.FieldBoosts != null)
                 query.FieldBoosts = queryProxy.FieldBoosts;
-            if (queryProxy.Filter != null)
-                query.Filter = ResolveFilterOrThrow(engine, queryProxy.Filter);
+            query.Filter = ResolveRequestFilter(engine, queryProxy.Filter, queryProxy.FilterExpression, queryProxy.FilterParameters);
 
             // Client-supplied boosts (kept verbatim for backward compat) merged with the dataset's
             // stored, currently-active boost rules. Rules only apply when the query opts in via

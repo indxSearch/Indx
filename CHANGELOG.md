@@ -66,6 +66,16 @@ in the AI skill.
 
 ### Added
 
+- **Filter expressions: `POST filters/expression`, and `filterExpression` on a search.** One
+  expression for what took a request per filter and per combine:
+  `brand IN ["nike", "puma"] AND price BETWEEN 100 AND 2000 AND NOT category = "outlet"`, with
+  `= != < <= > >=`, `IN`, `BETWEEN`, `within(field, lat, lon, meters)`, `AND OR NOT`, parentheses
+  and `MATCHCASE`. `filters/expression` answers `{hashString, canonical}`: the token is the one the
+  other filter routes give for the same filter, `canonical` the expression as the engine reads it.
+  `search`, `search/vector` and `search/hybrid` take `filterExpression` (ANDed with `filter`) and
+  `filterParameters`, the tokens for `$name` placeholders. An expression that makes no filter is
+  `400 invalidFilterExpression` with every error, its kind and its place, and a pointer; it never
+  runs unfiltered. The MCP `search` tool takes `filter`, an expression ANDed with `filters`.
 - **`POST filters/in`: documents whose field holds one of a set of values.** The body is
   `{fieldName, values, isCaseSensitive}`. One request and one filter for the whole set, where
   value filters combined with OR were a request per value and per combine - and on a field with

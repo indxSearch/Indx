@@ -113,6 +113,32 @@ namespace IndxServer.Services
         public static ObjectResult UnknownFilter(string detail) =>
             Problem(StatusCodes.Status400BadRequest, "unknownFilter", "Unknown filter", detail);
 
+        /// <summary>
+        /// A filter expression that makes no filter: 400 <c>invalidFilterExpression</c>, the first
+        /// error as the detail, and in extensions every error (<c>kind</c>, <c>message</c>,
+        /// <c>start</c>, <c>length</c>, <c>suggestion</c>; places in UTF-16 code units, as a
+        /// JavaScript string counts them) and a <c>pointer</c>: the expression with a caret line
+        /// under the first error.
+        /// </summary>
+        public static ObjectResult InvalidFilterExpression(string expression, IReadOnlyList<Indx.Api.FilterExpressionError> errors)
+        {
+            var first = errors.Count > 0 ? errors[0] : null;
+            var result = Problem(StatusCodes.Status400BadRequest, "invalidFilterExpression", "Invalid filter expression",
+                first?.Message ?? "The filter expression makes no filter.");
+            var problem = (ProblemDetails)result.Value!;
+            problem.Extensions["errors"] = errors.Select(e => new
+            {
+                kind = char.ToLowerInvariant(e.Kind.ToString()[0]) + e.Kind.ToString()[1..],
+                message = e.Message,
+                start = e.Start,
+                length = e.Length,
+                suggestion = e.Suggestion,
+            }).ToArray();
+            if (first != null && first.Start <= expression.Length)
+                problem.Extensions["pointer"] = expression + "\n" + new string(' ', first.Start) + new string('^', Math.Max(1, first.Length));
+            return result;
+        }
+
         public static ObjectResult LoadFailed(string detail) =>
             Problem(StatusCodes.Status400BadRequest, "loadFailed", "Load failed", detail);
 
