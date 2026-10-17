@@ -135,8 +135,23 @@ namespace IndxServer.Services
                 suggestion = e.Suggestion,
             }).ToArray();
             if (first != null && first.Start <= expression.Length)
-                problem.Extensions["pointer"] = expression + "\n" + new string(' ', first.Start) + new string('^', Math.Max(1, first.Length));
+                problem.Extensions["pointer"] = Pointer(expression, first.Start, first.Length);
             return result;
+        }
+
+        /// <summary>
+        /// The expression with carets under [start, start + length). A long expression is cut to a
+        /// window round the error, marked with "...", so a request of 100 000 characters is not sent
+        /// back whole; the carets stay under the same characters.
+        /// </summary>
+        internal static string Pointer(string expression, int start, int length)
+        {
+            const int context = 60, maxMarked = 60;
+            length = Math.Clamp(length, 1, maxMarked);
+            int from = Math.Max(0, start - context);
+            int to = Math.Min(expression.Length, start + length + context);
+            string head = from > 0 ? "..." : "", tail = to < expression.Length ? "..." : "";
+            return head + expression[from..to] + tail + "\n" + new string(' ', head.Length + start - from) + new string('^', length);
         }
 
         public static ObjectResult LoadFailed(string detail) =>

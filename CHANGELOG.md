@@ -15,6 +15,16 @@ in the AI skill.
 
 ### Changed
 
+- **`Indx:BoostSaturationCeiling` is read as 1 to 255.** 0 or less ("no cap") or more than 255 is
+  read as 255, the most a search can carry, with a warning in the log, so saved boost rules can
+  never take a search past it and have it refused.
+- **Statistics record a filter given as `filterExpression`**, and a token and an expression
+  together as the filter the search ran with. Only the token was read, so a search filtered by an
+  expression went unrecorded or was stored without its filter.
+- **A filter expression is at most 100 000 characters**, and the `pointer` of an
+  `invalidFilterExpression` is a window round the first error, not the whole expression.
+- **A combined token spelled otherwise than the server writes it is `400 unknownFilter`** with the
+  token to use. A token the server handed out is always spelled right.
 - **A boost with a strength outside 1-3 is a `400 invalidArgument`**, from `boosts/from-filter`, a
   search's `boosts` and `PUT boosts`; `boosts/from-filter` used to echo it back, and a search
   added it to the score unchecked. A search whose boosts' strengths, saved rules included, sum

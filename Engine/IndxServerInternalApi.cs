@@ -459,8 +459,15 @@ namespace IndxServer.Engine
         /// Make sure to check for search readiness after a call
         /// to DoIndexAsync.
         /// </summary>
-        internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId)
+        internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId) =>
+            Search(queryProxy, dataSetName, teamId, out _);
+
+        /// <param name="filterKey">The key of the filter the search ran with: its token and its
+        /// filter expression ANDed, resolved. Null when it had none. What statistics record, so a
+        /// filter given as an expression is counted as one given as a token is.</param>
+        internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId, out string? filterKey)
         {
+            filterKey = null;
             try
             {
                 var engine = ResolveEngine(dataSetName, teamId);
@@ -470,6 +477,7 @@ namespace IndxServer.Engine
                 if (engine == null || engine.DocumentFields == null)
                     return Result.MakeEmptyResult();
                 Query query = FromQueryProxy(queryProxy, engine, teamId, dataSetName);
+                filterKey = query.Filter?.SerializedKey;
                 return engine.Search(query);
             }
             catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException or ArgumentException)
@@ -1406,8 +1414,24 @@ namespace IndxServer.Engine
         internal void AttachBoostStore(Services.BoostRuleStore store, int saturationCeiling)
         {
             _boostStore = store;
-            _boostCeiling = saturationCeiling;
+            _boostCeiling = EffectiveBoostCeiling(saturationCeiling);
+            if (_boostCeiling != saturationCeiling)
+                _logger.LogWarning("Indx:BoostSaturationCeiling is {Configured}; read as {Effective}, the most a search can carry",
+                    saturationCeiling, _boostCeiling);
         }
+
+        /// <summary>The most a search's boosts may sum to: the library refuses a search past it
+        /// (SearchEngine.MaxBoostStrengthSum, 65535 / 257).</summary>
+        internal const int MaxBoostStrengthSum = ushort.MaxValue / 257;
+
+        /// <summary>
+        /// The ceiling the rules are added up to. One of 0 or less - documented as "no cap" - or
+        /// past <see cref="MaxBoostStrengthSum"/> is read as that maximum, so the saved rules can
+        /// never take a search past what the library serves and have it refused. Only a client's
+        /// own boosts can, and that is the client's error, refused with the reason.
+        /// </summary>
+        internal static int EffectiveBoostCeiling(int configured) =>
+            configured <= 0 || configured > MaxBoostStrengthSum ? MaxBoostStrengthSum : configured;
 
         // Per-dataset metadata incl. the declared key field (server-owned). Wired in once at startup.
         private Services.DatasetMetadataStore? _metadataStore;
@@ -1703,11 +1727,11 @@ namespace IndxServer.Engine
                 // Saturation cap: keep client boosts, then add rule boosts greedily while the total
                 // summed strength stays within the ceiling. Additive boosts subtract MaxBoost*257
                 // flatly, so an unbounded sum underflows the 16-bit score and flattens ranking.
-                // Ceiling <= 0 disables the cap.
+                // The ceiling is 1..255 (EffectiveBoostCeiling): a configured "no cap" is 255.
                 var sum = merged.Sum(b => (int)b.BoostStrength);
                 foreach (var rb in ruleBoosts)
                 {
-                    if (_boostCeiling > 0 && sum + (int)rb.BoostStrength > _boostCeiling) continue;
+                    if (sum + (int)rb.BoostStrength > _boostCeiling) continue;
                     merged.Add(rb);
                     sum += (int)rb.BoostStrength;
                 }
