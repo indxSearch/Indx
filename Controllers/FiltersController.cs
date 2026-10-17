@@ -25,7 +25,9 @@ namespace IndxServer.Controllers
     public class FiltersController(TeamContextResolver resolver) : DatasetApiController(resolver)
     {
         /// <summary>
-        /// CombineFilters will combine two filters using AND or OR operation.
+        /// Combines two or more filters with AND or OR into one: one node and one token for the
+        /// whole list, where pairs combined in turn were a request and a filter per pair. A filter
+        /// listed twice counts once and the order does not matter; one filter gives its own token.
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/filters/combine")]
@@ -40,23 +42,22 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "CombineFilters", SystemState.Ready) is { } stateError)
                 return stateError;
-            if (combineFilters == null)
-                return ApiProblems.InvalidArgument("A body with two filters to combine is required.");
-            var fa = ResolveFilter(matcher, combineFilters.A, "a", out var errorA);
-            if (fa == null) return errorA!;
-            var fb = ResolveFilter(matcher, combineFilters.B, "b", out var errorB);
-            if (fb == null) return errorB!;
-            // The operands' masks must be there before they are combined; a load that failed was
-            // ignored until Oct 2026, and the combination was built on whatever the masks held.
-            if (!matcher.LoadFilters(new Filter[] { fa, fb }, out var loadError))
+            if (combineFilters?.Filters == null || combineFilters.Filters.Length == 0)
+                return ApiProblems.InvalidArgument("A body with a list of filters to combine is required: 'filters', at least one.");
+            var operands = new Filter[combineFilters.Filters.Length];
+            for (int i = 0; i < operands.Length; i++)
+            {
+                var operand = ResolveFilter(matcher, combineFilters.Filters[i], $"filters[{i}]", out var operandError);
+                if (operand == null) return operandError!;
+                operands[i] = operand;
+            }
+            var result = combineFilters.UseAndOperation ? Filter.And(operands) : Filter.Or(operands);
+            // Loaded here, so that an operand that cannot load is this request's 400 and not a
+            // later search's. An AND loads cost-aware: an array-field operand is checked on the
+            // candidates the others leave, not loaded in full.
+            if (!matcher.LoadFilters([result], out var loadError))
                 return ApiProblems.OperationFailed(loadError);
-            Filter result;
-            if (combineFilters.UseAndOperation)
-                result = fa & fb;
-            else
-                result = fa | fb;
-            var filterProxy = new FilterProxy(result.SerializedKey);
-            return Ok(filterProxy);
+            return Ok(new FilterProxy(result.SerializedKey));
         }
 
         /// <summary>

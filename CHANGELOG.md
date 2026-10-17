@@ -94,6 +94,13 @@ in the AI skill.
 
 ### Breaking
 
+- **`POST filters/combine` takes a list: `{ "filters": [ … ], "useAndOperation": true }`**, in place
+  of `{ "a", "b", "useAndOperation" }`. Two or more filters make one filter - one request, one
+  token and one cache entry, where pairs combined in turn were a request and a filter per pair. A
+  filter listed twice counts once, the order does not matter, one filter gives its own token, and
+  an empty list is `400`. An AND holding a filter on an array field checks it only on the documents
+  the other filters leave: next to a selective filter, on 500 000 documents, 9 ms where loading it
+  took 73 ms. `@indxsearch/intrface` sends the list from its next release.
 - **Team-scoped routes.** Every dataset operation lives under
   `/api/teams/{team}/datasets/{dataset}/…`. The 47 v1 route aliases are gone.
 - **Errors are RFC 9457 problem documents** (`application/problem+json`) with a machine-readable

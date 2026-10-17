@@ -65,13 +65,10 @@ namespace IndxServer.Swagger
             {
                 schema.Example = new OpenApiObject
                 {
-                    ["a"] = new OpenApiObject
+                    ["filters"] = new OpenApiArray
                     {
-                        ["hashString"] = new OpenApiString("example-filter-token-12345")
-                    },
-                    ["b"] = new OpenApiObject
-                    {
-                        ["hashString"] = new OpenApiString("example-filter-token-67890")
+                        new OpenApiObject { ["hashString"] = new OpenApiString("example-filter-token-12345") },
+                        new OpenApiObject { ["hashString"] = new OpenApiString("example-filter-token-67890") },
                     },
                     ["useAndOperation"] = new OpenApiBoolean(true)
                 };
