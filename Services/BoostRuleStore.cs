@@ -202,8 +202,9 @@ namespace IndxServer.Services
                         ? f
                         : (rule.Join == BoostJoin.And ? combined & f : combined | f);
                 }
-                if (buildable && combined != null)
-                    result.Add(engine.CreateBoost(combined, rule.Strength));
+                // A strength SetBoostRules refuses can still be in a row written before it did.
+                if (buildable && combined != null && engine.CreateBoost(combined, rule.Strength, out _) is { } boost)
+                    result.Add(boost);
             }
             return result;
         }

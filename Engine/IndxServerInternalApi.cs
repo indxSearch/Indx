@@ -459,8 +459,15 @@ namespace IndxServer.Engine
         /// Make sure to check for search readiness after a call
         /// to DoIndexAsync.
         /// </summary>
-        internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId)
+        internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId) =>
+            Search(queryProxy, dataSetName, teamId, out _);
+
+        /// <param name="filterKey">The key of the filter the search ran with: its token and its
+        /// filter expression ANDed, resolved. Null when it had none. What statistics record, so a
+        /// filter given as an expression is counted as one given as a token is.</param>
+        internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId, out string? filterKey)
         {
+            filterKey = null;
             try
             {
                 var engine = ResolveEngine(dataSetName, teamId);
@@ -470,9 +477,10 @@ namespace IndxServer.Engine
                 if (engine == null || engine.DocumentFields == null)
                     return Result.MakeEmptyResult();
                 Query query = FromQueryProxy(queryProxy, engine, teamId, dataSetName);
+                filterKey = query.Filter?.SerializedKey;
                 return engine.Search(query);
             }
-            catch (UnknownFilterException)
+            catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException or ArgumentException)
             {
                 // A client error, answered 400 by the controller - not a fault worth an error log.
                 throw;
@@ -821,13 +829,11 @@ namespace IndxServer.Engine
                     return [];
                 if (!engine.EmbeddingFields.TryGetValue(query.FieldName, out var index))
                     throw new UnknownEmbeddingFieldException(query.FieldName, engine.EmbeddingFields.Keys);
-                Filter? filter = query.Filter != null
-                    ? ResolveFilterOrThrow(engine, query.Filter)
-                    : null;
+                Filter? filter = ResolveRequestFilter(engine, query.Filter, query.FilterExpression, query.FilterParameters);
                 var results = index.Search(query.Vector, query.MaxResults, filter);
                 return results.Select(r => new EmbeddingResultEntry(r.documentKey, r.score)).ToArray();
             }
-            catch (UnknownFilterException)
+            catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException)
             {
                 throw;
             }
@@ -862,6 +868,8 @@ namespace IndxServer.Engine
                     Text = query.Text,
                     MaxNumberOfRecordsToReturn = poolSize,
                     Filter = query.Filter,
+                    FilterExpression = query.FilterExpression,
+                    FilterParameters = query.FilterParameters,
                     TimeOutLimitMilliseconds = query.TimeOutLimitMilliseconds,
                     EnableCoverage = false,
                     RemoveDuplicates = true
@@ -870,9 +878,7 @@ namespace IndxServer.Engine
                 var textResult = engine.Search(textQuery);
 
                 // Embedding search — also fetch a larger pool
-                Filter? filter = query.Filter != null
-                    ? ResolveFilterOrThrow(engine, query.Filter)
-                    : null;
+                Filter? filter = ResolveRequestFilter(engine, query.Filter, query.FilterExpression, query.FilterParameters);
                 var embeddingResults = index.Search(query.Vector, poolSize, filter);
 
                 // Merge and trim
@@ -882,7 +888,7 @@ namespace IndxServer.Engine
                     .Select(r => new EmbeddingResultEntry(r.documentKey, r.score))
                     .ToArray();
             }
-            catch (UnknownFilterException)
+            catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException)
             {
                 throw;
             }
@@ -1408,8 +1414,24 @@ namespace IndxServer.Engine
         internal void AttachBoostStore(Services.BoostRuleStore store, int saturationCeiling)
         {
             _boostStore = store;
-            _boostCeiling = saturationCeiling;
+            _boostCeiling = EffectiveBoostCeiling(saturationCeiling);
+            if (_boostCeiling != saturationCeiling)
+                _logger.LogWarning("Indx:BoostSaturationCeiling is {Configured}; read as {Effective}, the most a search can carry",
+                    saturationCeiling, _boostCeiling);
         }
+
+        /// <summary>The most a search's boosts may sum to: the library refuses a search past it
+        /// (SearchEngine.MaxBoostStrengthSum, 65535 / 257).</summary>
+        internal const int MaxBoostStrengthSum = ushort.MaxValue / 257;
+
+        /// <summary>
+        /// The ceiling the rules are added up to. One of 0 or less - documented as "no cap" - or
+        /// past <see cref="MaxBoostStrengthSum"/> is read as that maximum, so the saved rules can
+        /// never take a search past what the library serves and have it refused. Only a client's
+        /// own boosts can, and that is the client's error, refused with the reason.
+        /// </summary>
+        internal static int EffectiveBoostCeiling(int configured) =>
+            configured <= 0 || configured > MaxBoostStrengthSum ? MaxBoostStrengthSum : configured;
 
         // Per-dataset metadata incl. the declared key field (server-owned). Wired in once at startup.
         private Services.DatasetMetadataStore? _metadataStore;
@@ -1628,6 +1650,28 @@ namespace IndxServer.Engine
         /// a filter that cannot be honoured must not be silently dropped.
         /// </para>
         /// </summary>
+        /// <summary>
+        /// The filter a request asks for: its token, its filter expression, or both - a document
+        /// must then match both. Null when it asks for neither. Throws
+        /// <see cref="UnknownFilterException"/> for a token, or a placeholder's token, that does not
+        /// resolve, and <see cref="InvalidFilterExpressionException"/> for an expression that makes
+        /// no filter: never null for a filter that was asked for (see ResolveFilterOrThrow).
+        /// </summary>
+        internal static Filter? ResolveRequestFilter(IServerSearchEngine engine, FilterProxy? token, string? expression,
+            Dictionary<string, FilterProxy>? parameters)
+        {
+            var byToken = token != null ? ResolveFilterOrThrow(engine, token) : null;
+            if (expression == null)
+                return byToken;
+            var bound = new Dictionary<string, Filter>();
+            if (parameters != null)
+                foreach (var (name, proxy) in parameters)
+                    bound[name] = ResolveFilterOrThrow(engine, proxy ?? new FilterProxy(string.Empty));
+            var byExpression = engine.CreateFilter(expression, bound, out var errors)
+                ?? throw new InvalidFilterExpressionException(expression, errors);
+            return byToken == null ? byExpression : Filter.And(byToken, byExpression);
+        }
+
         private static Filter ResolveFilterOrThrow(IServerSearchEngine engine, FilterProxy proxy)
         {
             // An empty token never reaches a filter, and it does not merely fail to resolve: the
@@ -1659,16 +1703,21 @@ namespace IndxServer.Engine
             };
             if (queryProxy.FieldBoosts != null)
                 query.FieldBoosts = queryProxy.FieldBoosts;
-            if (queryProxy.Filter != null)
-                query.Filter = ResolveFilterOrThrow(engine, queryProxy.Filter);
+            query.Filter = ResolveRequestFilter(engine, queryProxy.Filter, queryProxy.FilterExpression, queryProxy.FilterParameters);
 
             // Client-supplied boosts (kept verbatim for backward compat) merged with the dataset's
             // stored, currently-active boost rules. Rules only apply when the query opts in via
             // EnableBoost — same flag the client already uses.
             var merged = new List<Boost>();
             if (queryProxy.Boosts != null)
-                foreach (var b in queryProxy.Boosts)
-                    merged.Add(engine.CreateBoost(ResolveFilterOrThrow(engine, b.FilterProxy), b.BoostStrength));
+                for (int i = 0; i < queryProxy.Boosts.Length; i++)
+                {
+                    var b = queryProxy.Boosts[i];
+                    if (b?.FilterProxy == null)
+                        throw new ArgumentException($"boosts[{i}] needs a filterProxy with a hashString.");
+                    merged.Add(engine.CreateBoost(ResolveFilterOrThrow(engine, b.FilterProxy), b.BoostStrength, out var boostError)
+                        ?? throw new ArgumentException($"boosts[{i}]: {boostError}"));
+                }
 
             if (queryProxy.EnableBoost && _boostStore != null)
             {
@@ -1678,11 +1727,11 @@ namespace IndxServer.Engine
                 // Saturation cap: keep client boosts, then add rule boosts greedily while the total
                 // summed strength stays within the ceiling. Additive boosts subtract MaxBoost*257
                 // flatly, so an unbounded sum underflows the 16-bit score and flattens ranking.
-                // Ceiling <= 0 disables the cap.
+                // The ceiling is 1..255 (EffectiveBoostCeiling): a configured "no cap" is 255.
                 var sum = merged.Sum(b => (int)b.BoostStrength);
                 foreach (var rb in ruleBoosts)
                 {
-                    if (_boostCeiling > 0 && sum + (int)rb.BoostStrength > _boostCeiling) continue;
+                    if (sum + (int)rb.BoostStrength > _boostCeiling) continue;
                     merged.Add(rb);
                     sum += (int)rb.BoostStrength;
                 }

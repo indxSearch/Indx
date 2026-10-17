@@ -15,6 +15,20 @@ in the AI skill.
 
 ### Changed
 
+- **`Indx:BoostSaturationCeiling` is read as 1 to 255.** 0 or less ("no cap") or more than 255 is
+  read as 255, the most a search can carry, with a warning in the log, so saved boost rules can
+  never take a search past it and have it refused.
+- **Statistics record a filter given as `filterExpression`**, and a token and an expression
+  together as the filter the search ran with. Only the token was read, so a search filtered by an
+  expression went unrecorded or was stored without its filter.
+- **A filter expression is at most 100 000 characters**, and the `pointer` of an
+  `invalidFilterExpression` is a window round the first error, not the whole expression.
+- **A combined token spelled otherwise than the server writes it is `400 unknownFilter`** with the
+  token to use. A token the server handed out is always spelled right.
+- **A boost with a strength outside 1-3 is a `400 invalidArgument`**, from `boosts/from-filter`, a
+  search's `boosts` and `PUT boosts`; `boosts/from-filter` used to echo it back, and a search
+  added it to the score unchecked. A search whose boosts' strengths, saved rules included, sum
+  past 255 answers `200` with no records and `reason` set.
 - **Field roles are written by one route, and it no longer waits for a rebuild.** The per-role
   setters are removed: `PUT fields/searchable`, `fields/filterable`, `fields/facetable`,
   `fields/sortable`, `fields/word-indexing` and `fields/embeddable` answer `405`. They set one
@@ -66,6 +80,30 @@ in the AI skill.
 
 ### Added
 
+- **Filter expressions: `POST filters/expression`, and `filterExpression` on a search.** One
+  expression for what took a request per filter and per combine:
+  `brand IN ["nike", "puma"] AND price BETWEEN 100 AND 2000 AND NOT category = "outlet"`, with
+  `= != < <= > >=`, `IN`, `BETWEEN`, `within(field, lat, lon, meters)`, `AND OR NOT`, parentheses
+  and `MATCHCASE`. `filters/expression` answers `{hashString, canonical}`: the token is the one the
+  other filter routes give for the same filter, `canonical` the expression as the engine reads it.
+  `search`, `search/vector` and `search/hybrid` take `filterExpression` (ANDed with `filter`) and
+  `filterParameters`, the tokens for `$name` placeholders. An expression that makes no filter is
+  `400 invalidFilterExpression` with every error, its kind and its place, and a pointer; it never
+  runs unfiltered. The MCP `search` tool takes `filter`, an expression ANDed with `filters`.
+- **`POST filters/in`: documents whose field holds one of a set of values.** The body is
+  `{fieldName, values, isCaseSensitive}`. One request and one filter for the whole set, where
+  value filters combined with OR were a request per value and per combine - and on a field with
+  no index (an array) a walk of the documents per value, against one for the set. On a numeric
+  field the values compare as numbers. The token describes the filter. An empty list, a value
+  that is not a number on a numeric field, or case sensitivity on one is a `400` with the reason.
+- **`POST filters/position`: documents within a distance of a position** - "a shop within 1 km".
+  The body is `{fieldName, latitude, longitude, withinMeter}`: `fieldName` names an object holding
+  the numbers `latitude` and `longitude` in decimal degrees (`location` for
+  `{"location": {"latitude": 59.91, "longitude": 10.75}}`), and both `location.latitude` and
+  `location.longitude` must be Filterable. The distance is measured on a sphere, the short way
+  round across the antimeridian, both ends inclusive. Like a range filter's, the token describes
+  the filter and is honoured after the cache has let it go. A position off the Earth, a negative
+  distance, or a field without a position is a `400` with the reason.
 - **Monitor.** A live view of the instance: dataset states, document counts, idle-eviction
   countdowns, process and native memory, filter-cache routing, and an event stream carrying state
   changes, field configuration changes and anything the server logs.
@@ -80,6 +118,13 @@ in the AI skill.
 
 ### Breaking
 
+- **`POST filters/combine` takes a list: `{ "filters": [ … ], "useAndOperation": true }`**, in place
+  of `{ "a", "b", "useAndOperation" }`. Two or more filters make one filter - one request, one
+  token and one cache entry, where pairs combined in turn were a request and a filter per pair. A
+  filter listed twice counts once, the order does not matter, one filter gives its own token, and
+  an empty list is `400`. An AND holding a filter on an array field checks it only on the documents
+  the other filters leave: next to a selective filter, on 500 000 documents, 9 ms where loading it
+  took 73 ms. `@indxsearch/intrface` sends the list from its next release.
 - **Team-scoped routes.** Every dataset operation lives under
   `/api/teams/{team}/datasets/{dataset}/…`. The 47 v1 route aliases are gone.
 - **Errors are RFC 9457 problem documents** (`application/problem+json`) with a machine-readable

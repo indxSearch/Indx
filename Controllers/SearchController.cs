@@ -43,7 +43,7 @@ namespace IndxServer.Controllers
                 return stateError;
             try
             {
-                Indx.Api.Result res = IndxServerInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey);
+                Indx.Api.Result res = IndxServerInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey, out var resolvedFilterKey);
                 // The search event is logged server-side - that is what makes the zero-hit list
                 // exist at all - and the minted queryId is what select/convert events reference.
                 // Cost on this path is a struct and a queue append (measured in
@@ -69,12 +69,12 @@ namespace IndxServer.Controllers
                     // The header is minted either way, so a client can always read one; a click
                     // that references an unrecorded search is accepted as an orphan and still
                     // counts on the document.
-                    var filterKey = statistics.FilterKeyToRecord(query, ctx.OwnerKey, dataSetName);
+                    var filterKey = statistics.FilterKeyToRecord(resolvedFilterKey, ctx.OwnerKey, dataSetName);
                     if (StatisticsService.ShouldRecord(query, filterKey, res))
                         statistics.Writer!.RecordSearch(new SearchEventRow(
                             queryId, ctx.OwnerKey, dataSetName, query.Text ?? string.Empty,
-                            // The token IS the filter's serialized key, and it resolved, or the
-                            // search above would have thrown UnknownFilterException.
+                            // The resolved filter's serialized key: it resolved, or the search
+                            // above would have thrown.
                             filterKey,
                             res.Records?.Length ?? 0, string.IsNullOrWhiteSpace(subject) ? null : subject,
                             DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
@@ -87,6 +87,10 @@ namespace IndxServer.Controllers
             catch (UnknownFilterException ex)
             {
                 return ApiProblems.UnknownFilter(ex.Message);
+            }
+            catch (InvalidFilterExpressionException ex)
+            {
+                return ApiProblems.InvalidFilterExpression(ex.Expression, ex.Errors);
             }
             // PrepareSorting throws ArgumentException("invalid type") for a SortBy field whose type
             // is not one it can compare. Reaching it takes a field that is Sortable and untyped, which
@@ -126,6 +130,10 @@ namespace IndxServer.Controllers
             catch (UnknownFilterException ex)
             {
                 return ApiProblems.UnknownFilter(ex.Message);
+            }
+            catch (InvalidFilterExpressionException ex)
+            {
+                return ApiProblems.InvalidFilterExpression(ex.Expression, ex.Errors);
             }
             catch (UnknownEmbeddingFieldException ex)
             {
@@ -170,6 +178,10 @@ namespace IndxServer.Controllers
             catch (UnknownFilterException ex)
             {
                 return ApiProblems.UnknownFilter(ex.Message);
+            }
+            catch (InvalidFilterExpressionException ex)
+            {
+                return ApiProblems.InvalidFilterExpression(ex.Expression, ex.Errors);
             }
             catch (UnknownEmbeddingFieldException ex)
             {

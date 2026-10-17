@@ -1,4 +1,5 @@
 ﻿using System.Collections.Concurrent;
+using Indx.Api;
 using Microsoft.Data.Sqlite;
 
 namespace IndxServer.Services
@@ -797,12 +798,16 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
 )";
 
         /// <summary>Adds each operand of one search's filter to <paramref name="counts"/>, once per
-        /// search however often the key repeats it.</summary>
+        /// search however often the key repeats it. A combined key is unique per visitor's click
+        /// path, so it is counted per operand: <c>genre = Poetry</c> is the unit a merchant thinks
+        /// in. A value filter counts as its field and value; a range or a position as its field,
+        /// with an empty value. A negated operand is skipped: "not Poetry" is not narrowing by
+        /// Poetry.</summary>
         private static void CountOperands(
             Dictionary<(string Team, string Ds, string Field, string Value), (long Uses, long Zero)> counts,
             string team, string ds, string key, int hitCount)
         {
-            foreach (var op in FilterKeyOperands.Parse(key).Distinct())
+            foreach (var op in FilterKeyReader.Operands(key).Where(o => !o.Negated).Select(o => (o.Field, o.Value)).Distinct())
             {
                 var k = (team, ds, op.Field, op.Value);
                 var (uses, zero) = counts.GetValueOrDefault(k);
@@ -811,7 +816,7 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
         }
 
         /// <summary>The day's filter use, per operand. In C# rather than SQL because splitting a
-        /// key is a parse of our own grammar (<see cref="FilterKeyOperands"/>), not a string op.</summary>
+        /// key is a parse of our own grammar (<see cref="FilterKeyReader"/>), not a string op.</summary>
         private static void RollupFilters(SqliteConnection conn, SqliteTransaction tx, long day, long from, long to)
         {
             var counts = new Dictionary<(string Team, string Ds, string Field, string Value), (long Uses, long Zero)>();

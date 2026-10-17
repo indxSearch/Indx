@@ -25,7 +25,9 @@ namespace IndxServer.Controllers
     public class FiltersController(TeamContextResolver resolver) : DatasetApiController(resolver)
     {
         /// <summary>
-        /// CombineFilters will combine two filters using AND or OR operation.
+        /// Combines two or more filters with AND or OR into one: one node and one token for the
+        /// whole list, where pairs combined in turn were a request and a filter per pair. A filter
+        /// listed twice counts once and the order does not matter; one filter gives its own token.
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/filters/combine")]
@@ -40,23 +42,22 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "CombineFilters", SystemState.Ready) is { } stateError)
                 return stateError;
-            if (combineFilters == null)
-                return ApiProblems.InvalidArgument("A body with two filters to combine is required.");
-            var fa = ResolveFilter(matcher, combineFilters.A, "a", out var errorA);
-            if (fa == null) return errorA!;
-            var fb = ResolveFilter(matcher, combineFilters.B, "b", out var errorB);
-            if (fb == null) return errorB!;
-            // The operands' masks must be there before they are combined; a load that failed was
-            // ignored until Oct 2026, and the combination was built on whatever the masks held.
-            if (!matcher.LoadFilters(new Filter[] { fa, fb }, out var loadError))
+            if (combineFilters?.Filters == null || combineFilters.Filters.Length == 0)
+                return ApiProblems.InvalidArgument("A body with a list of filters to combine is required: 'filters', at least one.");
+            var operands = new Filter[combineFilters.Filters.Length];
+            for (int i = 0; i < operands.Length; i++)
+            {
+                var operand = ResolveFilter(matcher, combineFilters.Filters[i], $"filters[{i}]", out var operandError);
+                if (operand == null) return operandError!;
+                operands[i] = operand;
+            }
+            var result = combineFilters.UseAndOperation ? Filter.And(operands) : Filter.Or(operands);
+            // Loaded here, so that an operand that cannot load is this request's 400 and not a
+            // later search's. An AND loads cost-aware: an array-field operand is checked on the
+            // candidates the others leave, not loaded in full.
+            if (!matcher.LoadFilters([result], out var loadError))
                 return ApiProblems.OperationFailed(loadError);
-            Filter result;
-            if (combineFilters.UseAndOperation)
-                result = fa & fb;
-            else
-                result = fa | fb;
-            var filterProxy = new FilterProxy(result.SerializedKey);
-            return Ok(filterProxy);
+            return Ok(new FilterProxy(result.SerializedKey));
         }
 
         /// <summary>
@@ -106,6 +107,104 @@ namespace IndxServer.Controllers
                 return ApiProblems.InvalidArgument(filterError ?? "invalid filter arguments");
             var filterProxy = new FilterProxy(filter.SerializedKey);
             return Ok(filterProxy);
+        }
+
+        /// <summary>
+        /// Creates the filter a filter expression describes, e.g.
+        /// <c>brand IN ["nike", "puma"] AND price BETWEEN 100 AND 2000</c>, and answers its token and
+        /// the expression as the engine reads it. The token is the one the other filter routes make
+        /// for the same filter. An expression that makes none is 400 <c>invalidFilterExpression</c>
+        /// with every error and its place; a placeholder's token that does not resolve is 400
+        /// <c>unknownFilter</c>.
+        /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
+        [HttpPost(DataSetRoute + "/filters/expression")]
+        public ActionResult<FilterExpressionResultProxy> CreateFilterFromExpression(string teamName, string dataSetName, [FromBody] FilterExpressionProxy body)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return ApiProblems.InvalidDatasetName(dataSetName);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
+            if (RequireState(matcher, "CreateFilterFromExpression", SystemState.Ready) is { } stateError)
+                return stateError;
+            if (body == null)
+                return ApiProblems.InvalidArgument("A body with an expression is required.");
+            Filter filter;
+            try
+            {
+                filter = IndxServerInternalApi.ResolveRequestFilter(matcher, null, body.Expression ?? string.Empty, body.Parameters)!;
+            }
+            catch (UnknownFilterException ex)
+            {
+                return ApiProblems.UnknownFilter(ex.Message);
+            }
+            catch (InvalidFilterExpressionException ex)
+            {
+                return ApiProblems.InvalidFilterExpression(ex.Expression, ex.Errors);
+            }
+            // Loaded here, as filters/combine loads, so an operand that cannot load is this
+            // request's 400 and not a later search's.
+            if (!matcher.LoadFilters([filter], out var loadError))
+                return ApiProblems.OperationFailed(loadError);
+            return Ok(new FilterExpressionResultProxy { HashString = filter.SerializedKey, Canonical = filter.ToExpression() });
+        }
+
+        /// <summary>
+        /// Creates a filter matching documents whose field holds one of a set of values - one filter
+        /// for the whole set, where value filters combined with OR are 2n - 1 requests and filters.
+        /// Like a value or range filter, its token describes it.
+        /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
+        [HttpPost(DataSetRoute + "/filters/in")]
+        public ActionResult<FilterProxy> CreateInFilter(string teamName, string dataSetName, [FromBody] InFilterProxy inFilter)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return ApiProblems.InvalidDatasetName(dataSetName);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
+            if (RequireState(matcher, "CreateInFilter", SystemState.Ready) is { } stateError)
+                return stateError;
+            if (inFilter == null || inFilter.Values == null)
+                return ApiProblems.InvalidArgument("A body with fieldName and a list of values is required.");
+            // Each value arrives as a JsonElement; unwrapped as filters/value unwraps its one value.
+            var values = inFilter.Values.Select(v => UnwrapJsonElement(v)!).ToArray();
+            var filter = matcher.CreateInFilter(inFilter.FieldName, values, inFilter.IsCaseSensitive, out var filterError);
+            if (filter == null)
+                return ApiProblems.InvalidArgument(filterError ?? "invalid filter arguments");
+            return Ok(new FilterProxy(filter.SerializedKey));
+        }
+
+        /// <summary>
+        /// Creates a filter matching documents whose position lies within a distance, in metres, of
+        /// the given position. The position field is an object with the numbers <c>latitude</c> and
+        /// <c>longitude</c>, both Filterable. Like a range filter, its token describes it.
+        /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
+        [HttpPost(DataSetRoute + "/filters/position")]
+        public ActionResult<FilterProxy> CreatePositionFilter(string teamName, string dataSetName, [FromBody] PositionFilterProxy positionFilter)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (!FileNameValidity.IsValid(dataSetName))
+                return ApiProblems.InvalidDatasetName(dataSetName);
+            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
+            if (RequireState(matcher, "CreatePositionFilter", SystemState.Ready) is { } stateError)
+                return stateError;
+            if (positionFilter == null)
+                return ApiProblems.InvalidArgument("A body with fieldName, latitude, longitude and withinMeter is required.");
+            var filter = matcher.CreatePositionFilter(positionFilter.FieldName,
+                new GeoPosition(positionFilter.Latitude, positionFilter.Longitude), positionFilter.WithinMeter, out var filterError);
+            if (filter == null)
+                return ApiProblems.InvalidArgument(filterError ?? "invalid filter arguments");
+            return Ok(new FilterProxy(filter.SerializedKey));
         }
 
         /// <summary>

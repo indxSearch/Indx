@@ -138,8 +138,8 @@ namespace IndxServer.Mcp
                      "know the field names and the values that exist. An empty result is meaningful here: matching is precise by " +
                      "default (near-exact only, incl. typo tolerance) — an empty result means nothing matches well, " +
                      "which is a trustworthy 'not found' (don't retry with looser wording unless you set broaden=true). " +
-                     "Saved boost rules are applied. Use filters for structured constraints on filterable fields " +
-                     "(get valid fields/values from describe_dataset).")]
+                     "Saved boost rules are applied. Use filters for structured constraints on filterable fields, and filter " +
+                     "(an expression) for OR, NOT, IN or open ranges (get valid fields/values from describe_dataset).")]
         public async Task<McpSearchResult> Search(
             [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
             [System.ComponentModel.Description("Dataset name.")] string dataset,
@@ -148,6 +148,12 @@ namespace IndxServer.Mcp
             [System.ComponentModel.Description("Constraints combined with AND. Each is {field, value} for an exact match or {field, min, max} for a numeric range. " +
                          "The field must be one describe_dataset lists as filterable, and the value should be one it reports; " +
                          "an unknown field is an error and an unseen value simply matches nothing.")] McpFilter[]? filters = null,
+            [System.ComponentModel.Description("A filter expression, for what the filters list cannot say (OR, NOT, IN, open ranges, positions); ANDed with filters. " +
+                         "Comparisons: field = value, !=, <, <=, >, >=, field IN [v1, v2], field BETWEEN a AND b, within(field, lat, lon, meters). " +
+                         "Combine with AND, OR, NOT and parentheses (NOT binds tightest, then AND). Text in double quotes, numbers bare; " +
+                         "text compares case-insensitively unless followed by MATCHCASE; a field name with spaces goes in backticks. " +
+                         "Example: brand IN [\"nike\", \"puma\"] AND (price < 500 OR NOT category = \"outlet\"). " +
+                         "Fields must be filterable (describe_dataset). An expression with errors is refused with each error and its position.")] string? filter = null,
             [System.ComponentModel.Description("How many documents to return. Default 10, maximum 100. Ask for what you will actually read.")] int limit = DefaultLimit,
             [System.ComponentModel.Description("If set, return only these top-level fields from each document.")] string[]? fields = null,
             [System.ComponentModel.Description("Set true to include looser character-pattern matches. Default false, which is near-exact. Worth one retry when a " +
@@ -185,6 +191,18 @@ namespace IndxServer.Mcp
                 }
                 if (combined != null)
                     queryProxy.Filter = new FilterProxy(combined.SerializedKey);
+            }
+
+            if (!string.IsNullOrWhiteSpace(filter))
+            {
+                // Compiled here rather than handed on as QueryProxy.FilterExpression, so the agent
+                // gets every error with its place in one message and not the first as a 400.
+                var byExpression = engine.CreateFilter(filter, out var errors);
+                if (byExpression == null)
+                    throw new McpToolException("The filter expression makes no filter: " +
+                        string.Join(" ", errors.Select(e => $"At position {e.Start}: {e.Message}")) +
+                        " Call describe_dataset for the fields that can be filtered and the values they hold.");
+                queryProxy.FilterExpression = filter;
             }
 
             var res = IndxServerInternalApi.Manager.Search(queryProxy, dataset, ownerKey);

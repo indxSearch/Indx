@@ -61,13 +61,15 @@ namespace IndxServer.Services
         public static bool? CoverageConfirmed(Indx.Http.QueryProxy query, Indx.Api.Result result) =>
             query.EnableCoverage ? result.TruncationIndex >= 0 : null;
 
-        /// <summary>The filter key to store with a search: the query's token (which IS the key),
-        /// or null when it has none or the dataset has the Browsing report switched off. With it
-        /// off, an empty search with a filter is not recorded at all - without its key it is a
-        /// page load.</summary>
-        public string? FilterKeyToRecord(Indx.Http.QueryProxy query, string teamId, string dataSet) =>
-            string.IsNullOrWhiteSpace(query.Filter?.HashString) || Store?.RecordsFilters(teamId, dataSet) != true
-                ? null : query.Filter.HashString;
+        /// <summary>The filter key to store with a search: the key of the filter it ran with
+        /// (<paramref name="resolvedKey"/>, its token and filter expression ANDed - a key IS the
+        /// filter), or null when it had none or the dataset has the Browsing report switched off.
+        /// With it off, an empty search with a filter is not recorded at all - without its key it
+        /// is a page load. Until Oct 2026 this read the request's token alone, so a filter given
+        /// as an expression went unrecorded.</summary>
+        public string? FilterKeyToRecord(string? resolvedKey, string teamId, string dataSet) =>
+            string.IsNullOrWhiteSpace(resolvedKey) || Store?.RecordsFilters(teamId, dataSet) != true
+                ? null : resolvedKey;
         public StatisticsStore? Store { get; private set; }
         public StatisticsWriter? Writer { get; private set; }
         public int RetentionDays { get; private set; }
