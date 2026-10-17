@@ -66,6 +66,10 @@ in the AI skill.
 
 ### Added
 
+- **A boost with a strength outside 1-3 is a `400 invalidArgument`**, from `boosts/from-filter`, a
+  search's `boosts` and `PUT boosts`; `boosts/from-filter` used to echo it back, and a search
+  added it to the score unchecked. A search whose boosts' strengths, saved rules included, sum
+  past 255 answers `200` with no records and `reason` set.
 - **Filter expressions: `POST filters/expression`, and `filterExpression` on a search.** One
   expression for what took a request per filter and per combine:
   `brand IN ["nike", "puma"] AND price BETWEEN 100 AND 2000 AND NOT category = "outlet"`, with

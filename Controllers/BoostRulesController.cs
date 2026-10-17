@@ -44,7 +44,8 @@ namespace IndxServer.Controllers
                 return ApiProblems.InvalidArgument("A body with a filter to boost is required.");
             var filter = ResolveFilter(matcher, boost.FilterProxy, "filterProxy", out var filterError);
             if (filter == null) return filterError!;
-            matcher.CreateBoost(filter, boost.BoostStrength);
+            if (matcher.CreateBoost(filter, boost.BoostStrength, out var boostError) == null)
+                return ApiProblems.InvalidArgument("'boostStrength': " + boostError);
             return Ok(boost);
         }
 
@@ -88,6 +89,8 @@ namespace IndxServer.Controllers
                     return ApiProblems.InvalidArgument("each rule needs a name");
                 if (rule.Conditions == null || rule.Conditions.Count == 0)
                     return ApiProblems.InvalidArgument($"rule '{rule.Name}' needs at least one condition");
+                if (!Enum.IsDefined(rule.Strength))
+                    return ApiProblems.InvalidArgument($"rule '{rule.Name}': strength {(int)rule.Strength} is not one of Low (1), Med (2) or High (3)");
                 foreach (var c in rule.Conditions)
                 {
                     var hasValue = !string.IsNullOrEmpty(c.Value);

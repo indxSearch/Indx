@@ -472,7 +472,7 @@ namespace IndxServer.Engine
                 Query query = FromQueryProxy(queryProxy, engine, teamId, dataSetName);
                 return engine.Search(query);
             }
-            catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException)
+            catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException or ArgumentException)
             {
                 // A client error, answered 400 by the controller - not a fault worth an error log.
                 throw;
@@ -1686,8 +1686,14 @@ namespace IndxServer.Engine
             // EnableBoost — same flag the client already uses.
             var merged = new List<Boost>();
             if (queryProxy.Boosts != null)
-                foreach (var b in queryProxy.Boosts)
-                    merged.Add(engine.CreateBoost(ResolveFilterOrThrow(engine, b.FilterProxy), b.BoostStrength));
+                for (int i = 0; i < queryProxy.Boosts.Length; i++)
+                {
+                    var b = queryProxy.Boosts[i];
+                    if (b?.FilterProxy == null)
+                        throw new ArgumentException($"boosts[{i}] needs a filterProxy with a hashString.");
+                    merged.Add(engine.CreateBoost(ResolveFilterOrThrow(engine, b.FilterProxy), b.BoostStrength, out var boostError)
+                        ?? throw new ArgumentException($"boosts[{i}]: {boostError}"));
+                }
 
             if (queryProxy.EnableBoost && _boostStore != null)
             {
