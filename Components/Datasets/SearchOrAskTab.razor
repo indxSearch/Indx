@@ -125,8 +125,22 @@
                                 </div>
                                 @if (_try is { } r)
                                 {
-                                    <Chip Size="micro" Class="@($"soa-offer soa-offer--{r.Offer}")">@OfferLabel(r.Offer)</Chip>
-                                    <span class="soa-try-score">p @r.P.ToString("0.00", CultureInfo.InvariantCulture)@(r.Answerable is { } a ? $" · answerable {a.ToString("0.00", CultureInfo.InvariantCulture)}" : "") · @(r.Cached ? "cached" : $"{r.Ms} ms")@(r.Criteria is { } c ? $" · description {c.ToString("0.00", CultureInfo.InvariantCulture)}" : "")@(r.Reason is { } why ? $" · {why}" : "")</span>
+                                    @* The judge's scores, each with what it answers on hover: the labels alone
+                                       said nothing to an owner reading "p 0.12" (19 Oct 2026). *@
+                                    <Tooltip Content="@OfferHelp(r.Offer)"><Chip Size="micro" Class="@($"soa-offer soa-offer--{r.Offer}")">@OfferLabel(r.Offer)</Chip></Tooltip>
+                                    <span class="soa-try-score">
+                                        <Tooltip Content="@QuestionHelp">question @Two(r.P)</Tooltip>
+                                        @if (r.Criteria is { } c)
+                                        {
+                                            <text> · </text><Tooltip Content="@DescriptionHelp">description @Two(c)</Tooltip>
+                                        }
+                                        @if (r.Answerable is { } a)
+                                        {
+                                            <text> · </text><Tooltip Content="@AnswerableHelp">answerable @Two(a)</Tooltip>
+                                        }
+                                        <text> · </text><Tooltip Content="@(r.Cached ? "The judge answered this text before; the cached answer, no call made." : "How long the judge took. A visitor's page waits at most 3 seconds.")">@(r.Cached ? "cached" : $"{r.Ms} ms")</Tooltip>
+                                        @if (r.Reason is { } why) { <text> · @why</text> }
+                                    </span>
                                 }
                                 else if (_tryMessage != null)
                                 {
@@ -190,7 +204,7 @@
             <tbody>
                 <TableRow>
                     <TableCell Class="soa-cell">
-                        <span class="soa-help">On each pause the judge scores what is typed from 0, a lookup, to 1, a question.</span>
+                        <span class="soa-help">On each pause the judge scores what is typed from 0, a lookup, to 1, a question. On a catalogue a sure description of what to list earns the full offer too.</span>
                         @Scale()
                     </TableCell>
                 </TableRow>
@@ -388,12 +402,12 @@
         @Row(icon, label, help, show(t) != showDefault || keep(t) != keepDefault,
             @<div class="soa-thresholds">
                 <div class="soa-threshold">
-                    <span class="soa-threshold-label">Show from</span>
+                    <span class="soa-threshold-label"><Tooltip Content="The score the offer needs to appear.">Show from</Tooltip></span>
                     <Slider Min="0" Max="1" Step="0.05" Value="@show(t)" ValueChanged="@(v => setShow(_edit.Thresholds, Math.Round(v, 2)))" AriaLabel="@($"{label}: show from")" Class="soa-slider" />
                     <span class="soa-threshold-value">@Two(show(t))</span>
                 </div>
                 <div class="soa-threshold">
-                    <span class="soa-threshold-label">Keep down to</span>
+                    <span class="soa-threshold-label"><Tooltip Content="Once up, the offer stays while the score is at least this, so it does not blink as the visitor types. Applied on the visitor's page, which remembers what it showed; the tester has no memory and uses Show from alone.">Keep down to</Tooltip></span>
                     <Slider Min="0" Max="1" Step="0.05" Value="@keep(t)" ValueChanged="@(v => setKeep(_edit.Thresholds, Math.Round(v, 2)))" AriaLabel="@($"{label}: keep down to")" Class="soa-slider" />
                     <span class="soa-threshold-value">@Two(keep(t))</span>
                 </div>
@@ -537,6 +551,20 @@
     private List<AskSource> _sources = [];
 
     private string Address => $"console:{Ctx.TeamId}";
+
+    private const string QuestionHelp = "How sure the judge is that the visitor is asking a question rather than looking something up. " +
+        "On a catalogue: a question about one particular item. The thresholds under When to offer are applied to this score.";
+    private const string DescriptionHelp = "On a catalogue: how sure the judge is that the visitor describes what kind of items to list, " +
+        "or asks for a recommendation of a kind. At the full offer's Show from it earns the offer, since the catalogue answers it with filters and a summary.";
+    private const string AnswerableHelp = "Whether the results on the page could answer it: one of them holds what is asked closely enough to write from. " +
+        "It does not decide the offer; the statistics use it to show offers the records could not answer.";
+
+    private static string OfferHelp(string offer) => offer switch
+    {
+        "strong" => "What a visitor sees for this text: the full offer to answer. Enter asks.",
+        "invite" => "What a visitor sees for this text: the quieter \"Ask about this\".",
+        _ => "What a visitor sees for this text: the results and nothing more.",
+    };
 
     private static string OfferLabel(string offer) => offer switch
     {
