@@ -101,6 +101,8 @@
     overflow: auto;
 }
 .soa-try-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+/* The answer on its way: the step, then skeleton lines where it will land, as the Agent panel. */
+.soa-try-pending-lines { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; max-width: 420px; }
 /* The answer as a chat turn, as intrface's AskPanel shows it. */
 .soa-try-turn { display: flex; flex-direction: column; gap: 16px; padding-top: 12px; border-top: 1px solid var(--lv2); }
 .soa-sources { margin: 4px 0 0; padding-left: 20px; font: var(--text-xs); color: var(--lv6); }

@@ -310,7 +310,24 @@
                             <span class="soa-try-score">@fr.Ms ms</span>
                         </div>
                     }
-                    @if (_sources.Count > 0 || _answer.Length > 0 || _answerError != null)
+                    @if (_asking && _answer.Length == 0 && _answerError == null)
+                    {
+                        @* The answer on its way, as the Agent panel shows Observr's: the step it is on
+                           (the agent's searches, or the summary's reading), then skeleton lines where
+                           the answer will land. *@
+                        <div class="soa-try-turn">
+                            <UserMessage>@_tryText</UserMessage>
+                            <AssistantMessage Label="Answer" Icon="_iconAgent" Class="soa-try-pending">
+                                <StreamStatus SpinnerName="@(_askStep == "Writing" ? "grow" : "spectrum")">@_askStep…</StreamStatus>
+                                <div class="soa-try-pending-lines">
+                                    <Skeleton Width="92%" />
+                                    <Skeleton Width="78%" Delay="0.05" />
+                                    <Skeleton Width="54%" Delay="0.1" />
+                                </div>
+                            </AssistantMessage>
+                        </div>
+                    }
+                    else if (_sources.Count > 0 || _answer.Length > 0 || _answerError != null)
                     {
                         <div class="soa-try-turn">
                             <UserMessage>@_tryText</UserMessage>
@@ -632,6 +649,8 @@
     private bool _showState;
     private CancellationTokenSource? _typing;
     private bool _asking;
+    /// <summary>What the answer is doing while nothing has arrived: the agent's step, or the summary's.</summary>
+    private string _askStep = "Reading the question";
     private string _answer = "";
     private string? _answerError;
     private List<AskSource> _sources = [];
@@ -743,6 +762,7 @@
         _answer = "";
         _answerError = null;
         _sources = [];
+        _askStep = "Reading the question";
         var gate = Service.CanAsk(Ctx.TeamId, Ctx.Name, Address, trial: _edit);
         if (gate.Status != IntentStatus.Ok)
         {
@@ -756,7 +776,9 @@
             {
                 switch (name)
                 {
-                    case "sources": _sources = ((AskSource[])data).ToList(); break;
+                    case "status": _askStep = JsonSerializer.SerializeToNode(data)?["step"]?.GetValue<string>() ?? _askStep; break;
+                    case "filters": _askStep = "Searching with the filters"; break;
+                    case "sources": _sources = ((AskSource[])data).ToList(); _askStep = "Writing"; break;
                     case "text": _answer += JsonSerializer.SerializeToNode(data)?["delta"]?.GetValue<string>(); break;
                     case "error": _answerError = JsonSerializer.SerializeToNode(data)?["message"]?.GetValue<string>(); break;
                 }
