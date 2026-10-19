@@ -299,8 +299,13 @@ namespace IndxServer.Services.SearchOrAsk
             var cacheKey = string.Join('\0', teamId, dataSetName, settings.Kind, site, fields.TitleField,
                 string.Join(',', fields.SectionFields), string.Join(',', fields.SnippetFields), Normalise(text));
             if (_cache.TryGetValue(cacheKey, out var hit))
+            {
+                // Only the console's tester asks for the state; a cached answer used to come back
+                // without one, and "What the judge was sent" was empty for a text tried before.
+                onState?.Invoke(State(site, text, Search(engine, dataSetName, teamId, text, fields)));
                 return new IntentOutcome(IntentStatus.Ok, Result(hit[SearchOrAskRecipes.Asking] ?? 0, hit[SearchOrAskRecipes.Answerable], true,
                     criteria: hit[SearchOrAskRecipes.Criteria]));
+            }
 
             using (var lease = _intentLimiter.AttemptAcquire(clientAddress))
                 if (!lease.IsAcquired)

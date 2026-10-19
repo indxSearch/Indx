@@ -704,7 +704,7 @@
             IntentStatus.BudgetSpent => (null, "Today's budget is spent."),
             _ => (null, "Search or ask cannot run on this instance."),
         };
-        _state = state ?? _state;
+        _state = state;
         _callsToday = Service.CallsToday(Ctx.TeamId, Ctx.Name);
         _answer = "";
         _answerError = null;
