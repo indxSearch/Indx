@@ -660,13 +660,14 @@
         var typing = _typing = new CancellationTokenSource();
         var text = _tryText?.Trim() ?? "";
         if (text.Length == 0) { _try = null; _tryMessage = null; _state = null; _results = null; return; }
+        var engine = Ctx.FindEngine();
+        if (engine == null) return;
+        // The hits on every keystroke, as the Search preview searches: milliseconds, no model
+        // behind them. Only the judge waits for the pause.
+        if (_showResults) _results = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit);
         try { await Task.Delay(PauseMs, typing.Token); }
         catch (OperationCanceledException) { return; }
 
-        var engine = Ctx.FindEngine();
-        if (engine == null) return;
-        // The hits first: no model behind them, so they show whatever the judge then says.
-        if (_showResults) _results = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit);
         if (_edit.Validate() is { } invalid) { _try = null; _tryMessage = invalid; return; }
         string? state = null;
         var outcome = await Service.IntentAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, typing.Token,
