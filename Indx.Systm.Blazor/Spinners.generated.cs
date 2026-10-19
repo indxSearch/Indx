@@ -51,16 +51,16 @@ namespace Indx.Systm.Blazor
                 "M2 2H3V3H2V2Z",
                 "M1 2H2V3H1V2Z",
             }),
-            ["analytics"] = new("0 0 8 5", 250, new[]
+            ["analytics"] = new("0 0 7 5", 250, new[]
             {
                 "M0 2H1V5H0V2Z M2 0H3V5H2V0Z M4 3H5V5H4V3Z M6 1H7V5H6V1Z",
-                "M7 2H8V5H7V2Z M1 0H2V5H1V0Z M3 3H4V5H3V3Z M5 1H6V5H5V1Z",
+                "M1 0H2V5H1V0Z M3 3H4V5H3V3Z M5 1H6V5H5V1Z",
                 "M6 2H7V5H6V2Z M0 0H1V5H0V0Z M2 3H3V5H2V3Z M4 1H5V5H4V1Z",
-                "M5 2H6V5H5V2Z M7 0H8V5H7V0Z M1 3H2V5H1V3Z M3 1H4V5H3V1Z",
+                "M5 2H6V5H5V2Z M1 3H2V5H1V3Z M3 1H4V5H3V1Z",
                 "M4 2H5V5H4V2Z M6 0H7V5H6V0Z M0 3H1V5H0V3Z M2 1H3V5H2V1Z",
-                "M3 2H4V5H3V2Z M5 0H6V5H5V0Z M7 3H8V5H7V3Z M1 1H2V5H1V1Z",
+                "M3 2H4V5H3V2Z M5 0H6V5H5V0Z M1 1H2V5H1V1Z",
                 "M2 2H3V5H2V2Z M4 0H5V5H4V0Z M6 3H7V5H6V3Z M0 1H1V5H0V1Z",
-                "M1 2H2V5H1V2Z M3 0H4V5H3V0Z M5 3H6V5H5V3Z M7 1H8V5H7V1Z",
+                "M1 2H2V5H1V2Z M3 0H4V5H3V0Z M5 3H6V5H5V3Z",
             }),
             ["circle-open-close"] = new("0 0 7 5", 100, new[]
             {
