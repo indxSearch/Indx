@@ -153,12 +153,13 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>The offer for one judgement on its own, with no memory of the last one: what a
         /// client with no logic of its own shows. On a catalogue a description of what to list
-        /// (<paramref name="criteria"/>) is answered too, with filters and a summary, so it earns
-        /// the offer the same way as a question; intrface read it so from the start, and until
-        /// 19 Oct 2026 the server's own offer, which the console's tester shows and the statistics
-        /// count, did not ("bøker til eksamen i matematikk" was "none" in the tester).</summary>
+        /// (<paramref name="criteria"/>) is answered too, with filters and a summary, so a sure one
+        /// (at <see cref="Strong"/>) earns the full offer, as intrface has read it from the start;
+        /// a middling one earns nothing, since a description scores more generously than a
+        /// question and inviting on it made "skole" an invitation (19 Oct 2026). Below that the
+        /// asking score decides alone.</summary>
         public string OfferFor(double p, double? criteria = null) =>
-            OfferFor(Math.Max(p, criteria ?? 0));
+            criteria >= Strong ? "strong" : OfferFor(p);
         private string OfferFor(double p) => p >= Strong ? "strong" : p >= Invite ? "invite" : "none";
     }
 

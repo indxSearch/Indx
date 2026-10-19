@@ -68,11 +68,13 @@ namespace IndxServer.Services.SearchOrAsk
                     "the visitor describing what kind of items they want listed, rather than naming one item or asking " +
                     "about one?",
                     "The visitor describes items by their properties, the kinds of things `site` says its records hold (a " +
-                    "type, a place, a size, a time, a language and so on), often two or more together, and wants a list " +
-                    "of the items that fit. A request for a recommendation, a suggestion or the best of a kind (\"recommend " +
-                    "me a crime novel\", \"anbefal meg en krimbok\", \"books for the maths exam\") is such a description, " +
-                    "however few properties it names: the kind is the property.",
-                    "The visitor names an item or part of its name, possibly with a place, or asks a question about one item."),
+                    "type, a place, a size, a time, a language and so on), two or more together, and wants a list of the " +
+                    "items that fit. A request in words for a recommendation, a suggestion, the best of a kind or something " +
+                    "suited to a purpose (\"recommend me a crime novel\", \"anbefal meg en krimbok\", \"books for the maths " +
+                    "exam\") is such a description even with one property: the asking is what makes it one.",
+                    "The visitor names an item or part of its name, possibly with a place, or asks a question about one " +
+                    "item. A bare word or a short keyword that names a kind, a topic or a subject (\"skole\", \"krim\", " +
+                    "\"matematikk\") is a lookup, not a description: the list the search already shows serves it."),
                 [Answerable] = Noul(
                     "`request` is what a visitor has typed so far into the search field of `site`, and `search.results` are " +
                     "what the search found for it. Could these results answer what the visitor is asking?",
