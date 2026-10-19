@@ -23,7 +23,8 @@
 .soa-number { width: 110px; }
 .soa-error { color: var(--CSignal); font: var(--text-sm); margin-top: 10px; }
 
-/* The tester */
+/* The tester: full width above the settings, wider than a settings group. */
+::deep .soa-try { max-width: 900px; }
 .soa-try-off { margin-top: 10px; }
 .soa-try-input { flex: 1 1 320px; }
 .soa-try-score { font: var(--text-xs); color: var(--lv6); font-variant-numeric: tabular-nums; }

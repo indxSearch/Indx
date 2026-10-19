@@ -43,72 +43,16 @@
         </div>
     }
 
-    <div class="soa-groups">
-        <div class="soa-column">
-        <Table AriaLabel="Search or ask" Class="soa-table">
-            @Head("Search or ask")
-            <tbody>
-                @Row(DatasetIcons.SearchOrAsk, "Offer answers",
-                     $"Sends what visitors type to {Service.Setup.Receivers}, and their questions to the answer model. Name this in your privacy notice.",
-                     _edit.Enabled, @<ToggleSwitch Label="Enabled" Variant="positive" Checked="@_edit.Enabled" CheckedChanged="@(v => _edit.Enabled = v)" />)
-                @Row(Icon<Icons.Book>(), "Kind of site", "How the judge tells a question from a lookup.",
-                     false, @<div class="soa-select"><SelectField Size="micro" Options="KindOptions" Value="@_edit.Kind" ValueChanged="@(v => _edit.Kind = v ?? SearchOrAskRecipes.Documentation)" /></div>)
-                @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold, in a sentence or two. Empty uses the dataset's description.",
-                     !string.IsNullOrWhiteSpace(_edit.SiteDescription),
-                     @<Textarea Rows="3" @bind-Value="_edit.SiteDescription" placeholder="@_effectiveSite" />)
-                @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
-                {
-                    @Row(Icon<Icons.Filter>(), "About the fields", "What the values mean here, for turning a description into filters. One per line, such as \"barneskole: grades 1 to 7\".",
-                         !string.IsNullOrWhiteSpace(_edit.FilterNotes),
-                         @<Textarea Rows="4" @bind-Value="_edit.FilterNotes" placeholder="friskole: private" />)
-                }
-                @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
-                     _edit.Answers != SearchOrAskSettings.BestAnswers,
-                     @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
-                @Row(Icon<Icons.Paragraph>(), "Answer instructions", "How the answers should speak: voice, house rules, what to say when nothing is found. They shape the wording; what an answer may claim stays bound to the records.",
-                     !string.IsNullOrWhiteSpace(_edit.AnswerInstructions),
-                     @<Textarea Rows="3" @bind-Value="_edit.AnswerInstructions" placeholder="Formal. Say du. Never recommend another shop." />)
-                @Row(Icon<Icons.UserText>(), "Answer language", "The visitor's language by default; or one language for every answer.",
-                     !string.IsNullOrWhiteSpace(_edit.AnswerLanguage),
-                     @<div class="soa-select"><SelectField Size="micro" Options="LanguageOptions" Value="@(_edit.AnswerLanguage ?? VisitorsLanguage)" ValueChanged="@(v => _edit.AnswerLanguage = v == VisitorsLanguage ? null : v)" /></div>)
-                @Row(Icon<Icons.Coins>(), "Daily call budget", $"Calls per day (UTC). {_callsToday:N0} used today.",
-                     _budgetText != null,
-                     @<div class="soa-number"><InputField @bind-Value="_budgetText" @bind-Value:after="SetBudget" Error="@_budgetError" inputmode="numeric" placeholder="5,000" /></div>)
-            </tbody>
-        </Table>
-
-        </div>
-        <div class="soa-column">
-        <Table AriaLabel="What the judge sees" Class="soa-table">
-            @Head("What the judge sees of a result")
-            <tbody>
-                @if (TextFields.Count == 0)
-                {
-                    <TableRow><TableCell Class="soa-cell"><span class="soa-help">The fields can be chosen once the dataset has been analyzed.</span></TableCell></TableRow>
-                }
-                else
-                {
-                    @Row(Icon<Icons.TextSize>(), "Title", "Each result's name.",
-                         _edit.TitleField != null,
-                         @<div class="soa-select"><SelectField Size="micro" Options="TitleOptions" Value="@(_edit.TitleField ?? Automatic)" ValueChanged="@(v => _edit.TitleField = v == Automatic ? null : v)" /></div>)
-                    @Row(Icon<Icons.Tag>(), "Section", "Where a result belongs, such as a category or year.",
-                         _edit.SectionFields != null, FieldChoice(PlaceFields, () => _edit.SectionFields, v => _edit.SectionFields = v, _effective?.SectionFields))
-                    @Row(Icon<Icons.Paragraph>(), "Snippet", "The text the judge reads, and the answer is written from.",
-                         _edit.SnippetFields != null, FieldChoice(TextFields, () => _edit.SnippetFields, v => _edit.SnippetFields = v, _effective?.SnippetFields))
-                }
-            </tbody>
-        </Table>
-
-        </div>
-        <div class="soa-column">
-        @* The tester first, beside the settings and above the thresholds it tries: at the foot of
-           the page it was hard to find (19 Oct 2026). *@
+    @* The tester before everything, only once Search or ask is on: at the foot of the page it was
+       hard to find, and in a column it moved mid-page as the grid wrapped (19 Oct 2026). *@
+    @if (_edit.Enabled)
+    {
         <Table AriaLabel="Try it" Class="soa-table soa-try">
             @Head("Try it")
             <tbody>
                 <TableRow>
                     <TableCell Class="soa-cell">
-                        <span class="soa-help">Type as a visitor would. Uses the settings on this page, saved or not. Each pause is one call against the budget.</span>
+                        <span class="soa-help">Type as a visitor would. Uses the settings below, saved or not. Each pause is one call against the budget.</span>
                         @if (!Service.Available)
                         {
                             <span class="soa-help soa-try-off">Needs the instance's model key.</span>
@@ -198,7 +142,66 @@
                 </TableRow>
             </tbody>
         </Table>
+    }
 
+    <div class="soa-groups">
+        <div class="soa-column">
+        <Table AriaLabel="Search or ask" Class="soa-table">
+            @Head("Search or ask")
+            <tbody>
+                @Row(DatasetIcons.SearchOrAsk, "Offer answers",
+                     $"Sends what visitors type to {Service.Setup.Receivers}, and their questions to the answer model. Name this in your privacy notice.",
+                     _edit.Enabled, @<ToggleSwitch Label="Enabled" Variant="positive" Checked="@_edit.Enabled" CheckedChanged="@(v => _edit.Enabled = v)" />)
+                @Row(Icon<Icons.Book>(), "Kind of site", "How the judge tells a question from a lookup.",
+                     false, @<div class="soa-select"><SelectField Size="micro" Options="KindOptions" Value="@_edit.Kind" ValueChanged="@(v => _edit.Kind = v ?? SearchOrAskRecipes.Documentation)" /></div>)
+                @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold, in a sentence or two. Empty uses the dataset's description.",
+                     !string.IsNullOrWhiteSpace(_edit.SiteDescription),
+                     @<Textarea Rows="3" @bind-Value="_edit.SiteDescription" placeholder="@_effectiveSite" />)
+                @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                {
+                    @Row(Icon<Icons.Filter>(), "About the fields", "What the values mean here, for turning a description into filters. One per line, such as \"barneskole: grades 1 to 7\".",
+                         !string.IsNullOrWhiteSpace(_edit.FilterNotes),
+                         @<Textarea Rows="4" @bind-Value="_edit.FilterNotes" placeholder="friskole: private" />)
+                }
+                @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
+                     _edit.Answers != SearchOrAskSettings.BestAnswers,
+                     @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
+                @Row(Icon<Icons.Paragraph>(), "Answer instructions", "How the answers should speak: voice, house rules, what to say when nothing is found. They shape the wording; what an answer may claim stays bound to the records.",
+                     !string.IsNullOrWhiteSpace(_edit.AnswerInstructions),
+                     @<Textarea Rows="3" @bind-Value="_edit.AnswerInstructions" placeholder="Formal. Say du. Never recommend another shop." />)
+                @Row(Icon<Icons.UserText>(), "Answer language", "The visitor's language by default; or one language for every answer.",
+                     !string.IsNullOrWhiteSpace(_edit.AnswerLanguage),
+                     @<div class="soa-select"><SelectField Size="micro" Options="LanguageOptions" Value="@(_edit.AnswerLanguage ?? VisitorsLanguage)" ValueChanged="@(v => _edit.AnswerLanguage = v == VisitorsLanguage ? null : v)" /></div>)
+                @Row(Icon<Icons.Coins>(), "Daily call budget", $"Calls per day (UTC). {_callsToday:N0} used today.",
+                     _budgetText != null,
+                     @<div class="soa-number"><InputField @bind-Value="_budgetText" @bind-Value:after="SetBudget" Error="@_budgetError" inputmode="numeric" placeholder="5,000" /></div>)
+            </tbody>
+        </Table>
+
+        </div>
+        <div class="soa-column">
+        <Table AriaLabel="What the judge sees" Class="soa-table">
+            @Head("What the judge sees of a result")
+            <tbody>
+                @if (TextFields.Count == 0)
+                {
+                    <TableRow><TableCell Class="soa-cell"><span class="soa-help">The fields can be chosen once the dataset has been analyzed.</span></TableCell></TableRow>
+                }
+                else
+                {
+                    @Row(Icon<Icons.TextSize>(), "Title", "Each result's name.",
+                         _edit.TitleField != null,
+                         @<div class="soa-select"><SelectField Size="micro" Options="TitleOptions" Value="@(_edit.TitleField ?? Automatic)" ValueChanged="@(v => _edit.TitleField = v == Automatic ? null : v)" /></div>)
+                    @Row(Icon<Icons.Tag>(), "Section", "Where a result belongs, such as a category or year.",
+                         _edit.SectionFields != null, FieldChoice(PlaceFields, () => _edit.SectionFields, v => _edit.SectionFields = v, _effective?.SectionFields))
+                    @Row(Icon<Icons.Paragraph>(), "Snippet", "The text the judge reads, and the answer is written from.",
+                         _edit.SnippetFields != null, FieldChoice(TextFields, () => _edit.SnippetFields, v => _edit.SnippetFields = v, _effective?.SnippetFields))
+                }
+            </tbody>
+        </Table>
+
+        </div>
+        <div class="soa-column">
         <Table AriaLabel="When to offer" Class="soa-table">
             @Head("When to offer")
             <tbody>
