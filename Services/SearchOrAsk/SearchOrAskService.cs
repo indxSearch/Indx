@@ -279,7 +279,7 @@ namespace IndxServer.Services.SearchOrAsk
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null, double? criteria = null)
             {
-                var result = new IntentResult(p, answerable, settings.Thresholds.OfferFor(p), settings.Thresholds, cached, Ms(), reason, criteria,
+                var result = new IntentResult(p, answerable, settings.Thresholds.OfferFor(p, criteria), settings.Thresholds, cached, Ms(), reason, criteria,
                     settings.CutWhileAsking, settings.CutShareOfTop, settings.CutTopFloor, settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping);
                 // A judgement is recorded once the judge or its cache answered for it, a failing
                 // judge included (its reason says so); an identifier never reaches here.

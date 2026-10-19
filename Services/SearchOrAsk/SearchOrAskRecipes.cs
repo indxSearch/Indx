@@ -68,8 +68,10 @@ namespace IndxServer.Services.SearchOrAsk
                     "the visitor describing what kind of items they want listed, rather than naming one item or asking " +
                     "about one?",
                     "The visitor describes items by their properties, the kinds of things `site` says its records hold (a " +
-                    "type, a place, a size, a time, a language and so on), usually two or more together, and wants a list " +
-                    "of the items that fit.",
+                    "type, a place, a size, a time, a language and so on), often two or more together, and wants a list " +
+                    "of the items that fit. A request for a recommendation, a suggestion or the best of a kind (\"recommend " +
+                    "me a crime novel\", \"anbefal meg en krimbok\", \"books for the maths exam\") is such a description, " +
+                    "however few properties it names: the kind is the property.",
                     "The visitor names an item or part of its name, possibly with a place, or asks a question about one item."),
                 [Answerable] = Noul(
                     "`request` is what a visitor has typed so far into the search field of `site`, and `search.results` are " +
