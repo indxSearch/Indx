@@ -44,6 +44,7 @@
     }
 
     <div class="soa-groups">
+        <div class="soa-column">
         <Table AriaLabel="Search or ask" Class="soa-table">
             @Head("Search or ask")
             <tbody>
@@ -76,6 +77,8 @@
             </tbody>
         </Table>
 
+        </div>
+        <div class="soa-column">
         <Table AriaLabel="What the judge sees" Class="soa-table">
             @Head("What the judge sees of a result")
             <tbody>
@@ -93,6 +96,92 @@
                     @Row(Icon<Icons.Paragraph>(), "Snippet", "The text the judge reads, and the answer is written from.",
                          _edit.SnippetFields != null, FieldChoice(TextFields, () => _edit.SnippetFields, v => _edit.SnippetFields = v, _effective?.SnippetFields))
                 }
+            </tbody>
+        </Table>
+
+        </div>
+        <div class="soa-column">
+        @* The tester first, beside the settings and above the thresholds it tries: at the foot of
+           the page it was hard to find (19 Oct 2026). *@
+        <Table AriaLabel="Try it" Class="soa-table soa-try">
+            @Head("Try it")
+            <tbody>
+                <TableRow>
+                    <TableCell Class="soa-cell">
+                        <span class="soa-help">Type as a visitor would. Uses the settings on this page, saved or not. Each pause is one call against the budget.</span>
+                        @if (!Service.Available)
+                        {
+                            <span class="soa-help soa-try-off">Needs the instance's model key.</span>
+                        }
+                        else if (Ctx.EngineState != SystemState.Ready)
+                        {
+                            <span class="soa-help soa-try-off">Available after the index is built.</span>
+                        }
+                        else
+                        {
+                            <div class="soa-control">
+                                <div class="soa-try-input">
+                                    <InputField Immediate @bind-Value="_tryText" @bind-Value:after="OnTryInput" placeholder="how do I …" />
+                                </div>
+                                @if (_try is { } r)
+                                {
+                                    <Chip Size="micro" Class="@($"soa-offer soa-offer--{r.Offer}")">@OfferLabel(r.Offer)</Chip>
+                                    <span class="soa-try-score">p @r.P.ToString("0.00", CultureInfo.InvariantCulture)@(r.Answerable is { } a ? $" · answerable {a.ToString("0.00", CultureInfo.InvariantCulture)}" : "") · @(r.Cached ? "cached" : $"{r.Ms} ms")@(r.Criteria is { } c ? $" · description {c.ToString("0.00", CultureInfo.InvariantCulture)}" : "")@(r.Reason is { } why ? $" · {why}" : "")</span>
+                                }
+                                else if (_tryMessage != null)
+                                {
+                                    <span class="soa-help">@_tryMessage</span>
+                                }
+                            </div>
+                            @if (_try != null)
+                            {
+                                <div class="soa-try-actions">
+                                    <Button Variant="ghost" Size="micro" Loading="@_asking" @onclick="AskAsync">Ask</Button>
+                                    @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                                    {
+                                        <Button Variant="ghost" Size="micro" Loading="@_filtering" @onclick="FiltersAsync">Filters</Button>
+                                    }
+                                    <Button Variant="ghost" Size="micro" IconRight="@(_showState ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)"
+                                            @onclick="() => _showState = !_showState">What the judge was sent</Button>
+                                </div>
+                            }
+                            @if (_showState && _state != null)
+                            {
+                                <pre class="soa-state">@_state</pre>
+                            }
+                            @if (_filters is { } fr)
+                            {
+                                <div class="soa-answer">
+                                    @if (fr.Filters.Length == 0)
+                                    {
+                                        <p class="soa-help">No filters@(fr.Reason is { } why ? $" ({why})" : "").</p>
+                                    }
+                                    <div class="soa-control">
+                                        @foreach (var f in fr.Filters)
+                                        {
+                                            <Chip Size="micro">@FilterLabel(f)</Chip>
+                                        }
+                                        @if (fr.Text.Length > 0) { <span class="soa-help">search for "@fr.Text"</span> }
+                                        <span class="soa-try-score">@fr.Ms ms</span>
+                                    </div>
+                                </div>
+                            }
+                            @if (_sources.Count > 0 || _answer.Length > 0 || _answerError != null)
+                            {
+                                <div class="soa-answer">
+                                    @if (_answerError != null) { <p class="soa-error">@_answerError</p> }
+                                    <p class="soa-answer-text">@_answer</p>
+                                    @if (_sources.Count > 0)
+                                    {
+                                        <ol class="soa-sources">
+                                            @foreach (var s in _sources) { <li>@s.Title <span class="soa-key">@s.DocumentKey</span></li> }
+                                        </ol>
+                                    }
+                                </div>
+                            }
+                        }
+                    </TableCell>
+                </TableRow>
             </tbody>
         </Table>
 
@@ -152,6 +241,7 @@
                 }
             </tbody>
         </Table>
+        </div>
     </div>
 
     @if (!string.IsNullOrEmpty(_error))
@@ -163,88 +253,6 @@
         <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save</Button>
         <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
     </SaveBar>
-
-    <Table AriaLabel="Try it" Class="soa-table soa-try">
-        @Head("Try it")
-        <tbody>
-            <TableRow>
-                <TableCell Class="soa-cell">
-                    <span class="soa-help">Type as a visitor would. Uses the settings above, saved or not. Each pause is one call against the budget.</span>
-                    @if (!Service.Available)
-                    {
-                        <span class="soa-help soa-try-off">Needs the instance's model key.</span>
-                    }
-                    else if (Ctx.EngineState != SystemState.Ready)
-                    {
-                        <span class="soa-help soa-try-off">Available after the index is built.</span>
-                    }
-                    else
-                    {
-                        <div class="soa-control">
-                            <div class="soa-try-input">
-                                <InputField Immediate @bind-Value="_tryText" @bind-Value:after="OnTryInput" placeholder="how do I …" />
-                            </div>
-                            @if (_try is { } r)
-                            {
-                                <Chip Size="micro" Class="@($"soa-offer soa-offer--{r.Offer}")">@OfferLabel(r.Offer)</Chip>
-                                <span class="soa-try-score">p @r.P.ToString("0.00", CultureInfo.InvariantCulture)@(r.Answerable is { } a ? $" · answerable {a.ToString("0.00", CultureInfo.InvariantCulture)}" : "") · @(r.Cached ? "cached" : $"{r.Ms} ms")@(r.Criteria is { } c ? $" · description {c.ToString("0.00", CultureInfo.InvariantCulture)}" : "")@(r.Reason is { } why ? $" · {why}" : "")</span>
-                            }
-                            else if (_tryMessage != null)
-                            {
-                                <span class="soa-help">@_tryMessage</span>
-                            }
-                        </div>
-                        @if (_try != null)
-                        {
-                            <div class="soa-try-actions">
-                                <Button Variant="ghost" Size="micro" Loading="@_asking" @onclick="AskAsync">Ask</Button>
-                                @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
-                                {
-                                    <Button Variant="ghost" Size="micro" Loading="@_filtering" @onclick="FiltersAsync">Filters</Button>
-                                }
-                                <Button Variant="ghost" Size="micro" IconRight="@(_showState ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)"
-                                        @onclick="() => _showState = !_showState">What the judge was sent</Button>
-                            </div>
-                        }
-                        @if (_showState && _state != null)
-                        {
-                            <pre class="soa-state">@_state</pre>
-                        }
-                        @if (_filters is { } fr)
-                        {
-                            <div class="soa-answer">
-                                @if (fr.Filters.Length == 0)
-                                {
-                                    <p class="soa-help">No filters@(fr.Reason is { } why ? $" ({why})" : "").</p>
-                                }
-                                <div class="soa-control">
-                                    @foreach (var f in fr.Filters)
-                                    {
-                                        <Chip Size="micro">@FilterLabel(f)</Chip>
-                                    }
-                                    @if (fr.Text.Length > 0) { <span class="soa-help">search for "@fr.Text"</span> }
-                                    <span class="soa-try-score">@fr.Ms ms</span>
-                                </div>
-                            </div>
-                        }
-                        @if (_sources.Count > 0 || _answer.Length > 0 || _answerError != null)
-                        {
-                            <div class="soa-answer">
-                                @if (_answerError != null) { <p class="soa-error">@_answerError</p> }
-                                <p class="soa-answer-text">@_answer</p>
-                                @if (_sources.Count > 0)
-                                {
-                                    <ol class="soa-sources">
-                                        @foreach (var s in _sources) { <li>@s.Title <span class="soa-key">@s.DocumentKey</span></li> }
-                                    </ol>
-                                }
-                            </div>
-                        }
-                    }
-                </TableCell>
-            </TableRow>
-        </tbody>
-    </Table>
 </div>
 
 @code {
