@@ -22,6 +22,9 @@ namespace IndxServer.Services.Observr
         /// <summary>Earlier text turns the model sees, from the kept conversation.</summary>
         private const int HistoryTurns = 10;
         private const int MaxToolResult = 12_000;
+        /// <summary>Longest question, the same number as Observr's AskEndpoint.MaxQuestion: over it
+        /// the question is refused here with a reason the panel can word, not with Observr's 400.</summary>
+        public const int MaxQuestion = 4000;
 
         private sealed record Turn(string Role, string? Text = null, List<ObservrChatToolUse>? ToolUses = null, List<ToolResult>? ToolResults = null);
         private sealed record ToolResult(string Id, string Content);
@@ -40,6 +43,7 @@ namespace IndxServer.Services.Observr
         {
             question = question.Trim();
             if (question.Length == 0) return new ObservrChatOutcome(ObservrStatus.Failed, Reason: "empty");
+            if (question.Length > MaxQuestion) return new ObservrChatOutcome(ObservrStatus.Failed, Reason: "tooLong");
             if (!client.HasToken) return new ObservrChatOutcome(ObservrStatus.NoToken);
 
             // One thread per user, so an earlier turn may be about another dataset or team; a
@@ -123,6 +127,7 @@ namespace IndxServer.Services.Observr
             {
                 "search" => $"Searching for \"{Arg("text")}\"",
                 "statistics" => "Reading the statistics",
+                "query" => "Looking up the query",
                 "fields" => "Reading the fields and a sample of the records",
                 "synonyms" => "Reading the synonyms",
                 "settings" => "Reading the settings",

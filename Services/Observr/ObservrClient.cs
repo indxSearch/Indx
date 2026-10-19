@@ -235,6 +235,7 @@ namespace IndxServer.Services.Observr
             _ => o.Reason == "datasetNotReady" ? $"The dataset is not ready to search, so there is nothing {nothingYet} yet."
                 : o.Reason == "noStatistics" ? "This instance keeps no statistics, so there is nothing to summarise."
                 : o.Reason == "quota" ? "This licence has used today's Observr allowance. It is back tomorrow."
+                : o.Reason == "tooLong" ? $"The question is too long for Observr: up to {ObservrChat.MaxQuestion:N0} characters."
                 : "Observr could not answer this time.",
         };
     }

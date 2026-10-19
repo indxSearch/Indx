@@ -1247,6 +1247,49 @@ LIMIT $n";
         }
 
         /// <summary>
+        /// One query text's counts over [fromDay, toDay], through the same union as
+        /// <see cref="TopQueries"/> (compared lowercased, as that groups it), so a query that is
+        /// not among the top lists can still be looked up. Null when it was not searched in the
+        /// period; a query searched once has a row, which the capped lists leave out.
+        /// </summary>
+        public QueryStat? OneQuery(string teamId, string dataSet, string queryText, long fromDay, long toDay, string? source = null)
+        {
+            // SQLite's lower() folds ASCII only, and the rollup wrote its text through it: compare
+            // through the same function, never through .NET's.
+            var text = queryText.Trim();
+            if (text.Length == 0) return null;
+            var tz = ZoneOf(teamId, dataSet);
+            long rolledTo = RolledTo(fromDay, toDay, source);
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+SELECT SUM(Searches), SUM(ZeroHits), SUM(Selects), SUM(Clicked), SUM(PosSum), SUM(Unc), SUM(UncChosen) FROM (
+    SELECT Searches, ZeroHits, Selects, ClickedSearches AS Clicked, PositionSum AS PosSum,
+           Uncovered AS Unc, UncoveredChosen AS UncChosen
+      FROM DailyQueryStats
+     WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo AND QueryText = lower($q)
+    UNION ALL
+    SELECT 1, CASE WHEN c.HitCount = 0 THEN 1 ELSE 0 END, COALESCE(c.Cnt, 0),
+           CASE WHEN c.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(c.PosSum, 0),
+           CASE WHEN (c.HitCount = 0 OR c.Covered = 0) THEN 1 ELSE 0 END,
+           CASE WHEN (c.HitCount = 0 OR c.Covered = 0) AND c.Cnt > 0 THEN 1 ELSE 0 END
+      FROM {CountedSearches(LiveWhereFor(source))} c
+     WHERE lower(c.QueryText) = lower($q)
+)";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$fromDay", fromDay);
+            cmd.Parameters.AddWithValue("$rolledTo", rolledTo);
+            cmd.Parameters.AddWithValue("$liveFrom", StatisticsDays.Start(tz, Math.Max(fromDay, rolledTo + 1)));
+            cmd.Parameters.AddWithValue("$toEx", StatisticsDays.Start(tz, toDay + 1));
+            cmd.Parameters.AddWithValue("$q", text);
+            AddSource(cmd, source);
+            using var r = cmd.ExecuteReader();
+            if (!r.Read() || r.IsDBNull(0) || r.GetInt64(0) == 0) return null;
+            return new QueryStat(text, r.GetInt64(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3), r.GetInt64(4), r.GetInt64(5), r.GetInt64(6));
+        }
+
+        /// <summary>
         /// For each query without coverage, the document visitors chose most often from its
         /// fuzzy-only results: the answer coverage could not find, which is usually the synonym or
         /// spelling to add. From the raw rows, so it reaches back as far as they are kept (90 days

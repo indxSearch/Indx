@@ -98,7 +98,7 @@
             <div @ref="_end"></div>
         </ChildContent>
         <Composer>
-            <Composer Value="@_draft" ValueChanged="v => _draft = v" OnSend="SendAsync" Streaming="@_running" Disabled="@(!_canAsk)"
+            <Composer Value="@_draft" ValueChanged="v => _draft = v" OnSend="SendAsync" Streaming="@_running" Disabled="@(!_canAsk)" MaxLength="ObservrChat.MaxQuestion"
                       Placeholder="@(_canAsk ? (_ctx.HasDataset ? $"Ask about {_ctx.DataSetName}…" : $"Ask about {_ctx.TeamName}…") : "Editors can ask")" Icon="_iconComposer" />
         </Composer>
     </ChatPanel>
@@ -198,7 +198,9 @@
         _byId = [];
         foreach (var id in _turns.Where(t => t.FindingId != null).Select(t => t.FindingId!.Value).Distinct())
             if (Findings.Get(id) is { } f) _byId[f.Id] = f;
-        _error = null;
+        // Not _error: Send and the actions reload in their finally, after a refusal set it, and
+        // clearing it here showed nothing and put the question back in the composer without a
+        // word (19 Oct 2026). Each path clears it as it starts.
     }
 
     /// <summary>Where a turn was asked, when that is not where the owner is now.</summary>
@@ -305,6 +307,7 @@
     private Task ClearAsync()
     {
         Conversations.Clear(_userId);
+        _error = null;
         Load();
         return Task.CompletedTask;
     }

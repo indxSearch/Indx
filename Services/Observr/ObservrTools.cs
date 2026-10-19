@@ -52,8 +52,10 @@ namespace IndxServer.Services.Observr
             [
                 new("search", "Search the dataset as a visitor would, and see how many records match and the first ones by name. Use it to check what a query finds, or what a word the visitor used finds.",
                     Schema(new { type = "object", properties = new { text = new { type = "string", description = "The search text." }, take = new { type = "integer", description = "Names to return, up to 20." } }, required = new[] { "text" } })),
-                new("statistics", "The dataset's search statistics for a period: totals, the top queries, the queries that found nothing, the ones with the lowest click-through, the fuzzy finds, the most chosen records, and what changed.",
+                new("statistics", "The dataset's search statistics for a period: totals, the top queries, the queries that found nothing, the ones with the lowest click-through, the fuzzy finds, the most chosen records, and what changed. Each list is capped, so a query missing from them was not necessarily never searched: look it up with the query tool.",
                     Schema(new { type = "object", properties = new { days = new { type = "integer", description = "The period in days ending today: 7, 30 or 90." } } })),
+                new("query", "How often one exact query text was searched in a period, how often it found nothing, how often a result was chosen, and which records were chosen. The answer to \"how often did visitors search for X\", including a query searched only once.",
+                    Schema(new { type = "object", properties = new { text = new { type = "string", description = "The query text, as the visitor typed it." }, days = new { type = "integer", description = "The period in days ending today: 7, 30 or 90." } }, required = new[] { "text" } })),
                 new("fields", "The fields and their roles (searchable, filterable, facetable, sortable, weight), with what a sample of the records holds in each: fill, distinct values, the commonest values, a number's range.",
                     Schema(new { type = "object", properties = new { } })),
                 new("synonyms", "The dataset's synonym list.", Schema(new { type = "object", properties = new { } })),
@@ -118,6 +120,7 @@ namespace IndxServer.Services.Observr
                     "datasets" => Datasets(ctx),
                     "search" => Search(ctx, Text(input, "text"), Int(input, "take", 10, 1, SearchMax)),
                     "statistics" => Statistics(ctx, Int(input, "days", 7, 1, 90)),
+                    "query" => QueryStatistics(ctx, Text(input, "text"), Int(input, "days", 7, 1, 90)),
                     "fields" => Fields(ctx),
                     "synonyms" => Synonyms(ctx),
                     "settings" => Settings(ctx),
@@ -203,6 +206,7 @@ namespace IndxServer.Services.Observr
             var o = store.Overview(ctx.TeamId, ds, from, to);
             var sb = new StringBuilder();
             sb.AppendLine($"Last {days} days: {o.Searches:N0} searches, {o.ZeroHits:N0} found nothing, {o.ClickedSearches:N0} ended in a click, {o.Uncovered:N0} were fuzzy finds.");
+            sb.AppendLine("The lists below are capped; a query that is not in them may still have been searched. The query tool looks one up.");
             void Section(string title, List<QueryStat> list)
             {
                 if (list.Count == 0) return;
@@ -225,6 +229,34 @@ namespace IndxServer.Services.Observr
                 sb.AppendLine("Changes in the period:");
                 foreach (var c in changes.Take(20))
                     sb.AppendLine($"- {DateTimeOffset.FromUnixTimeMilliseconds(c.Timestamp):yyyy-MM-dd} {ChangeDescriptions.Describe(c.Kind, c.Summary)}");
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>One query's counts, however rarely it was searched: the top lists are capped,
+        /// and "how often did X occur" must not be answered from their absence.</summary>
+        private string QueryStatistics(ObservrChatContext ctx, string text, int days)
+        {
+            if (text.Length == 0) return "The query text is empty.";
+            var store = statistics.Store;
+            if (store == null || !statistics.Enabled) return "This instance keeps no statistics.";
+            var ds = ctx.DataSetName!;
+            var to = store.Today(ctx.TeamId, ds);
+            var from = to - (days - 1);
+            var q = store.OneQuery(ctx.TeamId, ds, text, from, to);
+            if (q == null) return $"\"{text}\" was not searched in the last {days} days (compared without regard to case; the search statistics count visitors' searches, not the console's preview).";
+            var sb = new StringBuilder();
+            sb.Append($"\"{text}\" in the last {days} days: {q.Value.Searches} searches, {q.Value.ZeroHits} found nothing, {q.Value.ClickedSearches} ended in a click, {q.Value.Uncovered} were fuzzy finds");
+            if (q.Value.Selects > 0) sb.Append($", average click position {(double)q.Value.PositionSum / q.Value.Selects:0.0}");
+            sb.AppendLine(".");
+            var engine = engines.FindSearchEngine(ds, ctx.TeamId);
+            var label = engine != null && engine.Status.SystemState == SystemState.Ready ? StatisticsLabels.For(engine, store.LabelField(ctx.TeamId, ds)) : (Func<long, string?>)(_ => null);
+            var docs = store.QueryDocuments(ctx.TeamId, ds, text, from, to, 10);
+            if (docs.Count > 0)
+            {
+                sb.AppendLine("Records chosen from its results:");
+                foreach (var d in docs)
+                    sb.AppendLine($"- {label(d.DocumentKey) ?? d.DocumentKey.ToString()}: chosen {d.Selects} times" + (d.Selects > 0 ? $", average position {(double)d.PositionSum / d.Selects:0.0}" : ""));
             }
             return sb.ToString();
         }

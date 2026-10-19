@@ -1,5 +1,5 @@
 @* Port of indx-systm Composer: the message field. Enter sends, Shift+Enter breaks the line; the
-   field grows with its text up to MaxLines. Send becomes Stop while an answer is in flight. Enter
+   field grows with its text up to MaxLines; over MaxLength it says so and Send waits. Send becomes Stop while an answer is in flight. Enter
    is read by the browser (a conditional preventDefault is not Blazor's), which clicks the Send
    button, so the send goes through the same handler as a click. The field grows as its text wraps
    (Composer.razor.js), not only on line breaks; Rows is the first render's height before that. *@
@@ -7,7 +7,8 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-<div class="indx-composer @Class">
+<div class="indx-composer-wrap">
+<div class="indx-composer @Class @(Over ? "indx-composer-over" : null)">
     <div class="indx-composer-field">
         @if (!HideIcon)
         {
@@ -30,6 +31,11 @@
         }
     </div>
 </div>
+@if (Over)
+{
+    <p class="indx-composer-note" role="status">@Value.Length.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) of @MaxLength.ToString("N0", System.Globalization.CultureInfo.InvariantCulture) characters. Shorten it to send.</p>
+}
+</div>
 
 @code {
     [Parameter] public string Value { get; set; } = "";
@@ -48,13 +54,18 @@
     [Parameter] public bool HideIcon { get; set; }
     /// <summary>Tallest the field grows before it scrolls, in lines.</summary>
     [Parameter] public int MaxLines { get; set; } = 6;
+    /// <summary>Longest text that can be sent, in characters; 0 is no limit. Over it the field says
+    /// so under itself and Send waits, so a limit the receiver enforces is never met as a silent
+    /// refusal (19 Oct 2026: the Agent's question bounced back without a word).</summary>
+    [Parameter] public int MaxLength { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public string AriaLabel { get; set; } = "Message";
 
     private static readonly RenderFragment<int> _send = size => @<ArrowUp Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _stop = size => @<Stop Size="size" Color="currentColor" />;
 
-    private bool CanSend => !Streaming && !Disabled && !string.IsNullOrWhiteSpace(Value);
+    private bool Over => MaxLength > 0 && Value.Length > MaxLength;
+    private bool CanSend => !Streaming && !Disabled && !Over && !string.IsNullOrWhiteSpace(Value);
     private int Rows => Math.Clamp(Value.Count(c => c == '\n') + 1, 1, Math.Max(1, MaxLines));
 
     private const int Line = 18;          // the input's line-height
