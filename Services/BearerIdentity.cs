@@ -56,7 +56,7 @@ namespace IndxServer.Services
             return h.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase) && h.Length > 7 ? h[7..].Trim() : null;
         }
 
-        /// <summary>Must be registered after <c>UseRouting</c> and before <c>UseRateLimiter</c>.</summary>
+        /// <summary>Must be registered after <c>UseRouting</c> and before <c>UseAuthRateLimiting</c>.</summary>
         public static IApplicationBuilder UseBearerIdentity(this IApplicationBuilder app) =>
             app.Use(async (ctx, next) =>
             {
