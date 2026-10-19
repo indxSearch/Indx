@@ -161,7 +161,12 @@ internal static class StartupServices
         builder.Services.AddMcpServer(options =>
                 options.Filters.Request.ListToolsFilters.Add(IndxServer.Mcp.McpSession.FilterListedTools))
             .WithHttpTransport(transport => transport.ConfigureSessionOptions = IndxServer.Mcp.McpSession.ConfigureAsync)
-            .WithTools<IndxServer.Mcp.IndxMcpTools>();
+            // Serializer options of this host's own: the tools' function descriptors are cached on
+            // the options they are built with, each holding this host's services, and on the
+            // library's shared default that cache outlived the host. One host a process in
+            // production; in TestIndxServer every test's host stayed alive (19 Oct 2026).
+            .WithTools<IndxServer.Mcp.IndxMcpTools>(
+                new System.Text.Json.JsonSerializerOptions(ModelContextProtocol.McpJsonUtilities.DefaultOptions));
 
         builder.Services.AddScoped<IndxServer.Services.NotificationService>();
         builder.Services.AddScoped<IndxServer.Services.TeamService>();
@@ -753,7 +758,7 @@ internal static class StartupServices
             builder.Services.AddApplicationInsightsTelemetry();
 
         // Per-IP window on the anonymous auth endpoints (see AuthRateLimiting); applied by
-        // UseRateLimiter after routing so the path is known.
+        // UseAuthRateLimiting after routing so the path is known.
         builder.Services.AddAuthRateLimiting(builder.Configuration);
     }
 }

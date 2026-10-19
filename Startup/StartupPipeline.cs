@@ -108,7 +108,7 @@ internal static class StartupPipeline
 
         // Before authentication on purpose: the per-key policy partitions on the validated jti
         // that UseBearerIdentity just resolved, and the per-IP windows need no principal at all.
-        app.UseRateLimiter();
+        app.UseAuthRateLimiting();
 
         app.UseAuthentication();
 
