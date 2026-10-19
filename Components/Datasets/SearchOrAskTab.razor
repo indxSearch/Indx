@@ -208,7 +208,7 @@
                         }
                         else if (_judging)
                         {
-                            <StreamStatus SpinnerName="grow">Asking the judge…</StreamStatus>
+                            <StreamStatus SpinnerName="spectrum">Asking the judge…</StreamStatus>
                         }
                         else if (_typingNow)
                         {
@@ -227,7 +227,8 @@
                             }
                             else
                             {
-                                <span class="soa-help">No offer: the visitor sees the results and nothing more.</span>
+                                @* The flat spectrum, the spinner at rest, keeps the line's indent with the spinners'. *@
+                                <span class="soa-try-none"><span class="soa-try-none-icon"><Indx.Systm.Blazor.Icons.SpectrumFlat Size="14" Color="currentColor" /></span>No offer: the visitor sees the results and nothing more.</span>
                                 <Button Variant="ghost" Size="micro" Loading="@_asking" @onclick="AskAsync">Ask anyway</Button>
                             }
                         }
