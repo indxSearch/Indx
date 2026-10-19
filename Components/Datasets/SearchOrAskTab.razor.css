@@ -73,7 +73,8 @@
 .soa-try-title { font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
 .soa-try-off { margin-top: 0; }
 /* intrface's offer row: always this tall, so an offer appearing moves nothing under it. */
-.soa-try-offer { display: flex; align-items: center; gap: 10px; min-height: 28px; min-width: 0; flex-wrap: wrap; }
+/* As tall as a micro button (30px), whatever it holds, so the offer arriving moves nothing. */
+.soa-try-offer { display: flex; align-items: center; gap: 10px; min-height: 30px; min-width: 0; flex-wrap: wrap; }
 .soa-try-hint { display: inline-flex; align-items: center; gap: 4px; font: var(--text-xs); color: var(--lv4); }
 .soa-kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; font: var(--text-2xs); color: var(--lv5); background: var(--lv2); border-radius: 3px; }
 /* The judge's scores, quiet, with the tester's own tools at the end. */

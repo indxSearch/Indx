@@ -197,12 +197,24 @@
                 {
                     <SearchField Value="@_tryText" ValueChanged="@(async v => { _tryText = v; await OnTryInput(); })" Placeholder="@($"Search {Ctx.Name}")"
                                  @onkeydown="OnTryKey" />
-                    @* The offer as the visitor sees it: intrface's row under the field, the same height
-                       whether an offer is up or not, so a judgement arriving moves nothing. *@
-                    @if (_try != null || _tryMessage != null)
-                    {
+                    @* The offer as the visitor sees it: intrface's row under the field, always there and
+                       the same height, so a judgement arriving moves nothing. Before any text it says
+                       what will show; while the text is still changing, then while the judge reads, a
+                       spinner says which; then the offer, or that there is none. *@
                     <div class="soa-try-offer" aria-live="polite">
-                        @if (_try is { } r)
+                        @if (string.IsNullOrWhiteSpace(_tryText))
+                        {
+                            <span class="soa-help">The offer shows here as you type: "Ask the assistant", "Ask about this", or none.</span>
+                        }
+                        else if (_judging)
+                        {
+                            <StreamStatus SpinnerName="grow">Asking the judge…</StreamStatus>
+                        }
+                        else if (_typingNow)
+                        {
+                            <StreamStatus>Waiting for a pause…</StreamStatus>
+                        }
+                        else if (_try is { } r)
                         {
                             @if (r.Offer == "strong")
                             {
@@ -224,7 +236,6 @@
                             <span class="soa-help">@_tryMessage</span>
                         }
                     </div>
-                    }
                     @if (_showResults && _results is { } found)
                     {
                         @* What the search finds, as the judge reads it: title, section, snippet. *@
@@ -604,6 +615,8 @@
     private IntentResult? _try;
     private bool _showResults;
     private SearchOrAskService.SearchSummary? _results;
+    /// <summary>The text changed and the pause has not passed; then the judge is reading.</summary>
+    private bool _typingNow, _judging;
 
     private void OnShowResults(bool on)
     {
@@ -659,19 +672,28 @@
         _typing?.Cancel();
         var typing = _typing = new CancellationTokenSource();
         var text = _tryText?.Trim() ?? "";
-        if (text.Length == 0) { _try = null; _tryMessage = null; _state = null; _results = null; return; }
+        if (text.Length == 0) { _try = null; _tryMessage = null; _state = null; _results = null; _typingNow = _judging = false; return; }
         var engine = Ctx.FindEngine();
         if (engine == null) return;
         // The hits on every keystroke, as the Search preview searches: milliseconds, no model
         // behind them. Only the judge waits for the pause.
         if (_showResults) _results = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit);
+        _typingNow = true;
         try { await Task.Delay(PauseMs, typing.Token); }
         catch (OperationCanceledException) { return; }
 
-        if (_edit.Validate() is { } invalid) { _try = null; _tryMessage = invalid; return; }
+        if (_edit.Validate() is { } invalid) { _try = null; _tryMessage = invalid; _typingNow = false; return; }
         string? state = null;
-        var outcome = await Service.IntentAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, typing.Token,
-            trial: _edit, onState: s => state = s.ToJsonString(Pretty));
+        _typingNow = false;
+        _judging = true;
+        StateHasChanged();
+        IntentOutcome outcome;
+        try
+        {
+            outcome = await Service.IntentAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, typing.Token,
+                trial: _edit, onState: s => state = s.ToJsonString(Pretty));
+        }
+        finally { if (!typing.IsCancellationRequested) _judging = false; }
         if (typing.IsCancellationRequested) return; // a newer pause has asked since
         (_try, _tryMessage) = outcome.Status switch
         {
