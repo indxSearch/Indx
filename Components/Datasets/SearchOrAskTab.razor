@@ -195,7 +195,7 @@
                 }
                 else
                 {
-                    <SearchField Value="@_tryText" ValueChanged="@(async v => { _tryText = v; await OnTryInput(); })" Placeholder="@($"Search {Ctx.Name}")"
+                    <SearchField Value="@_tryText" ValueChanged="@(async v => { _tryText = v; await OnTryInput(); })" Placeholder="Search or type a question"
                                  @onkeydown="OnTryKey" />
                     @* The offer as the visitor sees it: intrface's row under the field, always there and
                        the same height, so a judgement arriving moves nothing. Before any text it says
