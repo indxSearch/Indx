@@ -23,13 +23,14 @@
 .soa-number { width: 110px; }
 .soa-error { color: var(--CSignal); font: var(--text-sm); margin-top: 10px; }
 
-/* The tester: a visitor's search box, drawn like the Search preview's panel, as wide as a
-   settings group. */
+/* The tester: a visitor's search box, drawn like the Search preview's panel, as wide as the
+   settings grid under it (its max-width), so the two line up at every window width. */
 .soa-try {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    max-width: 640px;
+    max-width: 1304px;
+    box-sizing: border-box;
     margin-bottom: 24px;
     padding: 12px;
     background: var(--lv0);
