@@ -128,8 +128,8 @@ namespace IndxServer.Controllers
 
         /// <summary>
         /// SetFieldConfiguration sets any combination of field properties (Searchable, Filterable,
-        /// Facetable, Sortable, WordIndexing, Embeddable, PreloadFilters, Weight, BM25b, BM25k1)
-        /// in one call. Nullable properties have replace semantics: null = leave untouched,
+        /// Facetable, Sortable, WordIndexing, Embeddable, PreloadFilters, Weight, BM25b, BM25k1,
+        /// HighResolution, IndexSizes, NumberOfStartCharacters, NumberOfStopCharacters) in one call. Nullable properties have replace semantics: null = leave untouched,
         /// any value (including false) = overwrite.
         ///
         /// <para>The whole request is checked before anything is changed, and a refused one is a
