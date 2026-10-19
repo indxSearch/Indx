@@ -1,19 +1,34 @@
 .soa-tab { margin-top: 0; }
 .soa-intro { max-width: 640px; }
 ::deep .soa-table { max-width: 640px; margin-bottom: 24px; }
-/* The settings groups: balanced columns, as many as fit at 380px each, up to the width the
-   Query parameters tab uses. Multi-column, not grid: grid rows align, so a long group left a
-   hole under a short one before the next row started. The browser fills top down and evens the
-   heights; a group never splits across columns. */
-.soa-groups {
-    columns: 380px;
-    column-gap: 24px;
-    column-fill: balance;
+/* Two columns: the settings on the left, one under the other, as wide as a settings group; the
+   tester on the right, sticky under the header, so it stays in view while a setting is changed.
+   A container query, not a media query: the tab sits inside a page with its own gutters. On a
+   narrow tab the two stack, the tester first. */
+.soa-tab { container-type: inline-size; }
+.soa-layout {
+    display: grid;
+    /* Equal halves: a settings group is never wider than 640px anyway, and the tester needs
+       the room for an answer. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0 24px;
+    align-items: start;
     max-width: 1304px;
 }
-/* Each group in a div of its own: the column item, never split. A bare table fragmented across
-   the columns. */
-.soa-group { break-inside: avoid; }
+.soa-settings { min-width: 0; }
+.soa-group { min-width: 0; }
+.soa-preview {
+    min-width: 0;
+    position: sticky;
+    /* The page scrolls inside the shell's content area, which begins under the header, so the
+       offset is the page's own top gap, not the header's height (measured: the header's height
+       here put the tester 76px below the header's edge). */
+    top: 20px;
+}
+@container (max-width: 899px) {
+    .soa-layout { grid-template-columns: minmax(0, 1fr); }
+    .soa-preview { position: static; order: -1; }
+}
 ::deep .soa-cell { padding: 12px 15px; }
 .soa-label { display: block; font: var(--text-sm); color: var(--lv7); }
 ::deep .soa-row--set .soa-label { color: var(--lv8); font-weight: var(--med); }
@@ -25,13 +40,11 @@
 .soa-number { width: 110px; }
 .soa-error { color: var(--CSignal); font: var(--text-sm); margin-top: 10px; }
 
-/* The tester: a visitor's search box, drawn like the Search preview's panel, as wide as the
-   settings grid under it (its max-width), so the two line up at every window width. */
+/* The tester: a visitor's search box, drawn like the Search preview's panel, filling its column. */
 .soa-try {
     display: flex;
     flex-direction: column;
     gap: 10px;
-    max-width: 1304px;
     box-sizing: border-box;
     margin-bottom: 24px;
     padding: 12px;

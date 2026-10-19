@@ -44,246 +44,250 @@
         </div>
     }
 
-    @* The tester before everything, only once Search or ask is on: at the foot of the page it was
-       hard to find, and in a column it moved mid-page as the grid wrapped (19 Oct 2026). *@
-    @if (_edit.Enabled)
-    {
-        @* Drawn as a visitor's search would be (the Search preview's box, intrface's offer row
-           under the field, the answer as a chat turn), so what an editor tries here looks like
-           what a visitor gets. *@
-        <section class="soa-try" aria-label="Try it">
-            <div class="soa-try-head">
-                <span class="soa-try-title">Try it</span>
-                <span class="soa-help">Type as a visitor would. Uses the settings below, saved or not. Each pause is one call against the budget.</span>
+
+    @* Two columns: the settings on the left, one under the other; the tester on the right, sticky,
+       so it stays in view while a threshold or a note is changed under it (19 Oct 2026). On a
+       narrow window the tester comes first, then the settings. *@
+    <div class="soa-layout">
+        <div class="soa-settings">
+        <div class="soa-groups">
+            <div class="soa-group">
+            <Table AriaLabel="Search or ask" Class="soa-table">
+                @Head("Search or ask")
+                <tbody>
+                    @Row(DatasetIcons.SearchOrAsk, "Offer answers",
+                         $"Sends what visitors type to {Service.Setup.Receivers}, and their questions to the answer model. Name this in your privacy notice.",
+                         _edit.Enabled, @<ToggleSwitch Label="Enabled" Variant="positive" Checked="@_edit.Enabled" CheckedChanged="@(v => _edit.Enabled = v)" />)
+                    @Row(Icon<Icons.Book>(), "Kind of site", "How the judge tells a question from a lookup.",
+                         false, @<div class="soa-select"><SelectField Size="micro" Options="KindOptions" Value="@_edit.Kind" ValueChanged="@(v => _edit.Kind = v ?? SearchOrAskRecipes.Documentation)" /></div>)
+                    @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold, in a sentence or two. Empty uses the dataset's description.",
+                         !string.IsNullOrWhiteSpace(_edit.SiteDescription),
+                         @<Textarea Rows="3" @bind-Value="_edit.SiteDescription" placeholder="@_effectiveSite" />)
+                    @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                    {
+                        @Row(Icon<Icons.Filter>(), "About the fields", "What the values mean here, for turning a description into filters. One per line, such as \"barneskole: grades 1 to 7\".",
+                             !string.IsNullOrWhiteSpace(_edit.FilterNotes),
+                             @<Textarea Rows="4" @bind-Value="_edit.FilterNotes" placeholder="friskole: private" />)
+                    }
+                    @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
+                         _edit.Answers != SearchOrAskSettings.BestAnswers,
+                         @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
+                    @Row(Icon<Icons.Paragraph>(), "Answer instructions", "How the answers should speak: voice, house rules, what to say when nothing is found. They shape the wording; what an answer may claim stays bound to the records.",
+                         !string.IsNullOrWhiteSpace(_edit.AnswerInstructions),
+                         @<Textarea Rows="3" @bind-Value="_edit.AnswerInstructions" placeholder="Formal. Say du. Never recommend another shop." />)
+                    @Row(Icon<Icons.UserText>(), "Answer language", "The visitor's language by default; or one language for every answer.",
+                         !string.IsNullOrWhiteSpace(_edit.AnswerLanguage),
+                         @<div class="soa-select"><SelectField Size="micro" Options="LanguageOptions" Value="@(_edit.AnswerLanguage ?? VisitorsLanguage)" ValueChanged="@(v => _edit.AnswerLanguage = v == VisitorsLanguage ? null : v)" /></div>)
+                    @Row(Icon<Icons.Coins>(), "Daily call budget", $"Calls per day (UTC). {_callsToday:N0} used today.",
+                         _budgetText != null,
+                         @<div class="soa-number"><InputField @bind-Value="_budgetText" @bind-Value:after="SetBudget" Error="@_budgetError" inputmode="numeric" placeholder="5,000" /></div>)
+                </tbody>
+            </Table>
             </div>
-            @if (!Service.Available)
-            {
-                <span class="soa-help soa-try-off">Needs the instance's model key.</span>
-            }
-            else if (Ctx.EngineState != SystemState.Ready)
-            {
-                <span class="soa-help soa-try-off">Available after the index is built.</span>
-            }
-            else
-            {
-                <SearchField Value="@_tryText" ValueChanged="@(async v => { _tryText = v; await OnTryInput(); })" Placeholder="@($"Search {Ctx.Name}")"
-                             @onkeydown="OnTryKey" />
-                @* The offer as the visitor sees it: intrface's row under the field, the same height
-                   whether an offer is up or not, so a judgement arriving moves nothing. *@
-                @if (_try != null || _tryMessage != null)
-                {
-                <div class="soa-try-offer" aria-live="polite">
-                    @if (_try is { } r)
-                    {
-                        @if (r.Offer == "strong")
-                        {
-                            <Button Variant="primary" Size="micro" IconLeft="_iconAgent" Loading="@_asking" @onclick="AskAsync">Ask the assistant</Button>
-                            <span class="soa-try-hint"><kbd class="soa-kbd">↵</kbd> to ask</span>
-                        }
-                        else if (r.Offer == "invite")
-                        {
-                            <Button Variant="ghost" Size="micro" IconLeft="_iconAgent" Loading="@_asking" @onclick="AskAsync">Ask about this</Button>
-                        }
-                        else
-                        {
-                            <span class="soa-help">No offer: the visitor sees the results and nothing more.</span>
-                            <Button Variant="ghost" Size="micro" Loading="@_asking" @onclick="AskAsync">Ask anyway</Button>
-                        }
-                    }
-                    else if (_tryMessage != null)
-                    {
-                        <span class="soa-help">@_tryMessage</span>
-                    }
-                </div>
-                }
-                @if (_try is { } j)
-                {
-                    @* The judge's scores, each with what it answers on hover: the labels alone
-                       said nothing to an owner reading "p 0.12" (19 Oct 2026). *@
-                    <div class="soa-try-scores">
-                        <Tooltip Content="@OfferHelp(j.Offer)"><Chip Size="micro" Class="@($"soa-offer soa-offer--{j.Offer}")">@OfferLabel(j.Offer)</Chip></Tooltip>
-                        <span class="soa-try-score">
-                            <Tooltip Content="@QuestionHelp">question @Two(j.P)</Tooltip>
-                            @if (j.Criteria is { } c)
-                            {
-                                <text> · </text><Tooltip Content="@DescriptionHelp">description @Two(c)</Tooltip>
-                            }
-                            @if (j.Answerable is { } a)
-                            {
-                                <text> · </text><Tooltip Content="@AnswerableHelp">answerable @Two(a)</Tooltip>
-                            }
-                            <text> · </text><Tooltip Content="@(j.Cached ? "The judge answered this text before; the cached answer, no call made." : "How long the judge took. A visitor's page waits at most 3 seconds.")">@(j.Cached ? "cached" : $"{j.Ms} ms")</Tooltip>
-                            @if (j.Reason is { } why) { <text> · @why</text> }
-                        </span>
-                        <span class="soa-try-spacer"></span>
-                        @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
-                        {
-                            <Button Variant="ghost" Size="micro" Loading="@_filtering" @onclick="FiltersAsync">Filters</Button>
-                        }
-                        <Button Variant="ghost" Size="micro" IconRight="@(_showState ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)"
-                                @onclick="() => _showState = !_showState">What the judge was sent</Button>
-                    </div>
-                }
-                @if (_showState && _state != null)
-                {
-                    <pre class="soa-state">@_state</pre>
-                }
-                @if (_filters is { } fr)
-                {
-                    <div class="soa-try-filters">
-                        <span class="soa-help">Searched with</span>
-                        @if (fr.Filters.Length == 0)
-                        {
-                            <span class="soa-help">no filters@(fr.Reason is { } why ? $" ({why})" : "")</span>
-                        }
-                        @foreach (var f in fr.Filters)
-                        {
-                            <Chip Size="micro">@FilterLabel(f)</Chip>
-                        }
-                        @if (fr.Text.Length > 0) { <span class="soa-help">and the words "@fr.Text"</span> }
-                        <span class="soa-try-score">@fr.Ms ms</span>
-                    </div>
-                }
-                @if (_sources.Count > 0 || _answer.Length > 0 || _answerError != null)
-                {
-                    <div class="soa-try-turn">
-                        <UserMessage>@_tryText</UserMessage>
-                        <AssistantMessage Label="Answer" Icon="_iconAgent">
-                            @if (_answerError != null) { <p class="soa-error">@_answerError</p> }
-                            @ChatMarkdown.Render(_answer)
-                            @if (_sources.Count > 0)
-                            {
-                                <ol class="soa-sources">
-                                    @foreach (var s in _sources) { <li>@s.Title <span class="soa-key">@s.DocumentKey</span></li> }
-                                </ol>
-                            }
-                        </AssistantMessage>
-                    </div>
-                }
-            }
-        </section>
-    }
 
-    @* The groups in balanced columns (CSS multi-column, not a grid: grid rows align, so a long
-       group left a hole under a short one before the next row, 19 Oct 2026). The browser picks
-       the count from the width and evens the heights; a group is never split. *@
-    <div class="soa-groups">
-        <div class="soa-group">
-        <Table AriaLabel="Search or ask" Class="soa-table">
-            @Head("Search or ask")
-            <tbody>
-                @Row(DatasetIcons.SearchOrAsk, "Offer answers",
-                     $"Sends what visitors type to {Service.Setup.Receivers}, and their questions to the answer model. Name this in your privacy notice.",
-                     _edit.Enabled, @<ToggleSwitch Label="Enabled" Variant="positive" Checked="@_edit.Enabled" CheckedChanged="@(v => _edit.Enabled = v)" />)
-                @Row(Icon<Icons.Book>(), "Kind of site", "How the judge tells a question from a lookup.",
-                     false, @<div class="soa-select"><SelectField Size="micro" Options="KindOptions" Value="@_edit.Kind" ValueChanged="@(v => _edit.Kind = v ?? SearchOrAskRecipes.Documentation)" /></div>)
-                @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold, in a sentence or two. Empty uses the dataset's description.",
-                     !string.IsNullOrWhiteSpace(_edit.SiteDescription),
-                     @<Textarea Rows="3" @bind-Value="_edit.SiteDescription" placeholder="@_effectiveSite" />)
-                @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
-                {
-                    @Row(Icon<Icons.Filter>(), "About the fields", "What the values mean here, for turning a description into filters. One per line, such as \"barneskole: grades 1 to 7\".",
-                         !string.IsNullOrWhiteSpace(_edit.FilterNotes),
-                         @<Textarea Rows="4" @bind-Value="_edit.FilterNotes" placeholder="friskole: private" />)
-                }
-                @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
-                     _edit.Answers != SearchOrAskSettings.BestAnswers,
-                     @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
-                @Row(Icon<Icons.Paragraph>(), "Answer instructions", "How the answers should speak: voice, house rules, what to say when nothing is found. They shape the wording; what an answer may claim stays bound to the records.",
-                     !string.IsNullOrWhiteSpace(_edit.AnswerInstructions),
-                     @<Textarea Rows="3" @bind-Value="_edit.AnswerInstructions" placeholder="Formal. Say du. Never recommend another shop." />)
-                @Row(Icon<Icons.UserText>(), "Answer language", "The visitor's language by default; or one language for every answer.",
-                     !string.IsNullOrWhiteSpace(_edit.AnswerLanguage),
-                     @<div class="soa-select"><SelectField Size="micro" Options="LanguageOptions" Value="@(_edit.AnswerLanguage ?? VisitorsLanguage)" ValueChanged="@(v => _edit.AnswerLanguage = v == VisitorsLanguage ? null : v)" /></div>)
-                @Row(Icon<Icons.Coins>(), "Daily call budget", $"Calls per day (UTC). {_callsToday:N0} used today.",
-                     _budgetText != null,
-                     @<div class="soa-number"><InputField @bind-Value="_budgetText" @bind-Value:after="SetBudget" Error="@_budgetError" inputmode="numeric" placeholder="5,000" /></div>)
-            </tbody>
-        </Table>
+            <div class="soa-group">
+            <Table AriaLabel="What the judge sees" Class="soa-table">
+                @Head("What the judge sees of a result")
+                <tbody>
+                    @if (TextFields.Count == 0)
+                    {
+                        <TableRow><TableCell Class="soa-cell"><span class="soa-help">The fields can be chosen once the dataset has been analyzed.</span></TableCell></TableRow>
+                    }
+                    else
+                    {
+                        @Row(Icon<Icons.TextSize>(), "Title", "Each result's name.",
+                             _edit.TitleField != null,
+                             @<div class="soa-select"><SelectField Size="micro" Options="TitleOptions" Value="@(_edit.TitleField ?? Automatic)" ValueChanged="@(v => _edit.TitleField = v == Automatic ? null : v)" /></div>)
+                        @Row(Icon<Icons.Tag>(), "Section", "Where a result belongs, such as a category or year.",
+                             _edit.SectionFields != null, FieldChoice(PlaceFields, () => _edit.SectionFields, v => _edit.SectionFields = v, _effective?.SectionFields))
+                        @Row(Icon<Icons.Paragraph>(), "Snippet", "The text the judge reads, and the answer is written from.",
+                             _edit.SnippetFields != null, FieldChoice(TextFields, () => _edit.SnippetFields, v => _edit.SnippetFields = v, _effective?.SnippetFields))
+                    }
+                </tbody>
+            </Table>
+            </div>
+
+            <div class="soa-group">
+            <Table AriaLabel="When to offer" Class="soa-table">
+                @Head("When to offer")
+                <tbody>
+                    <TableRow>
+                        <TableCell Class="soa-cell">
+                            <span class="soa-help">On each pause the judge scores what is typed from 0, a lookup, to 1, a question. On a catalogue a sure description of what to list earns the full offer too.</span>
+                            @Scale()
+                        </TableCell>
+                    </TableRow>
+                    @ThresholdRow(Icon<Icons.ClickButton>(), "Answer offer", "A full offer to answer. Enter asks.",
+                        t => t.Strong, (t, v) => t.Strong = v, Defaults.Strong,
+                        t => t.StrongHide, (t, v) => t.StrongHide = v, Defaults.StrongHide)
+                    @ThresholdRow(Icon<Icons.CommentChatMessage>(), "Invitation", "A quieter \"Ask about this\".",
+                        t => t.Invite, (t, v) => t.Invite = v, Defaults.Invite,
+                        t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide)
+                </tbody>
+            </Table>
+            </div>
+
+            <div class="soa-group">
+            <Table AriaLabel="While asking" Class="soa-table">
+                @Head("While asking")
+                <tbody>
+                    <TableRow>
+                        <TableCell Class="soa-cell">
+                            <span class="soa-help">What the page does with its list while a full offer is up.</span>
+                        </TableCell>
+                    </TableRow>
+                    @Row(DatasetIcons.QueryParameters, "The list", "Keep only the results that still match: those scoring a share of the top result, and only when the top result scores enough. Off keeps the whole list.",
+                         _edit.CutWhileAsking != true || _edit.CutShareOfTop != 0.5 || _edit.CutTopFloor != 0.2,
+                         @<div class="soa-stack">
+                             <ToggleSwitch Label="Strong matches only" Checked="@_edit.CutWhileAsking" CheckedChanged="@(v => _edit.CutWhileAsking = v)" />
+                             @if (_edit.CutWhileAsking)
+                             {
+                                 <div class="soa-thresholds">
+                                     <div class="soa-threshold">
+                                         <span class="soa-threshold-label">Share of top</span>
+                                         <Slider Min="0" Max="1" Step="0.05" Value="@_edit.CutShareOfTop" ValueChanged="@(v => _edit.CutShareOfTop = Math.Round(v, 2))" AriaLabel="Keep results scoring at least this share of the top" Class="soa-slider" />
+                                         <span class="soa-threshold-value">@Two(_edit.CutShareOfTop)</span>
+                                     </div>
+                                     <div class="soa-threshold">
+                                         <span class="soa-threshold-label">Top at least</span>
+                                         <Slider Min="0" Max="1" Step="0.05" Value="@_edit.CutTopFloor" ValueChanged="@(v => _edit.CutTopFloor = Math.Round(v, 2))" AriaLabel="Show the list only when the top result scores at least this" Class="soa-slider" />
+                                         <span class="soa-threshold-value">@Two(_edit.CutTopFloor)</span>
+                                     </div>
+                                 </div>
+                             }
+                         </div>)
+                    @Row(Icon<Icons.TextSize>(), "Matching", "The page's own searches match whole words only: no typos, prefixes or joined words. The answer still searches with the full setup, so a typo in a name still finds the record.",
+                         !_edit.StrictCoverageWhileAsking, @<ToggleSwitch Label="Whole words only" Checked="@_edit.StrictCoverageWhileAsking" CheckedChanged="@(v => _edit.StrictCoverageWhileAsking = v)" />)
+                    @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                    {
+                        @Row(Icon<Icons.Filter>(), "Filters", "When the text describes what to list: leave the list alone until the visitor asks, or narrow it at once. From facet values is instant: a typed word that equals a value becomes that filter. With the model also asks for what the values could not name, about a second and a half.",
+                             _edit.FiltersWhileTyping != SearchOrAskSettings.FiltersOff,
+                             @<div class="soa-select"><SelectField Size="micro" Options="FiltersWhileTypingOptions" Value="@_edit.FiltersWhileTyping" ValueChanged="@(v => _edit.FiltersWhileTyping = v ?? SearchOrAskSettings.FiltersOff)" /></div>)
+                    }
+                </tbody>
+            </Table>
+            </div>
         </div>
-
-        <div class="soa-group">
-        <Table AriaLabel="What the judge sees" Class="soa-table">
-            @Head("What the judge sees of a result")
-            <tbody>
-                @if (TextFields.Count == 0)
+        </div>
+        <aside class="soa-preview" aria-label="Try it">
+        @if (_edit.Enabled)
+        {
+            @* Drawn as a visitor's search would be (the Search preview's box, intrface's offer row
+               under the field, the answer as a chat turn), so what an editor tries here looks like
+               what a visitor gets. *@
+            <section class="soa-try">
+                <div class="soa-try-head">
+                    <span class="soa-try-title">Try it</span>
+                    <span class="soa-help">Type as a visitor would. Uses the settings below, saved or not. Each pause is one call against the budget.</span>
+                </div>
+                @if (!Service.Available)
                 {
-                    <TableRow><TableCell Class="soa-cell"><span class="soa-help">The fields can be chosen once the dataset has been analyzed.</span></TableCell></TableRow>
+                    <span class="soa-help soa-try-off">Needs the instance's model key.</span>
+                }
+                else if (Ctx.EngineState != SystemState.Ready)
+                {
+                    <span class="soa-help soa-try-off">Available after the index is built.</span>
                 }
                 else
                 {
-                    @Row(Icon<Icons.TextSize>(), "Title", "Each result's name.",
-                         _edit.TitleField != null,
-                         @<div class="soa-select"><SelectField Size="micro" Options="TitleOptions" Value="@(_edit.TitleField ?? Automatic)" ValueChanged="@(v => _edit.TitleField = v == Automatic ? null : v)" /></div>)
-                    @Row(Icon<Icons.Tag>(), "Section", "Where a result belongs, such as a category or year.",
-                         _edit.SectionFields != null, FieldChoice(PlaceFields, () => _edit.SectionFields, v => _edit.SectionFields = v, _effective?.SectionFields))
-                    @Row(Icon<Icons.Paragraph>(), "Snippet", "The text the judge reads, and the answer is written from.",
-                         _edit.SnippetFields != null, FieldChoice(TextFields, () => _edit.SnippetFields, v => _edit.SnippetFields = v, _effective?.SnippetFields))
+                    <SearchField Value="@_tryText" ValueChanged="@(async v => { _tryText = v; await OnTryInput(); })" Placeholder="@($"Search {Ctx.Name}")"
+                                 @onkeydown="OnTryKey" />
+                    @* The offer as the visitor sees it: intrface's row under the field, the same height
+                       whether an offer is up or not, so a judgement arriving moves nothing. *@
+                    @if (_try != null || _tryMessage != null)
+                    {
+                    <div class="soa-try-offer" aria-live="polite">
+                        @if (_try is { } r)
+                        {
+                            @if (r.Offer == "strong")
+                            {
+                                <Button Variant="primary" Size="micro" IconLeft="_iconAgent" Loading="@_asking" @onclick="AskAsync">Ask the assistant</Button>
+                                <span class="soa-try-hint"><kbd class="soa-kbd">↵</kbd> to ask</span>
+                            }
+                            else if (r.Offer == "invite")
+                            {
+                                <Button Variant="ghost" Size="micro" IconLeft="_iconAgent" Loading="@_asking" @onclick="AskAsync">Ask about this</Button>
+                            }
+                            else
+                            {
+                                <span class="soa-help">No offer: the visitor sees the results and nothing more.</span>
+                                <Button Variant="ghost" Size="micro" Loading="@_asking" @onclick="AskAsync">Ask anyway</Button>
+                            }
+                        }
+                        else if (_tryMessage != null)
+                        {
+                            <span class="soa-help">@_tryMessage</span>
+                        }
+                    </div>
+                    }
+                    @if (_try is { } j)
+                    {
+                        @* The judge's scores, each with what it answers on hover: the labels alone
+                           said nothing to an owner reading "p 0.12" (19 Oct 2026). *@
+                        <div class="soa-try-scores">
+                            <Tooltip Content="@OfferHelp(j.Offer)"><Chip Size="micro" Class="@($"soa-offer soa-offer--{j.Offer}")">@OfferLabel(j.Offer)</Chip></Tooltip>
+                            <span class="soa-try-score">
+                                <Tooltip Content="@QuestionHelp">question @Two(j.P)</Tooltip>
+                                @if (j.Criteria is { } c)
+                                {
+                                    <text> · </text><Tooltip Content="@DescriptionHelp">description @Two(c)</Tooltip>
+                                }
+                                @if (j.Answerable is { } a)
+                                {
+                                    <text> · </text><Tooltip Content="@AnswerableHelp">answerable @Two(a)</Tooltip>
+                                }
+                                <text> · </text><Tooltip Content="@(j.Cached ? "The judge answered this text before; the cached answer, no call made." : "How long the judge took. A visitor's page waits at most 3 seconds.")">@(j.Cached ? "cached" : $"{j.Ms} ms")</Tooltip>
+                                @if (j.Reason is { } why) { <text> · @why</text> }
+                            </span>
+                            <span class="soa-try-spacer"></span>
+                            @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                            {
+                                <Button Variant="ghost" Size="micro" Loading="@_filtering" @onclick="FiltersAsync">Filters</Button>
+                            }
+                            <Button Variant="ghost" Size="micro" IconRight="@(_showState ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)"
+                                    @onclick="() => _showState = !_showState">What the judge was sent</Button>
+                        </div>
+                    }
+                    @if (_showState && _state != null)
+                    {
+                        <pre class="soa-state">@_state</pre>
+                    }
+                    @if (_filters is { } fr)
+                    {
+                        <div class="soa-try-filters">
+                            <span class="soa-help">Searched with</span>
+                            @if (fr.Filters.Length == 0)
+                            {
+                                <span class="soa-help">no filters@(fr.Reason is { } why ? $" ({why})" : "")</span>
+                            }
+                            @foreach (var f in fr.Filters)
+                            {
+                                <Chip Size="micro">@FilterLabel(f)</Chip>
+                            }
+                            @if (fr.Text.Length > 0) { <span class="soa-help">and the words "@fr.Text"</span> }
+                            <span class="soa-try-score">@fr.Ms ms</span>
+                        </div>
+                    }
+                    @if (_sources.Count > 0 || _answer.Length > 0 || _answerError != null)
+                    {
+                        <div class="soa-try-turn">
+                            <UserMessage>@_tryText</UserMessage>
+                            <AssistantMessage Label="Answer" Icon="_iconAgent">
+                                @if (_answerError != null) { <p class="soa-error">@_answerError</p> }
+                                @ChatMarkdown.Render(_answer)
+                                @if (_sources.Count > 0)
+                                {
+                                    <ol class="soa-sources">
+                                        @foreach (var s in _sources) { <li>@s.Title <span class="soa-key">@s.DocumentKey</span></li> }
+                                    </ol>
+                                }
+                            </AssistantMessage>
+                        </div>
+                    }
                 }
-            </tbody>
-        </Table>
-        </div>
-
-        <div class="soa-group">
-        <Table AriaLabel="When to offer" Class="soa-table">
-            @Head("When to offer")
-            <tbody>
-                <TableRow>
-                    <TableCell Class="soa-cell">
-                        <span class="soa-help">On each pause the judge scores what is typed from 0, a lookup, to 1, a question. On a catalogue a sure description of what to list earns the full offer too.</span>
-                        @Scale()
-                    </TableCell>
-                </TableRow>
-                @ThresholdRow(Icon<Icons.ClickButton>(), "Answer offer", "A full offer to answer. Enter asks.",
-                    t => t.Strong, (t, v) => t.Strong = v, Defaults.Strong,
-                    t => t.StrongHide, (t, v) => t.StrongHide = v, Defaults.StrongHide)
-                @ThresholdRow(Icon<Icons.CommentChatMessage>(), "Invitation", "A quieter \"Ask about this\".",
-                    t => t.Invite, (t, v) => t.Invite = v, Defaults.Invite,
-                    t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide)
-            </tbody>
-        </Table>
-        </div>
-
-        <div class="soa-group">
-        <Table AriaLabel="While asking" Class="soa-table">
-            @Head("While asking")
-            <tbody>
-                <TableRow>
-                    <TableCell Class="soa-cell">
-                        <span class="soa-help">What the page does with its list while a full offer is up.</span>
-                    </TableCell>
-                </TableRow>
-                @Row(DatasetIcons.QueryParameters, "The list", "Keep only the results that still match: those scoring a share of the top result, and only when the top result scores enough. Off keeps the whole list.",
-                     _edit.CutWhileAsking != true || _edit.CutShareOfTop != 0.5 || _edit.CutTopFloor != 0.2,
-                     @<div class="soa-stack">
-                         <ToggleSwitch Label="Strong matches only" Checked="@_edit.CutWhileAsking" CheckedChanged="@(v => _edit.CutWhileAsking = v)" />
-                         @if (_edit.CutWhileAsking)
-                         {
-                             <div class="soa-thresholds">
-                                 <div class="soa-threshold">
-                                     <span class="soa-threshold-label">Share of top</span>
-                                     <Slider Min="0" Max="1" Step="0.05" Value="@_edit.CutShareOfTop" ValueChanged="@(v => _edit.CutShareOfTop = Math.Round(v, 2))" AriaLabel="Keep results scoring at least this share of the top" Class="soa-slider" />
-                                     <span class="soa-threshold-value">@Two(_edit.CutShareOfTop)</span>
-                                 </div>
-                                 <div class="soa-threshold">
-                                     <span class="soa-threshold-label">Top at least</span>
-                                     <Slider Min="0" Max="1" Step="0.05" Value="@_edit.CutTopFloor" ValueChanged="@(v => _edit.CutTopFloor = Math.Round(v, 2))" AriaLabel="Show the list only when the top result scores at least this" Class="soa-slider" />
-                                     <span class="soa-threshold-value">@Two(_edit.CutTopFloor)</span>
-                                 </div>
-                             </div>
-                         }
-                     </div>)
-                @Row(Icon<Icons.TextSize>(), "Matching", "The page's own searches match whole words only: no typos, prefixes or joined words. The answer still searches with the full setup, so a typo in a name still finds the record.",
-                     !_edit.StrictCoverageWhileAsking, @<ToggleSwitch Label="Whole words only" Checked="@_edit.StrictCoverageWhileAsking" CheckedChanged="@(v => _edit.StrictCoverageWhileAsking = v)" />)
-                @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
-                {
-                    @Row(Icon<Icons.Filter>(), "Filters", "When the text describes what to list: leave the list alone until the visitor asks, or narrow it at once. From facet values is instant: a typed word that equals a value becomes that filter. With the model also asks for what the values could not name, about a second and a half.",
-                         _edit.FiltersWhileTyping != SearchOrAskSettings.FiltersOff,
-                         @<div class="soa-select"><SelectField Size="micro" Options="FiltersWhileTypingOptions" Value="@_edit.FiltersWhileTyping" ValueChanged="@(v => _edit.FiltersWhileTyping = v ?? SearchOrAskSettings.FiltersOff)" /></div>)
-                }
-            </tbody>
-        </Table>
-        </div>
+            </section>
+        }
+        </aside>
     </div>
 
     @if (!string.IsNullOrEmpty(_error))
