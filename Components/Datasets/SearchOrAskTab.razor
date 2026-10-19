@@ -212,7 +212,8 @@
                         }
                         else if (_typingNow)
                         {
-                            <StreamStatus>Waiting for a pause…</StreamStatus>
+                            @* Still, not a spinner: typing is the visitor's motion, not the system's. *@
+                            <span class="soa-try-none"><span class="soa-try-none-icon"><Indx.Systm.Blazor.Icons.SearchAsYouType Size="14" Color="currentColor" /></span>Typing…</span>
                         }
                         else if (_try is { } r)
                         {
