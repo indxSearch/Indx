@@ -107,11 +107,15 @@ namespace IndxServer.Services.SearchOrAsk
                 SearchOrAskProviders.Anthropic => SearchOrAskProviders.AnthropicMessages,
                 _ => Pick(o.BaseUrl, c.BaseUrl, SearchOrAskProviders.OpenAiDefault).TrimEnd('/'),
             };
+            // The judge is never EU-routed: OpenRouter's EU endpoint serves no Jev (71 models,
+            // none of TypeSafe's, 19 Oct 2026), and sending it there answered 403 and stopped
+            // Search or ask whole. The answers and the filters keep to the EU; the admin page says
+            // where the decisions go.
             var judgeEndpoint = judgeProvider switch
             {
                 SearchOrAskProviders.TypeSafe => SearchOrAskProviders.TypeSafeJudge,
                 SearchOrAskProviders.OpenAiDecisions => SearchOrAskProviders.OpenAiDecisionsEndpoint,
-                _ => openRouter + "/systemone",
+                _ => SearchOrAskProviders.OpenRouterGlobal + "/systemone",
             };
             var judgeModel = judgeProvider switch
             {

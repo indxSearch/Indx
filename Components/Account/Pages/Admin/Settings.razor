@@ -135,11 +135,28 @@
                                 <text>Required: without a key Search or ask cannot run; nothing is sent anywhere.</text>
                             }
                         </p>
+                        @* The saved keys, tried: one trivial call per door, the provider's own words back. *@
+                        <div style="margin-top: 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start;">
+                            <Button Variant="secondary" Size="micro" @onclick="CheckKeysAsync" Disabled="@(_checking || IsDirty)">Check the keys</Button>
+                            @if (IsDirty && !_checking)
+                            {
+                                <p style="font: var(--text-xs); color: var(--lv4); margin: 0;">Save first: the check uses the saved keys.</p>
+                            }
+                            @if (_checking)
+                            {
+                                <StreamStatus>Asking the judge and the answer model…</StreamStatus>
+                            }
+                            else if (_checked != null)
+                            {
+                                <p style="font: var(--text-xs); color: var(--lv6); margin: 0; font-family: var(--font-mono);">@_checked.Value.Judge</p>
+                                <p style="font: var(--text-xs); color: var(--lv6); margin: 0; font-family: var(--font-mono);">@_checked.Value.Answers</p>
+                            }
+                        </div>
                         @if (_provider == "openrouter")
                         {
                             <ToggleSwitch Label="Keep requests in the EU" @bind-Checked="_euRouting" />
                             <p style="font: var(--text-xs); color: var(--lv4); margin: -4px 0 0 48px;">
-                                OpenRouter's EU endpoint, for the decisions and the answers alike: requests are processed in the EU and go only to providers there. A model with no EU provider is refused rather than routed out.
+                                OpenRouter's EU endpoint for the answers and the filters: those requests are processed in the EU and go only to providers there, and a model with no EU provider is refused rather than routed out. The decisions are the exception: Jev has no EU provider, so what visitors type still goes to Jev through OpenRouter's global endpoint.
                             </p>
                         }
                         @if (_provider == "openai")
@@ -216,6 +233,17 @@
     private bool _judgeKeySaved;
     private bool _removeJudgeKey;
     private string _answerModel = "", _fastModel = "", _filterModel = "";
+    private bool _checking;
+    private (string Judge, string Answers)? _checked;
+
+    private async Task CheckKeysAsync()
+    {
+        if (_checking) return;
+        _checking = true;
+        _checked = null;
+        try { _checked = await SearchOrAsk.CheckKeysAsync(CancellationToken.None); }
+        finally { _checking = false; }
+    }
 
     private static readonly IEnumerable<SelectField.SelectOption> _providerOptions =
     [

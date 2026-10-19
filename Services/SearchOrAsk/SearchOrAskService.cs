@@ -152,6 +152,41 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>Whether the judge can be asked: Jev's door has a key.</summary>
         public bool JudgeAvailable => Setup.JudgeAvailable;
 
+        /// <summary>One line per door, for the admin's "Check the keys": what the judge and the
+        /// answer model say to a trivial call, in the provider's own words when they refuse. Only
+        /// a failure's reason tells a spent key budget from a moderation flag from a wrong key
+        /// (19 Oct 2026: a 403 with nothing else to go on).</summary>
+        public async Task<(string Judge, string Answers)> CheckKeysAsync(CancellationToken ct)
+        {
+            var s = Setup;
+            async Task<string> Try(string what, bool available, Func<Task<string>> call)
+            {
+                if (!available) return $"{what}: no key.";
+                try { return $"{what}: OK, {await call()}."; }
+                catch (SearchOrAskModelException ex) { return $"{what}: {ex.Message}"; }
+                catch (OperationCanceledException) { return $"{what}: no answer in time."; }
+                catch (Exception ex) { return $"{what}: unreachable ({ex.Message})."; }
+            }
+            var judge = Try($"The judge ({s.JudgeModel})", s.JudgeAvailable, async () =>
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(15));
+                var state = State("A site that explains itself.", "how do I reset my password", new SearchSummary(0, false, []));
+                var questions = SearchOrAskRecipes.Questions(SearchOrAskRecipes.Documentation)
+                    .Where(q => q.Key == SearchOrAskRecipes.Asking).ToDictionary(q => q.Key, q => q.Value);
+                var answer = await _models.JudgeAsync(state, questions, timeout.Token);
+                return $"it answered{(answer.Cost is { } c ? $" for ${c:0.0000}" : "")}";
+            });
+            var answers = Try($"The answers ({s.AnswerModel})", s.AnswersAvailable, async () =>
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(20));
+                var (content, cost) = await _models.CompleteAsync(s.FastAnswerModel, "Reply with the one word OK.", "Ready?", timeout.Token);
+                return $"\"{content.Trim()}\"{(cost is { } c ? $" for ${c:0.0000}" : "")}";
+            });
+            return (await judge, await answers);
+        }
+
         /// <summary>Where the key in use comes from, for the console: "configuration", "console" or null.</summary>
         public string? ModelKeySource =>
             !string.IsNullOrWhiteSpace(_options.ApiKey) ? "configuration" : ModelKey != null ? "console" : null;
@@ -293,7 +328,7 @@ namespace IndxServer.Services.SearchOrAsk
             }
             catch (SearchOrAskModelException ex)
             {
-                _logger.LogWarning("Search or ask judge failed for {Team}/{Dataset}: {Status}", teamId, dataSetName, ex.Status);
+                _logger.LogWarning("Search or ask judge failed for {Team}/{Dataset}: {Message}", teamId, dataSetName, ex.Message);
                 return new IntentOutcome(IntentStatus.Ok, Result(0, null, false, $"failed:{ex.Status}"));
             }
             catch (HttpRequestException ex)
@@ -578,7 +613,7 @@ namespace IndxServer.Services.SearchOrAsk
                 catch (SearchOrAskModelException ex)
                 {
                     outcome = "failed";
-                    _logger.LogWarning("Search or ask answer failed for {Team}/{Dataset}: {Status}", teamId, dataSetName, ex.Status);
+                    _logger.LogWarning("Search or ask answer failed for {Team}/{Dataset}: {Message}", teamId, dataSetName, ex.Message);
                     await send("error", new { code = ex.Status == 429 ? "upstreamBusy" : "failed", message = "The answer could not be written." });
                 }
                 catch (HttpRequestException ex)

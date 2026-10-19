@@ -76,7 +76,7 @@ namespace IndxServer.Services.SearchOrAsk
             }
             catch (SearchOrAskModelException ex)
             {
-                _logger.LogWarning("Search or ask filters failed for {Team}/{Dataset}: {Status}", teamId, dataSetName, ex.Status);
+                _logger.LogWarning("Search or ask filters failed for {Team}/{Dataset}: {Message}", teamId, dataSetName, ex.Message);
                 return new FiltersOutcome(IntentStatus.Ok, new FiltersResult([], text, Ms(), $"failed:{ex.Status}"));
             }
             catch (HttpRequestException)

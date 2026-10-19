@@ -111,10 +111,8 @@ namespace IndxServer.Services.SearchOrAsk
             };
             using var response = await Client(s.JudgeKey).PostAsync(s.JudgeEndpoint,
                 new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"), ct);
-            var text = await response.Content.ReadAsStringAsync(ct);
-            if (!response.IsSuccessStatusCode)
-                throw new SearchOrAskModelException((int)response.StatusCode, $"Judge answered {(int)response.StatusCode}");
-            return ParseJudgement(text, questions.Keys);
+            if (!response.IsSuccessStatusCode) await FailAsync(response, "Judge", ct);
+            return ParseJudgement(await response.Content.ReadAsStringAsync(ct), questions.Keys);
         }
 
         /// <summary>Reads the probabilities out of a System One response. "noul" is the documented
@@ -150,10 +148,8 @@ namespace IndxServer.Services.SearchOrAsk
             };
             using var response = await Client(s.JudgeKey).PostAsync(s.JudgeEndpoint,
                 new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"), ct);
-            var text = await response.Content.ReadAsStringAsync(ct);
-            if (!response.IsSuccessStatusCode)
-                throw new SearchOrAskModelException((int)response.StatusCode, $"Judge answered {(int)response.StatusCode}");
-            return ParseDecisions(text, questions.Keys, options.DecisionsPricePerMillion);
+            if (!response.IsSuccessStatusCode) await FailAsync(response, "Judge", ct);
+            return ParseDecisions(await response.Content.ReadAsStringAsync(ct), questions.Keys, options.DecisionsPricePerMillion);
         }
 
         /// <summary>A recipe question (Jev's noul: instructions and two criteria) as a Decisions
@@ -220,8 +216,36 @@ namespace IndxServer.Services.SearchOrAsk
             return input + output == 0 ? null : ModelPrices.Estimate(model, input, output, options.Prices);
         }
 
-        private static void Throw(HttpResponseMessage response, string what) =>
-            throw new SearchOrAskModelException((int)response.StatusCode, $"{what} answered {(int)response.StatusCode}");
+        /// <summary>A failed call, with the provider's own reason in the message: a 403 from
+        /// OpenRouter is a spent key budget, a guardrail or a moderation flag, and only the body
+        /// says which (19 Oct 2026: the log said "403" and the instance could not say why).</summary>
+        private static async Task FailAsync(HttpResponseMessage response, string what, CancellationToken ct)
+        {
+            string reason;
+            try { reason = Reason(await response.Content.ReadAsStringAsync(ct)); }
+            catch (Exception) { reason = ""; }
+            throw new SearchOrAskModelException((int)response.StatusCode, $"{what} answered {(int)response.StatusCode}{(reason.Length > 0 ? ": " + reason : "")}");
+        }
+
+        /// <summary>The provider's message out of an error body (OpenAI's and OpenRouter's
+        /// <c>error.message</c>, Anthropic's too), else the body itself; short, since it is logged.</summary>
+        public static string Reason(string body)
+        {
+            var text = body.Trim();
+            try
+            {
+                if (JsonNode.Parse(text)?["error"] is { } error)
+                {
+                    var message = error["message"]?.GetValue<string>() ?? error.ToJsonString();
+                    var metadata = error["metadata"];
+                    if (metadata != null) message += " " + metadata.ToJsonString();
+                    text = message;
+                }
+            }
+            catch (Exception) { }
+            text = text.Replace('\n', ' ').Replace('\r', ' ');
+            return text.Length > 300 ? text[..300] + "…" : text;
+        }
 
         // ── OpenAI's chat completions: OpenRouter and every compatible endpoint ──
 
@@ -267,7 +291,7 @@ namespace IndxServer.Services.SearchOrAsk
             };
             using var response = await Client(s.AnswerKey).SendAsync(request, ct);
             var text = await response.Content.ReadAsStringAsync(ct);
-            if (!response.IsSuccessStatusCode) Throw(response, "Model");
+            if (!response.IsSuccessStatusCode) await FailAsync(response, "Model", ct);
             return JsonNode.Parse(text);
         }
 
@@ -297,7 +321,7 @@ namespace IndxServer.Services.SearchOrAsk
                 Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
             };
             using var response = await Client(s.AnswerKey).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-            if (!response.IsSuccessStatusCode) Throw(response, "Answer model");
+            if (!response.IsSuccessStatusCode) await FailAsync(response, "Answer model", ct);
 
             using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var reader = new StreamReader(stream);
@@ -379,7 +403,7 @@ namespace IndxServer.Services.SearchOrAsk
             };
             using var response = await Client(s.AnswerKey, anthropic: true).SendAsync(request, ct);
             var text = await response.Content.ReadAsStringAsync(ct);
-            if (!response.IsSuccessStatusCode) Throw(response, "Model");
+            if (!response.IsSuccessStatusCode) await FailAsync(response, "Model", ct);
             return JsonNode.Parse(text);
         }
 
@@ -405,7 +429,7 @@ namespace IndxServer.Services.SearchOrAsk
                 Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
             };
             using var response = await Client(s.AnswerKey, anthropic: true).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-            if (!response.IsSuccessStatusCode) Throw(response, "Answer model");
+            if (!response.IsSuccessStatusCode) await FailAsync(response, "Answer model", ct);
 
             long input = 0, output = 0;
             using var stream = await response.Content.ReadAsStreamAsync(ct);
