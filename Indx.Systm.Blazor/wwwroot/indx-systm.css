@@ -298,6 +298,11 @@ svg[viewBox="0 0 7 5"] {
   6.25% { opacity: 0; }
   100% { opacity: 0; }
 }
+@keyframes indx-spinner-18 {
+  0% { opacity: 1; }
+  5.5556% { opacity: 0; }
+  100% { opacity: 0; }
+}
 @keyframes indx-spinner-20 {
   0% { opacity: 1; }
   5% { opacity: 0; }
