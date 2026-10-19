@@ -10,8 +10,6 @@
     align-items: start;
     max-width: 1304px;
 }
-/* A column keeps its groups together as the grid wraps: the tester stays above the thresholds. */
-.soa-column { min-width: 0; }
 ::deep .soa-cell { padding: 12px 15px; }
 .soa-label { display: block; font: var(--text-sm); color: var(--lv7); }
 ::deep .soa-row--set .soa-label { color: var(--lv8); font-weight: var(--med); }

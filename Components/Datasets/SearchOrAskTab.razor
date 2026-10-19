@@ -162,7 +162,6 @@
     }
 
     <div class="soa-groups">
-        <div class="soa-column">
         <Table AriaLabel="Search or ask" Class="soa-table">
             @Head("Search or ask")
             <tbody>
@@ -195,8 +194,6 @@
             </tbody>
         </Table>
 
-        </div>
-        <div class="soa-column">
         <Table AriaLabel="What the judge sees" Class="soa-table">
             @Head("What the judge sees of a result")
             <tbody>
@@ -217,8 +214,6 @@
             </tbody>
         </Table>
 
-        </div>
-        <div class="soa-column">
         <Table AriaLabel="When to offer" Class="soa-table">
             @Head("When to offer")
             <tbody>
@@ -275,7 +270,6 @@
                 }
             </tbody>
         </Table>
-        </div>
     </div>
 
     @if (!string.IsNullOrEmpty(_error))
@@ -572,7 +566,7 @@
 
     private string Address => $"console:{Ctx.TeamId}";
 
-    private static readonly RenderFragment<int> _iconAgent = size => @<Icons.AiAgent Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconAgent = size => @<Indx.Systm.Blazor.Icons.AiAgent Size="size" Color="currentColor" />;
 
     /// <summary>Enter asks while the full offer is up, as it does for a visitor.</summary>
     private async Task OnTryKey(KeyboardEventArgs e)
