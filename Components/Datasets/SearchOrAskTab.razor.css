@@ -20,6 +20,9 @@
 .soa-preview {
     min-width: 0;
     position: sticky;
+    /* Taller than the window it scrolls inside itself, so the field stays reachable. */
+    max-height: calc(100dvh - var(--header-height, 60px) - 40px);
+    overflow-y: auto;
     /* The page scrolls inside the shell's content area, which begins under the header, so the
        offset is the page's own top gap, not the header's height (measured: the header's height
        here put the tester 76px below the header's edge). */
@@ -59,6 +62,14 @@
     border-radius: var(--radius);
 }
 .soa-try-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 2px; }
+.soa-try-head-row { display: flex; align-items: center; gap: 12px; }
+/* The hits, as the judge reads them: title, section, one line of snippet. */
+.soa-try-results { display: flex; flex-direction: column; gap: 6px; }
+.soa-try-hits { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.soa-try-hit { font: var(--text-xs); color: var(--lv6); }
+.soa-try-hit-title { color: var(--lv8); font: var(--text-sm); }
+.soa-try-hit-section { margin-left: 8px; color: var(--lv5); }
+.soa-try-hit-snippet { display: block; color: var(--lv6); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .soa-try-title { font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
 .soa-try-off { margin-top: 0; }
 /* intrface's offer row: always this tall, so an offer appearing moves nothing under it. */

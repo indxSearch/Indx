@@ -341,6 +341,11 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>What the search found, reduced to what the judge reads.</summary>
         public sealed record SearchSummary(int Hits, bool CloseMatch, IReadOnlyList<(long Key, string Title, string Section, string Snippet)> Top);
 
+        /// <summary>What the search finds for a text, as the judge reads it, for the console's
+        /// tester: the hits by title, section and snippet. No model call, so it costs nothing.</summary>
+        public SearchSummary Results(string teamId, string dataSetName, IServerSearchEngine engine, string text, SearchOrAskSettings settings) =>
+            Search(engine, dataSetName, teamId, text, Fields(settings, engine.GetFieldList()));
+
         /// <summary>Runs the search the visitor's client already ran, here, so the judge sees the
         /// same results without the client sending results it could forge. Through the manager
         /// directly: not a visitor's search, so it never reaches the statistics.</summary>

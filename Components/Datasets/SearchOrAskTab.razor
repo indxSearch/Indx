@@ -177,7 +177,12 @@
                what a visitor gets. *@
             <section class="soa-try">
                 <div class="soa-try-head">
-                    <span class="soa-try-title">Try it</span>
+                    <div class="soa-try-head-row">
+                        <span class="soa-try-title">Try it</span>
+                        <span class="soa-try-spacer"></span>
+                        @* The hits, as on the demo page: off by default, since the judgement is the point here. *@
+                        <ToggleSwitch Label="Show results" Checked="@_showResults" CheckedChanged="OnShowResults" />
+                    </div>
                     <span class="soa-help">Type as a visitor would. Uses the settings below, saved or not. Each pause is one call against the budget.</span>
                 </div>
                 @if (!Service.Available)
@@ -219,6 +224,30 @@
                             <span class="soa-help">@_tryMessage</span>
                         }
                     </div>
+                    }
+                    @if (_showResults && _results is { } found)
+                    {
+                        @* What the search finds, as the judge reads it: title, section, snippet. *@
+                        <div class="soa-try-results">
+                            @if (found.Top.Count == 0)
+                            {
+                                <span class="soa-help">No results.</span>
+                            }
+                            else
+                            {
+                                <span class="soa-help">@found.Hits.ToString("N0", CultureInfo.InvariantCulture) results@(found.CloseMatch ? "" : ", none a close match"); the first @found.Top.Count as the judge reads them.</span>
+                                <ol class="soa-try-hits">
+                                    @foreach (var hit in found.Top)
+                                    {
+                                        <li class="soa-try-hit">
+                                            <span class="soa-try-hit-title">@(hit.Title.Length > 0 ? hit.Title : hit.Key.ToString())</span>
+                                            @if (hit.Section.Length > 0) { <span class="soa-try-hit-section">@hit.Section</span> }
+                                            @if (hit.Snippet.Length > 0) { <span class="soa-try-hit-snippet">@hit.Snippet</span> }
+                                        </li>
+                                    }
+                                </ol>
+                            }
+                        </div>
                     }
                     @if (_try is { } j)
                     {
@@ -573,6 +602,16 @@
     private const int PauseMs = 300;
     private string? _tryText;
     private IntentResult? _try;
+    private bool _showResults;
+    private SearchOrAskService.SearchSummary? _results;
+
+    private void OnShowResults(bool on)
+    {
+        _showResults = on;
+        if (!on) { _results = null; return; }
+        var text = _tryText?.Trim() ?? "";
+        if (text.Length > 0 && Ctx.FindEngine() is { } engine) _results = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit);
+    }
     private string? _tryMessage;
     private string? _state;
     private bool _showState;
@@ -620,12 +659,14 @@
         _typing?.Cancel();
         var typing = _typing = new CancellationTokenSource();
         var text = _tryText?.Trim() ?? "";
-        if (text.Length == 0) { _try = null; _tryMessage = null; _state = null; return; }
+        if (text.Length == 0) { _try = null; _tryMessage = null; _state = null; _results = null; return; }
         try { await Task.Delay(PauseMs, typing.Token); }
         catch (OperationCanceledException) { return; }
 
         var engine = Ctx.FindEngine();
         if (engine == null) return;
+        // The hits first: no model behind them, so they show whatever the judge then says.
+        if (_showResults) _results = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit);
         if (_edit.Validate() is { } invalid) { _try = null; _tryMessage = invalid; return; }
         string? state = null;
         var outcome = await Service.IntentAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, typing.Token,
