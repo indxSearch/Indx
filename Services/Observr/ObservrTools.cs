@@ -276,7 +276,7 @@ namespace IndxServer.Services.Observr
                 if (f.Filterable) roles.Add("filterable");
                 if (f.Facetable) roles.Add("facetable");
                 if (f.Sortable) roles.Add("sortable");
-                sb.Append($"- {f.Name} ({f.Type}{(f.IsArray ? " array" : "")}): {(roles.Count > 0 ? string.Join(", ", roles) : "no role")}, weight {f.Weight}; filled in {f.Filled} of {ask.Sampled}, {f.Distinct} distinct");
+                sb.Append($"- {f.Name} ({f.Type}{(f.IsArray ? " array" : "")}): {(roles.Count > 0 ? string.Join(", ", roles) : "no role")}, weight {f.Weight}; filled in {f.Filled} of {ask.Sampled} sampled, {f.Distinct} distinct values over {f.ValuesOver:N0} records");
                 if (f.TopValues.Count > 0) sb.Append($"; commonest: {string.Join(" | ", f.TopValues)}");
                 if (f.Min != null) sb.Append($"; {f.Min} to {f.Max}");
                 if (f.AvgLength > 0) sb.Append($"; about {f.AvgLength} characters");

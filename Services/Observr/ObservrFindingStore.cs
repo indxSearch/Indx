@@ -15,11 +15,17 @@ namespace IndxServer.Services.Observr
         public const string Declined = "declined";
 
         /// <summary>The dataset tab a finding points into: a digest item's kind names it
-        /// (<c>digest/fields</c>), a field review goes to the fields, the rest to the statistics.</summary>
+        /// (<c>digest/fields</c>), a field review goes to the fields, a chat proposal to the page of
+        /// what it proposes, the rest to the statistics.</summary>
         public string Tab => Kind == ObservrClient.FieldReviewKind ? "fields"
             : Kind == ObservrClient.SynonymsKind ? "synonyms"
             : Kind == ObservrClient.SetupKind ? "search-or-ask"
-            : Kind.StartsWith(ObservrClient.DigestKind + "/") ? Kind[(ObservrClient.DigestKind.Length + 1)..] : "statistics";
+            : Kind.StartsWith(ObservrClient.DigestKind + "/") ? Kind[(ObservrClient.DigestKind.Length + 1)..]
+            : Kind == ObservrChat.Kind && Proposals.Count > 0 && Proposals.All(p => p.Kind == ObservrProposal.SearchOrAskKind) ? "search-or-ask"
+            : Kind == ObservrChat.Kind && Proposals.Count > 0 && Proposals.All(p => p.Kind == ObservrProposal.QueryParametersKind) ? "query-parameters"
+            : Kind == ObservrChat.Kind && Proposals.Count > 0 && Proposals.All(p => p.Kind == ObservrProposal.FieldKind) ? "fields"
+            : Kind == ObservrChat.Kind && Proposals.Count > 0 && Proposals.All(p => p.Kind == ObservrProposal.Synonym) ? "synonyms"
+            : "statistics";
 
         /// <summary>What the menu shows it as: the query in quotes, a review by name, a digest item or
         /// a change by its title.</summary>

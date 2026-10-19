@@ -23,10 +23,13 @@ namespace IndxServer.Services.Observr
     public sealed record ObservrZeroHitAsk(string Kind, string Team, string Dataset, string Site, List<string> Fields,
         string Query, long Searches, List<ObservrNamed> NearMatches, List<ObservrWordMatches> Words);
 
-    /// <summary>One field as Observr reviews it: its roles today and what a sample of the records
-    /// holds in it. Values are the top few only, so a review sends little of the data.</summary>
+    /// <summary>One field as Observr reviews it: its roles today and what the records hold in it.
+    /// <see cref="Filled"/> is of the sample; <see cref="Distinct"/> and <see cref="TopValues"/>
+    /// (each with its count) are over <see cref="ValuesOver"/> records: every record for a
+    /// facetable field, whose facets count the whole dataset, the sample for the rest. Values are
+    /// the top few only, so a review sends little of the data.</summary>
     public sealed record ObservrFieldEvidence(string Name, string Type, bool IsArray, bool Searchable, bool Filterable, bool Facetable,
-        bool Sortable, float Weight, int Filled, int Distinct, List<string> TopValues, double? Min, double? Max, int AvgLength);
+        bool Sortable, float Weight, int Filled, int Distinct, List<string> TopValues, double? Min, double? Max, int AvgLength, long ValuesOver);
 
     /// <summary>The dataset's setup for review: every field with its evidence, the key field, and
     /// what visitors searched for lately, which says what the fields are expected to answer.</summary>
@@ -277,8 +280,13 @@ namespace IndxServer.Services.Observr
         private const int PerWord = 3;
         private const int MaxWords = 8;
         /// <summary>The records a field review reads: enough for fill rates and value counts, few
-        /// enough to read in a moment.</summary>
+        /// enough to read in a moment. Spread over the whole dataset, never the first few hundred:
+        /// gyldendal.no's file begins with its teaching materials, and a sample of those had
+        /// Observr set up Search or ask for a school catalogue on a dataset that is mostly fiction
+        /// (19 Oct 2026).</summary>
         private const int ReviewSample = 300;
+        /// <summary>The most records an empty search is asked to list for the spread.</summary>
+        private const int SampleWalk = 2_000_000;
         private const int ReviewTopValues = 8;
         private const int ReviewTopQueries = 20;
         private const int ReviewQueryDays = 30;
@@ -431,8 +439,9 @@ namespace IndxServer.Services.Observr
                 return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
             var review = BuildFieldReviewAsk(teamId, dataSetName, engine);
             var label = StatisticsLabels.For(engine, statistics.Store?.LabelField(teamId, dataSetName));
-            var names = (IndxServerInternalApi.Manager.Search(new QueryProxy { Text = "", EnableFacets = true, MaxNumberOfRecordsToReturn = SetupNames }, dataSetName, teamId)
-                .Records ?? []).Select(r => label(r.DocumentKey)).Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n!).ToList();
+            // Names from across the dataset, like the sample: the first dozen records say what the
+            // file begins with, not what a record is.
+            var names = Spread(teamId, dataSetName, SetupNames).Keys.Select(label).Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n!).ToList();
             var today = statistics.Store?.Today(teamId, dataSetName) ?? 0;
             var top = statistics.Store?.TopQueries(teamId, dataSetName, today - 29, today, 30)
                 .Select(q => new ObservrSummaryQuery(q.QueryText, q.Searches, q.ZeroHits, q.ClickedSearches,
@@ -598,8 +607,7 @@ namespace IndxServer.Services.Observr
         {
             // An empty search lists records only as a faceted browse, and only where a field is
             // facetable; without one the sample is empty and Observr is told so (Sampled = 0).
-            var keys = (IndxServerInternalApi.Manager.Search(new QueryProxy { Text = "", EnableFacets = true, MaxNumberOfRecordsToReturn = ReviewSample }, dataSetName, teamId)
-                .Records ?? []).Select(r => r.DocumentKey).ToList();
+            var (keys, facets, total) = Spread(teamId, dataSetName, ReviewSample);
             var docs = keys.Select(k => Parse(engine.GetJsonDataOfKey(k))).Where(d => d != null).ToList();
             var evidence = new List<ObservrFieldEvidence>();
             foreach (var f in engine.GetFieldList())
@@ -607,24 +615,61 @@ namespace IndxServer.Services.Observr
                 var values = docs.SelectMany(d => Leaves(d!, f.Name)).ToList();
                 var filled = docs.Count(d => Leaves(d!, f.Name).Any());
                 var texts = values.Select(v => v.ToString()).Where(s => s.Length > 0).ToList();
-                var distinct = texts.Distinct().Count();
-                // The commonest values only where values repeat (a category, a type): a field whose
-                // values are mostly their own (names, descriptions) sends none, so no record goes.
-                var top = distinct <= texts.Count / 2
-                    ? texts.GroupBy(s => s).OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
-                        .Take(ReviewTopValues).Select(g => g.Key.Length > 80 ? g.Key[..80] + "…" : g.Key).ToList()
-                    : [];
+                int distinct;
+                List<string> top;
+                long over;
+                if (facets != null && facets.TryGetValue(f.Name, out var facet))
+                {
+                    // A facetable field is counted over every record by the search itself: the
+                    // sample cannot mislead about what the dataset mostly holds. A JSON null is
+                    // its own facet value and reads as no value.
+                    var named = facet.Where(v => v.Key != "null").ToList();
+                    distinct = named.Count;
+                    top = named.OrderByDescending(v => v.Value).ThenBy(v => v.Key, StringComparer.Ordinal).Take(ReviewTopValues).Select(v => Shown(v.Key, v.Value)).ToList();
+                    if (facet.FirstOrDefault(v => v.Key == "null") is { Value: > 0 } none) top.Add(Shown("(none)", none.Value));
+                    over = total;
+                }
+                else
+                {
+                    distinct = texts.Distinct().Count();
+                    // The commonest values only where values repeat (a category, a type): a field
+                    // whose values are mostly their own (names, descriptions) sends none, so no
+                    // record goes.
+                    top = distinct <= texts.Count / 2
+                        ? texts.GroupBy(s => s).OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
+                            .Take(ReviewTopValues).Select(g => Shown(g.Key, g.Count())).ToList()
+                        : [];
+                    over = docs.Count;
+                }
                 var numbers = f.Type == JsonValueKind.Number
                     ? values.Select(v => v.TryGetValue<double>(out var n) ? n : (double?)null).Where(n => n != null).Select(n => n!.Value).ToList() : [];
                 evidence.Add(new ObservrFieldEvidence(f.Name, TypeName(f.Type), f.IsArray, f.Searchable, f.Filterable, f.Facetable, f.Sortable, f.Weight,
                     filled, distinct, top, numbers.Count > 0 ? numbers.Min() : null, numbers.Count > 0 ? numbers.Max() : null,
-                    texts.Count == 0 ? 0 : (int)texts.Average(s => s.Length)));
+                    texts.Count == 0 ? 0 : (int)texts.Average(s => s.Length), over));
             }
             var today = StatisticsDays.Today(TimeZoneInfo.Utc);
             var queries = statistics.Store?.TopQueries(teamId, dataSetName, today - ReviewQueryDays, today, ReviewTopQueries)
                 .Select(q => q.QueryText).ToList() ?? [];
             return new ObservrFieldReviewAsk(FieldReviewKind, teamId, dataSetName, Site(teamId, dataSetName), engine.DocumentFields?.NameOfDocumentKeyField ?? "",
                 engine.Status.DocumentCount, docs.Count, evidence, queries);
+        }
+
+        /// <summary>A value with its count, as the evidence lists it: "E-bok (10,595)".</summary>
+        private static string Shown(string value, int count) =>
+            (value.Length > 80 ? value[..80] + "…" : value) + " (" + count.ToString("N0", CultureInfo.InvariantCulture) + ")";
+
+        /// <summary>Up to <paramref name="count"/> record keys spread evenly over the dataset in its
+        /// own order, with the facets over every record and how many there are. An empty search
+        /// walks the records as they were loaded and facets them all; the first few hundred are
+        /// whatever the file begins with, so the spread takes every n-th instead.</summary>
+        private static (List<long> Keys, Dictionary<string, KeyValuePair<string, int>[]>? Facets, long Total) Spread(string teamId, string dataSetName, int count)
+        {
+            var result = IndxServerInternalApi.Manager.Search(new QueryProxy { Text = "", EnableFacets = true, MaxNumberOfRecordsToReturn = SampleWalk }, dataSetName, teamId);
+            var all = result.Records ?? [];
+            var stride = Math.Max(1, all.Length / Math.Max(1, count));
+            var keys = new List<long>();
+            for (var i = 0; i < all.Length && keys.Count < count; i += stride) keys.Add(all[i].DocumentKey);
+            return (keys, result.Facets, all.Length);
         }
 
         private string Site(string teamId, string dataSetName)
