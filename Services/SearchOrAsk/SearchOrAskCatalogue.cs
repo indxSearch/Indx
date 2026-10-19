@@ -46,12 +46,26 @@ namespace IndxServer.Services.SearchOrAsk
 
             var (used, keys) = RunFiltered(engine, teamId, dataSetName, suggested, left, sort, CatalogueFound);
             if (used.Count == 0) return null;
-            await send("filters", new { filters = used, text = left, sort, found = keys.Count, more = keys.Count >= CatalogueFound });
-            if (keys.Count == 0)
+            // Nothing matches all of it: try fewer conditions here, as the message used to tell the
+            // visitor to ("bøker for sykepleiere" on a catalogue of books ended in that message,
+            // 19 Oct 2026). The leftover words go first, since a word the search holds nothing of
+            // under the filter is the usual cause; then each filter alone, the one finding most
+            // kept. Still nothing: the ordinary answer, from the plain search.
+            if (keys.Count == 0 && left.Length > 0)
             {
-                await send("error", new { code = "nothingFound", message = "Nothing matches all of that. Try fewer conditions." });
-                return new CatalogueOutcome("nothingFound", keys, null, filterCost);
+                var (u, k) = RunFiltered(engine, teamId, dataSetName, used, "", sort, CatalogueFound);
+                if (k.Count > 0) { used = u; keys = k; left = ""; }
             }
+            if (keys.Count == 0 && used.Count > 1)
+            {
+                foreach (var one in used)
+                {
+                    var (u, k) = RunFiltered(engine, teamId, dataSetName, [one], "", sort, CatalogueFound);
+                    if (k.Count > keys.Count) { used = u; keys = k; left = ""; }
+                }
+            }
+            if (keys.Count == 0) return null;
+            await send("filters", new { filters = used, text = left, sort, found = keys.Count, more = keys.Count >= CatalogueFound });
 
             // Facts from the fields a visitor can filter by: what a summary of a set is made of.
             var docs = keys.Select(k => (Key: k, Doc: Parse(engine.GetJsonDataOfKey(k)))).ToList();
