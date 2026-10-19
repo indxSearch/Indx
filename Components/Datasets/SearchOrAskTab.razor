@@ -70,6 +70,8 @@
                              @onkeydown="OnTryKey" />
                 @* The offer as the visitor sees it: intrface's row under the field, the same height
                    whether an offer is up or not, so a judgement arriving moves nothing. *@
+                @if (_try != null || _tryMessage != null)
+                {
                 <div class="soa-try-offer" aria-live="polite">
                     @if (_try is { } r)
                     {
@@ -93,6 +95,7 @@
                         <span class="soa-help">@_tryMessage</span>
                     }
                 </div>
+                }
                 @if (_try is { } j)
                 {
                     @* The judge's scores, each with what it answers on hover: the labels alone
@@ -161,7 +164,11 @@
         </section>
     }
 
+    @* The groups in balanced columns (CSS multi-column, not a grid: grid rows align, so a long
+       group left a hole under a short one before the next row, 19 Oct 2026). The browser picks
+       the count from the width and evens the heights; a group is never split. *@
     <div class="soa-groups">
+        <div class="soa-group">
         <Table AriaLabel="Search or ask" Class="soa-table">
             @Head("Search or ask")
             <tbody>
@@ -193,7 +200,9 @@
                      @<div class="soa-number"><InputField @bind-Value="_budgetText" @bind-Value:after="SetBudget" Error="@_budgetError" inputmode="numeric" placeholder="5,000" /></div>)
             </tbody>
         </Table>
+        </div>
 
+        <div class="soa-group">
         <Table AriaLabel="What the judge sees" Class="soa-table">
             @Head("What the judge sees of a result")
             <tbody>
@@ -213,7 +222,9 @@
                 }
             </tbody>
         </Table>
+        </div>
 
+        <div class="soa-group">
         <Table AriaLabel="When to offer" Class="soa-table">
             @Head("When to offer")
             <tbody>
@@ -231,7 +242,9 @@
                     t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide)
             </tbody>
         </Table>
+        </div>
 
+        <div class="soa-group">
         <Table AriaLabel="While asking" Class="soa-table">
             @Head("While asking")
             <tbody>
@@ -270,6 +283,7 @@
                 }
             </tbody>
         </Table>
+        </div>
     </div>
 
     @if (!string.IsNullOrEmpty(_error))
