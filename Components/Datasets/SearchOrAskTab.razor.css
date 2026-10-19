@@ -16,7 +16,7 @@
     max-width: 1304px;
 }
 .soa-settings { min-width: 0; }
-.soa-group { min-width: 0; }
+.soa-group { min-width: 0; break-inside: avoid; }
 .soa-preview {
     min-width: 0;
     position: sticky;
@@ -28,6 +28,12 @@
 @container (max-width: 899px) {
     .soa-layout { grid-template-columns: minmax(0, 1fr); }
     .soa-preview { position: static; order: -1; }
+}
+/* The widest windows: the settings in two balanced columns (multi-column, so a long group
+   leaves no hole under a short one), the tester in a third. Three groups' widths plus the gaps. */
+@container (min-width: 1500px) {
+    .soa-layout { grid-template-columns: 2fr 1fr; max-width: 1968px; }
+    .soa-settings { columns: 2; column-gap: 24px; column-fill: balance; }
 }
 ::deep .soa-cell { padding: 12px 15px; }
 .soa-label { display: block; font: var(--text-sm); color: var(--lv7); }
