@@ -318,7 +318,15 @@
                         <div class="soa-try-turn">
                             <UserMessage>@_tryText</UserMessage>
                             <AssistantMessage Label="Answer" Icon="_iconAgent" Class="soa-try-pending">
-                                <StreamStatus SpinnerName="@(_askStep == "Writing" ? "grow" : "spectrum")">@_askStep…</StreamStatus>
+                                @* As intrface's AskPanel: the default spinner for the steps, grow while writing. *@
+                                @if (_askStep == "Writing")
+                                {
+                                    <StreamStatus SpinnerName="grow">Writing…</StreamStatus>
+                                }
+                                else
+                                {
+                                    <StreamStatus>@_askStep…</StreamStatus>
+                                }
                                 <div class="soa-try-pending-lines">
                                     <Skeleton Width="92%" />
                                     <Skeleton Width="78%" Delay="0.05" />
