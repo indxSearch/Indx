@@ -214,94 +214,123 @@ namespace IndxServer.Services
             services.AddSingleton(api);
             services.AddSingleton(anon);
             services.AddHostedService(sp => new ConfigurationWarnings(api, sp.GetRequiredService<ILoggerFactory>()));
-            services.AddRateLimiter(limiter =>
+            // The global limiter is the container's, so it is disposed with the host, and applied
+            // by UseAuthRateLimiting. Created in AddRateLimiter's options callback it had no owner:
+            // a partitioned limiter runs a timer for its replenishment, which went on for ever and
+            // held the whole host. One per process in production; one per test in TestIndxServer,
+            // where the hosts piled up, 3.8 MB each, and every timer kept ticking (19 Oct 2026:
+            // 273 MB -> 2.7 GB over a run, late classes 3-10x slower).
+            services.AddSingleton(_ => PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
             {
-                limiter.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+                if (options.Enabled && IsAuthPost(ctx))
                 {
-                    if (options.Enabled && IsAuthPost(ctx))
+                    WarnOnceIfAddressLooksLikeAProxy(ctx);
+                    return RateLimitPartition.GetFixedWindowLimiter("auth:" + ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
                     {
-                        WarnOnceIfAddressLooksLikeAProxy(ctx);
-                        return RateLimitPartition.GetFixedWindowLimiter("auth:" + ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
-                        {
-                            PermitLimit = options.PermitLimit,
-                            Window = TimeSpan.FromSeconds(options.WindowSeconds),
-                            QueueLimit = 0,
-                        });
-                    }
-                    if (api.Enabled && IsApiCall(ctx))
-                    {
-                        return RateLimitPartition.GetTokenBucketLimiter("key:" + ApiKeyOf(ctx), _ => new TokenBucketRateLimiterOptions
-                        {
-                            TokenLimit = Math.Max(api.Burst, api.RequestsPerSecond),
-                            TokensPerPeriod = api.RequestsPerSecond,
-                            ReplenishmentPeriod = TimeSpan.FromSeconds(1),
-                            QueueLimit = 0,
-                            AutoReplenishment = true,
-                        });
-                    }
-                    if (anon.Enabled && IsAnonymousApiCall(ctx))
-                    {
-                        WarnOnceIfAddressLooksLikeAProxy(ctx);
-                        return RateLimitPartition.GetFixedWindowLimiter("anon:" + ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
-                        {
-                            PermitLimit = anon.PermitLimit,
-                            Window = TimeSpan.FromSeconds(anon.WindowSeconds),
-                            QueueLimit = 0,
-                        });
-                    }
-                    return RateLimitPartition.GetNoLimiter("none");
-                });
-                limiter.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-                limiter.OnRejected = async (context, ct) =>
+                        PermitLimit = options.PermitLimit,
+                        Window = TimeSpan.FromSeconds(options.WindowSeconds),
+                        QueueLimit = 0,
+                    });
+                }
+                if (api.Enabled && IsApiCall(ctx))
                 {
-                    var http = context.HttpContext;
-                    var isKey = IsApiCall(http) && !IsAuthPost(http);
-                    var isAnon = !isKey && !IsAuthPost(http) && IsAnonymousApiCall(http);
-                    // Both limiters report RetryAfter on a failed lease; the fallback is for a
-                    // limiter type that does not, and must name the window that actually rejected.
-                    var fallback = isKey ? 1 : isAnon ? anon.WindowSeconds : options.WindowSeconds;
-                    var retryAfter = context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var ra)
-                        ? Math.Max(1, (int)Math.Ceiling(ra.TotalSeconds)) : fallback;
-
-                    // Which limit fired, and against whom. Without this a running instance cannot
-                    // answer "is it rejecting anything" or "are we turning away a real customer".
-                    var limit = isKey ? "api" : isAnon ? "anon" : "auth";
-                    var partition = isKey ? "key:" + ApiKeyOf(http) : ClientIp(http);
-                    Rejections.Add(1, new KeyValuePair<string, object?>("limit", limit));
-                    http.RequestServices.GetRequiredService<ILoggerFactory>()
-                        .CreateLogger("IndxServer.RateLimit")
-                        .LogWarning("Rate limit {Limit} rejected {Method} {Path} for {Partition}; Retry-After {RetryAfter}s",
-                            limit, http.Request.Method, http.Request.Path, partition, retryAfter);
-
-                    http.Response.Headers.RetryAfter = retryAfter.ToString();
-                    http.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-                    // The plain-text branch below exists for the dashboard's HTML form posts.
-                    // /mcp is an API surface and must get the problem document like /api — it fell
-                    // into the form branch, answering an MCP client with "Too many attempts from
-                    // this address" even when it was the key limit that fired.
-                    if (http.Request.Path.StartsWithSegments("/api") || http.Request.Path.StartsWithSegments("/mcp"))
+                    return RateLimitPartition.GetTokenBucketLimiter("key:" + ApiKeyOf(ctx), _ => new TokenBucketRateLimiterOptions
                     {
-                        var problem = new ProblemDetails
-                        {
-                            Status = StatusCodes.Status429TooManyRequests,
-                            Title = isKey ? "Rate limit exceeded" : "Too many attempts",
-                            Detail = isKey
-                                ? $"This API key exceeded {api.RequestsPerSecond} requests per second (burst {api.Burst}). Try again in {retryAfter} seconds."
-                                : isAnon
-                                ? $"Too many requests from this address without a valid bearer token. Authenticate first; try again in {retryAfter} seconds."
-                                : $"Too many attempts from this address. Try again in {retryAfter} seconds.",
-                            Extensions = { ["code"] = Code, ["retryAfterSeconds"] = retryAfter },
-                        };
-                        await http.Response.WriteAsJsonAsync(problem, options: null, contentType: "application/problem+json", ct);
-                    }
-                    else
+                        TokenLimit = Math.Max(api.Burst, api.RequestsPerSecond),
+                        TokensPerPeriod = api.RequestsPerSecond,
+                        ReplenishmentPeriod = TimeSpan.FromSeconds(1),
+                        QueueLimit = 0,
+                        AutoReplenishment = true,
+                    });
+                }
+                if (anon.Enabled && IsAnonymousApiCall(ctx))
+                {
+                    WarnOnceIfAddressLooksLikeAProxy(ctx);
+                    return RateLimitPartition.GetFixedWindowLimiter("anon:" + ClientIp(ctx), _ => new FixedWindowRateLimiterOptions
                     {
-                        http.Response.ContentType = "text/plain; charset=utf-8";
-                        await http.Response.WriteAsync($"Too many attempts from this address. Try again in {retryAfter} seconds.", ct);
-                    }
-                };
-            });
+                        PermitLimit = anon.PermitLimit,
+                        Window = TimeSpan.FromSeconds(anon.WindowSeconds),
+                        QueueLimit = 0,
+                    });
+                }
+                return RateLimitPartition.GetNoLimiter("none");
+            }));
             return services;
+        }
+
+        /// <summary>
+        /// Applies the global limiter registered by <see cref="AddAuthRateLimiting"/>: a request
+        /// that gets no lease is answered 429 here and goes no further. In place of ASP.NET's
+        /// <c>UseRateLimiter()</c> since 19 Oct 2026: its middleware builds a partitioned limiter
+        /// of its own for endpoint policies, which this server has none of, whose timer is never
+        /// stopped and held the whole host - every test host of a TestIndxServer run stayed alive.
+        /// Every window here has a queue limit of 0, so a lease is had at once or not at all.
+        /// </summary>
+        public static IApplicationBuilder UseAuthRateLimiting(this IApplicationBuilder app)
+        {
+            var limiter = app.ApplicationServices.GetRequiredService<PartitionedRateLimiter<HttpContext>>();
+            var options = app.ApplicationServices.GetRequiredService<Options>();
+            var api = app.ApplicationServices.GetRequiredService<ApiOptions>();
+            var anon = app.ApplicationServices.GetRequiredService<AnonOptions>();
+            return app.Use(async (http, next) =>
+            {
+                using var lease = limiter.AttemptAcquire(http);
+                if (lease.IsAcquired)
+                {
+                    await next(http);
+                    return;
+                }
+                await RejectAsync(http, lease, options, api, anon, http.RequestAborted);
+            });
+        }
+
+        private static async Task RejectAsync(HttpContext http, RateLimitLease lease, Options options, ApiOptions api, AnonOptions anon,
+            CancellationToken ct)
+        {
+            var isKey = IsApiCall(http) && !IsAuthPost(http);
+            var isAnon = !isKey && !IsAuthPost(http) && IsAnonymousApiCall(http);
+            // Both limiters report RetryAfter on a failed lease; the fallback is for a
+            // limiter type that does not, and must name the window that actually rejected.
+            var fallback = isKey ? 1 : isAnon ? anon.WindowSeconds : options.WindowSeconds;
+            var retryAfter = lease.TryGetMetadata(MetadataName.RetryAfter, out var ra)
+                ? Math.Max(1, (int)Math.Ceiling(ra.TotalSeconds)) : fallback;
+
+            // Which limit fired, and against whom. Without this a running instance cannot
+            // answer "is it rejecting anything" or "are we turning away a real customer".
+            var limit = isKey ? "api" : isAnon ? "anon" : "auth";
+            var partition = isKey ? "key:" + ApiKeyOf(http) : ClientIp(http);
+            Rejections.Add(1, new KeyValuePair<string, object?>("limit", limit));
+            http.RequestServices.GetRequiredService<ILoggerFactory>()
+                .CreateLogger("IndxServer.RateLimit")
+                .LogWarning("Rate limit {Limit} rejected {Method} {Path} for {Partition}; Retry-After {RetryAfter}s",
+                    limit, http.Request.Method, http.Request.Path, partition, retryAfter);
+
+            http.Response.Headers.RetryAfter = retryAfter.ToString();
+            http.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+            // The plain-text branch below exists for the dashboard's HTML form posts.
+            // /mcp is an API surface and must get the problem document like /api — it fell
+            // into the form branch, answering an MCP client with "Too many attempts from
+            // this address" even when it was the key limit that fired.
+            if (http.Request.Path.StartsWithSegments("/api") || http.Request.Path.StartsWithSegments("/mcp"))
+            {
+                var problem = new ProblemDetails
+                {
+                    Status = StatusCodes.Status429TooManyRequests,
+                    Title = isKey ? "Rate limit exceeded" : "Too many attempts",
+                    Detail = isKey
+                        ? $"This API key exceeded {api.RequestsPerSecond} requests per second (burst {api.Burst}). Try again in {retryAfter} seconds."
+                        : isAnon
+                        ? $"Too many requests from this address without a valid bearer token. Authenticate first; try again in {retryAfter} seconds."
+                        : $"Too many attempts from this address. Try again in {retryAfter} seconds.",
+                    Extensions = { ["code"] = Code, ["retryAfterSeconds"] = retryAfter },
+                };
+                await http.Response.WriteAsJsonAsync(problem, options: null, contentType: "application/problem+json", ct);
+            }
+            else
+            {
+                http.Response.ContentType = "text/plain; charset=utf-8";
+                await http.Response.WriteAsync($"Too many attempts from this address. Try again in {retryAfter} seconds.", ct);
+            }
         }
     }
 }
