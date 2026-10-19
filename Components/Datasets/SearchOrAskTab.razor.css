@@ -23,17 +23,34 @@
 .soa-number { width: 110px; }
 .soa-error { color: var(--CSignal); font: var(--text-sm); margin-top: 10px; }
 
-/* The tester: full width above the settings, wider than a settings group. */
-::deep .soa-try { max-width: 900px; }
-.soa-try-off { margin-top: 10px; }
-.soa-try-input { flex: 1 1 320px; }
+/* The tester: a visitor's search box, drawn like the Search preview's panel. */
+.soa-try {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 900px;
+    margin-bottom: 24px;
+    padding: 12px;
+    background: var(--lv0);
+    border: 0.5px solid var(--lv3);
+    border-radius: var(--radius);
+}
+.soa-try-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 2px; }
+.soa-try-title { font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
+.soa-try-off { margin-top: 0; }
+/* intrface's offer row: always this tall, so an offer appearing moves nothing under it. */
+.soa-try-offer { display: flex; align-items: center; gap: 10px; min-height: 28px; min-width: 0; flex-wrap: wrap; }
+.soa-try-hint { display: inline-flex; align-items: center; gap: 4px; font: var(--text-xs); color: var(--lv4); }
+.soa-kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; font: var(--text-2xs); color: var(--lv5); background: var(--lv2); border-radius: 3px; }
+/* The judge's scores, quiet, with the tester's own tools at the end. */
+.soa-try-scores { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 8px; border-top: 1px solid var(--lv2); }
+.soa-try-spacer { flex: 1; }
 .soa-try-score { font: var(--text-xs); color: var(--lv6); font-variant-numeric: tabular-nums; }
 ::deep .soa-offer--strong { background: var(--CPositive); color: var(--lv0); }
 ::deep .soa-offer--invite { background: var(--lv3); color: var(--lv8); }
 ::deep .soa-offer--none { background: var(--lv2); color: var(--lv6); }
-.soa-try-actions { display: flex; gap: 4px; margin-top: 8px; }
 .soa-state {
-    margin-top: 8px;
+    margin: 0;
     padding: 12px;
     background: var(--lv1);
     border-radius: 6px;
@@ -45,9 +62,10 @@
     max-height: 360px;
     overflow: auto;
 }
-.soa-answer { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--lv2); }
-.soa-answer-text { font: var(--text-sm); color: var(--lv8); white-space: pre-wrap; margin: 0; }
-.soa-sources { margin: 10px 0 0; padding-left: 20px; font: var(--text-xs); color: var(--lv6); }
+.soa-try-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+/* The answer as a chat turn, as intrface's AskPanel shows it. */
+.soa-try-turn { display: flex; flex-direction: column; gap: 16px; padding-top: 12px; border-top: 1px solid var(--lv2); }
+.soa-sources { margin: 4px 0 0; padding-left: 20px; font: var(--text-xs); color: var(--lv6); }
 .soa-key { color: var(--lv5); margin-left: 6px; font-variant-numeric: tabular-nums; }
 
 /* A setting's row: its icon beside the name, help and control. */

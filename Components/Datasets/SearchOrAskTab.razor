@@ -3,6 +3,7 @@
    the working copy, saved or not, so an owner can try it before switching it on. The tester costs
    what a visitor's call costs and counts against the daily budget. *@
 @using System.Globalization
+@using Microsoft.AspNetCore.Components.Web
 @using System.Text.Json
 @using System.Text.Json.Nodes
 @using System.Text.Json.Serialization
@@ -47,101 +48,117 @@
        hard to find, and in a column it moved mid-page as the grid wrapped (19 Oct 2026). *@
     @if (_edit.Enabled)
     {
-        <Table AriaLabel="Try it" Class="soa-table soa-try">
-            @Head("Try it")
-            <tbody>
-                <TableRow>
-                    <TableCell Class="soa-cell">
-                        <span class="soa-help">Type as a visitor would. Uses the settings below, saved or not. Each pause is one call against the budget.</span>
-                        @if (!Service.Available)
+        @* Drawn as a visitor's search would be (the Search preview's box, intrface's offer row
+           under the field, the answer as a chat turn), so what an editor tries here looks like
+           what a visitor gets. *@
+        <section class="soa-try" aria-label="Try it">
+            <div class="soa-try-head">
+                <span class="soa-try-title">Try it</span>
+                <span class="soa-help">Type as a visitor would. Uses the settings below, saved or not. Each pause is one call against the budget.</span>
+            </div>
+            @if (!Service.Available)
+            {
+                <span class="soa-help soa-try-off">Needs the instance's model key.</span>
+            }
+            else if (Ctx.EngineState != SystemState.Ready)
+            {
+                <span class="soa-help soa-try-off">Available after the index is built.</span>
+            }
+            else
+            {
+                <SearchField Value="@_tryText" ValueChanged="@(async v => { _tryText = v; await OnTryInput(); })" Placeholder="@($"Search {Ctx.Name}")"
+                             @onkeydown="OnTryKey" />
+                @* The offer as the visitor sees it: intrface's row under the field, the same height
+                   whether an offer is up or not, so a judgement arriving moves nothing. *@
+                <div class="soa-try-offer" aria-live="polite">
+                    @if (_try is { } r)
+                    {
+                        @if (r.Offer == "strong")
                         {
-                            <span class="soa-help soa-try-off">Needs the instance's model key.</span>
+                            <Button Variant="primary" Size="micro" IconLeft="_iconAgent" Loading="@_asking" @onclick="AskAsync">Ask the assistant</Button>
+                            <span class="soa-try-hint"><kbd class="soa-kbd">↵</kbd> to ask</span>
                         }
-                        else if (Ctx.EngineState != SystemState.Ready)
+                        else if (r.Offer == "invite")
                         {
-                            <span class="soa-help soa-try-off">Available after the index is built.</span>
+                            <Button Variant="ghost" Size="micro" IconLeft="_iconAgent" Loading="@_asking" @onclick="AskAsync">Ask about this</Button>
                         }
                         else
                         {
-                            <div class="soa-control">
-                                <div class="soa-try-input">
-                                    <InputField Immediate @bind-Value="_tryText" @bind-Value:after="OnTryInput" placeholder="how do I …" />
-                                </div>
-                                @if (_try is { } r)
-                                {
-                                    @* The judge's scores, each with what it answers on hover: the labels alone
-                                       said nothing to an owner reading "p 0.12" (19 Oct 2026). *@
-                                    <Tooltip Content="@OfferHelp(r.Offer)"><Chip Size="micro" Class="@($"soa-offer soa-offer--{r.Offer}")">@OfferLabel(r.Offer)</Chip></Tooltip>
-                                    <span class="soa-try-score">
-                                        <Tooltip Content="@QuestionHelp">question @Two(r.P)</Tooltip>
-                                        @if (r.Criteria is { } c)
-                                        {
-                                            <text> · </text><Tooltip Content="@DescriptionHelp">description @Two(c)</Tooltip>
-                                        }
-                                        @if (r.Answerable is { } a)
-                                        {
-                                            <text> · </text><Tooltip Content="@AnswerableHelp">answerable @Two(a)</Tooltip>
-                                        }
-                                        <text> · </text><Tooltip Content="@(r.Cached ? "The judge answered this text before; the cached answer, no call made." : "How long the judge took. A visitor's page waits at most 3 seconds.")">@(r.Cached ? "cached" : $"{r.Ms} ms")</Tooltip>
-                                        @if (r.Reason is { } why) { <text> · @why</text> }
-                                    </span>
-                                }
-                                else if (_tryMessage != null)
-                                {
-                                    <span class="soa-help">@_tryMessage</span>
-                                }
-                            </div>
-                            @if (_try != null)
-                            {
-                                <div class="soa-try-actions">
-                                    <Button Variant="ghost" Size="micro" Loading="@_asking" @onclick="AskAsync">Ask</Button>
-                                    @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
-                                    {
-                                        <Button Variant="ghost" Size="micro" Loading="@_filtering" @onclick="FiltersAsync">Filters</Button>
-                                    }
-                                    <Button Variant="ghost" Size="micro" IconRight="@(_showState ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)"
-                                            @onclick="() => _showState = !_showState">What the judge was sent</Button>
-                                </div>
-                            }
-                            @if (_showState && _state != null)
-                            {
-                                <pre class="soa-state">@_state</pre>
-                            }
-                            @if (_filters is { } fr)
-                            {
-                                <div class="soa-answer">
-                                    @if (fr.Filters.Length == 0)
-                                    {
-                                        <p class="soa-help">No filters@(fr.Reason is { } why ? $" ({why})" : "").</p>
-                                    }
-                                    <div class="soa-control">
-                                        @foreach (var f in fr.Filters)
-                                        {
-                                            <Chip Size="micro">@FilterLabel(f)</Chip>
-                                        }
-                                        @if (fr.Text.Length > 0) { <span class="soa-help">search for "@fr.Text"</span> }
-                                        <span class="soa-try-score">@fr.Ms ms</span>
-                                    </div>
-                                </div>
-                            }
-                            @if (_sources.Count > 0 || _answer.Length > 0 || _answerError != null)
-                            {
-                                <div class="soa-answer">
-                                    @if (_answerError != null) { <p class="soa-error">@_answerError</p> }
-                                    <p class="soa-answer-text">@_answer</p>
-                                    @if (_sources.Count > 0)
-                                    {
-                                        <ol class="soa-sources">
-                                            @foreach (var s in _sources) { <li>@s.Title <span class="soa-key">@s.DocumentKey</span></li> }
-                                        </ol>
-                                    }
-                                </div>
-                            }
+                            <span class="soa-help">No offer: the visitor sees the results and nothing more.</span>
+                            <Button Variant="ghost" Size="micro" Loading="@_asking" @onclick="AskAsync">Ask anyway</Button>
                         }
-                    </TableCell>
-                </TableRow>
-            </tbody>
-        </Table>
+                    }
+                    else if (_tryMessage != null)
+                    {
+                        <span class="soa-help">@_tryMessage</span>
+                    }
+                </div>
+                @if (_try is { } j)
+                {
+                    @* The judge's scores, each with what it answers on hover: the labels alone
+                       said nothing to an owner reading "p 0.12" (19 Oct 2026). *@
+                    <div class="soa-try-scores">
+                        <Tooltip Content="@OfferHelp(j.Offer)"><Chip Size="micro" Class="@($"soa-offer soa-offer--{j.Offer}")">@OfferLabel(j.Offer)</Chip></Tooltip>
+                        <span class="soa-try-score">
+                            <Tooltip Content="@QuestionHelp">question @Two(j.P)</Tooltip>
+                            @if (j.Criteria is { } c)
+                            {
+                                <text> · </text><Tooltip Content="@DescriptionHelp">description @Two(c)</Tooltip>
+                            }
+                            @if (j.Answerable is { } a)
+                            {
+                                <text> · </text><Tooltip Content="@AnswerableHelp">answerable @Two(a)</Tooltip>
+                            }
+                            <text> · </text><Tooltip Content="@(j.Cached ? "The judge answered this text before; the cached answer, no call made." : "How long the judge took. A visitor's page waits at most 3 seconds.")">@(j.Cached ? "cached" : $"{j.Ms} ms")</Tooltip>
+                            @if (j.Reason is { } why) { <text> · @why</text> }
+                        </span>
+                        <span class="soa-try-spacer"></span>
+                        @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                        {
+                            <Button Variant="ghost" Size="micro" Loading="@_filtering" @onclick="FiltersAsync">Filters</Button>
+                        }
+                        <Button Variant="ghost" Size="micro" IconRight="@(_showState ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)"
+                                @onclick="() => _showState = !_showState">What the judge was sent</Button>
+                    </div>
+                }
+                @if (_showState && _state != null)
+                {
+                    <pre class="soa-state">@_state</pre>
+                }
+                @if (_filters is { } fr)
+                {
+                    <div class="soa-try-filters">
+                        <span class="soa-help">Searched with</span>
+                        @if (fr.Filters.Length == 0)
+                        {
+                            <span class="soa-help">no filters@(fr.Reason is { } why ? $" ({why})" : "")</span>
+                        }
+                        @foreach (var f in fr.Filters)
+                        {
+                            <Chip Size="micro">@FilterLabel(f)</Chip>
+                        }
+                        @if (fr.Text.Length > 0) { <span class="soa-help">and the words "@fr.Text"</span> }
+                        <span class="soa-try-score">@fr.Ms ms</span>
+                    </div>
+                }
+                @if (_sources.Count > 0 || _answer.Length > 0 || _answerError != null)
+                {
+                    <div class="soa-try-turn">
+                        <UserMessage>@_tryText</UserMessage>
+                        <AssistantMessage Label="Answer" Icon="_iconAgent">
+                            @if (_answerError != null) { <p class="soa-error">@_answerError</p> }
+                            @ChatMarkdown.Render(_answer)
+                            @if (_sources.Count > 0)
+                            {
+                                <ol class="soa-sources">
+                                    @foreach (var s in _sources) { <li>@s.Title <span class="soa-key">@s.DocumentKey</span></li> }
+                                </ol>
+                            }
+                        </AssistantMessage>
+                    </div>
+                }
+            }
+        </section>
     }
 
     <div class="soa-groups">
@@ -554,6 +571,14 @@
     private List<AskSource> _sources = [];
 
     private string Address => $"console:{Ctx.TeamId}";
+
+    private static readonly RenderFragment<int> _iconAgent = size => @<Icons.AiAgent Size="size" Color="currentColor" />;
+
+    /// <summary>Enter asks while the full offer is up, as it does for a visitor.</summary>
+    private async Task OnTryKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && _try is { Offer: "strong" } && !_asking) await AskAsync();
+    }
 
     private const string QuestionHelp = "How sure the judge is that the visitor is asking a question rather than looking something up. " +
         "On a catalogue: a question about one particular item. The thresholds under When to offer are applied to this score.";
