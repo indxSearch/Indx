@@ -68,6 +68,11 @@ namespace IndxServer.Components.Datasets
                 existing.Weight = imp.Weight;
                 existing.BM25b = imp.BM25b;
                 existing.BM25k1 = imp.BM25k1;
+                // A file exported before these existed has none of them: kept as they are, not
+                // cleared, since null on a proxy means "leave alone".
+                if (imp.IndexSizes != null) existing.IndexSizes = (int[])imp.IndexSizes.Clone();
+                if (imp.NumberOfStartCharacters.HasValue) existing.NumberOfStartCharacters = imp.NumberOfStartCharacters;
+                if (imp.NumberOfStopCharacters.HasValue) existing.NumberOfStopCharacters = imp.NumberOfStopCharacters;
                 matched++;
             }
 

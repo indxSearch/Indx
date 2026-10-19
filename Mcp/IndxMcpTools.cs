@@ -344,6 +344,9 @@ namespace IndxServer.Mcp
                     ["weight"] = f.Weight,
                     ["bm25b"] = f.BM25b,
                     ["bm25k1"] = f.BM25k1,
+                    ["indexSizes"] = f.IndexSizes is { } sizes ? new JsonArray(sizes.Select(s => (JsonNode)s).ToArray()) : null,
+                    ["startCharacters"] = f.NumberOfStartCharacters,
+                    ["stopCharacters"] = f.NumberOfStopCharacters,
                 };
                 // Optional means some document lacked a value; a null sample means no document ever
                 // had one. Both change whether a field is worth making searchable, and neither is
@@ -362,7 +365,8 @@ namespace IndxServer.Mcp
                 ["searchableFieldCount"] = searchable,
                 ["note"] = searchable == 0
                     ? "No field is searchable, so every search returns nothing. Make at least one text field searchable, then re-index."
-                    : "Weight is a float (default 1.0); BM25b must be within [0, 1] and BM25k1 non-negative, or the engine refuses the configuration.",
+                    : "Weight is a float (default 1.0); BM25b must be within [0, 1] and BM25k1 non-negative, or the engine refuses the configuration. "
+                      + "indexSizes (default [3]; [2, 3] lets short values such as codes match by two characters), startCharacters and stopCharacters take effect at the next index.",
             };
         }
 

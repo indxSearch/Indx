@@ -154,6 +154,9 @@ namespace IndxServer.Components.Datasets
                     if (o.Weight != e.Weight) return true;
                     if (o.BM25b != e.BM25b) return true;
                     if (o.BM25k1 != e.BM25k1) return true;
+                    if (!(o.IndexSizes ?? []).SequenceEqual(e.IndexSizes ?? [])) return true;
+                    if (o.NumberOfStartCharacters != e.NumberOfStartCharacters) return true;
+                    if (o.NumberOfStopCharacters != e.NumberOfStopCharacters) return true;
                 }
                 return false;
             }
@@ -180,7 +183,12 @@ namespace IndxServer.Components.Datasets
             HighResolution = f.HighResolution ?? false,
             Weight = f.Weight,
             BM25b = f.BM25b,
-            BM25k1 = f.BM25k1
+            BM25k1 = f.BM25k1,
+            // Not shown in the console yet, but carried, so an export holds them and a save sends
+            // back what the engine has instead of nothing.
+            IndexSizes = f.IndexSizes is { } sizes ? (int[])sizes.Clone() : null,
+            NumberOfStartCharacters = f.NumberOfStartCharacters,
+            NumberOfStopCharacters = f.NumberOfStopCharacters,
         };
 
         // ── Upload hand-off ───────────────────────────────────────────────────
