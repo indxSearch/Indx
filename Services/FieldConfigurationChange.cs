@@ -106,6 +106,12 @@ namespace IndxServer.Services
                 Number(wanted.Weight, field.Weight, "weight");
                 Number(wanted.BM25b, field.BM25b, "BM25 b");
                 Number(wanted.BM25k1, field.BM25k1, "BM25 k1");
+                Count(wanted.NumberOfStartCharacters, field.NumberOfStartCharacters, "start characters");
+                Count(wanted.NumberOfStopCharacters, field.NumberOfStopCharacters, "stop characters");
+                if (wanted.IndexSizes is { } sizes && !field.IndexSizes.AsSpan().SequenceEqual(sizes))
+                    changes.Add(new Change(wanted.FieldName,
+                        $"index sizes [{string.Join(", ", field.IndexSizes)}] → [{string.Join(", ", sizes)}]",
+                        "index sizes changed"));
 
                 void Flag(bool? asked, bool now, string role)
                 {
@@ -113,6 +119,12 @@ namespace IndxServer.Services
                     changes.Add(value
                         ? new Change(wanted.FieldName, $"is set to {role}", $"set to {role}")
                         : new Change(wanted.FieldName, $"is no longer {role}", $"no longer {role}"));
+                }
+
+                void Count(int? asked, int now, string what)
+                {
+                    if (asked is not int value || value == now) return;
+                    changes.Add(new Change(wanted.FieldName, $"{what} {now} → {value}", $"{what} changed"));
                 }
 
                 void Number(float? asked, float now, string what)
