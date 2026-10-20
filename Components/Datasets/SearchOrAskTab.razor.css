@@ -46,6 +46,8 @@
 ::deep .soa-cell { padding: 12px 15px; }
 .soa-label { display: block; font: var(--text-sm); color: var(--lv7); }
 ::deep .soa-row--set .soa-label { color: var(--lv8); font-weight: var(--med); }
+/* A name with a fuller explanation in its tooltip: a dotted underline, as a definition reads. */
+.soa-label--explained { text-decoration: underline dotted var(--lv4); text-underline-offset: 3px; cursor: help; }
 .soa-help { display: block; font: var(--text-xs); color: var(--lv5); margin-top: 2px; }
 .soa-control { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; min-height: 28px; }
 .soa-control > ::deep * { min-width: 0; }

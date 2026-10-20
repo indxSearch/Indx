@@ -64,22 +64,22 @@
                          _edit.Enabled, @<ToggleSwitch Label="Enabled" Variant="positive" Checked="@_edit.Enabled" CheckedChanged="@(v => _edit.Enabled = v)" />)
                     @Row(Icon<Icons.Book>(), "Kind of site", "How the judge tells a question from a lookup.",
                          false, @<div class="soa-select"><SelectField Size="micro" Options="KindOptions" Value="@_edit.Kind" ValueChanged="@(v => _edit.Kind = v ?? SearchOrAskRecipes.Documentation)" /></div>)
-                    @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold, in a sentence or two. Empty uses the dataset's description.",
+                    @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold. Empty uses the dataset's description.",
                          !string.IsNullOrWhiteSpace(_edit.SiteDescription),
                          @<Textarea Rows="3" @bind-Value="_edit.SiteDescription" placeholder="@_effectiveSite" />)
                     @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
                     {
-                        @Row(Icon<Icons.Filter>(), "About the fields", "What the values mean here, for turning a description into filters. One per line, such as \"barneskole: grades 1 to 7\".",
+                        @Row(Icon<Icons.Filter>(), "About the fields", "What the values mean here, one per line.",
                              !string.IsNullOrWhiteSpace(_edit.FilterNotes),
                              @<Textarea Rows="4" @bind-Value="_edit.FilterNotes" placeholder="friskole: private" />)
                     }
                     @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
                          _edit.Answers != SearchOrAskSettings.BestAnswers,
                          @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
-                    @Row(Icon<Icons.Paragraph>(), "Answer instructions", "How the answers should speak: voice, house rules, what to say when nothing is found. They shape the wording; what an answer may claim stays bound to the records.",
+                    @Row(Icon<Icons.Paragraph>(), "Answer instructions", "The answers' voice and house rules.",
                          !string.IsNullOrWhiteSpace(_edit.AnswerInstructions),
                          @<Textarea Rows="3" @bind-Value="_edit.AnswerInstructions" placeholder="Formal. Say du. Never recommend another shop." />)
-                    @Row(Icon<Icons.UserText>(), "Answer language", "The visitor's language by default; or one language for every answer.",
+                    @Row(Icon<Icons.UserText>(), "Answer language", "The visitor's language, or one for every answer.",
                          !string.IsNullOrWhiteSpace(_edit.AnswerLanguage),
                          @<div class="soa-select"><SelectField Size="micro" Options="LanguageOptions" Value="@(_edit.AnswerLanguage ?? VisitorsLanguage)" ValueChanged="@(v => _edit.AnswerLanguage = v == VisitorsLanguage ? null : v)" /></div>)
                     @Row(Icon<Icons.Coins>(), "Daily call budget", $"Calls per day (UTC). {_callsToday:N0} used today.",
@@ -104,7 +104,7 @@
                              @<div class="soa-select"><SelectField Size="micro" Options="TitleOptions" Value="@(_edit.TitleField ?? Automatic)" ValueChanged="@(v => _edit.TitleField = v == Automatic ? null : v)" /></div>)
                         @Row(Icon<Icons.Tag>(), "Section", "Where a result belongs, such as a category or year.",
                              _edit.SectionFields != null, FieldChoice(PlaceFields, () => _edit.SectionFields, v => _edit.SectionFields = v, _effective?.SectionFields))
-                        @Row(Icon<Icons.Paragraph>(), "Snippet", "The text the judge reads, and the answer is written from.",
+                        @Row(Icon<Icons.Paragraph>(), "Snippet", "The text the judge reads and answers are written from.",
                              _edit.SnippetFields != null, FieldChoice(TextFields, () => _edit.SnippetFields, v => _edit.SnippetFields = v, _effective?.SnippetFields))
                     }
                 </tbody>
@@ -117,22 +117,22 @@
             <Table AriaLabel="Ask phrases" Class="soa-table">
                 @Head("Ask phrases")
                 <tbody>
-                    @Row(Icon<Icons.Question>(), "Lead-ins", "How a question starts. Taken off the typed text, with what follows below, so the list searches what the question is about: \"help me find the movie about the green ogre\" searches \"green ogre\". One per line; empty uses the defaults shown.",
+                    @Row(Icon<Icons.Question>(), "Lead-ins", "How a question starts: \"help me find\", \"i'm looking for\". One per line.",
                          _edit.AskPhrases != null,
                          @<Textarea Rows="4" @bind-Value="LeadInLines" placeholder="@PhraseLines(p => p.LeadIns, SearchOrAskPhrases.Default)" />)
-                    @Row(Icon<Icons.Tag>(), "What is asked for", "The records' own names, as a visitor says them: \"the movie\", \"the product\", \"the one\".",
+                    @Row(Icon<Icons.Tag>(), "What is asked for", "The records' names, as visitors say them: \"the movie\", \"the product\".",
                          _edit.AskPhrases != null,
                          @<Textarea Rows="3" @bind-Value="FrameLines" placeholder="@PhraseLines(p => p.Frames, SearchOrAskPhrases.Default)" />)
-                    @Row(Icon<Icons.TextCursor>(), "Links", "The word that joins it to the rest: \"about\", \"where\", \"with\", \"starring\".",
+                    @Row(Icon<Icons.TextCursor>(), "Links", "The word that joins it to the rest: \"about\", \"with\".",
                          _edit.AskPhrases != null,
                          @<Textarea Rows="3" @bind-Value="LinkLines" placeholder="@PhraseLines(p => p.Links, SearchOrAskPhrases.Default)" />)
                     @Row(Icon<Icons.TextSize>(), "Articles", "\"the\", \"a\", \"an\".",
                          _edit.AskPhrases != null,
                          @<Textarea Rows="2" @bind-Value="ArticleLines" placeholder="@PhraseLines(p => p.Articles, SearchOrAskPhrases.Default)" />)
-                    @Row(Icon<Icons.Search>(), "Refocus the search", "While a question is typed, the list searches what it is about: the phrases above come off the text before it is searched, on every keystroke, and the judge reads those results. Off searches the text as typed.",
+                    @Row(Icon<Icons.Search>(), "Refocus the search", "While a question is typed, the list searches what it is about.",
                          !_edit.RefocusWhileTyping,
                          @<ToggleSwitch Label="Search what the question is about" Checked="@_edit.RefocusWhileTyping" CheckedChanged="@(v => _edit.RefocusWhileTyping = v)" />)
-                    @Row(DatasetIcons.SearchOrAsk, "Invite at once", "The quiet \"Ask about this\" the moment the text takes a question's shape, before the judge has read it. The judge's word on the pause confirms it or takes it back. Off leaves every offer to the judge.",
+                    @Row(DatasetIcons.SearchOrAsk, "Invite at once", "The quiet \"Ask about this\" as soon as a question takes shape.",
                          !_edit.InviteOnAskPhrase,
                          @<ToggleSwitch Label="Offer to ask on a question's shape" Checked="@_edit.InviteOnAskPhrase" CheckedChanged="@(v => _edit.InviteOnAskPhrase = v)" />)
                 </tbody>
@@ -168,7 +168,7 @@
                             <span class="soa-help">What the page does with its list while a full offer is up.</span>
                         </TableCell>
                     </TableRow>
-                    @Row(DatasetIcons.QueryParameters, "The list", "Keep only the results that still match: those scoring a share of the top result, and only when the top result scores enough. Off keeps the whole list.",
+                    @Row(DatasetIcons.QueryParameters, "The list", "Keep only the results that still match the question.",
                          _edit.CutWhileAsking != true || _edit.CutShareOfTop != 0.5 || _edit.CutTopFloor != 0.2,
                          @<div class="soa-stack">
                              <ToggleSwitch Label="Strong matches only" Checked="@_edit.CutWhileAsking" CheckedChanged="@(v => _edit.CutWhileAsking = v)" />
@@ -188,11 +188,11 @@
                                  </div>
                              }
                          </div>)
-                    @Row(Icon<Icons.TextSize>(), "Matching", "The page's own searches match whole words only: no typos, prefixes or joined words. The answer still searches with the full setup, so a typo in a name still finds the record.",
+                    @Row(Icon<Icons.TextSize>(), "Matching", "The page's own searches match whole words only.",
                          !_edit.StrictCoverageWhileAsking, @<ToggleSwitch Label="Whole words only" Checked="@_edit.StrictCoverageWhileAsking" CheckedChanged="@(v => _edit.StrictCoverageWhileAsking = v)" />)
                     @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
                     {
-                        @Row(Icon<Icons.Filter>(), "Filters", "When the text describes what to list: leave the list alone until the visitor asks, or narrow it at once. From facet values is instant: a typed word that equals a value becomes that filter. With the model also asks for what the values could not name, about a second and a half.",
+                        @Row(Icon<Icons.Filter>(), "Filters", "When the text describes what to list: filters now, or only after Ask.",
                              _edit.FiltersWhileTyping != SearchOrAskSettings.FiltersOff,
                              @<div class="soa-select"><SelectField Size="micro" Options="FiltersWhileTypingOptions" Value="@_edit.FiltersWhileTyping" ValueChanged="@(v => _edit.FiltersWhileTyping = v ?? SearchOrAskSettings.FiltersOff)" /></div>)
                     }
@@ -633,6 +633,34 @@
     private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _budgetError != null);
 
 
+    /// <summary>Each setting's full explanation, by its name: the name's tooltip. The line under the
+    /// name says what the setting is; this says what it does, with an example, and what off means.</summary>
+    private static readonly Dictionary<string, string> Explained = new()
+    {
+        ["Offer answers"] = "While on, each pause in typing sends the text to the judge, and a question asked goes to the answer model with the records it is answered from. Visitors' text leaves your server, so the privacy notice must say so. Off: the search works as before and nothing is sent.",
+        ["Kind of site"] = "Documentation: records written to explain, such as help pages, manuals and policies; an answer says what no single page shows. Catalogue: records of facts, such as products, places or films; a description of what to list becomes filters, and a question about one item is answered from its fields.",
+        ["About the site"] = "One or two sentences the judge and the answer model read with every request, such as \"A furniture shop's catalogue for customers in Norway.\" It helps the judge tell a question from a lookup on this site, and gives the answers their frame.",
+        ["About the fields"] = "For turning a description into filters. Each line names a value and what it means on this site, such as \"barneskole: grades 1 to 7\" or \"friskole: private school\", so \"schools for young children\" can become the filter barneskole.",
+        ["Answers"] = "Best: the stronger model. On a catalogue it can search several times, sort and filter until it has the answer. Fast: the quicker model, answering from one search. Both answer from the records only.",
+        ["Answer instructions"] = "How the answers should speak: voice, house rules, what to say when nothing is found, such as \"Formal. Say du. Never recommend another shop.\" They shape the wording; what an answer may claim stays bound to the records.",
+        ["Answer language"] = "By default an answer is written in the language the question is asked in. Choose a language to write every answer in it, whatever the visitor writes.",
+        ["Daily call budget"] = "Every judgement and every question asked counts as one call, however many model calls its answer takes, counted per day from midnight UTC. Once the budget is spent the search works as before and no offers show until midnight. 0 stops all calls.",
+        ["Title"] = "The field that names a result, as the judge and the answers refer to it. Automatic picks the dataset's most title-like field.",
+        ["Section"] = "Fields that say where a result belongs, such as a category, a year or a chapter. The judge reads them beside the title; leave them empty when the records have none.",
+        ["Snippet"] = "The prose fields the judge reads and the answers are written from: a description, a body text. Not identifiers or links, which tell the model nothing.",
+        ["Lead-ins"] = "Taken off the typed text with what follows them, so the list searches what the question is about: \"help me find the movie about the green ogre\" searches \"green ogre\". Nothing is taken unless the start has a question's shape and a word of substance is left, so a title like \"Help\" searches as typed. With all four boxes empty the dataset uses the English defaults, shown greyed in the boxes; once any box has a phrase, the four are the dataset's own, and an empty box takes nothing of its kind.",
+        ["What is asked for"] = "Taken off after a lead-in (\"which movie has tom hanks\" searches \"tom hanks\"), and off the end of a question when two words come before it: \"show me green ogre movie\" searches \"green ogre\", while \"show me bee movie\" keeps its title. Add the names visitors use for these records.",
+        ["Links"] = "Taken off after what is asked for: \"the movie about a rat in paris\" searches \"rat in paris\". Words such as \"about\", \"with\", \"where\", \"starring\".",
+        ["Articles"] = "Taken off once the start is a question's, before the subject: \"help me find a green ogre\" searches \"green ogre\". They never make a question on their own.",
+        ["Refocus the search"] = "The phrases above come off the text before it is searched, on every keystroke, and the judge reads those results. Off: the list searches the text as typed, and the judge reads that.",
+        ["Invite at once"] = "Shown on the keystroke a phrase matches, before the judge has read the text. The judge's word on the next pause confirms it, raises it to the full offer, or takes it back. Off: every offer waits for the judge.",
+        ["Answer offer"] = "The full offer, \"Ask the assistant\": Enter asks. Shown when the judge's score reaches Show from, and kept while it stays above Keep down to, so it does not blink as the visitor types on.",
+        ["Invitation"] = "The quiet \"Ask about this\" under the field, for a score that may be a question. Clicking it asks; Enter still searches.",
+        ["The list"] = "While the full offer is up, keep only results scoring at least Share of top of the best result, and show any only when the best scores at least Top at least. A question's words match many records loosely; this keeps the ones that match it. Off keeps the whole list.",
+        ["Matching"] = "While the full offer is up, the page's searches match whole words only: no typos, prefixes or joined words, which a long question otherwise picks up everywhere. The answer still searches with the full setup, so a typo in a name still finds the record.",
+        ["Filters"] = "When the judge reads the text as a description of what to list. Only after Ask: the list stays as it is until the visitor asks. From facet values: a typed word that equals a value becomes that filter at once. With the model: the model also turns what the values could not name into filters, in about a second and a half.",
+    };
+
     private static RenderFragment Head(string group) => __builder =>
     {
         <thead>
@@ -640,8 +668,9 @@
         </thead>
     };
 
-    /// <summary>A setting: its icon, its name in bold when changed from the default, one line of
-    /// help, and the control under them.</summary>
+    /// <summary>A setting: its icon, its name in bold when changed from the default, one short line
+    /// of what it is, and the control under them. The full explanation (what it does, an example,
+    /// what off means) is the name's tooltip, as elsewhere in the console, from <see cref="Explained"/>.</summary>
     private static RenderFragment Row(RenderFragment<int> icon, string label, string help, bool set, RenderFragment control) => __builder =>
     {
         <TableRow Class="@(set ? "soa-row--set" : null)">
@@ -649,7 +678,14 @@
                 <div class="soa-row">
                     <span class="soa-icon">@icon(16)</span>
                     <div class="soa-row-body">
-                        <span class="soa-label">@label</span>
+                        @if (Explained.TryGetValue(label, out var more))
+                        {
+                            <Tooltip Content="@more" Position="right"><span class="soa-label soa-label--explained" tabindex="0">@label</span></Tooltip>
+                        }
+                        else
+                        {
+                            <span class="soa-label">@label</span>
+                        }
                         <span class="soa-help">@help</span>
                         <div class="soa-control">@control</div>
                     </div>
