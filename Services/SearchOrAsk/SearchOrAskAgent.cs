@@ -58,7 +58,7 @@ namespace IndxServer.Services.SearchOrAsk
             var schema = FilterFields(teamId, dataSetName, engine);
             if (schema.Count == 0) return null;
             var site = SiteDescription(teamId, dataSetName, settings);
-            var messages = new JsonArray(new JsonObject { ["role"] = "system", ["content"] = AgentPrompt(site, settings.FilterNotes, schema) + SearchOrAskRecipes.AnswerStyle(settings) });
+            var messages = new JsonArray(new JsonObject { ["role"] = "system", ["content"] = AgentPrompt(site, settings.FilterNotes, schema) + SearchOrAskRecipes.AnswerStyle(settings) + AgentLanguage(settings) });
             // The conversation so far, with the list each answer put on the page: a follow-up ("which is
             // the largest?") is about that list, and searching it again starts from those filters.
             foreach (var t in history)
@@ -139,6 +139,9 @@ namespace IndxServer.Services.SearchOrAsk
                         }
                         result = sb.ToString();
                     }
+                    // The language once more after the round's last result: what the agent reads last
+                    // before it writes is records, and records in other languages pulled it along.
+                    if (call == calls[^1]) result += $"\n\n({LanguageAfterResults(settings, question)})";
                     messages.Add(new JsonObject
                     {
                         ["role"] = "tool",
@@ -150,6 +153,22 @@ namespace IndxServer.Services.SearchOrAsk
             _logger.LogInformation("Search or ask agent ran out of turns for {Team}/{Dataset}", teamId, dataSetName);
             return null;
         }
+
+        /// <summary>The answer's language in the agent's own instructions. The reminder after the
+        /// question was the only one, and the searches came after it: "whats the oldest movie in the
+        /// set?" was answered once in Spanish and once in German (20 Oct 2026), the oldest films being
+        /// silent European ones whose titles and language fields the agent had just read.</summary>
+        private static string AgentLanguage(SearchOrAskSettings settings) =>
+            string.IsNullOrWhiteSpace(settings.AnswerLanguage)
+                ? "\n\nWrite the answer in the language of the visitor's question. The records you read do not change it: a title, a language field or a description in another language is a fact about a record, not the language to answer in."
+                : "";
+
+        /// <summary>The note after a round of search results, naming the question so its language is
+        /// the last thing read before the answer.</summary>
+        private static string LanguageAfterResults(SearchOrAskSettings settings, string question) =>
+            string.IsNullOrWhiteSpace(settings.AnswerLanguage)
+                ? $"When you answer, write in the language of the visitor's question: \"{question}\"."
+                : $"When you answer, write in {settings.AnswerLanguage.Trim()}.";
 
         private static string Count(List<long> keys) => keys.Count >= CatalogueFound ? $"{CatalogueFound} or more" : keys.Count.ToString();
 
