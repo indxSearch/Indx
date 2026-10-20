@@ -12,7 +12,7 @@ namespace IndxServer.Swagger
     /// The hashString examples are deliberately PLACEHOLDERS, not real tokens. The token is opaque
     /// by contract - a client obtains one from a filter endpoint and passes it back - and a
     /// realistic-looking example invites readers to infer a format and compose against it. Its
-    /// internal form is documented nowhere client-facing, on purpose; see Notes/backlog.md item 9
+    /// internal form is documented nowhere client-facing, on purpose; see Notes/archive/backlog-2026-10-20.md item 9
     /// for why that policy was chosen over documenting it.
     /// </summary>
     public class ProxySchemaFilter : ISchemaFilter
