@@ -538,6 +538,9 @@ namespace IndxServer.Services.Observr
             request.Headers.TryAddWithoutValidation("X-Indx-Instance", instanceId);
             request.Headers.TryAddWithoutValidation("X-Indx-Instance-Name", instanceName);
             request.Headers.TryAddWithoutValidation(ObservrProposal.AcceptsHeader, string.Join(',', ObservrProposal.Accepted));
+            // Which release asked, for Observr's support and for knowing when an old one is gone;
+            // what it can carry out is the accepts list above, never inferred from this.
+            request.Headers.TryAddWithoutValidation("X-Indx-Server-Version", ServerVersion);
             try
             {
                 using var response = await client.SendAsync(request, ct);
@@ -560,6 +563,11 @@ namespace IndxServer.Services.Observr
                 return (HttpStatusCode.ServiceUnavailable, "", "unreachable");
             }
         }
+
+        /// <summary>This build's version as released ("2.0.0-beta.1"), without the commit suffix.</summary>
+        internal static readonly string ServerVersion =
+            (typeof(ObservrClient).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "unknown").Split('+')[0];
 
         /// <summary>The installation's id and name; the id is made once and kept in the settings.</summary>
         private (string Id, string Name) Instance()
