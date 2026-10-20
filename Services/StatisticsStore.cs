@@ -1593,7 +1593,7 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
                 using (var cmd = Command($"DELETE FROM AskEvents WHERE {searchWhere}")) cmd.ExecuteNonQuery();
                 if (source == null)
                 {
-                    foreach (var table in new[] { "DailyQueryStats", "DailyDocumentStats", "DailyFilterStats", "DailyAskStats" })
+                    foreach (var table in new[] { "DailyQueryStats", "DailyDocumentStats", "DailyFilterStats", "DailyAskStats", "AskBudgetDays" })
                     {
                         using var cmd = Command($"DELETE FROM {table} WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $toDay");
                         cmd.Parameters.AddWithValue("$fromDay", fromDay ?? long.MinValue);
@@ -1717,7 +1717,7 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
              // Deleting the statistics deletes their explanation too: starting the numbers over
              // starts the history of what moved them over (decided 1 Oct 2026).
              "DatasetChanges", "DailyDocumentChanges",
-             "AskIntentEvents", "AskEvents", "DailyAskStats"];
+             "AskIntentEvents", "AskEvents", "DailyAskStats", "AskBudgetDays"];
 
         private int ExecutePerTable(string where, string a, string? b)
         {

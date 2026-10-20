@@ -461,16 +461,41 @@ namespace IndxServer.Services.SearchOrAsk
             var key = $"{teamId}\0{dataSetName}";
             while (true)
             {
-                var current = _budget.GetOrAdd(key, (today, 0));
+                // The first call since the server started reads the day so far from the statistics,
+                // so a restart does not start the day over and let it run past its budget.
+                var current = _budget.GetOrAdd(key, _ => (today, CallsRecorded(teamId, dataSetName, today)));
                 var calls = current.Day == today ? current.Calls : 0;
-                if (calls >= budget) return false;
-                if (_budget.TryUpdate(key, (today, calls + 1), current)) return true;
+                if (calls >= budget) { RecordBudget(teamId, dataSetName, today, budget, refused: true); return false; }
+                if (_budget.TryUpdate(key, (today, calls + 1), current)) { RecordBudget(teamId, dataSetName, today, budget, refused: false); return true; }
             }
         }
 
-        /// <summary>Judge calls made today for a dataset, for the console.</summary>
-        public int CallsToday(string teamId, string dataSetName) =>
-            _budget.TryGetValue($"{teamId}\0{dataSetName}", out var b) && b.Day == DateOnly.FromDateTime(DateTime.UtcNow) ? b.Calls : 0;
+        private static long BudgetDay(DateOnly day) => day.DayNumber - new DateOnly(1970, 1, 1).DayNumber;
+
+        private int CallsRecorded(string teamId, string dataSetName, DateOnly day)
+        {
+            try { return _statistics is { Enabled: true, Store: { } s } ? (int)s.BudgetCalls(teamId, dataSetName, BudgetDay(day)) : 0; }
+            catch (Exception ex) { _logger.LogWarning(ex, "Could not read today's Search or ask calls"); return 0; }
+        }
+
+        /// <summary>Every call against the budget, taken or turned away, for the statistics.</summary>
+        private void RecordBudget(string teamId, string dataSetName, DateOnly day, int budget, bool refused) =>
+            Writer?.RecordBudget(new AskBudgetRow(teamId, dataSetName, BudgetDay(day), budget, refused,
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+
+        /// <summary>The cost of a call with no statistics row of its own, on today's budget day.</summary>
+        private void RecordCost(string teamId, string dataSetName, int budget, double cost) =>
+            Writer?.RecordBudget(new AskBudgetRow(teamId, dataSetName, BudgetDay(DateOnly.FromDateTime(DateTime.UtcNow)), budget,
+                Refused: false, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Call: false, Cost: cost));
+
+        /// <summary>Calls made today against a dataset's budget, for the console: the count in
+        /// memory, or before the first call since a restart, the statistics' record of the day.</summary>
+        public int CallsToday(string teamId, string dataSetName)
+        {
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            if (_budget.TryGetValue($"{teamId}\0{dataSetName}", out var b)) return b.Day == today ? b.Calls : 0;
+            return CallsRecorded(teamId, dataSetName, today);
+        }
 
         private static int SecondsToUtcMidnight() =>
             (int)Math.Ceiling((DateTime.UtcNow.Date.AddDays(1) - DateTime.UtcNow).TotalSeconds);
@@ -539,6 +564,16 @@ namespace IndxServer.Services.SearchOrAsk
             var usage = new AnswerUsage();
             List<long> merged = [];
             Task<JudgeAnswer?>? answerability = null;
+            // A catalogue's answer puts its list on the page; whether that list could answer the
+            // question is its score, asked after the answer is out, for the statistics only.
+            // ("the oldest movie" is sorted by year, so a good list holds it; a low score is an
+            // answer that missed.) Until Oct 2026 a catalogue's answers had no score at all.
+            Task<JudgeAnswer?>? ListAnswerability(List<long> keys) =>
+                origin != null && Writer != null && keys.Count > 0
+                    ? AnswerabilityAsync(SiteDescription(teamId, dataSetName, settings), question,
+                        new SearchSummary(keys.Count, true, keys.Take(ResultsForJudge)
+                            .Select(key => Describe(engine, key, fields, SnippetChars, forAnswer: false)).ToList()), settings.Kind)
+                    : null;
             try
             {
                 // A catalogue's description is answered with what it finds; a question about one item
@@ -554,6 +589,7 @@ namespace IndxServer.Services.SearchOrAsk
                     merged = agent.Keys;
                     firstText = agent.FirstTextMs;
                     usage.Cost = agent.Cost;
+                    answerability = ListAnswerability(merged);
                     return;
                 }
                 if (settings.Kind == SearchOrAskRecipes.Catalogue)
@@ -576,6 +612,7 @@ namespace IndxServer.Services.SearchOrAsk
                         merged = catalogue.Keys;
                         firstText = catalogue.FirstTextMs;
                         usage.Cost = catalogue.Cost;
+                        answerability = ListAnswerability(merged);
                         return;
                     }
                 }

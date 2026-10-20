@@ -71,7 +71,9 @@ namespace IndxServer.Services.SearchOrAsk
 
             try
             {
-                var (filters, left, sort, _) = await SuggestFiltersAsync(teamId, dataSetName, settings, fields, text, ct);
+                var (filters, left, sort, cost) = await SuggestFiltersAsync(teamId, dataSetName, settings, fields, text, ct);
+                // The call has no statistics row of its own; its cost goes with the day's budget.
+                if (cost is > 0) RecordCost(teamId, dataSetName, settings.DailyCallBudget, cost.Value);
                 return new FiltersOutcome(IntentStatus.Ok, new FiltersResult(filters, left, Ms(), Sort: sort));
             }
             catch (SearchOrAskModelException ex)

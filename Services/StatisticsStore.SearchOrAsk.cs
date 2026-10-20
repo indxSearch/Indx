@@ -38,6 +38,17 @@ namespace IndxServer.Services
         long Answered, long NothingFound, long Failed, long Stopped, long Unanswered, long SourcesOpened,
         double Cost, long? MedianFirstTextMs);
 
+    /// <summary>A call taken against a dataset's daily budget, or one turned away because the day's
+    /// budget was spent, on the budget's own day: UTC, days since 1970 as every statistics day. A row
+    /// that is no call (<paramref name="Call"/> false) carries the cost of one with no row of its own:
+    /// a filter the model made while a visitor typed.</summary>
+    public readonly record struct AskBudgetRow(string TeamId, string DataSet, long Day, int Budget, bool Refused, long Timestamp,
+        bool Call = true, double Cost = 0);
+
+    /// <summary>A window's budget: the calls taken, the ones turned away, the days the budget ran
+    /// out, and the busiest day's calls against that day's budget.</summary>
+    public readonly record struct AskBudgetStat(long Calls, long Refused, int DaysRunOut, long PeakCalls, int PeakBudget, double Cost = 0);
+
     /// <summary>One question over a window, as asked (case and spacing folded).</summary>
     public readonly record struct AskQuestionStat(string Question, long Asks, long Answered, long NothingFound,
         long Unanswered, double? Answerability, long SourcesOpened, long LastAsked);
@@ -113,6 +124,22 @@ CREATE TABLE IF NOT EXISTS DailyAskStats (
     PRIMARY KEY (Day, TeamId, DataSet)
 );";
             cmd.ExecuteNonQuery();
+            // The daily call budget, a row per dataset and UTC day (Oct 2026). The service counts in
+            // memory to enforce it and reads today's row back after a restart, which used to start
+            // the day over at 0 and let it run past its budget.
+            cmd.CommandText = @"
+CREATE TABLE IF NOT EXISTS AskBudgetDays (
+    TeamId   TEXT    NOT NULL,
+    DataSet  TEXT    NOT NULL,
+    Day      INTEGER NOT NULL,
+    Calls    INTEGER NOT NULL,
+    Refused  INTEGER NOT NULL,
+    Budget   INTEGER NOT NULL,
+    SpentAt  INTEGER NULL,
+    Cost     REAL    NOT NULL DEFAULT 0,
+    PRIMARY KEY (TeamId, DataSet, Day)
+);";
+            cmd.ExecuteNonQuery();
             // Ask phrases (Oct 2026): what was taken off the typed text, and what the rest found.
             foreach (var column in new[] { "AskPhrase TEXT NULL", "FocusedHits INTEGER NULL" })
             {
@@ -123,6 +150,14 @@ CREATE TABLE IF NOT EXISTS DailyAskStats (
                 }
                 catch (SqliteException) { /* already there */ }
             }
+            // The budget's cost column came a few hours after its table (20 Oct 2026): a table made
+            // without it is given it, since CREATE TABLE IF NOT EXISTS leaves an existing one alone.
+            try
+            {
+                cmd.CommandText = "ALTER TABLE AskBudgetDays ADD COLUMN Cost REAL NOT NULL DEFAULT 0";
+                cmd.ExecuteNonQuery();
+            }
+            catch (SqliteException) { /* already there */ }
         }
 
         /// <summary>Writes Search or ask's rows in one transaction. Called only by
@@ -238,6 +273,84 @@ SELECT
         /// <summary>The window's Search or ask totals: rolled days from DailyAskStats, the rest
         /// live from the raw rows, as <see cref="Overview"/> merges searches. A per-source read uses
         /// the raw rows only (the daily table carries no source).</summary>
+        /// <summary>Adds a flush's budget calls to their days: one upsert per dataset and day. A day's
+        /// budget is the latest seen; it ran out at its first call turned away.</summary>
+        public void WriteBudget(IReadOnlyList<AskBudgetRow> rows)
+        {
+            if (rows.Count == 0) return;
+            using var conn = Open();
+            using var tx = conn.BeginTransaction();
+            foreach (var g in rows.GroupBy(r => (r.TeamId, r.DataSet, r.Day)))
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = @"INSERT INTO AskBudgetDays (TeamId, DataSet, Day, Calls, Refused, Budget, SpentAt, Cost)
+                    VALUES ($t, $d, $day, $calls, $refused, $budget, $spent, $cost)
+                    ON CONFLICT (TeamId, DataSet, Day) DO UPDATE SET
+                        Calls = Calls + excluded.Calls, Refused = Refused + excluded.Refused,
+                        Budget = excluded.Budget, SpentAt = COALESCE(SpentAt, excluded.SpentAt), Cost = Cost + excluded.Cost";
+                cmd.Parameters.AddWithValue("$t", g.Key.TeamId);
+                cmd.Parameters.AddWithValue("$d", g.Key.DataSet);
+                cmd.Parameters.AddWithValue("$day", g.Key.Day);
+                cmd.Parameters.AddWithValue("$calls", g.Count(r => r.Call && !r.Refused));
+                cmd.Parameters.AddWithValue("$cost", g.Sum(r => r.Cost));
+                cmd.Parameters.AddWithValue("$refused", g.Count(r => r.Refused));
+                cmd.Parameters.AddWithValue("$budget", g.MaxBy(r => r.Timestamp).Budget);
+                cmd.Parameters.AddWithValue("$spent", g.Where(r => r.Refused).Select(r => (object)r.Timestamp).DefaultIfEmpty(DBNull.Value).Min()!);
+                cmd.ExecuteNonQuery();
+            }
+            tx.Commit();
+        }
+
+        /// <summary>The calls a dataset's budget day holds so far, for the count after a restart.</summary>
+        public long BudgetCalls(string teamId, string dataSet, long day)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT Calls FROM AskBudgetDays WHERE TeamId = $t AND DataSet = $d AND Day = $day";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$day", day);
+            return cmd.ExecuteScalar() is long n ? n : 0;
+        }
+
+        /// <summary>The budget over a window of days. The budget's days are UTC; the window's are the
+        /// dataset's, so a day at either end can be a few hours off. Nothing here is rolled up: a
+        /// row is already a day.</summary>
+        public AskBudgetStat AskBudget(string teamId, string dataSet, long fromDay, long toDay)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"SELECT COALESCE(SUM(Calls),0), COALESCE(SUM(Refused),0), COUNT(SpentAt), COALESCE(SUM(Cost),0),
+                    (SELECT Calls FROM AskBudgetDays WHERE TeamId = $t AND DataSet = $d AND Day BETWEEN $from AND $to ORDER BY Calls DESC LIMIT 1),
+                    (SELECT Budget FROM AskBudgetDays WHERE TeamId = $t AND DataSet = $d AND Day BETWEEN $from AND $to ORDER BY Calls DESC LIMIT 1)
+                FROM AskBudgetDays WHERE TeamId = $t AND DataSet = $d AND Day BETWEEN $from AND $to";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$from", fromDay);
+            cmd.Parameters.AddWithValue("$to", toDay);
+            using var r = cmd.ExecuteReader();
+            if (!r.Read()) return default;
+            return new AskBudgetStat(r.GetInt64(0), r.GetInt64(1), r.GetInt32(2),
+                r.IsDBNull(4) ? 0 : r.GetInt64(4), r.IsDBNull(5) ? 0 : r.GetInt32(5), r.GetDouble(3));
+        }
+
+        /// <summary>The calls against the budget per day, for the statistics chart.</summary>
+        public Dictionary<long, long> BudgetCallsByDay(string teamId, string dataSet, long fromDay, long toDay)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT Day, Calls FROM AskBudgetDays WHERE TeamId = $t AND DataSet = $d AND Day BETWEEN $from AND $to";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$from", fromDay);
+            cmd.Parameters.AddWithValue("$to", toDay);
+            var byDay = new Dictionary<long, long>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) byDay[r.GetInt64(0)] = r.GetInt64(1);
+            return byDay;
+        }
+
         public AskOverviewStat AskOverview(string teamId, string dataSet, long fromDay, long toDay, string? source = null)
         {
             var tz = ZoneOf(teamId, dataSet);

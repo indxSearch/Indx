@@ -31,7 +31,8 @@ namespace IndxServer.Controllers
             long Judged, long Offers, long StrongOffers, long Asks, double? TakeRate,
             long Answered, long NothingFound, long Failed, long Stopped, long Unanswered, double? UnansweredRate,
             long SourcesOpened, double? SourcesOpenedPerAnswer, double Cost, long? MedianFirstTextMs,
-            AskQuestionStat[] Questions, AskOfferStat[] Offered);
+            AskQuestionStat[] Questions, AskOfferStat[] Offered,
+            long Calls = 0, long CallsRefused = 0, int DaysBudgetRanOut = 0);
         /// <summary>A question, and for a follow-up the conversation so far (the last three turns are used).</summary>
         public sealed record AskRequest(string? Question, AskTurn[]? History = null);
 
@@ -248,12 +249,16 @@ namespace IndxServer.Controllers
             var src = StatisticsService.CleanSource(source);
             limit = Math.Clamp(limit, 1, 500);
             var o = s.AskOverview(ctx.OwnerKey, dataSetName, fromDay, today, src);
+            var budget = s.AskBudget(ctx.OwnerKey, dataSetName, fromDay, today);
             static double? Rate(double n, double d) => d == 0 ? null : n / d;
             return new SearchOrAskStatisticsResponse(o.Judged, o.Offers, o.StrongOffers, o.Asks, Rate(o.Asks, o.Offers),
                 o.Answered, o.NothingFound, o.Failed, o.Stopped, o.Unanswered, Rate(o.Unanswered, o.Asks),
-                o.SourcesOpened, Rate(o.SourcesOpened, o.Answered), o.Cost, o.MedianFirstTextMs,
+                o.SourcesOpened, Rate(o.SourcesOpened, o.Answered), o.Cost + budget.Cost, o.MedianFirstTextMs,
                 s.TopQuestions(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray(),
-                s.TopOffers(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray());
+                s.TopOffers(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray())
+            {
+                Calls = budget.Calls, CallsRefused = budget.Refused, DaysBudgetRanOut = budget.DaysRunOut,
+            };
         }
 
         private IServerSearchEngine? ReadyEngine(string dataSetName, string teamId, out ActionResult? error)

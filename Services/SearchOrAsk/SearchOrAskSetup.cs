@@ -151,6 +151,10 @@ namespace IndxServer.Services.SearchOrAsk
             ["claude-opus-5-5"] = (15, 75),
             ["anthropic/claude-sonnet-5.5"] = (3, 15),
             ["anthropic/claude-haiku-4.5"] = (1, 5),
+            // Jev, the judge: input only, output is not charged (Notes/jev-opportunities.md). Through
+            // OpenRouter the call reports its cost; TypeSafe's own endpoint reports only the tokens.
+            ["jev-1.13.0"] = (0.042, 0),
+            ["typesafe/jev-1.13"] = (0.042, 0),
         };
 
         /// <summary>The model ids a provider is called with when nobody names them.</summary>

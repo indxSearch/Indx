@@ -235,12 +235,16 @@ else
             @* Search or ask (Notes/search-or-ask-server.md). The questions the content did not
                answer lead: they are what to write next. Offers lists the texts an offer was shown
                beside, so a false one can be found. Code in StatisticsTab.SearchOrAsk.cs. *@
-            <StatGroup Columns="5">
+            <StatGroup Columns="@(CitesSources ? 6 : 5)">
                 <Stat Label="Offers shown" Hint="Searches an offer to ask was shown beside, each once however many pauses judged it."><ValueContent>@N(_ask.Offers)</ValueContent></Stat>
                 <Stat Label="Questions asked" Hint="Questions asked, and how many per offer shown."><ValueContent>@N(_ask.Asks) <span class="stats-tile-sub">@Pct(_ask.Asks, _ask.Offers)</span></ValueContent></Stat>
                 <Stat Label="Not answered" Hint="Questions the search found nothing for, or whose sources the judge doubted could answer them."><ValueContent>@N(_ask.Unanswered) <span class="stats-tile-sub">@Pct(_ask.Unanswered, _ask.Asks)</span></ValueContent></Stat>
-                <Stat Label="Sources opened" Hint="Cited sources opened from an answer."><ValueContent>@N(_ask.SourcesOpened)</ValueContent></Stat>
-                <Stat Label="Cost" Hint="What the judge and the answers cost: as OpenRouter reports it, or estimated from the tokens at list prices on another provider. Median time to an answer's first words beside it."><ValueContent>@Usd(_ask.Cost) <span class="stats-tile-sub">@Seconds(_ask.MedianFirstTextMs)</span></ValueContent></Stat>
+                @if (CitesSources)
+                {
+                    <Stat Label="Sources opened" Hint="Cited sources opened from an answer."><ValueContent>@N(_ask.SourcesOpened)</ValueContent></Stat>
+                }
+                <Stat Label="Cost" Hint="What the AI behind Search or ask cost: the judge, the answers, and the filters the model makes while visitors type. As the provider reports it per call, or estimated from the tokens at list prices (Indx:SearchOrAsk:Prices sets them); a model without a price is left out. Median time to an answer's first words beside it."><ValueContent>@Usd(_ask.Cost + _askBudget.Cost) <span class="stats-tile-sub">@Seconds(_ask.MedianFirstTextMs)</span></ValueContent></Stat>
+                <Stat Label="Calls" Hint="Calls against the daily budget: each judgement, each question asked and each filter the model made while typing, the console's tester included. On a day the budget ran out, the calls after it were turned away, and visitors saw no offers until midnight UTC."><ValueContent>@N(_askBudget.Calls) <span class="stats-tile-sub">@BudgetLine</span></ValueContent></Stat>
             </StatGroup>
             <div class="stats-view">
                 <Tabs Items="AskViewItems" Active="@_askView" ActiveChanged="@(v => _askView = v ?? "questions")" Size="micro" Variant="button" AriaLabel="Search or ask view" />
@@ -251,7 +255,7 @@ else
                 @if (_askQuestions.Count == 0) { <p class="stats-empty">No questions asked in this period.</p> }
                 else {
                 <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Questions asked" Class="stats-table">
-                    <thead><tr><th>Question</th><th class="stats-num">Asked</th><th>Outcome</th><th class="stats-num">Answerable</th><th class="stats-num">Sources opened</th></tr></thead>
+                    <thead><tr><th>Question</th><th class="stats-num">Asked</th><th>Outcome</th><th class="stats-num">Answerable</th>@if (CitesSources) {<th class="stats-num">Sources opened</th>}</tr></thead>
                     <tbody>
                         @foreach (var q in _askQuestions)
                         {
@@ -260,7 +264,7 @@ else
                                 <td class="stats-num">@N(q.Asks)</td>
                                 <td>@QuestionOutcome(q)</td>
                                 <td class="stats-num">@Score(q.Answerability)</td>
-                                <td class="stats-num">@(q.SourcesOpened > 0 ? N(q.SourcesOpened) : "–")</td>
+                                @if (CitesSources) { <td class="stats-num">@(q.SourcesOpened > 0 ? N(q.SourcesOpened) : "–")</td> }
                             </tr>
                         }
                     </tbody>
@@ -536,6 +540,11 @@ else
             _documentTotals = (documentDays.Sum(d => d.Inserted), documentDays.Sum(d => d.Updated), documentDays.Sum(d => d.Deleted));
 
             var byDay = store.TimeSeries(team, ds, fromDay, toDay, source).ToDictionary(r => r.Day);
+            // Search or ask's calls beside the searches, while the dataset has it: shown here and
+            // switched on, or with calls in the window. A dataset without it gets no empty line.
+            var askCalls = SearchOrAsk.ShownFor(team, ds) ? store.BudgetCallsByDay(team, ds, fromDay, toDay) : [];
+            var withCalls = askCalls.Count > 0 || (SearchOrAsk.ShownFor(team, ds) && SearchOrAsk.Settings(team, ds).Enabled);
+            var calls = new double[days];
             var searches = new double[days];
             var selects = new double[days];
             var labels = new string[days];
@@ -545,6 +554,7 @@ else
                 var row = byDay.GetValueOrDefault(day);
                 searches[i] = row.Searches;
                 selects[i] = row.Selects;
+                calls[i] = askCalls.GetValueOrDefault(day);
                 labels[i] = DateOnly.FromDayNumber((int)day + DateOnly.Parse("1970-01-01").DayNumber).ToString("d MMM");
             }
             _series = new List<Chart.ChartSeries>
@@ -552,6 +562,7 @@ else
                 new("Searches", searches),
                 new("Selects", selects, "var(--CTeal)"),
             };
+            if (withCalls) _series = [.. _series, new("Search or ask calls", calls, "var(--CLightBlue)")];
             _labels = labels;
         });
         _label = null;   // the label field may have changed on the Options tab

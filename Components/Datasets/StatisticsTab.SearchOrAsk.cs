@@ -15,6 +15,7 @@ namespace IndxServer.Components.Datasets
     public partial class StatisticsTab
     {
         private AskOverviewStat _ask;
+        private AskBudgetStat _askBudget;
         private List<AskQuestionStat> _askQuestions = [];
         private List<AskOfferStat> _askOffers = [];
         private string _askView = "questions";
@@ -22,6 +23,11 @@ namespace IndxServer.Components.Datasets
         [Inject] private SearchOrAskService SearchOrAsk { get; set; } = default!;
 
         /// <summary>Only while the instance shows the feature, and once there is something to show.</summary>
+        /// <summary>Whether the answers cite sources to open: documentation's do. A catalogue's answer
+        /// puts its list on the page instead, so a count of sources opened would always read 0.</summary>
+        private bool CitesSources => _citesSources;
+        private bool _citesSources = true;
+
         private bool HasSearchOrAsk => SearchOrAsk.ShownFor(Ctx.TeamId, Ctx.Name) && (_ask.Judged > 0 || _ask.Asks > 0);
 
         private IEnumerable<Tabs.TabItem> SearchOrAskSection =>
@@ -34,7 +40,10 @@ namespace IndxServer.Components.Datasets
 
         private void LoadSearchOrAsk(StatisticsStore store, string team, string ds, long fromDay, long toDay, string? source)
         {
+            _citesSources = SearchOrAsk.Settings(team, ds).Kind != SearchOrAskRecipes.Catalogue;
             _ask = store.AskOverview(team, ds, fromDay, toDay, source);
+            // The budget belongs to the dataset, not to a surface: the whole window whatever the source.
+            _askBudget = store.AskBudget(team, ds, fromDay, toDay);
             _askQuestions = HasSearchOrAsk ? store.TopQuestions(team, ds, fromDay, toDay, 25, source) : [];
             _askOffers = HasSearchOrAsk ? store.TopOffers(team, ds, fromDay, toDay, 25, source) : [];
             if (!HasSearchOrAsk && _section == "search-or-ask") _section = "queries";
@@ -43,6 +52,12 @@ namespace IndxServer.Components.Datasets
         private static string Usd(double usd) => usd == 0 ? "–" : usd < 0.01 ? "< $0.01" : usd.ToString("$#,##0.00");
 
         private static string Seconds(long? ms) => ms is long m ? (m / 1000.0).ToString("0.0 s") : "–";
+
+        /// <summary>The budget tile's line: the days it ran out on, or the busiest day against its budget.</summary>
+        private string BudgetLine =>
+            _askBudget.DaysRunOut > 0 ? $"ran out on {_askBudget.DaysRunOut} {(_askBudget.DaysRunOut == 1 ? "day" : "days")}, {N(_askBudget.Refused)} turned away"
+            : _askBudget.PeakBudget > 0 ? $"busiest day {N(_askBudget.PeakCalls)} of {N(_askBudget.PeakBudget)}"
+            : "";
 
         private static string Score(double? p) => p is double v ? v.ToString("0.00") : "–";
 

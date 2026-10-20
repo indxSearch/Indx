@@ -112,7 +112,13 @@ namespace IndxServer.Services.SearchOrAsk
             using var response = await Client(s.JudgeKey).PostAsync(s.JudgeEndpoint,
                 new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"), ct);
             if (!response.IsSuccessStatusCode) await FailAsync(response, "Judge", ct);
-            return ParseJudgement(await response.Content.ReadAsStringAsync(ct), questions.Keys);
+            var json = await response.Content.ReadAsStringAsync(ct);
+            var answer = ParseJudgement(json, questions.Keys);
+            // TypeSafe's own endpoint reports the tokens and no cost: priced from the list, as the
+            // answer models are on a provider that does not report one.
+            if (answer.Cost == null && Cost(s, s.JudgeModel, JsonNode.Parse(json)?["usage"]) is { } estimated)
+                answer = answer with { Cost = estimated };
+            return answer;
         }
 
         /// <summary>Reads the probabilities out of a System One response. "noul" is the documented

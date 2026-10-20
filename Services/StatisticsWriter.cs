@@ -47,6 +47,7 @@ namespace IndxServer.Services
         public void RecordDocuments(in DocumentCountRow row) => Enqueue(row);
         public void RecordAskIntent(in AskIntentEventRow row) => Enqueue(row);
         public void RecordAsk(in AskEventRow row) => Enqueue(row);
+        public void RecordBudget(in AskBudgetRow row) => Enqueue(row);
 
         private void Enqueue(object row)
         {
@@ -88,6 +89,7 @@ namespace IndxServer.Services
             var documents = new List<DocumentCountRow>();
             var intents = new List<AskIntentEventRow>();
             var asks = new List<AskEventRow>();
+            var budget = new List<AskBudgetRow>();
             while (_queue.TryDequeue(out var row))
             {
                 Interlocked.Decrement(ref _queued);
@@ -100,10 +102,11 @@ namespace IndxServer.Services
                     case DocumentCountRow d: documents.Add(d); break;
                     case AskIntentEventRow i: intents.Add(i); break;
                     case AskEventRow a: asks.Add(a); break;
+                    case AskBudgetRow b: budget.Add(b); break;
                 }
             }
             var count = searches.Count + selects.Count + converts.Count + changes.Count + documents.Count
-                        + intents.Count + asks.Count;
+                        + intents.Count + asks.Count + budget.Count;
             if (count == 0) return;
             var superseded = MarkKeystrokes(searches);
             var started = Environment.TickCount64;
@@ -112,6 +115,7 @@ namespace IndxServer.Services
                 store.WriteBatch(searches, selects, converts, superseded);
                 store.WriteChanges(changes, documents);
                 store.WriteSearchOrAsk(intents, asks);
+                store.WriteBudget(budget);
                 Interlocked.Add(ref _flushedTotal, count);
                 Interlocked.Increment(ref _flushes);
                 Interlocked.Add(ref _flushMsTotal, Environment.TickCount64 - started);
