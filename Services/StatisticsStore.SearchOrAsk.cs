@@ -6,11 +6,21 @@ namespace IndxServer.Services
     /// the probability, answerability and the server's offer. It holds no text: <see cref="QueryId"/>
     /// names the search the page showed beside it, and the text is that search's. Recorded when the
     /// judge or its cache answered; an identifier, a refusal or a disabled dataset records nothing.
-    /// Cost is the judge call's, null from the cache.</summary>
+    /// Cost is the judge call's, null from the cache. AskPhrase is the Ask phrases taken off the typed
+    /// text, null when none were (the search's text is then what was typed), and FocusedHits what the
+    /// refocused text found: together they tell which questions no phrase catches, and which phrase
+    /// left nothing to find.</summary>
     public readonly record struct AskIntentEventRow(
         string TeamId, string DataSet, string? QueryId, double P, double? Answerable, string Offer, bool Cached,
         string? Reason, double? Cost, string? Subject, string? Session, string? Source, long Timestamp,
-        bool Counted = true);
+        bool Counted = true, string? AskPhrase = null, int? FocusedHits = null);
+
+    /// <summary>How questions start that no Ask phrase caught: their first words, how many searches
+    /// began so, and one of them. What Observr suggests a lead-in from.</summary>
+    public readonly record struct AskLeadInStat(string Words, long Searches, string Example);
+
+    /// <summary>A refocus that left nothing to find: the phrase taken, and what was searched.</summary>
+    public readonly record struct AskRefocusMissStat(string Phrase, string Searched, long Times);
 
     /// <summary>One question asked. The question is stored (it is new text, not a search); the
     /// answer is not (decided 11 Oct 2026). SourceKeys are the document keys handed to the model,
@@ -103,6 +113,16 @@ CREATE TABLE IF NOT EXISTS DailyAskStats (
     PRIMARY KEY (Day, TeamId, DataSet)
 );";
             cmd.ExecuteNonQuery();
+            // Ask phrases (Oct 2026): what was taken off the typed text, and what the rest found.
+            foreach (var column in new[] { "AskPhrase TEXT NULL", "FocusedHits INTEGER NULL" })
+            {
+                try
+                {
+                    cmd.CommandText = $"ALTER TABLE AskIntentEvents ADD COLUMN {column}";
+                    cmd.ExecuteNonQuery();
+                }
+                catch (SqliteException) { /* already there */ }
+            }
         }
 
         /// <summary>Writes Search or ask's rows in one transaction. Called only by
@@ -117,8 +137,8 @@ CREATE TABLE IF NOT EXISTS DailyAskStats (
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = @"INSERT INTO AskIntentEvents
-                    (TeamId, DataSet, QueryId, P, Answerable, Offer, Cached, Reason, Cost, Subject, Session, Source, Timestamp, Counted)
-                    VALUES ($t, $d, $q, $p, $a, $o, $c, $r, $cost, $subj, $sess, $src, $ts, $cnt)";
+                    (TeamId, DataSet, QueryId, P, Answerable, Offer, Cached, Reason, Cost, Subject, Session, Source, Timestamp, Counted, AskPhrase, FocusedHits)
+                    VALUES ($t, $d, $q, $p, $a, $o, $c, $r, $cost, $subj, $sess, $src, $ts, $cnt, $phrase, $fhits)";
                 cmd.Parameters.AddWithValue("$t", r.TeamId);
                 cmd.Parameters.AddWithValue("$d", r.DataSet);
                 cmd.Parameters.AddWithValue("$q", (object?)r.QueryId ?? DBNull.Value);
@@ -133,6 +153,8 @@ CREATE TABLE IF NOT EXISTS DailyAskStats (
                 cmd.Parameters.AddWithValue("$src", (object?)r.Source ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("$ts", r.Timestamp);
                 cmd.Parameters.AddWithValue("$cnt", r.Counted ? 1 : 0);
+                cmd.Parameters.AddWithValue("$phrase", (object?)r.AskPhrase ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$fhits", (object?)r.FocusedHits ?? DBNull.Value);
                 cmd.ExecuteNonQuery();
             }
             foreach (var r in asks)
@@ -322,6 +344,61 @@ SELECT lower(trim(s.QueryText)) AS T, COUNT(DISTINCT i.QueryId),
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 list.Add(new AskOfferStat(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetDouble(3), r.GetInt64(4)));
+            return list;
+        }
+
+        /// <summary>How the questions start that no Ask phrase caught: searches the judge offered an
+        /// answer beside, with nothing taken off, grouped by their first <paramref name="words"/>
+        /// words, those that recur first. A start that recurs across many questions is a lead-in the
+        /// dataset's list lacks. From the raw rows.</summary>
+        public List<AskLeadInStat> LeadInCandidates(string teamId, string dataSet, long fromDay, long toDay,
+            int words = 2, int minSearches = 2, int limit = 10)
+        {
+            var tz = ZoneOf(teamId, dataSet);
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT DISTINCT i.QueryId, s.QueryText
+  FROM AskIntentEvents i JOIN SearchEvents s ON s.QueryId = i.QueryId
+ WHERE i.TeamId = $t AND i.DataSet = $d AND i.Timestamp >= $from AND i.Timestamp < $to AND i.Counted = 1
+   AND i.Offer <> 'none' AND i.AskPhrase IS NULL";
+            AddWindow(cmd, teamId, dataSet, StatisticsDays.Start(tz, fromDay), StatisticsDays.Start(tz, toDay + 1), null);
+            var starts = new Dictionary<string, (long Count, string Example)>();
+            using (var r = cmd.ExecuteReader())
+                while (r.Read())
+                {
+                    var text = r.GetString(1).Trim();
+                    var parts = text.ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                    // A start needs the words before it and something after: a two-word search is a lookup.
+                    if (parts.Length <= words) continue;
+                    var start = string.Join(' ', parts.Take(words));
+                    starts[start] = starts.TryGetValue(start, out var s) ? (s.Count + 1, s.Example) : (1, text);
+                }
+            return starts.Where(kv => kv.Value.Count >= minSearches)
+                .OrderByDescending(kv => kv.Value.Count).ThenBy(kv => kv.Key, StringComparer.Ordinal)
+                .Take(limit).Select(kv => new AskLeadInStat(kv.Key, kv.Value.Count, kv.Value.Example)).ToList();
+        }
+
+        /// <summary>Ask phrases that took so much off that the rest found nothing, most often first:
+        /// a phrase too wide for this dataset, or a question about something it does not hold.</summary>
+        public List<AskRefocusMissStat> RefocusMisses(string teamId, string dataSet, long fromDay, long toDay, int limit = 10)
+        {
+            var tz = ZoneOf(teamId, dataSet);
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT i.AskPhrase, lower(trim(s.QueryText)) AS T, COUNT(DISTINCT i.QueryId)
+  FROM AskIntentEvents i JOIN SearchEvents s ON s.QueryId = i.QueryId
+ WHERE i.TeamId = $t AND i.DataSet = $d AND i.Timestamp >= $from AND i.Timestamp < $to AND i.Counted = 1
+   AND i.AskPhrase IS NOT NULL AND i.FocusedHits = 0
+ GROUP BY i.AskPhrase, T
+ ORDER BY COUNT(DISTINCT i.QueryId) DESC
+ LIMIT $limit";
+            AddWindow(cmd, teamId, dataSet, StatisticsDays.Start(tz, fromDay), StatisticsDays.Start(tz, toDay + 1), null);
+            cmd.Parameters.AddWithValue("$limit", limit);
+            var list = new List<AskRefocusMissStat>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) list.Add(new AskRefocusMissStat(r.GetString(0), r.GetString(1), r.GetInt64(2)));
             return list;
         }
 

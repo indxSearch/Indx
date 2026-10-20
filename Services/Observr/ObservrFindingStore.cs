@@ -156,6 +156,9 @@ namespace IndxServer.Services.Observr
         /// inline, with no proposal).</summary>
         public long Add(string teamId, string dataSetName, string kind, string query, ObservrAnswer answer, bool unread = false)
         {
+            // Every answer from Observr is kept through here, so this is where a proposal this server
+            // cannot carry out is left behind (ObservrProposal.CanApply): never shown, never a yes.
+            answer = answer with { Proposals = answer.Proposals.Where(p => p.CanApply).ToList() };
             new SqLiteManager(DbPath, createOrOpenDatabase: true);
             EnsureTable();
             using var conn = Connection();
