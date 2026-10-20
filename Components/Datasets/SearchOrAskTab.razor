@@ -244,8 +244,8 @@
                         }
                         else if (_typingNow)
                         {
-                            @* Still, not a spinner: typing is the visitor's motion, not the system's. *@
-                            <span class="soa-try-none"><span class="soa-try-none-icon"><Indx.Systm.Blazor.Icons.SearchAsYouType Size="14" Color="currentColor" /></span>Typing…</span>
+                            @* The visitor's motion, not the system's: the icon's quiet colour, not the status lines' teal. *@
+                            <span class="soa-try-none" role="status"><span class="soa-try-none-icon"><Spinner Name="search-as-you-type" Size="14" AriaLabel="Typing" /></span>Typing…</span>
                         }
                         else if (_try is { } r)
                         {
