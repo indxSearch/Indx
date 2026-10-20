@@ -94,6 +94,22 @@ namespace IndxServer.Services.SearchOrAsk
         /// (<see cref="SearchOrAskOptions.AnswerModel"/>, <see cref="SearchOrAskOptions.FastAnswerModel"/>).</summary>
         public string Answers { get; set; } = BestAnswers;
 
+        /// <summary>The words a question is built with, taken off its start so the list searches what
+        /// it is about while the visitor types (<see cref="SearchOrAskPhrases"/>). Null: the default
+        /// English list; the GET's <c>effective.askPhrases</c> is what applies.</summary>
+        public SearchOrAskPhrases? AskPhrases { get; set; }
+
+        /// <summary>While a question is typed, the list searches what it is about: the Ask phrases
+        /// are taken off the typed text before it is searched, on every keystroke, and the judge
+        /// reads the results of the same text. Off searches the text as typed and the phrases do
+        /// nothing to the list.</summary>
+        public bool RefocusWhileTyping { get; set; } = true;
+
+        /// <summary>The quiet offer ("Ask about this") the moment the typed text takes a question's
+        /// shape (an Ask phrase matched), before the judge has read it; the judge's word on the pause
+        /// confirms it or takes it back. Off leaves every offer to the judge.</summary>
+        public bool InviteOnAskPhrase { get; set; } = true;
+
         /// <summary>Judge calls per dataset per UTC day. Spend is bounded, not hoped for.</summary>
         public int DailyCallBudget { get; set; } = 5000;
 
@@ -121,6 +137,8 @@ namespace IndxServer.Services.SearchOrAsk
                 return $"answerLanguage is at most {MaxAnswerLanguage} characters.";
             if (DailyCallBudget < 0)
                 return "dailyCallBudget cannot be negative.";
+            if (AskPhrases?.Validate() is { } badPhrases)
+                return badPhrases;
             if (Thresholds == null)
                 return "thresholds are required.";
             return Thresholds.Validate();
@@ -176,5 +194,5 @@ namespace IndxServer.Services.SearchOrAsk
         bool Available);
 
     public sealed record SearchOrAskEffective(string SiteDescription, string? TitleField,
-        IReadOnlyList<string> SectionFields, IReadOnlyList<string> SnippetFields);
+        IReadOnlyList<string> SectionFields, IReadOnlyList<string> SnippetFields, SearchOrAskPhrases AskPhrases);
 }

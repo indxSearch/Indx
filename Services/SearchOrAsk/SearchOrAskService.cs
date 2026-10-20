@@ -29,7 +29,8 @@ namespace IndxServer.Services.SearchOrAsk
     /// which the page turns into filters (POST filters) when it reaches the strong threshold.</summary>
     public sealed record IntentResult(double P, double? Answerable, string Offer, SearchOrAskThresholds Thresholds,
         bool Cached, long Ms, string? Reason = null, double? Criteria = null, bool CutWhileAsking = true,
-        double CutShareOfTop = 0.5, double CutTopFloor = 0.2, bool StrictCoverageWhileAsking = true, string FiltersWhileTyping = "off");
+        double CutShareOfTop = 0.5, double CutTopFloor = 0.2, bool StrictCoverageWhileAsking = true, string FiltersWhileTyping = "off",
+        string? SearchText = null, bool RefocusWhileTyping = true, bool InviteOnAskPhrase = true);
 
     /// <summary>One source handed to the answer model, as the visitor's client sees it.</summary>
     public sealed record AskSource(int N, long DocumentKey, string Title);
@@ -277,10 +278,16 @@ namespace IndxServer.Services.SearchOrAsk
 
             var started = Stopwatch.GetTimestamp();
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            // The judge reads the results of what the question is about (Ask phrases), not of its
+            // words: "help me find the movie about the green ogre" is judged on Shrek, not on films
+            // called Movie. The request it reads stays the text as typed.
+            var searched = SearchTextFor(text, settings);
+            string? searchText = searched == text ? null : searched;
             IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null, double? criteria = null)
             {
                 var result = new IntentResult(p, answerable, settings.Thresholds.OfferFor(p, criteria), settings.Thresholds, cached, Ms(), reason, criteria,
-                    settings.CutWhileAsking, settings.CutShareOfTop, settings.CutTopFloor, settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping);
+                    settings.CutWhileAsking, settings.CutShareOfTop, settings.CutTopFloor, settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping, searchText,
+                    settings.RefocusWhileTyping, settings.InviteOnAskPhrase);
                 // A judgement is recorded once the judge or its cache answered for it, a failing
                 // judge included (its reason says so); an identifier never reaches here.
                 if (reason != "identifier" && origin != null && Writer is { } w)
@@ -302,7 +309,7 @@ namespace IndxServer.Services.SearchOrAsk
             {
                 // Only the console's tester asks for the state; a cached answer used to come back
                 // without one, and "What the judge was sent" was empty for a text tried before.
-                onState?.Invoke(State(site, text, Search(engine, dataSetName, teamId, text, fields)));
+                onState?.Invoke(State(site, text, Search(engine, dataSetName, teamId, searched, fields)));
                 return new IntentOutcome(IntentStatus.Ok, Result(hit[SearchOrAskRecipes.Asking] ?? 0, hit[SearchOrAskRecipes.Answerable], true,
                     criteria: hit[SearchOrAskRecipes.Criteria]));
             }
@@ -313,7 +320,7 @@ namespace IndxServer.Services.SearchOrAsk
             if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget))
                 return new IntentOutcome(IntentStatus.BudgetSpent, RetryAfterSeconds: SecondsToUtcMidnight());
 
-            var state = State(site, text, Search(engine, dataSetName, teamId, text, fields));
+            var state = State(site, text, Search(engine, dataSetName, teamId, searched, fields));
             onState?.Invoke(state);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(_options.JudgeTimeoutMs);
@@ -349,7 +356,13 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>What the search finds for a text, as the judge reads it, for the console's
         /// tester: the hits by title, section and snippet. No model call, so it costs nothing.</summary>
         public SearchSummary Results(string teamId, string dataSetName, IServerSearchEngine engine, string text, SearchOrAskSettings settings) =>
-            Search(engine, dataSetName, teamId, text, Fields(settings, engine.GetFieldList()));
+            Search(engine, dataSetName, teamId, SearchTextFor(text, settings), Fields(settings, engine.GetFieldList()));
+
+        /// <summary>What the list searches for a typed text: what the question is about, its Ask
+        /// phrases taken off, while <see cref="SearchOrAskSettings.RefocusWhileTyping"/> is on; else
+        /// the text as typed. The page and the judge search the same.</summary>
+        public static string SearchTextFor(string text, SearchOrAskSettings settings) =>
+            settings.RefocusWhileTyping ? SearchOrAskPhrases.Strip(text, settings.AskPhrases ?? SearchOrAskPhrases.Default).Text : text;
 
         /// <summary>Runs the search the visitor's client already ran, here, so the judge sees the
         /// same results without the client sending results it could forge. Through the manager

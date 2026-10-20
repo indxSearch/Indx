@@ -111,6 +111,34 @@
             </Table>
             </div>
 
+            @* Ask phrases: the words a question is built with, which the page takes off its start
+               so the list searches what the question is about while it is typed. *@
+            <div class="soa-group">
+            <Table AriaLabel="Ask phrases" Class="soa-table">
+                @Head("Ask phrases")
+                <tbody>
+                    @Row(Icon<Icons.Question>(), "Lead-ins", "How a question starts. Taken off the typed text, with what follows below, so the list searches what the question is about: \"help me find the movie about the green ogre\" searches \"green ogre\". One per line; empty uses the defaults shown.",
+                         _edit.AskPhrases != null,
+                         @<Textarea Rows="4" @bind-Value="LeadInLines" placeholder="@PhraseLines(p => p.LeadIns, SearchOrAskPhrases.Default)" />)
+                    @Row(Icon<Icons.Tag>(), "What is asked for", "The records' own names, as a visitor says them: \"the movie\", \"the product\", \"the one\".",
+                         _edit.AskPhrases != null,
+                         @<Textarea Rows="3" @bind-Value="FrameLines" placeholder="@PhraseLines(p => p.Frames, SearchOrAskPhrases.Default)" />)
+                    @Row(Icon<Icons.TextCursor>(), "Links", "The word that joins it to the rest: \"about\", \"where\", \"with\", \"starring\".",
+                         _edit.AskPhrases != null,
+                         @<Textarea Rows="3" @bind-Value="LinkLines" placeholder="@PhraseLines(p => p.Links, SearchOrAskPhrases.Default)" />)
+                    @Row(Icon<Icons.TextSize>(), "Articles", "\"the\", \"a\", \"an\".",
+                         _edit.AskPhrases != null,
+                         @<Textarea Rows="2" @bind-Value="ArticleLines" placeholder="@PhraseLines(p => p.Articles, SearchOrAskPhrases.Default)" />)
+                    @Row(Icon<Icons.Search>(), "Refocus the search", "While a question is typed, the list searches what it is about: the phrases above come off the text before it is searched, on every keystroke, and the judge reads those results. Off searches the text as typed.",
+                         !_edit.RefocusWhileTyping,
+                         @<ToggleSwitch Label="Search what the question is about" Checked="@_edit.RefocusWhileTyping" CheckedChanged="@(v => _edit.RefocusWhileTyping = v)" />)
+                    @Row(DatasetIcons.SearchOrAsk, "Invite at once", "The quiet \"Ask about this\" the moment the text takes a question's shape, before the judge has read it. The judge's word on the pause confirms it or takes it back. Off leaves every offer to the judge.",
+                         !_edit.InviteOnAskPhrase,
+                         @<ToggleSwitch Label="Offer to ask on a question's shape" Checked="@_edit.InviteOnAskPhrase" CheckedChanged="@(v => _edit.InviteOnAskPhrase = v)" />)
+                </tbody>
+            </Table>
+            </div>
+
             <div class="soa-group">
             <Table AriaLabel="When to offer" Class="soa-table">
                 @Head("When to offer")
@@ -242,6 +270,12 @@
                             <span class="soa-help">@_tryMessage</span>
                         }
                     </div>
+                    @* As intrface says it over the list: the Ask phrases came off, and this is what
+                       the list and the judge search. Under the offer row, results shown or not. *@
+                    @if (_tryText?.Trim() is { Length: > 0 } typed && SearchOrAskService.SearchTextFor(typed, _edit) is var focused && focused != typed)
+                    {
+                        <span class="soa-help soa-searching-for">Searching for <strong>@focused</strong></span>
+                    }
                     @if (_showResults && _results is { } found)
                     {
                         @* What the search finds, as the judge reads it: title, section, snippet. *@
@@ -571,11 +605,31 @@
         var engine = Ctx.FindEngine();
         var fields = SearchOrAskService.Fields(_edit, engine?.DocumentFields == null ? null : engine.GetFieldList());
         _effectiveSite = Service.SiteDescription(Ctx.TeamId, Ctx.Name, new SearchOrAskSettings());
-        _effective = new SearchOrAskEffective(_effectiveSite, fields.TitleField, fields.SectionFields, fields.SnippetFields);
+        _effective = new SearchOrAskEffective(_effectiveSite, fields.TitleField, fields.SectionFields, fields.SnippetFields,
+            _edit.AskPhrases ?? SearchOrAskPhrases.Default);
         _callsToday = Service.CallsToday(Ctx.TeamId, Ctx.Name);
     }
 
     private static string Json(SearchOrAskSettings s) => JsonSerializer.Serialize(s, JsonOpts);
+
+    /// <summary>One Ask phrase group as lines, of the working copy's own list or (for a placeholder) the defaults.</summary>
+    private string PhraseLines(Func<SearchOrAskPhrases, List<string>> group, SearchOrAskPhrases? of = null) =>
+        string.Join("\n", group(of ?? _edit.AskPhrases ?? new SearchOrAskPhrases()));
+
+    // The four groups as the textareas bind them (Textarea needs a bindable property).
+    private string LeadInLines { get => PhraseLines(p => p.LeadIns); set => SetPhrases((p, l) => p.LeadIns = l, value); }
+    private string FrameLines { get => PhraseLines(p => p.Frames); set => SetPhrases((p, l) => p.Frames = l, value); }
+    private string LinkLines { get => PhraseLines(p => p.Links); set => SetPhrases((p, l) => p.Links = l, value); }
+    private string ArticleLines { get => PhraseLines(p => p.Articles); set => SetPhrases((p, l) => p.Articles = l, value); }
+
+    /// <summary>Sets one group from lines. The first edit makes the dataset's own list, starting from
+    /// the defaults so the other groups keep working; all four empty goes back to the defaults.</summary>
+    private void SetPhrases(Action<SearchOrAskPhrases, List<string>> set, string lines)
+    {
+        var own = _edit.AskPhrases ?? JsonSerializer.Deserialize<SearchOrAskPhrases>(JsonSerializer.Serialize(SearchOrAskPhrases.Default))!;
+        set(own, lines.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList());
+        _edit.AskPhrases = own.LeadIns.Count + own.Frames.Count + own.Links.Count + own.Articles.Count == 0 ? null : own;
+    }
     private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _budgetError != null);
 
 

@@ -136,3 +136,5 @@
 .soa-threshold-label { font: var(--text-xs); color: var(--lv6); }
 .soa-threshold-value { font: var(--text-sm); color: var(--lv8); font-variant-numeric: tabular-nums; text-align: right; }
 .soa-threshold ::deep .soa-slider { width: 100%; }
+
+.soa-searching-for strong { color: var(--lv8); font-weight: var(--med); }
