@@ -580,18 +580,7 @@ namespace IndxServer.Services.SearchOrAsk
                     }
                 }
 
-                var typedSearch = Search(engine, dataSetName, teamId, question, fields, SourcesForAnswer, truncate: false);
-                var typed = typedSearch.Top;
-                var keywords = KeywordsOf(question) is { } k ? Search(engine, dataSetName, teamId, k, fields, SourcesForAnswer, truncate: false).Top : [];
-                // A follow-up ("and over HTTP?") names too little to search on alone: the previous
-                // question's words and this one's together find what the conversation is about.
-                var context = history.Count > 0
-                    ? Search(engine, dataSetName, teamId, ContextSearch(history[^1].Question, question), fields, SourcesForAnswer, truncate: false).Top
-                    : [];
-                var lists = new[] { context, keywords, typed };
-                for (int i = 0; merged.Count < SourcesForAnswer && lists.Any(l => i < l.Count); i++)
-                    foreach (var list in lists)
-                        if (merged.Count < SourcesForAnswer && i < list.Count && !merged.Contains(list[i].Key)) merged.Add(list[i].Key);
+                (var typedSearch, merged) = AnswerSources(engine, dataSetName, teamId, question, fields, history);
                 if (merged.Count == 0)
                 {
                     outcome = "nothingFound";
@@ -700,6 +689,27 @@ namespace IndxServer.Services.SearchOrAsk
         }
 
         private static double? Sum(double? a, double? b) => a == null && b == null ? null : (a ?? 0) + (b ?? 0);
+
+        /// <summary>The records an answer is written from: the question as typed, its keywords and,
+        /// in a conversation, the previous question's words with this one's, interleaved so each
+        /// contributes its best. The typed search comes back too, for its hit count.</summary>
+        private static (SearchSummary Typed, List<long> Keys) AnswerSources(IServerSearchEngine engine, string dataSetName, string teamId,
+            string question, SearchOrAskFields fields, IReadOnlyList<AskTurn> history)
+        {
+            var typedSearch = Search(engine, dataSetName, teamId, question, fields, SourcesForAnswer, truncate: false);
+            var keywords = KeywordsOf(question) is { } k ? Search(engine, dataSetName, teamId, k, fields, SourcesForAnswer, truncate: false).Top : [];
+            // A follow-up ("and over HTTP?") names too little to search on alone: the previous
+            // question's words and this one's together find what the conversation is about.
+            var context = history.Count > 0
+                ? Search(engine, dataSetName, teamId, ContextSearch(history[^1].Question, question), fields, SourcesForAnswer, truncate: false).Top
+                : [];
+            List<long> merged = [];
+            var lists = new[] { context, keywords, typedSearch.Top };
+            for (int i = 0; merged.Count < SourcesForAnswer && lists.Any(l => i < l.Count); i++)
+                foreach (var list in lists)
+                    if (merged.Count < SourcesForAnswer && i < list.Count && !merged.Contains(list[i].Key)) merged.Add(list[i].Key);
+            return (typedSearch, merged);
+        }
 
         /// <summary>The judge's answerable question alone, on the question and what its search
         /// found. Never throws: no score is the outcome of a judge that fails, within its timeout.</summary>
