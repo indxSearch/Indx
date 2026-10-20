@@ -3,7 +3,9 @@
     align-items: center;
     cursor: pointer;
     border-radius: var(--radius);
-    border: none;
+    /* Every variant carries the same 1px border, transparent where it shows none, so a button keeps
+       its size when its variant changes (as in indx-systm's Button). */
+    border: 1px solid transparent;
     box-sizing: border-box;
     text-decoration: none;
     line-height: normal;
@@ -55,7 +57,6 @@
 .indx-btn-primary {
     background: var(--lv7);
     color: var(--lv1);
-    border: none;
 }
 
 .indx-btn-primary:hover:not(:disabled):not([aria-disabled="true"]) {
@@ -64,7 +65,7 @@
 
 .indx-btn-secondary {
     background: transparent;
-    border: 1px solid var(--lv3);
+    border-color: var(--lv3);
     color: var(--lv6);
 }
 
@@ -74,7 +75,6 @@
 
 .indx-btn-ghost {
     background: transparent;
-    border: none;
     color: var(--lv5);
 }
 
@@ -85,7 +85,6 @@
 .indx-btn-danger {
     background: var(--CSignal);
     color: var(--lv0);
-    border: none;
 }
 
 .indx-btn-danger:hover:not(:disabled):not([aria-disabled="true"]) {
