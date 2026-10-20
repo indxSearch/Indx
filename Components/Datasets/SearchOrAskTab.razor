@@ -21,11 +21,15 @@
 @if (!Active) { return; }
 
 <div class="soa-tab">
-    <p class="indx-section-help soa-intro">
-        When a visitor types a question rather than a name, offer to answer it from this dataset's records.
-        On each pause in typing, a judge reads what is typed and the top results. An answer is written only
-        when the visitor asks, and only from the records.
-    </p>
+    @* What the tab is, and the chip that says it may still change. *@
+    <div class="soa-intro">
+        <p class="indx-section-help">
+            When a visitor types a question rather than a name, offer to answer it from this dataset's records.
+            On each pause in typing, a judge reads what is typed and the top results. An answer is written only
+            when the visitor asks, and only from the records.
+        </p>
+        <Chip Size="large" Color="var(--CTeal)" TextColor="#080809" Icon="DatasetIcons.Experimental">Experimental</Chip>
+    </div>
 
     @if (!Service.Available)
     {

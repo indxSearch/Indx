@@ -1,5 +1,10 @@
 .soa-tab { margin-top: 0; }
-.soa-intro { max-width: 640px; }
+.soa-intro { display: flex; align-items: flex-start; gap: 10px; max-width: 640px; }
+.soa-intro p { flex: 1; margin: 0 0 calc(var(--spacing) * 2); }
+/* On a narrow screen the chip goes above the text, so the text gets the full width. */
+@media (max-width: 768px) {
+    .soa-intro { flex-direction: column-reverse; }
+}
 ::deep .soa-table { max-width: 640px; margin-bottom: 24px; }
 /* Two columns: the settings on the left, one under the other, as wide as a settings group; the
    tester on the right, sticky under the header, so it stays in view while a setting is changed.

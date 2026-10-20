@@ -19,9 +19,3 @@
 .syn-modal { display: flex; flex-direction: column; gap: 14px; min-width: 380px; }
 .syn-label { color: var(--lv5); font: var(--text-xs); display: block; margin-bottom: 4px; }
 .syn-hint { color: var(--lv4); font: var(--text-xs); display: block; margin-top: 4px; }
-
-/* On a narrow screen the Experimental chip goes above the text, so the text gets the full width
-   instead of a column beside it. */
-@media (max-width: 768px) {
-    .syn-intro { flex-direction: column-reverse; align-items: flex-start; }
-}
