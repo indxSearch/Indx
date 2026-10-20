@@ -1694,6 +1694,7 @@ namespace IndxServer.Engine
                 LogPrefix = queryProxy.LogPrefix,
                 CoverageDepth = queryProxy.CoverageDepth,
                 RemoveDuplicates = queryProxy.RemoveDuplicates,
+                MeasureFit = queryProxy.MeasureFit,
                 EnableBoost = queryProxy.EnableBoost,
                 EnableCoverage = queryProxy.EnableCoverage,
                 EnableFacets = queryProxy.EnableFacets,
