@@ -51,13 +51,13 @@ namespace IndxServer.Controllers
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
             var settings = service.Settings(ctx.OwnerKey, dataSetName);
-            // A search key sits in every visitor's browser: the site's notes are not for it, though
-            // answers may state what they say. A Read or Full key, or a person, gets them, so a
+            // A search key sits in every visitor's browser: the site's knowledge is not for it,
+            // though answers may state what it says. A Read or Full key, or a person, gets them, so a
             // read, change and write back does not wipe them. A copy: the store's is shared.
-            if (ApiKeyScope.For(HttpContext) is { } scope && !scope.AllowsLevel(ApiKeyLevel.Read) && settings.SiteNotes != null)
+            if (ApiKeyScope.For(HttpContext) is { } scope && !scope.AllowsLevel(ApiKeyLevel.Read) && settings.Knowledge != null)
             {
                 settings = System.Text.Json.JsonSerializer.Deserialize<SearchOrAskSettings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
-                settings.SiteNotes = null;
+                settings.Knowledge = null;
             }
             var engine = IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey);
             var fields = SearchOrAskService.Fields(settings, engine?.DocumentFields == null ? null : engine.GetFieldList());

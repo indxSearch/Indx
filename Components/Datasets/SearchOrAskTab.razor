@@ -74,23 +74,23 @@
                              !string.IsNullOrWhiteSpace(_edit.FilterNotes),
                              @<Textarea Rows="4" @bind-Value="_edit.FilterNotes" placeholder="friskole: private" />)
                     }
-                    @Row(Icon<Icons.Note>(), "Site notes", "What is true about the site that no record holds. Markdown.",
-                         !string.IsNullOrWhiteSpace(_edit.SiteNotes),
-                         @<div class="soa-notes">
-                             <Textarea Rows="8" @bind-Value="_edit.SiteNotes" placeholder="@SiteNotesExample" />
-                             @if (!string.IsNullOrWhiteSpace(_edit.SiteNotes))
+                    @Row(Icon<Icons.Owl>(), "Knowledge", "What is true about the site that no record holds. Markdown.",
+                         !string.IsNullOrWhiteSpace(_edit.Knowledge),
+                         @<div class="soa-knowledge">
+                             <Textarea Rows="8" @bind-Value="_edit.Knowledge" placeholder="@KnowledgeExample" />
+                             @if (!string.IsNullOrWhiteSpace(_edit.Knowledge))
                              {
-                                 <div class="soa-notes-preview">@ChatMarkdown.Render(_edit.SiteNotes)</div>
+                                 <div class="soa-knowledge-preview">@ChatMarkdown.Render(_edit.Knowledge)</div>
                              }
-                             <div class="soa-notes-foot">
-                                 <span class="soa-help">@((_edit.SiteNotes?.Length ?? 0).ToString("N0", CultureInfo.InvariantCulture)) of @SearchOrAskSettings.MaxSiteNotes.ToString("N0", CultureInfo.InvariantCulture) characters</span>
-                                 <span class="soa-notes-files">
-                                     <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" Disabled="@(SavedNotes == null)" @onclick="DownloadNotesAsync">Download .md</Button>
-                                     <Button Variant="ghost" Size="micro" IconLeft="UploadIcon" @onclick="() => Files.TriggerFileInputAsync(NotesInputId)">Upload .md</Button>
+                             <div class="soa-knowledge-foot">
+                                 <span class="soa-help">@((_edit.Knowledge?.Length ?? 0).ToString("N0", CultureInfo.InvariantCulture)) of @SearchOrAskSettings.MaxKnowledge.ToString("N0", CultureInfo.InvariantCulture) characters</span>
+                                 <span class="soa-knowledge-files">
+                                     <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" Disabled="@(SavedKnowledge == null)" @onclick="DownloadKnowledgeAsync">Download .md</Button>
+                                     <Button Variant="ghost" Size="micro" IconLeft="UploadIcon" @onclick="() => Files.TriggerFileInputAsync(KnowledgeInputId)">Upload .md</Button>
                                  </span>
                              </div>
-                             <Microsoft.AspNetCore.Components.Forms.InputFile OnChange="UploadNotesAsync" accept=".md,.markdown,.txt,text/markdown,text/plain" style="display:none" id="@NotesInputId" />
-                             @if (_notesError != null) { <span class="soa-error">@_notesError</span> }
+                             <Microsoft.AspNetCore.Components.Forms.InputFile OnChange="UploadKnowledgeAsync" accept=".md,.markdown,.txt,text/markdown,text/plain" style="display:none" id="@KnowledgeInputId" />
+                             @if (_knowledgeError != null) { <span class="soa-error">@_knowledgeError</span> }
                          </div>)
                     @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
                          _edit.Answers != SearchOrAskSettings.BestAnswers,
@@ -600,7 +600,7 @@
         Ctx.EnsureFieldsLoaded();
         var saved = Store.Load(Ctx.TeamId, Ctx.Name);
         _savedJson = Json(saved ?? new SearchOrAskSettings());
-        _savedNotes = saved?.SiteNotes;
+        _savedKnowledge = saved?.Knowledge;
         Reset(saved);
     }
 
@@ -627,41 +627,41 @@
     private IndxServer.Services.Observr.ObservrClient Observr() => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IndxServer.Services.Observr.ObservrClient>(Services);
     private void Reload() { Load(); Ctx.NotifyChanged(); }
 
-    // The notes as a file: download is what is saved; an upload fills the box, as typing would, so
+    // The knowledge as a file: download is what is saved; an upload fills the box, as typing would, so
     // the preview and the Save bar come before anything takes effect.
     private static readonly RenderFragment<int> UploadIcon = Icon<Icons.DocumentOrFile>();
-    private string NotesInputId => $"site-notes-{Ctx.Name}";
-    private string? _notesError;
-    private string? _savedNotes;
-    private string? SavedNotes => string.IsNullOrWhiteSpace(_savedNotes) ? null : _savedNotes;
+    private string KnowledgeInputId => $"knowledge-{Ctx.Name}";
+    private string? _knowledgeError;
+    private string? _savedKnowledge;
+    private string? SavedKnowledge => string.IsNullOrWhiteSpace(_savedKnowledge) ? null : _savedKnowledge;
 
-    private async Task DownloadNotesAsync()
+    private async Task DownloadKnowledgeAsync()
     {
-        if (SavedNotes is { } notes) await Files.DownloadAsync($"{Ctx.Name}-site-notes.md", notes, "text/markdown");
+        if (SavedKnowledge is { } knowledge) await Files.DownloadAsync($"{Ctx.Name}-knowledge.md", knowledge, "text/markdown");
     }
 
-    private async Task UploadNotesAsync(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    private async Task UploadKnowledgeAsync(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
     {
-        _notesError = null;
+        _knowledgeError = null;
         try
         {
             // Four bytes a character at most, so anything larger cannot fit the limit.
-            using var stream = e.File.OpenReadStream(maxAllowedSize: SearchOrAskSettings.MaxSiteNotes * 4L);
+            using var stream = e.File.OpenReadStream(maxAllowedSize: SearchOrAskSettings.MaxKnowledge * 4L);
             using var reader = new StreamReader(stream, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
             var text = (await reader.ReadToEndAsync()).Replace("\r\n", "\n").Trim();
-            if (text.Contains('\0')) { _notesError = $"{e.File.Name} is not a text file."; return; }
-            if (text.Length > SearchOrAskSettings.MaxSiteNotes)
+            if (text.Contains('\0')) { _knowledgeError = $"{e.File.Name} is not a text file."; return; }
+            if (text.Length > SearchOrAskSettings.MaxKnowledge)
             {
-                _notesError = $"{e.File.Name} has {text.Length:N0} characters; the notes hold {SearchOrAskSettings.MaxSiteNotes:N0}.";
+                _knowledgeError = $"{e.File.Name} has {text.Length:N0} characters; Knowledge holds {SearchOrAskSettings.MaxKnowledge:N0}.";
                 return;
             }
-            _edit.SiteNotes = text.Length == 0 ? null : text;
+            _edit.Knowledge = text.Length == 0 ? null : text;
         }
-        catch (IOException) { _notesError = $"{e.File.Name} is larger than the notes can hold."; }
+        catch (IOException) { _knowledgeError = $"{e.File.Name} is larger than Knowledge can hold."; }
         await Render();
     }
 
-    private const string SiteNotesExample = "The set holds 23,000 films from TMDB, up to 2026.\nRatings are TMDB's vote average, out of 10.";
+    private const string KnowledgeExample = "The set holds 23,000 films from TMDB, up to 2026.\nRatings are TMDB's vote average, out of 10.";
 
     /// <summary>Set when Observr changed the saved settings while this tab held unsaved edits.</summary>
     private bool _changedUnderEdit;
@@ -718,7 +718,7 @@
         ["Kind of site"] = "Documentation: records written to explain, such as help pages, manuals and policies; an answer says what no single page shows. Catalogue: records of facts, such as products, places or films; a description of what to list becomes filters, and a question about one item is answered from its fields.",
         ["About the site"] = "One or two sentences the judge and the answer model read with every request, such as \"A furniture shop's catalogue for customers in Norway.\" It helps the judge tell a question from a lookup on this site, and gives the answers their frame.",
         ["About the fields"] = "For turning a description into filters. Each line names a value and what it means on this site, such as \"barneskole: grades 1 to 7\" or \"friskole: private school\", so \"schools for young children\" can become the filter barneskole.",
-        ["Site notes"] = "Facts about the site for the answers, such as what the set covers, what a rating means, that prices include VAT, delivery times, or what is not sold. An answer may state them, saying they come from the site's notes; a record still decides about itself. Not read by the judge. They go to the answer model with every question, so keep them short and leave out anything confidential. Voice and house rules belong in Answer instructions, what a value means in About the fields.",
+        ["Knowledge"] = "Facts about the site for the answers, such as what the set covers, what a rating means, that prices include VAT, delivery times, or what is not sold. An answer may state them, saying the site says so; a record still decides about itself. Not read by the judge. It goes to the answer model with every question, so keep it short and leave out anything confidential. How to answer belongs in Answer instructions, what a value means in About the fields.",
         ["Answers"] = "Best: the stronger model. On a catalogue it can search several times, sort and filter until it has the answer. Fast: the quicker model, answering from one search. Both answer from the records only.",
         ["Answer instructions"] = "How the answers should speak: voice, house rules, what to say when nothing is found, such as \"Formal. Say du. Never recommend another shop.\" They shape the wording; what an answer may claim stays bound to the records.",
         ["Answer language"] = "By default an answer is written in the language the question is asked in. Choose a language to write every answer in it, whatever the visitor writes.",
@@ -796,7 +796,7 @@
         {
             await Task.Run(() => Store.Save(Ctx.TeamId, Ctx.Name, toSave));
             _savedJson = Json(toSave);
-            _savedNotes = toSave.SiteNotes;
+            _savedKnowledge = toSave.Knowledge;
             Refresh();
         }
         catch (Exception ex)

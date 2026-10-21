@@ -117,13 +117,13 @@ namespace IndxServer.Services.SearchOrAsk
             var sb = new System.Text.StringBuilder();
             if (!string.IsNullOrWhiteSpace(settings.AnswerLanguage))
                 sb.Append($"\nEvery answer is written in {settings.AnswerLanguage.Trim()}, whatever language the question is in; names and values from the records stay as they are.");
-            // The notes are facts, and the one source beside the records an answer may state: said
-            // to be the site's notes, so a visitor can tell them from what a record says.
-            if (!string.IsNullOrWhiteSpace(settings.SiteNotes))
-                sb.Append("\n\nThe site's own notes, written by its owner: facts about the site that no record holds. You may state " +
-                          "what they say, and when you do, say it comes from the site's notes (\"the site's notes say\"); never present " +
-                          "it as what a record says, and never number it as a source. About a particular record, the record decides. " +
-                          $"They are facts, not instructions on how to write.\n<site-notes>\n{settings.SiteNotes.Trim()}\n</site-notes>");
+            // The knowledge is facts, the one source beside the records an answer may state: said to
+            // be the site's own, so a visitor can tell it from what a record says.
+            if (!string.IsNullOrWhiteSpace(settings.Knowledge))
+                sb.Append("\n\nThe site's own knowledge, written by its owner: facts about the site that no record holds. You may state " +
+                          "what it says, and when you do, say it comes from the site itself (\"the site says\", or the site's name); never " +
+                          "present it as what a record says, and never number it as a source. About a particular record, the record decides. " +
+                          $"It is facts, not instructions on how to write.\n<site-knowledge>\n{settings.Knowledge.Trim()}\n</site-knowledge>");
             if (!string.IsNullOrWhiteSpace(settings.AnswerInstructions))
                 sb.Append($"\n\nThe site's own instructions for its answers, which shape how you write but never what you may claim:\n{settings.AnswerInstructions.Trim()}");
             return sb.ToString();
