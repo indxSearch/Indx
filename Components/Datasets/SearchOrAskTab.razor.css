@@ -46,6 +46,10 @@
 ::deep .soa-cell { padding: 12px 15px; }
 .soa-label { display: block; font: var(--text-sm); color: var(--lv7); }
 ::deep .soa-row--set .soa-label { color: var(--lv8); font-weight: var(--med); }
+/* The tooltip around a name is inline-flex, which put the name in a line box of its own, below
+   where the icon beside it is placed. As a block-level row of the name's width it sits as the name
+   did alone. */
+.soa-row-body ::deep .indx-tooltip-wrapper { display: flex; width: fit-content; }
 /* A name with a fuller explanation in its tooltip: a dotted underline, as a definition reads. */
 .soa-label--explained { text-decoration: underline dotted var(--lv4); text-underline-offset: 3px; cursor: help; }
 .soa-help { display: block; font: var(--text-xs); color: var(--lv5); margin-top: 2px; }
