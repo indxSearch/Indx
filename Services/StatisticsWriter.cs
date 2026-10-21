@@ -108,6 +108,8 @@ namespace IndxServer.Services
             var count = searches.Count + selects.Count + converts.Count + changes.Count + documents.Count
                         + intents.Count + asks.Count + budget.Count;
             if (count == 0) return;
+            // In the order they were asked for: the queue has them as they finished.
+            searches.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
             var superseded = MarkKeystrokes(searches);
             var started = Environment.TickCount64;
             try
@@ -152,14 +154,31 @@ namespace IndxServer.Services
                 // typing like any other; only the uncounted ones stay out of the rule.
                 if (s.Session == null || !s.Counted) continue;
                 var key = (s.TeamId, s.DataSet, s.Session);
-                var text = s.QueryText.Trim().ToLowerInvariant();
+                // What was typed, where the page searched something else for it: the searched text
+                // jumps ("show me a li", then "lis") where the typing runs on.
+                var text = (s.Typed ?? s.QueryText).Trim().ToLowerInvariant();
                 if (_lastBySession.TryGetValue(key, out var last))
                 {
+                    // Asked for before the session's last search, but finished after a flush had
+                    // written that one: a keystroke the later search already covers is folded into
+                    // it, and the later one stays the last.
+                    if (s.Timestamp < last.Timestamp)
+                    {
+                        if (last.Timestamp - s.Timestamp <= StatisticsStore.KeystrokeWindowMs && text.Length > 0
+                            && (last.Text.StartsWith(text, StringComparison.Ordinal) || text.StartsWith(last.Text, StringComparison.Ordinal)))
+                            superseded.Add(s.QueryId);
+                        continue;
+                    }
                     long gap = s.Timestamp - last.Timestamp;
-                    // Typing on: the next search extends this one.
+                    // Typing on: the next search extends this one. Or takes it back: a backspace
+                    // shortens it to a text it began with ("who directe dti", "who directe dt",
+                    // "who directe d" on the way to "who directed titanic?" each counted until
+                    // 21 Oct 2026). Either way the visitor is still typing the one search.
                     bool extends = last.Text.Length > 0 && gap <= StatisticsStore.KeystrokeWindowMs
-                                   && text.Length > last.Text.Length
-                                   && text.StartsWith(last.Text, StringComparison.Ordinal);
+                                   && text.Length != last.Text.Length && text.Length > 0
+                                   && (text.Length > last.Text.Length
+                                       ? text.StartsWith(last.Text, StringComparison.Ordinal)
+                                       : last.Text.StartsWith(text, StringComparison.Ordinal));
                     // The same search sent again: a front-end re-running it with facets after a
                     // debounce, for a new sort, or to load more. One visitor, one search.
                     bool repeats = gap <= StatisticsStore.RepeatWindowMs

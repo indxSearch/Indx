@@ -14,7 +14,10 @@ namespace IndxServer.Services
     public readonly record struct SearchEventRow(
         string QueryId, string TeamId, string DataSet, string QueryText, string? FilterKey,
         int HitCount, string? Subject, long Timestamp, string? Source = null, string? Session = null,
-        bool? Covered = null, bool Counted = true);
+        bool? Covered = null, bool Counted = true, string? Typed = null);
+    // Typed: what the visitor typed, when the page searched something else for it (Search or
+    // ask's Ask phrases search "lis" for "show me a lis"). Only the keystroke rule reads it, in
+    // memory; QueryText stays what was searched, and nothing new is stored.
 
     /// <summary>One select: the user chose a result. QueryId is an opaque reference — an orphan
     /// (unknown or expired id) is stored like any other row and simply finds no search to join.

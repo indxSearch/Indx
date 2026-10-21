@@ -42,6 +42,9 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "Search", SystemState.Ready) is { } stateError)
                 return stateError;
+            // When the search was asked for, not when it finished: a short text can take longer than
+            // the keystroke after it, and the keystroke rule reads the session's searches in order.
+            long askedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             try
             {
                 Indx.Api.Result res = IndxServerInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey);
@@ -64,6 +67,10 @@ namespace IndxServer.Controllers
                     // ?session= is any per-page-load random id. It identifies no one; it lets the
                     // rollup see that "o", "os", "osl", "oslo" were one visitor typing one search.
                     var session = Request.Query["session"].FirstOrDefault();
+                    // ?typed= is what the visitor typed when the page searched something else for
+                    // it (the Ask phrases taken off a question): the keystroke rule follows the
+                    // typing, which the searched text jumps out of as the phrases start to match.
+                    var typed = Request.Query["typed"].FirstOrDefault();
                     // ?source=<name> names the surface the search came from: a search box, an app,
                     // an agent. ?count=false says it is not a visitor's search - an agent looking at
                     // what a query returns, a monitor, a test - so it is stored but left out of
@@ -85,10 +92,11 @@ namespace IndxServer.Controllers
                             // search above would have thrown UnknownFilterException.
                             filterKey,
                             res.Records?.Length ?? 0, string.IsNullOrWhiteSpace(subject) ? null : subject,
-                            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                            askedAt,
                             Session: string.IsNullOrWhiteSpace(session) ? null : session,
                             Source: source, Counted: counted,
-                            Covered: StatisticsService.CoverageConfirmed(query, res)));
+                            Covered: StatisticsService.CoverageConfirmed(query, res),
+                            Typed: string.IsNullOrWhiteSpace(typed) ? null : typed.Length > 1000 ? typed[..1000] : typed));
                 }
                 return res;
             }
