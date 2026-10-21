@@ -646,14 +646,15 @@ namespace IndxServer.Services.SearchOrAsk
                 // A catalogue's records are made of fields, not prose: each source also carries its facts
                 // on the filter fields (pupils, staff, grades, type), or a question about one item could
                 // only be answered from whatever the snippet fields happen to be.
-                var facts = settings.Kind == SearchOrAskRecipes.Catalogue ? FilterFields(teamId, dataSetName, engine).Fields : null;
+                var factSchema = settings.Kind == SearchOrAskRecipes.Catalogue ? FilterFields(teamId, dataSetName, engine) : null;
+                var facts = factSchema?.Fields;
                 var user = new StringBuilder();
                 foreach (var (n, doc) in sources)
                 {
                     user.Append($"[{n}] {doc.Item2}");
                     if (doc.Item3.Length > 0) user.Append($" ({doc.Item3})");
                     user.Append('\n').Append(doc.Item4);
-                    if (facts is { Count: > 0 } && Facts(Parse(engine.GetJsonDataOfKey(doc.Item1)), facts) is { Length: > 0 } f)
+                    if (facts is { Count: > 0 } && Facts(Parse(engine.GetJsonDataOfKey(doc.Item1)), facts, factSchema!.Readable) is { Length: > 0 } f)
                         user.Append(doc.Item4.Length > 0 ? "\n" : "").Append("Facts: ").Append(f);
                     user.Append("\n\n");
                 }

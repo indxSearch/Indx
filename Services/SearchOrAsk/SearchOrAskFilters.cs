@@ -40,8 +40,12 @@ namespace IndxServer.Services.SearchOrAsk
 
         private sealed record FilterField(string Name, string Type, List<string>? Values, double? Min, double? Max);
 
-        /// <summary>What a description can become: the filter fields, and the fields it can sort by.</summary>
-        private sealed record FilterSchema(List<FilterField> Fields, List<string> Sortable)
+        /// <summary>What a description can become: the filter fields, and the fields it can sort by.
+        /// <see cref="Readable"/> are the filterable text fields with too many values to list as a
+        /// filter (a director, a writer, a company): not offered as filters, but read from every
+        /// record found, so a question about them is answered. Until Oct 2026 they were dropped
+        /// whole, and "who directed mad max?" was told the database gives no director.</summary>
+        private sealed record FilterSchema(List<FilterField> Fields, List<string> Sortable, List<string> Readable)
         {
             public int Count => Fields.Count;
         }
@@ -122,6 +126,7 @@ namespace IndxServer.Services.SearchOrAsk
             }
 
             var fields = new List<FilterField>();
+            var readable = new List<string>();
             foreach (var f in list)
             {
                 var values = facets != null && facets.TryGetValue(f.Name, out var v)
@@ -141,10 +146,12 @@ namespace IndxServer.Services.SearchOrAsk
                     default:
                         if (values is { Count: > 0 and <= MaxValuesPerField })
                             fields.Add(new FilterField(f.Name, "text", values.OrderBy(x => x, StringComparer.CurrentCulture).ToList(), null, null));
+                        else
+                            readable.Add(f.Name);
                         break;
                 }
             }
-            var schema = new FilterSchema(fields, all.Where(f => f.Sortable).Select(f => f.Name).ToList());
+            var schema = new FilterSchema(fields, all.Where(f => f.Sortable).Select(f => f.Name).ToList(), readable);
             _filterFields[key] = (schema, roles, Environment.TickCount64);
             return schema;
         }

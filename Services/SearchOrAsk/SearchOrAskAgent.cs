@@ -135,7 +135,7 @@ namespace IndxServer.Services.SearchOrAsk
                             foreach (var line in Summary(docs, schema.Fields)) sb.AppendLine($"- {line}");
                             sb.AppendLine($"The first {Math.Min(AgentRecordsPerSearch, docs.Count)}:");
                             foreach (var doc in docs.Take(AgentRecordsPerSearch))
-                                sb.AppendLine($"- {titleOf(doc)}: {Facts(doc, schema.Fields)}");
+                                sb.AppendLine($"- {titleOf(doc)}: {Facts(doc, schema.Fields, schema.Readable)}");
                         }
                         result = sb.ToString();
                     }
@@ -202,6 +202,11 @@ namespace IndxServer.Services.SearchOrAsk
                 sb.AppendLine();
             }
             if (schema.Sortable.Count > 0) sb.AppendLine($"Sortable: {string.Join(", ", schema.Sortable)}.");
+            // Too many values to list as filters, but in every record found: a question about one
+            // is answered by searching its words ("george miller") and reading the records.
+            if (schema.Readable.Count > 0)
+                sb.AppendLine($"Also in every record found, though not a filter: {string.Join(", ", schema.Readable)}. " +
+                              "To find records by one of these, search its words; to answer about one, read it from the records.");
             if (!string.IsNullOrWhiteSpace(notes)) sb.AppendLine().AppendLine(notes.Trim());
             sb.AppendLine("""
 

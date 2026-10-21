@@ -87,7 +87,7 @@ namespace IndxServer.Services.SearchOrAsk
             user.AppendLine();
             user.AppendLine(keys.Count > CatalogueShown ? $"The first {CatalogueShown}, numbered:" : "Each one, numbered:");
             foreach (var s in shown)
-                user.AppendLine($"[{s.N}] {titleOf(s.Doc)}: {Facts(s.Doc, filterFields)}");
+                user.AppendLine($"[{s.N}] {titleOf(s.Doc)}: {Facts(s.Doc, filterFields, schema.Readable)}");
             user.AppendLine().Append(SearchOrAskRecipes.LanguageReminder(settings));
 
             var usage = new AnswerUsage();
@@ -146,13 +146,17 @@ namespace IndxServer.Services.SearchOrAsk
         private static string Num(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);
 
         /// <summary>One record's facts on the filter fields: a yes/no only when yes, absent ones left out.</summary>
-        private static string Facts(JsonNode? doc, List<FilterField> fields)
+        /// <summary>A record's facts as the models read them: each filter field, then each field read
+        /// though not filtered on. A list (genres, actors) is written out, its first
+        /// <see cref="ListValues"/> and how many more; it used to be left out.</summary>
+        private static string Facts(JsonNode? doc, List<FilterField> fields, IReadOnlyList<string>? readable = null)
         {
             if (doc == null) return "";
             var parts = new List<string>();
             foreach (var f in fields)
             {
                 var v = FieldAt(doc, f.Name);
+                if (v is JsonArray list) { if (ListText(list) is { } t) parts.Add($"{f.Name} {t}"); continue; }
                 if (v is not JsonValue value) continue;
                 if (f.Type == "true/false")
                 {
@@ -160,7 +164,23 @@ namespace IndxServer.Services.SearchOrAsk
                 }
                 else parts.Add($"{f.Name} {value}");
             }
+            foreach (var name in readable ?? [])
+            {
+                var v = FieldAt(doc, name);
+                var text = v is JsonArray list ? ListText(list) : v is JsonValue value && value.ToString() is { Length: > 0 } s ? s : null;
+                if (text != null) parts.Add($"{name} {text}");
+            }
             return string.Join("; ", parts);
+        }
+
+        private const int ListValues = 6;
+
+        private static string? ListText(JsonArray list)
+        {
+            var values = list.OfType<JsonValue>().Select(x => x.ToString()).Where(x => x.Length > 0).ToList();
+            if (values.Count == 0) return null;
+            var shown = string.Join(", ", values.Take(ListValues));
+            return values.Count > ListValues ? $"{shown} and {values.Count - ListValues} more" : shown;
         }
 
         /// <summary>The set as a whole: each number's range and median, each text field's most common
