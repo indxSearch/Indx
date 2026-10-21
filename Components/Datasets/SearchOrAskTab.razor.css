@@ -144,3 +144,11 @@
 .soa-threshold ::deep .soa-slider { width: 100%; }
 
 .soa-searching-for strong { color: var(--lv8); font-weight: var(--med); }
+
+/* The site notes: the markdown as typed, and as it reads, below it. */
+.soa-notes { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.soa-notes-preview { font: var(--text-sm); color: var(--lv7); padding: 10px 12px; background: var(--lv1); border: 0.5px solid var(--lv3); border-radius: var(--radius); }
+.soa-notes-preview ::deep p { margin: 0 0 6px; }
+.soa-notes-preview ::deep :last-child { margin-bottom: 0; }
+.soa-notes-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.soa-notes-files { display: flex; gap: 4px; }

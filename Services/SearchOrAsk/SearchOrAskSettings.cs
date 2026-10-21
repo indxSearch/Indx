@@ -80,6 +80,15 @@ namespace IndxServer.Services.SearchOrAsk
 
         public const int MaxAnswerInstructions = 1500;
 
+        /// <summary>The site's notes, markdown: what is true about the site that no record holds
+        /// (what the set covers, what a number means, prices with VAT, delivery times, what is not
+        /// sold). Every answer path reads them, never the judge, and an answer may state what they say
+        /// as the site's notes, never as a record (decided 21 Oct 2026). Null: none.</summary>
+        public string? SiteNotes { get; set; }
+
+        /// <summary>About 2,000 tokens, read with every question.</summary>
+        public const int MaxSiteNotes = 8000;
+
         /// <summary>The language every answer is written in, as a language name ("Norwegian"). Null:
         /// the language the question was written in, which is the default.</summary>
         public string? AnswerLanguage { get; set; }
@@ -133,6 +142,8 @@ namespace IndxServer.Services.SearchOrAsk
                 return $"filterNotes is at most {MaxFilterNotes} characters.";
             if (AnswerInstructions is { Length: > MaxAnswerInstructions })
                 return $"answerInstructions is at most {MaxAnswerInstructions} characters.";
+            if (SiteNotes is { Length: > MaxSiteNotes })
+                return $"siteNotes is at most {MaxSiteNotes} characters.";
             if (AnswerLanguage is { Length: > MaxAnswerLanguage })
                 return $"answerLanguage is at most {MaxAnswerLanguage} characters.";
             if (DailyCallBudget < 0)
