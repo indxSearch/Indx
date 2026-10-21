@@ -562,7 +562,9 @@ else
                 new("Searches", searches),
                 new("Selects", selects, "var(--CTeal)"),
             };
-            if (withCalls) _series = [.. _series, new("Search or ask calls", calls, "var(--CLightBlue)")];
+            // One step stronger than the searches' grey (--lv4), not a colour: it is a count beside
+            // them, and the blue drew the eye from the searches the chart is about.
+            if (withCalls) _series = [.. _series, new("Search or ask calls", calls, "var(--lv5)")];
             _labels = labels;
         });
         _label = null;   // the label field may have changed on the Options tab
