@@ -14,8 +14,8 @@ namespace IndxServer.Controllers
     /// Team scoping, authentication and the error contract are declared on
     /// <see cref="DatasetApiController"/>.
     /// </summary>
-    // Experimental: kept out of the API description until it ships (Notes/search-or-ask-server.md).
-    [ApiExplorerSettings(IgnoreApi = true)]
+    // In the API description since 21 Oct 2026, with its guide and reference in the docs; it was kept
+    // out while experimental. Its routes still answer 404 until the instance and the dataset show it.
     public class SearchOrAskController(TeamContextResolver resolver, SearchOrAskStore store, SearchOrAskService service,
         StatisticsService statistics)
         : DatasetApiController(resolver)
