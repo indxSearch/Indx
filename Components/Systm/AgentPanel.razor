@@ -33,7 +33,7 @@
             <div class="agent-head">
                 <span class="agent-title"><Observr Size="14" Color="currentColor" /> Agent</span>
                 <span class="agent-context" title="@(_ctx.HasDataset ? $"About the dataset {_ctx.DataSetName}" : $"About the team {_ctx.TeamName}")">
-                    @if (_ctx.HasDataset) { <Database Size="12" Color="currentColor" /> } else { <UserGroup Size="12" Color="currentColor" /> }
+                    @if (_ctx.HasDataset) { <Database Size="14" Color="currentColor" /> } else { <UserGroup Size="14" Color="currentColor" /> }
                     @(_ctx.HasDataset ? _ctx.DataSetName : _ctx.TeamName)
                 </span>
                 <span class="agent-spacer"></span>

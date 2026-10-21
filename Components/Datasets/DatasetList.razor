@@ -87,7 +87,7 @@ else
                     {
                         @* What Observr found on a watched dataset and nobody has decided: at the
                            corner, in Observr's look, the way the side menu counts the same. *@
-                        <span class="indx-dataset-card-observr indx-observr" title="@($"{open} Observr finding(s) waiting for a decision")">@DatasetIcons.Observr(12)<span>@open</span></span>
+                        <span class="indx-dataset-card-observr indx-observr" title="@($"{open} Observr finding(s) waiting for a decision")">@DatasetIcons.Observr(14)<span>@open</span></span>
                     }
                 </span>
                 @* Everything below is read from the keep-alive view and the in-memory instance, so
@@ -169,7 +169,7 @@ else
                 <span class="indx-dataset-card-foot">
                     @if (row.Pending)
                     {
-                        <span class="indx-dataset-card-count"><Spinner Size="12" /></span>
+                        <span class="indx-dataset-card-count"><Spinner Size="14" /></span>
                     }
                     else
                     {

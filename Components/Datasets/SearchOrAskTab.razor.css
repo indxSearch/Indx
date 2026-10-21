@@ -121,7 +121,9 @@
 
 /* A setting's row: its icon beside the name, help and control. */
 .soa-row { display: flex; gap: 12px; align-items: flex-start; }
-.soa-icon { color: var(--lv5); flex: none; margin-top: 1px; display: inline-flex; }
+/* 14px: a pixl icon is a 7x5 grid, sharp only at a multiple of 7 (16 put each cell on 2.29 screen
+   pixels, uneven on a 1x screen). Two pixels down to sit level with the name, as 16 did at one. */
+.soa-icon { color: var(--lv5); flex: none; margin-top: 2px; display: inline-flex; }
 ::deep .soa-row--set .soa-icon { color: var(--lv8); }
 .soa-row-body { flex: 1; min-width: 0; }
 
