@@ -224,6 +224,9 @@ namespace IndxServer.Services.Observr
         };
     }
 
+    /// <summary>A finding's proposals were carried out: the dataset, and the kinds of change.</summary>
+    public sealed record ObservrApplied(string TeamId, string DataSetName, IReadOnlySet<string> Kinds);
+
     public sealed record ObservrAnswer(int AskId, string Outcome, string Answer, List<ObservrProposal> Proposals, string Model);
 
     /// <summary>One thing worth the owners' attention in a digest: a title, the text, which tab it
@@ -755,6 +758,12 @@ namespace IndxServer.Services.Observr
             return new ObservrSynonymTest(records.Length, records.Select(r => label(r.DocumentKey) ?? r.DocumentKey.ToString()).ToList());
         }
 
+        /// <summary>After a yes has carried a finding's proposals out: which dataset, and the kinds of
+        /// change (<see cref="ObservrProposal.Synonym"/>, <see cref="ObservrProposal.FieldKind"/>, …).
+        /// The console's tabs reload what they show from it: a yes in the Agent panel, the Observr
+        /// menu or the Status tab changed the saved settings under a tab that had read them.</summary>
+        public event Action<ObservrApplied>? Applied;
+
         /// <summary>The owners' decision on a finding: a yes carries out its proposals (all of them, or
         /// only the ones at <paramref name="onlyProposals"/>, indices into the finding's list), a no
         /// closes it. Returns why a yes could not be carried out (the finding stays open), or null.</summary>
@@ -777,6 +786,14 @@ namespace IndxServer.Services.Observr
                     ApplyQueryParameters(f.TeamId, f.DataSetName, p.QueryParameters!);
             }
             findings.Decide(findingId, yes ? ObservrFinding.Accepted : ObservrFinding.Declined);
+            if (yes && f.Proposals.Count > 0)
+            {
+                var kinds = f.Proposals.Where((p, i) => onlyProposals == null || onlyProposals.Contains(i)).Select(p => p.Kind).ToHashSet();
+                // A listener that throws (a tab gone mid-call) must not turn an applied change into a failure.
+                foreach (var listener in Applied?.GetInvocationList() ?? [])
+                    try { ((Action<ObservrApplied>)listener)(new ObservrApplied(f.TeamId, f.DataSetName, kinds)); }
+                    catch (Exception ex) { logger.LogWarning(ex, "An Observr applied listener failed"); }
+            }
             return null;
         }
 

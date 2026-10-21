@@ -182,6 +182,12 @@
         if (Active && !_loaded) Load();
     }
 
+    /// <summary>The list saves at once, so a synonym Observr added is simply read again.</summary>
+    protected override void OnObservrApplied(IReadOnlySet<string> kinds)
+    {
+        if (_loaded && kinds.Contains(IndxServer.Services.Observr.ObservrProposal.Synonym)) Load();
+    }
+
     private void Load()
     {
         _loaded = true;

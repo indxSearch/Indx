@@ -56,6 +56,13 @@
         <p class="qp-error">@_error</p>
     }
 
+    @if (ChangedUnderEdit)
+    {
+        <Alert Variant="warning">
+            <Title>Observr changed the saved settings</Title>
+            <Description>You have unsaved changes here. Save keeps yours; Cancel shows the ones Observr applied.</Description>
+        </Alert>
+    }
     <SaveBar Visible="@IsDirty" Message="Unsaved changes">
         <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save</Button>
         <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
@@ -165,9 +172,23 @@
         if (Active && !_loaded) Load();
     }
 
+    /// <summary>Set when Observr changed the saved parameters while this tab held unsaved edits.</summary>
+    private bool _changedUnderEdit;
+    /// <summary>The notice, while the edits it is about are still unsaved: a Save or a Cancel ends
+    /// them, and with them the notice, so a later edit does not show it for an old change.</summary>
+    private bool ChangedUnderEdit { get { if (!IsDirty) _changedUnderEdit = false; return _changedUnderEdit; } }
+
+    protected override void OnObservrApplied(IReadOnlySet<string> kinds)
+    {
+        if (!_loaded || !kinds.Contains(IndxServer.Services.Observr.ObservrProposal.QueryParametersKind)) return;
+        if (IsDirty) { _changedUnderEdit = true; return; }
+        Load();
+    }
+
     private void Load()
     {
         _loaded = true;
+        _changedUnderEdit = false;
         var saved = Store.Load(Ctx.TeamId, Ctx.Name);
         _savedJson = Json(saved ?? new DatasetQueryParameters());
         Reset(saved);
