@@ -25,6 +25,7 @@
 .ofl-why { font: var(--text-xs); color: var(--lv5); line-height: 1.5; }
 .ofl-actions { display: flex; align-items: center; gap: 6px; margin-top: 2px; }
 .ofl-empty { color: var(--lv5); }
+.ofl-failure { margin-top: 6px; }
 
 /* The grid: cards on the Status page, two across, one on a phone. Every card sits on lv1 whatever
    its status; an open one is told by its chip and its buttons, since the whole grid is the

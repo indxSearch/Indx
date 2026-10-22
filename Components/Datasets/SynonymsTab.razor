@@ -8,6 +8,7 @@
 @inherits DatasetTabBase
 @inject BrowserFiles Files
 @inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
+@inject IndxServer.Services.Observr.ObservrSubscription ObservrSubscription
 @inject IndxServer.Services.Observr.AgentPanelState Agent
 @inject IServiceProvider Services
 
@@ -31,7 +32,7 @@
 
     <div class="indx-list-toolbar">
         <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="@(() => OpenModal(null))">New synonym</Button>
-        @if (Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
+        @if (Ctx.IsEditor && (ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name)))
         {
             <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="SuggestInAgent">Suggest synonyms</Button></span>
         }

@@ -9,6 +9,7 @@
 .agent-context { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; font: var(--text-2xs); color: var(--lv5); background: var(--lv2); border-radius: 3px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agent-spacer { flex: 1; }
 .agent-error { margin: 0; font: var(--text-xs); color: var(--CSignal); }
+.agent-allowance { margin: 0; font: var(--text-xs); color: var(--lv5); }
 .agent-decided { font: var(--text-xs); color: var(--lv5); }
 
 /* History: every turn before the exchange under way, a tone back. */

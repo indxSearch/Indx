@@ -39,19 +39,28 @@ namespace IndxServer.Services.Observr
                 catch (OperationCanceledException) { break; }
                 // The day's round, tried again hourly while Observr is unreachable, until the next day's is due.
                 var dayEnds = next.AddDays(1);
-                var round = await RunAsync(stoppingToken);
+                var round = await RunAsync(stoppingToken, next);
                 while (round.StoppedBy == ObservrStatus.Unavailable && DateTime.UtcNow + Retry < dayEnds && !stoppingToken.IsCancellationRequested)
                 {
                     try { await Task.Delay(Retry, stoppingToken); }
                     catch (OperationCanceledException) { break; }
-                    round = await RunAsync(stoppingToken);
+                    round = await RunAsync(stoppingToken, next);
                 }
             }
         }
 
-        /// <summary>One round over every dataset with Observr on.</summary>
-        public async Task<ObservrDigestRound> RunAsync(CancellationToken ct)
+        /// <summary>The datasets the round of <see cref="_roundOf"/> has sent: a round tried again after
+        /// an outage carries on where it stopped, rather than sending the first datasets a second
+        /// digest (a second set of findings, and asks off the day's allowance).</summary>
+        private DateTime _roundOf;
+        private readonly HashSet<(string TeamId, string DataSetName)> _sent = [];
+
+        /// <summary>One round over every dataset with Observr on; <paramref name="roundOf"/> names the
+        /// day's round (its start), so the retries of one round skip what it already sent.</summary>
+        public async Task<ObservrDigestRound> RunAsync(CancellationToken ct, DateTime? roundOf = null)
         {
+            var round = roundOf ?? DateTime.UtcNow.Date;
+            if (round != _roundOf) { _roundOf = round; _sent.Clear(); }
             var sent = 0;
             ObservrStatus? stoppedBy = null;
             if (!client.HasToken) return LastRound = new ObservrDigestRound(DateTime.UtcNow, 0, ObservrStatus.NoToken);
@@ -61,14 +70,16 @@ namespace IndxServer.Services.Observr
             foreach (var (dataSetName, teamId) in IndxServerInternalApi.ManagerOrNull?.GetAllDataSets() ?? [])
             {
                 if (ct.IsCancellationRequested) break;
-                if (!findings.Settings(teamId, dataSetName).ReportsOn(DateTime.UtcNow.DayOfWeek)) continue;
+                if (!findings.Settings(teamId, dataSetName).ReportsOn(round.DayOfWeek) || _sent.Contains((teamId, dataSetName))) continue;
                 try
                 {
                     var outcome = await client.SendDigestAsync(teamId, dataSetName, ct);
-                    if (outcome.Status == ObservrStatus.Ok) sent++;
+                    if (outcome.Status == ObservrStatus.Ok) { sent++; _sent.Add((teamId, dataSetName)); }
                     else logger.LogInformation("Observr digest for {Team}/{Dataset}: {Status} {Reason}", teamId, dataSetName, outcome.Status, outcome.Reason);
                     // A refusal that is the instance's, not the dataset's, ends the round.
-                    if (outcome.Status is ObservrStatus.UnknownToken or ObservrStatus.NoSubscription or ObservrStatus.Unavailable) { stoppedBy = outcome.Status; break; }
+                    // The day's allowance is the licence's, so once it is spent every other dataset would be refused too.
+                    if (outcome.Status is ObservrStatus.UnknownToken or ObservrStatus.NoSubscription or ObservrStatus.Unavailable or ObservrStatus.OverQuota or ObservrStatus.Off)
+                    { stoppedBy = outcome.Status; break; }
                 }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

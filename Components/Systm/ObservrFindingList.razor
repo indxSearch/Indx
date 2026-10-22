@@ -93,6 +93,10 @@ else
                 {
                     <span class="ofl-label">open</span>
                 }
+                @if (Failure is { } failed && failed.Id == f.Id)
+                {
+                    <div class="ofl-failure"><Alert Variant="warning" Role="alert"><Description>@failed.Text</Description></Alert></div>
+                }
             </li>
         }
     </ol>
@@ -110,6 +114,8 @@ else
     /// <summary>The decision, and for a Yes with several proposals which of them (by index); null
     /// means all of them.</summary>
     [Parameter] public EventCallback<(ObservrFinding Finding, bool Yes, IReadOnlyList<int>? Only)> OnDecide { get; set; }
+    /// <summary>Why the last decision could not be carried out, shown on the finding it was about.</summary>
+    [Parameter] public (long Id, string Text)? Failure { get; set; }
 
     /// <summary>A finding with several proposals lets the owner untick some before a Yes, as the
     /// field review's rows did; every proposal starts ticked.</summary>

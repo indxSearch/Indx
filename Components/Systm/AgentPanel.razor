@@ -95,6 +95,13 @@
             {
                 <p class="agent-error">@_error</p>
             }
+            else if (Observr.Allowance is { } allowance && (allowance.Spent() || allowance.Low()))
+            {
+                @* Before the owner types a question it cannot have answered, or as the last few go. *@
+                <p class="agent-allowance">@(allowance.Spent()
+                    ? $"Today's Observr allowance is used up. It is back at midnight UTC, {ObservrText.UntilMidnight()}."
+                    : allowance.Left == 1 ? "One Observr ask left today." : $"{allowance.Left} Observr asks left today.")</p>
+            }
             <div @ref="_end"></div>
         </ChildContent>
         <Composer>

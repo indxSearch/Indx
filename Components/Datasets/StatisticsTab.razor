@@ -9,6 +9,7 @@
 @inherits DatasetTabBase
 @inject StatisticsService Stats
 @inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
+@inject IndxServer.Services.Observr.ObservrSubscription ObservrSubscription
 @inject IndxServer.Services.Observr.AgentPanelState Agent
 @inject IServiceProvider Services
 
@@ -108,7 +109,7 @@ else
             </div>
             @if (_zeroHits)
             {
-                <p class="stats-help">Searches that found nothing, most often first.@(ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name) ? " Ask Observr what went wrong and what to do about it." : "")</p>
+                <p class="stats-help">Searches that found nothing, most often first.@((ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name)) ? " Ask Observr what went wrong and what to do about it." : "")</p>
             }
             else if (_queryOrder != QueryOrder.Searches)
             {
@@ -127,7 +128,7 @@ else
                             <td>@QueryLabel(q.QueryText)</td>
                             <td class="stats-num">@N(q.ZeroHits)</td>
                             <td class="stats-action">
-                                @if (Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
+                                @if (Ctx.IsEditor && (ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name)))
                                 {
                                     var zero = q;
                                     <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => AskZeroHit(zero)">Why nothing?</Button></span>
@@ -140,7 +141,7 @@ else
             }
             else
             {
-            var lowClick = _queryOrder == QueryOrder.LowestClickThrough && Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name);
+            var lowClick = _queryOrder == QueryOrder.LowestClickThrough && Ctx.IsEditor && (ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name));
             <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Top queries" Class="stats-table">
                 <thead><tr><th>Query</th><th class="stats-num">Searches</th><th class="stats-num">Click-through</th><th class="stats-num">Avg. position</th>@if (lowClick) { <th></th> }</tr></thead>
                 <tbody>
@@ -332,7 +333,7 @@ else
             @if (_changes.Count == 0) { <p class="stats-empty">No changes were made to the dataset in this period.</p> }
             @if (_changes.Count > 0)
             {
-                var askChange = Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name);
+                var askChange = Ctx.IsEditor && (ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name));
                 <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Changes" Class="stats-table">
                     <thead><tr><th>When</th><th>What</th>@if (askChange) { <th></th> }</tr></thead>
                     <tbody>

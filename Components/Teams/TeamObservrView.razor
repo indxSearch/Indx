@@ -84,7 +84,7 @@
             </div>
         </div>
 
-        <ObservrFindingList Findings="Shown()" Grid Link="@(f => $"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" CanDecide="_canEdit" Busy="_busy"
+        <ObservrFindingList Findings="Shown()" Grid Link="@(f => $"{TeamRoutes.Dataset(Team.Name, f.DataSetName)}?tab={f.Tab}")" CanDecide="_canEdit" Busy="_busy" Failure="_failure"
                                 OnDecide="d => DecideAsync(d.Finding, d.Yes, d.Only)" OnDiscuss="Discuss" OnHide="HideAsync" KindIcon="StatusTab.KindIcon"
                                 Empty="@(_view == Open
                                     ? (_findings.Count == 0
@@ -151,6 +151,7 @@
     private List<Row>? _rows;
     private List<ObservrFinding> _findings = [];
     private long _busy;
+    private (long Id, string Text)? _failure;
     private Guid _loadedFor;
 
     protected override async Task OnParametersSetAsync()
@@ -189,7 +190,8 @@
     private async Task DecideAsync(ObservrFinding f, bool yes, IReadOnlyList<int>? only)
     {
         _busy = f.Id;
-        try { await Task.Run(() => Observr.Decide(f.Id, yes, only)); }
+        _failure = null;
+        try { if (await Task.Run(() => Observr.Decide(f.Id, yes, only)) is { } why) _failure = (f.Id, why); }
         finally { _busy = 0; }
         await LoadAsync();
     }

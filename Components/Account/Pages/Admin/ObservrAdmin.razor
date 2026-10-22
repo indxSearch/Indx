@@ -17,7 +17,8 @@
         <h2 style="margin-bottom: 4px;">Observr</h2>
         <p style="color: var(--lv5); margin: 0;">
             Indx's agent for search owners: it reads a weekly summary of a dataset's statistics every day, puts what is worth
-            attention on each dataset's Status page, and answers from the Statistics, Fields and Synonyms tabs. Never a record, never a visitor.
+            attention on each dataset's Status page, answers from the Statistics, Fields, Synonyms and Search or ask tabs, and talks in
+            the Agent panel. It reads summaries and names, never whole records and never who a visitor is.
         </p>
     </div>
 </div>
@@ -113,6 +114,20 @@
         {
             <p style="color: var(--lv5); margin: 0 0 8px;">Observr has not been asked since this instance started.</p>
         }
+        @if (Observr.Allowance is { } allowance && allowance.IsToday())
+        {
+            @* The day's allowance as the service last reported it: said here before an owner meets it as a refusal. *@
+            <p style="color: var(--lv6); margin: 0 0 8px;">
+                @if (allowance.Spent())
+                {
+                    <text>This licence has used today's Observr allowance@(allowance.Limit is { } spentOf ? $" of {spentOf:N0} asks" : ""). Asks are refused until midnight UTC, @ObservrText.UntilMidnight(); findings already made stay readable.</text>
+                }
+                else
+                {
+                    <text>@allowance.Left.ToString("N0") of today's @(allowance.Limit is { } of ? of.ToString("N0") + " " : "")Observr asks left, as of <TimeAgo Value="allowance.SeenUtc" />. The allowance comes back at midnight UTC.</text>
+                }
+            </p>
+        }
         @if (Digest.LastRound is { } round)
         {
             <p style="color: var(--lv5); margin: 0 0 8px;">
@@ -121,6 +136,8 @@
                     null => $"The last round of reports went through, {round.Sent} sent,",
                     ObservrStatus.Unavailable => $"The last round of reports stopped because Observr could not be reached, {round.Sent} sent before that; it is tried again every hour until it goes through,",
                     ObservrStatus.NoSubscription => "The last round of reports sent nothing: the subscription does not include Observr or it is off here,",
+                    ObservrStatus.OverQuota => $"The last round of reports stopped because the day's allowance was used up, {round.Sent} sent before that; the rest go with tomorrow's round,",
+                    ObservrStatus.Off => "The last round of reports sent nothing: Observr is off on this instance,",
                     var other => $"The last round of reports stopped: {other},",
                 }) <TimeAgo Value="round.AtUtc" />.
             </p>

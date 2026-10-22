@@ -16,6 +16,7 @@
 @inject SearchOrAskService Service
 @inject SearchOrAskOptions ModelOptions
 @inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
+@inject IndxServer.Services.Observr.ObservrSubscription ObservrSubscription
 @inject IndxServer.Services.Observr.AgentPanelState Agent
 @inject IServiceProvider Services
 
@@ -42,7 +43,7 @@
         </Alert>
     }
 
-    @if (Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
+    @if (Ctx.IsEditor && (ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name)))
     {
         <div class="indx-list-toolbar">
             <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Disabled="@IsDirty" @onclick="SetupInAgent">Help me set this up</Button></span>
