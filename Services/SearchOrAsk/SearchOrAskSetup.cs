@@ -60,9 +60,20 @@ namespace IndxServer.Services.SearchOrAsk
         public bool AnswersAvailable => !string.IsNullOrWhiteSpace(AnswerKey);
         /// <summary>The judge can run: Jev's door has a key.</summary>
         public bool JudgeAvailable => !string.IsNullOrWhiteSpace(JudgeKey);
-        /// <summary>Whether the answer provider reports a cost per call (OpenRouter does); else the
-        /// cost is estimated from <see cref="ModelPrices"/>.</summary>
+        /// <summary>Whether the answer provider reports a cost per call (OpenRouter does). Nothing
+        /// else does, and nothing is estimated: a price table drifted from the list prices by as
+        /// much as ten times (22 Oct 2026), and a cost that may be wrong is worse than none.</summary>
         public bool ReportsCost => Provider == SearchOrAskProviders.OpenRouter;
+        /// <summary>Whether the judge's door reports a cost per call: OpenRouter's does, TypeSafe's
+        /// own and OpenAI's Decisions API report only tokens.</summary>
+        public bool JudgeReportsCost => JudgeProvider == SearchOrAskProviders.OpenRouter;
+        /// <summary>Every call reports what it cost, so the statistics can show a total.</summary>
+        public bool CostsReported => ReportsCost && JudgeReportsCost;
+        /// <summary>The providers that report no cost per call, by name, for the sentence that says why
+        /// no cost is shown.</summary>
+        public IReadOnlyList<string> UnpricedProviders =>
+            new[] { ReportsCost ? null : SearchOrAskProviders.Label(Provider), JudgeReportsCost ? null : SearchOrAskProviders.Label(JudgeProvider) }
+                .Where(n => n != null).Select(n => n!).Distinct().ToList();
         /// <summary>The names a privacy line lists: who receives what visitors type.</summary>
         public string Receivers
         {
@@ -124,7 +135,7 @@ namespace IndxServer.Services.SearchOrAsk
                 _ => o.JudgeModel,
             };
 
-            var (answer, fast, filter) = ModelPrices.DefaultModels(provider);
+            var (answer, fast, filter) = ModelDefaults.For(provider);
             return new SearchOrAskSetup(provider, answerKey, answerBase, judgeProvider, judgeKey, judgeEndpoint, judgeModel,
                 Pick(provider == SearchOrAskProviders.OpenRouter ? o.AnswerModel : null, c.AnswerModel, answer),
                 Pick(provider == SearchOrAskProviders.OpenRouter ? o.FastAnswerModel : null, c.FastAnswerModel, fast),
@@ -133,52 +144,15 @@ namespace IndxServer.Services.SearchOrAsk
         }
     }
 
-    /// <summary>
-    /// Prices per million tokens for the models we name, so a provider that does not report a cost
-    /// per call (everyone but OpenRouter) still gives the statistics a number, marked estimated.
-    /// Overridable from configuration (<c>Indx:SearchOrAsk:Prices</c>, model id to "in,out" in USD),
-    /// since list prices move and a contract may differ.
-    /// </summary>
-    public static class ModelPrices
+    /// <summary>The models each answer provider is called with when nobody names them.</summary>
+    public static class ModelDefaults
     {
-        /// <summary>USD per million input and output tokens. Anthropic's list prices for the models
-        /// the defaults name, as of Oct 2026; OpenAI ids are not listed since the admin names them.</summary>
-        private static readonly Dictionary<string, (double In, double Out)> Defaults = new(StringComparer.OrdinalIgnoreCase)
-        {
-            ["claude-sonnet-5-5"] = (3, 15),
-            ["claude-haiku-4-5"] = (1, 5),
-            ["claude-haiku-5-5"] = (1, 5),
-            ["claude-opus-5-5"] = (15, 75),
-            ["anthropic/claude-sonnet-5.5"] = (3, 15),
-            ["anthropic/claude-haiku-4.5"] = (1, 5),
-            // Jev, the judge: input only, output is not charged (Notes/jev-opportunities.md). Through
-            // OpenRouter the call reports its cost; TypeSafe's own endpoint reports only the tokens.
-            ["jev-1.13.0"] = (0.042, 0),
-            ["typesafe/jev-1.13"] = (0.042, 0),
-        };
-
         /// <summary>The model ids a provider is called with when nobody names them.</summary>
-        public static (string Answer, string Fast, string Filter) DefaultModels(string provider) => provider switch
+        public static (string Answer, string Fast, string Filter) For(string provider) => provider switch
         {
             SearchOrAskProviders.Anthropic => ("claude-sonnet-5-5", "claude-haiku-4-5", "claude-haiku-4-5"),
             SearchOrAskProviders.OpenAi => ("", "", ""),
             _ => ("anthropic/claude-sonnet-5.5", "anthropic/claude-haiku-4.5", "anthropic/claude-haiku-4.5"),
         };
-
-        /// <summary>The estimate, or null when the model is not priced.</summary>
-        public static double? Estimate(string model, long inputTokens, long outputTokens, IReadOnlyDictionary<string, string>? overrides = null)
-        {
-            (double In, double Out)? price = null;
-            if (overrides != null && overrides.TryGetValue(model, out var text))
-            {
-                var parts = text.Split(',');
-                if (parts.Length == 2 && double.TryParse(parts[0], System.Globalization.CultureInfo.InvariantCulture, out var i)
-                    && double.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, out var o))
-                    price = (i, o);
-            }
-            price ??= Defaults.TryGetValue(model, out var d) ? d : null;
-            if (price == null) return null;
-            return (inputTokens * price.Value.In + outputTokens * price.Value.Out) / 1_000_000;
-        }
     }
 }

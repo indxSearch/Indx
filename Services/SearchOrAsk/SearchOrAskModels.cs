@@ -76,9 +76,10 @@ namespace IndxServer.Services.SearchOrAsk
     /// The clients, one door per provider: Jev on OpenRouter's or TypeSafe's System One endpoint;
     /// the answers and the filters on OpenRouter, an OpenAI-compatible endpoint or Anthropic. Raw
     /// HTTP, as JevProbe does: the wire shapes are the contract, and nothing here needs an SDK.
-    /// A provider that reports no cost per call gets an estimate from the price table.
+    /// Only OpenRouter reports what a call cost; on any other provider the cost is left unknown
+    /// (null), never estimated, and the Statistics tab says so (<see cref="SearchOrAskSetup.CostsReported"/>).
     /// </summary>
-    public sealed class SearchOrAskModelClients(IHttpClientFactory http, SearchOrAskOptions options, SearchOrAskSetupProvider setup)
+    public sealed class SearchOrAskModelClients(IHttpClientFactory http, SearchOrAskSetupProvider setup)
         : ISearchOrAskModels
     {
         public const string HttpClientName = "SearchOrAsk";
@@ -113,12 +114,7 @@ namespace IndxServer.Services.SearchOrAsk
                 new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"), ct);
             if (!response.IsSuccessStatusCode) await FailAsync(response, "Judge", ct);
             var json = await response.Content.ReadAsStringAsync(ct);
-            var answer = ParseJudgement(json, questions.Keys);
-            // TypeSafe's own endpoint reports the tokens and no cost: priced from the list, as the
-            // answer models are on a provider that does not report one.
-            if (answer.Cost == null && Cost(s, s.JudgeModel, JsonNode.Parse(json)?["usage"]) is { } estimated)
-                answer = answer with { Cost = estimated };
-            return answer;
+            return ParseJudgement(json, questions.Keys);
         }
 
         /// <summary>Reads the probabilities out of a System One response. "noul" is the documented
@@ -155,7 +151,7 @@ namespace IndxServer.Services.SearchOrAsk
             using var response = await Client(s.JudgeKey).PostAsync(s.JudgeEndpoint,
                 new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"), ct);
             if (!response.IsSuccessStatusCode) await FailAsync(response, "Judge", ct);
-            return ParseDecisions(await response.Content.ReadAsStringAsync(ct), questions.Keys, options.DecisionsPricePerMillion);
+            return ParseDecisions(await response.Content.ReadAsStringAsync(ct), questions.Keys);
         }
 
         /// <summary>A recipe question (Jev's noul: instructions and two criteria) as a Decisions
@@ -167,7 +163,8 @@ namespace IndxServer.Services.SearchOrAsk
             ["instructions"] = $"{noul["instructions"]?.GetValue<string>()}\n\nTrue when: {noul["criteria"]?["true"]?.GetValue<string>()}\n\nFalse when: {noul["criteria"]?["false"]?.GetValue<string>()}",
         };
 
-        public static JudgeAnswer ParseDecisions(string json, IEnumerable<string> questions, double pricePerMillion)
+        /// <summary>The Decisions API's answer: the probabilities, and no cost, since it reports only tokens.</summary>
+        public static JudgeAnswer ParseDecisions(string json, IEnumerable<string> questions)
         {
             var parsed = JsonNode.Parse(json);
             var probabilities = new Dictionary<string, double>();
@@ -179,9 +176,7 @@ namespace IndxServer.Services.SearchOrAsk
                             probabilities[q] = p;
                             break;
                         }
-            // The Decisions API bills input tokens only; the usage block names them one of two ways.
-            var tokens = (parsed?["usage"]?["input_tokens"] ?? parsed?["usage"]?["prompt_tokens"]) is JsonValue t && t.TryGetValue<long>(out var n) ? n : (long?)null;
-            return new JudgeAnswer(probabilities, tokens * pricePerMillion / 1_000_000);
+            return new JudgeAnswer(probabilities, null);
         }
 
         // ── The answers: dispatch by provider ────────────────────────────────
@@ -211,16 +206,9 @@ namespace IndxServer.Services.SearchOrAsk
             return s;
         }
 
-        /// <summary>The call's cost: reported by OpenRouter, else estimated from the tokens.</summary>
-        private double? Cost(SearchOrAskSetup s, string model, JsonNode? usage)
-        {
-            if (usage == null) return null;
-            if (usage["cost"] is JsonValue c && c.TryGetValue<double>(out var usd)) return usd;
-            long In(string a, string b) => usage[a]?.GetValue<long>() ?? usage[b]?.GetValue<long>() ?? 0;
-            var input = In("prompt_tokens", "input_tokens");
-            var output = In("completion_tokens", "output_tokens");
-            return input + output == 0 ? null : ModelPrices.Estimate(model, input, output, options.Prices);
-        }
+        /// <summary>The call's cost as the provider reported it (OpenRouter's <c>usage.cost</c>), or null.</summary>
+        private static double? Cost(SearchOrAskSetup s, string model, JsonNode? usage) =>
+            usage?["cost"] is JsonValue c && c.TryGetValue<double>(out var usd) ? usd : null;
 
         /// <summary>A failed call, with the provider's own reason in the message: a 403 from
         /// OpenRouter is a spent key budget, a guardrail or a moderation flag, and only the body
@@ -437,19 +425,16 @@ namespace IndxServer.Services.SearchOrAsk
             using var response = await Client(s.AnswerKey, anthropic: true).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
             if (!response.IsSuccessStatusCode) await FailAsync(response, "Answer model", ct);
 
-            long input = 0, output = 0;
+            // Anthropic reports tokens, not a cost: the answer's cost stays unknown.
             using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var reader = new StreamReader(stream);
             while (await reader.ReadLineAsync(ct) is { } line)
             {
                 if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
-                var (delta, tokensIn, tokensOut, done) = AnthropicEvent(line[5..].Trim());
-                if (tokensIn is { } i) input = i;
-                if (tokensOut is { } o) output = o;
+                var (delta, _, _, done) = AnthropicEvent(line[5..].Trim());
                 if (delta is { Length: > 0 }) yield return delta;
                 if (done) break;
             }
-            usage.Cost = ModelPrices.Estimate(model, input, output, options.Prices);
         }
 
         /// <summary>One streamed event: a text delta, the input tokens (message_start), the output

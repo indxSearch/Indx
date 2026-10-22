@@ -244,7 +244,10 @@ else
                 {
                     <Stat Label="Sources opened" Hint="Cited sources opened from an answer."><ValueContent>@N(_ask.SourcesOpened)</ValueContent></Stat>
                 }
-                <Stat Label="Cost" Hint="What the AI behind Search or ask cost: the judge, the answers, and the filters the model makes while visitors type. As the provider reports it per call, or estimated from the tokens at list prices (Indx:SearchOrAsk:Prices sets them); a model without a price is left out. Median time to an answer's first words beside it."><ValueContent>@Usd(_ask.Cost + _askBudget.Cost) <span class="stats-tile-sub">@Seconds(_ask.MedianFirstTextMs)</span></ValueContent></Stat>
+                @{ var setup = SearchOrAsk.Setup; }
+                <Stat Label="Cost" Hint="@(setup.CostsReported
+                    ? "What the AI behind Search or ask cost: the judge, the answers, and the filters the model makes while visitors type, as OpenRouter reports it for each call. An answer a visitor leaves before it is written has no cost reported and is not counted. Median time to an answer's first words beside it."
+                    : $"{string.Join(" and ", setup.UnpricedProviders)} {(setup.UnpricedProviders.Count == 1 ? "does" : "do")} not report what a call costs, only its tokens, so no cost is shown here rather than an estimate that may be wrong. Your bill is in that provider's own console. Median time to an answer's first words beside it.")"><ValueContent>@(setup.CostsReported ? Usd(_ask.Cost + _askBudget.Cost) : "—") <span class="stats-tile-sub">@Seconds(_ask.MedianFirstTextMs)</span></ValueContent></Stat>
                 <Stat Label="Calls" Hint="Calls against the daily budget: each judgement, each question asked and each filter the model made while typing, the console's tester included. On a day the budget ran out, the calls after it were turned away, and visitors saw no offers until midnight UTC."><ValueContent>@N(_askBudget.Calls) <span class="stats-tile-sub">@BudgetLine</span></ValueContent></Stat>
             </StatGroup>
             <div class="stats-view">

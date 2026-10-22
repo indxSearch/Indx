@@ -261,7 +261,7 @@
     private string JudgeKeyPlaceholder => _judgeProvider switch { "decisions" => "sk-…", "typesafe" => "", _ => "sk-or-…" };
     private string KeyLabel => _provider switch { "anthropic" => "Anthropic key", "openai" => "API key", _ => "OpenRouter key" };
     private string KeyPlaceholder => _provider switch { "anthropic" => "sk-ant-…", "openai" => "", _ => "sk-or-…" };
-    private (string Answer, string Fast, string Filter) _defaults => IndxServer.Services.SearchOrAsk.ModelPrices.DefaultModels(_provider);
+    private (string Answer, string Fast, string Filter) _defaults => IndxServer.Services.SearchOrAsk.ModelDefaults.For(_provider);
     private string _registrationMode = "Open";
     private string _allowedDomainsText = "";
     private string? _successMessage;

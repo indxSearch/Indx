@@ -25,9 +25,6 @@ namespace IndxServer.Services.SearchOrAsk
         public string? JudgeProvider { get; set; }
         /// <summary>The judge's own key, when its door is not the answer provider's.</summary>
         public string? JudgeApiKey { get; set; }
-        /// <summary>Prices per million tokens, model id to "in,out" in USD, for the estimate a
-        /// provider other than OpenRouter needs (<see cref="ModelPrices"/>).</summary>
-        public Dictionary<string, string>? Prices { get; set; }
 
         /// <summary>Pinned, not an alias: the thresholds were measured on this model, and an alias
         /// would move under them.</summary>
@@ -36,8 +33,6 @@ namespace IndxServer.Services.SearchOrAsk
         public string TypeSafeJudgeModel { get; set; } = "jev-1.13.0";
         /// <summary>OpenAI's Decisions API model, when the judge is that instead of Jev.</summary>
         public string DecisionsModel { get; set; } = "gpt-6-luna";
-        /// <summary>USD per million input tokens on the Decisions API, the only thing it bills.</summary>
-        public double DecisionsPricePerMillion { get; set; } = 0.10;
         /// <summary>The model a dataset's <c>answers: best</c> writes with, the default. Measured on
         /// the docs (11 Oct 2026): first words after 3.5 to 5 s, about $0.018 an answer.</summary>
         public string AnswerModel { get; set; } = "anthropic/claude-sonnet-5.5";
