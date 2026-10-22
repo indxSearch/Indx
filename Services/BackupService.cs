@@ -35,6 +35,26 @@ namespace IndxServer.Services
         /// <summary>Last successful backup per database — for the monitor and the admin pages.</summary>
         public IReadOnlyDictionary<string, DateTimeOffset> LastSuccess => _lastSuccess;
 
+        /// <summary>A file of this name in the backup folder asks for a run now. The deploy script
+        /// (deploy/azure.sh) writes it through Kudu before a deploy and waits for the new copies:
+        /// the live databases are held open, so a copy of the folder never has them, and the
+        /// nightly copies can be most of a day old (22 Oct 2026). A file, not a route: the deploy
+        /// is signed in to Azure, not to the server, and a file in the data folder is something only
+        /// whoever controls the host can write.</summary>
+        public const string RequestFile = "backup-now";
+        internal static readonly TimeSpan RequestPoll = TimeSpan.FromSeconds(15);
+
+        private string Folder => configuration["Backup:Folder"] is { Length: > 0 } f ? f : "./IndxData/backups";
+
+        /// <summary>Whether a run was asked for, taking the request so it runs once.</summary>
+        internal static bool TakeRequest(string folder)
+        {
+            var path = Path.Combine(folder, RequestFile);
+            if (!File.Exists(path)) return false;
+            try { File.Delete(path); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            return true;
+        }
+
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             if (!configuration.GetValue("Backup:Enabled", true))
@@ -47,7 +67,15 @@ namespace IndxServer.Services
                 var timeOfDay = TimeSpan.TryParse(configuration["Backup:TimeOfDay"], out var t) ? t : new TimeSpan(3, 30, 0);
                 var interval = Math.Clamp(configuration.GetValue("Backup:IntervalHours", 24), 1, 24 * 7);
                 var next = NextRun(DateTimeOffset.UtcNow, timeOfDay, interval);
-                try { await Task.Delay(next - DateTimeOffset.UtcNow, stoppingToken); }
+                // Until the scheduled run, or a request for one now, whichever comes first.
+                try
+                {
+                    while (DateTimeOffset.UtcNow < next && !TakeRequest(Folder))
+                    {
+                        var wait = next - DateTimeOffset.UtcNow;
+                        await Task.Delay(wait < RequestPoll ? wait : RequestPoll, stoppingToken);
+                    }
+                }
                 catch (OperationCanceledException) { return; }
                 try
                 {
@@ -75,7 +103,7 @@ namespace IndxServer.Services
         /// </summary>
         public async Task<List<BackupResult>> RunOnceAsync(CancellationToken ct = default)
         {
-            var folder = configuration["Backup:Folder"] is { Length: > 0 } f ? f : "./IndxData/backups";
+            var folder = Folder;
             Directory.CreateDirectory(folder);
 
             var identity = ServerConnectionStrings.ExtractDbPath(
