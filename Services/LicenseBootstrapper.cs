@@ -295,7 +295,7 @@ namespace IndxServer.Services
             // under the persistent /home mount, so ./IndxData survives restarts.) Earlier this
             // returned /home/data on Azure, which the engine never reads — leaving fetched
             // licenses invisible and the instance reporting "unlicensed".
-            return Path.Combine("./IndxData", "indx.license");
+            return Path.Combine(DataPaths.Current, "indx.license");
         }
     }
 }

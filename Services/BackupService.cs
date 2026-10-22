@@ -44,7 +44,11 @@ namespace IndxServer.Services
         public const string RequestFile = "backup-now";
         internal static readonly TimeSpan RequestPoll = TimeSpan.FromSeconds(15);
 
-        private string Folder => configuration["Backup:Folder"] is { Length: > 0 } f ? f : "./IndxData/backups";
+        private string Folder => FolderFor(configuration);
+
+        /// <summary><c>Backup:Folder</c>, else <c>backups</c> in the data folder (<see cref="DataPaths"/>).</summary>
+        internal static string FolderFor(IConfiguration configuration) =>
+            configuration["Backup:Folder"] is { Length: > 0 } f ? f : Path.Combine(DataPaths.Configured(configuration) ?? DataPaths.Default, "backups");
 
         /// <summary>Whether a run was asked for, taking the request so it runs once.</summary>
         internal static bool TakeRequest(string folder)

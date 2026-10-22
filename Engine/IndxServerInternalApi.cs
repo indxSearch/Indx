@@ -148,7 +148,7 @@ namespace IndxServer.Engine
                 return Path.GetFullPath(LicensePath);
 
             // Auto-detect in ./IndxData directory
-            var dataDir = "./IndxData";
+            var dataDir = IndxServer.Services.DataPaths.Current;
             if (Directory.Exists(dataDir))
             {
                 var licenses = Directory.GetFiles(dataDir, "*.license");
@@ -1163,7 +1163,7 @@ namespace IndxServer.Engine
 
         internal IReadOnlyList<LicenseFileInfo> GetLicenseFiles()
         {
-            var dataDir = "./IndxData";
+            var dataDir = IndxServer.Services.DataPaths.Current;
             if (!Directory.Exists(dataDir))
                 return [];
             var activePath = GetLicensePath();
@@ -1180,7 +1180,7 @@ namespace IndxServer.Engine
             var safeName = Path.GetFileName(filename);
             if (!safeName.EndsWith(".license", StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Only .license files are accepted.");
-            var dataDir = "./IndxData";
+            var dataDir = IndxServer.Services.DataPaths.Current;
             Directory.CreateDirectory(dataDir);
             using var fs = File.Create(Path.Combine(dataDir, safeName));
             await content.CopyToAsync(fs);
@@ -1191,8 +1191,8 @@ namespace IndxServer.Engine
             var safeName = Path.GetFileName(filename);
             if (!safeName.EndsWith(".license", StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Only .license files can be deleted.");
-            var dataDir = Path.GetFullPath("./IndxData");
-            var fullPath = Path.GetFullPath(Path.Combine("./IndxData", safeName));
+            var dataDir = Path.GetFullPath(IndxServer.Services.DataPaths.Current);
+            var fullPath = Path.GetFullPath(Path.Combine(IndxServer.Services.DataPaths.Current, safeName));
             if (!fullPath.StartsWith(dataDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Invalid file path.");
             if (File.Exists(fullPath))

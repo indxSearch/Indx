@@ -343,9 +343,9 @@ internal static class StartupPipeline
                 detectedLicenseFile = Path.GetFileName(licensePath);
                 Console.WriteLine($"✓ Using license file: {licensePath}");
             }
-            else if (Directory.Exists("./IndxData"))
+            else if (Directory.Exists(DataPaths.Current))
             {
-                var licenses = Directory.GetFiles("./IndxData", "*.license");
+                var licenses = Directory.GetFiles(DataPaths.Current, "*.license");
                 if (licenses.Length > 0)
                 {
                     // Prefer company licenses over developer licenses (same logic as GetLicensePath)

@@ -50,6 +50,11 @@ internal static class StartupServices
         // ============================================
         // DATABASE CONFIGURATION
         // ============================================
+        // The one data folder (Indx:DataDirectory), before anything reads or writes a data file.
+        DataPaths.Use(builder.Configuration);
+        if (DataPaths.Configured(builder.Configuration) is { } dataDir)
+            foreach (var moved in DataPaths.CarryOver(Path.Combine(builder.Environment.ContentRootPath, "IndxData"), dataDir))
+                Console.WriteLine($"✓ {moved} carried over from the app folder's IndxData to {dataDir}");
         var identityConnectionString = ServerConnectionStrings.GetIdentityConnectionString(builder.Configuration);
         var dbPath = ServerConnectionStrings.ExtractDbPath(identityConnectionString);
         Console.WriteLine($"Using Identity database: {dbPath}");
@@ -303,7 +308,7 @@ internal static class StartupServices
         // Anchor the key file to the content root, NOT the process CWD. IndxServer is launched
         // many ways (various VS profiles, `dotnet run`, the published app) whose working directories
         // differ; a CWD-relative path silently resolves to the wrong place and the key isn't found.
-        var jwtKeyFile = Path.Combine(builder.Environment.ContentRootPath, "IndxData", "jwt.key");
+        var jwtKeyFile = Path.Combine(DataPaths.Configured(builder.Configuration) ?? Path.Combine(builder.Environment.ContentRootPath, "IndxData"), "jwt.key");
         var isPlaceholder = jwtkey == defaultKey;
         var keyMissingOrPlaceholder = string.IsNullOrEmpty(jwtkey) || isPlaceholder;
 

@@ -286,7 +286,11 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     RateLimits__Api__Burst: '200'
     WEBSITES_ENABLE_APP_SERVICE_STORAGE: 'true'
 
-    // Persistent SQLite paths (overrides ServerConnectionStrings default detection)
+    // All data on the Azure Files share, out of the app's folder, which an update replaces:
+    // the databases, statistics, embeddings, instance settings, licence and backups
+    // (IndxServer DataPaths). The two connection strings stay as instances made before the
+    // setting have them; existing settings and licence are carried over on first start.
+    Indx__DataDirectory: '/home/data'
     ConnectionStrings__IdentityConnection: 'Data Source=/home/data/identity.db'
     ConnectionStrings__SearchDataConnection: '/home/data/indx.db'
 
