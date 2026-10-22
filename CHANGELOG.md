@@ -7,7 +7,56 @@ Versions: the server has its own line (2.x). It bundles the Indx core library (`
 5.x) and serves the HTTP API contract `v2.0-beta`, which is the version in every URL. A server
 patch can pick up a newer core without changing the HTTP contract.
 
-## [2.0.0-beta.1] - Unreleased
+## [2.0.0-beta.2] - Unreleased
+
+Runs on IndxSearchLib 5.0.5 or later.
+
+### Added
+
+- **Search or ask (experimental).** One search field that also answers questions. On each pause
+  in typing a judge reads what was typed and the results, and offers to answer; the answer is
+  written from the dataset's own records and cites them. On a catalogue, a description such as
+  "funny space movies from the 80s" becomes filters on the list. Off by default behind three
+  switches, and it runs on your own model key (OpenRouter, Anthropic or any OpenAI-compatible
+  endpoint). The routes are under `…/search-or-ask`, intrface 3.13 has the front end, and the
+  [guide](https://docs.indx.co/guides/search-or-ask) covers the settings.
+- **Observr (early access).** For Pro and Enterprise subscriptions. Observr reads each watched
+  dataset's search statistics every morning and puts what deserves attention on the dataset's
+  Status page, each finding with the change that would fix it; a Yes carries it out through the
+  console's own paths. It also answers from buttons in the dataset's tabs and in the Agent panel.
+  Off until an admin switches it on; the [guide](https://docs.indx.co/guides/observr) lists
+  exactly what is sent.
+- **All data in one folder.** `Indx:DataDirectory` places every file the server keeps: the
+  databases, statistics, vector graphs, instance settings, licence, key file and backups. Point
+  it at a volume of its own (a container volume, an Azure Files share) and a new version of the
+  server can replace its own folder without touching your data. Unset, everything stays in
+  `./IndxData` as before; a connection string with an absolute path still places its database.
+- **A backup on request.** The server's own backup, a verified copy of each database taken
+  while it keeps running, now also runs within seconds of a file named `backup-now` appearing in
+  its backup folder, besides its daily schedule. Useful before an upgrade: ask, wait for the new
+  copies, then deploy.
+
+### Changed
+
+- **A new console layout.** A dataset's sections sit in a side column, with the page you are on
+  at the top and the team switcher beside your account. It works on a phone: the header folds to
+  one row and the dataset switcher opens there too. A sleeping dataset keeps its column, each
+  section greyed with the reason. Statistics show their outline while the numbers load, and the
+  first visit to a team without datasets is a short guide in three steps.
+- **Sharp icons on any screen.** Every icon is drawn at a size its pixels divide into, so they
+  stay crisp on a standard-resolution display instead of blurring between pixels.
+- **A visitor's typing counts once.** Search-as-you-type sends many searches while a visitor
+  types; the statistics fold them into the one they ended on, and now also across a backspace
+  and a pause. A page that searches something other than what was typed can send the typed text
+  as `?typed=` on the search, and the typing is counted once against it.
+- **A search on a sleeping dataset says so in plain words.** The `409 invalidState` detail reads
+  "The dataset is empty or hibernated. Load data into it or wake it up, then try again." instead
+  of a list of engine states, since a search box may show it to whoever searched. The state and
+  the allowed states stay in their own fields for clients that act on them.
+- **The licence file is never part of a build.** `dotnet publish` no longer copies a local
+  `.license` into the output, so a build handed on does not carry your licence with it.
+
+## [2.0.0-beta.1] - 2026-10-08
 
 Runs on IndxSearchLib 5.0.5 or later. First public release of the v2 server; v1 users should read
 the [v1 → v2 migration guide](https://github.com/indxSearch/skill-indx-search/blob/main/references/migration-v4-to-v5.md)
@@ -80,48 +129,8 @@ in the AI skill.
   volume, say). A failure is logged with its whole stack, inner exceptions included, everywhere
   it used to be only a message or text glued into one: failed loads, replaces, wakes and
   searches, and dataset creation in the console.
-- **A new console layout.** A dataset's sections sit in a side column, with the page you are on
-  at the top and the team switcher beside your account. It works on a phone: the header folds to
-  one row and the dataset switcher opens there too. A sleeping dataset keeps its column, each
-  section greyed with the reason. Statistics show their outline while the numbers load, and the
-  first visit to a team without datasets is a short guide in three steps.
-- **Sharp icons on any screen.** Every icon is drawn at a size its pixels divide into, so they
-  stay crisp on a standard-resolution display instead of blurring between pixels.
-- **A visitor's typing counts once.** Search-as-you-type sends many searches while a visitor
-  types; the statistics fold them into the one they ended on, and now also across a backspace
-  and a pause. A page that searches something other than what was typed can send the typed text
-  as `?typed=` on the search, and the typing is counted once against it.
-- **A search on a sleeping dataset says so in plain words.** The `409 invalidState` detail reads
-  "The dataset is empty or hibernated. Load data into it or wake it up, then try again." instead
-  of a list of engine states, since a search box may show it to whoever searched. The state and
-  the allowed states stay in their own fields for clients that act on them.
-- **The licence file is never part of a build.** `dotnet publish` no longer copies a local
-  `.license` into the output, so a build handed on does not carry your licence with it.
 
 ### Added
-
-- **Search or ask (experimental).** One search field that also answers questions. On each pause
-  in typing a judge reads what was typed and the results, and offers to answer; the answer is
-  written from the dataset's own records and cites them. On a catalogue, a description such as
-  "funny space movies from the 80s" becomes filters on the list. Off by default behind three
-  switches, and it runs on your own model key (OpenRouter, Anthropic or any OpenAI-compatible
-  endpoint). The routes are under `…/search-or-ask`, intrface 3.13 has the front end, and the
-  [guide](https://docs.indx.co/guides/search-or-ask) covers the settings.
-- **Observr (early access).** For Pro and Enterprise subscriptions. Observr reads each watched
-  dataset's search statistics every morning and puts what deserves attention on the dataset's
-  Status page, each finding with the change that would fix it; a Yes carries it out through the
-  console's own paths. It also answers from buttons in the dataset's tabs and in the Agent panel.
-  Off until an admin switches it on; the [guide](https://docs.indx.co/guides/observr) lists
-  exactly what is sent.
-- **All data in one folder.** `Indx:DataDirectory` places every file the server keeps: the
-  databases, statistics, vector graphs, instance settings, licence, key file and backups. Point
-  it at a volume of its own (a container volume, an Azure Files share) and a new version of the
-  server can replace its own folder without touching your data. Unset, everything stays in
-  `./IndxData` as before; a connection string with an absolute path still places its database.
-- **A backup on request.** The server's own backup, a verified copy of each database taken
-  while it keeps running, now also runs within seconds of a file named `backup-now` appearing in
-  its backup folder, besides its daily schedule. Useful before an upgrade: ask, wait for the new
-  copies, then deploy.
 
 - **Query parameters per dataset.** A new tab on each dataset, and
   `GET`/`PUT`/`DELETE …/query-parameters`, set the coverage values a search uses when it leaves
