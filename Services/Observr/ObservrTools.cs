@@ -250,8 +250,11 @@ namespace IndxServer.Services.Observr
             {
                 var results = search["results"] as System.Text.Json.Nodes.JsonArray ?? [];
                 sb.AppendLine($"It finds {search["hits"]} records{(search["closeMatch"]?.GetValue<bool>() == false ? ", none a close match" : "")}; the first {results.Count}, as the judge reads them:");
+                // Cut as a statistics label is: a title or section mapped to a long text field must not
+                // carry that text to Observr; what is sent stays names (indx-docs guides/observr.md).
+                static string Cut(string? t) => t is null ? "" : t.Length > StatisticsLabels.MaxLength ? t[..StatisticsLabels.MaxLength] + "…" : t;
                 foreach (var r in results)
-                    sb.AppendLine($"- {r?["title"]}{(string.IsNullOrWhiteSpace(r?["section"]?.ToString()) ? "" : $" ({r?["section"]})")}");
+                    sb.AppendLine($"- {Cut(r?["title"]?.ToString())}{(string.IsNullOrWhiteSpace(r?["section"]?.ToString()) ? "" : $" ({Cut(r?["section"]?.ToString())})")}");
             }
             if (outcome.Result is { } j)
             {
