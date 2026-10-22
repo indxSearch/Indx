@@ -53,7 +53,6 @@ namespace IndxServer.Swagger
                             ["coverageDepth"] = new OpenApiInteger(1000),
                             ["coverageSetup"] = new OpenApiObject
                             {
-                                ["levenshteinMaxWordSize"] = new OpenApiInteger(20),
                                 ["minWordSize"] = new OpenApiInteger(2),
                                 ["truncateWordHitLimit"] = new OpenApiInteger(1),
                                 ["truncateWordHitTolerance"] = new OpenApiInteger(0),
