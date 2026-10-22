@@ -114,17 +114,18 @@
         {
             <p style="color: var(--lv5); margin: 0 0 8px;">Observr has not been asked since this instance started.</p>
         }
-        @if (Observr.Allowance is { } allowance && allowance.IsToday())
+        @if (Observr.Allowance is { } allowance)
         {
-            @* The day's allowance as the service last reported it: said here before an owner meets it as a refusal. *@
+            @* The allowance as Observr reported it, asked for when this page opened: said here before
+               an owner meets it as a refusal. Observr sets the numbers; this instance follows them. *@
             <p style="color: var(--lv6); margin: 0 0 8px;">
                 @if (allowance.Spent())
                 {
-                    <text>This licence has used today's Observr allowance@(allowance.Limit is { } spentOf ? $" of {spentOf:N0} asks" : ""). Asks are refused until midnight UTC, @ObservrText.UntilMidnight(); findings already made stay readable.</text>
+                    <text>@allowance.SpentSentence() Findings already made stay readable.</text>
                 }
                 else
                 {
-                    <text>@allowance.Left.ToString("N0") of today's @(allowance.Limit is { } of ? of.ToString("N0") + " " : "")Observr asks left, as of <TimeAgo Value="allowance.SeenUtc" />. The allowance comes back at midnight UTC.</text>
+                    <text>@allowance.LeftSentence() <span style="color: var(--lv5);">As of <TimeAgo Value="allowance.SeenUtc" />.</span></text>
                 }
             </p>
         }
@@ -154,7 +155,7 @@
         <p style="color: var(--lv5); margin: 0 0 12px;">
             With Observr on, each team gets an Observr page (the Observr button on the team page) where its editors choose per
             dataset whether Observr reads it, how often it reports, and whether its buttons show in the dataset's tabs.
-            Off, nothing of Observr is shown and nothing is sent. Each ask counts against the licence's daily allowance.
+            Off, nothing of Observr is shown and nothing is sent. Each ask counts against the licence's allowance for the month, with a ceiling for the day, which Observr sets.
         </p>
         <ToggleSwitch Label="Observr on this instance" Checked="_enabled" CheckedChanged="SetEnabled" />
     </div>
@@ -171,6 +172,8 @@
     {
         _enabled = InstanceSettings.Load().ObservrEnabled;
         _state = await Subscription.GetAsync();
+        // What the licence has left, from Observr, which sets it: not an ask, and only while on.
+        if (_enabled && _state.Included) await Observr.FetchAllowanceAsync(CancellationToken.None);
     }
 
     private async Task CheckAsync()
@@ -184,7 +187,7 @@
     private async Task PingAsync()
     {
         _pinging = true;
-        try { await Observr.PingAsync(CancellationToken.None); }
+        try { if (await Observr.PingAsync(CancellationToken.None) && _enabled) await Observr.FetchAllowanceAsync(CancellationToken.None); }
         finally { _pinging = false; }
     }
 

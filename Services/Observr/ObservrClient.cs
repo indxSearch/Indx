@@ -270,9 +270,12 @@ namespace IndxServer.Services.Observr
                 : "Observr is part of the Pro and Enterprise subscriptions. This instance's licence does not include it.",
             ObservrStatus.Unavailable => "Observr cannot be reached right now. Try again in a moment.",
             ObservrStatus.Off => "Observr is off on this instance. An admin can switch it on under Admin, Observr.",
-            ObservrStatus.OverQuota => o.Reason == "chatEnded"
-                ? "This conversation has run as long as one question may. Ask again to start a new one."
-                : $"This licence has used today's Observr allowance. It is back at midnight UTC, {UntilMidnight()}.",
+            ObservrStatus.OverQuota => o.Reason switch
+            {
+                "chatEnded" => "This conversation has run as long as one question may. Ask again to start a new one.",
+                "monthlyQuota" => $"This licence has used this month's Observr allowance. It renews on {DateTime.UtcNow.Date.AddDays(1 - DateTime.UtcNow.Day).AddMonths(1).ToString("d MMMM", CultureInfo.InvariantCulture)}.",
+                _ => $"This licence has used today's Observr allowance. It is back at midnight UTC, {UntilMidnight()}.",
+            },
             _ => o.Reason == "datasetNotReady" ? $"The dataset is not ready to search, so there is nothing {nothingYet} yet."
                 : o.Reason == "noStatistics" ? "This instance keeps no statistics, so there is nothing to summarise."
                 : o.Reason == "tooLong" ? $"The question is too long for Observr: up to {ObservrChat.MaxQuestion:N0} characters."
@@ -288,18 +291,39 @@ namespace IndxServer.Services.Observr
         }
     }
 
-    /// <summary>The licence's allowance of asks for the UTC day, as the service last said: how many
-    /// are left, of how many, when it said so, and when it last ran out. A reading from an earlier
-    /// UTC day no longer holds, since the allowance comes back at midnight.</summary>
-    public sealed record ObservrAllowance(int Left, int? Limit, DateTime SeenUtc, DateTime? RanOutUtc)
+    /// <summary>The licence's allowance as Observr last reported it: what is left of the calendar
+    /// month (UTC) and of the day, of how many, and the day the month's renew. Observr sets the
+    /// numbers (a plan's, or a licence's own) and enforces them; this instance only shows them, so
+    /// a customer given more needs nothing changed here. A number Observr does not limit is null.</summary>
+    public sealed record ObservrAllowance(int? MonthLeft, int? MonthLimit, int? DayLeft, int? DayLimit, DateOnly? Renews, DateTime SeenUtc, DateTime? RanOutUtc)
     {
         public const string LeftHeader = "X-Observr-Asks-Left";
         public const string LimitHeader = "X-Observr-Asks-Limit";
-        public bool IsToday(DateTime? nowUtc = null) => SeenUtc.Date == (nowUtc ?? DateTime.UtcNow).Date;
-        /// <summary>Spent today: nothing more is answered until midnight UTC.</summary>
-        public bool Spent(DateTime? nowUtc = null) => IsToday(nowUtc) && Left <= 0;
-        /// <summary>A tenth or less left today: worth a word before it runs out.</summary>
-        public bool Low(DateTime? nowUtc = null) => IsToday(nowUtc) && Left > 0 && Limit is > 0 && Left * 10 <= Limit;
+        public const string TodayLeftHeader = "X-Observr-Asks-Today-Left";
+        public const string TodayLimitHeader = "X-Observr-Asks-Today-Limit";
+        public const string RenewHeader = "X-Observr-Asks-Renew";
+
+        /// <summary>"1,000" on every machine, as the rest of the console writes numbers.</summary>
+        public static string N(int n) => n.ToString("N0", CultureInfo.InvariantCulture);
+
+        private DateOnly RenewsOn => Renews ?? DateOnly.FromDateTime(new DateTime(SeenUtc.Year, SeenUtc.Month, 1).AddMonths(1));
+        private bool SameMonth(DateTime now) => DateOnly.FromDateTime(now) < RenewsOn;
+        public bool MonthSpent(DateTime? nowUtc = null) => MonthLeft <= 0 && SameMonth(nowUtc ?? DateTime.UtcNow);
+        public bool DaySpent(DateTime? nowUtc = null) => DayLeft <= 0 && SeenUtc.Date == (nowUtc ?? DateTime.UtcNow).Date;
+        /// <summary>Nothing more is answered: until midnight UTC for the day, until the renewal for the month.</summary>
+        public bool Spent(DateTime? nowUtc = null) => MonthSpent(nowUtc) || DaySpent(nowUtc);
+        /// <summary>A tenth or less of the month left: worth a word before it runs out.</summary>
+        public bool Low(DateTime? nowUtc = null) => !Spent(nowUtc) && SameMonth(nowUtc ?? DateTime.UtcNow) && MonthLeft is > 0 && MonthLimit is > 0 && MonthLeft * 10 <= MonthLimit;
+
+        /// <summary>"Observr's asks are used up for this month; they renew on 1 November." and the like.</summary>
+        public string SpentSentence(DateTime? nowUtc = null) => MonthSpent(nowUtc)
+            ? $"This licence has used this month's Observr allowance{(MonthLimit is { } m ? $" of {N(m)} asks" : "")}. It renews on {RenewsOn.ToString("d MMMM", CultureInfo.InvariantCulture)}."
+            : $"This licence has used today's Observr allowance{(DayLimit is { } d ? $" of {N(d)} asks" : "")}. It is back at midnight UTC, {ObservrText.UntilMidnight(nowUtc)}.";
+
+        /// <summary>"820 of 1,000 asks left this month, renewing on 1 November; at most 100 a day."</summary>
+        public string LeftSentence() =>
+            (MonthLimit is { } m ? $"{N(MonthLeft ?? 0)} of {N(m)} Observr asks left this month, renewing on {RenewsOn.ToString("d MMMM", CultureInfo.InvariantCulture)}" : "No monthly limit on Observr asks")
+            + (DayLimit is { } d ? $"; at most {N(d)} a day, {N(DayLeft ?? 0)} left today." : ".");
     }
 
     /// <summary>What came of asking: an answer, or why there is none, in a word the console turns
@@ -614,19 +638,45 @@ namespace IndxServer.Services.Observr
             }
         }
 
-        /// <summary>The allowance headers on every answer (<c>X-Observr-Asks-Left</c>, <c>X-Observr-Asks-Limit</c>),
-        /// and a 429 <c>quota</c> as none left. A service that sends neither leaves what was known.</summary>
+        /// <summary>The allowance headers on every answer (what is left of the month and the day, of how
+        /// many, and the renewal), with a 429 <c>quota</c> or <c>monthlyQuota</c> as that one spent.
+        /// A service that sends none leaves what was known.</summary>
         private void ReadAllowance(HttpResponseMessage response, string? reason)
         {
             var now = DateTime.UtcNow;
             static int? Header(HttpResponseMessage r, string name) =>
                 r.Headers.TryGetValues(name, out var v) && int.TryParse(v.FirstOrDefault(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : null;
-            var limit = Header(response, ObservrAllowance.LimitHeader);
-            var left = Header(response, ObservrAllowance.LeftHeader);
-            if (response.StatusCode == HttpStatusCode.TooManyRequests && reason == "quota")
-                Allowance = new ObservrAllowance(0, limit ?? Allowance?.Limit, now, now);
-            else if (left != null)
-                Allowance = new ObservrAllowance(left.Value, limit, now, Allowance?.RanOutUtc);
+            var monthLeft = Header(response, ObservrAllowance.LeftHeader);
+            var dayLeft = Header(response, ObservrAllowance.TodayLeftHeader);
+            var spent = response.StatusCode == HttpStatusCode.TooManyRequests && reason is "quota" or "monthlyQuota";
+            if (monthLeft == null && dayLeft == null && !spent) return;
+            DateOnly? renews = response.Headers.TryGetValues(ObservrAllowance.RenewHeader, out var r) && DateOnly.TryParseExact(r.FirstOrDefault(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : Allowance?.Renews;
+            Allowance = new ObservrAllowance(
+                reason == "monthlyQuota" && spent ? 0 : monthLeft ?? Allowance?.MonthLeft, Header(response, ObservrAllowance.LimitHeader) ?? Allowance?.MonthLimit,
+                reason == "quota" && spent ? 0 : dayLeft ?? Allowance?.DayLeft, Header(response, ObservrAllowance.TodayLimitHeader) ?? Allowance?.DayLimit,
+                renews, now, spent ? now : Allowance?.RanOutUtc);
+        }
+
+        /// <summary>Asks Observr what this licence has left (GET /api/allowance), which is not an ask:
+        /// the admin page's numbers on opening. Null when nothing may be sent or Observr cannot say.</summary>
+        public async Task<ObservrAllowance?> FetchAllowanceAsync(CancellationToken ct)
+        {
+            if (Refused(out var token) is not null) return null;
+            var client = http.CreateClient(HttpClientName);
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{options.Url.TrimEnd('/')}/api/allowance");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var (instanceId, instanceName) = Instance();
+            request.Headers.TryAddWithoutValidation("X-Indx-Instance", instanceId);
+            request.Headers.TryAddWithoutValidation("X-Indx-Instance-Name", instanceName);
+            request.Headers.TryAddWithoutValidation("X-Indx-Server-Version", ServerVersion);
+            try
+            {
+                using var response = await client.SendAsync(request, ct);
+                if (!response.IsSuccessStatusCode) return Allowance;
+                ReadAllowance(response, null);
+                return Allowance;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { return Allowance; }
         }
 
         /// <summary>This build's version as released ("2.0.0-beta.1"), without the commit suffix.</summary>

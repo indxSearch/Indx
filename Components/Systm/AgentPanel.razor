@@ -99,8 +99,8 @@
             {
                 @* Before the owner types a question it cannot have answered, or as the last few go. *@
                 <p class="agent-allowance">@(allowance.Spent()
-                    ? $"Today's Observr allowance is used up. It is back at midnight UTC, {ObservrText.UntilMidnight()}."
-                    : allowance.Left == 1 ? "One Observr ask left today." : $"{allowance.Left} Observr asks left today.")</p>
+                    ? allowance.SpentSentence()
+                    : allowance.MonthLeft == 1 ? "One Observr ask left this month." : $"{ObservrAllowance.N(allowance.MonthLeft ?? 0)} Observr asks left this month.")</p>
             }
             <div @ref="_end"></div>
         </ChildContent>
