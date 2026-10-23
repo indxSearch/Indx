@@ -6,8 +6,9 @@
 // Compile to ARM JSON before packaging:
 //   az bicep build --file main.bicep
 //
-// The resulting main.json goes into the marketplace .zip alongside
-// createUiDefinition.json and viewDefinition.json.
+// The resulting main.json goes into the marketplace .zip as mainTemplate.json, alongside
+// createUiDefinition.json, viewDefinition.json and app.zip (IndxServer itself). Build the whole
+// package with deploy/marketplace-package.sh, never by hand.
 
 // ---------- Parameters ----------
 
@@ -92,6 +93,15 @@ param microsoftClientSecret string = ''
   'Enterprise'
 ])
 param plan string = 'Free'
+
+// Where Azure staged the package's own files, app.zip among them. Azure Marketplace fills both;
+// the defaults are what the template test toolkit requires.
+@description('Location of the package\'s files. Set by Azure; leave the default.')
+param _artifactsLocation string = deployment().properties.templateLink.uri
+
+@description('Access token for the package\'s files. Set by Azure; leave the default.')
+@secure()
+param _artifactsLocationSasToken string = ''
 
 // ---------- Variables ----------
 
@@ -218,7 +228,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
     httpsOnly: true
     siteConfig: {
       netFrameworkVersion: 'v10.0'
-      use64BitWorkerProcess: true
+      use32BitWorkerProcess: false
       alwaysOn: true
       // The dashboard is Blazor Server over SignalR; without WebSockets it falls back to long
       // polling (slow, and a 90 s GET /_blazor in every log line).
@@ -294,6 +304,27 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
 }
 
 // Grant the Web App's managed identity read access to Key Vault secrets
+// ---------- IndxServer itself ----------
+
+// The app comes in the package (app.zip, built against the published IndxSearchLib), so the
+// version a customer installs is the version the package was certified with, and nothing of ours
+// has to stay downloadable. Copied into wwwroot once, after the settings, so the first start
+// already sees the data folder, Key Vault and the edition. The data lives outside wwwroot.
+// ZipDeploy is the extension Microsoft documents for a plain zip by URL (Kudu; the Functions ARM
+// samples); Bicep's types list only MSDeploy, which expects a Web Deploy package, and onedeploy.
+resource appCode 'Microsoft.Web/sites/extensions@2023-12-01' = {
+  parent: webApp
+  #disable-next-line BCP088
+  name: 'ZipDeploy'
+  properties: {
+    packageUri: uri(_artifactsLocation, 'app.zip${_artifactsLocationSasToken}')
+    appOffline: true
+  }
+  dependsOn: [
+    webAppSettings
+  ]
+}
+
 resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: keyVault
   name: guid(keyVault.id, webApp.id, keyVaultSecretsUserRoleId)
