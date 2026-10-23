@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Data.Sqlite;
@@ -673,46 +674,16 @@ internal static class StartupServices
             options.MaxRequestBodySize = 2_000_000_000;
         });
 
-        // CORS: permissive in dev/test for local frontend work; restricted to
-        // Cors:AllowedOrigins (comma-separated) in Production. Marketplace deployments
-        // pass the App Service hostname here via Bicep app settings.
-        var corsAllowedOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? "")
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        builder.Services.AddCors(options =>
-        {
-            options.AddPolicy("NewPolicy", policy =>
-            {
-                if (!builder.Environment.IsProduction())
-                {
-                    // Indx-Query-Id must be EXPOSED, not merely sent: a cross-origin client
-                    // (the storefront) can only read CORS-safelisted response headers, and the
-                    // statistics select/convert events reference exactly this header's value.
-                    policy.AllowAnyOrigin()
-                        .AllowAnyMethod()
-                        .AllowAnyHeader()
-                        .WithExposedHeaders("Indx-Query-Id", "Indx-Ask-Id", IndxServer.Services.QueryParameterResolution.ResponseHeader);
-                }
-                else if (corsAllowedOrigins.Length > 0)
-                {
-                    policy.WithOrigins(corsAllowedOrigins)
-                        .AllowAnyMethod()
-                        .AllowAnyHeader()
-                        .WithExposedHeaders("Indx-Query-Id", "Indx-Ask-Id", IndxServer.Services.QueryParameterResolution.ResponseHeader);
-                }
-                else
-                {
-                    // Production with no origins configured: allow no cross-origin browser
-                    // access rather than falling open. Same-origin traffic (the Blazor UI,
-                    // Swagger, MCP, any server-to-server client) is unaffected by CORS.
-                    policy.WithOrigins();
-                    Console.WriteLine(
-                        "⚠ Cors:AllowedOrigins is not set. Browser apps on other origins cannot call " +
-                        "this API until it is (comma-separated list of origins, e.g. " +
-                        "https://app.example.com). Same-origin use is unaffected.");
-                }
-            });
-        });
+        // CORS: any origin outside Production; in Production the origins set on the instance
+        // settings page, or Cors:AllowedOrigins (comma-separated; the Managed App wizard sets it)
+        // until an admin has saved a list. Read per request: Services/InstanceCors.cs.
+        builder.Services.AddCors();
+        builder.Services.Replace(ServiceDescriptor.Singleton<Microsoft.AspNetCore.Cors.Infrastructure.ICorsPolicyProvider, Services.InstanceCorsPolicyProvider>());
+        if (builder.Environment.IsProduction()
+            && Services.InstanceCorsPolicyProvider.FromConfiguration(builder.Configuration).Count == 0)
+            Console.WriteLine(
+                "ℹ Cors:AllowedOrigins is not set. Unless an admin adds origins under Admin > Settings, " +
+                "browser apps on other origins cannot call this API. Same-origin use is unaffected.");
 
         builder.WebHost.ConfigureKestrel(serverOptions =>
         {

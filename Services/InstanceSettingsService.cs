@@ -20,6 +20,11 @@ internal class InstanceSettings
     public RegistrationMode RegistrationMode { get; set; } = RegistrationMode.Open;
     public List<string> AllowedDomains { get; set; } = [];
     public List<string> AllowedEmails { get; set; } = [];
+
+    /// <summary>The web origins whose browser apps may call the API (CORS), set on the instance
+    /// settings page. Null until an admin saves a list: until then Cors:AllowedOrigins applies.
+    /// See <see cref="InstanceCorsPolicyProvider"/>.</summary>
+    public List<string>? AllowedOrigins { get; set; }
     public bool RequireEmailVerification { get; set; } = false;
     public bool AllowUserSelfDeletion { get; set; } = true;
     public string InstanceName { get; set; } = "Indx";
@@ -138,8 +143,14 @@ internal class InstanceSettingsService
         };
     }
 
+    /// <summary>Raised by every save, so what is derived from the settings (the CORS policy) knows
+    /// to derive again.</summary>
+    public static int Version => _version;
+    private static int _version;
+
     public void Save(InstanceSettings settings)
     {
+        Interlocked.Increment(ref _version);
         Directory.CreateDirectory(DataDirectory);
         var json = JsonSerializer.Serialize(settings, JsonOptions);
         File.WriteAllText(SettingsPath, json);

@@ -55,6 +55,9 @@ param registrationMode string = 'Closed'
 @description('Comma-separated list of allowed email domains when registrationMode = EmailDomain.')
 param allowedEmailDomains string = ''
 
+@description('Comma-separated web origins whose browser apps may call the API (CORS), e.g. https://shop.example.com. The instance\'s admins can change them later in the app.')
+param allowedOrigins string = ''
+
 @description('Email provider for transactional mail.')
 @allowed([
   'Console'
@@ -111,6 +114,11 @@ var siteName = appName
 var keyVaultName = 'kv-${take(uniqueSuffix, 16)}'
 var workspaceName = '${appName}-logs'
 var insightsName = '${appName}-ai'
+
+// The wizard takes the allowed email domains as one comma-separated line; the server reads a list
+// (Registration:AllowedDomains), which app settings spell as numbered keys.
+var allowedDomainList = filter(map(split(allowedEmailDomains, ','), d => trim(d)), d => !empty(d))
+var allowedDomainSettings = toObject(range(0, length(allowedDomainList)), i => 'Registration__AllowedDomains__${i}', i => allowedDomainList[i])
 
 // Built-in role IDs
 var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
@@ -245,7 +253,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
 resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
   parent: webApp
   name: 'appsettings'
-  properties: {
+  properties: union({
     ASPNETCORE_ENVIRONMENT: 'Production'
     // App Service fronts the app with a proxy; this makes RemoteIpAddress the real client, which
     // the per-IP auth rate limit and the request logs depend on.
@@ -269,7 +277,10 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
 
     // Identity / registration
     Registration__Mode: registrationMode
-    Registration__AllowedEmailDomains: allowedEmailDomains
+
+    // CORS: the wizard's origins, until an admin saves a list under Admin > Settings. The
+    // customer cannot change app settings on a managed resource group, so the app holds the rest.
+    Cors__AllowedOrigins: allowedOrigins
     Identity__RequireConfirmedEmail: emailProvider == 'AzureCommunicationServices' ? 'true' : 'false'
     Identity__AdminEmail: adminEmail
     Identity__AdminInitialPassword: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=AdminInitialPassword)'
@@ -295,7 +306,7 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
     ApplicationInsightsAgent_EXTENSION_VERSION: '~3'
     XDT_MicrosoftApplicationInsights_Mode: 'Recommended'
-  }
+  }, allowedDomainSettings)
   dependsOn: [
     keyVaultRoleAssignment
     jwtSecret

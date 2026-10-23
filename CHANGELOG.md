@@ -7,6 +7,15 @@ Versions: the server has its own line (2.x). It bundles the Indx core library (`
 5.x) and serves the HTTP API contract `v2.0-beta`, which is the version in every URL. A server
 patch can pick up a newer core without changing the HTTP contract.
 
+## [Unreleased]
+
+### Added
+
+- **Websites, set in the console.** Admin > Settings now lists the websites whose pages may call
+  the API from the browser, such as a shop with a search box. A change applies at once, without a
+  restart, and `*.example.com` covers every subdomain. Until an admin saves a list,
+  `Cors:AllowedOrigins` applies as before.
+
 ## [2.0.0-beta.2] - Unreleased
 
 Runs on IndxSearchLib 5.0.5 or later.

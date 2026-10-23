@@ -97,6 +97,17 @@
             "constraints": {
               "required": false
             }
+          },
+          {
+            "name": "allowedOrigins",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Websites that call the API",
+            "toolTip": "The websites whose pages search from the browser, comma-separated, e.g. https://shop.example.com,https://www.example.com. You can change them later in the app under Admin, Settings.",
+            "constraints": {
+              "required": false,
+              "regex": "^$|^(https?://[^,\\s/]+)(,\\s*https?://[^,\\s/]+)*$",
+              "validationMessage": "Website addresses with https://, separated by commas."
+            }
           }
         ]
       },
@@ -271,6 +282,7 @@
       "adminInitialPassword": "[steps('admin').adminInitialPassword]",
       "registrationMode": "[steps('admin').registrationMode]",
       "allowedEmailDomains": "[coalesce(steps('admin').allowedEmailDomains, '')]",
+      "allowedOrigins": "[coalesce(steps('admin').allowedOrigins, '')]",
       "emailProvider": "[steps('email').emailProvider]",
       "acsConnectionString": "[coalesce(steps('email').acsConnectionString, '')]",
       "acsFromAddress": "[coalesce(steps('email').acsFromAddress, '')]",

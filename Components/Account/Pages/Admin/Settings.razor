@@ -5,6 +5,7 @@
 @attribute [Authorize(Roles = "Admin")]
 @inject InstanceSettingsService SettingsService
 @inject ILogger<Settings> Logger
+@inject IConfiguration Configuration
 @inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
 
 <PageTitle>Admin — Settings</PageTitle>
@@ -45,6 +46,15 @@
                 <p style="font: var(--text-xs); color: var(--lv4); margin-top: 4px; margin-left: 48px;">When disabled, only admins can delete accounts.</p>
             </div>
         </div>
+    </div>
+
+    <div style="margin-bottom: 32px;">
+        <h3>Websites</h3>
+        <p style="color: var(--lv5); margin: 8px 0 20px;">The websites whose pages may call this instance's API from the browser, such as a shop with a search box.</p>
+        <Textarea Label="Allowed origins" Rows="4" @bind-Value="_originsText" placeholder="https://shop.example.com&#10;https://*.example.com" />
+        <p style="font: var(--text-xs); color: var(--lv4); margin-top: 6px;">
+            One per line, with <code>https://</code>. A <code>*.</code> allows every subdomain. Servers, apps and this console need no entry.
+        </p>
     </div>
 
     <div style="margin-bottom: 32px;">
@@ -264,6 +274,9 @@
     private (string Answer, string Fast, string Filter) _defaults => IndxServer.Services.SearchOrAsk.ModelDefaults.For(_provider);
     private string _registrationMode = "Open";
     private string _allowedDomainsText = "";
+    private string _originsText = "";
+    // What the field showed on load: an untouched field leaves the configuration in force.
+    private string _originsLoaded = "";
     private string? _successMessage;
     private string? _errorMessage;
 
@@ -279,7 +292,7 @@
     private (string, bool, bool, bool, bool, string, string, string) _saved;
     private (string, bool, bool, bool, bool, string, string, string) Current =>
         (_instanceName, _requireEmailVerification, _allowUserSelfDeletion, _mcpEnabled, _searchOrAskShown, _registrationMode, _allowedDomainsText,
-         string.Join('\n', _provider, _baseUrl, _euRouting, _judgeProvider, _answerModel, _fastModel, _filterModel));
+         string.Join('\n', _provider, _baseUrl, _euRouting, _judgeProvider, _answerModel, _fastModel, _filterModel, _originsText));
     private bool IsDirty => Current != _saved || !string.IsNullOrWhiteSpace(_searchOrAskKey) || _removeSearchOrAskKey
         || !string.IsNullOrWhiteSpace(_judgeKey) || _removeJudgeKey;
 
@@ -315,6 +328,9 @@
         _filterModel = settings.SearchOrAskFilterModel ?? "";
         _registrationMode = settings.RegistrationMode.ToString();
         _allowedDomainsText = string.Join("\n", settings.AllowedDomains);
+        // Until an admin saves a list, the configuration's (Cors:AllowedOrigins) is the one in force.
+        _originsText = string.Join("\n", settings.AllowedOrigins ?? InstanceCorsPolicyProvider.FromConfiguration(Configuration));
+        _originsLoaded = _originsText;
         _saved = Current;
     }
 
@@ -337,6 +353,13 @@
                 .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .Where(d => d.Contains('.'))
                 .ToList();
+            var originLines = _originsText.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            var notOrigins = originLines.Where(o => InstanceCorsPolicyProvider.Normalize(o) is null).ToList();
+            if (notOrigins.Count > 0)
+            {
+                _errorMessage = $"Not a website address: {string.Join(", ", notOrigins)}. Write it as https://shop.example.com.";
+                return;
+            }
 
             // Mutate the loaded settings in place — never construct a fresh InstanceSettings,
             // or fields this page doesn't edit (SetupComplete, LicenseToken, Plan, AllowedEmails)
@@ -360,7 +383,10 @@
             settings.SearchOrAskFilterModel = string.IsNullOrWhiteSpace(_filterModel) ? null : _filterModel.Trim();
             settings.RegistrationMode = mode;
             settings.AllowedDomains = domains;
+            if (settings.AllowedOrigins is not null || _originsText != _originsLoaded)
+                settings.AllowedOrigins = [.. originLines.Select(o => InstanceCorsPolicyProvider.Normalize(o)!).Distinct()];
             SettingsService.Save(settings);
+            if (settings.AllowedOrigins is not null) _originsText = _originsLoaded = string.Join("\n", settings.AllowedOrigins);
             SearchOrAsk.InstanceSettingsChanged();
             _searchOrAskKeySaved = !string.IsNullOrWhiteSpace(settings.SearchOrAskApiKey);
             _searchOrAskKey = null;

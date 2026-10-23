@@ -97,7 +97,7 @@ internal static class StartupPipeline
         // placed first means UseCors never runs on a rejection and the response carries no
         // Access-Control-Allow-Origin. A browser then reports an opaque network error, and the
         // rateLimited code and retryAfterSeconds the client was given to read are unreachable.
-        app.UseCors("NewPolicy");
+        app.UseCors(IndxServer.Services.InstanceCorsPolicyProvider.PolicyName);
 
         // Resolve the bearer token once, before the limiter, so the limiter can ask whether the
         // caller is real rather than whether a header is present. Without it, Authorization:
