@@ -26,7 +26,7 @@
             "type": "Microsoft.Common.DropDown",
             "label": "App Service plan size",
             "defaultValue": "Premium P1v3 (recommended)",
-            "toolTip": "Premium tier is required for guaranteed persistent /home/data storage and the always-on indexing workload.",
+            "toolTip": "Premium tier is required for guaranteed persistent D:\\home\\data storage and the always-on indexing workload.",
             "constraints": {
               "allowedValues": [
                 { "label": "Basic B2 (test only)", "value": "B2" },
@@ -240,7 +240,7 @@
             "visible": true,
             "options": {
               "icon": "Info",
-              "text": "Without a license, the engine runs with a 100,000-document limit. After deployment, license the app from its License page: paste a token from license.indx.co to auto-fetch, or upload a .license file. You can also drop a .license file at /home/data/indx.license via the App Service Console."
+              "text": "Without a license, the engine runs with a 100,000-document limit. After deployment, license the app from its License page: paste a token from license.indx.co to auto-fetch, or upload a .license file. You can also drop a .license file at D:\\home\\data\\indx.license via the App Service Console."
             }
           },
           {

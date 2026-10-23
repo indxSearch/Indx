@@ -14,9 +14,9 @@ Local `dotnet run` is unaffected - none of these files are referenced by the pro
 
 ## What gets provisioned per customer
 
-- Linux App Service Plan (default `P1v3`)
-- App Service (Linux, .NET 10) with system-assigned managed identity
-- Storage Account + Azure Files share mounted at `/home/data` (holds `identity.db`, `indx.db`, `indx.license`)
+- Windows App Service Plan (default `P1v3`), as cloud.indx.co runs
+- App Service (Windows, .NET 10, 64-bit) with system-assigned managed identity
+- All data in `D:\home\data`, the app's persistent storage outside `wwwroot` (`identity.db`, `indx.db`, statistics, settings, licence, backups), covered by App Service backups
 - Key Vault holding: JWT signing key, initial admin password, ACS connection string, OAuth client secrets
 - Application Insights (workspace-based) + Log Analytics workspace
 - Diagnostic settings shipping App Service logs to the workspace
