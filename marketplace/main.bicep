@@ -22,6 +22,7 @@ param location string = resourceGroup().location
 
 @description('App Service plan SKU. P1v3 recommended for production.')
 @allowed([
+  'B1'
   'B2'
   'B3'
   'P0v3'

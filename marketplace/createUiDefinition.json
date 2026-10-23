@@ -26,9 +26,10 @@
             "type": "Microsoft.Common.DropDown",
             "label": "App Service plan size",
             "defaultValue": "Premium P1v3 (recommended)",
-            "toolTip": "Premium tier is required for guaranteed persistent D:\\home\\data storage and the always-on indexing workload.",
+            "toolTip": "Basic suits the Free plan and trying Indx out. Premium has the memory and processors a production dataset needs.",
             "constraints": {
               "allowedValues": [
+                { "label": "Basic B1 (Free plan, small datasets)", "value": "B1" },
                 { "label": "Basic B2 (test only)", "value": "B2" },
                 { "label": "Basic B3 (test only)", "value": "B3" },
                 { "label": "Premium P0v3 (light prod)", "value": "P0v3" },
