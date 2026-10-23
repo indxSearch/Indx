@@ -240,7 +240,7 @@
             "visible": true,
             "options": {
               "icon": "Info",
-              "text": "Without a license, the engine runs with a 100,000-document limit. After deployment, license the app from its License page: paste a token from license.indx.co to auto-fetch, or upload a .license file. You can also drop a .license file at D:\\home\\data\\indx.license via the App Service Console."
+              "text": "Your plan includes the Indx licence, with no limit on documents. It reaches the app on its own within a few minutes of the deployment finishing, so there is nothing to enter here."
             }
           },
           {

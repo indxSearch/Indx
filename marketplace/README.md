@@ -24,7 +24,7 @@ Local `dotnet run` is unaffected - none of these files are referenced by the pro
 
 ## Plans & capacity
 
-This package deploys as the **Managed edition** (`Indx__Edition=Managed`). Per-instance licensing is hidden — there are no `.license` files to manage — and features are gated by the purchased plan via `Indx__Plan` (fixed per marketplace plan, not a customer input):
+This package deploys as the **Managed edition** (`Indx__Edition=Managed`). Per-instance licensing is hidden (the licence arrives on its own, below) and features are gated by the purchased plan via `Indx__Plan` (fixed per marketplace plan, not a customer input):
 
 | Plan | Marketplace visibility | What it includes |
 |------|------------------------|------------------|
@@ -38,14 +38,32 @@ Plans differ by **features**, never by document/dataset capacity (there are no c
 
 ### Lifting the 100K document cap
 
-The engine enforces a 100,000-document limit unless a valid `.license` is present (independent of edition/plan). The Managed package lifts it by **bundling a no-expiry Indx master license**, and the mechanism needs **no env var or bicep change** — it rides the existing build pipeline:
+The engine enforces a 100,000-document limit unless a valid `.license` is present. No build carries
+a licence any more (16 Oct 2026, after one was deployed by mistake), so a Managed instance fetches
+one, like a self-hosted instance with a licence token, and the portal (license.indx.co) delivers
+the token without anyone typing it:
 
-- The master license is generated once via the Eziriz `LicenseGenerator` (`LicensedTo = "Indx Managed"`, no expiry) and placed at `IndxData/indx-managed.license`.
-- `IndxServer.csproj` already publishes it: `<Content Include="IndxData\*.license" CopyToPublishDirectory="PreserveNewest" />`.
-- The engine auto-detects `./IndxData/*.license` at startup → cap lifted. No `Indx:LicenseFile` setting required.
-- `*.license` is gitignored, so the file is **never committed** to the public repo. The Managed package build must have it present in `IndxData/` (developer machine, or CI pulling it from a secret); a clean public/self-host build has no license and runs at the 100K cap (self-hosters add their own free dev license from indx.co).
+1. Partner Center's notification address for the offer is
+   `https://license.indx.co/api/marketplace?sig=<Marketplace:NotificationSig>`. Azure posts to it,
+   with `/resource` added, when a customer deploys, updates or deletes the app.
+2. The portal reads the application back from Azure (a notification is not signed), and on a
+   succeeded deployment makes a Managed licence: its tier from the plan id (`enterprise` in it is
+   Enterprise, `pro` is Pro, else Free), its own token.
+3. With the publisher access the offer grants on the managed resource group, the portal writes
+   the token into the App Service's app settings as `Indx__LicenseToken`. The app restarts,
+   fetches `indx.license` into the data folder, and refreshes it daily. The file runs 90 days from
+   each fetch, so a deleted deployment's licence lapses within that time.
+4. Observr's subscription check reads the same token: Professional and Enterprise include it.
 
-Why this is safe to ship universally: payment is enforced by **Azure** (unpaid subscription → Microsoft suspends it → the app stops), and unlimited documents is already free for anyone via the indx.co developer license, so the bundled license has negligible leak value. Keep the app-binaries blob private/SAS regardless.
+What the portal needs, all in its own configuration: `Marketplace:NotificationSig` and the
+publisher app registration (`TenantId`, `ClientId`, `ClientSecret`). That registration is the
+principal named in the offer's publisher access (Contributor on the managed resource group is
+enough to read the site and write its settings). The admin page (Admin > Licenses) lists each
+deployment and whether its token was written; a failed write is answered with a 500, which makes
+Azure send the notification again for up to 10 hours.
+
+The token is an app setting outside the template, so a redeploy of this template over an existing
+instance must not drop it: the template's `appsettings` resource replaces the whole set.
 
 ## Build and package
 
@@ -124,7 +142,7 @@ App-side hardening (in `IndxServer/Program.cs`) that must land before going live
 - [ ] Lock CORS to the deployed hostname in `Production`.
 - [ ] Add `app.MapHealthChecks("/health")`.
 - [ ] Wire `AddApplicationInsightsTelemetry()` from `APPLICATIONINSIGHTS_CONNECTION_STRING`.
-- [x] Startup logic auto-fetches the license to `Indx:LicenseFile` from the Indx portal when a license token is configured (see `LicenseBootstrapper`).
+- [x] Startup logic auto-fetches the license from the Indx portal when a license token is configured (see `LicenseBootstrapper`), Managed included; the portal writes the token (see above).
 - [ ] Switch EF `EnsureCreated()` to `Database.Migrate()` so schema changes can ship to existing customers.
 
 Marketplace-side:

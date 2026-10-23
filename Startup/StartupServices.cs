@@ -751,10 +751,9 @@ internal static class StartupServices
             });
         builder.Services.AddSingleton<Services.ILicenseBootstrapper, Services.LicenseBootstrapper>();
         // Daily background re-fetch so a long-running instance never lets its on-disk license
-        // go stale. No-op until auto-fetch is configured. See LicenseRefreshJob. Skipped in
-        // Managed mode, where licensing is irrelevant.
-        if (edition == Services.IndxEdition.SelfHost)
-            builder.Services.AddHostedService<Services.LicenseRefreshJob>();
+        // go stale. No-op until auto-fetch is configured. See LicenseRefreshJob. Managed too,
+        // with the token the portal writes into its app settings.
+        builder.Services.AddHostedService<Services.LicenseRefreshJob>();
 
         // Application Insights: only activate when a connection string is configured.
         // The Bicep template provisions an AI resource and injects the connection string

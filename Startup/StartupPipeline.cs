@@ -228,7 +228,7 @@ internal static class StartupPipeline
         });
     }
 
-    public static void InitializeIndxSearchSystem(this WebApplication app, IndxEdition edition)
+    public static void InitializeIndxSearchSystem(this WebApplication app)
     {
         // ============================================
         // INTERNAL API INITIALIZATION
@@ -260,8 +260,8 @@ internal static class StartupPipeline
         int userCount = 0;
 
         // Bootstrap license from the Indx portal if a token is configured (no-op otherwise).
-        // Skipped in Managed mode, where licensing is irrelevant.
-        if (edition == Services.IndxEdition.SelfHost)
+        // Managed too: the portal writes a Managed instance's token into its app settings
+        // (Indx__LicenseToken) once Azure reports the deployment, which lifts the document cap.
         {
             using var bootstrapScope = app.Services.CreateScope();
             var bootstrapper = bootstrapScope.ServiceProvider
