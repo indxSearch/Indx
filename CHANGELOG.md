@@ -16,6 +16,11 @@ patch can pick up a newer core without changing the HTTP contract.
   restart, and `*.example.com` covers every subdomain. Until an admin saves a list,
   `Cors:AllowedOrigins` applies as before.
 
+### Changed
+
+- **A smaller install.** The server no longer carries design-time tools and web libraries it never
+  used, about 45 MB less to download and deploy.
+
 ## [2.0.0-beta.2] - Unreleased
 
 Runs on IndxSearchLib 5.0.5 or later.

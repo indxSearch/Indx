@@ -89,7 +89,6 @@
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 			<PrivateAssets>all</PrivateAssets>
 		</PackageReference>
-		<PackageReference Include="Microsoft.VisualStudio.Web.CodeGeneration.Design" Version="10.0.2" />
 		<PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
 		<!-- NLog writes IndxServer.log (Services/ServerLogFile.cs). It came in through the library
 		     until Sep 2026; the library no longer references it. -->
@@ -156,5 +155,14 @@
 	  <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.3" />
 	  <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.0" />
 	</ItemGroup>
+
+	<!-- Identity.UI is referenced for IEmailSender only. Its default UI's static files (Bootstrap,
+	     jQuery, 13 MB) serve nothing here, since the account pages are our own, so they are not
+	     part of the build or the publish. -->
+	<Target Name="DropIdentityUiStaticAssets" AfterTargets="ResolveStaticWebAssetsInputs">
+		<ItemGroup>
+			<StaticWebAsset Remove="@(StaticWebAsset)" Condition="'%(SourceId)' == 'Microsoft.AspNetCore.Identity.UI'" />
+		</ItemGroup>
+	</Target>
 
 </Project>
