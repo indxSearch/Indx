@@ -15,7 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using System.Text;
 using System.Text.Json;
 using Indx.Utilities;
@@ -567,19 +567,11 @@ internal static class StartupServices
                 Description = "JWT Authorization header using the Bearer scheme. Enter your token (without 'Bearer' prefix)."
             });
 
-            c.AddSecurityRequirement(new OpenApiSecurityRequirement
+            // Swashbuckle 10 asks for the requirement per document, so the reference can name the
+            // document that holds the scheme.
+            c.AddSecurityRequirement(document => new OpenApiSecurityRequirement
             {
-                {
-                    new OpenApiSecurityScheme
-                    {
-                        Reference = new OpenApiReference
-                        {
-                            Type = ReferenceType.SecurityScheme,
-                            Id = "Bearer"
-                        }
-                    },
-                    new string[] {}
-                }
+                [new OpenApiSecuritySchemeReference("Bearer", document)] = []
             });
         });
     }

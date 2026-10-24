@@ -1,7 +1,7 @@
+using System.Text.Json.Nodes;
 using Indx.Api;
 using Indx.Http;
-using Microsoft.OpenApi.Any;
-using Microsoft.OpenApi.Models;
+using Microsoft.OpenApi;
 using Swashbuckle.AspNetCore.SwaggerGen;
 
 namespace IndxServer.Swagger
@@ -22,63 +22,68 @@ namespace IndxServer.Swagger
         /// </summary>
         /// <param name="schema">The schema to modify</param>
         /// <param name="context">The schema filter context containing type information</param>
-        public void Apply(OpenApiSchema schema, SchemaFilterContext context)
+        public void Apply(IOpenApiSchema schema, SchemaFilterContext context)
         {
+            // Microsoft.OpenApi 2.x hands the filter the schema as an interface, read-only; the
+            // generator's own schemas are the concrete class, and only they can carry an example.
+            if (schema is not OpenApiSchema own)
+                return;
+
             // RangeFilterProxy examples
             if (context.Type == typeof(RangeFilterProxy))
             {
-                schema.Example = new OpenApiObject
+                own.Example = new JsonObject
                 {
-                    ["fieldName"] = new OpenApiString("price"),
-                    ["lowerLimit"] = new OpenApiDouble(10.0),
-                    ["upperLimit"] = new OpenApiDouble(100.0)
+                    ["fieldName"] = "price",
+                    ["lowerLimit"] = 10.0,
+                    ["upperLimit"] = 100.0
                 };
             }
             // ValueFilterProxy examples
             else if (context.Type == typeof(ValueFilterProxy))
             {
-                schema.Example = new OpenApiObject
+                own.Example = new JsonObject
                 {
-                    ["fieldName"] = new OpenApiString("category"),
-                    ["value"] = new OpenApiString("electronics"),
-                    ["isCaseSensitive"] = new OpenApiBoolean(false)
+                    ["fieldName"] = "category",
+                    ["value"] = "electronics",
+                    ["isCaseSensitive"] = false
                 };
                 // The property is 'object' in C#, which the generator renders as an empty schema.
                 // Say what it takes.
-                if (schema.Properties.TryGetValue("value", out var value))
-                    value.Description = "A string, number or boolean, compared as text against the stored value.";
+                if (own.Properties != null && own.Properties.TryGetValue("value", out var value) && value is OpenApiSchema valueSchema)
+                    valueSchema.Description = "A string, number or boolean, compared as text against the stored value.";
             }
             // BoostProxy examples
             else if (context.Type == typeof(BoostProxy))
             {
-                schema.Example = new OpenApiObject
+                own.Example = new JsonObject
                 {
-                    ["boostStrength"] = new OpenApiInteger((int)BoostStrength.Med),
-                    ["filterProxy"] = new OpenApiObject
+                    ["boostStrength"] = (int)BoostStrength.Med,
+                    ["filterProxy"] = new JsonObject
                     {
-                        ["hashString"] = new OpenApiString("example-filter-token-12345")
+                        ["hashString"] = "example-filter-token-12345"
                     }
                 };
             }
             // CombinedFilterProxy examples
             else if (context.Type == typeof(CombinedFilterProxy))
             {
-                schema.Example = new OpenApiObject
+                own.Example = new JsonObject
                 {
-                    ["filters"] = new OpenApiArray
+                    ["filters"] = new JsonArray
                     {
-                        new OpenApiObject { ["hashString"] = new OpenApiString("example-filter-token-12345") },
-                        new OpenApiObject { ["hashString"] = new OpenApiString("example-filter-token-67890") },
+                        new JsonObject { ["hashString"] = "example-filter-token-12345" },
+                        new JsonObject { ["hashString"] = "example-filter-token-67890" },
                     },
-                    ["useAndOperation"] = new OpenApiBoolean(true)
+                    ["useAndOperation"] = true
                 };
             }
             // FilterProxy examples
             else if (context.Type == typeof(FilterProxy))
             {
-                schema.Example = new OpenApiObject
+                own.Example = new JsonObject
                 {
-                    ["hashString"] = new OpenApiString("example-filter-token-12345")
+                    ["hashString"] = "example-filter-token-12345"
                 };
             }
         }
