@@ -69,41 +69,42 @@
 	<ItemGroup>
 		<!-- The terminal monitor. Pinned exactly: Terminal.Gui v2 breaks between minors. -->
 		<PackageReference Include="Terminal.Gui" Version="2.5.0" />
-		<PackageReference Include="Asp.Versioning.Mvc" Version="8.1.0" />
-		<PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" Version="8.1.0" />
+		<PackageReference Include="Asp.Versioning.Mvc" Version="10.2.1" />
+		<PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" Version="10.2.1" />
 		<PackageReference Include="Azure.Communication.Email" Version="1.1.0" />
-		<PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.3" />
-		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.3" />
-		<PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="10.0.3" />
-		<PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.3" />
-		<PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.3" />
-		<PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="10.0.3" />
-		<PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="2.23.0" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.3">
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.13" />
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.13" />
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="10.0.13" />
+		<PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.13" />
+		<PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.13" />
+		<PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="10.0.13" />
+		<PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="3.2.0" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13">
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 			<PrivateAssets>all</PrivateAssets>
 		</PackageReference>
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.3" />
-		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.3">
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.13">
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 			<PrivateAssets>all</PrivateAssets>
 		</PackageReference>
 		<PackageReference Include="Microsoft.VisualStudio.Web.CodeGeneration.Design" Version="10.0.2" />
-		<PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
+		<PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
 		<!-- NLog writes IndxServer.log (Services/ServerLogFile.cs). It came in through the library
 		     until Sep 2026; the library no longer references it. -->
-		<PackageReference Include="NLog" Version="6.1.0" />
-		<PackageReference Include="NLog.Extensions.Logging" Version="6.1.1" />
-		<PackageReference Include="NuGet.Packaging" Version="6.14.3" />
-		<PackageReference Include="NuGet.Protocol" Version="6.14.3" />
+		<PackageReference Include="NLog" Version="6.2.2" />
+		<PackageReference Include="NLog.Extensions.Logging" Version="6.2.2" />
+		<!-- NuGet.Packaging / NuGet.Protocol: nothing in the server calls them. They are here
+		     to lift the versions Microsoft.VisualStudio.Web.CodeGeneration.Design (the Identity
+		     scaffolder, a design-time tool) resolves, which carry advisories. 7.9.0 in turn
+		     depends on System.Security.Cryptography.Pkcs 8.0.1 (GHSA-846f-f764-76mx, High), so
+		     that one is lifted too. Dropping the scaffolder would let all three go. -->
+		<PackageReference Include="NuGet.Packaging" Version="7.9.0" />
+		<PackageReference Include="NuGet.Protocol" Version="7.9.0" />
+		<PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
 		<PackageReference Include="Swashbuckle.AspNetCore" Version="9.0.6" />
 		<PackageReference Include="Swashbuckle.AspNetCore.Swagger" Version="9.0.6" />
-		<PackageReference Include="System.ServiceModel.Syndication" Version="10.0.3" />
-		<!-- Pin MessagePack to 3.1.7 to remediate CVE-2026-48109 / GHSA-hv8m-jj95-wg3x (High: LZ4
-		     decompression out-of-bounds read). HNSW transitively resolves the vulnerable 3.1.0
-		     (directly in LocalDll mode, via the Indx engine otherwise); this higher reference wins
-		     in every IndxReferenceMode. Patch-level bump within 3.1.x, so HNSW keeps working. -->
-		<PackageReference Include="MessagePack" Version="3.1.7" />
+		<PackageReference Include="System.ServiceModel.Syndication" Version="10.0.13" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -142,10 +143,17 @@
 	<!-- Obfuscated NuGet package. The version is a property so the packaging pipeline can point
 	     a build at the package it just made (-p:IndxSearchLibVersion=… with a local feed). -->
 	<PropertyGroup>
-	  <IndxSearchLibVersion Condition="'$(IndxSearchLibVersion)' == ''">5.0.1</IndxSearchLibVersion>
+	  <IndxSearchLibVersion Condition="'$(IndxSearchLibVersion)' == ''">5.0.5</IndxSearchLibVersion>
 	</PropertyGroup>
 	<ItemGroup Condition="'$(IndxReferenceMode)' == 'NuGet'">
 	  <PackageReference Include="IndxSearchLib" Version="$(IndxSearchLibVersion)" />
+	  <!-- A published IndxSearchLib from before Oct 2026 carries the HNSW package, which
+	       resolves MessagePack 3.1.0 (GHSA-hv8m-jj95-wg3x, High) or the 3.1.7 it was pinned to
+	       (GHSA-qhrr-8q5h-9q3h, Moderate). This higher reference wins. A Source build has no
+	       MessagePack at all since the vector graph became the library's own, so the pin lives
+	       here and not among the server's own packages; drop it once the referenced
+	       IndxSearchLib declares no HNSW. -->
+	  <PackageReference Include="MessagePack" Version="3.1.12" />
 	</ItemGroup>
 
 	<!-- Local obfuscated DLL (testing only, opt-in: -p:IndxFromLocalDll=true).
@@ -157,8 +165,8 @@
 	  </Reference>
 	  <!-- An Indx.dll built before Oct 2026 also needs the HNSW package (26.9.5494); since then
 	       the vector graph is the library's own. -->
-	  <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.3" />
-	  <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.0" />
+	  <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
+	  <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.2" />
 	</ItemGroup>
 
 </Project>

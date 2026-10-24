@@ -22,8 +22,9 @@ namespace IndxServer.Mcp
     internal static class McpSession
     {
         /// <summary>
-        /// Called once per session, at the initialize handshake, with the HTTP context that opened
-        /// it — so the key's claims decide what this session sees.
+        /// Called with the HTTP context of the request, so the key's claims decide what the caller
+        /// sees. Once per session at the initialize handshake while the transport held sessions;
+        /// since it is stateless (SDK 2.0, Oct 2026), on every request.
         /// </summary>
         internal static Task ConfigureAsync(HttpContext http, McpServerOptions options, CancellationToken _)
         {

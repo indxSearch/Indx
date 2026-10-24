@@ -200,11 +200,31 @@ internal static class StartupPipeline
         // MCP endpoint (Streamable HTTP). Requires a valid bearer token (API key) on the JWT
         // scheme specifically — so an unauthenticated call gets a 401 (what MCP clients expect),
         // not a 302 redirect to the cookie login. Tools scope access to the caller's teams.
-        app.MapMcp("/mcp").RequireAuthorization(
-            new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder(
-                    Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme)
-                .RequireAuthenticatedUser()
-                .Build());
+        var mcpPolicy = new Microsoft.AspNetCore.Authorization.AuthorizationPolicyBuilder(
+                Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerDefaults.AuthenticationScheme)
+            .RequireAuthenticatedUser()
+            .Build();
+        app.MapMcp("/mcp").RequireAuthorization(mcpPolicy);
+
+        // The SDK serves the endpoint statelessly (its default since 2.0, and the only way the
+        // 2026-07-28 protocol revision can be served), so it maps POST alone: a GET got routing's
+        // bare 405 with an empty body, before authentication ever ran. That is what someone handed
+        // the URL and nothing else does first - opens it in a browser - and the sentence that says
+        // what this is and what key to ask for (the JWT challenge, StartupServices) was unreachable
+        // again. This GET exists so that call is authenticated: anonymous, it gets the 401 that
+        // explains itself; with a key, a 405 that says the protocol speaks POST here. Stateful
+        // session modes map their own GET on this route; this one would then be ambiguous.
+        app.MapGet("/mcp", (HttpContext context) =>
+        {
+            context.Response.Headers.Allow = "POST";
+            return Results.Problem(
+                statusCode: StatusCodes.Status405MethodNotAllowed,
+                title: "MCP speaks POST",
+                detail: "This is the Model Context Protocol endpoint of an Indx search server. It is "
+                        + "served over Streamable HTTP without sessions: point an MCP client at this URL "
+                        + "and it will POST its requests here. There is nothing to read with GET.",
+                extensions: new Dictionary<string, object?> { ["code"] = "mcpOverPost" });
+        }).RequireAuthorization(mcpPolicy).ExcludeFromDescription();
 
         // Health endpoint - anonymous, used by App Service health probes.
         app.MapHealthChecks("/health").AllowAnonymous();

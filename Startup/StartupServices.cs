@@ -115,14 +115,18 @@ internal static class StartupServices
 
         // MCP server: read-only retrieval tools over /mcp (Streamable HTTP), behind JWT auth.
         builder.Services.AddHttpContextAccessor();
-        // ServerInstructions is sent once at the initialization handshake, so the workflow and the
-        // two or three Indx-specific facts live here rather than being repeated in every tool
-        // description. The audience is an agent that arrives with no documentation and no context:
-        // whatever it needs to get the first call right has to be in this handshake or in the tool
-        // descriptions, because there is nothing else.
-        // The instructions and the tool list are both shaped per session, from the key that
-        // opened it: see IndxServer.Mcp.McpSession. They used to be fixed, which told a Search key
-        // to call tools it could not reach.
+        // ServerInstructions is sent at the handshake (initialize, or server/discover since the
+        // 2026-07-28 revision), so the workflow and the two or three Indx-specific facts live here
+        // rather than being repeated in every tool description. The audience is an agent that
+        // arrives with no documentation and no context: whatever it needs to get the first call
+        // right has to be in this handshake or in the tool descriptions, because there is nothing
+        // else.
+        // The instructions and the tool list are both shaped from the key on the request: see
+        // IndxServer.Mcp.McpSession. They used to be fixed, which told a Search key to call tools
+        // it could not reach. The endpoint is stateless (the SDK's default since 2.0): no session
+        // is held between requests, so the callback runs on every request, and the GET and DELETE
+        // routes of the session-bound transport are not mapped (StartupPipeline maps a GET of its
+        // own for first contact).
         builder.Services.AddMcpServer(options =>
                 options.Filters.Request.ListToolsFilters.Add(IndxServer.Mcp.McpSession.FilterListedTools))
             .WithHttpTransport(transport => transport.ConfigureSessionOptions = IndxServer.Mcp.McpSession.ConfigureAsync)
