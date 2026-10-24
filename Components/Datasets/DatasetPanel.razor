@@ -45,22 +45,31 @@
                     var tab = Ctx.ActiveTab;
                     // Not Ready and not Error: the not-yet sections are shown disabled.
                     var pending = !isReady && engineState != SystemState.Error;
+                    // Asleep: hibernated, not loaded, waking, or created and empty. The upload flow
+                    // is the content (Wake up, its progress, or the upload). A hibernated dataset's
+                    // data is all there, so Options (download, keep-alive, transfer, delete) and
+                    // Statistics need no engine and open; the wake view sits under Status, where a
+                    // dataset's state is read; the rest waits for Wake up (24 Oct 2026).
+                    var asleep = Ctx.HasStatus && Visible && !showNav;
+                    var sleepTab = !asleep ? tab
+                        : Ctx.IsHibernated && tab is "options" or "statistics" ? tab
+                        : Ctx.IsHibernated ? "status" : null;
                     if (!Ctx.HasStatus || !Visible) PublishMenu(null, tab);
                     else if (showNav) PublishMenu(NavItems(isReady, pending), tab);
-                    else PublishMenu(SleepingItems(), null);
+                    else PublishMenu(SleepingItems(), sleepTab);
                 }
 
                 @* ── Tabs. All stay mounted so edit state survives switching; only the active one renders. ── *@
-                <UploadFlow Active="@(tab == "fields")" />
+                <UploadFlow Active="@(asleep ? sleepTab is null or "status" : tab == "fields")" />
                 <FieldConfigTab Active="@(tab == "fields" && isReady)" />
                 <SearchPreviewTab Active="@(tab == "search")" />
-                <StatusTab Active="@(tab == "status")" />
-                <OptionsTab Active="@(tab == "options")" />
+                <StatusTab Active="@(tab == "status" && !asleep)" />
+                <OptionsTab Active="@(sleepTab == "options")" />
                 <BoostRulesTab Active="@(tab == "boosts")" />
                 <SynonymsTab Active="@(tab == "synonyms")" />
                 <QueryParametersTab Active="@(tab == "query-parameters")" />
                 <SearchOrAskTab Active="@(tab == "search-or-ask")" />
-                <StatisticsTab Active="@(tab == "statistics")" />
+                <StatisticsTab Active="@(sleepTab == "statistics")" />
 
             </CascadingValue>
         </Surface>
@@ -220,7 +229,9 @@
     {
         var reason = Ctx.IsHibernated ? Asleep : NotYet;
         return NavItems(isReady: false, pending: true)
-            .Select(i => i with { Disabled = true, Title = reason, Badge = null, BadgeTitle = null })
+            .Select(i => Ctx.IsHibernated && i.Value is "status" or "options" or "statistics"
+                ? i with { Disabled = false, Title = null, Badge = null, BadgeTitle = null }
+                : i with { Disabled = true, Title = reason, Badge = null, BadgeTitle = null })
             .ToList();
     }
 

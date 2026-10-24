@@ -24,7 +24,7 @@
         <h2 style="margin-bottom: 4px;">Users</h2>
         <p style="color: var(--lv5);">Manage user accounts and roles.</p>
     </div>
-    <Button Variant="ghost" Size="micro" IconLeft="_iconRefresh" style="margin-left: auto;" @onclick="LoadUsers">Refresh</Button>
+    <Button Variant="ghost" Size="micro" IconLeft="_iconRefresh" style="margin-left: auto;" Loading="@_loadingUsers" @onclick="LoadUsers">Refresh</Button>
 </div>
 
 @if (!string.IsNullOrEmpty(_message))
@@ -309,16 +309,20 @@ else if (_isInviteMode)
     private static bool IsValidEmail(string email) =>
         !string.IsNullOrWhiteSpace(email) && email.Contains('@') && email.Contains('.');
 
+    private bool _loadingUsers;
+
+    // The admins in one query, not one IsInRoleAsync per user: the page grew a query per account.
     private async Task LoadUsers()
     {
-        var all = UserManager.Users.ToList();
-        var rows = new List<UserRow>();
-        foreach (var u in all)
+        _loadingUsers = true;
+        try
         {
-            var isAdmin = await UserManager.IsInRoleAsync(u, "Admin");
-            rows.Add(new UserRow(u.Id, u.Email, isAdmin, u.EmailConfirmed));
+            var admins = (await UserManager.GetUsersInRoleAsync("Admin")).Select(u => u.Id).ToHashSet();
+            var rows = UserManager.Users.ToList()
+                .Select(u => new UserRow(u.Id, u.Email, admins.Contains(u.Id), u.EmailConfirmed));
+            _users = [.. rows.OrderByDescending(r => r.IsAdmin).ThenBy(r => r.Email)];
         }
-        _users = [.. rows.OrderByDescending(r => r.IsAdmin).ThenBy(r => r.Email)];
+        finally { _loadingUsers = false; }
     }
 
     private async Task PromoteUser(string userId)

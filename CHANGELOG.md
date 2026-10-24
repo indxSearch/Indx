@@ -15,8 +15,18 @@ patch can pick up a newer core without changing the HTTP contract.
   the API from the browser, such as a shop with a search box. A change applies at once, without a
   restart, and `*.example.com` covers every subdomain. Until an admin saves a list,
   `Cors:AllowedOrigins` applies as before.
+- **Download progress.** Downloading a dataset's data shows how far it has come, document by
+  document, and the browser shows the download as started at once.
 
 ### Changed
+
+- **A sleeping dataset can be rescued.** Opening a dataset never loads it any more. One that is
+  hibernated or not loaded opens on Status with Wake up, and its Options are open: download the
+  data, change keep-alive, transfer or delete it, all without loading it into memory. That is the
+  way out when an instance ran out of memory loading a dataset. Before, opening a timed or
+  pinned dataset that was not loaded loaded it there and then, and the console waited.
+- **The console shows when it is working** on Refresh in Admin > Datasets and Admin > Users, on
+  saving keep-alive there, and while the Statistics lists reorder or show more.
 
 - **A smaller install.** The server no longer carries design-time tools and web libraries it never
   used, about 45 MB less to download and deploy.

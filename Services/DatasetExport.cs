@@ -41,7 +41,9 @@ namespace IndxServer.Services
         /// Writes the dataset as a JSON array to <paramref name="output"/>: <c>[</c>, the records
         /// separated by commas, <c>]</c>. An empty dataset is <c>[]</c>. Returns the record count.
         /// </summary>
-        public static async Task<long> WriteJsonArrayAsync(string teamId, string dataSetName, Stream output, CancellationToken ct)
+        /// <param name="written">Told the running count every few hundred records, and at the end.</param>
+        public static async Task<long> WriteJsonArrayAsync(string teamId, string dataSetName, Stream output, CancellationToken ct,
+            Action<long>? written = null)
         {
             await using var writer = new StreamWriter(output, new System.Text.UTF8Encoding(false), bufferSize: 64 * 1024, leaveOpen: true);
             await writer.WriteAsync("[");
@@ -61,11 +63,13 @@ namespace IndxServer.Services
                     count++;
                     // Hand full buffers to the response as they fill, not all at the end.
                     if (count % 1000 == 0) await writer.FlushAsync(ct);
+                    if (count % 250 == 0) written?.Invoke(count);
                 }
             }
 
             await writer.WriteAsync(count == 0 ? "]" : "\n]\n");
             await writer.FlushAsync(ct);
+            written?.Invoke(count);
             return count;
         }
 

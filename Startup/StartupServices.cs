@@ -113,6 +113,7 @@ internal static class StartupServices
             builder.Configuration.GetSection("Registration"));
         builder.Services.AddScoped<RegistrationValidator>();
         builder.Services.AddSingleton<InstanceSettingsService>();
+        builder.Services.AddSingleton<ExportProgress>();
         builder.Services.AddScoped<BrowserFiles>();
         builder.Services.AddSingleton<IDatasetEngines, ManagerDatasetEngines>();
         builder.Services.AddSingleton<ITeamDatasets>(sp => sp.GetRequiredService<IDatasetEngines>());

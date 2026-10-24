@@ -112,3 +112,6 @@
 /* The Observr row under a query that found nothing: full width, no cell padding of its own. */
 .stats-action { text-align: right; white-space: nowrap; }
 ::deep .stats-observr-row td { padding-top: 0; }
+
+/* Beside a section's controls while its list reloads: the rows stay until the new ones land. */
+.stats-view-busy { display: inline-flex; align-items: center; gap: 6px; color: var(--lv4); font: var(--text-xs); }

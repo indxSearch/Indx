@@ -60,8 +60,29 @@ namespace IndxServer.Components.Datasets
         {
             try
             {
-                // Status first: for a timed/pinned dataset GetState triggers the lazy reload, and the
-                // keep-alive view (Ready, remaining time) must describe the engine after that.
+                // A timed/pinned dataset that is not loaded would be loaded and indexed by GetState
+                // itself (ResolveEngine's lazy auto-load), synchronously on this circuit: opening an
+                // idle-evicted dataset froze the console for as long as the index took, with nothing
+                // on screen (Oct 2026). Nor is it woken in the background: the console must be able
+                // to open a dataset without loading it, since that is how its data is rescued when
+                // the instance ran out of memory loading it. It shows as hibernated instead, with
+                // Wake up, and Options (download, keep-alive, delete) open.
+                var before = Engines.GetKeepAliveInfo(Name, TeamId);
+                var engine = Engines.FindSearchEngine(Name, TeamId);
+                bool wouldAutoLoad = before.KeepAliveTimeHrs != 0 && !before.Ready && before.RecordCount > 0
+                    && (engine == null || engine.IsDisposed || engine.Status.SystemState == SystemState.Created)
+                    && Engines.GetWakeProgress(Name, TeamId) == null && !Engines.IsWorkInProgress(Name, TeamId);
+                if (wouldAutoLoad)
+                {
+                    // After a restart there may be no engine at all yet, and building its shell is
+                    // GetState's job; a blank status reads as Created, which is what it is.
+                    Status = engine is { IsDisposed: false } ? engine.Status : new SystemStatus();
+                    KeepAlive = before;
+                    return;
+                }
+
+                // Status first: the keep-alive view (Ready, remaining time) must describe the
+                // engine after any load GetState did.
                 var status = Engines.GetState(Name, TeamId);
                 var keepAlive = Engines.GetKeepAliveInfo(Name, TeamId);
                 Status = status;
@@ -304,9 +325,8 @@ namespace IndxServer.Components.Datasets
             await Task.Run(() => Engines.SleepDataSetInstance(Name, TeamId));
             IndxServer.Engine.IndxServerInternalApi.ManagerOrNull?.ReportChange(
                 Name, TeamId, Services.DatasetChangeKind.Hibernate, new { reason = "manual" });
-            // A hibernated dataset isn't Ready, so the tab nav disappears. Land on the
-            // field-config view, where the "Hibernated → Wake up" UI lives.
-            ActiveTab = "fields";
+            // A hibernated dataset isn't Ready: land on Status, where its Wake up view lives.
+            ActiveTab = "status";
             RefreshStatus();
             await NotifyDatasetListChangedAsync();
         }

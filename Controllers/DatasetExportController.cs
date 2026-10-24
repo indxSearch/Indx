@@ -23,7 +23,7 @@ namespace IndxServer.Controllers
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ProblemDetails), StatusCodes.Status404NotFound)]
-    public class DatasetExportController(TeamContextResolver resolver) : ControllerBase
+    public class DatasetExportController(TeamContextResolver resolver, ExportProgress progress) : ControllerBase
     {
         /// <summary>
         /// Downloads every document in the dataset as one JSON array, ordered by document key —
@@ -36,7 +36,8 @@ namespace IndxServer.Controllers
         [HttpGet("teams/{teamName}/datasets/{dataSetName}/export")]
         [Produces("application/json")]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        public async Task<IActionResult> Export(string teamName, string dataSetName)
+        /// <param name="progressToken">The console's: it shows a progress bar from the count written under it. Leave it out.</param>
+        public async Task<IActionResult> Export(string teamName, string dataSetName, [FromQuery(Name = "progress")] Guid? progressToken = null)
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             var keyScope = ApiKeyScope.For(HttpContext);
@@ -57,7 +58,21 @@ namespace IndxServer.Controllers
             }.ToString();
             Response.Headers.CacheControl = "no-store";
 
-            await DatasetExport.WriteJsonArrayAsync(ctx.OwnerKey, dataSetName, Response.Body, HttpContext.RequestAborted);
+            // The headers go now: the browser shows the download as started at once, rather than
+            // nothing at all while the database sorts a large dataset before its first record.
+            await Response.StartAsync(HttpContext.RequestAborted);
+            if (progressToken is { } token) progress.Started(token);
+            var failed = true;
+            try
+            {
+                await DatasetExport.WriteJsonArrayAsync(ctx.OwnerKey, dataSetName, Response.Body, HttpContext.RequestAborted,
+                    progressToken is { } t ? n => progress.Wrote(t, n) : null);
+                failed = false;
+            }
+            finally
+            {
+                if (progressToken is { } t) progress.Finished(t, failed);
+            }
             return new EmptyResult();
         }
     }

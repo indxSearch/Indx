@@ -20,7 +20,7 @@
         <h2 style="margin-bottom: 4px;">Datasets</h2>
         <p style="color: var(--lv5);">All datasets across all teams.</p>
     </div>
-    <Button Variant="ghost" Size="micro" IconLeft="_iconRefresh" style="margin-left: auto;" @onclick="Load">Refresh</Button>
+    <Button Variant="ghost" Size="micro" IconLeft="_iconRefresh" style="margin-left: auto;" Loading="@_loading" @onclick="Load">Refresh</Button>
 </div>
 
 @if (!string.IsNullOrEmpty(_message))
@@ -104,8 +104,8 @@ else
                                         <InputField @bind-Value="_editHours" placeholder="hours" />
                                     </div>
                                 }
-                                <Button Variant="primary" Size="micro" @onclick="() => SaveKeepAlive(row.DataSetName, row.TeamId)">Save</Button>
-                                <Button Variant="ghost" Size="micro" @onclick="() => _editKey = null">Cancel</Button>
+                                <Button Variant="primary" Size="micro" Loading="@_saving" @onclick="() => SaveKeepAlive(row.DataSetName, row.TeamId)">Save</Button>
+                                <Button Variant="ghost" Size="micro" Disabled="@_saving" @onclick="() => _editKey = null">Cancel</Button>
                             </div>
                         }
                         else
@@ -212,7 +212,18 @@ else
 
     protected override async Task OnInitializedAsync() => await Load();
 
+    // Refresh keeps the rows it has and shows the work on its button: the list only says
+    // "Loading datasets…" the first time, and a reload is a COUNT(*) per dataset.
+    private bool _loading, _saving;
+
     private async Task Load()
+    {
+        _loading = true;
+        try { await LoadRows(); }
+        finally { _loading = false; }
+    }
+
+    private async Task LoadRows()
     {
         // Owner keys are team ids; map them to team names for display.
         var teamMap = (await TeamService.GetAllAsync())
@@ -266,18 +277,23 @@ else
                 break;
         }
 
-        var ok = IndxServerInternalApi.Manager.SetKeepAliveHrs(dataSetName, teamId, hrs);
-        if (ok)
+        _saving = true;
+        try
         {
-            Logger.LogInformation("Admin set KeepAliveTimeHrs={Hrs} for dataset {DataSetName} team {TeamId}", hrs, dataSetName, teamId);
-            _message = $"Keep-alive for \"{dataSetName}\" set to {KeepAliveLabel(hrs)}.";
-            _editKey = null;
-            await Load();
+            var ok = await Task.Run(() => IndxServerInternalApi.Manager.SetKeepAliveHrs(dataSetName, teamId, hrs));
+            if (ok)
+            {
+                Logger.LogInformation("Admin set KeepAliveTimeHrs={Hrs} for dataset {DataSetName} team {TeamId}", hrs, dataSetName, teamId);
+                _message = $"Keep-alive for \"{dataSetName}\" set to {KeepAliveLabel(hrs)}.";
+                await Load();
+                _editKey = null;
+            }
+            else
+            {
+                _errorMessage = $"Could not update keep-alive for \"{dataSetName}\".";
+            }
         }
-        else
-        {
-            _errorMessage = $"Could not update keep-alive for \"{dataSetName}\".";
-        }
+        finally { _saving = false; }
     }
 
     private async Task DeleteDataset(string dataSetName, string teamId)

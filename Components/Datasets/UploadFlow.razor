@@ -44,9 +44,7 @@
     <div class="up-top8 up-actions">
         @if (Ctx.TeamName is { } pendingTeamName)
         {
-            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Download"
-                    Href="@($"api/teams/{Uri.EscapeDataString(pendingTeamName)}/datasets/{Uri.EscapeDataString(Ctx.Name)}/export")"
-                    download="@($"{Ctx.Name}.json")">Download data as JSON</Button>
+            <DatasetDownloadButton Ctx="Ctx" TeamName="@pendingTeamName" />
         }
         @if (Ctx.IsAdmin)
         {
@@ -101,9 +99,7 @@ else if (state == SystemState.Error)
     <div class="up-top8 up-actions">
         @if (Ctx.TeamName is { } errorTeamName)
         {
-            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Download"
-                    Href="@($"api/teams/{Uri.EscapeDataString(errorTeamName)}/datasets/{Uri.EscapeDataString(Ctx.Name)}/export")"
-                    download="@($"{Ctx.Name}.json")">Download data as JSON</Button>
+            <DatasetDownloadButton Ctx="Ctx" TeamName="@errorTeamName" />
         }
         @if (Ctx.IsEditor)
         {
@@ -127,11 +123,32 @@ else if (state == SystemState.Error)
     {
         var recordCount = Ctx.KeepAlive?.RecordCount ?? 0;
         <p class="up-intro up-narrow">
-            This dataset is <strong>hibernated</strong> — @recordCount.ToString("N0") document@(recordCount == 1 ? "" : "s") @(recordCount == 1 ? "is" : "are") stored on disk but not loaded into memory. Wake it to search and edit.
+            @if (Ctx.KeepAlive?.KeepAliveTimeHrs is 0 or null)
+            {
+                <text>This dataset is <strong>hibernated</strong>: @recordCount.ToString("N0") document@(recordCount == 1 ? "" : "s") @(recordCount == 1 ? "is" : "are") stored on disk but not loaded into memory. Wake it to search and edit.</text>
+            }
+            else
+            {
+                @* Timed or pinned, and not loaded: idle eviction, a restart, or a load that failed. The
+                   console never loads it on opening, so a dataset that ran the instance out of memory
+                   can still be opened and its data rescued. *@
+                <text>This dataset is <strong>not loaded</strong>: @recordCount.ToString("N0") document@(recordCount == 1 ? "" : "s") @(recordCount == 1 ? "is" : "are") stored on disk. It loads on its next search, or wake it now to search and edit here.</text>
+            }
         </p>
         <div class="up-row up-top8">
             <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Eye" @onclick="StartWake">Wake up</Button>
         </div>
+        @* Wake up is the one thing this view is for. Downloading the data, deleting the dataset and
+           the rest need no engine and live on Options, which is open while the dataset sleeps. *@
+        @if (Ctx.IsAdmin)
+        {
+            <p class="up-intro up-narrow up-top16">
+                Its data can be downloaded, and the dataset deleted or changed, without waking it.
+            </p>
+            <div class="up-row up-top8">
+                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Sliders" @onclick="OpenOptions">Go to Options</Button>
+            </div>
+        }
         @if (!string.IsNullOrEmpty(Ctx.OperationError))
         {
             <p class="up-error">@Ctx.OperationError</p>
@@ -162,7 +179,7 @@ else if (state == SystemState.Error)
             <p class="up-error">@Ctx.OperationError</p>
         }
     }
-    @if (Ctx.IsAdmin)
+    @if (Ctx.IsAdmin && !Ctx.IsHibernated)
     {
         <div class="up-top16">
             <DeleteDatasetButton Ctx="Ctx" TriggerVariant="secondary" />
@@ -526,9 +543,17 @@ else if (Ctx.IsLoadIndexing)
 
     private CancellationTokenSource? _wakePollCts;
 
+    private void OpenOptions()
+    {
+        Ctx.ActiveTab = "options";
+        Ctx.NotifyChanged();
+    }
+
     private void StartWake()
     {
         Ctx.OperationError = null;
+        // Woken from Status, it opens on Status once Ready: the page that says it is.
+        Ctx.ActiveTab = "status";
         if (!Ctx.Engines.StartWake(Ctx.Name, Ctx.TeamId))
         {
             Ctx.OperationError = "Wake failed: dataset not found";
