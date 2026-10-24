@@ -102,6 +102,7 @@ namespace IndxServer.Services
                 Flag(wanted.Embeddable, field.Embeddable, "embeddable");
                 Flag(wanted.PreloadFilters, field.PreloadFilters, "preloaded");
                 Flag(wanted.HighResolution, field.HighResolution, "high resolution");
+                Flag(wanted.CaseSensitive, field.CaseSensitive, "case-sensitive");
 
                 Number(wanted.Weight, field.Weight, "weight");
                 Number(wanted.BM25b, field.BM25b, "BM25 b");
