@@ -1,0 +1,106 @@
+@* A grid of pixel cells toned by value: columns of Rows cells, filled top to bottom then the next
+   column, so a calendar is weeks across and weekdays down. Zero is the empty tone, the rest four
+   steps up to the ink. Column labels sit beneath at the columns they name, row labels at the
+   left. For days a dataset woke, searches by hour and weekday, anything that is a count per cell
+   of a regular grid. CalendarCells lays days out as weeks. Port of the React Heatmap in
+   indx-systm. *@
+<div class="indx-heatmap @(RowLabels != null ? "indx-heatmap--rows" : "") @Class"
+     style="--heatmap-rows: @Rows; --heatmap-cell: @(Cell)px; --heatmap-pitch: @(Pitch)px;">
+    @if (RowLabels != null)
+    {
+        <div class="indx-heatmap-row-labels" aria-hidden="true">
+            @foreach (var l in RowLabels)
+            {
+                <span class="indx-heatmap-row-label" style="top: @(l.At * Pitch)px;">@l.Text</span>
+            }
+        </div>
+    }
+    <div class="indx-heatmap-grid" role="img" aria-label="@AriaLabel">
+        @{
+            int columns = (Values.Count + Rows - 1) / Rows;
+            double top = Max ?? Values.Where(v => v.HasValue).Select(v => v!.Value).DefaultIfEmpty(0).Max();
+        }
+        @for (int i = 0; i < columns * Rows; i++)
+        {
+            var v = i < Values.Count ? Values[i] : null;
+            if (v == null)
+            {
+                <span class="indx-heatmap-gap"></span>
+                continue;
+            }
+            int level = LevelOf(v.Value, top);
+            <span class="indx-heatmap-cell" style="@(level > 0 ? $"background: {Levels[level - 1]};" : null)"
+                  title="@(Format != null ? Format(v.Value, i) : null)"></span>
+        }
+    </div>
+    @if (ColumnLabels != null)
+    {
+        <div class="indx-heatmap-column-labels" aria-hidden="true">
+            @foreach (var l in ColumnLabels)
+            {
+                <span class="indx-heatmap-column-label" style="left: @(l.At * Pitch)px;">@l.Text</span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>A label and the column (or row) it sits at, from 0.</summary>
+    public sealed record Label(int At, string Text);
+
+    /// <summary>One value per cell, column by column, top to bottom. Null is a gap: no cell drawn.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<double?> Values { get; set; } = Array.Empty<double?>();
+    /// <summary>Cells down; 7 by default, a week.</summary>
+    [Parameter] public int Rows { get; set; } = 7;
+    /// <summary>The value that is the ink; the largest value by default.</summary>
+    [Parameter] public double? Max { get; set; }
+    /// <summary>Labels beneath the grid, at the columns they name: months, hours.</summary>
+    [Parameter] public IReadOnlyList<Label>? ColumnLabels { get; set; }
+    /// <summary>Labels left of the grid, at the rows they name: weekdays.</summary>
+    [Parameter] public IReadOnlyList<Label>? RowLabels { get; set; }
+    /// <summary>A cell's side in pixels; 6 by default, with a 2px gap.</summary>
+    [Parameter] public int Cell { get; set; } = 6;
+    /// <summary>A cell's title on hover, from the value and the cell's index. Nothing by default.</summary>
+    [Parameter] public Func<double, int, string>? Format { get; set; }
+    /// <summary>A name for assistive technology: "Days woken, last six months".</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private int Pitch => Cell + 2;
+
+    // From the empty tone up to the ink in four steps.
+    private static readonly string[] Levels = { "var(--lv3)", "var(--lv4)", "var(--lv5)", "var(--lv8)" };
+
+    public static int LevelOf(double value, double max)
+    {
+        if (value <= 0 || max <= 0) return 0;
+        return Math.Min(Levels.Length, Math.Max(1, (int)Math.Ceiling(value / max * Levels.Length)));
+    }
+
+    private static readonly string[] Months = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+    private static readonly string[] Days = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+
+    /// <summary>The cells of a calendar: values, the labels and which day each cell is (null where it is a gap).</summary>
+    public sealed record Calendar(IReadOnlyList<double?> Values, IReadOnlyList<Label> ColumnLabels, IReadOnlyList<Label> RowLabels, IReadOnlyList<DateOnly?> Dates);
+
+    /// <summary>Days from <paramref name="from"/> to <paramref name="to"/> (inclusive) as weeks across and
+    /// weekdays down, Monday first, with gaps before the first day and after the last. A month label
+    /// stands at the column holding its first day; the weekday labels are Mon, Wed and Fri.</summary>
+    public static Calendar CalendarCells(DateOnly from, DateOnly to, Func<DateOnly, double> valueOf)
+    {
+        var values = new List<double?>();
+        var dates = new List<DateOnly?>();
+        var columnLabels = new List<Label>();
+        int lead = ((int)from.DayOfWeek + 6) % 7;
+        for (int i = 0; i < lead; i++) { values.Add(null); dates.Add(null); }
+        for (var day = from; day <= to; day = day.AddDays(1))
+        {
+            if (day.Day == 1) columnLabels.Add(new Label(values.Count / 7, Months[day.Month - 1]));
+            values.Add(valueOf(day));
+            dates.Add(day);
+        }
+        while (values.Count % 7 != 0) { values.Add(null); dates.Add(null); }
+        var rowLabels = new[] { 0, 2, 4 }.Select(at => new Label(at, Days[at])).ToArray();
+        return new Calendar(values, columnLabels, rowLabels, dates);
+    }
+}
