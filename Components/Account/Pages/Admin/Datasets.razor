@@ -10,6 +10,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject IndxServer.Services.TeamService TeamService
 @inject ILogger<Datasets> Logger
+@inject IndxServer.Services.StatisticsService Stats
 
 <PageTitle>Admin — Datasets</PageTitle>
 
@@ -71,6 +72,7 @@ else
                 <th scope="col" style="text-align: right;">Documents</th>
                 <th scope="col">Last indexed</th>
                 <th scope="col">Keep-alive</th>
+                <th scope="col">Woken</th>
                 <th scope="col" aria-label="Actions"></th>
             </tr>
         </thead>
@@ -128,6 +130,22 @@ else
                             </div>
                         }
                     </td>
+                    @* The days a timed dataset was woken in the last 16 weeks, a cell a day: at a glance
+                       which ones are woken for nothing, and which never. From the statistics change
+                       log, as the Status tab's calendar. Always-on and client-managed never wake. *@
+                    <td>
+                        @if (row.Woken is { } woken)
+                        {
+                            <div class="admin-datasets-woken" title="@(row.WokenDays == 0 ? "Not woken in the last 16 weeks" : $"Woken on {row.WokenDays} of the last 112 days")">
+                                <Heatmap Values="woken.Values" Rows="7" Cell="4" Max="2" AriaLabel="@($"{row.DataSetName}: days woken, last 16 weeks")"
+                                         Format="@((v, i) => woken.Dates[i] is { } d ? $"{d:d MMM yyyy}: {(v == 0 ? "not woken" : v == 1 ? "woken once" : $"woken {v:0} times")}" : "")" />
+                            </div>
+                        }
+                        else
+                        {
+                            <span style="color: var(--lv4);">—</span>
+                        }
+                    </td>
                     <td style="text-align: right;">
                         <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" title="Delete dataset" @onclick="() => { _deleting = row; _deleteOpen = true; }" />
                     </td>
@@ -148,7 +166,8 @@ else
     private record DatasetRow(
         string DataSetName, string TeamId, string? TeamName,
         SystemState? State, int DocumentCount, DateTime? LastIndexed,
-        int KeepAliveTimeHrs, bool Loaded, TimeSpan? Remaining, int RecordCount)
+        int KeepAliveTimeHrs, bool Loaded, TimeSpan? Remaining, int RecordCount,
+        Heatmap.Calendar? Woken = null, int WokenDays = 0)
     {
         public string Key => $"{TeamId}/{DataSetName}";
 
@@ -245,17 +264,42 @@ else
         // never call GetState — that goes through ResolveEngine, which auto-loads a hibernated
         // timed/pinned dataset, so listing the admin page used to load and index every dataset
         // on disk before it could render. FindSearchEngine reads what is in memory only.
+        var store = Stats.Enabled ? Stats.Store : null;
         var rows = await Task.Run(() => all.Select(r =>
         {
             var engine = IndxServerInternalApi.Manager.FindSearchEngine(r.DataSetName, r.TeamId);
             var status = engine is { IsDisposed: false } ? engine.Status : null;
             var ka = IndxServerInternalApi.Manager.GetKeepAliveInfo(r.DataSetName, r.TeamId);
+            var (woken, wokenDays) = ka.KeepAliveTimeHrs is > 0 and not int.MaxValue && store != null
+                ? Woken(store, r.TeamId, r.DataSetName) : (null, 0);
             return new DatasetRow(
                 r.DataSetName, r.TeamId, teamMap.GetValueOrDefault(r.TeamId),
                 status?.SystemState, status?.DocumentCount ?? 0, status?.TimeOfLastIndexBuild,
-                ka.KeepAliveTimeHrs, ka.Ready, ka.Remaining, ka.RecordCount);
+                ka.KeepAliveTimeHrs, ka.Ready, ka.Remaining, ka.RecordCount, woken, wokenDays);
         }).ToList());
         _rows = [.. rows.OrderBy(r => r.TeamName ?? r.TeamId).ThenBy(r => r.DataSetName)];
+    }
+
+    private const int WokenWeeks = 16;
+
+    /// <summary>The wakes of the last 16 weeks per local day of the dataset's statistics zone, as the
+    /// cells of a calendar, and the days with any: the Status tab's read, one query a dataset.</summary>
+    private static (Heatmap.Calendar Calendar, int Days) Woken(IndxServer.Services.StatisticsStore store, string team, string ds)
+    {
+        var tz = store.ZoneOf(team, ds);
+        long toDay = IndxServer.Services.StatisticsDays.Today(tz);
+        long fromDay = toDay - WokenWeeks * 7 + 1;
+        var perDay = new Dictionary<long, int>();
+        foreach (var c in store.Changes(team, ds, fromDay, toDay))
+            if (c.Kind == IndxServer.Services.DatasetChangeKind.Wake)
+            {
+                long day = IndxServer.Services.StatisticsDays.DayOf(tz, c.Timestamp);
+                perDay[day] = perDay.GetValueOrDefault(day) + 1;
+            }
+        int epoch = DateOnly.Parse("1970-01-01").DayNumber;
+        var calendar = Heatmap.CalendarCells(DateOnly.FromDayNumber((int)fromDay + epoch), DateOnly.FromDayNumber((int)toDay + epoch),
+            d => perDay.GetValueOrDefault(d.DayNumber - epoch));
+        return (calendar, perDay.Count);
     }
 
     /// <summary>The largest four datasets by stored documents, the rest as one segment. A name may

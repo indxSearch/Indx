@@ -26,3 +26,7 @@
     white-space: nowrap;
     font-size: 13px;
 }
+
+/* The days-woken strip in a row: the calendar's cells alone, no labels, the height of the row. */
+.admin-datasets-woken { display: inline-flex; vertical-align: middle; }
+.admin-datasets-woken ::deep .indx-heatmap { gap: 0; }
