@@ -55,3 +55,53 @@
         clip-path: inset(0 calc(100% - round(var(--meter-fill, 0%), 4px)) 0 0);
     }
 }
+
+/* The ring: the same bars as radial lines around a circle.
+   The value and ceiling sit in the middle, the label beneath. currentColor is the ink, or the
+   Color parameter set inline on the meter. */
+.indx-barmeter-ring {
+    align-items: center;
+    width: var(--meter-size, 72px);
+    color: var(--lv8);
+}
+
+.indx-barmeter-dial {
+    position: relative;
+    width: var(--meter-size, 72px);
+    height: var(--meter-size, 72px);
+}
+
+.indx-barmeter-svg {
+    display: block;
+}
+
+.indx-barmeter-svg line {
+    stroke-width: 2px;
+    stroke-linecap: butt;
+}
+
+.indx-barmeter-lit {
+    stroke: currentColor;
+}
+
+.indx-barmeter-dim {
+    stroke: var(--lv3);
+}
+
+.indx-barmeter-centre {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    font: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    line-height: 1.1;
+}
+
+.indx-barmeter-ring .indx-barmeter-label {
+    text-align: center;
+}

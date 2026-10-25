@@ -1,30 +1,75 @@
-@* A level against its ceiling, as a row of bars: the filled ones in the ink, the rest dim. A label
-   above, the value at the left below and the ceiling at the right. Where ProgressBar is a
-   percentage on its way to done, BarMeter goes up and down: CPU pressure, memory in use, a quota.
-   The bars are drawn by a repeating gradient, so their number follows the width. Port of the
-   React BarMeter in indx-systm. *@
-<div class="indx-barmeter" role="meter" aria-valuenow="@_now" aria-valuemin="0" aria-valuemax="@_max">
-    <span class="indx-barmeter-label">@Label</span>
-    <div class="indx-barmeter-bars" aria-hidden="true">
-        <div class="indx-barmeter-fill" style="--meter-fill: @(_pct)%;@(_color)"></div>
+@* A level against its ceiling, as bars: the filled ones in the ink, the rest dim. Two shapes. "bar"
+   is a row with a label above, the value at the left below and the ceiling at the right. "ring" is
+   the same bars around a circle, from the top clockwise, the value in the middle, the ceiling under
+   it from 96px, and the label beneath; a 48px ring holds a short value and fits a Stat. Where ProgressBar is a percentage on its way to done, BarMeter goes
+   up and down: CPU pressure, memory in use, a quota. The row's bars are drawn by a repeating
+   gradient, so their number follows the width; the ring's are SVG lines, as many as keep the same
+   4px pitch at the middle of the band. Port of the React BarMeter in indx-systm. *@
+@if (Shape == "ring")
+{
+    <div class="indx-barmeter indx-barmeter-ring" role="meter" aria-valuenow="@_now" aria-valuemin="0" aria-valuemax="@_max"
+         style="--meter-size: @(Size)px;@(_color)">
+        <div class="indx-barmeter-dial">
+            <svg class="indx-barmeter-svg" viewBox="0 0 @Size @Size" width="@Size" height="@Size" aria-hidden="true">
+                @foreach (var line in RingLines())
+                {
+                    <line class="@(line.Lit ? "indx-barmeter-lit" : "indx-barmeter-dim")"
+                          x1="@line.X1" y1="@line.Y1" x2="@line.X2" y2="@line.Y2" />
+                }
+            </svg>
+            <div class="indx-barmeter-centre" aria-hidden="true">
+                <span class="indx-barmeter-value">@Show(Value)</span>
+                @if (Size >= RingCeilingFrom)
+                {
+                    <span class="indx-barmeter-max">@_ceiling</span>
+                }
+            </div>
+        </div>
+        @if (!string.IsNullOrEmpty(Label))
+        {
+            <span class="indx-barmeter-label">@Label</span>
+        }
     </div>
-    <div class="indx-barmeter-foot" aria-hidden="true">
-        <span class="indx-barmeter-value">@Show(Value)</span>
-        <span class="indx-barmeter-max">@(MaxLabel ?? $"of {Show(Max)}")</span>
+}
+else
+{
+    <div class="indx-barmeter" role="meter" aria-valuenow="@_now" aria-valuemin="0" aria-valuemax="@_max">
+        @if (!string.IsNullOrEmpty(Label))
+        {
+            <span class="indx-barmeter-label">@Label</span>
+        }
+        <div class="indx-barmeter-bars" aria-hidden="true">
+            <div class="indx-barmeter-fill" style="--meter-fill: @(_pct)%;@(_color)"></div>
+        </div>
+        <div class="indx-barmeter-foot" aria-hidden="true">
+            <span class="indx-barmeter-value">@Show(Value)</span>
+            <span class="indx-barmeter-max">@_ceiling</span>
+        </div>
     </div>
-</div>
+}
 
 @code {
-    /// <summary>What is measured: "CPU pressure", "Memory".</summary>
+    /// <summary>What is measured: "CPU pressure", "Memory". A ring inside a Stat leaves it to the Stat.</summary>
     [Parameter] public string Label { get; set; } = "";
     [Parameter] public double Value { get; set; }
     [Parameter] public double Max { get; set; } = 100;
     /// <summary>The value as shown; defaults to the number with thousands separators.</summary>
     [Parameter] public Func<double, string>? Format { get; set; }
-    /// <summary>The ceiling as shown at the right; defaults to "of" and the formatted max.</summary>
+    /// <summary>The ceiling as shown; defaults to "of" and the formatted max.</summary>
     [Parameter] public string? MaxLabel { get; set; }
     /// <summary>The filled bars' colour, for a level that has become a problem: the signal red past a threshold.</summary>
     [Parameter] public string? Color { get; set; }
+    /// <summary>"bar" (default), a row of bars, or "ring", a ring of them.</summary>
+    [Parameter] public string Shape { get; set; } = "bar";
+    /// <summary>The ring's diameter in pixels; 72 by default, 48 the smallest that holds a value. From 96 the ceiling joins the value in the middle. The row ignores it.</summary>
+    [Parameter] public int Size { get; set; } = 72;
+
+    private const double RingPitch = 4;
+    // The band is 14px like the row, 6px below 72px so the hole still holds a short value ("84 %"
+    // at 48px); the ceiling joins the value in the hole from 96px, where there is room for a
+    // second line.
+    private const int RingCeilingFrom = 96;
+    private double RingBand => Size < 72 ? 6 : 14;
 
     private static readonly System.Globalization.CultureInfo Inv = System.Globalization.CultureInfo.InvariantCulture;
     private double _fraction => Max > 0 ? Math.Min(1, Math.Max(0, Value / Max)) : 0;
@@ -33,5 +78,29 @@
     private string _now => Value.ToString(Inv);
     private string _max => Max.ToString(Inv);
     private string _color => string.IsNullOrEmpty(Color) ? "" : $"color: {Color};";
+    private string _ceiling => MaxLabel ?? $"of {Show(Max)}";
     private string Show(double n) => Format != null ? Format(n) : n.ToString("#,0.##");
+
+    private readonly record struct RingLine(bool Lit, string X1, string Y1, string X2, string Y2);
+
+    // The ring's bars: 2px radial lines from the inner to the outer radius, as many as give a 4px
+    // pitch along the middle of the band, the first at the top and the rest clockwise. The filled
+    // ones are the first round(fraction * count); the rest dim.
+    private IEnumerable<RingLine> RingLines()
+    {
+        double outer = Size / 2.0;
+        double inner = Math.Max(0, outer - RingBand);
+        double middle = (outer + inner) / 2;
+        int count = Math.Max(4, (int)Math.Round(2 * Math.PI * middle / RingPitch));
+        int filled = (int)Math.Round(_fraction * count);
+        for (int i = 0; i < count; i++)
+        {
+            double angle = (-90 + 360.0 * i / count) * Math.PI / 180;
+            double cos = Math.Cos(angle), sin = Math.Sin(angle);
+            yield return new RingLine(i < filled,
+                F(outer + inner * cos), F(outer + inner * sin), F(outer + outer * cos), F(outer + outer * sin));
+        }
+    }
+
+    private static string F(double v) => v.ToString("0.##", Inv);
 }
