@@ -1,0 +1,185 @@
+@using System.Globalization
+@* A shape across a few dimensions: an axis a dimension from the centre to the rim, the name at its
+   end, two or three faint rings for the scale, and a series as a 1px polygon through its value on
+   each axis with the Chart's square markers at the corners and a fill, solid and faint or a pixel
+   pattern, so two shapes tell apart in one tone. For comparing profiles: a dataset this month
+   against last, two datasets. Hover reads the axis nearest the pointer's angle and lists every
+   series' value on it. One shared scale, or a max per axis for dimensions in different units.
+   Port of the React RadarChart in indx-systm. *@
+<div class="indx-radar-wrapper @Class">
+    <div class="indx-radar" style="--radar-box: @(Box)px;" @onpointerleave="() => _hover = null">
+        <svg class="indx-radar-svg" viewBox="0 0 @Box @Box" width="@Box" height="@Box" role="img" aria-label="@AriaLabel"
+             @onpointermove="OnPointer" @onpointerdown="OnPointer">
+            @if (Series.Any(s => IsPattern(s.Fill)))
+            {
+                <defs>
+                    @for (int si = 0; si < Series.Count; si++)
+                    {
+                        var s = Series[si];
+                        if (!IsPattern(s.Fill)) { continue; }
+                        <pattern id="@PatternId(si)" width="4" height="4" patternUnits="userSpaceOnUse">
+                            @foreach (var (px, py, pw, ph) in PatternCells[s.Fill!])
+                            {
+                                <rect x="@px" y="@py" width="@pw" height="@ph" fill="@ColorOf(s)" />
+                            }
+                        </pattern>
+                    }
+                </defs>
+            }
+            @for (int k = 0; k < Rings; k++)
+            {
+                double r = Radius * (k + 1) / Rings;
+                <polygon class="@(k == Rings - 1 ? "indx-radar-rim" : "indx-radar-ring")" points="@Ring(r)" />
+            }
+            @for (int i = 0; i < Axes.Count; i++)
+            {
+                var (x, y) = Point(i, Radius);
+                <line class="indx-radar-axis @(_hover == i ? "indx-radar-axis-hovered" : "")" x1="@F(Centre)" y1="@F(Centre)" x2="@F(x)" y2="@F(y)" />
+            }
+            @for (int si = 0; si < Series.Count; si++)
+            {
+                var s = Series[si];
+                var pts = Enumerable.Range(0, Axes.Count).Select(i => Point(i, RadiusOf(i, i < s.Values.Count ? s.Values[i] : double.NaN))).ToList();
+                var points = string.Join(' ', pts.Select(p => $"{F(p.X)},{F(p.Y)}"));
+                var fill = s.Fill ?? "solid";
+                if (fill != "none")
+                {
+                    <polygon points="@points" fill="@(IsPattern(fill) ? $"url(#{PatternId(si)})" : ColorOf(s))" fill-opacity="@(fill == "solid" ? F(AreaOpacity) : F(PatternOpacity))" stroke="none" />
+                }
+                <polygon points="@points" fill="none" stroke="@ColorOf(s)" stroke-width="1" stroke-linejoin="round" />
+                @for (int i = 0; i < pts.Count; i++)
+                {
+                    double w = _hover == i ? 7 : 5;
+                    <rect x="@F(pts[i].X - w / 2)" y="@F(pts[i].Y - w / 2)" width="@F(w)" height="@F(w)" fill="@ColorOf(s)" />
+                }
+            }
+            @* SVG text is a reserved Razor tag, so the names go through the builder. *@
+            @RenderLabels
+        </svg>
+        @if (_hover is { } h && h < Axes.Count)
+        {
+            var (tx, ty) = Point(h, Radius + 10);
+            <div class="indx-radar-tooltip @(tx > Centre ? "indx-radar-tooltip-left" : "")" style="left: @F(tx)px; top: @F(ty)px;">
+                <span class="indx-radar-tooltip-label">@Axes[h].Label</span>
+                @foreach (var s in Series)
+                {
+                    <span class="indx-radar-tooltip-row">
+                        @if (Series.Count > 1) { <span class="indx-radar-tooltip-dot" style="background: @ColorOf(s);"></span><span class="indx-radar-tooltip-name">@s.Label</span> }
+                        <span class="indx-radar-tooltip-value">@Show(h, h < s.Values.Count ? s.Values[h] : 0)</span>
+                    </span>
+                }
+            </div>
+        }
+    </div>
+    @if (ShowLegend && Series.Count > 1)
+    {
+        <div class="indx-radar-legend">
+            @foreach (var s in Series)
+            {
+                <span class="indx-radar-legend-item"><span class="indx-radar-legend-mark" style="background: @ColorOf(s);"></span><span class="indx-radar-legend-label">@s.Label</span></span>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>A dimension: its name, its own ceiling for a unit of its own, and how its value is shown.</summary>
+    public sealed record Axis(string Label, double? Max = null, Func<double, string>? Format = null);
+    /// <summary>One shape: a value an axis in the axes' order, its colour (the first is the ink), and its fill:
+    /// "solid" (the default, faint), "hatch", "dots", "checker" or "none".</summary>
+    public sealed record RadarSeries(string Label, IReadOnlyList<double> Values, string? Color = null, string? Fill = null);
+
+    [Parameter, EditorRequired] public IReadOnlyList<Axis> Axes { get; set; } = Array.Empty<Axis>();
+    [Parameter, EditorRequired] public IReadOnlyList<RadarSeries> Series { get; set; } = Array.Empty<RadarSeries>();
+    /// <summary>The diameter of the rim in pixels, the names outside it; 240 by default.</summary>
+    [Parameter] public int Size { get; set; } = 240;
+    /// <summary>The value that reaches the rim on every axis without a max of its own; the largest by default.</summary>
+    [Parameter] public double? Max { get; set; }
+    /// <summary>The scale rings inside the rim; 3 by default.</summary>
+    [Parameter] public int Rings { get; set; } = 3;
+    /// <summary>A value as shown in the tooltip; the number by default.</summary>
+    [Parameter] public Func<double, string>? Format { get; set; }
+    /// <summary>The legend under the chart with several series; on by default.</summary>
+    [Parameter] public bool ShowLegend { get; set; } = true;
+    /// <summary>A name for assistive technology: "Dataset profile, this month and last".</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private const string DefaultColor = "var(--lv6)";
+    // A pattern is drawn a little translucent, so a shape under it still shows through.
+    private const double AreaOpacity = 0.14, PatternOpacity = 0.7, MinLabelRoom = 36;
+    // Room outside the rim for the names: at least this, more for a long one (6.5px a character).
+    private double LabelRoom => Math.Max(MinLabelRoom, (Axes.Count > 0 ? Axes.Max(a => a.Label.Length) : 0) * 6.5 + 14);
+    private static readonly Dictionary<string, (int X, int Y, int W, int H)[]> PatternCells = new()
+    {
+        ["hatch"] = new[] { (0, 3, 1, 1), (1, 2, 1, 1), (2, 1, 1, 1), (3, 0, 1, 1) },
+        ["dots"] = new[] { (0, 0, 2, 2) },
+        ["checker"] = new[] { (0, 0, 2, 2), (2, 2, 2, 2) },
+    };
+    private readonly string _patternId = "indx-radar-" + Guid.NewGuid().ToString("N")[..8];
+    private string PatternId(int si) => $"{_patternId}-{si}";
+    private static bool IsPattern(string? fill) => fill != null && PatternCells.ContainsKey(fill);
+
+    private int? _hover;
+    private double Radius => Size / 2.0;
+    private double Box => Size + LabelRoom * 2;
+    private double Centre => Box / 2;
+    private double Top => Max ?? Series.SelectMany(s => s.Values).Where(double.IsFinite).DefaultIfEmpty(0).Max();
+    private double CeilingOf(int i) => Axes[i].Max ?? Top;
+    private double AngleOf(int i) => -Math.PI / 2 + 2 * Math.PI * i / Math.Max(1, Axes.Count);
+    private (double X, double Y) Point(int i, double r) => (Centre + r * Math.Cos(AngleOf(i)), Centre + r * Math.Sin(AngleOf(i)));
+    private double RadiusOf(int i, double v)
+    {
+        double c = CeilingOf(i);
+        return c > 0 && double.IsFinite(v) ? Math.Min(1, Math.Max(0, v / c)) * Radius : 0;
+    }
+    private static string ColorOf(RadarSeries s) => s.Color ?? DefaultColor;
+    private string Show(int i, double v) => Axes[i].Format?.Invoke(v) ?? Format?.Invoke(v) ?? v.ToString("#,0.##", CultureInfo.InvariantCulture);
+    private string Ring(double r) => string.Join(' ', Enumerable.Range(0, Axes.Count).Select(i => { var (x, y) = Point(i, r); return $"{F(x)},{F(y)}"; }));
+
+    private RenderFragment RenderLabels => builder =>
+    {
+        int seq = 0;
+        for (int i = 0; i < Axes.Count; i++)
+        {
+            var (x, y) = Point(i, Radius + 10);
+            double cos = Math.Cos(AngleOf(i)), sin = Math.Sin(AngleOf(i));
+            string anchor = Math.Abs(cos) < 0.2 ? "middle" : cos > 0 ? "start" : "end";
+            string dy = sin > 0.5 ? "0.9em" : sin < -0.5 ? "-0.2em" : "0.35em";
+            builder.OpenElement(seq++, "text");
+            builder.AddAttribute(seq++, "class", _hover == i ? "indx-radar-label indx-radar-label-hovered" : "indx-radar-label");
+            builder.AddAttribute(seq++, "x", F(x));
+            builder.AddAttribute(seq++, "y", F(y));
+            builder.AddAttribute(seq++, "dy", dy);
+            builder.AddAttribute(seq++, "text-anchor", anchor);
+            builder.AddContent(seq++, Axes[i].Label);
+            builder.CloseElement();
+        }
+    };
+
+    // The axis nearest the pointer's angle from the centre; only a move to another redraws.
+    private void OnPointer(PointerEventArgs e)
+    {
+        if (Axes.Count == 0) return;
+        double x = e.OffsetX - Centre, y = e.OffsetY - Centre;
+        int? next = null;
+        if (Math.Sqrt(x * x + y * y) <= Radius + LabelRoom)
+        {
+            double turn = ((Math.Atan2(y, x) + Math.PI / 2 + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI);
+            next = (int)Math.Round(turn * Axes.Count) % Axes.Count;
+        }
+        if (next == _hover) { _skipRender = true; return; }
+        _hover = next;
+    }
+
+    private bool _skipRender;
+
+    protected override bool ShouldRender()
+    {
+        if (!_skipRender) return true;
+        _skipRender = false;
+        return false;
+    }
+
+    private static string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+}
