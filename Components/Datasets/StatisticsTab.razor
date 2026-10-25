@@ -354,68 +354,71 @@ else
                     : $"{string.Join(" and ", setup.UnpricedProviders)} {(setup.UnpricedProviders.Count == 1 ? "does" : "do")} not report what a call costs, only its tokens, so no cost is shown here rather than an estimate that may be wrong. Your bill is in that provider's own console. Median time to an answer's first words beside it.")"><ValueContent>@(setup.CostsReported ? Usd(_ask.Cost + _askBudget.Cost) : "—") <span class="stats-tile-sub">@Seconds(_ask.MedianFirstTextMs)</span></ValueContent></Stat>
                 <Stat Label="Calls" Hint="Calls against the daily budget: each judgement, each question asked and each filter the model made while typing, the console's tester included. On a day the budget ran out, the calls after it were turned away, and visitors saw no offers until midnight UTC."><ValueContent>@N(_askBudget.Calls) <span class="stats-tile-sub">@BudgetLine</span></ValueContent></Stat>
             </StatGroup>
-            @* The section's pictures, in the overview's grid: how the asks ended, offers and asks
-               against the day's budget, today against the budget, when people ask, and what it
-               cost day by day where the provider reports it. *@
-            <div class="stats-overview stats-ask-panels">
-                @if (_ask.Asks > 0)
-                {
-                    <div class="stats-overview-item">
-                        <div class="stats-chart-head"><span class="stats-chart-title">How the asks ended</span></div>
-                        <p class="stats-help">Answered in @Pct(_ask.Answered, _ask.Asks) of @N(_ask.Asks) asks.</p>
-                        <BarMeter Segments="AskOutcomeSegments()" Labels="legend" Format="@(v => Pct((long)v, _ask.Asks))" />
-                    </div>
-                }
-                @if (_askDays.Count > 0)
-                {
-                    var days = AskDaySeries();
-                    var budget = AskBudgetSeries();
-                    <div class="stats-overview-item">
-                        <div class="stats-chart-head"><span class="stats-chart-title">Offers and asks per day</span></div>
-                        <p class="stats-help">Searches an offer was shown beside, and the questions asked. The calls against the day's budget beside them: past the budget the rest of the day's visitors saw no offers.</p>
-                        <Chart Type="line" Labels="days.Labels" Height="150" YAxis="right"
-                               Series="@(new List<Chart.ChartSeries> {
-                                   new("Offers", days.Offers, Fill: "solid"),
-                                   new("Asks", days.Asks, "var(--CTeal)"),
-                                   new("Calls", budget.Calls, "var(--lv5)", Step: true),
-                               })"
-                               References="@(budget.Budget > 0 ? new List<Chart.ChartReference> { new(budget.Budget, "budget", "var(--CSignal)", Signal: true) } : null)" />
-                    </div>
-                }
-                @if (_askBudgetToday > 0)
-                {
-                    <div class="stats-overview-item">
-                        <div class="stats-chart-head"><span class="stats-chart-title">Today against the budget</span></div>
-                        <p class="stats-help">Calls so far today, UTC, of the daily budget set under Options. Past it, visitors see no offers until midnight.</p>
-                        <BarMeter Value="_askCallsToday" Max="_askBudgetToday" Format="@(v => N((long)v))" MaxLabel="@($"of {N(_askBudgetToday)} calls")"
-                                  Color="@(_askCallsToday >= _askBudgetToday * 0.85 ? "var(--CSignal)" : null)" />
-                    </div>
-                }
-                @if (_askWeekHour is { Total: > 0 } askWeek)
-                {
-                    <div class="stats-overview-item">
-                        <div class="stats-chart-head"><span class="stats-chart-title">When people ask</span></div>
-                        <p class="stats-help">The week by hour in the dataset's time zone: whether questions come when nobody is there to answer them.</p>
-                        <Heatmap Values="WeekHourCells(askWeek)" Rows="7" ColumnLabels="HourLabels" RowLabels="WeekdayLabels"
-                                 Format="@((v, i) => $"{WeekdayNames[i % 7]} {i / 7:00}:00-{(i / 7 + 1) % 24:00}:00: {N((long)v)} {(v == 1 ? "ask" : "asks")}")"
-                                 AriaLabel="Asks by weekday and hour" Cell="9" />
-                    </div>
-                }
-                @if (SearchOrAsk.Setup.CostsReported && _askDays.Any(d => d.Cost > 0))
-                {
-                    var days = AskDaySeries();
-                    <div class="stats-overview-item">
-                        <div class="stats-chart-head"><span class="stats-chart-title">Cost per day</span></div>
-                        <p class="stats-help">What the judge, the answers and the filters cost each day, as the provider reports it.</p>
-                        <Chart Type="bar" Labels="days.Labels" Height="120" ShowLegend="false" YAxis="right" YFormat="@(v => v < 0.01 && v > 0 ? "< $0.01" : v.ToString("$0.00"))"
-                               Series="@(new List<Chart.ChartSeries> { new("Cost", days.Cost) })" />
-                    </div>
-                }
-            </div>
             <div class="stats-view">
                 <Tabs Items="AskViewItems" Active="@_askView" ActiveChanged="@(v => _askView = v ?? "questions")" Size="micro" Variant="button" AriaLabel="Search or ask view" />
             </div>
-            @if (_askView == "questions")
+            @if (_askView == "overview")
+            {
+                @* The Overview view: the section's pictures, in the overview's grid. How the asks ended,
+                   offers and asks against the day's budget, today against the budget, when people ask,
+                   and what it cost day by day where the provider reports it. *@
+                <div class="stats-overview stats-ask-panels">
+                    @if (_ask.Asks > 0)
+                    {
+                        <div class="stats-overview-item">
+                            <div class="stats-chart-head"><span class="stats-chart-title">How the asks ended</span></div>
+                            <p class="stats-help">Answered in @Pct(_ask.Answered, _ask.Asks) of @N(_ask.Asks) asks.</p>
+                            <BarMeter Segments="AskOutcomeSegments()" Labels="legend" Format="@(v => Pct((long)v, _ask.Asks))" />
+                        </div>
+                    }
+                    @if (_askDays.Count > 0)
+                    {
+                        var days = AskDaySeries();
+                        var budget = AskBudgetSeries();
+                        <div class="stats-overview-item">
+                            <div class="stats-chart-head"><span class="stats-chart-title">Offers and asks per day</span></div>
+                            <p class="stats-help">Searches an offer was shown beside, and the questions asked. The calls against the day's budget beside them: past the budget the rest of the day's visitors saw no offers.</p>
+                            <Chart Type="line" Labels="days.Labels" Height="150" YAxis="right"
+                                   Series="@(new List<Chart.ChartSeries> {
+                                       new("Offers", days.Offers, Fill: "solid"),
+                                       new("Asks", days.Asks, "var(--CTeal)"),
+                                       new("Calls", budget.Calls, "var(--lv5)", Step: true),
+                                   })"
+                                   References="@(budget.Budget > 0 ? new List<Chart.ChartReference> { new(budget.Budget, "budget", "var(--CSignal)", Signal: true) } : null)" />
+                        </div>
+                    }
+                    @if (_askBudgetToday > 0)
+                    {
+                        <div class="stats-overview-item">
+                            <div class="stats-chart-head"><span class="stats-chart-title">Today against the budget</span></div>
+                            <p class="stats-help">Calls so far today, UTC, of the daily budget set under Options. Past it, visitors see no offers until midnight.</p>
+                            <BarMeter Value="_askCallsToday" Max="_askBudgetToday" Format="@(v => N((long)v))" MaxLabel="@($"of {N(_askBudgetToday)} calls")"
+                                      Color="@(_askCallsToday >= _askBudgetToday * 0.85 ? "var(--CSignal)" : null)" />
+                        </div>
+                    }
+                    @if (_askWeekHour is { Total: > 0 } askWeek)
+                    {
+                        <div class="stats-overview-item">
+                            <div class="stats-chart-head"><span class="stats-chart-title">When people ask</span></div>
+                            <p class="stats-help">The week by hour in the dataset's time zone: whether questions come when nobody is there to answer them.</p>
+                            <Heatmap Values="WeekHourCells(askWeek)" Rows="7" ColumnLabels="HourLabels" RowLabels="WeekdayLabels"
+                                     Format="@((v, i) => $"{WeekdayNames[i % 7]} {i / 7:00}:00-{(i / 7 + 1) % 24:00}:00: {N((long)v)} {(v == 1 ? "ask" : "asks")}")"
+                                     AriaLabel="Asks by weekday and hour" Cell="9" />
+                        </div>
+                    }
+                    @if (SearchOrAsk.Setup.CostsReported && _askDays.Any(d => d.Cost > 0))
+                    {
+                        var days = AskDaySeries();
+                        <div class="stats-overview-item">
+                            <div class="stats-chart-head"><span class="stats-chart-title">Cost per day</span></div>
+                            <p class="stats-help">What the judge, the answers and the filters cost each day, as the provider reports it.</p>
+                            <Chart Type="bar" Labels="days.Labels" Height="120" ShowLegend="false" YAxis="right" YFormat="@(v => v < 0.01 && v > 0 ? "< $0.01" : v.ToString("$0.00"))"
+                                   Series="@(new List<Chart.ChartSeries> { new("Cost", days.Cost) })" />
+                        </div>
+                    }
+                </div>
+            }
+            else if (_askView == "questions")
             {
                 <p class="stats-help">The questions visitors asked. The ones the content did not answer come first: they are what to write next.</p>
                 @if (_askQuestions.Count == 0) { <p class="stats-empty">No questions asked in this period.</p> }

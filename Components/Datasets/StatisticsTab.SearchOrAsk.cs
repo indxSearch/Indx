@@ -41,9 +41,10 @@ namespace IndxServer.Components.Datasets
         private IEnumerable<Tabs.TabItem> SearchOrAskSection =>
             HasSearchOrAsk ? [new("Search or ask", "search-or-ask", DatasetIcons.SearchOrAsk)] : [];
 
+        // Questions first and the default: they are what to write next. Overview holds the pictures.
         private static readonly List<Tabs.TabItem> AskViewItems =
         [
-            new("Questions", "questions"), new("Offers", "offers"),
+            new("Questions", "questions"), new("Offers", "offers"), new("Overview", "overview"),
         ];
 
         private void LoadSearchOrAsk(StatisticsStore store, string team, string ds, long fromDay, long toDay, string? source)
