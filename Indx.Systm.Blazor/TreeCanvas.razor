@@ -1,0 +1,321 @@
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@* A hierarchy as a horizontal tree: a pill a node with its name and a count, children fanned out
+   to the right on soft connectors, the chosen node and the path to it lit, the rest collapsed
+   until opened. For a catalogue's categories, "Shoes > Running > Trail", where the picture of
+   the hierarchy is the point and the products are not in it. Nodes are real buttons placed over
+   the connectors, so they focus and read; arrows move between them, right opens, left closes. A
+   node with many children shows the first so many and a step to the rest. The list view is the
+   same tree as nested rows, for a phone and for a screen reader. The pills' widths are measured
+   after a render and the layout redone with them. Port of the React TreeCanvas in indx-systm. *@
+@if (View == "list")
+{
+    <div class="indx-tree-list-wrap @Class">
+        @RenderList(Roots, 0)
+    </div>
+}
+else
+{
+    var placed = Layout();
+    double width = _columns.Count > 0 ? _columns[^1] + placed.Where(p => p.Depth == _columns.Count - 1).Max(p => p.Width) : 0;
+    <div class="indx-tree-canvas @Class" role="tree" aria-label="@AriaLabel">
+        <div class="indx-tree-sheet" style="width: @F(width)px; height: @F(_height)px;" @ref="_sheet">
+            <svg class="indx-tree-edges" width="@F(width)" height="@F(_height)" aria-hidden="true">
+                @foreach (var p in placed)
+                {
+                    if (p.Parent is null) continue;
+                    var a = p.Parent;
+                    double x1 = a.X + a.Width, y1 = a.Y, x2 = p.X, y2 = p.Y;
+                    double c = (x2 - x1) / 2;
+                    bool lit = _path.Contains(p.Node.Id) && _path.Contains(a.Node.Id);
+                    <path class="@(lit ? "indx-tree-edge-lit" : "indx-tree-edge")" d="M @F(x1) @F(y1) C @F(x1 + c) @F(y1), @F(x2 - c) @F(y2), @F(x2) @F(y2)" />
+                }
+            </svg>
+            @foreach (var p in placed)
+            {
+                var n = p.Node;
+                bool isSelected = n.Id == Selected;
+                bool onPath = _path.Contains(n.Id) && !isSelected;
+                bool hasKids = n.Children is { Count: > 0 };
+                <div @key="n.Id" class="indx-tree-slot" style="left: @F(p.X)px; top: @F(p.Y - 15)px;">
+                    <button type="button" role="treeitem" aria-selected="@(isSelected ? "true" : "false")"
+                            aria-expanded="@(hasKids ? (p.Open ? "true" : "false") : null)" aria-level="@(p.Depth + 1)"
+                            data-node="@n.Id"
+                            class="indx-tree-pill @(isSelected ? "indx-tree-pill-selected" : "") @(onPath ? "indx-tree-pill-path" : "") @(n.Muted ? "indx-tree-muted" : "")"
+                            @onclick="() => Select(n.Id)" @onkeydown="e => OnKey(e, p)" @onkeydown:preventDefault="_preventKey">
+                        <span class="indx-tree-name">@n.Label</span>
+                        @if (n.Count is { } count)
+                        {
+                            <span class="indx-tree-chip">@(Format != null ? Format(count) : count.ToString("N0"))</span>
+                        }
+                        @if (n.Marks != null)
+                        {
+                            foreach (var m in n.Marks)
+                            {
+                                <span class="indx-tree-mark" title="@m.Title">@m.Icon(MarkSize)</span>
+                            }
+                        }
+                        @if (hasKids)
+                        {
+                            <span role="button" tabindex="-1" class="indx-tree-toggle" aria-label="@(p.Open ? "Close" : "Open")"
+                                  @onclick="() => Toggle(n.Id)" @onclick:stopPropagation="true">@(p.Open ? "−" : "+")</span>
+                        }
+                    </button>
+                    @if (p.More > 0)
+                    {
+                        double left = (p.Depth + 1 < _columns.Count ? _columns[p.Depth + 1] : p.X + p.Width + ColumnGap) - p.X;
+                        double top = (LastRow(placed, p) + 1) * Row - (p.Y - 15);
+                        <button type="button" class="indx-tree-more" style="left: @F(left)px; top: @F(top)px;" @onclick="() => _showAll.Add(n.Id)">and @p.More more</button>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>A node: its id, its name, the count shown in a chip (products in the category), its children,
+    /// marks after the count (a boost, a note: 14px pixl icons with a title), and whether it is drawn dim.</summary>
+    public sealed record Node(string Id, string Label, int? Count = null, IReadOnlyList<Node>? Children = null, IReadOnlyList<Mark>? Marks = null, bool Muted = false);
+
+    /// <summary>A mark on a node: a pixl icon drawn at <see cref="MarkSize"/>, with a title.</summary>
+    public sealed record Mark(RenderFragment<int> Icon, string Title);
+
+    /// <summary>A mark's icon width: 14, two cells of the 7-wide grid.</summary>
+    public const int MarkSize = 14;
+
+    [Parameter, EditorRequired] public IReadOnlyList<Node> Roots { get; set; } = Array.Empty<Node>();
+    /// <summary>The chosen node's id; the path to it is lit.</summary>
+    [Parameter] public string? Selected { get; set; }
+    [Parameter] public EventCallback<string> SelectedChanged { get; set; }
+    /// <summary>The ids open at first; the roots when left out. Opening is kept inside after that.</summary>
+    [Parameter] public IReadOnlyList<string>? DefaultExpanded { get; set; }
+    /// <summary>"tree" draws the canvas; "list" the same as nested rows.</summary>
+    [Parameter] public string View { get; set; } = "tree";
+    /// <summary>Children shown before the step to the rest; 50 by default.</summary>
+    [Parameter] public int MaxChildren { get; set; } = 50;
+    /// <summary>The count as shown; the number by default.</summary>
+    [Parameter] public Func<int, string>? Format { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private const double Row = 44;
+    private const double ColumnGap = 56;
+    private const double PillPad = 24;
+    private const double Char = 7;
+    private const double Chip = 10;
+
+    private sealed class Placed
+    {
+        public required Node Node;
+        public int Depth;
+        public double X, Y, Width;
+        public Placed? Parent;
+        public bool Open;
+        public int More;
+    }
+
+    private HashSet<string>? _expanded;
+    private readonly HashSet<string> _showAll = new();
+    private readonly Dictionary<string, double> _measured = new();
+    private HashSet<string> _path = new();
+    private List<double> _columns = new();
+    private double _height;
+    private List<Placed> _placed = new();
+    private bool _preventKey;
+    private ElementReference _sheet;
+    private IJSObjectReference? _module;
+    private bool _disposed;
+
+    protected override void OnParametersSet()
+    {
+        _expanded ??= new HashSet<string>(DefaultExpanded ?? Roots.Select(r => r.Id));
+        _path = new HashSet<string>();
+        foreach (var r in Roots) Walk(r, new List<string>());
+    }
+
+    // The path to the chosen node, for lighting it.
+    private bool Walk(Node n, List<string> trail)
+    {
+        if (n.Id == Selected) { foreach (var t in trail) _path.Add(t); _path.Add(n.Id); return true; }
+        if (n.Children is null) return false;
+        trail.Add(n.Id);
+        foreach (var c in n.Children) if (Walk(c, trail)) return true;
+        trail.RemoveAt(trail.Count - 1);
+        return false;
+    }
+
+    // A guess at a pill's width before it is measured: the first frame only, the measure after.
+    private double PillWidth(Node n)
+    {
+        if (_measured.TryGetValue(n.Id, out var w)) return w;
+        double text = n.Label.Length * Char;
+        double count = n.Count is { } c ? (Format != null ? Format(c) : c.ToString("N0")).Length * 6 + Chip + 8 : 0;
+        double marks = (n.Marks?.Count ?? 0) * 20;
+        double toggle = n.Children is { Count: > 0 } ? 18 : 0;
+        return PillPad + text + count + marks + toggle;
+    }
+
+    // The tidy layout: each open leaf takes a row, a parent sits at the middle of its children,
+    // and a column is as wide as its widest pill. Only what is open is placed.
+    private List<Placed> Layout()
+    {
+        var placed = new List<Placed>();
+        var widths = new List<double>();
+        int row = 0;
+        Placed Place(Node n, int depth, Placed? parent)
+        {
+            bool open = n.Children is { Count: > 0 } && _expanded!.Contains(n.Id);
+            var kids = open ? (_showAll.Contains(n.Id) ? n.Children! : n.Children!.Take(MaxChildren).ToList()) : (IReadOnlyList<Node>)Array.Empty<Node>();
+            int more = open ? n.Children!.Count - kids.Count : 0;
+            var self = new Placed { Node = n, Depth = depth, Width = PillWidth(n), Parent = parent, Open = open, More = more };
+            while (widths.Count <= depth) widths.Add(0);
+            widths[depth] = Math.Max(widths[depth], self.Width);
+            placed.Add(self);
+            if (kids.Count > 0)
+            {
+                var placedKids = kids.Select(k => Place(k, depth + 1, self)).ToList();
+                self.Y = (placedKids[0].Y + placedKids[^1].Y) / 2;
+                if (more > 0) row += 1; // the "and N more" step takes a row under the children
+            }
+            else
+            {
+                self.Y = row * Row + Row / 2;
+                row += 1;
+            }
+            return self;
+        }
+        foreach (var r in Roots) Place(r, 0, null);
+        _columns = new List<double>();
+        double x = 0;
+        foreach (var w in widths) { _columns.Add(x); x += w + ColumnGap; }
+        foreach (var p in placed) p.X = _columns[p.Depth];
+        _height = Math.Max(row, 1) * Row;
+        _placed = placed;
+        return placed;
+    }
+
+    // The row the last shown child of a node sits on, for the "and N more" step under it.
+    private static int LastRow(List<Placed> placed, Placed p)
+    {
+        var last = placed.LastOrDefault(q => q.Parent == p);
+        var y = last?.Y ?? p.Y;
+        return (int)Math.Round((y - Row / 2) / Row);
+    }
+
+    private void Toggle(string id)
+    {
+        if (!_expanded!.Remove(id)) _expanded.Add(id);
+    }
+
+    private Task Select(string id) => SelectedChanged.InvokeAsync(id);
+
+    private async Task OnKey(KeyboardEventArgs e, Placed p)
+    {
+        _preventKey = false;
+        var visible = _placed.Select(q => q.Node.Id).ToList();
+        int i = visible.IndexOf(p.Node.Id);
+        string? to = null;
+        switch (e.Key)
+        {
+            case "ArrowDown": to = visible[Math.Min(visible.Count - 1, i + 1)]; break;
+            case "ArrowUp": to = visible[Math.Max(0, i - 1)]; break;
+            case "ArrowRight":
+                if (p.Node.Children is { Count: > 0 } && !p.Open) { Toggle(p.Node.Id); _preventKey = true; return; }
+                to = _placed.FirstOrDefault(q => q.Parent == p)?.Node.Id; break;
+            case "ArrowLeft":
+                if (p.Open) { Toggle(p.Node.Id); _preventKey = true; return; }
+                to = p.Parent?.Node.Id; break;
+            case "Home": to = visible[0]; break;
+            case "End": to = visible[^1]; break;
+        }
+        if (to is null) return;
+        _preventKey = true;
+        if (_module is not null)
+        {
+            try { await _module.InvokeVoidAsync("focusNode", _sheet, to); }
+            catch (JSDisconnectedException) { }
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (View == "list") return;
+        try
+        {
+            if (_module is null)
+            {
+                var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Indx.Systm.Blazor/TreeCanvas.razor.js");
+                if (_disposed) { await module.DisposeAsync(); return; }
+                _module = module;
+            }
+            var widths = await _module.InvokeAsync<Dictionary<string, double>>("measure", _sheet);
+            bool changed = false;
+            foreach (var (id, w) in widths)
+            {
+                if (w > 0 && (!_measured.TryGetValue(id, out var old) || Math.Abs(old - w) >= 1)) { _measured[id] = w; changed = true; }
+            }
+            if (changed) StateHasChanged();
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (JSException) { }
+    }
+
+    private RenderFragment RenderList(IReadOnlyList<Node> nodes, int depth) => __builder =>
+    {
+        <ul class="indx-tree-list" role="@(depth == 0 ? "tree" : "group")" aria-label="@(depth == 0 ? AriaLabel : null)">
+            @foreach (var n in nodes)
+            {
+                bool hasKids = n.Children is { Count: > 0 };
+                bool open = _expanded!.Contains(n.Id);
+                bool isSelected = n.Id == Selected;
+                <li @key="n.Id" role="treeitem" aria-expanded="@(hasKids ? (open ? "true" : "false") : null)" aria-selected="@(isSelected ? "true" : "false")">
+                    <div class="indx-tree-row @(isSelected ? "indx-tree-row-selected" : "") @(n.Muted ? "indx-tree-muted" : "")" style="padding-left: @(8 + depth * 18)px;">
+                        @if (hasKids)
+                        {
+                            <button type="button" class="indx-tree-disclosure" aria-label="@(open ? "Close" : "Open")" @onclick="() => Toggle(n.Id)">@(open ? "−" : "+")</button>
+                        }
+                        else
+                        {
+                            <span class="indx-tree-disclosure-space"></span>
+                        }
+                        <button type="button" class="indx-tree-row-name" @onclick="() => Select(n.Id)">@n.Label</button>
+                        @if (n.Count is { } count)
+                        {
+                            <span class="indx-tree-chip">@(Format != null ? Format(count) : count.ToString("N0"))</span>
+                        }
+                        @if (n.Marks != null)
+                        {
+                            foreach (var m in n.Marks)
+                            {
+                                <span class="indx-tree-mark" title="@m.Title">@m.Icon(MarkSize)</span>
+                            }
+                        }
+                    </div>
+                    @if (hasKids && open)
+                    {
+                        @RenderList(n.Children!, depth + 1)
+                    }
+                </li>
+            }
+        </ul>
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (_module is not null)
+        {
+            try { await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (Exception) { }
+        }
+    }
+
+    private static string F(double v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+}

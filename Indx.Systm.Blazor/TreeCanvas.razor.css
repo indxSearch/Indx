@@ -1,0 +1,212 @@
+/* The canvas: a frame that scrolls both ways; the sheet inside is as large as the open tree. */
+.indx-tree-canvas {
+    position: relative;
+    overflow: auto;
+    max-width: 100%;
+    background-color: var(--lv0);
+    border: 1px solid var(--lv2);
+}
+
+.indx-tree-sheet {
+    position: relative;
+    padding: 16px;
+    box-sizing: content-box;
+}
+
+.indx-tree-edges {
+    position: absolute;
+    top: 16px;
+    left: 16px;
+    overflow: visible;
+}
+
+/* The connectors: hairlines, the path to the chosen node in the positive colour. */
+.indx-tree-edge {
+    fill: none;
+    stroke: var(--lv3);
+    stroke-width: 1px;
+}
+
+.indx-tree-edge-lit {
+    fill: none;
+    stroke: var(--CPositive);
+    stroke-width: 1.5px;
+}
+
+.indx-tree-slot {
+    position: absolute;
+    margin: 16px;
+}
+
+/* A node: a pill on the surface tone, the name in the ink, the count in a chip; on the path a
+     positive border, chosen the positive fill with the handle tone's text. */
+.indx-tree-pill {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 10px;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    background: var(--lv1);
+    color: var(--lv8);
+    font: var(--text-sm);
+    white-space: nowrap;
+    cursor: pointer;
+    text-align: left;
+}
+
+.indx-tree-pill:hover {
+    border-color: var(--lv4);
+}
+
+.indx-tree-pill:focus-visible {
+    outline: 2px solid var(--lv5);
+    outline-offset: 1px;
+}
+
+.indx-tree-pill-path {
+    border-color: var(--CPositive);
+}
+
+.indx-tree-pill-selected,
+.indx-tree-pill-selected:hover {
+    border-color: var(--CPositive);
+    background: var(--CPositive);
+    color: var(--CPositiveHandle);
+}
+
+.indx-tree-muted {
+    opacity: 0.5;
+}
+
+.indx-tree-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 420px;
+}
+
+/* The count: a chip in the surface tone, tabular; on the chosen node the fill shows through. */
+.indx-tree-chip {
+    display: inline-block;
+    padding: 0 5px;
+    font: var(--text-2xs);
+    font-weight: var(--med);
+    line-height: 16px;
+    color: var(--lv6);
+    background: var(--lv2);
+    border-radius: var(--radius);
+    font-variant-numeric: tabular-nums;
+}
+
+.indx-tree-pill-selected .indx-tree-chip {
+    color: var(--CPositiveHandle);
+    background: rgba(0, 0, 0, 0.18);
+}
+
+/* A mark: a 14px pixl icon in the dim tone, the ink on the chosen node. */
+.indx-tree-mark {
+    display: inline-flex;
+    line-height: 0;
+    color: var(--lv5);
+}
+
+.indx-tree-pill-selected .indx-tree-mark {
+    color: var(--CPositiveHandle);
+}
+
+/* The open or close step at the pill's end, a plus or a minus. */
+.indx-tree-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    margin-left: 2px;
+    font: var(--text-xs);
+    color: var(--lv5);
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+}
+
+.indx-tree-pill-selected .indx-tree-toggle {
+    color: var(--CPositiveHandle);
+    border-color: var(--CPositiveHandle);
+}
+
+/* The step to the rest of a node's children, under the ones shown. */
+.indx-tree-more {
+    position: absolute;
+    height: 24px;
+    padding: 0 8px;
+    border: 1px dashed var(--lv3);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--lv5);
+    font: var(--text-xs);
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.indx-tree-more:hover {
+    color: var(--lv7);
+    border-color: var(--lv4);
+}
+
+/* The list view: the same tree as nested rows. */
+.indx-tree-list-wrap {
+    border: 1px solid var(--lv2);
+    background: var(--lv0);
+}
+
+.indx-tree-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.indx-tree-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 36px;
+    padding-right: 8px;
+    border-bottom: 1px solid var(--lv2);
+}
+
+.indx-tree-row-selected {
+    background: var(--lv2);
+}
+
+.indx-tree-row-name {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--lv8);
+    font: var(--text-sm);
+    text-align: left;
+    cursor: pointer;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.indx-tree-disclosure {
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    background: none;
+    color: var(--lv5);
+    font: var(--text-xs);
+    cursor: pointer;
+}
+
+.indx-tree-disclosure-space {
+    width: 18px;
+    flex: none;
+}
