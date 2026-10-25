@@ -142,16 +142,28 @@ else
             </div>
         }
 
-        @* How people type: the searches by their word count, with a filter or not, and the median
-           length. One word and a filter is a catalogue being browsed; three words is a question. *@
+        @* How people type: the searches by their word count as a small bar chart, whose shape says
+           it (a catalogue is a tall first bar, a help site a hump at three), and four figures: the
+           median length, the share with a filter, the share that settled on a partial word (search
+           as you type paying off) and the median keystrokes before a settled search. A word is what
+           a space separates. *@
         @if (_typing is { Total: > 0 } typing)
         {
             <div class="stats-overview-item">
             <div class="stats-chart-head">
                 <span class="stats-chart-title">How people type</span>
             </div>
-            <p class="stats-help">A search is @typing.MedianLength characters in the middle, and @Pct(typing.WithFilter, typing.Total) come with a filter.</p>
-            <BarMeter Segments="TypingSegments(typing)" Labels="legend" Format="@(v => Pct((long)v, typing.Total))" />
+            <p class="stats-help">Words per search, a word being what a space separates.</p>
+            <Chart Type="bar" Labels="WordLabels" Height="110" ShowLegend="false"
+                   Series="@(new List<Chart.ChartSeries> { new("Searches", typing.Words.Select(w => (double)w).ToArray()) })" />
+            <div class="stats-typing-figures">
+                <Stat Label="Median length" Value="@($"{typing.MedianLength} chars")" />
+                <Stat Label="With a filter" Value="@Pct(typing.WithFilter, typing.Total)" />
+                <Stat Label="Settled mid-word" Hint="Searches that stopped on a partial word, pika for pikachu, because the results were already right: search as you type paying off. Counted where someone else went on to type the whole word, so a lower bound." Value="@Pct(typing.MidWord, typing.Total)" />
+                <Stat Label="Keystrokes" Hint="The searches a visitor's typing sent before the one that settled, in the middle; over the searches that carried a session, which the console and plain API calls do not." Value="@(typing.WithSession > 0 ? N(typing.Keystrokes) : "–")">
+                    @if (typing.WithSession > 0) { <text>of @N(typing.WithSession) with a session</text> }
+                </Stat>
+            </div>
             </div>
         }
 
@@ -603,10 +615,7 @@ else
     private IReadOnlyList<Chart.ChartSeries> _bySurface = [];
     private static readonly string[] SurfaceFills = ["solid", "hatch", "dots", "checker"];
 
-    private static IReadOnlyList<BarMeter.Segment> TypingSegments(TypingStat t) =>
-    [
-        new("One word", t.OneWord), new("Two words", t.TwoWords), new("Three or more", t.ThreeOrMore),
-    ];
+    private static readonly string[] WordLabels = ["1 word", "2", "3", "4", "5 or more"];
 
     /// <summary>Most first, as the store orders them; the unnamed rest last and dim; a tag shown as
     /// its language's own name where the runtime knows it ("norsk bokmål (Norge)"), else as sent.</summary>

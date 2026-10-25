@@ -2,12 +2,20 @@ using Microsoft.Data.Sqlite;
 
 namespace IndxServer.Services
 {
-    /// <summary>How people type: the counted searches of a window by how many words they are, how
-    /// many came with a filter, and the median length in characters. Says how the box is used: one
-    /// word and a filter is a catalogue, three words is a question.</summary>
-    public sealed record TypingStat(long OneWord, long TwoWords, long ThreeOrMore, long WithFilter, long MedianLength)
+    /// <summary>How people type: the counted searches of a window by how many words they are (one
+    /// to four, and five or more), how many came with a filter, the median length in characters,
+    /// and two things about typing. <see cref="MidWord"/> is the searches that settled on a partial
+    /// word, "pika" when someone else searched "pikachu": search-as-you-type paying off, a lower
+    /// bound, since a word no one completed cannot be told from a whole one. <see cref="Keystrokes"/>
+    /// is the median number of keystroke searches before a settled one, over the
+    /// <see cref="WithSession"/> searches that carried a session; 0 with none.</summary>
+    public sealed record TypingStat(long[] Words, long WithFilter, long MedianLength, long MidWord, long WithSession, long Keystrokes)
     {
-        public long Total => OneWord + TwoWords + ThreeOrMore;
+        public long Total { get { long n = 0; foreach (var w in Words) n += w; return n; } }
+        public long OneWord => Words[0];
+        public long TwoWords => Words[1];
+        public long ThreeOrMore => Words[2] + Words[3] + Words[4];
+        public static TypingStat Empty => new(new long[5], 0, 0, 0, 0, 0);
     }
 
     /// <summary>The counted searches of a window from one language, a BCP 47 tag as the storefront
@@ -31,7 +39,8 @@ namespace IndxServer.Services
             // fold up to eight spaces, which is more than a query has).
             const string Words = "(length(trim(c.QueryText)) - length(replace(replace(replace(replace(trim(c.QueryText), '    ', ' '), '   ', ' '), '  ', ' '), ' ', '')) + 1)";
             cmd.CommandText = $@"
-SELECT SUM({Words} = 1), SUM({Words} = 2), SUM({Words} >= 3), SUM(c.FilterKey IS NOT NULL AND c.FilterKey <> '')
+SELECT SUM({Words} = 1), SUM({Words} = 2), SUM({Words} = 3), SUM({Words} = 4), SUM({Words} >= 5),
+       SUM(c.FilterKey IS NOT NULL AND c.FilterKey <> '')
   FROM {CountedSearches(LiveWhereFor(source))} c
  WHERE trim(c.QueryText) <> ''";
             cmd.Parameters.AddWithValue("$t", teamId);
@@ -39,14 +48,18 @@ SELECT SUM({Words} = 1), SUM({Words} = 2), SUM({Words} >= 3), SUM(c.FilterKey IS
             cmd.Parameters.AddWithValue("$liveFrom", StatisticsDays.Start(tz, fromDay));
             cmd.Parameters.AddWithValue("$toEx", StatisticsDays.Start(tz, toDay + 1));
             AddSource(cmd, source);
-            long one = 0, two = 0, more = 0, filtered = 0;
+            var words = new long[5];
+            long filtered = 0;
             using (var r = cmd.ExecuteReader())
             {
                 if (r.Read() && !r.IsDBNull(0))
-                    (one, two, more, filtered) = (r.GetInt64(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3));
+                {
+                    for (int i = 0; i < 5; i++) words[i] = r.GetInt64(i);
+                    filtered = r.GetInt64(5);
+                }
             }
-            long total = one + two + more;
-            if (total == 0) return new TypingStat(0, 0, 0, 0, 0);
+            long total = words.Sum();
+            if (total == 0) return TypingStat.Empty;
 
             using var median = conn.CreateCommand();
             median.CommandText = $@"
@@ -60,8 +73,60 @@ SELECT length(trim(c.QueryText)) FROM {CountedSearches(LiveWhereFor(source))} c
             median.Parameters.AddWithValue("$mid", total / 2);
             AddSource(median, source);
             long mid = median.ExecuteScalar() is long m ? m : 0;
-            return new TypingStat(one, two, more, filtered, mid);
+
+            // Settled mid-word: a search whose text some longer search continues without a space
+            // at the join ("pika" and "pikachu", not "pika" and "pika evolution"). Over the distinct
+            // texts, each weighted by its searches, so the comparison is texts by texts rather than
+            // searches by searches; and only up to a size where that is cheap.
+            using var midWord = conn.CreateCommand();
+            midWord.CommandText = $@"
+WITH q AS (SELECT lower(trim(c.QueryText)) AS t, COUNT(*) AS n
+             FROM {CountedSearches(LiveWhereFor(source))} c
+            WHERE trim(c.QueryText) <> ''
+            GROUP BY lower(trim(c.QueryText)))
+SELECT (SELECT COUNT(*) FROM q),
+       (SELECT SUM(a.n) FROM q a
+         WHERE (SELECT COUNT(*) FROM q) <= {MidWordMaxTexts}
+           AND EXISTS (SELECT 1 FROM q b
+                        WHERE length(b.t) > length(a.t)
+                          AND substr(b.t, 1, length(a.t)) = a.t
+                          AND substr(b.t, length(a.t) + 1, 1) <> ' '))";
+            midWord.Parameters.AddWithValue("$t", teamId);
+            midWord.Parameters.AddWithValue("$d", dataSet);
+            midWord.Parameters.AddWithValue("$liveFrom", StatisticsDays.Start(tz, fromDay));
+            midWord.Parameters.AddWithValue("$toEx", StatisticsDays.Start(tz, toDay + 1));
+            AddSource(midWord, source);
+            long midWordCount = 0;
+            using (var r = midWord.ExecuteReader())
+                if (r.Read() && !r.IsDBNull(1)) midWordCount = r.GetInt64(1);
+
+            // Keystrokes: the searches a session sent and superseded before each settled one, the
+            // median over the settled searches that carried a session.
+            using var keys = conn.CreateCommand();
+            keys.CommandText = $@"
+WITH k AS (SELECT (SELECT COUNT(*) FROM SearchEvents x
+                    WHERE x.TeamId = c.TeamId AND x.DataSet = c.DataSet AND x.Session = s.Session
+                      AND x.Superseded = 1 AND x.Timestamp <= c.Timestamp) AS n
+             FROM {CountedSearches(LiveWhereFor(source))} c
+             JOIN SearchEvents s ON s.QueryId = c.QueryId
+            WHERE trim(c.QueryText) <> '' AND s.Session IS NOT NULL)
+SELECT (SELECT COUNT(*) FROM k),
+       (SELECT n FROM k ORDER BY n LIMIT 1 OFFSET (SELECT COUNT(*) FROM k) / 2)";
+            keys.Parameters.AddWithValue("$t", teamId);
+            keys.Parameters.AddWithValue("$d", dataSet);
+            keys.Parameters.AddWithValue("$liveFrom", StatisticsDays.Start(tz, fromDay));
+            keys.Parameters.AddWithValue("$toEx", StatisticsDays.Start(tz, toDay + 1));
+            AddSource(keys, source);
+            long withSession = 0, keystrokes = 0;
+            using (var r = keys.ExecuteReader())
+                if (r.Read()) { withSession = r.GetInt64(0); keystrokes = withSession > 0 && !r.IsDBNull(1) ? r.GetInt64(1) : 0; }
+
+            return new TypingStat(words, filtered, mid, midWordCount, withSession, keystrokes);
         }
+
+        /// <summary>Past this many distinct texts the mid-word comparison, texts by texts, is left
+        /// out rather than made slow: it reads 0 then.</summary>
+        private const int MidWordMaxTexts = 5000;
 
         /// <summary>
         /// Counted searches with text in [fromDay, toDay] by the language the page reported, most

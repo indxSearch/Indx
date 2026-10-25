@@ -151,6 +151,16 @@
 .stats-overview-item .stats-chart-head { margin-top: 0; margin-bottom: 0; }
 .stats-overview-item .stats-help { margin-bottom: 6px; }
 
+/* The typing figures under their chart: four small tiles, two by two. */
+.stats-typing-figures {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+}
+
+.stats-typing-figures ::deep .indx-stat-value { font: var(--text-lg); font-weight: 300; }
+
 @media (max-width: 900px) {
     .stats-overview { grid-template-columns: minmax(0, 1fr); }
 }
