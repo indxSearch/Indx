@@ -265,12 +265,11 @@ namespace IndxServer.Monitor
             DerivedRecomputes: FilterUpdateDiagnostics.DerivedRecomputes,
             DerivedRebuilds: FilterUpdateDiagnostics.DerivedRebuilds);
 
-        /// <summary>One reading a minute, the first a minute after the monitor started so it is a
-        /// whole minute's rate, the last hour kept.</summary>
+        /// <summary>One reading a minute, the first at once so the line exists from the start, the
+        /// last hour kept.</summary>
         private void RecordRate(DateTimeOffset now, double rate)
         {
-            _rateHistoryAt ??= now;
-            if (now - _rateHistoryAt.Value < TimeSpan.FromMinutes(1)) return;
+            if (_rateHistoryAt is { } last && now - last < TimeSpan.FromMinutes(1)) return;
             _rateHistoryAt = now;
             _rateHistory.Add(rate);
             if (_rateHistory.Count > RateHistoryMax) _rateHistory.RemoveAt(0);

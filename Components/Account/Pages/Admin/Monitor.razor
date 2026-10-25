@@ -50,32 +50,25 @@ else
             <Stat Label="Searches" Hint="Counted since the monitor started." Value="@snapshot.SearchesTotal.ToString("N0")">
                 since the monitor started
             </Stat>
-            <Stat Label="A minute" Hint="Searches a minute over the last minute, and the hour before it, one reading a minute." Value="@snapshot.SearchesPerMinute.ToString("N0")">
-                @if (snapshot.RateHistory.Count >= 2)
-                {
-                    <Sparkline Values="snapshot.RateHistory" Width="72px" Height="16" Fill="true" AriaLabel="Searches a minute, the last hour" />
-                }
-                else
-                {
-                    <text>the last minute</text>
-                }
+            <Stat Label="A minute" Hint="Searches a minute over the last minute; the line is the last hour, one reading a minute.">
+                <Figure><Sparkline Values="snapshot.RateHistory" Width="64px" Height="24" Fill="true" Baseline="true" AriaLabel="Searches a minute, the last hour" /></Figure>
+                <ValueContent>@snapshot.SearchesPerMinute.ToString("N0")</ValueContent>
+                <ChildContent>the last hour</ChildContent>
             </Stat>
-            <Stat Label="Datasets" Value="@snapshot.Datasets.Count.ToString("N0")">
-                @snapshot.LoadedCount loaded · @snapshot.TotalDocuments.ToString("N0") documents
+            <Stat Label="Datasets" Hint="One cell a dataset: ready in the ink, hibernated dim, an error in the signal red." Value="@snapshot.Datasets.Count.ToString("N0")">
+                @if (snapshot.Datasets.Count > 0)
+                {
+                    <Waffle Segments="DatasetsByState(snapshot)" Columns="@snapshot.Datasets.Count" Rows="1" Cell="4"
+                            Format="@((f, v) => v.ToString("N0"))" AriaLabel="Datasets by state" />
+                }
             </Stat>
         </StatGroup>
 
         @if (snapshot.Datasets.Count > 0)
         {
-            <div class="admin-monitor-row">
-                <div class="admin-monitor-panel">
-                    <span class="admin-monitor-panel-title">Documents by dataset</span>
-                    <BarMeter Segments="DocumentsByDataset(snapshot)" Labels="legend" Format="@(v => v.ToString("N0"))" />
-                </div>
-                <div class="admin-monitor-panel">
-                    <span class="admin-monitor-panel-title">Datasets by state</span>
-                    <Waffle Segments="DatasetsByState(snapshot)" Format="@((f, v) => v.ToString("N0"))" AriaLabel="Datasets by state" />
-                </div>
+            <div class="admin-monitor-panel">
+                <span class="admin-monitor-panel-title">Documents by dataset</span>
+                <BarMeter Segments="DocumentsByDataset(snapshot)" Labels="legend" Format="@(v => v.ToString("N0"))" />
             </div>
         }
     </div>
