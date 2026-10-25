@@ -41,40 +41,33 @@
     stroke-width: 2px;
 }
 
-/* The rose: a dim wedge the full radius under a lit one to the value, both parted and rounded
-   by a stroke in the page tone, the hovered one brighter. The lit wedge is a little
-   translucent, so the names read as sitting in it rather than on it. */
+/* The rose: a dim wedge the full radius under a lit one to the value. Each is stroked in its
+   own colour with round joins, which is what rounds the corners (the path is inset by the
+   corner radius). The lit wedge is a little translucent, so the names read as sitting in it;
+   the hovered one is the ink. */
 .indx-radial-wedge-track {
     fill: var(--lv2);
-    stroke: var(--lv0);
-    stroke-width: 3px;
+    stroke: var(--lv2);
     stroke-linejoin: round;
 }
 
 .indx-radial-wedge {
-    fill-opacity: 0.82;
-    stroke: var(--lv0);
-    stroke-width: 3px;
+    opacity: 0.88;
     stroke-linejoin: round;
 }
 
 .indx-radial-wedge-hovered {
     fill: var(--lv8) !important;
-    fill-opacity: 1;
+    stroke: var(--lv8) !important;
+    opacity: 1;
 }
 
-/* The rose's names and values, upright in the wedge: the number in the ink, the name a step
-   down, both with a soft halo in the page tone so they read on the lit wedge and the dim one
-   alike. */
+/* The rose's names and values, upright in the wedge: the number in the ink and the name a step
+   down on the dim wedge; on a wedge tall enough to reach them, both in the page tone, as print
+   on it. No halo: one treatment for every wedge. */
 ::deep .indx-radial-sector-text {
     pointer-events: none;
     font: var(--text-2xs);
-    fill: var(--lv5);
-    paint-order: stroke;
-    stroke: var(--lv0);
-    stroke-opacity: 0.55;
-    stroke-width: 3px;
-    stroke-linejoin: round;
 }
 
 ::deep .indx-radial-sector-value {
@@ -87,11 +80,6 @@
 ::deep .indx-radial-sector-name {
     font: var(--text-2xs);
     fill: var(--lv6);
-}
-
-/* On a wedge that reaches the text: print on it, the page tone, no halo. */
-::deep .indx-radial-sector-text-on-lit {
-    stroke: none;
 }
 
 ::deep .indx-radial-sector-text-on-lit .indx-radial-sector-value,

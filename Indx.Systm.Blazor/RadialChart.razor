@@ -17,11 +17,12 @@
                 @for (int slot = 0; slot < Slots; slot++)
                 {
                     var g = Groups![slot];
-                    <path class="indx-radial-wedge-track" d="@Wedge(slot, Outer)" />
+                    <path class="indx-radial-wedge-track" style="stroke-width: @F(Corner * 2)px;" d="@Wedge(slot, Outer)" />
                     var len = LengthOf(g.Value);
                     if (len > 0)
                     {
-                        <path class="indx-radial-wedge @(_hover == slot ? "indx-radial-wedge-hovered" : "")" style="fill: @(g.Color ?? Color ?? DefaultColor);" d="@Wedge(slot, Inner + len)" />
+                        var fill = g.Color ?? Color ?? DefaultColor;
+                        <path class="indx-radial-wedge @(_hover == slot ? "indx-radial-wedge-hovered" : "")" style="fill: @fill; stroke: @fill; stroke-width: @F(Corner * 2)px;" d="@Wedge(slot, Inner + len)" />
                     }
                 }
             }
@@ -113,8 +114,10 @@
     [Parameter] public IReadOnlyList<string>? Labels { get; set; }
     /// <summary>The rose: a wedge a group, its radius the group's value, the name and value in it.</summary>
     [Parameter] public IReadOnlyList<Group>? Groups { get; set; }
-    /// <summary>The gap between the rose's wedges, in degrees; 2 by default.</summary>
-    [Parameter] public double Gap { get; set; } = 2;
+    /// <summary>The gap between the rose's wedges, in pixels, the same at the hollow and the rim; 4 by default.</summary>
+    [Parameter] public double Gap { get; set; } = 4;
+    /// <summary>The rose's corner radius in pixels; 8 by default, less on a small face.</summary>
+    [Parameter] public double Rounding { get; set; } = 8;
     /// <summary>The diameter in pixels; 240 by default.</summary>
     [Parameter] public int Size { get; set; } = 240;
     /// <summary>The hollow centre's share of the radius; 0.4 by default.</summary>
@@ -149,14 +152,24 @@
     private double ValueAt(int s, int slot) => slot < All[s].Values.Count ? All[s].Values[slot] : double.NaN;
     private double Top => Max ?? All.SelectMany(s => s.Values).Where(double.IsFinite).DefaultIfEmpty(0).Max();
 
-    /// <summary>A wedge of the rose: from the hollow out to r, between the slot's edges less the gap.</summary>
+    // The rose's corner radius, and the edges' offset from the slot's boundaries: half the gap
+    // and the corner, since the stroke that rounds the corners brings the path out by the corner.
+    private double Corner => Math.Min(Rounding, Span * 0.12);
+    private double Inset => Gap / 2 + Corner;
+
+    /// <summary>A wedge of the rose, from the hollow out to r. Its edges stand off the slot's boundaries
+    /// by a fixed number of pixels, so the gap is as wide at the rim as at the hollow, and the path is
+    /// inset by the corner radius: the stroke in its own colour with round joins rounds the corners.</summary>
     private string Wedge(int slot, double r)
     {
-        double half = Math.Max(0, Step / 2 - Gap * Math.PI / 360);
-        double a0 = AngleOf(slot) - half, a1 = AngleOf(slot) + half;
-        string P(double rad, double a) => $"{F(Outer + rad * Math.Cos(a))} {F(Outer + rad * Math.Sin(a))}";
-        int large = a1 - a0 > Math.PI ? 1 : 0;
-        return $"M {P(Inner, a0)} L {P(r, a0)} A {F(r)} {F(r)} 0 {large} 1 {P(r, a1)} L {P(Inner, a1)} A {F(Inner)} {F(Inner)} 0 {large} 0 {P(Inner, a0)} Z";
+        double ri = Inner + Inset;
+        double ro = Math.Max(ri + 0.5, r - Inset);
+        double a = AngleOf(slot);
+        double hi = Math.Max(0.01, Step / 2 - Inset / ri);
+        double ho = Math.Max(0.01, Step / 2 - Inset / ro);
+        string P(double rad, double ang) => $"{F(Outer + rad * Math.Cos(ang))} {F(Outer + rad * Math.Sin(ang))}";
+        int large = 2 * ho > Math.PI ? 1 : 0;
+        return $"M {P(ri, a - hi)} L {P(ro, a - ho)} A {F(ro)} {F(ro)} 0 {large} 1 {P(ro, a + ho)} L {P(ri, a + hi)} A {F(ri)} {F(ri)} 0 {large} 0 {P(ri, a - hi)} Z";
     }
     private double Step => 2 * Math.PI / Math.Max(1, Slots);
     private double AngleOf(int slot, int lane = 0) => -Math.PI / 2 + Step * (slot + (Lanes > 1 ? (lane + 0.5) / Lanes - 0.5 : 0));
@@ -177,10 +190,12 @@
         {
             var g = Groups[i];
             double angle = AngleOf(i);
-            double r = Inner + Span * 0.72;
+            // A tall wedge carries its text inside, in the page tone as print on it; a short one
+            // has it in the dim remainder above, in the ink.
+            double len = LengthOf(g.Value);
+            bool onLit = len >= Span * 0.5;
+            double r = onLit ? Inner + len * 0.62 : Inner + len + (Span - len) * 0.55;
             double tx = Outer + r * Math.Cos(angle), ty = Outer + r * Math.Sin(angle);
-            // On a wedge tall enough to reach the text, the text is in the page tone, as print on it.
-            bool onLit = LengthOf(g.Value) >= Span * 0.78;
             builder.OpenElement(seq++, "text");
             builder.AddAttribute(seq++, "class", onLit ? "indx-radial-sector-text indx-radial-sector-text-on-lit" : "indx-radial-sector-text");
             builder.AddAttribute(seq++, "x", F(tx));
