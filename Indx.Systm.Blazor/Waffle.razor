@@ -1,0 +1,92 @@
+@* Shares of a whole as a grid of pixel squares: each segment gets its share of the cells, filled
+   column by column from the left, the first segment in the ink and the rest down the tone ladder,
+   with a legend beneath. A portfolio by holding, a dataset by field type, searches by source.
+   Where a pie would be, this is the pixel version. Port of the React Waffle in indx-systm. *@
+<div class="indx-waffle @Class">
+    <div class="indx-waffle-grid" role="img" aria-label="@AriaLabel"
+         style="--waffle-rows: @Rows; --waffle-cell: @(Cell)px;">
+        @{
+            var counts = AllocateCells(Segments.Select(s => s.Value).ToArray(), Columns * Rows);
+            int seg = 0, used = 0;
+        }
+        @for (int i = 0; i < Columns * Rows; i++)
+        {
+            while (seg < counts.Length && used >= counts[seg]) { seg++; used = 0; }
+            var color = seg < counts.Length ? ColorOf(seg) : null;
+            used++;
+            <span class="indx-waffle-cell" style="@(color != null ? $"background: {color};" : null)"></span>
+        }
+    </div>
+    @if (Legend)
+    {
+        <ul class="indx-waffle-legend" aria-hidden="@(AriaLabel == null ? "true" : null)">
+            @for (int i = 0; i < Segments.Count; i++)
+            {
+                var s = Segments[i];
+                <li class="indx-waffle-item">
+                    <span class="indx-waffle-swatch" style="background: @ColorOf(i);"></span>
+                    <span class="indx-waffle-name">@s.Label</span>
+                    <span class="indx-waffle-share">@Show(s)</span>
+                </li>
+            }
+        </ul>
+    }
+</div>
+
+@code {
+    /// <summary>A segment: its label, its value and, optionally, its colour; without one, the tone ladder from the ink down, four steps, so a fifth segment needs one.</summary>
+    public sealed record Segment(string Label, double Value, string? Color = null);
+
+    [Parameter, EditorRequired] public IReadOnlyList<Segment> Segments { get; set; } = Array.Empty<Segment>();
+    /// <summary>Cells across; 20 by default.</summary>
+    [Parameter] public int Columns { get; set; } = 20;
+    /// <summary>Cells down; 5 by default.</summary>
+    [Parameter] public int Rows { get; set; } = 5;
+    /// <summary>A cell's side in pixels; 4 by default, with a 2px gap.</summary>
+    [Parameter] public int Cell { get; set; } = 4;
+    /// <summary>The share as shown in the legend, from the fraction and the value; defaults to a whole percent.</summary>
+    [Parameter] public Func<double, double, string>? Format { get; set; }
+    /// <summary>The legend beneath the grid; on by default.</summary>
+    [Parameter] public bool Legend { get; set; } = true;
+    /// <summary>A name for assistive technology: "Portfolio by holding".</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    // Four steps apart enough to tell at 4px: lv6 is all but lv8 in both themes. A fifth segment
+    // repeats the ladder, so give it a colour.
+    private static readonly string[] Tones = { "var(--lv8)", "var(--lv5)", "var(--lv4)", "var(--lv3)" };
+
+    private double Sum => Segments.Sum(s => Math.Max(0, s.Value));
+    private string ColorOf(int i) => Segments[i].Color ?? Tones[i % Tones.Length];
+    private string Show(Segment s)
+    {
+        double fraction = Sum > 0 ? Math.Max(0, s.Value) / Sum : 0;
+        return Format != null ? Format(fraction, s.Value) : $"{Math.Round(fraction * 100)} %";
+    }
+
+    /// <summary>Each segment's cells, by largest remainder, so they always sum to the grid. A segment
+    /// with a share but a rounded count of zero still gets one cell, taken from the largest.</summary>
+    public static int[] AllocateCells(double[] values, int total)
+    {
+        double sum = values.Sum(v => Math.Max(0, v));
+        if (sum <= 0) return new int[values.Length];
+        var exact = values.Select(v => Math.Max(0, v) / sum * total).ToArray();
+        var cells = exact.Select(e => (int)Math.Floor(e)).ToArray();
+        int left = total - cells.Sum();
+        foreach (var i in Enumerable.Range(0, values.Length).OrderByDescending(i => exact[i] - Math.Floor(exact[i])))
+        {
+            if (left <= 0) break;
+            cells[i]++;
+            left--;
+        }
+        for (int i = 0; i < cells.Length; i++)
+        {
+            if (values[i] > 0 && cells[i] == 0)
+            {
+                int largest = Array.IndexOf(cells, cells.Max());
+                if (cells[largest] > 1) { cells[largest]--; cells[i] = 1; }
+            }
+        }
+        return cells;
+    }
+}

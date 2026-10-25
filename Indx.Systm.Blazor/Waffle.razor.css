@@ -1,0 +1,52 @@
+.indx-waffle {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+/* The cells fill column by column, top to bottom then the next column, so a segment is a block
+   from the left edge; a 2px gap between 4px cells is the pixel pattern's scale. */
+.indx-waffle-grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(var(--waffle-rows, 5), var(--waffle-cell, 4px));
+    grid-auto-columns: var(--waffle-cell, 4px);
+    gap: 2px;
+    width: max-content;
+}
+
+.indx-waffle-cell {
+    background: var(--lv2);
+}
+
+.indx-waffle-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+}
+
+.indx-waffle-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.indx-waffle-swatch {
+    width: 4px;
+    height: 4px;
+    flex: none;
+}
+
+.indx-waffle-name {
+    color: var(--lv7);
+}
+
+.indx-waffle-share {
+    color: var(--lv5);
+}
