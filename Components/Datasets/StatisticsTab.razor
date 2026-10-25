@@ -111,9 +111,8 @@ else
         {
             @* A third each, as the stat tiles above: stretched across the page the heatmap and the
                row looked lost. No surface under them: the heatmap's empty cells are the Base tone.
-               In rows of a height, since the grid aligns to the top and masonry is not shipped:
-               the heatmap, the surface chart and the typing panel across the first row, the two
-               short ones, position and languages, across the second. *@
+               The typing panel, the tallest, comes last, so it never leaves a gap under a short
+               neighbour: the grid aligns to the top and masonry is not shipped. *@
             <div class="stats-overview">
         @* When people search: the week by hour in the dataset's own time zone, a day per row and
            an hour per column, a cell's tone its searches. Nights, weekends and the evening peak
@@ -146,31 +145,6 @@ else
             </div>
         }
 
-        @* How people type: the searches by their word count as a small bar chart, whose shape says
-           it (a catalogue is a tall first bar, a help site a hump at three), and four figures: the
-           median length, the share with a filter, the share that settled on a partial word (search
-           as you type paying off) and the median keystrokes before a settled search. A word is what
-           a space separates. *@
-        @if (_typing is { Total: > 0 } typing)
-        {
-            <div class="stats-overview-item">
-            <div class="stats-chart-head">
-                <span class="stats-chart-title">How people type</span>
-            </div>
-            <p class="stats-help">Words per search, a word being what a space separates.</p>
-            <Chart Type="bar" Labels="WordLabels" Height="110" ShowLegend="false"
-                   Series="@(new List<Chart.ChartSeries> { new("Searches", typing.Words.Select(w => (double)w).ToArray()) })" />
-            <div class="stats-typing-figures">
-                <Stat Label="Median length" Value="@($"{typing.MedianLength} chars")" />
-                <Stat Label="With a filter" Value="@Pct(typing.WithFilter, typing.Total)" />
-                <Stat Label="Settled mid-word" Hint="Searches that stopped on a partial word, pika for pikachu, because the results were already right: search as you type paying off. Counted where someone else went on to type the whole word, so a lower bound." Value="@Pct(typing.MidWord, typing.Total)" />
-                <Stat Label="Keystrokes" Hint="The searches a visitor's typing sent before the one that settled, in the middle; over the searches that carried a session, which the console and plain API calls do not." Value="@(typing.WithSession > 0 ? N(typing.Keystrokes) : "–")">
-                    @if (typing.WithSession > 0) { <text>of @N(typing.WithSession) with a session</text> }
-                </Stat>
-            </div>
-            </div>
-        }
-
         @* Which result is chosen: the clicks by the position of what was clicked. Most on the first
            says the ranking puts the right thing on top; many from far down, that it can do better. *@
         @if (_positions is { Total: > 0 } positions)
@@ -194,6 +168,31 @@ else
             </div>
             <p class="stats-help">The language of the page the search was typed on, as the page reports it; a cell is a percent.</p>
             <Waffle Segments="LocaleSegments(_locales)" Format="@((f, v) => Pct((long)v, _locales.Sum(l => l.Searches)))" AriaLabel="Searches by language" />
+            </div>
+        }
+
+        @* How people type: the searches by their word count as a small bar chart, whose shape says
+           it (a catalogue is a tall first bar, a help site a hump at three), and four figures: the
+           median length, the share with a filter, the share that settled on a partial word (search
+           as you type paying off) and the median keystrokes before a settled search. A word is what
+           a space separates. *@
+        @if (_typing is { Total: > 0 } typing)
+        {
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">How people type</span>
+            </div>
+            <p class="stats-help">Words per search, a word being what a space separates.</p>
+            <Chart Type="bar" Labels="WordLabels" Height="110" ShowLegend="false"
+                   Series="@(new List<Chart.ChartSeries> { new("Searches", typing.Words.Select(w => (double)w).ToArray()) })" />
+            <div class="stats-typing-figures">
+                <Stat Label="Median length" Value="@($"{typing.MedianLength} chars")" />
+                <Stat Label="With a filter" Value="@Pct(typing.WithFilter, typing.Total)" />
+                <Stat Label="Settled mid-word" Hint="Searches that stopped on a partial word, pika for pikachu, because the results were already right: search as you type paying off. Counted where someone else went on to type the whole word, so a lower bound." Value="@Pct(typing.MidWord, typing.Total)" />
+                <Stat Label="Keystrokes" Hint="The searches a visitor's typing sent before the one that settled, in the middle; over the searches that carried a session, which the console and plain API calls do not." Value="@(typing.WithSession > 0 ? N(typing.Keystrokes) : "–")">
+                    @if (typing.WithSession > 0) { <text>of @N(typing.WithSession) with a session</text> }
+                </Stat>
+            </div>
             </div>
         }
 
