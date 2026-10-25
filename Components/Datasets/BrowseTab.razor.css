@@ -76,21 +76,10 @@
     ::deep .browse-panel { left: 12px; width: auto; top: auto; bottom: 12px; max-height: 60%; }
 }
 
-/* The empty state, in the datasets page's first-visit shape: a large icon, a line, a detail,
-   then the two shapes the tree reads, each with the tree it makes. */
-.browse-empty { margin: 0 auto; max-width: 1040px; }
-.browse-empty-message { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 48px 24px 40px; }
+/* The empty state, as intrface's result messages: a large icon, a line, a detail, centred, with
+   air; nothing is wrong, so nothing shouts. */
+.browse-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 96px 24px; }
 .browse-empty-icon { display: flex; margin-bottom: 10px; }
 .browse-empty-title { font: var(--text-lg); color: var(--lv7); }
-.browse-empty-detail { font: var(--text-sm); color: var(--lv5); max-width: 60ch; }
-.browse-empty-shapes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.browse-empty-shape { display: flex; flex-direction: column; gap: 8px; padding: 18px 20px; background: var(--lv1); border-radius: var(--radius); min-width: 0; }
-.browse-empty-shape-title { margin: 0; font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
-.browse-empty-shape-text { margin: 0; font: var(--text-sm); line-height: 1.55; color: var(--lv6); }
-.browse-empty-code { margin: 4px 0 0; padding: 10px 12px; font-family: var(--font-mono); font-size: 11px; line-height: 1.5; color: var(--lv7); background: var(--lv0); border-radius: var(--radius); white-space: pre-wrap; word-break: break-word; }
-.browse-empty-tree { margin-top: 4px; }
-.browse-empty-tree ::deep .indx-tree-canvas { background: var(--lv0); max-height: 260px; }
-.browse-empty-tree ::deep .indx-tree-pill { pointer-events: none; }
-.browse-empty-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 20px 0 8px; justify-content: center; }
-.browse-empty-hint { font: var(--text-xs); color: var(--lv5); }
-@media (max-width: 720px) { .browse-empty-shapes { grid-template-columns: minmax(0, 1fr); } }
+.browse-empty-detail { font: var(--text-sm); color: var(--lv5); max-width: 52ch; }
+.browse-empty-actions { margin-top: 12px; }
