@@ -29,8 +29,8 @@ namespace IndxServer.Components.Datasets
         // The statistics tiles' label icons, and the monitor's.
         public static readonly RenderFragment<int> Cpu = Of<Icons.Cpu>();
         public static readonly RenderFragment<int> Ram = Of<Icons.Ram>();
-        public static readonly RenderFragment<int> ClickThrough = Of<Icons.ClickSelect>();
-        public static readonly RenderFragment<int> ClickPosition = Of<Icons.Results>();
+        public static readonly RenderFragment<int> ClickThrough = Of<Icons.ClickButton>();
+        public static readonly RenderFragment<int> ClickPosition = Of<Icons.ClickSelect>();
         public static readonly RenderFragment<int> Conversions = Of<Icons.ShoppingCart>();
         public static readonly RenderFragment<int> NotAnswered = Of<Icons.Empty>();
         public static readonly RenderFragment<int> SourcesOpened = Of<Icons.ExternalLink>();
