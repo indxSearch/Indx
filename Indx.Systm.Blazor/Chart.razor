@@ -58,60 +58,19 @@
                           stroke="var(--chart-crosshair)" stroke-width="1" stroke-dasharray="3 3" />
                 }
 
-                @if (Type == "line")
+                @RenderSeries(null)
+                @if (_signalY is { } signalY && signalY > PadTop)
                 {
-                    @for (int si = 0; si < Series.Count; si++)
-                    {
-                        var s = Series[si];
-                        if (s.Data.Count == 0) { continue; }
-                        var color = s.Color ?? DefaultLineColor;
-                        var fill = FillOf(s);
-                        @if (s.HasBand && BandPoints(s) is { } bandPts)
-                        {
-                            @* The band between low and high: along high to the right, back along low. *@
-                            <polygon points="@bandPts" fill="@(IsPattern(fill) ? PaintOf(s, si) : color)" fill-opacity="@(IsPattern(fill) ? "1" : F(AreaOpacity))" stroke="none" />
-                        }
-                        else if (fill != "none" && s.Data.Count > 1)
-                        {
-                            @* The area under the line, down to the baseline (or zero, where the range goes below it). *@
-                            <polygon points="@AreaPoints(s)" fill="@PaintOf(s, si)" fill-opacity="@(fill == "solid" ? F(AreaOpacity) : "1")" stroke="none" />
-                        }
-                        <polyline points="@LinePoints(s)" fill="none" stroke="@color" stroke-width="1"
-                                  stroke-linejoin="round" stroke-linecap="round" />
-                        @for (int i = 0; i < s.Data.Count; i++)
-                        {
-                            var hovered = _tooltip?.Index == i;
-                            if (!hovered && !RoomForMarkers) { continue; }
-                            var size = hovered ? (RoomForMarkers ? 10.0 : 7.0) : 5.0;
-                            var half = size / 2;
-                            <rect x="@F(ToX(i) - half)" y="@F(ToY(s.Data[i]) - half)" width="@F(size)" height="@F(size)" fill="@color" />
-                        }
-                    }
-                }
-                else if (_dataLen > 0)
-                {
-                    var groupW = _cw / _dataLen;
-                    const double barGap = 2.0;
-                    var seriesCount = IsStacked ? 1 : Series.Count;
-                    var barW = Math.Max((groupW - barGap * (seriesCount + 1)) / seriesCount, 2);
-                    var bottom = PadTop + _ch;
-                    // Stacked: each series starts where the ones before it ended.
-                    var stackBase = new double[_dataLen];
-                    @for (int si = 0; si < Series.Count; si++)
-                    {
-                        var s = Series[si];
-                        var color = PaintOf(s, si);
-                        @for (int i = 0; i < s.Data.Count; i++)
-                        {
-                            var bx = IsStacked ? PadLeft + i * groupW + barGap : PadLeft + i * groupW + barGap + si * (barW + barGap);
-                            var part = IsStacked ? Math.Max(0, s.Data[i]) : s.Data[i];
-                            var from = IsStacked ? stackBase[i] : 0;
-                            if (IsStacked) { stackBase[i] += part; }
-                            var by = ToY(from + part);
-                            var bh = IsStacked ? Math.Max(ToY(from) - by, 0) : Math.Max(bottom - by, 0);
-                            <rect x="@F(bx)" y="@F(by)" width="@F(barW)" height="@F(bh)" fill="@color" />
-                        }
-                    }
+                    @* A limit: the plot above the lowest signal reference is drawn again in the signal
+                       red, clipped to that region, so what lies past the limit says so. *@
+                    <defs>
+                        <clipPath id="@(_patternId)-signal">
+                            <rect x="@F(PadLeft)" y="@F(PadTop)" width="@F(_cw)" height="@F(signalY - PadTop)" />
+                        </clipPath>
+                    </defs>
+                    <g clip-path="url(#@(_patternId)-signal)">
+                        @RenderSeries(Signal)
+                    </g>
                 }
 
                 @* Markers: something happened on this point (a change, a release). A small square on
@@ -215,9 +174,11 @@
     /// Bars are solid unless told otherwise, a line is none.
     /// <c>Low</c>/<c>High</c>, lines only, are a range around the line, one value per point, drawn as a
     /// band behind it: faint in the series colour, or its pattern when <c>Fill</c> is one, and the area
-    /// under the line is then not drawn. <c>RangeLabel</c> names it in the tooltip, "Range" when left out.</summary>
+    /// under the line is then not drawn. <c>RangeLabel</c> names it in the tooltip, "Range" when left out.
+    /// <c>Step</c>, lines only: the value holds flat until the next point and then jumps, for what does
+    /// not move between samples: a record count, a state, a quota that changes on a date.</summary>
     public sealed record ChartSeries(string Label, IReadOnlyList<double> Data, string? Color = null, string? HoverColor = null, string? Fill = null,
-        IReadOnlyList<double>? Low = null, IReadOnlyList<double>? High = null, string? RangeLabel = null)
+        IReadOnlyList<double>? Low = null, IReadOnlyList<double>? High = null, string? RangeLabel = null, bool Step = false)
     {
         public bool HasBand => Low is { Count: > 0 } && High is { Count: > 0 };
     }
@@ -258,8 +219,9 @@
 
     /// <summary>A level to read the data against: a threshold, an average, a quota, the value now.
     /// <c>Label</c> is shown in a tag at the right end of the line, the formatted value when left out;
-    /// <c>Color</c> is the line's and the tag's, the signal red for a limit, the ink by default.</summary>
-    public sealed record ChartReference(double Value, string? Label = null, string? Color = null);
+    /// <c>Color</c> is the line's and the tag's, the signal red for a limit, the ink by default.
+    /// <c>Signal</c> marks a limit: whatever lies above the line is drawn in the signal red, bars and points alike.</summary>
+    public sealed record ChartReference(double Value, string? Label = null, string? Color = null, bool Signal = false);
 
     /// <summary>A value axis at "left" or "right": round ticks with a faint gridline each, the range
     /// widened to the ticks. "none" (default) keeps the midline, and the chart reads by the tooltip.</summary>
@@ -362,6 +324,8 @@
         }
         _range = (maxVal - _minVal) == 0 ? 1.0 : maxVal - _minVal;
         _dataLen = Series.Count > 0 ? Series.Max(s => s.Data.Count) : 0;
+        var signalRefs = (References ?? Array.Empty<ChartReference>()).Where(r => r.Signal && double.IsFinite(r.Value)).ToList();
+        _signalY = signalRefs.Count > 0 ? ToY(signalRefs.Min(r => r.Value)) : null;
 
         var axisWidth = HasAxis && _ticks.Count > 0 ? _ticks.Max(t => Fmt(t).Length) * LabelCharWidth + 10 : 0;
         var tagWidth = References is { Count: > 0 } ? References.Max(r => RefLabelOf(r).Length) * LabelCharWidth + 8 : 0;
@@ -480,25 +444,92 @@
     /// the markers merge into a second, thicker line, so only the hovered point gets one.</summary>
     private bool RoomForMarkers => _dataLen <= 1 || _cw / (_dataLen - 1) >= MinMarkerSpacing;
 
-    private string LinePoints(ChartSeries s)
-    {
-        var sb = new System.Text.StringBuilder();
-        for (int i = 0; i < s.Data.Count; i++)
+    // The series, or with a paint the signal copy: the line and its points, or the bars, in that
+    // colour, no band or area.
+    private RenderFragment RenderSeries(string? paint) => @<text>
+        @if (Type == "line")
         {
-            if (i > 0) sb.Append(' ');
-            sb.Append(F(ToX(i))).Append(',').Append(F(ToY(s.Data[i])));
+            @for (int si = 0; si < Series.Count; si++)
+            {
+                var s = Series[si];
+                if (s.Data.Count == 0) { continue; }
+                var color = paint ?? s.Color ?? DefaultLineColor;
+                var fill = FillOf(s);
+                @if (paint == null && s.HasBand && BandPoints(s) is { } bandPts)
+                {
+                    @* The band between low and high: along high to the right, back along low. *@
+                    <polygon points="@bandPts" fill="@(IsPattern(fill) ? PaintOf(s, si) : color)" fill-opacity="@(IsPattern(fill) ? "1" : F(AreaOpacity))" stroke="none" />
+                }
+                else if (paint == null && fill != "none" && s.Data.Count > 1)
+                {
+                    @* The area under the line, down to the baseline (or zero, where the range goes below it). *@
+                    <polygon points="@AreaPoints(s)" fill="@PaintOf(s, si)" fill-opacity="@(fill == "solid" ? F(AreaOpacity) : "1")" stroke="none" />
+                }
+                <polyline points="@LinePoints(s)" fill="none" stroke="@color" stroke-width="1"
+                          stroke-linejoin="round" stroke-linecap="round" />
+                @for (int i = 0; i < s.Data.Count; i++)
+                {
+                    var hovered = _tooltip?.Index == i;
+                    if (!hovered && !RoomForMarkers) { continue; }
+                    var size = hovered ? (RoomForMarkers ? 10.0 : 7.0) : 5.0;
+                    var half = size / 2;
+                    <rect x="@F(ToX(i) - half)" y="@F(ToY(s.Data[i]) - half)" width="@F(size)" height="@F(size)" fill="@color" />
+                }
+            }
         }
-        return sb.ToString();
+        else if (_dataLen > 0)
+        {
+            var groupW = _cw / _dataLen;
+            const double barGap = 2.0;
+            var seriesCount = IsStacked ? 1 : Series.Count;
+            var barW = Math.Max((groupW - barGap * (seriesCount + 1)) / seriesCount, 2);
+            var bottom = PadTop + _ch;
+            // Stacked: each series starts where the ones before it ended.
+            var stackBase = new double[_dataLen];
+            @for (int si = 0; si < Series.Count; si++)
+            {
+                var s = Series[si];
+                var color = paint ?? PaintOf(s, si);
+                @for (int i = 0; i < s.Data.Count; i++)
+                {
+                    var bx = IsStacked ? PadLeft + i * groupW + barGap : PadLeft + i * groupW + barGap + si * (barW + barGap);
+                    var part = IsStacked ? Math.Max(0, s.Data[i]) : s.Data[i];
+                    var from = IsStacked ? stackBase[i] : 0;
+                    if (IsStacked) { stackBase[i] += part; }
+                    var by = ToY(from + part);
+                    var bh = IsStacked ? Math.Max(ToY(from) - by, 0) : Math.Max(bottom - by, 0);
+                    <rect x="@F(bx)" y="@F(by)" width="@F(barW)" height="@F(bh)" fill="@color" />
+                }
+            }
+        }
+    </text>;
+
+    private const string Signal = "var(--CSignal)";
+    private double? _signalY;
+
+    /// <summary>The points of a series as "x,y" pairs; with Step, a corner at each new x holding the
+    /// last value, so the line runs flat and then jumps.</summary>
+    private List<string> PointsOf(IReadOnlyList<double> values, bool step, int n)
+    {
+        var pts = new List<string>(step ? n * 2 : n);
+        for (int i = 0; i < n; i++)
+        {
+            if (step && i > 0) pts.Add($"{F(ToX(i))},{F(ToY(values[i - 1]))}");
+            pts.Add($"{F(ToX(i))},{F(ToY(values[i]))}");
+        }
+        return pts;
     }
+
+    private string LinePoints(ChartSeries s) => string.Join(' ', PointsOf(s.Data, s.Step, s.Data.Count));
 
     private string? BandPoints(ChartSeries s)
     {
         var n = Math.Min(s.Data.Count, Math.Min(s.Low!.Count, s.High!.Count));
         if (n < 2) return null;
-        var sb = new System.Text.StringBuilder();
-        for (int i = 0; i < n; i++) sb.Append(F(ToX(i))).Append(',').Append(F(ToY(s.High[i]))).Append(' ');
-        for (int i = n - 1; i >= 0; i--) sb.Append(F(ToX(i))).Append(',').Append(F(ToY(s.Low[i]))).Append(' ');
-        return sb.ToString().TrimEnd();
+        var top = PointsOf(s.High, s.Step, n);
+        var back = PointsOf(s.Low, s.Step, n);
+        back.Reverse();
+        return string.Join(' ', top.Concat(back));
     }
 
     private string AreaPoints(ChartSeries s)
