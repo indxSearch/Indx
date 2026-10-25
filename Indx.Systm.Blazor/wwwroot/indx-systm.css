@@ -29,7 +29,8 @@
 
     /* Semantic: "on / enabled" — green on light mode, teal on dark (overridden below).
        Used by ToggleSwitch's positive variant. */
-    --CPositive: #6DC75D;
+    --CPositive: var(--CPureBlue);
+    --CPositiveHandle: #FFFFFF;
 
     /* FONT FAMILY */
     /* The brand font where its files are present, Geist everywhere else (see fonts/fonts.css).
@@ -104,6 +105,7 @@
         /* Teal reads well on dark backgrounds. */
         --CConfirmed: var(--CTeal);
         --CPositive: var(--CTeal);
+        --CPositiveHandle: #080809;
     }
 }
 

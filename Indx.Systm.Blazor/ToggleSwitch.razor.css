@@ -65,14 +65,14 @@
     transform: translateX(8px);
 }
 
-/* Positive: on is --CPositive, green on light and teal on dark. Both are light enough that the
-   handle stays dark in both themes to keep its contrast. */
+/* Positive: on is --CPositive, pure blue on light and teal on dark, and the handle takes
+   --CPositiveHandle, white on the blue and near-black on the teal. */
 .indx-toggle-positive .indx-toggle-input:checked + .indx-toggle-slider {
     background-color: var(--CPositive);
 }
 
 .indx-toggle-positive .indx-toggle-input:checked + .indx-toggle-slider::before {
-    background-color: #080809;
+    background-color: var(--CPositiveHandle);
 }
 
 /* Marks: a 0 on the track when off, a | when on, as on a power switch. Drawn as background layers
@@ -98,9 +98,9 @@
     background-repeat: no-repeat;
 }
 
-/* Positive keeps its dark handle, so its | is dark too. */
+/* The | on a positive track matches its handle. */
 .indx-toggle-marks.indx-toggle-positive .indx-toggle-input:checked + .indx-toggle-slider {
-    background-image: linear-gradient(#080809, #080809);
+    background-image: linear-gradient(var(--CPositiveHandle), var(--CPositiveHandle));
 }
 
 .indx-toggle-input:disabled + .indx-toggle-slider {
