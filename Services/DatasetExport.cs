@@ -40,8 +40,8 @@ namespace IndxServer.Services
         /// <summary>
         /// Writes the dataset as a JSON array to <paramref name="output"/>: <c>[</c>, the records
         /// separated by commas, <c>]</c>. An empty dataset is <c>[]</c>. Returns the record count.
+        /// <paramref name="written"/> is told the running count every few hundred records, and at the end.
         /// </summary>
-        /// <param name="written">Told the running count every few hundred records, and at the end.</param>
         public static async Task<long> WriteJsonArrayAsync(string teamId, string dataSetName, Stream output, CancellationToken ct,
             Action<long>? written = null)
         {

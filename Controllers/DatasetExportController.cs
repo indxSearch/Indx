@@ -30,13 +30,13 @@ namespace IndxServer.Controllers
         /// the records as they were loaded, replaced or last updated, including fields that are not
         /// configured. Streams, so it works on a dataset of any size, and works whether the dataset
         /// is Ready, hibernated or idle-evicted. Any team member may export. Field configuration and
-        /// boost rules are separate exports.
+        /// boost rules are separate exports. <c>progress</c> is the console's: a token it counts the
+        /// written records under, for its progress bar. Leave it out.
         /// </summary>
         [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet("teams/{teamName}/datasets/{dataSetName}/export")]
         [Produces("application/json")]
         [ProducesResponseType(StatusCodes.Status200OK)]
-        /// <param name="progressToken">The console's: it shows a progress bar from the count written under it. Leave it out.</param>
         public async Task<IActionResult> Export(string teamName, string dataSetName, [FromQuery(Name = "progress")] Guid? progressToken = null)
         {
             var userId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
