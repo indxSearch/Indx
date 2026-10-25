@@ -163,7 +163,7 @@ else
             <div class="stats-chart-head">
                 <span class="stats-chart-title">Which result is chosen</span>
             </div>
-            <p class="stats-help">The first result in @Pct(positions.First, positions.Total) of @N(positions.Total) clicks@(positions.BelowTen > 0 ? $", and one below the tenth in {Pct(positions.BelowTen, positions.Total)}" : "").</p>
+            <p class="stats-help">The chosen result sits at position @AvgPos() on average. The first result in @Pct(positions.First, positions.Total) of @N(positions.Total) clicks@(positions.BelowTen > 0 ? $", and one below the tenth in {Pct(positions.BelowTen, positions.Total)}" : "").</p>
             <BarMeter Segments="PositionSegments(positions)" Labels="legend" Format="@(v => Pct((long)v, positions.Total))" />
             </div>
         }
@@ -313,7 +313,7 @@ else
             </div>
             <p class="stats-help">
                 @if (_fuzzyAll) { <text>Every search with typos too large for an exact match, the ones nothing was chosen from included.</text> }
-                else { <text>Searches with typos too large for an exact match, where fuzzy search still found what the visitor was looking for.</text> }
+                else { <text>Searches with typos too large for an exact match, where fuzzy search still found what the visitor was looking for: @N(_overview.UncoveredChosen) of @N(_overview.Uncovered) such searches in this period.</text> }
             </p>
             @if (_fuzzy.Count == 0)
             {
