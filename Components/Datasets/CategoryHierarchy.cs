@@ -21,6 +21,8 @@ namespace IndxServer.Components.Datasets
         public const int MaxDepth = 8;
         public const int MaxLabelLength = 60;
         public const string NoCategory = "No category";
+        /// <summary>The share of values that must carry the separator for the field to be a hierarchy.</summary>
+        public const double SeparatorShare = 0.6;
 
         /// <summary>The separators tried, in the order of preference when two are equally common.
         /// Google's " > " comes first and is tried before the bare ">" that it contains.</summary>
@@ -41,7 +43,9 @@ namespace IndxServer.Components.Datasets
         public sealed record Tree(IReadOnlyList<Node> Roots, string? Separator, int DistinctValues, int Nodes, int Depth, int Cut);
 
         /// <summary>The separator the values use: the one found in most of them, by the preference
-        /// order on a tie; null when fewer than a tenth of the values contain any.</summary>
+        /// order on a tie; null when fewer than <see cref="SeparatorShare"/> of the values contain
+        /// any. A path field has it in nearly every value; a flat field with compound values
+        /// ("Gold/black", "Sofas|Sectionals", a quarter to half of furniture's) is not a hierarchy.</summary>
         public static string? DetectSeparator(IEnumerable<string> values)
         {
             var list = values as IReadOnlyCollection<string> ?? values.ToList();
@@ -53,7 +57,7 @@ namespace IndxServer.Components.Datasets
                 int hits = list.Count(v => v.Contains(sep, StringComparison.Ordinal));
                 if (hits > bestHits) { best = sep; bestHits = hits; }
             }
-            return bestHits * 10 >= list.Count ? best : null;
+            return bestHits >= list.Count * SeparatorShare ? best : null;
         }
 
         /// <summary>Builds the tree, or null when the field has more than <see cref="MaxValues"/>

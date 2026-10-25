@@ -1,18 +1,27 @@
 .browse-tab { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
 
-.browse-toolbar { align-items: center; flex-wrap: wrap; }
+.browse-toolbar { align-items: center; flex-wrap: wrap; margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--lv2); flex: none; }
 .browse-label { color: var(--lv5); font: var(--text-xs); }
 .browse-toolbar-end { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 .browse-note { color: var(--lv5); font: var(--text-sm); margin: 0; }
 
-/* The stage: the canvas across the width and as tall as the window leaves, scrolling inside;
-   the chosen category's panel floats over its right edge. */
-.browse-stage { position: relative; }
+/* The frame: one bordered room as tall as the window leaves, the toolbar its top row and the
+   canvas the rest, scrolling inside; the chosen category's panel floats over its right edge. */
+.browse-frame {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - var(--header-height) - 64px);
+    min-height: 420px;
+    border: 1px solid var(--lv2);
+    background: var(--lv0);
+}
+.browse-pad { padding: 16px; }
+.browse-stage { position: relative; flex: 1; min-height: 0; }
 .browse-stage ::deep .indx-tree-canvas,
 .browse-stage ::deep .indx-tree-list-wrap {
-    height: calc(100vh - var(--header-height) - 150px);
-    min-height: 360px;
+    height: 100%;
+    border: none;
     overflow: auto;
 }
 

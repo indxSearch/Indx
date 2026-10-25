@@ -32,6 +32,16 @@
     }
     else
     {
+
+        @if (_error != null)
+        {
+            <Alert Variant="warning"><Title>The categories could not be read</Title><Description>@_error</Description></Alert>
+        }
+        @if (_tree != null && _tree.Cut > 0)
+        {
+            <p class="browse-note">@_tree.Cut.ToString("N0") path@(_tree.Cut == 1 ? "" : "s") deeper than @CategoryHierarchy.MaxDepth levels @(_tree.Cut == 1 ? "is" : "are") cut at level @CategoryHierarchy.MaxDepth.</p>
+        }
+        <div class="browse-frame">
         <div class="indx-list-toolbar browse-toolbar">
             <SelectField Size="micro" Variant="ghost" Options="SourceOptions" Value="@_source?.Key" ValueChanged="OnSourceChanged" aria-label="Hierarchy" />
             @if (Ctx.IsEditor && _source is { IsGroup: false })
@@ -59,28 +69,22 @@
                 <SegmentedControl Size="micro" AriaLabel="View" @bind-Value="_view" Items="_views" />
             </div>
         </div>
-
         @if (_error != null)
         {
-            <Alert Variant="warning"><Title>The categories could not be read</Title><Description>@_error</Description></Alert>
         }
         else if (_reading && _tree == null)
         {
-            <p class="browse-note">Reading the categories…</p>
+            <p class="browse-note browse-pad">Reading the categories…</p>
         }
         else if (_declined)
         {
-            <Alert Variant="info">
+            <div class="browse-pad"><Alert Variant="info">
                 <Title>Too many values to draw</Title>
                 <Description>@_source!.Label has more than @CategoryHierarchy.MaxValues.ToString("N0") distinct paths. A category tree has hundreds; this looks like a name or a code. Choose another hierarchy above.</Description>
-            </Alert>
+            </Alert></div>
         }
         else if (_tree != null)
         {
-            @if (_tree.Cut > 0)
-            {
-                <p class="browse-note">@_tree.Cut.ToString("N0") path@(_tree.Cut == 1 ? "" : "s") deeper than @CategoryHierarchy.MaxDepth levels @(_tree.Cut == 1 ? "is" : "are") cut at level @CategoryHierarchy.MaxDepth.</p>
-            }
             <div class="browse-stage">
                 <TreeCanvas Roots="_nodes" Selected="@_selected" SelectedChanged="OnSelected" View="@_view" Visible="VisiblePredicate"
                             Zoom="@ZoomFactor" OpenDepth="@_openDepth" AriaLabel="@($"Categories of {Ctx.Name} by {_source!.Label}")" />
@@ -151,6 +155,7 @@
                 }
             </div>
         }
+        </div>
     }
 </div>
 

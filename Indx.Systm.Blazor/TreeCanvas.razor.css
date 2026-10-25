@@ -183,6 +183,7 @@
 .indx-tree-row-name {
     flex: 1;
     min-width: 0;
+    justify-content: flex-start; /* the global button style centres */
     padding: 0;
     border: none;
     background: none;
