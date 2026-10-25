@@ -244,6 +244,9 @@ Below the chart, one section at a time, each with its own view settings:
   gets chosen; which languages visitors search in; how they type; and the search profile, six
   shares on one scale with the window before this one drawn behind, so a change is the shape
   moving.
+![The Overview section: the window's tiles, when people search as a week-by-hour grid and a clock
+of the day, searches by surface, which result is chosen and how people type](docs/images/console-statistics-overview.png)
+
 - **Top queries** gives each query its click-through and the average position of the result
   people chose. A low position means the right document was found and ranked too low. Order by
   searches or by click-through, ten more at a time.
@@ -496,6 +499,12 @@ Migrations run automatically on startup. No manual migration steps needed.
 > The **inverted search index is held in memory** and rebuilt on load; `indx.db` persists the documents and configuration, so a dataset can be unloaded to free memory and reloaded, re-indexed from the store, without re-uploading data.
 
 ## Dataset lifecycle: keep-alive & hibernation
+
+Each dataset's **Status** tab reads its state at a glance: the index, its document count, when it
+was last built and how long that took, and how it is kept in memory.
+
+![The Status tab: the dataset's state, documents, records on disk, last index build and time to
+index, then searches since load, keep-alive and last used](docs/images/console-status.png)
 
 Because the documents live in `indx.db` while only the index is in memory, datasets can be loaded and unloaded on demand to manage RAM. Each dataset has a **keep-alive policy** (`KeepAliveTimeHrs`), set per dataset on the **Datasets** page (a dataset's *Options* tab) or, across all teams, on **Admin → Datasets**:
 
