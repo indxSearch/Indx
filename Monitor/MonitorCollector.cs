@@ -60,6 +60,13 @@ namespace IndxServer.Monitor
         private readonly List<(DateTimeOffset At, long Total)> _rateSamples = [];
         private static readonly TimeSpan RateWindow = TimeSpan.FromMinutes(1);
 
+        // The rate once a minute for the last hour, for a chart; and the previous CPU reading,
+        // for the share of the cores spent since it.
+        private readonly List<double> _rateHistory = [];
+        private DateTimeOffset? _rateHistoryAt;
+        private const int RateHistoryMax = 60;
+        private (DateTimeOffset At, TimeSpan Cpu)? _lastCpu;
+
         internal MonitorSnapshot Collect(DateTimeOffset now)
         {
             List<(string DataSetName, string TeamId)> all;
@@ -211,8 +218,10 @@ namespace IndxServer.Monitor
             var events = DetectTransitions(ordered, now);
             events.AddRange(DrainActivity(ordered, now));
             CountSearches(ordered);
-            return new MonitorSnapshot(now, ordered, ReadProcess(), ReadFilters(), events,
-                                       _searchesTotal, RatePerMinute(now));
+            var rate = RatePerMinute(now);
+            RecordRate(now, rate);
+            return new MonitorSnapshot(now, ordered, ReadProcess(now), ReadFilters(), events,
+                                       _searchesTotal, rate, _rateHistory.ToArray());
         }
 
         private void CountSearches(List<DatasetLine> lines)
@@ -256,9 +265,31 @@ namespace IndxServer.Monitor
             DerivedRecomputes: FilterUpdateDiagnostics.DerivedRecomputes,
             DerivedRebuilds: FilterUpdateDiagnostics.DerivedRebuilds);
 
-        private static ProcessLine ReadProcess()
+        /// <summary>One reading a minute, the first a minute after the monitor started so it is a
+        /// whole minute's rate, the last hour kept.</summary>
+        private void RecordRate(DateTimeOffset now, double rate)
+        {
+            _rateHistoryAt ??= now;
+            if (now - _rateHistoryAt.Value < TimeSpan.FromMinutes(1)) return;
+            _rateHistoryAt = now;
+            _rateHistory.Add(rate);
+            if (_rateHistory.Count > RateHistoryMax) _rateHistory.RemoveAt(0);
+        }
+
+        private ProcessLine ReadProcess(DateTimeOffset now)
         {
             using var process = System.Diagnostics.Process.GetCurrentProcess();
+            // The process's share of all cores since the previous tick: CPU time spent over wall
+            // time elapsed, per core. The first tick has nothing to compare with and reads 0.
+            var cpu = process.TotalProcessorTime;
+            double cpuPercent = 0;
+            if (_lastCpu is { } last && now > last.At)
+            {
+                double wall = (now - last.At).TotalMilliseconds * Environment.ProcessorCount;
+                cpuPercent = Math.Clamp((cpu - last.Cpu).TotalMilliseconds / wall * 100, 0, 100);
+            }
+            _lastCpu = (now, cpu);
+            long availableMb = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / 1024 / 1024;
             return new ProcessLine(
                 GcHeapMb: GC.GetTotalMemory(false) / 1024 / 1024,
                 PrivateMb: process.PrivateMemorySize64 / 1024 / 1024,
@@ -267,7 +298,9 @@ namespace IndxServer.Monitor
                 Gen1: GC.CollectionCount(1),
                 Gen2: GC.CollectionCount(2),
                 NativeBlocks: Indx.Utilities.NativeMemoryDiagnostics.OutstandingBlocks,
-                NativePoolMb: Indx.Utilities.NativeMemoryDiagnostics.OutstandingPoolBytes / 1024 / 1024);
+                NativePoolMb: Indx.Utilities.NativeMemoryDiagnostics.OutstandingPoolBytes / 1024 / 1024,
+                CpuPercent: cpuPercent,
+                AvailableMb: availableMb);
         }
     }
 }

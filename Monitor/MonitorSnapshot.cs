@@ -50,6 +50,10 @@ namespace IndxServer.Monitor
     /// heap, private and working set all move with paging and say nothing on a memory-starved
     /// host, where a steady <see cref="NativeBlocks"/> still means balanced alloc/free.
     /// </summary>
+    /// <para><see cref="CpuPercent"/> is this process's share of all cores over the last tick,
+    /// what Task Manager shows for a process: the view from inside the box, which on App Service
+    /// is the only one there is. <see cref="AvailableMb"/> is the memory the runtime believes it
+    /// may use, the machine's or the container's limit, so resident against it is a level.</para>
     internal sealed record ProcessLine(
         long GcHeapMb,
         long PrivateMb,
@@ -58,7 +62,9 @@ namespace IndxServer.Monitor
         int Gen1,
         int Gen2,
         long NativeBlocks,
-        long NativePoolMb);
+        long NativePoolMb,
+        double CpuPercent = 0,
+        long AvailableMb = 0);
 
     /// <summary>
     /// How unloaded filters are being materialised, and what dynamic ops cost the filter cache.
@@ -116,8 +122,13 @@ namespace IndxServer.Monitor
         FilterLine Filters,
         IReadOnlyList<MonitorEvent> NewEvents,
         long SearchesTotal = 0,
-        double SearchesPerMinute = 0)
+        double SearchesPerMinute = 0,
+        IReadOnlyList<double>? RateHistory = null)
     {
+        /// <summary>Searches a minute, one reading a minute, the last hour at most, oldest first.
+        /// Kept by the collector; empty until the second minute.</summary>
+        public IReadOnlyList<double> RateHistory { get; init; } = RateHistory ?? [];
+
         /// <summary>Searches counted since the monitor started, and the recent rate. Not
         /// <c>SearchCounter</c> summed: that is per engine and restarts at zero when a dataset is
         /// evicted and reloaded, so the sum would fall. See <c>MonitorCollector</c>.</summary>

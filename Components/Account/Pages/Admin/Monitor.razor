@@ -2,6 +2,7 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using IndxServer.Monitor
+@using Indx.Systm.Blazor
 @attribute [Authorize(Roles = "Admin")]
 @implements IDisposable
 @inject MonitorState State
@@ -25,23 +26,59 @@
 }
 else
 {
-    <p style="color: var(--lv5); margin-bottom: 24px;">
-        @snapshot.Datasets.Count dataset@(snapshot.Datasets.Count == 1 ? "" : "s")
-        (@snapshot.LoadedCount loaded) ·
-        @snapshot.TotalDocuments.ToString("N0") documents ·
-        @snapshot.DescribeSearches()
-    </p>
+    @* The instance at a glance. CPU is this process's share of the cores over the last second,
+       the view from inside the box. Memory is resident against what the runtime may use, the
+       machine's or the container's limit: resident rather than the managed heap, because the
+       engine keeps its score arrays in unmanaged memory through SpanAlloc and the heap
+       understates it. The native pool is that memory, and its block count is the exact figure:
+       heap and resident both move with paging, a steady count still means balanced alloc/free. *@
+    <div class="admin-monitor-stats">
+        <StatGroup Columns="5">
+            <Stat Label="CPU" Hint="This process's share of all cores over the last second.">
+                <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.CpuPercent" Max="100" Format="@(v => $"{v:0} %")"
+                                  Color="@(snapshot.Process.CpuPercent > 85 ? "var(--CSignal)" : null)" /></Figure>
+                <ChildContent>of @Environment.ProcessorCount cores</ChildContent>
+            </Stat>
+            <Stat Label="Memory" Hint="Resident memory, against what the runtime may use on this machine or in this container. It includes the unmanaged memory the search engine allocates itself, which the managed heap does not.">
+                <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.WorkingSetMb" Max="@Math.Max(snapshot.Process.AvailableMb, 1)" Format="@(v => $"{v / Math.Max(snapshot.Process.AvailableMb, 1) * 100:0} %")"
+                                  Color="@(snapshot.Process.AvailableMb > 0 && snapshot.Process.WorkingSetMb > snapshot.Process.AvailableMb * 0.85 ? "var(--CSignal)" : null)" /></Figure>
+                <ChildContent>@Gb(snapshot.Process.WorkingSetMb) of @Gb(snapshot.Process.AvailableMb)</ChildContent>
+            </Stat>
+            <Stat Label="Native pool" Hint="The unmanaged memory the search engine holds for its score arrays, and the count of those allocations. A steady count means they are being released." Value="@Gb(snapshot.Process.NativePoolMb)">
+                @snapshot.Process.NativeBlocks.ToString("N0") blocks · @snapshot.Process.GcHeapMb.ToString("N0") MB managed heap
+            </Stat>
+            <Stat Label="Searches" Hint="Counted since the monitor started; the rate is over the last minute." Value="@snapshot.SearchesTotal.ToString("N0")">
+                @(snapshot.SearchesPerMinute >= 0.05 ? $"{snapshot.SearchesPerMinute:N0} a minute" : "none in the last minute")
+            </Stat>
+            <Stat Label="Datasets" Value="@snapshot.Datasets.Count.ToString("N0")">
+                @snapshot.LoadedCount loaded · @snapshot.TotalDocuments.ToString("N0") documents
+            </Stat>
+        </StatGroup>
 
-    @* Three numbers rather than one, because for Indx they disagree on purpose. The engine keeps
-       its score arrays in unmanaged memory through SpanAlloc, so the managed heap understates
-       what it is using and resident memory is the honest answer. Outstanding native blocks is the
-       exact one: heap and resident both move with paging, that does not. *@
-    <p style="color: var(--lv5); margin-bottom: 24px;"
-       title="Managed heap is what the GC accounts for. Resident is the physical memory the process holds, which includes the unmanaged memory the search engine allocates itself. Native blocks is the count of those allocations, and a steady number means they are being released.">
-        @snapshot.Process.GcHeapMb.ToString("N0") MB managed heap ·
-        @snapshot.Process.WorkingSetMb.ToString("N0") MB resident ·
-        @snapshot.Process.NativeBlocks.ToString("N0") native blocks
-    </p>
+        @if (snapshot.RateHistory.Count >= 2)
+        {
+            <div class="admin-monitor-panel">
+                <span class="admin-monitor-panel-title">Searches a minute, the last hour</span>
+                <Chart Type="line" Height="120" ShowLegend="false" YAxis="right"
+                       Series="@(new List<Chart.ChartSeries> { new("Searches", snapshot.RateHistory, Fill: "solid") })"
+                       Labels="@RateLabels(snapshot.RateHistory.Count)" />
+            </div>
+        }
+
+        @if (snapshot.Datasets.Count > 0)
+        {
+            <div class="admin-monitor-row">
+                <div class="admin-monitor-panel">
+                    <span class="admin-monitor-panel-title">Documents by dataset</span>
+                    <BarMeter Segments="DocumentsByDataset(snapshot)" Format="@(v => v.ToString("N0"))" />
+                </div>
+                <div class="admin-monitor-panel">
+                    <span class="admin-monitor-panel-title">Datasets by state</span>
+                    <Waffle Segments="DatasetsByState(snapshot)" Format="@((f, v) => v.ToString("N0"))" AriaLabel="Datasets by state" />
+                </div>
+            </div>
+        }
+    </div>
 
     @if (_events.Count == 0)
     {
@@ -108,4 +145,33 @@ else
     }
 
     public void Dispose() => State.Changed -= OnChanged;
+
+    private static string Gb(long mb) => mb >= 1024 ? $"{mb / 1024.0:0.0} GB" : $"{mb:N0} MB";
+
+    /// <summary>One label a reading, the hour's oldest at the left; only every twelfth is drawn.</summary>
+    private static string[] RateLabels(int count) =>
+        Enumerable.Range(0, count).Select(i => count - 1 - i == 0 ? "now" : $"-{count - 1 - i} min").ToArray();
+
+    /// <summary>The largest four datasets by loaded documents, the rest as one segment.</summary>
+    private static List<BarMeter.Segment> DocumentsByDataset(MonitorSnapshot s)
+    {
+        var withDocs = s.Datasets.Where(d => d.DocumentCount > 0).OrderByDescending(d => d.DocumentCount).ToList();
+        var top = withDocs.Take(4).Select(d => new BarMeter.Segment(d.DataSetName, d.DocumentCount)).ToList();
+        var rest = withDocs.Skip(4).Sum(d => (double)d.DocumentCount);
+        if (rest > 0) top.Add(new("Others", rest));
+        if (top.Count == 0) top.Add(new("None loaded", 1, "var(--lv2)"));
+        return top;
+    }
+
+    /// <summary>Ready, hibernated, then the in-between states, then error in the signal red.</summary>
+    private static List<Waffle.Segment> DatasetsByState(MonitorSnapshot s)
+    {
+        var byPhase = s.Datasets.GroupBy(d => d.Phase).ToDictionary(g => g.Key, g => g.Count());
+        var segments = new List<Waffle.Segment>();
+        void Add(string phase, string? color = null) { if (byPhase.Remove(phase, out var n) && n > 0) segments.Add(new(phase, n, color)); }
+        Add("Ready"); Add("Hibernated");
+        foreach (var (phase, n) in byPhase.Where(kv => kv.Key != "Error").OrderByDescending(kv => kv.Value)) segments.Add(new(phase, n));
+        Add("Error", "var(--CSignal)");
+        return segments;
+    }
 }
