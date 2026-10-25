@@ -1,9 +1,9 @@
-/* The Tabs look: the cells sit on one hairline rule, the chosen one underlined. No frame, no
-     dividers, nothing filled: a choice, not a box. */
+/* The button Tabs look: the chosen cell filled like a primary Button, the rest ghost, a gap
+     between them, no rule and no frame. */
 .indx-segmented {
     display: inline-flex;
-    align-items: stretch;
-    border-bottom: 1px solid var(--lv3);
+    align-items: center;
+    gap: 8px;
     max-width: 100%;
 }
 
@@ -20,10 +20,10 @@
     box-sizing: border-box;
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    margin: 0 0 -1px;
+    gap: 6px;
+    margin: 0;
     border: none;
-    border-bottom: 2px solid transparent;
+    border-radius: var(--radius);
     background: transparent;
     color: var(--lv5);
     font: var(--text-xs);
@@ -33,19 +33,20 @@
     font-variant-numeric: tabular-nums;
 }
 
-.indx-segmented-cell:hover {
+.indx-segmented-cell:hover:not(:disabled):not(.indx-segmented-active) {
     color: var(--lv7);
+    background: var(--lv2);
 }
 
 .indx-segmented-active,
 .indx-segmented-active:hover {
-    color: var(--lv7);
-    border-bottom-color: var(--lv7);
+    color: var(--lv1);
+    background: var(--lv7);
 }
 
 .indx-segmented-cell:focus-visible {
-    outline: 1px solid var(--lv5);
-    outline-offset: -1px;
+    outline: 2px solid var(--lv5);
+    outline-offset: 1px;
 }
 
 .indx-segmented-cell:disabled {
