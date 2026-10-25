@@ -27,9 +27,21 @@
                         }
                     </defs>
                 }
-                @* midline *@
-                <line x1="@F(PadLeft)" y1="@F(PadTop + _ch * 0.5)" x2="@F(PadLeft + _cw)" y2="@F(PadTop + _ch * 0.5)"
-                      stroke="var(--chart-midline)" stroke-width="0.5" />
+                @* midline, or with an axis the ticks' gridlines in its place *@
+                @if (!HasAxis)
+                {
+                    <line x1="@F(PadLeft)" y1="@F(PadTop + _ch * 0.5)" x2="@F(PadLeft + _cw)" y2="@F(PadTop + _ch * 0.5)"
+                          stroke="var(--chart-midline)" stroke-width="0.5" />
+                }
+                else
+                {
+                    @foreach (var t in _ticks)
+                    {
+                        if (t == _minVal) { continue; }
+                        <line x1="@F(PadLeft)" y1="@F(ToY(t))" x2="@F(PadLeft + _cw)" y2="@F(ToY(t))"
+                              stroke="var(--chart-midline)" stroke-width="0.5" />
+                    }
+                }
                 @* baseline *@
                 <line x1="@F(PadLeft)" y1="@F(PadTop + _ch)" x2="@F(PadLeft + _cw)" y2="@F(PadTop + _ch)"
                       stroke="var(--chart-baseline)" stroke-width="1" />
@@ -105,6 +117,9 @@
 
                 @* SVG <text> is a reserved Razor tag, so the axis labels are emitted via the builder. *@
                 @RenderAxisLabels
+                @RenderValueAxis
+                @* References last, so a bar or an area cannot cover the line or its tag. *@
+                @RenderReferences
 
                 @* transparent overlay captures the pointer so OffsetX/Y is relative to the whole svg.
                    Pointer events, not mouse events: a tap opens the tooltip on a phone, and a
@@ -207,7 +222,49 @@
     /// <summary>One marker: the point's index in the series, and what happened there.</summary>
     public sealed record ChartMarker(int Index, string Label);
 
-    private const double PadTop = 12, PadRight = 20, PadBottomBase = 8, PadBottomLabels = 28, PadLeft = 20;
+    /// <summary>A level to read the data against: a threshold, an average, a quota, the value now.
+    /// <c>Label</c> is shown in a tag at the right end of the line, the formatted value when left out;
+    /// <c>Color</c> is the line's and the tag's, the signal red for a limit, the ink by default.</summary>
+    public sealed record ChartReference(double Value, string? Label = null, string? Color = null);
+
+    /// <summary>A value axis at "left" or "right": round ticks with a faint gridline each, the range
+    /// widened to the ticks. "none" (default) keeps the midline, and the chart reads by the tooltip.</summary>
+    [Parameter] public string YAxis { get; set; } = "none";
+    /// <summary>The tick labels, and a reference's label when it has none; compact by default: 1.2k, 3M.</summary>
+    [Parameter] public Func<double, string>? YFormat { get; set; }
+    /// <summary>Levels to read the data against, each a dashed line with its label in a tag at the right.</summary>
+    [Parameter] public IReadOnlyList<ChartReference>? References { get; set; }
+
+    private bool HasAxis => YAxis is "left" or "right";
+    private readonly List<double> _ticks = new();
+    private string Fmt(double v) => YFormat != null ? YFormat(v) : Compact(v);
+    private string RefLabelOf(ChartReference r) => r.Label ?? Fmt(r.Value);
+
+    /// <summary>A round step for about four ticks over the range: 1, 2 or 5 times a power of ten.</summary>
+    private static double NiceStep(double range, int count = 4)
+    {
+        var raw = range / count;
+        if (raw <= 0) raw = 1;
+        var magnitude = Math.Pow(10, Math.Floor(Math.Log10(raw)));
+        var n = raw / magnitude;
+        return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * magnitude;
+    }
+
+    private static string Compact(double v)
+    {
+        var abs = Math.Abs(v);
+        if (abs >= 1e6) return Trim(v / 1e6) + "M";
+        if (abs >= 1e3) return Trim(v / 1e3) + "k";
+        return Trim(v);
+    }
+
+    private static string Trim(double v) =>
+        v.ToString(Math.Abs(v) < 10 ? "0.##" : "0.#", CultureInfo.InvariantCulture);
+
+    private const double PadTop = 12, PadBottomBase = 8, PadBottomLabels = 28, PadSide = 20;
+    // The side paddings make room for the axis labels and the reference tags, which sit outside
+    // the plot at the right. PadSide is the margin a chart has without either.
+    private double PadLeft, PadRight;
     private const string DefaultLineColor = "var(--lv4)";
 
     private sealed record TooltipState(int Index, double X, double Y);
@@ -225,16 +282,34 @@
     private void ComputeLayout()
     {
         var padBottom = (Labels?.Length ?? 0) > 0 ? PadBottomLabels : PadBottomBase;
-        _cw = Math.Max(_containerWidth - PadLeft - PadRight, 0);
         _ch = Math.Max(Height - PadTop - padBottom, 0);
+        // The range: the data, and any reference, which must be in view to be read against. With
+        // an axis the range widens to round ticks, so the top gridline carries a label.
         var all = new List<double>();
         foreach (var s in Series)
             foreach (var d in s.Data)
                 if (!double.IsNaN(d) && !double.IsInfinity(d)) all.Add(d);
-        var maxVal = all.Count > 0 ? Math.Max(all.Max(), 0) : 1.0;
-        _minVal = Type == "bar" ? 0.0 : (all.Count > 0 ? Math.Min(all.Min(), 0) : 0.0);
+        var refs = (References ?? Array.Empty<ChartReference>()).Select(r => r.Value).Where(double.IsFinite).ToList();
+        var maxVal = all.Count > 0 || refs.Count > 0 ? Math.Max(all.Concat(refs).Max(), 0) : 1.0;
+        _minVal = Type == "bar"
+            ? Math.Min(0, refs.Count > 0 ? refs.Min() : 0)
+            : (all.Count > 0 || refs.Count > 0 ? Math.Min(all.Concat(refs).Min(), 0) : 0.0);
+        var step = NiceStep(maxVal - _minVal);
+        _ticks.Clear();
+        if (HasAxis)
+        {
+            maxVal = Math.Ceiling(maxVal / step - 1e-9) * step;
+            _minVal = Math.Floor(_minVal / step + 1e-9) * step;
+            for (var t = _minVal; t <= maxVal + step / 2; t += step) _ticks.Add(Math.Round(t, 10));
+        }
         _range = (maxVal - _minVal) == 0 ? 1.0 : maxVal - _minVal;
         _dataLen = Series.Count > 0 ? Series.Max(s => s.Data.Count) : 0;
+
+        var axisWidth = HasAxis && _ticks.Count > 0 ? _ticks.Max(t => Fmt(t).Length) * LabelCharWidth + 10 : 0;
+        var tagWidth = References is { Count: > 0 } ? References.Max(r => RefLabelOf(r).Length) * LabelCharWidth + 8 : 0;
+        PadLeft = YAxis == "left" ? axisWidth + 4 : PadSide;
+        PadRight = Math.Max(YAxis == "right" ? axisWidth + 4 : PadSide, tagWidth > 0 ? tagWidth + 6 : 0);
+        _cw = Math.Max(_containerWidth - PadLeft - PadRight, 0);
     }
 
     private double ToY(double v) => PadTop + (1 - (v - _minVal) / _range) * _ch;
@@ -270,6 +345,68 @@
 
     // Roughly the width of one --text-2xs character, and the gap kept between two labels.
     private const double LabelCharWidth = 6, LabelGap = 12, MinMarkerSpacing = 12;
+
+    private static void SvgText(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder builder, ref int seq,
+        double x, double y, string anchor, string fill, string text)
+    {
+        builder.OpenElement(seq++, "text");
+        builder.AddAttribute(seq++, "x", F(x));
+        builder.AddAttribute(seq++, "y", F(y));
+        builder.AddAttribute(seq++, "text-anchor", anchor);
+        builder.AddAttribute(seq++, "fill", fill);
+        builder.AddAttribute(seq++, "style", "font: var(--text-2xs)");
+        builder.AddContent(seq++, text);
+        builder.CloseElement();
+    }
+
+    // The value axis labels, at the ticks, outside the plot on the chosen side.
+    private RenderFragment RenderValueAxis => builder =>
+    {
+        if (!HasAxis) return;
+        var seq = 0;
+        // A reference's tag takes a tick label's place at the right, so a label the tag would
+        // cover is left out.
+        var refYs = (References ?? Array.Empty<ChartReference>()).Where(r => double.IsFinite(r.Value)).Select(r => ToY(r.Value)).ToList();
+        foreach (var t in _ticks)
+        {
+            var y = ToY(t);
+            if (YAxis == "right" && refYs.Any(ry => Math.Abs(ry - y) < 12)) continue;
+            var x = YAxis == "left" ? PadLeft - 6 : PadLeft + _cw + 6;
+            SvgText(builder, ref seq, x, y + 3, YAxis == "left" ? "end" : "start", "var(--lv4)", Fmt(t));
+        }
+    };
+
+    // A dashed line across the plot at each reference's value, its label in an inverted tag just
+    // outside the right edge, centred on the line.
+    private RenderFragment RenderReferences => builder =>
+    {
+        if (References is not { Count: > 0 }) return;
+        var seq = 0;
+        foreach (var r in References.Where(r => double.IsFinite(r.Value)))
+        {
+            var y = ToY(r.Value);
+            var color = r.Color ?? "var(--lv8)";
+            var label = RefLabelOf(r);
+            var w = label.Length * LabelCharWidth + 8;
+            builder.OpenElement(seq++, "line");
+            builder.AddAttribute(seq++, "x1", F(PadLeft));
+            builder.AddAttribute(seq++, "y1", F(y));
+            builder.AddAttribute(seq++, "x2", F(PadLeft + _cw));
+            builder.AddAttribute(seq++, "y2", F(y));
+            builder.AddAttribute(seq++, "stroke", color);
+            builder.AddAttribute(seq++, "stroke-width", "1");
+            builder.AddAttribute(seq++, "stroke-dasharray", "3 3");
+            builder.CloseElement();
+            builder.OpenElement(seq++, "rect");
+            builder.AddAttribute(seq++, "x", F(PadLeft + _cw + 4));
+            builder.AddAttribute(seq++, "y", F(y - 7));
+            builder.AddAttribute(seq++, "width", F(w));
+            builder.AddAttribute(seq++, "height", "14");
+            builder.AddAttribute(seq++, "fill", color);
+            builder.CloseElement();
+            SvgText(builder, ref seq, PadLeft + _cw + 8, y + 3, "start", "var(--lv0)", label);
+        }
+    };
 
     /// <summary>Every how many points a label is drawn: as many as fit side by side at the
     /// chart's current width, so 90 daily labels on a phone become a readable handful.</summary>
