@@ -162,6 +162,9 @@ CREATE TABLE IF NOT EXISTS SearchEvents (
 );
 CREATE INDEX IF NOT EXISTS IX_Search_TeamDsTime ON SearchEvents(TeamId, DataSet, Timestamp);
 CREATE INDEX IF NOT EXISTS IX_Search_ZeroHits   ON SearchEvents(TeamId, DataSet, Timestamp) WHERE HitCount = 0;
+-- The keystroke rule counts a session's superseded searches per settled one (Typing): without
+-- this it scanned the table once per search, minutes on 300k events (25 Oct 2026).
+CREATE INDEX IF NOT EXISTS IX_Search_Session   ON SearchEvents(TeamId, DataSet, Session, Timestamp) WHERE Superseded = 1;
 
 CREATE TABLE IF NOT EXISTS SelectEvents (
     Id          INTEGER PRIMARY KEY,
