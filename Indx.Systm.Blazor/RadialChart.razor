@@ -3,26 +3,34 @@
    One series: a bar a sample, its length the value, with a hairline guide a sample out to the
    rim and a dashed line at the top for the start of the period; a year of days, the hours of a
    day. Several series: the sample's slot shared between them, each in its colour, with a legend;
-   searches and asks by hour. Groups, the rose: a sector of bars per group, all at the group's
-   length over a dim track, a gap between sectors, the name and the value in the sector; a handful
-   of kinds compared. Hover reads a bar by its angle, as Chart reads by x. Port of the React
-   RadialChart in indx-systm. *@
+   searches and asks by hour. Groups, the rose: a wedge per group, its radius the value, over a
+   dim wedge the full radius, the name and the value upright in it; a handful of kinds compared.
+   Hover reads a bar or a wedge by its angle, as Chart reads by x. Port of the React RadialChart
+   in indx-systm. *@
 <div class="indx-radial-wrapper @Class">
     <div class="indx-radial" style="--radial-size: @(Size)px;" @onpointerleave="() => _hover = null">
         <svg class="indx-radial-svg" style="--radial-bar: @F(BarWidth)px;" viewBox="0 0 @Size @Size" width="@Size" height="@Size" role="img" aria-label="@AriaLabel"
              @onpointermove="OnPointer" @onpointerdown="OnPointer">
-            @for (int slot = 0; slot < Slots; slot++)
+            @if (Grouped)
             {
-                if (IsGap(slot)) { continue; }
-                var (gx1, gy1) = Point(slot, Inner);
-                var (gx2, gy2) = Point(slot, Outer);
-                if (Grouped)
+                @* The rose: the dim wedge the full radius, the lit one to the value over it. *@
+                @for (int slot = 0; slot < Slots; slot++)
                 {
-                    @* The rose's track: the full bar, dim, under the lit one. *@
-                    <line class="indx-radial-track" x1="@F(gx1)" y1="@F(gy1)" x2="@F(gx2)" y2="@F(gy2)" />
+                    var g = Groups![slot];
+                    <path class="indx-radial-wedge-track" d="@Wedge(slot, Outer)" />
+                    var len = LengthOf(g.Value);
+                    if (len > 0)
+                    {
+                        <path class="indx-radial-wedge @(_hover == slot ? "indx-radial-wedge-hovered" : "")" style="fill: @(g.Color ?? Color ?? DefaultColor);" d="@Wedge(slot, Inner + len)" />
+                    }
                 }
-                else
+            }
+            else
+            {
+                @for (int slot = 0; slot < Slots; slot++)
                 {
+                    var (gx1, gy1) = Point(slot, Inner);
+                    var (gx2, gy2) = Point(slot, Outer);
                     <line class="indx-radial-guide" x1="@F(gx1)" y1="@F(gy1)" x2="@F(gx2)" y2="@F(gy2)" />
                 }
             }
@@ -32,16 +40,15 @@
                 var (sx2, sy2) = Point(0, Outer);
                 <line class="indx-radial-start" x1="@F(sx1)" y1="@F(sy1)" x2="@F(sx2)" y2="@F(sy2)" />
             }
-            @for (int slot = 0; slot < Slots; slot++)
+            @for (int slot = 0; slot < Slots && !Grouped; slot++)
             {
-                if (IsGap(slot)) { continue; }
                 for (int s = 0; s < Lanes; s++)
                 {
                     var len = LengthOf(ValueAt(s, slot));
                     if (len <= 0) { continue; }
                     var (bx1, by1) = Point(slot, Inner, s);
                     var (bx2, by2) = Point(slot, Inner + len, s);
-                    bool hovered = _hover is { } h && (Grouped ? GroupOf(h) == GroupOf(slot) : h == slot);
+                    bool hovered = _hover == slot;
                     <line class="indx-radial-bar @(hovered ? "indx-radial-hovered" : "")" style="stroke: @ColorOf(s);"
                           x1="@F(bx1)" y1="@F(by1)" x2="@F(bx2)" y2="@F(by2)" />
                 }
@@ -64,8 +71,8 @@
                 }
                 @if (Grouped)
                 {
-                    var g = Groups![GroupOf(hv)];
-                    <span class="indx-radial-tooltip-row"><span class="indx-radial-tooltip-name">@g.Label</span><span class="indx-radial-tooltip-value">@Format(g.Value, GroupOf(hv))</span></span>
+                    var g = Groups![hv];
+                    <span class="indx-radial-tooltip-row"><span class="indx-radial-tooltip-name">@g.Label</span><span class="indx-radial-tooltip-value">@Format(g.Value, hv)</span></span>
                 }
                 else
                 {
@@ -104,10 +111,10 @@
     [Parameter] public IReadOnlyList<Series>? SeriesList { get; set; }
     /// <summary>What each sample is, for the tooltip: a date, an hour. The index when left out.</summary>
     [Parameter] public IReadOnlyList<string>? Labels { get; set; }
-    /// <summary>The rose: a sector a group, its bars at the group's value, the name and value in it.</summary>
+    /// <summary>The rose: a wedge a group, its radius the group's value, the name and value in it.</summary>
     [Parameter] public IReadOnlyList<Group>? Groups { get; set; }
-    /// <summary>Bars in a group's sector; 6 by default.</summary>
-    [Parameter] public int BarsPerGroup { get; set; } = 6;
+    /// <summary>The gap between the rose's wedges, in degrees; 2 by default.</summary>
+    [Parameter] public double Gap { get; set; } = 2;
     /// <summary>The diameter in pixels; 240 by default.</summary>
     [Parameter] public int Size { get; set; } = 240;
     /// <summary>The hollow centre's share of the radius; 0.4 by default.</summary>
@@ -133,19 +140,24 @@
     private double Inner => Outer * Math.Min(0.9, Math.Max(0, Hollow));
     private double Span => Outer - Inner;
     private bool Grouped => Groups is { Count: > 0 };
-    // The shape, as one list of series over slots: a group is one series whose samples are its
-    // bars, with an empty slot between sectors; groups and series are the same drawing after that.
-    private IReadOnlyList<Series> All => Grouped ? [new Series("", Array.Empty<double>(), Color)]
+    // The shape: the rose is a wedge a group, one slot each; otherwise the series over the samples'
+    // slots, a lane a series inside the slot.
+    private IReadOnlyList<Series> All => Grouped ? [new Series("", Groups!.Select(g => g.Value).ToArray(), Color)]
         : SeriesList is { Count: > 0 } ? SeriesList : [new Series("", Values ?? Array.Empty<double>(), Color)];
     private int Lanes => All.Count;
-    private int Slots => Grouped ? Groups!.Count * (BarsPerGroup + 1) : All.Max(s => s.Values.Count);
-    private int GroupOf(int slot) => Grouped ? slot / (BarsPerGroup + 1) : -1;
-    private bool IsGap(int slot) => Grouped && slot % (BarsPerGroup + 1) == BarsPerGroup;
-    private double ValueAt(int s, int slot) => Grouped ? (IsGap(slot) ? double.NaN : Groups![GroupOf(slot)].Value)
-        : slot < All[s].Values.Count ? All[s].Values[slot] : double.NaN;
-    private double Top => Max ?? (Grouped
-        ? Groups!.Select(g => g.Value).Where(double.IsFinite).DefaultIfEmpty(0).Max()
-        : All.SelectMany(s => s.Values).Where(double.IsFinite).DefaultIfEmpty(0).Max());
+    private int Slots => All.Max(s => s.Values.Count);
+    private double ValueAt(int s, int slot) => slot < All[s].Values.Count ? All[s].Values[slot] : double.NaN;
+    private double Top => Max ?? All.SelectMany(s => s.Values).Where(double.IsFinite).DefaultIfEmpty(0).Max();
+
+    /// <summary>A wedge of the rose: from the hollow out to r, between the slot's edges less the gap.</summary>
+    private string Wedge(int slot, double r)
+    {
+        double half = Math.Max(0, Step / 2 - Gap * Math.PI / 360);
+        double a0 = AngleOf(slot) - half, a1 = AngleOf(slot) + half;
+        string P(double rad, double a) => $"{F(Outer + rad * Math.Cos(a))} {F(Outer + rad * Math.Sin(a))}";
+        int large = a1 - a0 > Math.PI ? 1 : 0;
+        return $"M {P(Inner, a0)} L {P(r, a0)} A {F(r)} {F(r)} 0 {large} 1 {P(r, a1)} L {P(Inner, a1)} A {F(Inner)} {F(Inner)} 0 {large} 0 {P(Inner, a0)} Z";
+    }
     private double Step => 2 * Math.PI / Math.Max(1, Slots);
     private double AngleOf(int slot, int lane = 0) => -Math.PI / 2 + Step * (slot + (Lanes > 1 ? (lane + 0.5) / Lanes - 0.5 : 0));
     private (double X, double Y) Point(int slot, double r, int lane = 0) => (Outer + r * Math.Cos(AngleOf(slot, lane)), Outer + r * Math.Sin(AngleOf(slot, lane)));
@@ -153,7 +165,7 @@
     // A bar is 2px, as the BarMeter's, where the hollow's edge has room for that; with many it
     // thins so they stay apart there, down to a hairline.
     private double BarWidth => Math.Max(0.5, Math.Min(2, 2 * Math.PI * Inner / Math.Max(1, Slots * Lanes) * 0.55));
-    private string ColorOf(int s) => All[s].Color ?? (Grouped ? Groups![0].Color : null) ?? DefaultColor;
+    private string ColorOf(int s) => All[s].Color ?? DefaultColor;
 
     // The rose's names and values, upright at the sector's middle, out near the rim, when the
     // sectors are few enough to hold them.
@@ -164,12 +176,13 @@
         for (int i = 0; i < Groups.Count; i++)
         {
             var g = Groups[i];
-            double mid = i * (BarsPerGroup + 1) + (BarsPerGroup - 1) / 2.0;
-            double angle = -Math.PI / 2 + Step * mid;
+            double angle = AngleOf(i);
             double r = Inner + Span * 0.72;
             double tx = Outer + r * Math.Cos(angle), ty = Outer + r * Math.Sin(angle);
+            // On a wedge tall enough to reach the text, the text is in the page tone, as print on it.
+            bool onLit = LengthOf(g.Value) >= Span * 0.78;
             builder.OpenElement(seq++, "text");
-            builder.AddAttribute(seq++, "class", "indx-radial-sector-text");
+            builder.AddAttribute(seq++, "class", onLit ? "indx-radial-sector-text indx-radial-sector-text-on-lit" : "indx-radial-sector-text");
             builder.AddAttribute(seq++, "x", F(tx));
             builder.AddAttribute(seq++, "y", F(ty));
             builder.AddAttribute(seq++, "text-anchor", "middle");
@@ -201,8 +214,8 @@
         if (r >= Inner && r <= Outer)
         {
             double turn = ((Math.Atan2(y, x) + Math.PI / 2 + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI);
-            int slot = (int)Math.Round(turn * Slots) % Slots;
-            next = IsGap(slot) ? null : slot;
+            // A wedge spans its slot; a bar sits at the slot's angle.
+            next = (Grouped ? (int)Math.Floor(turn * Slots) : (int)Math.Round(turn * Slots)) % Slots;
         }
         if (next == _hover) { _skipRender = true; return; }
         _hover = next;

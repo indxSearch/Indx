@@ -41,22 +41,39 @@
     stroke-width: 2px;
 }
 
-/* The rose's track: a sector's bars at full length, dim, under the lit ones. */
-.indx-radial-track {
-    stroke: var(--lv2);
-    stroke-width: var(--radial-bar, 2px);
-    stroke-linecap: butt;
+/* The rose: a dim wedge the full radius under a lit one to the value, both parted and rounded
+   by a stroke in the page tone, the hovered one brighter. The lit wedge is a little
+   translucent, so the names read as sitting in it rather than on it. */
+.indx-radial-wedge-track {
+    fill: var(--lv2);
+    stroke: var(--lv0);
+    stroke-width: 3px;
+    stroke-linejoin: round;
 }
 
-/* The rose's names and values, upright in the sector, with a halo in the page tone so they
-   read over the bars. */
+.indx-radial-wedge {
+    fill-opacity: 0.82;
+    stroke: var(--lv0);
+    stroke-width: 3px;
+    stroke-linejoin: round;
+}
+
+.indx-radial-wedge-hovered {
+    fill: var(--lv8) !important;
+    fill-opacity: 1;
+}
+
+/* The rose's names and values, upright in the wedge: the number in the ink, the name a step
+   down, both with a soft halo in the page tone so they read on the lit wedge and the dim one
+   alike. */
 ::deep .indx-radial-sector-text {
     pointer-events: none;
     font: var(--text-2xs);
     fill: var(--lv5);
     paint-order: stroke;
     stroke: var(--lv0);
-    stroke-width: 4px;
+    stroke-opacity: 0.55;
+    stroke-width: 3px;
     stroke-linejoin: round;
 }
 
@@ -69,7 +86,17 @@
 
 ::deep .indx-radial-sector-name {
     font: var(--text-2xs);
-    fill: var(--lv5);
+    fill: var(--lv6);
+}
+
+/* On a wedge that reaches the text: print on it, the page tone, no halo. */
+::deep .indx-radial-sector-text-on-lit {
+    stroke: none;
+}
+
+::deep .indx-radial-sector-text-on-lit .indx-radial-sector-value,
+::deep .indx-radial-sector-text-on-lit .indx-radial-sector-name {
+    fill: var(--lv0);
 }
 
 .indx-radial-centre {
