@@ -1,10 +1,13 @@
-/* The button Tabs look: the chosen cell filled like a primary Button, the rest ghost, a gap
-     between them, no rule and no frame. */
+/* The button Tabs look, with no gap: the chosen cell filled like a primary Button, the rest on
+   the faint surface tone and touching, so the row reads as one control rather than a few
+   buttons. No rule and no frame. */
 .indx-segmented {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    gap: 0;
     max-width: 100%;
+    border-radius: var(--radius);
+    overflow: hidden;
 }
 
 .indx-segmented-stretch {
@@ -23,8 +26,8 @@
     gap: 6px;
     margin: 0;
     border: none;
-    border-radius: var(--radius);
-    background: transparent;
+    border-radius: 0;
+    background: var(--lv2);
     color: var(--lv5);
     font: var(--text-xs);
     font-weight: var(--med);
@@ -35,7 +38,7 @@
 
 .indx-segmented-cell:hover:not(:disabled):not(.indx-segmented-active) {
     color: var(--lv7);
-    background: var(--lv2);
+    background: var(--lv3);
 }
 
 .indx-segmented-active,
@@ -46,7 +49,7 @@
 
 .indx-segmented-cell:focus-visible {
     outline: 2px solid var(--lv5);
-    outline-offset: 1px;
+    outline-offset: -2px;
 }
 
 .indx-segmented-cell:disabled {
