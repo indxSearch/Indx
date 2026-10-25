@@ -48,21 +48,21 @@
         <h3 class="status-heading@(string.IsNullOrEmpty(status.ErrorMessage) ? "" : " status-heading--section")">Index</h3>
         <StatGroup Columns="6">
             @{ var stateChip = DatasetStateChip.For(status.SystemState); }
-            @Tile("State", @<Chip Size="large" Color="@stateChip.Color" TextColor="@stateChip.TextColor" Icon="@stateChip.Icon">@status.SystemState</Chip>)
-            @Tile("Documents", @<text>@status.DocumentCount.ToString("N0")</text>)
-            @Tile("Records on disk", @<text>@((ka?.RecordCount ?? 0).ToString("N0"))</text>)
-            @Tile("Last index build", @<TimeAgo Value="status.TimeOfLastIndexBuild" />)
-            @Tile("Seconds to index", @<text>@status.SecondsToIndex.ToString("0.##")s</text>)
-            @Tile("Instance created", @<TimeAgo Value="status.TimeOfInstanceCreation" />)
+            @Tile("State", DatasetIcons.Status, @<Chip Size="large" Color="@stateChip.Color" TextColor="@stateChip.TextColor" Icon="@stateChip.Icon">@status.SystemState</Chip>)
+            @Tile("Documents", DatasetIcons.Documents, @<text>@status.DocumentCount.ToString("N0")</text>)
+            @Tile("Records on disk", DatasetIcons.Disk, @<text>@((ka?.RecordCount ?? 0).ToString("N0"))</text>)
+            @Tile("Last index build", DatasetIcons.Changes, @<TimeAgo Value="status.TimeOfLastIndexBuild" />)
+            @Tile("Seconds to index", DatasetIcons.HourGlass, @<text>@status.SecondsToIndex.ToString("0.##")s</text>)
+            @Tile("Instance created", DatasetIcons.Calendar, @<TimeAgo Value="status.TimeOfInstanceCreation" />)
         </StatGroup>
 
         <h3 class="status-heading status-heading--section">Usage</h3>
         <StatGroup Columns="3">
-            @Tile("Searches since load", @<text>@status.SearchCounter.ToString("N0")</text>)
-            @Tile("Keep-alive", @<text>@KeepAliveLabel(ka)</text>)
+            @Tile("Searches since load", DatasetIcons.Search, @<text>@status.SearchCounter.ToString("N0")</text>)
+            @Tile("Keep-alive", DatasetIcons.Hibernate, @<text>@KeepAliveLabel(ka)</text>)
             @if (ka?.LastUsedUtc is { } used)
             {
-                @Tile("Last used", @<TimeAgo At="used" />)
+                @Tile("Last used", DatasetIcons.Clock, @<TimeAgo At="used" />)
             }
         </StatGroup>
 
@@ -98,7 +98,7 @@
     private long _busy;
     private (long Id, string Text)? _failure;
 
-    private static RenderFragment Tile(string label, RenderFragment value) => @<Stat Label="@label" ValueContent="value" />;
+    private static RenderFragment Tile(string label, RenderFragment<int> icon, RenderFragment value) => @<Stat Label="@label" LabelIcon="icon" ValueContent="value" />;
 
     protected override void OnInitialized()
     {
