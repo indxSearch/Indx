@@ -100,9 +100,13 @@ namespace IndxServer.Controllers
                     // A caller can only hide its own searches.
                     var source = StatisticsService.CleanSource(Request.Query["source"].FirstOrDefault());
                     // ?locale=<tag> is the language the page was in, as the storefront reports it
-                    // (intrface sends the document's lang, else the browser's): which languages
-                    // people search in. Not where they are; nothing here reads an address.
-                    var locale = StatisticsService.CleanLocale(Request.Query["locale"].FirstOrDefault());
+                    // (intrface sends the document's lang, else the browser's). Without it, the
+                    // browser's own preference from Accept-Language, which a storefront calling from
+                    // the visitor's browser sends for free; a server calling on the visitor's behalf
+                    // sends its own or none, and then ?locale= is the way. Which languages people
+                    // search in, not where they are: nothing here reads an address.
+                    var locale = StatisticsService.CleanLocale(Request.Query["locale"].FirstOrDefault())
+                                 ?? StatisticsService.CleanLocale(StatisticsService.FirstAcceptLanguage(Request.Headers.AcceptLanguage));
                     bool counted = !string.Equals(Request.Query["count"].FirstOrDefault()?.Trim(), "false",
                         StringComparison.OrdinalIgnoreCase);
                     // The header is minted either way, so a client can always read one; a click
