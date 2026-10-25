@@ -814,6 +814,7 @@ namespace IndxServer.Engine
             DisposeDataSetInstance(dataSetName, teamId);
             DeleteSavedEmbeddings(dataSetName, teamId);
             _boostStore?.Delete(teamId, dataSetName);
+            _buryStore?.Delete(teamId, dataSetName);
             _metadataStore?.Delete(teamId, dataSetName);
             // Statistics survive a delete by design, so the history says where the gap came from.
             ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Delete);
@@ -1037,6 +1038,7 @@ namespace IndxServer.Engine
             var db = new SqLiteManager(SearchDbConnectionString);
             db.RenameDataSet(dataSetName, teamId, newName);
             _boostStore?.Rename(teamId, dataSetName, newName);
+            _buryStore?.Rename(teamId, dataSetName, newName);
             _metadataStore?.Rename(teamId, dataSetName, newName);
             MoveSavedEmbeddings(dataSetName, teamId, newName, teamId);
             _logger.LogInformation("{Prefix}renamed to '{NewName}'", MakeLogPrefix(teamId, dataSetName), newName);
@@ -1079,6 +1081,7 @@ namespace IndxServer.Engine
             var db = new SqLiteManager(SearchDbConnectionString);
             db.TransferOwnership(dataSetName, currentTeamId, newTeamId);
             _boostStore?.Transfer(currentTeamId, newTeamId, dataSetName);
+            _buryStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _metadataStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             MoveSavedEmbeddings(dataSetName, currentTeamId, dataSetName, newTeamId);
 
@@ -1420,6 +1423,20 @@ namespace IndxServer.Engine
                     saturationCeiling, _boostCeiling);
         }
 
+        // Per-dataset bury rules (25 Oct 2026), the boost rules' twin: wired in at startup.
+        private Services.BuryRuleStore? _buryStore;
+        private int _buryCeiling = 6;
+
+        /// <summary>Attaches the bury-rule store + its saturation ceiling to the search path (startup-only).</summary>
+        internal void AttachBuryStore(Services.BuryRuleStore store, int saturationCeiling)
+        {
+            _buryStore = store;
+            _buryCeiling = EffectiveBoostCeiling(saturationCeiling);
+            if (_buryCeiling != saturationCeiling)
+                _logger.LogWarning("Indx:BurySaturationCeiling is {Configured}; read as {Effective}, the most a search can carry",
+                    saturationCeiling, _buryCeiling);
+        }
+
         /// <summary>The most a search's boosts may sum to: the library refuses a search past it
         /// (SearchEngine.MaxBoostStrengthSum, 65535 / 257).</summary>
         internal const int MaxBoostStrengthSum = ushort.MaxValue / 257;
@@ -1696,6 +1713,7 @@ namespace IndxServer.Engine
                 RemoveDuplicates = queryProxy.RemoveDuplicates,
                 MeasureFit = queryProxy.MeasureFit,
                 EnableBoost = queryProxy.EnableBoost,
+                EnableBury = queryProxy.EnableBury,
                 EnableCoverage = queryProxy.EnableCoverage,
                 EnableFacets = queryProxy.EnableFacets,
                 SortAscending = queryProxy.SortAscending,
@@ -1740,6 +1758,32 @@ namespace IndxServer.Engine
 
             if (merged.Count > 0)
                 query.Boosts = merged.ToArray();
+
+            // The buries the same way (25 Oct 2026): the client's, then the dataset's active bury
+            // rules under EnableBury, up to the bury ceiling.
+            var buries = new List<Bury>();
+            if (queryProxy.Buries != null)
+                for (int i = 0; i < queryProxy.Buries.Length; i++)
+                {
+                    var b = queryProxy.Buries[i];
+                    if (b?.FilterProxy == null)
+                        throw new ArgumentException($"buries[{i}] needs a filterProxy with a hashString.");
+                    buries.Add(engine.CreateBury(ResolveFilterOrThrow(engine, b.FilterProxy), b.BuryStrength, out var buryError)
+                        ?? throw new ArgumentException($"buries[{i}]: {buryError}"));
+                }
+            if (queryProxy.EnableBury && _buryStore != null)
+            {
+                var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                var sum = buries.Sum(b => (int)b.BuryStrength);
+                foreach (var rb in _buryStore.BuildActiveBuries(engine, teamId, dataSetName, today).OrderByDescending(b => (int)b.BuryStrength))
+                {
+                    if (sum + (int)rb.BuryStrength > _buryCeiling) continue;
+                    buries.Add(rb);
+                    sum += (int)rb.BuryStrength;
+                }
+            }
+            if (buries.Count > 0)
+                query.Buries = buries.ToArray();
 
             return query;
         }

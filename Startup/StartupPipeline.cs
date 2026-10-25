@@ -336,6 +336,11 @@ internal static class StartupPipeline
             metadataStore.EnsureTable();
             var boostCeiling = app.Configuration.GetValue<int?>("Indx:BoostSaturationCeiling") ?? 6;
             IndxServerInternalApi.Manager.AttachBoostStore(boostStore, boostCeiling);
+            // The bury rules the same way, with a ceiling of their own: the sums are separate.
+            var buryStore = app.Services.GetRequiredService<IndxServer.Services.BuryRuleStore>();
+            buryStore.EnsureTable();
+            var buryCeiling = app.Configuration.GetValue<int?>("Indx:BurySaturationCeiling") ?? 6;
+            IndxServerInternalApi.Manager.AttachBuryStore(buryStore, buryCeiling);
             IndxServerInternalApi.Manager.AttachMetadataStore(metadataStore);
 
             // Detect license file for summary

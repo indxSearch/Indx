@@ -15,6 +15,7 @@ namespace IndxServer.Services
     internal class BoostRuleExpiryNotificationJob(
         IServiceScopeFactory scopeFactory,
         BoostRuleStore boostStore,
+        BuryRuleStore buryStore,
         ILogger<BoostRuleExpiryNotificationJob> logger) : BackgroundService
     {
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -39,8 +40,13 @@ namespace IndxServer.Services
 
             foreach (var (dataSetName, teamId) in IndxServerInternalApi.Manager.GetAllDataSets())
             {
+                // Both kinds (25 Oct 2026): a bury rule that quietly ended looks live too.
                 var expired = boostStore.Load(teamId, dataSetName)
                     .Where(r => r.Enabled && r.ActiveUntil is { } until && until < today)
+                    .Select(r => (Rule: (IRankingRule)r, Type: NotificationType.BoostRuleExpired, Word: "Boost", Verb: "boosts", Tab: "Boost rules"))
+                    .Concat(buryStore.Load(teamId, dataSetName)
+                        .Where(r => r.Enabled && r.ActiveUntil is { } until && until < today)
+                        .Select(r => (Rule: (IRankingRule)r, Type: NotificationType.BuryRuleExpired, Word: "Bury", Verb: "buries", Tab: "Bury rules")))
                     .ToList();
                 if (expired.Count == 0) continue;
 
@@ -54,22 +60,22 @@ namespace IndxServer.Services
                     .Select(m => m.UserId)
                     .ToListAsync();
 
-                foreach (var rule in expired)
+                foreach (var (rule, type, word, verb, tab) in expired)
                 {
                     var sourceId = $"{teamId}/{dataSetName}/{rule.Name}/{rule.ActiveUntil:yyyy-MM-dd}";
                     foreach (var userId in recipients)
                     {
-                        if (await svc.ExistsAsync(userId, NotificationType.BoostRuleExpired, sourceId)) continue;
+                        if (await svc.ExistsAsync(userId, type, sourceId)) continue;
                         await svc.CreateAsync(
                             userId,
-                            NotificationType.BoostRuleExpired,
-                            $"Boost rule \"{rule.Name}\" on {dataSetName} has expired",
-                            $"The rule \"{rule.Name}\" on dataset {dataSetName} (team {team.Name}) ended on {rule.ActiveUntil:yyyy-MM-dd} and no longer boosts results. " +
-                            "Extend its dates, switch it off, or delete it under Boost rules.",
+                            type,
+                            $"{word} rule \"{rule.Name}\" on {dataSetName} has expired",
+                            $"The rule \"{rule.Name}\" on dataset {dataSetName} (team {team.Name}) ended on {rule.ActiveUntil:yyyy-MM-dd} and no longer {verb} results. " +
+                            $"Extend its dates, switch it off, or delete it under {tab}.",
                             metadata: $"/datasets/{Uri.EscapeDataString(dataSetName)}",
                             sourceId: sourceId);
                     }
-                    logger.LogInformation("Sent BoostRuleExpired for {Dataset}/{Rule} to {Count} member(s)", dataSetName, rule.Name, recipients.Count);
+                    logger.LogInformation("Sent {Type} for {Dataset}/{Rule} to {Count} member(s)", type, dataSetName, rule.Name, recipients.Count);
                 }
             }
         }

@@ -83,24 +83,8 @@ namespace IndxServer.Controllers
             // Best-effort field validation when the engine is loaded; never hard-fail on a
             // hibernated dataset (apply-time skips unbuildable conditions anyway).
             var fields = IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey)?.DocumentFields;
-            foreach (var rule in rules)
-            {
-                if (string.IsNullOrWhiteSpace(rule.Name))
-                    return ApiProblems.InvalidArgument("each rule needs a name");
-                if (rule.Conditions == null || rule.Conditions.Count == 0)
-                    return ApiProblems.InvalidArgument($"rule '{rule.Name}' needs at least one condition");
-                if (!Enum.IsDefined(rule.Strength))
-                    return ApiProblems.InvalidArgument($"rule '{rule.Name}': strength {(int)rule.Strength} is not one of Low (1), Med (2) or High (3)");
-                foreach (var c in rule.Conditions)
-                {
-                    var hasValue = !string.IsNullOrEmpty(c.Value);
-                    var hasRange = c.Min.HasValue || c.Max.HasValue;
-                    if (hasValue == hasRange)
-                        return ApiProblems.InvalidArgument($"condition on '{c.Field}' must be either a value or a range");
-                    if (fields != null && fields.GetField(c.Field) is not { Filterable: true })
-                        return ApiProblems.InvalidArgument($"field '{c.Field}' is not filterable");
-                }
-            }
+            if (RankingRuleValidation.Objection(rules, fields, r => Enum.IsDefined(((BoostRule)r).Strength)) is { } objection)
+                return ApiProblems.InvalidArgument(objection);
 
             // Boost-rule scheduling is a gated feature (Free Managed can't schedule). Strip any
             // schedule window when it's disabled — defensive (the UI hides the control) and

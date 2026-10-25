@@ -10,6 +10,7 @@
 @inject IndxServer.Services.StatisticsService Statistics
 @inject IDatasetEngines Engines
 @inject BoostRuleStore BoostStore
+@inject BuryRuleStore BuryStore
 @inject NavigationManager Nav
 
 @* The header slot (the console's breadcrumb row, with DatasetStatus in its actions) sits
@@ -55,7 +56,8 @@
                 <SearchPreviewTab Active="@(tab == "search")" />
                 <StatusTab Active="@(tab == "status")" />
                 <OptionsTab Active="@(tab == "options")" />
-                <BoostRulesTab Active="@(tab == "boosts")" />
+                <RankingRulesTab Active="@(tab == "boosts")" Kind="boost" />
+                <RankingRulesTab Active="@(tab == "buries")" Kind="bury" />
                 <SynonymsTab Active="@(tab == "synonyms")" />
                 <StatisticsTab Active="@(tab == "statistics")" />
 
@@ -175,10 +177,14 @@
         if (Statistics.Enabled) items.Add(Tab("statistics", "Statistics", DatasetIcons.Statistics, true));
         if ((isReady || pending) && Ctx.IsEditor)
         {
-            var expired = isReady ? ExpiredBoostRules() : 0;
+            var expired = isReady ? ExpiredRules(BoostStore) : 0;
             items.Add(Tab("boosts", "Boost rules", DatasetIcons.Boost, isReady,
                 expired > 0 ? expired.ToString() : null,
                 expired > 0 ? $"{expired} expired boost rule(s), no longer applying" : null));
+            var expiredBuries = isReady ? ExpiredRules(BuryStore) : 0;
+            items.Add(Tab("buries", "Bury rules", DatasetIcons.Bury, isReady,
+                expiredBuries > 0 ? expiredBuries.ToString() : null,
+                expiredBuries > 0 ? $"{expiredBuries} expired bury rule(s), no longer applying" : null));
             items.Add(Tab("synonyms", "Synonyms", DatasetIcons.Synonym, isReady));
         }
         if (Ctx.IsAdmin) items.Add(Tab("options", "Options", DatasetIcons.Sliders, true));
@@ -187,10 +193,10 @@
 
     /// <summary>Enabled rules whose window has closed — the ones an editor most needs to notice,
     /// since they look live until someone opens the tab. The store caches, so this is cheap.</summary>
-    private int ExpiredBoostRules()
+    private int ExpiredRules(IRankingRuleStore store)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
-        return BoostStore.Load(Ctx.TeamId, Ctx.Name).Count(r => r.Enabled && r.ActiveUntil is { } u && u < today);
+        return store.LoadRules(Ctx.TeamId, Ctx.Name).Count(r => r.Enabled && r.ActiveUntil is { } u && u < today);
     }
 
     /// <summary>While the engine loads or indexes in the background (a load started from the API,

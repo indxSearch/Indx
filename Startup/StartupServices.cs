@@ -111,6 +111,7 @@ internal static class StartupServices
         builder.Services.AddSingleton<IDatasetEngines, ManagerDatasetEngines>();
         builder.Services.AddSingleton<ITeamDatasets>(sp => sp.GetRequiredService<IDatasetEngines>());
         builder.Services.AddSingleton<IndxServer.Services.BoostRuleStore>();
+        builder.Services.AddSingleton<IndxServer.Services.BuryRuleStore>();
         builder.Services.AddSingleton<IndxServer.Services.DatasetMetadataStore>();
 
         // MCP server: read-only retrieval tools over /mcp (Streamable HTTP), behind JWT auth.

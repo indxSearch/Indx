@@ -23,6 +23,7 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> Fields = Of<Icons.Field>();
         public static readonly RenderFragment<int> Delete = Of<Icons.Stop>();
         public static readonly RenderFragment<int> Boost = Of<Icons.Boost>();
+        public static readonly RenderFragment<int> Bury = Of<Icons.ArrowDown>();
         public static readonly RenderFragment<int> Statistics = Of<Icons.Graph>();
         public static readonly RenderFragment<int> Synonym = Of<Icons.Synonym>();
         public static readonly RenderFragment<int> Experimental = Of<Icons.LabExperiment>();

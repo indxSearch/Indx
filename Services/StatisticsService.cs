@@ -14,7 +14,7 @@ namespace IndxServer.Services
     /// <c>RetentionDays</c> (default 90; raw event rows only — rollups are kept), <c>DbFile</c>.
     /// </summary>
     public sealed class StatisticsService(IConfiguration configuration, ILoggerFactory loggerFactory,
-        BoostRuleStore? boostRules = null)
+        BoostRuleStore? boostRules = null, BuryRuleStore? buryRules = null)
         : IHostedService, IDisposable, IDatasetChangeSink
     {
         /// <summary>Roll up day D no earlier than D+2, so its selects and converts have arrived.</summary>
@@ -105,6 +105,7 @@ namespace IndxServer.Services
             // events"). Attached only when statistics are on, so off records nothing.
             IndxServerInternalApi.ManagerOrNull?.AttachChangeSink(this);
             if (boostRules != null) boostRules.ChangeSink = this;
+            if (buryRules != null) buryRules.ChangeSink = this;
 
             _cts = new CancellationTokenSource();
             _rollupLoop = Task.Run(() => RollupLoopAsync(_cts.Token));

@@ -175,6 +175,7 @@ namespace IndxServer.Mcp
                 EnableCoverage = true,
                 CoverageSetup = new CoverageSetup { IncludePatternMatches = broaden },
                 EnableBoost = true,
+                EnableBury = true,
                 EnableFacets = facets || isBrowse,
             };
 

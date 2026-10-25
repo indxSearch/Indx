@@ -53,7 +53,7 @@ namespace IndxServer.Models
     /// matching this rule's combined condition get their score lifted by <see cref="Strength"/>.
     /// Rules are managed in the UI and applied server-side; see <c>BoostRuleStore</c>.
     /// </summary>
-    public class BoostRule
+    public class BoostRule : IRankingRule
     {
         public string Name { get; set; } = "";
 
@@ -66,6 +66,9 @@ namespace IndxServer.Models
 
         /// <summary>Boost magnitude. Reuses the engine enum (Low=1, Med=2, High=3).</summary>
         public BoostStrength Strength { get; set; } = BoostStrength.Med;
+
+        [JsonIgnore]
+        public int StrengthValue { get => (int)Strength; set => Strength = (BoostStrength)value; }
 
         /// <summary>Inclusive first day the rule is active (UTC date). Null = no lower bound.</summary>
         public DateOnly? ActiveFrom { get; set; }

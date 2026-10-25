@@ -80,6 +80,15 @@ in the AI skill.
 
 ### Added
 
+- **Bury rules, the boost rules' counterpart.** `GET`/`PUT`/`DELETE buries` keep a dataset's saved
+  bury rules, a boost rule's shape (name, conditions on filterable fields, And/Or, a strength, an
+  active period), applied to every search that runs with `enableBury`; `POST buries/from-filter`
+  makes a bury a search carries itself in `buries`. A bury takes the matching documents down
+  without excluding them, and nothing else moves. The rules are capped by `Indx:BurySaturationCeiling`
+  (1 to 255, default 6) as the boost rules are by theirs, follow the dataset through rename,
+  transfer and replace, and expire with a notification of their own. The console has a **Bury
+  rules** tab beside Boost rules; the MCP search applies both kinds.
+
 - **Filter expressions: `POST filters/expression`, and `filterExpression` on a search.** One
   expression for what took a request per filter and per combine:
   `brand IN ["nike", "puma"] AND price BETWEEN 100 AND 2000 AND NOT category = "outlet"`, with

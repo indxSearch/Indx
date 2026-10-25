@@ -15,6 +15,7 @@ namespace IndxServer.Services
         {
             DatasetChangeKind.Synonyms => "Synonyms",
             DatasetChangeKind.BoostRules => "Boost rules",
+            DatasetChangeKind.BuryRules => "Bury rules",
             DatasetChangeKind.Fields => "Fields",
             DatasetChangeKind.Reindex => "Reindex",
             DatasetChangeKind.Replace => "Replace",
@@ -57,12 +58,13 @@ namespace IndxServer.Services
                         : $"Synonyms: {Count(before)} → {Count(after)} entries";
                 }
                 case DatasetChangeKind.BoostRules:
+                case DatasetChangeKind.BuryRules:
                 {
                     var before = N("rulesBefore") ?? 0;
                     var after = N("rules") ?? 0;
                     var enabled = N("enabled") ?? after;
                     var rules = before == after ? $"{Count(after)} rules" : $"{Count(before)} → {Count(after)} rules";
-                    return $"Boost rules: {rules}, {Count(enabled)} enabled";
+                    return $"{(kind == DatasetChangeKind.BuryRules ? "Bury" : "Boost")} rules: {rules}, {Count(enabled)} enabled";
                 }
                 case DatasetChangeKind.Fields:
                 {
