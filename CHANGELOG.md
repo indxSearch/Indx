@@ -11,6 +11,23 @@ patch can pick up a newer core without changing the HTTP contract.
 
 ### Added
 
+- **Categories.** A dataset with a category hierarchy, a Google-style `product_type` with
+  "Furniture > Chairs > Office chairs" or fields that each hold a level, gets a **Categories** tab:
+  the whole catalogue as a tree, every category with its product count, the chosen one with its
+  first products beside it and a step to boost it. Open to a level, zoom, filter by name, or read
+  it as a list; full screen when the tree is wide. A category no visitor has selected or bought
+  from in the last 90 days carries a quiet mark.
+- **Statistics, in pictures.** The Overview now shows when people search as a week-by-hour grid
+  and as a clock of the day, where searches come from, which result gets chosen, which languages
+  visitors search in, how they type, and a profile of the window against the one before it:
+  clicked, with hits, covered, filtered, one word, first result. Search or ask has pictures of
+  its own, with a clock of when the day's budget tends to run out.
+- **Languages.** Send `?locale=` with a search, a BCP 47 tag such as `nb-NO`, and Statistics
+  counts the languages visitors search in; a browser's `Accept-Language` is read when the
+  parameter is left out.
+- **Admin > Monitor** shows the process's CPU and memory against what the machine allows, the
+  native memory pool, searches a minute over the last hour and every dataset's state at a glance.
+  The terminal monitor has the same gauges.
 - **Websites, set in the console.** Admin > Settings now lists the websites whose pages may call
   the API from the browser, such as a shop with a search box. A change applies at once, without a
   restart, and `*.example.com` covers every subdomain. Until an admin saves a list,
@@ -19,6 +36,11 @@ patch can pick up a newer core without changing the HTTP contract.
   document, and the browser shows the download as started at once.
 
 ### Changed
+
+- **The statistics tiles sit with their pictures,** at the top of the Overview, so the other
+  sections start at their own content; every tile wears an icon, on the Status tab and the
+  monitor too. Conversions show only once the window holds one.
+
 
 - **A sleeping dataset can be rescued.** Opening a dataset never loads it any more. One that is
   hibernated or not loaded opens on Status with Wake up, and its Options are open: download the
@@ -30,6 +52,12 @@ patch can pick up a newer core without changing the HTTP contract.
 
 - **A smaller install.** The server no longer carries design-time tools and web libraries it never
   used, about 45 MB less to download and deploy.
+
+### Fixed
+
+- **Statistics on a busy dataset.** The typing figures scanned the search events once per
+  search; on a shop with 300k searches in the window the tab never came back. It answers in a
+  second now, and the two per-text measures step aside above 50,000 searches.
 
 ## [2.0.0-beta.2] - Unreleased
 

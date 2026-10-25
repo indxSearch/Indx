@@ -10,7 +10,7 @@ A self-hosted search service built on [Indx Search](https://indx.co). Blazor Ser
 <tr>
 <td width="50%" valign="top">
 <img src="docs/icons/internet-browser.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Dashboard</b><br>
-<sub>Teams, datasets, field configuration with weight sliders, search preview, status, boost rules, synonyms, options; plus an admin panel</sub>
+<sub>Teams, datasets, field configuration with weight sliders, categories as a tree, search preview, status, statistics, boost rules, synonyms, options; plus an admin panel</sub>
 </td>
 <td width="50%" valign="top">
 <img src="docs/icons/user-group.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Teams</b><br>
@@ -159,6 +159,25 @@ Those two do not wait for the build: they answer `202` when it is started. While
 why it failed, or is null. Field roles are written by `PUT …/fields/configuration` only; the
 per-role lists (`GET …/fields/searchable` and the rest) are for reading.
 
+## Categories
+
+A catalogue has a shape, and the **Categories** tab draws it: every category as a node with the
+number of products in it, the subcategories fanned out to the right, the chosen one with its first
+products beside it. The tree is read from the data as it is. A field whose values are paths, the
+way a product feed writes `product_type` ("Furniture > Chairs > Office chairs"), is one source;
+fields that each hold a level, such as `category.department`, `category.section` and
+`category.type`, are the other. Mark them **Facetable** under Field configuration and the tab
+finds them; mark them **Filterable** too and the chosen category lists its products and can be
+boosted from there, which opens Boost rules with the rule drafted.
+
+![Categories: a shop's hierarchy as a tree of nodes with product counts, opened two levels
+deep](docs/images/console-categories.png)
+
+Open the tree to a level, zoom it out to see more of it, filter the categories by name, or read
+the same tree as a list. Full screen is a click away for a wide catalogue. A category no visitor
+has selected or bought from in the last 90 days carries a small mark, for the editor who wants to
+know where the catalogue is thin; the counts behind the marks are in the category's panel.
+
 ## Boost rules
 
 Ranking rules that lift matching documents when a search runs with `enableBoost`. They are
@@ -214,12 +233,17 @@ testing in the console's search preview. Your storefront adds the two things the
 see, which result the visitor chose and whether it led to an order. Each dataset's **Statistics**
 tab shows the result for the last 7, 30 or 90 days.
 
-![The statistics tab for a bookshop: five tiles for searches, fuzzy finds, click-through,
-average click position and conversions, a month of searches and clicks per day
-with changes marked, and the top queries](docs/images/console-statistics.png)
+![The statistics tab for a bookshop: a month of searches and clicks per day with changes
+marked, then the Overview section's tiles and pictures](docs/images/console-statistics.png)
 
 Below the chart, one section at a time, each with its own view settings:
 
+- **Overview** opens with the window's figures, searches, fuzzy finds, click-through, the average
+  click position and, once there are any, conversions, and then the pictures: when people search,
+  as a week-by-hour grid and as a clock of the day; where the searches come from; which result
+  gets chosen; which languages visitors search in; how they type; and the search profile, six
+  shares on one scale with the window before this one drawn behind, so a change is the shape
+  moving.
 - **Top queries** gives each query its click-through and the average position of the result
   people chose. A low position means the right document was found and ranked too low. Order by
   searches or by click-through, ten more at a time.
@@ -250,6 +274,10 @@ does both for you: it sends the session, and a result's `select()` reports the c
 below it: synonyms, boost rules, field configuration, a replace, a reindex, and large document
 changes. When a number moves, the reason is next to it. Only what changed and when is kept,
 never who.
+
+**Languages:** send `locale` with each search, a BCP 47 tag such as `nb-NO` for the language the
+page is in, and the Overview counts the languages visitors search in; without it the browser's
+`Accept-Language` is read. intrface sends it for you.
 
 **Over the API:** `GET …/statistics/overview`, `timeseries`, `queries`, `documents` and `changes`,
 with a Read key. Statistics are stored in their own `stats.db` next to `indx.db`. Raw events are kept
@@ -502,9 +530,11 @@ reading the same thing.
 
 ### In the browser
 
-**Admin → Monitor** shows the event stream and the instance figures. It needs no terminal, so it
-is the one to use on a hosted deployment, and it is where the stream is visible when an agent is
-configuring a dataset over MCP or the API.
+**Admin → Monitor** shows the event stream and the instance figures: the process's CPU and memory
+as rings against what the machine allows, with the pressure zones marked, the native memory pool,
+the searches counted and the average a minute over the last hour, and every dataset's state in one
+strip. It needs no terminal, so it is the one to use on a hosted deployment, and it is where the
+stream is visible when an agent is configuring a dataset over MCP or the API.
 
 ![Admin, Monitor: the instance figures above a table of recent events, newest first](docs/images/admin-monitor.png)
 
