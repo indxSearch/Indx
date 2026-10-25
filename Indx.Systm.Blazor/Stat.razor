@@ -1,32 +1,27 @@
 @* Port of indx-systm Stat: one number with its label, on the Base surface tone. A count, a KPI, a
    state (pass a Chip as ValueContent, or a word with an Icon). Put several in a StatGroup. *@
 
-<div class="indx-stat @Class">
-    @if (!string.IsNullOrEmpty(Hint))
-    {
-        <Tooltip Content="@Hint"><span class="indx-stat-label indx-stat-label--hint">@LabelBody</span></Tooltip>
-    }
-    else
-    {
-        <span class="indx-stat-label">@LabelBody</span>
-    }
-    <span class="indx-stat-value" style="@(Color != null ? $"color: {Color};" : null)">
-        @if (Icon != null) { <span class="indx-stat-icon" aria-hidden="true">@Icon(IconSize)</span> }
-        @(ValueContent ?? (RenderFragment)(b => b.AddContent(0, Value)))
-    </span>
-    @if (ChildContent != null)
-    {
-        <span class="indx-stat-foot">@ChildContent</span>
-    }
-</div>
+@if (Figure != null)
+{
+    <div class="indx-stat indx-stat--figured @Class">
+        <span class="indx-stat-figure">@Figure</span>
+        <span class="indx-stat-text">@Text</span>
+    </div>
+}
+else
+{
+    <div class="indx-stat @Class">@Text</div>
+}
 
 @code {
     /// <summary>What the number is: "Searches", "Click-through".</summary>
     [Parameter] public string? Label { get; set; }
     /// <summary>The label as markup, in place of Label (a skeleton while it loads).</summary>
     [Parameter] public RenderFragment? LabelContent { get; set; }
-    /// <summary>The number, formatted.</summary>
+    /// <summary>The number, formatted. Left out when the figure carries it.</summary>
     [Parameter] public string? Value { get; set; }
+    /// <summary>A graphic at the left, the label and foot beside it: a BarMeter ring with the number in it.</summary>
+    [Parameter] public RenderFragment? Figure { get; set; }
     /// <summary>The value as markup, in place of Value: a chip for a state, a skeleton while it loads.</summary>
     [Parameter] public RenderFragment? ValueContent { get; set; }
     /// <summary>A pixl icon before the value, for a state ("Up", "Key set"): drawn at <see cref="IconSize"/>
@@ -44,4 +39,27 @@
     [Parameter] public string? Class { get; set; }
 
     private RenderFragment LabelBody => LabelContent ?? (b => b.AddContent(0, Label));
+    private bool HasValue => Value != null || ValueContent != null || Icon != null;
+
+    private RenderFragment Text => @<text>
+        @if (!string.IsNullOrEmpty(Hint))
+        {
+            <Tooltip Content="@Hint"><span class="indx-stat-label indx-stat-label--hint">@LabelBody</span></Tooltip>
+        }
+        else
+        {
+            <span class="indx-stat-label">@LabelBody</span>
+        }
+        @if (HasValue)
+        {
+            <span class="indx-stat-value" style="@(Color != null ? $"color: {Color};" : null)">
+                @if (Icon != null) { <span class="indx-stat-icon" aria-hidden="true">@Icon(IconSize)</span> }
+                @(ValueContent ?? (RenderFragment)(b => b.AddContent(0, Value)))
+            </span>
+        }
+        @if (ChildContent != null)
+        {
+            <span class="indx-stat-foot">@ChildContent</span>
+        }
+    </text>;
 }

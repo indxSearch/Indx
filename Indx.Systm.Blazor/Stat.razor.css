@@ -63,6 +63,26 @@
     color: var(--lv5);
 }
 
+/* With a figure: the graphic at the left, the label and foot stacked beside it and centred on it. */
+.indx-stat--figured {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+}
+
+.indx-stat-figure {
+    display: inline-flex;
+    flex: none;
+}
+
+.indx-stat-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+    min-width: 0;
+}
+
 /* The hint spans the stat rather than centring on its label. Labels sit at the start, so a
    centred bubble on a phone ran off the left edge in the first column and off the right in the
    second (the Statistics tiles, Oct 2026); the stat is always on screen, so a bubble its width
