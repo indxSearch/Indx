@@ -21,6 +21,37 @@
     </div>
 }
 
+@* A field has one type, its first value's. What Init met that was of another type, and what Load
+   then left out, as the engine put it (RecoverableErrors): the sum, then a line per field. *@
+@if (Ctx.AnalyzeNotes is { Count: > 0 } analyzeNotes)
+{
+    <div class="up-alert up-top16">
+        <Alert Variant="warning">
+            <Title>@analyzeNotes[0]</Title>
+            <Description>
+                @foreach (var line in analyzeNotes.Skip(1))
+                {
+                    <div>@line</div>
+                }
+            </Description>
+        </Alert>
+    </div>
+}
+@if (Ctx.LoadWarnings is { Count: > 0 } loadWarnings)
+{
+    <div class="up-alert up-top16">
+        <Alert Variant="warning">
+            <Title>@loadWarnings[0]</Title>
+            <Description>
+                @foreach (var line in loadWarnings.Skip(1))
+                {
+                    <div>@line</div>
+                }
+            </Description>
+        </Alert>
+    </div>
+}
+
 @* ── Loading / Indexing in progress (navigated back while engine is busy) ── *@
 @if (Ctx.IsTransitional && !Ctx.IsLoadIndexing)
 {
@@ -303,6 +334,8 @@ else if (Ctx.IsLoadIndexing)
         _selectedFile = null;
         Ctx.OperationError = null;
         Ctx.LoadFailure = null;
+        Ctx.AnalyzeNotes = null;
+        Ctx.LoadWarnings = null;
         Ctx.IsUploading = true;
         Ctx.UploadProgress = 0;
         _uploadCts = new CancellationTokenSource();
@@ -356,6 +389,9 @@ else if (Ctx.IsLoadIndexing)
             // finds the documents inside an export envelope on its own, so what is left when
             // this fires is a file whose records the detection could not locate at all.)
             var engine = Ctx.FindEngine();
+            // Init's word on fields whose values changed type: Status mirrors its monitor.
+            if (engine?.Status.RecoverableErrors is { Count: > 0 } initErrors)
+                Ctx.AnalyzeNotes = DatasetContext.WarningLines(initErrors, "Init");
             var analyzedDocs = engine?.DocumentFields?.AnalyzedDocumentCount ?? 0;
             var analyzedBytes = Ctx.BufferedFile?.Length ?? 0;
             Ctx.AnalyzeWarning = analyzedDocs == 1 && analyzedBytes > 100_000
@@ -475,6 +511,7 @@ else if (Ctx.IsLoadIndexing)
             if (!loadMonitor.Succeeded)
                 return;
             Ctx.LoadProgress = loadMonitor.ProgressPercent;
+            Ctx.LoadWarnings = DatasetContext.WarningLines(loadMonitor.RecoverableErrors, "Load");
             await Render();
 
             // Release the buffer — no longer needed

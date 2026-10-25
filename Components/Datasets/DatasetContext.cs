@@ -237,6 +237,30 @@ namespace IndxServer.Components.Datasets
         /// than adding a line to the page.</summary>
         public LoadFailure? LoadFailure { get; set; }
 
+        /// <summary>What Init had to say about the file's types (25 Oct 2026): the sum first, then
+        /// one line per field whose later values were of another type than its first. The text of
+        /// the engine's RecoverableErrors, shown until the next upload. Null when there was nothing.</summary>
+        public List<string>? AnalyzeNotes { get; set; }
+
+        /// <summary>What Load left out for the same reason, the sum first, then one line per field
+        /// with its count. Null when nothing was left out.</summary>
+        public List<string>? LoadWarnings { get; set; }
+
+        /// <summary>The RecoverableErrors of one operation as lines: the sum (the last entry, written
+        /// without a count) first, then each field with its count.</summary>
+        public static List<string>? WarningLines(IReadOnlyList<ProcessErrorCount> errors, string source)
+        {
+            var own = errors.Where(e => e.Error.Source == source).ToList();
+            if (own.Count == 0)
+                return null;
+            var lines = new List<string>(own.Count);
+            var sum = own[^1];
+            lines.Add(sum.Error.Message);
+            foreach (var e in own.Take(own.Count - 1))
+                lines.Add(e.Count > 1 ? $"{e.Error.Message} ({e.Count:N0})" : e.Error.Message);
+            return lines;
+        }
+
         /// <summary>What the last field configuration import had to say, or null. It lives here
         /// because the import buttons sit under the table while the alert sits above it, in a
         /// different component. Cleared by Dismiss and by the next import.</summary>
