@@ -1,0 +1,373 @@
+@* The dataset's categories as a tree: one facetable field read as paths ("Apparel > Shoes >
+   Running shoes"), drawn on a TreeCanvas with the products in each category counted, and the
+   chosen category's products beside it. For a catalogue, where the picture of the hierarchy
+   says what the data holds and what is thin. The field and the separator are the dataset's
+   choice, kept in the metadata store; the tree is read from the engine's own facet histogram
+   (an empty search with facets on, which the engine caches), only while the dataset is Ready,
+   off the circuit thread and with a timeout, and never wakes a sleeping dataset. The tree lists
+   categories, never products: those come twenty at a time for the chosen one. *@
+@using System.Text.Json
+@using Indx.Api
+@using IndxServer.Services
+@inherits DatasetTabBase
+@inject DatasetMetadataStore Metadata
+
+@if (!Active) { return; }
+
+<div class="browse-tab">
+    @{
+        var facetable = FacetableFields();
+        var fieldOptions = facetable.Select(f => new SelectField.SelectOption(f.FieldName, f.FieldName)).ToList();
+    }
+    @if (facetable.Count == 0)
+    {
+        <Alert Variant="info">
+            <Title>No facetable field to browse</Title>
+            <Description>The tree is read from a field's facet values. Mark the field that holds the category, such as <code>product_type</code> or <code>google_product_category</code>, <strong>Facetable</strong> under Field configuration, then come back here.</Description>
+        </Alert>
+    }
+    else
+    {
+        <div class="indx-list-toolbar browse-toolbar">
+            <span class="browse-label">Field</span>
+            <SelectField Size="micro" Variant="ghost" Options="fieldOptions" Value="@Field" ValueChanged="OnFieldChanged" aria-label="Category field" />
+            @if (Ctx.IsEditor)
+            {
+                <span class="browse-label">Levels</span>
+                <SelectField Size="micro" Variant="ghost" Options="SeparatorOptions" Value="@SeparatorValue" ValueChanged="OnSeparatorChanged" aria-label="Level separator" />
+            }
+            <div class="browse-toolbar-end">
+                @if (_tree != null)
+                {
+                    <span class="indx-list-toolbar-end">@_tree.Nodes.ToString("N0") categories, @(_tree.Depth) level@(_tree.Depth == 1 ? "" : "s")</span>
+                }
+                <SegmentedControl Size="micro" AriaLabel="View" @bind-Value="_view" Items="_views" />
+            </div>
+        </div>
+
+        @if (_error != null)
+        {
+            <Alert Variant="warning"><Title>The categories could not be read</Title><Description>@_error</Description></Alert>
+        }
+        else if (_reading && _tree == null)
+        {
+            <p class="browse-note">Reading the categories…</p>
+        }
+        else if (_declined)
+        {
+            <Alert Variant="info">
+                <Title>Too many values to draw</Title>
+                <Description><code>@Field</code> has more than @CategoryHierarchy.MaxValues.ToString("N0") distinct values. A category field has hundreds; this one looks like a name or a code. Choose another field above.</Description>
+            </Alert>
+        }
+        else if (_tree != null)
+        {
+            @if (_tree.Separator == null && _tree.Depth == 1 && _separator == null)
+            {
+                <p class="browse-note">No level separator was found in the values, so the categories are shown flat. If the field uses one, choose it under Levels.</p>
+            }
+            @if (_tree.Cut > 0)
+            {
+                <p class="browse-note">@_tree.Cut.ToString("N0") path@(_tree.Cut == 1 ? "" : "s") deeper than @CategoryHierarchy.MaxDepth levels @(_tree.Cut == 1 ? "is" : "are") cut at level @CategoryHierarchy.MaxDepth.</p>
+            }
+            <div class="browse-grid">
+                <div class="browse-canvas">
+                    <TreeCanvas Roots="_nodes" Selected="@_selected" SelectedChanged="OnSelected" View="@_view" AriaLabel="@($"Categories of {Ctx.Name} by {Field}")" />
+                </div>
+                <Surface Class="browse-panel">
+                    @if (_selectedNode == null)
+                    {
+                        <p class="browse-note">Choose a category to see its products.</p>
+                    }
+                    else
+                    {
+                        var n = _selectedNode;
+                        <div class="browse-panel-head">
+                            <div class="browse-panel-title">@n.Label</div>
+                            @if (_tree.Separator != null && n.Id.Contains(_tree.Separator))
+                            {
+                                <div class="browse-panel-path">@n.Id</div>
+                            }
+                        </div>
+                        <div class="browse-stats">
+                            <Stat Label="Products" Value="@n.Count.ToString("N0")" />
+                            @if (n.Children.Count > 0)
+                            {
+                                <Stat Label="Filed here" Value="@n.Own.ToString("N0")" />
+                                <Stat Label="Subcategories" Value="@n.Children.Count.ToString("N0")" />
+                            }
+                        </div>
+                        @if (Ctx.IsEditor && IsFilterable)
+                        {
+                            <div class="browse-actions">
+                                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Boost" @onclick="BoostThis">Boost this category</Button>
+                            </div>
+                        }
+                        <div class="browse-products-title">Products in this category</div>
+                        @if (!IsFilterable)
+                        {
+                            <p class="browse-note">Mark <code>@Field</code> Filterable under Field configuration to list the products here, and to boost a category.</p>
+                        }
+                        else if (_products == null)
+                        {
+                            <p class="browse-note">Reading…</p>
+                        }
+                        else if (_products.Count == 0)
+                        {
+                            <p class="browse-note">No products found with this exact value.</p>
+                        }
+                        else
+                        {
+                            <ul class="browse-products">
+                                @foreach (var p in _products)
+                                {
+                                    <li class="browse-product"><span class="browse-product-title">@p.Title</span><span class="browse-product-key">@p.Key</span></li>
+                                }
+                            </ul>
+                            @if (n.Count > _products.Count)
+                            {
+                                <p class="browse-note">The first @_products.Count of @n.Count.ToString("N0").</p>
+                            }
+                        }
+                    }
+                </Surface>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private const int ProductsShown = 20;
+    private const int ReadTimeoutMs = 10_000;
+    private const string Detect = "detect";
+    private const string Flat = "flat";
+
+    private static readonly SegmentedControl.Item[] _views = { new("tree", "Tree"), new("list", "List") };
+    private static readonly SelectField.SelectOption[] SeparatorOptions =
+    {
+        new("Detect", Detect),
+        new("\" > \"  (Google)", " > "),
+        new("\" / \"", " / "),
+        new("\"/\"", "/"),
+        new("\"|\"", "|"),
+        new("\">\"", ">"),
+        new("\" - \"", " - "),
+        new("Flat, no levels", Flat),
+    };
+
+    private sealed record Product(long Key, string Title);
+
+    private string _view = "tree";
+    private DatasetMetadataStore.CategorySetting? _setting;
+    private string? _field;
+    private string? _separator;          // null detects, "" is flat
+    private CategoryHierarchy.Tree? _tree;
+    private IReadOnlyList<TreeCanvas.Node> _nodes = Array.Empty<TreeCanvas.Node>();
+    private Dictionary<string, CategoryHierarchy.Node> _byId = new();
+    private bool _declined;
+    private bool _reading;
+    private string? _error;
+    private object? _readFor;            // the saved field configuration the tree was read under
+    private string? _selected;
+    private CategoryHierarchy.Node? _selectedNode;
+    private IReadOnlyList<Product>? _products;
+    private readonly LatestOnly _reads = new();
+    private readonly LatestOnly _productReads = new();
+
+    private string? Field => _field;
+    private string SeparatorValue => _separator == null ? Detect : _separator == "" ? Flat : _separator;
+    private bool IsFilterable => Ctx.SavedFields?.FirstOrDefault(f => f.FieldName == _field)?.Filterable == true;
+
+    private List<FieldProxy> FacetableFields() =>
+        Ctx.SavedFields?.Where(f => f.Facetable == true).ToList() ?? new();
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Ctx.DocumentsReplaced += Invalidate;
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (!Active) return;
+        _setting ??= Metadata.LoadCategory(Ctx.TeamId, Ctx.Name);
+        var facetable = FacetableFields();
+        if (facetable.Count == 0) return;
+        if (_field == null)
+        {
+            // The dataset's choice when it still is facetable; else the first field that looks like
+            // a category, else the first facetable one.
+            var saved = facetable.FirstOrDefault(f => f.FieldName == _setting.Field);
+            var likely = facetable.FirstOrDefault(f => f.FieldName.Contains("categor", StringComparison.OrdinalIgnoreCase) || f.FieldName.Contains("product_type", StringComparison.OrdinalIgnoreCase));
+            _field = (saved ?? likely ?? facetable[0]).FieldName;
+            _separator = saved != null ? _setting.Separator : null;
+        }
+        // Read on first show, and again after the field configuration is saved: a facet's
+        // values do not change with it, but which fields are facetable does.
+        if (_tree == null && !_reading && _error == null || !ReferenceEquals(_readFor, Ctx.SavedFields))
+            _ = ReadAsync();
+    }
+
+    private void Invalidate()
+    {
+        _tree = null; _declined = false; _error = null; _products = null;
+        _ = ReadAsync();
+    }
+
+    private Task OnFieldChanged(string? field)
+    {
+        if (field == null || field == _field) return Task.CompletedTask;
+        _field = field;
+        _separator = null;
+        _selected = null; _selectedNode = null; _products = null;
+        Remember();
+        return ReadAsync();
+    }
+
+    private Task OnSeparatorChanged(string? value)
+    {
+        _separator = value == Detect || value == null ? null : value == Flat ? "" : value;
+        _selected = null; _selectedNode = null; _products = null;
+        Remember();
+        return ReadAsync();
+    }
+
+    /// <summary>Keeps the choice for the dataset. Editors only; a viewer's picks live in the tab.</summary>
+    private void Remember()
+    {
+        if (!Ctx.IsEditor || _field == null) return;
+        try { Metadata.SaveCategory(Ctx.TeamId, Ctx.Name, new DatasetMetadataStore.CategorySetting(_field, _separator)); }
+        catch (Exception ex) { Console.WriteLine($"[Browse] could not save the category setting for {Ctx.Name}: {ex.Message}"); }
+    }
+
+    private async Task ReadAsync()
+    {
+        if (_field == null) return;
+        if (Ctx.EngineState != SystemState.Ready) { _error = "The dataset is not ready."; return; }
+        var ticket = _reads.Begin();
+        var field = _field; var separator = _separator; var readFor = Ctx.SavedFields;
+        _reading = true; _error = null;
+        try
+        {
+            var values = await Task.Run(() => ReadFacet(field));
+            if (!_reads.IsCurrent(ticket)) return;
+            _readFor = readFor;
+            if (values == null) { _error = $"No facet values came back for {field}. The field may be empty, or the read timed out."; _tree = null; }
+            else
+            {
+                var tree = CategoryHierarchy.Build(values, separator);
+                _declined = tree == null;
+                _tree = tree;
+                _byId = new Dictionary<string, CategoryHierarchy.Node>(StringComparer.Ordinal);
+                _nodes = tree == null ? Array.Empty<TreeCanvas.Node>() : tree.Roots.Select(ToNode).ToList();
+                if (_selected != null && _byId.TryGetValue(_selected, out var again)) { _selectedNode = again; _ = ReadProductsAsync(again); }
+                else { _selected = null; _selectedNode = null; _products = null; }
+            }
+        }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
+        {
+            if (_reads.IsCurrent(ticket)) _error = ex.Message;
+        }
+        finally
+        {
+            if (_reads.IsCurrent(ticket)) { _reading = false; try { await InvokeAsync(StateHasChanged); } catch (ObjectDisposedException) { } }
+        }
+    }
+
+    /// <summary>The field's histogram over the whole dataset: an empty search with facets on,
+    /// which the engine answers from its cache after the first read. Null when nothing came back.</summary>
+    private IReadOnlyList<KeyValuePair<string, int>>? ReadFacet(string field)
+    {
+        var query = new global::Indx.Http.QueryProxy { Text = string.Empty, MaxNumberOfRecordsToReturn = 1, EnableFacets = true, TimeOutLimitMilliseconds = ReadTimeoutMs };
+        var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
+        if (result.Facets == null || !result.Facets.TryGetValue(field, out var values)) return result.DidTimeOut ? null : Array.Empty<KeyValuePair<string, int>>();
+        return values;
+    }
+
+    private TreeCanvas.Node ToNode(CategoryHierarchy.Node n)
+    {
+        _byId[n.Id] = n;
+        return new TreeCanvas.Node(n.Id, n.Label, n.Count, n.Children.Count > 0 ? n.Children.Select(ToNode).ToList() : null);
+    }
+
+    private Task OnSelected(string id)
+    {
+        _selected = id;
+        _selectedNode = _byId.TryGetValue(id, out var n) ? n : null;
+        _products = null;
+        return _selectedNode != null && IsFilterable ? ReadProductsAsync(_selectedNode) : Task.CompletedTask;
+    }
+
+    /// <summary>The first products filed under this exact value, by a value filter on the field;
+    /// the engine's own filter, so it needs the field Filterable.</summary>
+    private async Task ReadProductsAsync(CategoryHierarchy.Node node)
+    {
+        var ticket = _productReads.Begin();
+        try
+        {
+            var products = await Task.Run(() => ReadProducts(node));
+            if (!_productReads.IsCurrent(ticket)) return;
+            _products = products;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Browse] products failed for {Ctx.Name}: {ex.Message}");
+            if (_productReads.IsCurrent(ticket)) { _products = Array.Empty<Product>(); _ = InvokeAsync(StateHasChanged); }
+        }
+    }
+
+    private IReadOnlyList<Product> ReadProducts(CategoryHierarchy.Node node)
+    {
+        var engine = Ctx.FindEngine();
+        if (engine == null || _field == null) return Array.Empty<Product>();
+        var value = node.Label == CategoryHierarchy.NoCategory && node.Id == CategoryHierarchy.NoCategory ? "" : node.Id;
+        var filter = engine.CreateValueFilter(_field, value, isCaseSensitive: false, out var error);
+        if (filter == null) throw new InvalidOperationException(error ?? "The filter could not be made.");
+        var query = new global::Indx.Http.QueryProxy
+        {
+            Text = string.Empty, MaxNumberOfRecordsToReturn = ProductsShown, EnableFacets = true,
+            Filter = new global::Indx.Http.FilterProxy(filter.SerializedKey), TimeOutLimitMilliseconds = ReadTimeoutMs,
+        };
+        var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
+        var fields = Ctx.SavedFields ?? Array.Empty<FieldProxy>();
+        var list = new List<Product>();
+        foreach (var record in result.Records.Take(ProductsShown))
+        {
+            var json = engine.GetJsonDataOfKey(record.DocumentKey);
+            list.Add(new Product(record.DocumentKey, TitleOf(json, fields) ?? $"#{record.DocumentKey}"));
+        }
+        return list;
+    }
+
+    /// <summary>The heaviest searchable field's first value: a title, a name.</summary>
+    private static string? TitleOf(string? json, IReadOnlyList<FieldProxy> fields)
+    {
+        if (string.IsNullOrEmpty(json)) return null;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var inspected = DocumentInspection.Build(doc.RootElement, fields);
+            var value = inspected.Indexed.FirstOrDefault(f => f.Values.Count > 0 && f.Field.Embeddable != true)?.Values[0];
+            return value == null ? null : value.Length > 80 ? value[..79] + "…" : value;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>Hands a rule on this category to the Boost rules tab and opens it.</summary>
+    private void BoostThis()
+    {
+        if (_selectedNode == null || _field == null) return;
+        Ctx.BoostDraft = new DatasetContext.BoostDraftRule(_selectedNode.Label, _field, _selectedNode.Id);
+        Ctx.ActiveTab = "boosts";
+        Ctx.NotifyChanged();
+    }
+
+    public override void Dispose()
+    {
+        Ctx.DocumentsReplaced -= Invalidate;
+        base.Dispose();
+    }
+}

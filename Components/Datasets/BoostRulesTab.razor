@@ -199,6 +199,13 @@
     protected override void OnParametersSet()
     {
         if (Active && !_loaded) Load();
+        if (Active && Ctx.BoostDraft is { } draft)
+        {
+            // From the Browse tab: a rule on one category, at the top like a new rule, unsaved.
+            Ctx.BoostDraft = null;
+            _error = null;
+            _rules.Insert(0, new BoostRule { Name = draft.Name, Conditions = new() { new BoostCondition { Field = draft.Field, Value = draft.Value } } });
+        }
     }
 
     private void Load()

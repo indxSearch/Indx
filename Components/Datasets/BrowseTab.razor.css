@@ -1,0 +1,33 @@
+.browse-tab { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
+
+.browse-toolbar { align-items: center; }
+.browse-label { color: var(--lv5); font: var(--text-xs); }
+.browse-toolbar-end { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+.browse-note { color: var(--lv5); font: var(--text-sm); margin: 0; }
+
+/* The canvas and the chosen category's panel side by side; the canvas bounded in height, since a
+   branch of fifty opened makes it tall, and scrolling inside it. */
+.browse-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 340px;
+    gap: 16px;
+    align-items: start;
+}
+.browse-canvas ::deep .indx-tree-canvas { max-height: 70vh; }
+.browse-canvas ::deep .indx-tree-list-wrap { max-height: 70vh; overflow: auto; }
+
+::deep .browse-panel { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.browse-panel-title { font: var(--text-lg); color: var(--lv8); }
+.browse-panel-path { font: var(--text-xs); color: var(--lv5); margin-top: 2px; word-break: break-word; }
+.browse-stats { display: flex; gap: 16px; flex-wrap: wrap; }
+.browse-actions { display: flex; gap: 8px; }
+.browse-products-title { font: var(--text-xs); color: var(--lv5); text-transform: uppercase; letter-spacing: 0.05em; }
+.browse-products { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.browse-product { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--lv2); font: var(--text-sm); }
+.browse-product-title { color: var(--lv7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browse-product-key { color: var(--lv4); font: var(--text-xs); font-family: var(--font-mono); flex: none; }
+
+@media (max-width: 900px) {
+    .browse-grid { grid-template-columns: minmax(0, 1fr); }
+}
