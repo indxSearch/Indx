@@ -65,11 +65,13 @@
 
 /* With a figure: under the label, the graphic at the left and the value and foot stacked
    beside it, centred on it. */
+/* Under the label with air above, so the ring does not press on it. */
 .indx-stat--figured {
     display: flex;
     align-items: center;
     gap: 12px;
     max-width: 100%;
+    margin-top: 6px;
 }
 
 .indx-stat-figure {
