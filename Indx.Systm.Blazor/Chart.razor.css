@@ -95,6 +95,16 @@
     background: var(--CLightBlue);
 }
 
+/* A series' range, under its value, in the dim tone. */
+.indx-chart-tooltip-range {
+    margin-top: -2px;
+}
+
+.indx-chart-tooltip-range-value {
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
 /* The total of a stacked bar, under its parts with a rule between. */
 .indx-chart-tooltip-total {
     margin-top: 4px;

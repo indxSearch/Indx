@@ -66,7 +66,12 @@
                         if (s.Data.Count == 0) { continue; }
                         var color = s.Color ?? DefaultLineColor;
                         var fill = FillOf(s);
-                        @if (fill != "none" && s.Data.Count > 1)
+                        @if (s.HasBand && BandPoints(s) is { } bandPts)
+                        {
+                            @* The band between low and high: along high to the right, back along low. *@
+                            <polygon points="@bandPts" fill="@(IsPattern(fill) ? PaintOf(s, si) : color)" fill-opacity="@(IsPattern(fill) ? "1" : F(AreaOpacity))" stroke="none" />
+                        }
+                        else if (fill != "none" && s.Data.Count > 1)
                         {
                             @* The area under the line, down to the baseline (or zero, where the range goes below it). *@
                             <polygon points="@AreaPoints(s)" fill="@PaintOf(s, si)" fill-opacity="@(fill == "solid" ? F(AreaOpacity) : "1")" stroke="none" />
@@ -146,6 +151,14 @@
                         <span class="indx-chart-tooltip-name">@s.Label</span>
                         <span class="indx-chart-tooltip-value">@FormatValue(tip.Index < s.Data.Count ? s.Data[tip.Index] : 0)</span>
                     </div>
+                    @if (s.HasBand && tip.Index < s.Low!.Count && tip.Index < s.High!.Count)
+                    {
+                        <div class="indx-chart-tooltip-row indx-chart-tooltip-range">
+                            <span class="indx-chart-tooltip-dot" style="visibility: hidden;"></span>
+                            <span class="indx-chart-tooltip-name">@(s.RangeLabel ?? "Range")</span>
+                            <span class="indx-chart-tooltip-range-value">@FormatValue(s.Low[tip.Index]) to @FormatValue(s.High[tip.Index])</span>
+                        </div>
+                    }
                 }
                 @if (IsStacked && Series.Count > 1)
                 {
@@ -199,8 +212,15 @@
     /// <c>Fill</c> is how it is filled, a bar or the area under a line: "solid" is the series colour,
     /// flat on a bar and faint under a line; "hatch", "dots" and "checker" are drawn in the colour on
     /// the 2px pixel grid, so two series tell apart in one tone; "none" leaves a line as a line.
-    /// Bars are solid unless told otherwise, a line is none.</summary>
-    public sealed record ChartSeries(string Label, IReadOnlyList<double> Data, string? Color = null, string? HoverColor = null, string? Fill = null);
+    /// Bars are solid unless told otherwise, a line is none.
+    /// <c>Low</c>/<c>High</c>, lines only, are a range around the line, one value per point, drawn as a
+    /// band behind it: faint in the series colour, or its pattern when <c>Fill</c> is one, and the area
+    /// under the line is then not drawn. <c>RangeLabel</c> names it in the tooltip, "Range" when left out.</summary>
+    public sealed record ChartSeries(string Label, IReadOnlyList<double> Data, string? Color = null, string? HoverColor = null, string? Fill = null,
+        IReadOnlyList<double>? Low = null, IReadOnlyList<double>? High = null, string? RangeLabel = null)
+    {
+        public bool HasBand => Low is { Count: > 0 } && High is { Count: > 0 };
+    }
 
     // The pixel patterns, each a 4px tile of 1px or 2px cells in the series colour.
     private static readonly Dictionary<string, (int X, int Y, int W, int H)[]> PatternCells = new()
@@ -320,8 +340,12 @@
         {
             _totals = Array.Empty<double>();
             foreach (var s in Series)
+            {
                 foreach (var d in s.Data)
-                    if (!double.IsNaN(d) && !double.IsInfinity(d)) all.Add(d);
+                    if (double.IsFinite(d)) all.Add(d);
+                if (Type == "line" && s.HasBand)
+                    all.AddRange(s.Low!.Concat(s.High!).Where(double.IsFinite));
+            }
         }
         var refs = (References ?? Array.Empty<ChartReference>()).Select(r => r.Value).Where(double.IsFinite).ToList();
         var maxVal = all.Count > 0 || refs.Count > 0 ? Math.Max(all.Concat(refs).Max(), 0) : 1.0;
@@ -465,6 +489,16 @@
             sb.Append(F(ToX(i))).Append(',').Append(F(ToY(s.Data[i])));
         }
         return sb.ToString();
+    }
+
+    private string? BandPoints(ChartSeries s)
+    {
+        var n = Math.Min(s.Data.Count, Math.Min(s.Low!.Count, s.High!.Count));
+        if (n < 2) return null;
+        var sb = new System.Text.StringBuilder();
+        for (int i = 0; i < n; i++) sb.Append(F(ToX(i))).Append(',').Append(F(ToY(s.High[i]))).Append(' ');
+        for (int i = n - 1; i >= 0; i--) sb.Append(F(ToX(i))).Append(',').Append(F(ToY(s.Low[i]))).Append(' ');
+        return sb.ToString().TrimEnd();
     }
 
     private string AreaPoints(ChartSeries s)
