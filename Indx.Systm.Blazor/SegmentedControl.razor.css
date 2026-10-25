@@ -69,18 +69,18 @@
 
 .indx-segmented-micro .indx-segmented-cell {
     height: 24px;
-    padding: 0 8px;
+    padding: 0 11px;
 }
 
 .indx-segmented-micro .indx-segmented-icon-only {
-    padding: 0 6px;
+    padding: 0 8px;
 }
 
 .indx-segmented-default .indx-segmented-cell {
     height: 30px;
-    padding: 0 10px;
+    padding: 0 14px;
 }
 
 .indx-segmented-default .indx-segmented-icon-only {
-    padding: 0 8px;
+    padding: 0 11px;
 }
