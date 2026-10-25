@@ -461,9 +461,25 @@ Instead of placing the file manually, IndxServer can pull its license straight f
 Indx__LicenseToken = <token from your portal license page>
 ```
 
-The download endpoint is **hardcoded** to the Indx portal (`https://license.indx.co/api/license/current`), because only Indx issues licenses, so it is not configurable. Auto-fetch is **token-gated**: with a token set, a **fresh license is fetched on every startup** (the portal rolls Pro/Free expiry forward) and written to `Indx:LicenseFile` (default `./IndxData/indx.license`). **Without a token, auto-fetch is a no-op**: the server never reaches out and relies on a manually placed file or free-tier mode. Fetch failures are logged but never fatal, and the server keeps any existing file, or falls back to free-tier mode. Set the token via environment variable or Key Vault, not in `appsettings.json`.
+The download endpoint is **hardcoded** to the Indx portal (`https://license.indx.co/api/license/current`), because only Indx issues licenses, so it is not configurable. Auto-fetch is **token-gated**: with a token set, a **fresh license is fetched on every startup** (the portal rolls Pro/Free expiry forward) and written to `Indx:LicenseFile` (default `./IndxData/indx.license`). **Without a token, auto-fetch is a no-op**: the server fetches no licence and relies on a manually placed file or free-tier mode. With a token, the daily fetch also sends the server's version in an `X-Indx-Version` header, so we can see which licensed instances a fix has not reached; nothing else about the instance is sent. Fetch failures are logged but never fatal, and the server keeps any existing file, or falls back to free-tier mode. Set the token via environment variable or Key Vault, not in `appsettings.json`.
 
 > **Legacy:** the old `Indx__LicenseDownloadUrl` setting is no longer read. The URL is hardcoded and fetching is driven solely by `Indx__LicenseToken`. Remove it from any existing configuration.
+
+### Updates
+
+Once a day the server asks [license.indx.co](https://license.indx.co) which Indx release is the
+latest, and when it is newer than the one running, every admin is told once: in the console's
+notifications and by email, with what the release fixes and how to get it. A self-hosted server
+points at the release on GitHub; a Managed instance is updated by Indx, since Azure keeps its files
+out of the customer's reach, and the notice says to write to support@indx.co. A release that fixes
+a security issue says so in the title.
+
+The check is one anonymous request: no token, no instance id, nothing about your data. Switch it
+off with:
+
+```
+Updates__Check = false
+```
 
 ## Deployment
 

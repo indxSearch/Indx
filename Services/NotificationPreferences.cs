@@ -35,6 +35,7 @@ internal static class NotificationPreferences
         new(NotificationType.BoostRuleExpired,   "Boost rule expired",    "A scheduled boost rule on one of your team's datasets has passed its end date and no longer applies.", AdminOnly: false),
         new(NotificationType.BackupFailed,       "Backup failed",         "A scheduled database backup did not produce a verified copy. The copy, if any, was discarded.", AdminOnly: true),
         new(NotificationType.LowDiskSpace,       "Low disk space",        "The disk holding the databases and backups is below the configured free-space threshold.", AdminOnly: true),
+        new(NotificationType.UpdateAvailable,    "Update available",      "A newer Indx release is out: once per release, with what it fixes and how this instance gets it.", AdminOnly: true),
         new(NotificationType.RepeatedApiErrors,  "Repeated API errors",   "More unhandled API errors than the configured threshold within the window. Each error is in the server log with its trace id.", AdminOnly: true),
     ];
 

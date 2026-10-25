@@ -78,6 +78,10 @@ internal class InstanceSettings
     /// The portal URL itself is hardcoded (see LicenseBootstrapper.DefaultDownloadUrl).</summary>
     public string? LicenseToken { get; set; }
 
+    /// <summary>The newest release the admins were told about (UpdateCheckJob), so each release is
+    /// announced once, however often the check runs.</summary>
+    public string? LastAnnouncedRelease { get; set; }
+
     /// <summary>The licence portal's last answer about Observr, kept so a restart during a portal
     /// outage keeps Observr as a running instance would (ObservrSubscription): the answer, when it
     /// came, and a hash of the token it was for, so a new token asks afresh.</summary>

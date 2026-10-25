@@ -16,6 +16,7 @@ namespace IndxServer.Data
         BackupFailed        = 8,
         LowDiskSpace        = 9,
         RepeatedApiErrors   = 10,
+        UpdateAvailable     = 11,
     }
 
     public class Notification

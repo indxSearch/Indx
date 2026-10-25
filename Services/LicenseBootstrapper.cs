@@ -152,6 +152,10 @@ namespace IndxServer.Services
                 using var request = new HttpRequestMessage(HttpMethod.Get, url);
                 request.Headers.Authorization =
                     new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+                // The portal records which version each licensed instance runs, for its Licenses page,
+                // so we can see who a fix has not reached. Only the version: nothing else is sent.
+                if (ReleaseVersion.Current is { } version)
+                    request.Headers.TryAddWithoutValidation("X-Indx-Version", version.ToString());
 
                 _logger.LogInformation("Fetching license file from {Url} to {Path}", url, localPath);
                 using var response = await client.SendAsync(request, cancellationToken);

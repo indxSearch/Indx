@@ -726,6 +726,8 @@ internal static class StartupServices
         // go stale. No-op until auto-fetch is configured. See LicenseRefreshJob. Managed too,
         // with the token the portal writes into its app settings.
         builder.Services.AddHostedService<Services.LicenseRefreshJob>();
+        // A newer release, announced to the admins once (Updates:Check false switches it off).
+        builder.Services.AddHostedService<Services.UpdateCheckJob>();
 
         // Application Insights: only activate when a connection string is configured.
         // The Bicep template provisions an AI resource and injects the connection string

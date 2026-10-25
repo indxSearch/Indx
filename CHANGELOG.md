@@ -28,6 +28,10 @@ patch can pick up a newer core without changing the HTTP contract.
 - **Admin > Monitor** shows the process's CPU and memory against what the machine allows, the
   native memory pool, searches a minute over the last hour and every dataset's state at a glance.
   The terminal monitor has the same gauges.
+- **Update notices.** Once a day the server checks which Indx release is the latest and tells its
+  admins once when a newer one is out, in the console and by email, with what it fixes and how to
+  get it; a security release says so. The check is anonymous. `Updates:Check` set to `false`
+  switches it off.
 - **Websites, set in the console.** Admin > Settings now lists the websites whose pages may call
   the API from the browser, such as a shop with a search box. A change applies at once, without a
   restart, and `*.example.com` covers every subdomain. Until an admin saves a list,
