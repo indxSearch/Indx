@@ -48,6 +48,10 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> Browsing = Of<Icons.InternetBrowser>();
         public static readonly RenderFragment<int> Changes = Of<Icons.Update>();
         public static readonly RenderFragment<int> FuzzySelected = Of<Icons.ClickSelect>();
+        // The Search or ask views: the pictures, the questions asked, the offers shown.
+        public static readonly RenderFragment<int> AskOverview = Of<Icons.Analytics>();
+        public static readonly RenderFragment<int> AskQuestions = Of<Icons.Question>();
+        public static readonly RenderFragment<int> AskOffers = Of<Icons.LightBulb>();
         public static readonly RenderFragment<int> FuzzyAll = Of<Icons.SearchAsYouType>();
         public static readonly RenderFragment<int> ShowMore = Of<Icons.Plus>();
         /// <summary>Erasing data, as opposed to <see cref="Delete"/>, which removes the dataset.</summary>

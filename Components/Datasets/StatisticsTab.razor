@@ -355,7 +355,7 @@ else
                 <Stat Label="Calls" Hint="Calls against the daily budget: each judgement, each question asked and each filter the model made while typing, the console's tester included. On a day the budget ran out, the calls after it were turned away, and visitors saw no offers until midnight UTC."><ValueContent>@N(_askBudget.Calls) <span class="stats-tile-sub">@BudgetLine</span></ValueContent></Stat>
             </StatGroup>
             <div class="stats-view">
-                <Tabs Items="AskViewItems" Active="@_askView" ActiveChanged="@(v => _askView = v ?? "questions")" Size="micro" Variant="button" AriaLabel="Search or ask view" />
+                <Tabs Items="AskViewItems" Active="@_askView" ActiveChanged="@(v => _askView = v ?? "overview")" Size="micro" Variant="button" AriaLabel="Search or ask view" />
             </div>
             @if (_askView == "overview")
             {
@@ -624,10 +624,13 @@ else
 
     /// <summary>The section to open on: queries, fuzzy, documents, browsing or changes.</summary>
     [Parameter] public string? InitialSection { get; set; }
+    /// <summary>The Search or ask view to open on: overview, questions or offers.</summary>
+    [Parameter] public string? InitialAskView { get; set; }
 
     protected override void OnInitialized()
     {
         if (!string.IsNullOrEmpty(InitialSection)) _section = InitialSection;
+        if (!string.IsNullOrEmpty(InitialAskView)) _askView = InitialAskView;
     }
 
     /// <summary>The detail sections, in the order they matter. Changes carries how many fell in

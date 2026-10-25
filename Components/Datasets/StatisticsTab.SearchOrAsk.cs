@@ -18,7 +18,7 @@ namespace IndxServer.Components.Datasets
         private AskBudgetStat _askBudget;
         private List<AskQuestionStat> _askQuestions = [];
         private List<AskOfferStat> _askOffers = [];
-        private string _askView = "questions";
+        private string _askView = "overview";
         // The section's pictures: the window day by day, the budget day by day and today's, and
         // when people ask.
         private List<AskDayStat> _askDays = [];
@@ -41,10 +41,12 @@ namespace IndxServer.Components.Datasets
         private IEnumerable<Tabs.TabItem> SearchOrAskSection =>
             HasSearchOrAsk ? [new("Search or ask", "search-or-ask", DatasetIcons.SearchOrAsk)] : [];
 
-        // Questions first and the default: they are what to write next. Overview holds the pictures.
+        // Overview first and the default, the pictures; Questions, what to write next; Offers.
         private static readonly List<Tabs.TabItem> AskViewItems =
         [
-            new("Questions", "questions"), new("Offers", "offers"), new("Overview", "overview"),
+            new("Overview", "overview", DatasetIcons.AskOverview),
+            new("Questions", "questions", DatasetIcons.AskQuestions),
+            new("Offers", "offers", DatasetIcons.AskOffers),
         ];
 
         private void LoadSearchOrAsk(StatisticsStore store, string team, string ds, long fromDay, long toDay, string? source)
