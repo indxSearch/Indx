@@ -18,11 +18,13 @@ namespace IndxServer.Monitor;
 /// </summary>
 public sealed class MeterView : View
 {
-    private static readonly Color Signal = new(0xFF, 0x42, 0x38), Stone = new(0xCF, 0xCF, 0xCF), Slate = new(0x4A, 0x4A, 0x50);
+    private static readonly Color Signal = new(0xFF, 0x42, 0x38), Warn = new(0xFF, 0xC1, 0x07),
+                                  Stone = new(0xCF, 0xCF, 0xCF), Slate = new(0x4A, 0x4A, 0x50);
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-    /// <summary>The share past which a meter is in the signal red.</summary>
-    internal const double SignalFrom = 0.85;
+    /// <summary>The shares past which a meter is in the warning amber, and in the signal red: the
+    /// zones the console's rings have.</summary>
+    internal const double WarnFrom = 0.7, SignalFrom = 0.85;
     internal const char Lit = '▮', Dim = '▯';
     private const string Levels = "▁▂▃▄▅▆▇█";
     private const int LabelWidth = 5;
@@ -42,7 +44,7 @@ public sealed class MeterView : View
     }
 
     /// <summary>One row: the label, the bar's lit and dim lengths, and the figures after it.</summary>
-    internal readonly record struct MeterLine(string Label, int LitCells, int DimCells, string Figures, bool Signal)
+    internal readonly record struct MeterLine(string Label, int LitCells, int DimCells, string Figures, bool Signal, bool Warn = false)
     {
         /// <summary>The row as plain text, for a test or a log.</summary>
         public override string ToString() =>
@@ -100,8 +102,8 @@ public sealed class MeterView : View
 
         return
         [
-            new("cpu", cpuLit, cpuDim, cpuFigures, cpu >= SignalFrom),
-            new("mem", memLit, memDim, memFigures, mem >= SignalFrom),
+            new("cpu", cpuLit, cpuDim, cpuFigures, cpu >= SignalFrom, cpu >= WarnFrom),
+            new("mem", memLit, memDim, memFigures, mem >= SignalFrom, mem >= WarnFrom),
             // The sparkline is its own glyphs: carried in Figures, no bar cells.
             new("rate", 0, 0, spark.PadRight(sparkWidth) + rateFigures, false),
         ];
@@ -118,6 +120,7 @@ public sealed class MeterView : View
         var normal = GetAttributeForRole(VisualRole.Normal);
         var lit = new Attribute(Stone, normal.Background);
         var signal = new Attribute(Signal, normal.Background);
+        var warn = new Attribute(Warn, normal.Background);
         var dim = new Attribute(Slate, normal.Background);
 
         int width = Viewport.Width;
@@ -134,7 +137,7 @@ public sealed class MeterView : View
             x += LabelWidth;
             if (line.LitCells > 0)
             {
-                SetAttribute(line.Signal ? signal : lit);
+                SetAttribute(line.Signal ? signal : line.Warn ? warn : lit);
                 AddStr(x, row, new string(Lit, line.LitCells));
                 x += line.LitCells;
             }
