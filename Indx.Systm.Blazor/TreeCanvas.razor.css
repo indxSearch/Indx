@@ -127,6 +127,7 @@
 
 .indx-tree-toggle ::deep button,
 .indx-tree-disclosure ::deep button {
+    justify-content: center; /* a Button lays its content from the left; squared, it must centre */
     width: 22px;
     height: 22px;
     min-width: 0;
