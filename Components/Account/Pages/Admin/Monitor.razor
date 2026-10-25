@@ -50,7 +50,7 @@ else
             <Stat Label="Searches" Hint="Counted since the monitor started." Value="@snapshot.SearchesTotal.ToString("N0")">
                 since the monitor started
             </Stat>
-            <Stat Label="A minute" Hint="Searches a minute over the last minute; the line is the last hour, one reading a minute.">
+            <Stat Label="Avg searches per minute" Hint="Over the last minute; the line is the last hour, one reading a minute.">
                 <Figure><Sparkline Values="snapshot.RateHistory" Width="64px" Height="24" Fill="true" Baseline="true" AriaLabel="Searches a minute, the last hour" /></Figure>
                 <ValueContent>@snapshot.SearchesPerMinute.ToString("N0")</ValueContent>
                 <ChildContent>the last hour</ChildContent>
