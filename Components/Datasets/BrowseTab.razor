@@ -27,18 +27,36 @@
     }
     else if (_sources.Count == 0)
     {
-        @* No hierarchy among the facetable fields: a quiet page in the shape of intrface's result
-           messages, a large icon, a line, a detail. Nothing is wrong; there is nothing to draw yet. *@
+        @* No hierarchy among the facetable fields: the page is the guide, in the shape of the
+           datasets page's first visit. The two shapes the tree reads, each drawn as the tree it
+           would make, and the step to Field configuration for an editor. *@
         <div class="browse-empty">
-            <span class="browse-empty-icon"><NodeTree Size="70" Color="var(--lv4)" /></span>
-            <div class="browse-empty-title">Nothing to browse yet</div>
-            <div class="browse-empty-detail">
-                The tree is drawn from a facetable field whose values are paths, like "Furniture > Chairs > Office chairs", or from fields that each hold a level.
+            <div class="browse-empty-message">
+                <span class="browse-empty-icon"><NodeTree Size="70" Color="var(--lv4)" /></span>
+                <div class="browse-empty-title">No hierarchy to browse</div>
+                <div class="browse-empty-detail">
+                    The tree is drawn from a facetable field whose values are paths, or from fields that each hold a level. This dataset has neither marked Facetable yet.
+                </div>
+            </div>
+            <div class="browse-empty-shapes">
+                <div class="browse-empty-shape">
+                    <h4 class="browse-empty-shape-title">A path in one field</h4>
+                    <p class="browse-empty-shape-text">One value per product with the levels in it, the way a Google product feed writes <code>product_type</code> and <code>google_product_category</code>. Any separator the values agree on works.</p>
+                    <pre class="browse-empty-code">"product_type": "@_pathSample"</pre>
+                    <div class="browse-empty-tree"><TreeCanvas Roots="_pathExample" DefaultExpanded="_pathOpen" AriaLabel="A tree from a path field" /></div>
+                </div>
+                <div class="browse-empty-shape">
+                    <h4 class="browse-empty-shape-title">A level per field</h4>
+                    <p class="browse-empty-shape-text">Fields that share a prefix and each hold one level, as a nested object does. Two or more of them, marked Facetable, make a group.</p>
+                    <pre class="browse-empty-code">"category": { "department": "@_groupSample[0]", "section": "@_groupSample[1]", "type": "@_groupSample[2]" }</pre>
+                    <div class="browse-empty-tree"><TreeCanvas Roots="_groupExample" DefaultExpanded="_groupOpen" AriaLabel="A tree from level fields" /></div>
+                </div>
             </div>
             @if (Ctx.IsEditor)
             {
                 <div class="browse-empty-actions">
-                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Fields" @onclick="@(() => { Ctx.ActiveTab = "fields"; Ctx.NotifyChanged(); })">Field configuration</Button>
+                    <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Fields" @onclick="@(() => { Ctx.ActiveTab = "fields"; Ctx.NotifyChanged(); })">Open Field configuration</Button>
+                    <span class="browse-empty-hint">Mark the field, or the group's fields, Facetable and save; the tree reads them at once.</span>
                 </div>
             }
         </div>
@@ -226,6 +244,57 @@
     private string _filter = "";
     private HashSet<string>? _nameMatches;   // node ids whose label the filter finds; null when no filter
     private readonly FieldNameFilter _names = new();
+
+    // The empty state's examples: made-up categories, different for the two shapes, run through the
+    // real builder, so the pictures are what the tab would draw and cannot drift from it. Built
+    // once per tab, from a fixed seed, so a page does not change under the reader.
+    private static readonly string[] Depts = { "Furniture", "Lighting", "Kitchen", "Outdoor", "Textiles", "Storage" };
+    private static readonly string[] Sections = { "Chairs", "Tables", "Sofas", "Lamps", "Cookware", "Shelving", "Rugs", "Beds", "Benches", "Planters" };
+    private static readonly string[] Types = { "Office", "Dining", "Lounge", "Folding", "Pendant", "Floor", "Cast iron", "Oak", "Wool", "Wall" };
+    private readonly IReadOnlyList<TreeCanvas.Node> _pathExample;
+    private readonly IReadOnlyList<TreeCanvas.Node> _groupExample;
+    private readonly string[] _pathOpen;
+    private readonly string[] _groupOpen;
+    private readonly string _pathSample;
+    private readonly string[] _groupSample;
+
+    public BrowseTab()
+    {
+        (_pathExample, _pathOpen, var pathPaths) = Example(seed: 7, roots: 2, perRoot: 3, deeper: true);
+        (_groupExample, _groupOpen, var groupPaths) = Example(seed: 23, roots: 2, perRoot: 2, deeper: false);
+        _pathSample = pathPaths[0];
+        _groupSample = CategoryHierarchy.Split(groupPaths[0], " > ").ToArray();
+    }
+
+    /// <summary>A made-up histogram of paths and the tree the builder makes of it; the first root
+    /// and its first child open. Deeper trees get a fourth level here and there.</summary>
+    private static (IReadOnlyList<TreeCanvas.Node> Nodes, string[] Open, List<string> Paths) Example(int seed, int roots, int perRoot, bool deeper)
+    {
+        var rng = new Random(seed);
+        var paths = new List<string>();
+        var values = new List<KeyValuePair<string, int>>();
+        var depts = Depts.OrderBy(_ => rng.Next()).Take(roots).ToList();
+        foreach (var dept in depts)
+        {
+            foreach (var section in Sections.OrderBy(_ => rng.Next()).Take(perRoot))
+            {
+                foreach (var type in Types.OrderBy(_ => rng.Next()).Take(rng.Next(1, 4)))
+                {
+                    var path = $"{dept} > {section} > {type} {section.ToLowerInvariant()}";
+                    if (deeper && rng.Next(3) == 0) path += $" > {Types[rng.Next(Types.Length)]}";
+                    paths.Add(path);
+                    values.Add(new KeyValuePair<string, int>(path, rng.Next(8, 400)));
+                }
+            }
+        }
+        var tree = CategoryHierarchy.Build(values, " > ")!;
+        static TreeCanvas.Node Plain(CategoryHierarchy.Node n) =>
+            new(n.Id, n.Label, n.Count, n.Children.Count > 0 ? n.Children.Select(Plain).ToList() : null);
+        var nodes = tree.Roots.Select(Plain).ToList();
+        var first = tree.Roots[0];
+        var open = new[] { first.Id, first.Children[0].Id };
+        return (nodes, open, paths);
+    }
 
     private static readonly TreeCanvas.Mark BoostedMark = new(DatasetIcons.Boost, "Boosted by a rule");
     private static readonly TreeCanvas.Mark NeverSelectedMark = new(DatasetIcons.NeverSelected, "Never selected in the statistics window");
