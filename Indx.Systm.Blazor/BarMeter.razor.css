@@ -1,0 +1,57 @@
+.indx-barmeter {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.indx-barmeter-label {
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+/* The bars: a 2px bar every 4px, from the left edge, 14px tall. The dim row is the track; the
+   fill is the same row in the ink, clipped at the value, so bars never straddle the edge
+   differently in the two tones. The row ends on a bar's gap, never on a cut bar. */
+.indx-barmeter-bars {
+    position: relative;
+    height: 14px;
+    background-image: repeating-linear-gradient(to right, var(--lv3) 0 2px, transparent 2px 4px);
+    background-size: calc(100% - 2px) 100%;
+    background-repeat: no-repeat;
+}
+
+.indx-barmeter-fill {
+    position: absolute;
+    inset: 0;
+    /* Clipped at the value, snapped to the 4px pitch where the browser can round, so the fill
+       ends on a gap and never through a bar. */
+    clip-path: inset(0 calc(100% - var(--meter-fill, 0%)) 0 0);
+    color: var(--lv8);
+    background-image: repeating-linear-gradient(to right, currentColor 0 2px, transparent 2px 4px);
+    background-size: calc(100% - 2px) 100%;
+    background-repeat: no-repeat;
+}
+
+.indx-barmeter-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+}
+
+.indx-barmeter-value {
+    color: var(--lv7);
+}
+
+.indx-barmeter-max {
+    color: var(--lv5);
+    text-align: right;
+}
+
+@supports (width: round(1px, 2px)) {
+    .indx-barmeter-fill {
+        clip-path: inset(0 calc(100% - round(var(--meter-fill, 0%), 4px)) 0 0);
+    }
+}
