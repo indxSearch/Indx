@@ -12,8 +12,8 @@
 .indx-toggle-input {
     position: absolute;
     opacity: 0;
-    width: 28px;
-    height: 18px;
+    width: 25px;
+    height: 17px;
     cursor: pointer;
 }
 
@@ -34,8 +34,8 @@
 .indx-toggle-slider {
     position: relative;
     display: inline-block;
-    width: 28px;
-    height: 18px;
+    width: 25px;
+    height: 17px;
     background: var(--lv2);
     border-radius: var(--radius);
     flex-shrink: 0;
@@ -48,8 +48,8 @@
 .indx-toggle-slider::before {
     position: absolute;
     content: "";
-    height: 12px;
-    width: 12px;
+    height: 11px;
+    width: 11px;
     left: 3px;
     top: 3px;
     background-color: var(--lv8);
@@ -62,7 +62,7 @@
 }
 
 .indx-toggle-input:checked + .indx-toggle-slider::before {
-    transform: translateX(10px);
+    transform: translateX(8px);
 }
 
 /* Positive: on is --CPositive, green on light and teal on dark. Both are light enough that the
@@ -77,8 +77,9 @@
 
 /* Marks: a 0 on the track when off, a | when on, as on a power switch. Drawn as background layers
    in whole pixels, so they are sharp on a 1x screen: the 0 is a 5x5 ring with a 1px stroke and
-   the corners left out (four 1px bars), the | is 1x5. Both sit 5px from the track's outer edge,
-   on row 7 of 18. The handle covers the other side. */
+   the corners left out (four 1px bars), the | is 1x5. The track is 25 wide: 3px, the 11px handle,
+   3px, the 5px 0, 3px; so the 0 is centred in what the handle leaves, and on row 6 of 17 it is
+   centred vertically. The | mirrors it. The handle covers the other side. */
 .indx-toggle-marks .indx-toggle-input:not(:checked) + .indx-toggle-slider {
     background-image:
         linear-gradient(var(--lv3), var(--lv3)),
@@ -86,14 +87,14 @@
         linear-gradient(var(--lv3), var(--lv3)),
         linear-gradient(var(--lv3), var(--lv3));
     background-size: 3px 1px, 3px 1px, 1px 3px, 1px 3px;
-    background-position: 19px 7px, 19px 11px, 18px 8px, 22px 8px;
+    background-position: 18px 6px, 18px 10px, 17px 7px, 21px 7px;
     background-repeat: no-repeat;
 }
 
 .indx-toggle-marks .indx-toggle-input:checked + .indx-toggle-slider {
     background-image: linear-gradient(var(--lv8), var(--lv8));
     background-size: 1px 5px;
-    background-position: 5px 7px;
+    background-position: 5px 6px;
     background-repeat: no-repeat;
 }
 
