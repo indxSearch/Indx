@@ -4,6 +4,8 @@
 .browse-label { color: var(--lv5); font: var(--text-xs); }
 .browse-toolbar-end { margin-left: auto; display: flex; align-items: center; gap: 12px; }
 
+.browse-health { display: flex; gap: 24px; flex-wrap: wrap; }
+
 .browse-note { color: var(--lv5); font: var(--text-sm); margin: 0; }
 
 /* The canvas and the chosen category's panel side by side; the canvas bounded in height, since a

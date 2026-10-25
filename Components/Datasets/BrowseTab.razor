@@ -11,6 +11,8 @@
 @using IndxServer.Services
 @inherits DatasetTabBase
 @inject DatasetMetadataStore Metadata
+@inject BoostRuleStore BoostStore
+@inject StatisticsService Stats
 
 @if (!Active) { return; }
 
@@ -36,10 +38,20 @@
                 <span class="browse-label">Levels</span>
                 <SelectField Size="micro" Variant="ghost" Options="SeparatorOptions" Value="@SeparatorValue" ValueChanged="OnSeparatorChanged" aria-label="Level separator" />
             }
+            @if (_tree != null)
+            {
+                <div class="indx-list-toolbar-filter">
+                    <SearchField Size="micro" Placeholder="Filter categories" Value="@_filter" ValueChanged="OnFilterChanged" aria-label="Filter categories by name" />
+                </div>
+            }
             <div class="browse-toolbar-end">
                 @if (_tree != null)
                 {
                     <span class="indx-list-toolbar-end">@_tree.Nodes.ToString("N0") categories, @(_tree.Depth) level@(_tree.Depth == 1 ? "" : "s")</span>
+                }
+                @if (_health != null)
+                {
+                    <SegmentedControl Size="micro" AriaLabel="Show" Value="@_only" ValueChanged="OnOnlyChanged" Items="ShowItems()" />
                 }
                 <SegmentedControl Size="micro" AriaLabel="View" @bind-Value="_view" Items="_views" />
             </div>
@@ -70,9 +82,32 @@
             {
                 <p class="browse-note">@_tree.Cut.ToString("N0") path@(_tree.Cut == 1 ? "" : "s") deeper than @CategoryHierarchy.MaxDepth levels @(_tree.Cut == 1 ? "is" : "are") cut at level @CategoryHierarchy.MaxDepth.</p>
             }
+            @if (_health != null)
+            {
+                var counts = _health.Count(_tree);
+                <div class="browse-health">
+                    <Stat Label="Boosted" Value="@counts.Boosted.ToString("N0")" Icon="DatasetIcons.Boost" />
+                    @if (_health.AnySelects)
+                    {
+                        <Stat Label="@($"Never selected in {Stats.RetentionDays} days")" Value="@counts.NeverSelected.ToString("N0")" Icon="DatasetIcons.NeverSelected" />
+                    }
+                    else
+                    {
+                        <Stat Label="Never selected" Value="no selections recorded yet" />
+                    }
+                    @if (_health.AnyConverts)
+                    {
+                        <Stat Label="@($"Never purchased in {Stats.RetentionDays} days")" Value="@counts.NeverPurchased.ToString("N0")" Icon="DatasetIcons.NeverPurchased" />
+                    }
+                    else
+                    {
+                        <Stat Label="Never purchased" Value="no conversions recorded yet" />
+                    }
+                </div>
+            }
             <div class="browse-grid">
                 <div class="browse-canvas">
-                    <TreeCanvas Roots="_nodes" Selected="@_selected" SelectedChanged="OnSelected" View="@_view" AriaLabel="@($"Categories of {Ctx.Name} by {Field}")" />
+                    <TreeCanvas Roots="_nodes" Selected="@_selected" SelectedChanged="OnSelected" View="@_view" Visible="VisiblePredicate" AriaLabel="@($"Categories of {Ctx.Name} by {Field}")" />
                 </div>
                 <Surface Class="browse-panel">
                     @if (_selectedNode == null)
@@ -97,6 +132,24 @@
                                 <Stat Label="Subcategories" Value="@n.Children.Count.ToString("N0")" />
                             }
                         </div>
+                        @if (_health != null)
+                        {
+                            var f = _health.FiguresOf(n.Id);
+                            <div class="browse-stats">
+                                @if (_health.IsBoosted(n.Id))
+                                {
+                                    <Stat Label="Boost rule" Value="active" Icon="DatasetIcons.Boost" />
+                                }
+                                @if (_health.AnySelects)
+                                {
+                                    <Stat Label="@($"Selected, {Stats.RetentionDays} days")" Value="@(f.Selects == 0 ? "never" : $"{f.Selects:N0} on {f.SelectedProducts:N0} products")" Icon="@(f.Selects == 0 ? DatasetIcons.NeverSelected : null)" />
+                                }
+                                @if (_health.AnyConverts)
+                                {
+                                    <Stat Label="@($"Purchased, {Stats.RetentionDays} days")" Value="@(f.Converts == 0 ? "never" : $"{f.Converts:N0} on {f.PurchasedProducts:N0} products")" Icon="@(f.Converts == 0 ? DatasetIcons.NeverPurchased : null)" />
+                                }
+                            </div>
+                        }
                         @if (Ctx.IsEditor && IsFilterable)
                         {
                             <div class="browse-actions">
@@ -173,6 +226,75 @@
     private IReadOnlyList<Product>? _products;
     private readonly LatestOnly _reads = new();
     private readonly LatestOnly _productReads = new();
+    private CategoryHealth? _health;
+    private string _only = "all";
+    private string _filter = "";
+    private HashSet<string>? _nameMatches;   // node ids whose label the filter finds; null when no filter
+    private readonly FieldNameFilter _names = new();
+
+    /// <summary>The name filter, as the field configuration's: a small engine over the labels, so a
+    /// typo still finds the category, plus a plain substring match. A match on a label lights
+    /// that node; the tree keeps the way down to it.</summary>
+    private Task OnFilterChanged(string? text)
+    {
+        _filter = text ?? "";
+        if (_filter.Trim().Length == 0) { _nameMatches = null; }
+        else
+        {
+            var all = _nodes.SelectMany(Flatten).ToList();
+            var labels = all.Select(n => n.Label).Distinct(StringComparer.Ordinal).ToList();
+            var hit = _names.Match(labels, _filter);
+            _nameMatches = all.Where(n => hit.Contains(n.Label)).Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
+        }
+        return OnOnlyChanged(_only);
+    }
+
+    private static readonly TreeCanvas.Mark BoostedMark = new(DatasetIcons.Boost, "Boosted by a rule");
+    private static readonly TreeCanvas.Mark NeverSelectedMark = new(DatasetIcons.NeverSelected, "Never selected in the statistics window");
+    private static readonly TreeCanvas.Mark NeverPurchasedMark = new(DatasetIcons.NeverPurchased, "Never purchased in the statistics window");
+
+    private List<SegmentedControl.Item> ShowItems()
+    {
+        var items = new List<SegmentedControl.Item> { new("all", "All"), new("boosted", "Boosted", DatasetIcons.Boost) };
+        if (_health!.AnySelects) items.Add(new("never-selected", "Never selected", DatasetIcons.NeverSelected));
+        if (_health.AnyConverts) items.Add(new("never-purchased", "Never purchased", DatasetIcons.NeverPurchased));
+        return items;
+    }
+
+    private Func<TreeCanvas.Node, bool>? VisiblePredicate
+    {
+        get
+        {
+            Func<TreeCanvas.Node, bool>? mark = _only == "all" || _health == null ? null : _only switch
+            {
+                "boosted" => n => _health.IsBoosted(n.Id),
+                "never-selected" => n => _health.IsNeverSelected(n.Id),
+                "never-purchased" => n => _health.IsNeverPurchased(n.Id),
+                _ => null,
+            };
+            var names = _nameMatches;
+            if (names == null) return mark;
+            if (mark == null) return n => names.Contains(n.Id);
+            return n => names.Contains(n.Id) && mark(n);
+        }
+    }
+
+    /// <summary>A filter changes what is in view, so the chosen category follows: the first match,
+    /// or none when the chosen one is still in view.</summary>
+    private Task OnOnlyChanged(string value)
+    {
+        _only = value;
+        var visible = VisiblePredicate;
+        if (visible == null || _selectedNode != null && visible(ToNode(_selectedNode))) return Task.CompletedTask;
+        var first = _nodes.SelectMany(Flatten).FirstOrDefault(visible);
+        return first != null ? OnSelected(first.Id) : Task.CompletedTask;
+    }
+
+    private static IEnumerable<TreeCanvas.Node> Flatten(TreeCanvas.Node n)
+    {
+        yield return n;
+        if (n.Children != null) foreach (var c in n.Children) foreach (var d in Flatten(c)) yield return d;
+    }
 
     private string? Field => _field;
     private string SeparatorValue => _separator == null ? Detect : _separator == "" ? Flat : _separator;
@@ -252,12 +374,15 @@
             var values = await Task.Run(() => ReadFacet(field));
             if (!_reads.IsCurrent(ticket)) return;
             _readFor = readFor;
-            if (values == null) { _error = $"No facet values came back for {field}. The field may be empty, or the read timed out."; _tree = null; }
+            if (values == null) { _error = $"No facet values came back for {field}. The field may be empty, or the read timed out."; _tree = null; _health = null; }
             else
             {
                 var tree = CategoryHierarchy.Build(values, separator);
                 _declined = tree == null;
                 _tree = tree;
+                _health = tree == null ? null : await Task.Run(() => ReadHealth(tree, field));
+                if (!_reads.IsCurrent(ticket)) return;
+                if (_only != "all" && (_health == null || !ShowItems().Any(i => i.Value == _only))) _only = "all";
                 _byId = new Dictionary<string, CategoryHierarchy.Node>(StringComparer.Ordinal);
                 _nodes = tree == null ? Array.Empty<TreeCanvas.Node>() : tree.Roots.Select(ToNode).ToList();
                 if (_selected != null && _byId.TryGetValue(_selected, out var again)) { _selectedNode = again; _ = ReadProductsAsync(again); }
@@ -288,7 +413,48 @@
     private TreeCanvas.Node ToNode(CategoryHierarchy.Node n)
     {
         _byId[n.Id] = n;
-        return new TreeCanvas.Node(n.Id, n.Label, n.Count, n.Children.Count > 0 ? n.Children.Select(ToNode).ToList() : null);
+        List<TreeCanvas.Mark>? marks = null;
+        if (_health != null)
+        {
+            if (_health.IsBoosted(n.Id)) (marks ??= new()).Add(BoostedMark);
+            if (_health.IsNeverSelected(n.Id)) (marks ??= new()).Add(NeverSelectedMark);
+            if (_health.IsNeverPurchased(n.Id)) (marks ??= new()).Add(NeverPurchasedMark);
+        }
+        return new TreeCanvas.Node(n.Id, n.Label, n.Count, n.Children.Count > 0 ? n.Children.Select(ToNode).ToList() : null, marks);
+    }
+
+    /// <summary>The marks' sources: the saved boost rules, and every document selected or converted
+    /// in the statistics window with the categories it is filed under, read from the engine by key.
+    /// The window's distinct documents bound the work; a dataset without statistics gets the
+    /// boost marks alone.</summary>
+    private CategoryHealth ReadHealth(CategoryHierarchy.Tree tree, string field)
+    {
+        var rules = BoostStore.Load(Ctx.TeamId, Ctx.Name);
+        var activity = new List<(CategoryHealth.Activity, IReadOnlyList<string>)>();
+        var engine = Ctx.FindEngine();
+        if (Stats.Enabled && Stats.Store is { } store && engine != null)
+        {
+            try
+            {
+                var zone = store.ZoneOf(Ctx.TeamId, Ctx.Name);
+                long toDay = StatisticsDays.Today(zone);
+                var fields = Ctx.SavedFields ?? Array.Empty<FieldProxy>();
+                foreach (var d in store.TopDocuments(Ctx.TeamId, Ctx.Name, toDay - Stats.RetentionDays, toDay, int.MaxValue))
+                {
+                    var json = engine.GetJsonDataOfKey(d.DocumentKey);
+                    if (string.IsNullOrEmpty(json)) continue;
+                    IReadOnlyList<string> paths;
+                    try { using var doc = JsonDocument.Parse(json); paths = DocumentInspection.Values(doc.RootElement, field); }
+                    catch { continue; }
+                    activity.Add((new CategoryHealth.Activity(d.Selects, d.Converts), paths));
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Browse] statistics could not be read for {Ctx.Name}: {ex.Message}");
+            }
+        }
+        return new CategoryHealth(tree, rules, field, DateOnly.FromDateTime(DateTime.Today), activity);
     }
 
     private Task OnSelected(string id)
@@ -367,6 +533,7 @@
 
     public override void Dispose()
     {
+        _names.Dispose();
         Ctx.DocumentsReplaced -= Invalidate;
         base.Dispose();
     }
