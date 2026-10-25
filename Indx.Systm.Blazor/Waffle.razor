@@ -53,11 +53,11 @@
     [Parameter] public string? Class { get; set; }
 
     // Four steps apart enough to tell at 4px: lv6 is all but lv8 in both themes. A fifth segment
-    // repeats the ladder, so give it a colour.
+    // and on keep the last step, never back to the ink, so give them a colour to tell apart.
     private static readonly string[] Tones = { "var(--lv8)", "var(--lv5)", "var(--lv4)", "var(--lv3)" };
 
     private double Sum => Segments.Sum(s => Math.Max(0, s.Value));
-    private string ColorOf(int i) => Segments[i].Color ?? Tones[i % Tones.Length];
+    private string ColorOf(int i) => Segments[i].Color ?? Tones[Math.Min(i, Tones.Length - 1)];
     private string Show(Segment s)
     {
         double fraction = Sum > 0 ? Math.Max(0, s.Value) / Sum : 0;

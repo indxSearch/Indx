@@ -33,7 +33,7 @@ else
        understates it. The native pool is that memory, and its block count is the exact figure:
        heap and resident both move with paging, a steady count still means balanced alloc/free. *@
     <div class="admin-monitor-stats">
-        <StatGroup Columns="5">
+        <StatGroup Columns="6">
             <Stat Label="CPU" Hint="This process's share of all cores over the last second.">
                 <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.CpuPercent" Max="100" Format="@(v => $"{v:0} %")"
                                   Color="@(snapshot.Process.CpuPercent > 85 ? "var(--CSignal)" : null)" /></Figure>
@@ -47,30 +47,30 @@ else
             <Stat Label="Native pool" Hint="The unmanaged memory the search engine holds for its score arrays, and the count of those allocations. A steady count means they are being released." Value="@Gb(snapshot.Process.NativePoolMb)">
                 @snapshot.Process.NativeBlocks.ToString("N0") blocks · @snapshot.Process.GcHeapMb.ToString("N0") MB managed heap
             </Stat>
-            <Stat Label="Searches" Hint="Counted since the monitor started; the rate is over the last minute." Value="@snapshot.SearchesTotal.ToString("N0")">
-                @(snapshot.SearchesPerMinute >= 0.05 ? $"{snapshot.SearchesPerMinute:N0} a minute" : "none in the last minute")
+            <Stat Label="Searches" Hint="Counted since the monitor started." Value="@snapshot.SearchesTotal.ToString("N0")">
+                since the monitor started
+            </Stat>
+            <Stat Label="A minute" Hint="Searches a minute over the last minute, and the hour before it, one reading a minute." Value="@snapshot.SearchesPerMinute.ToString("N0")">
+                @if (snapshot.RateHistory.Count >= 2)
+                {
+                    <Sparkline Values="snapshot.RateHistory" Width="72px" Height="16" Fill="true" AriaLabel="Searches a minute, the last hour" />
+                }
+                else
+                {
+                    <text>the last minute</text>
+                }
             </Stat>
             <Stat Label="Datasets" Value="@snapshot.Datasets.Count.ToString("N0")">
                 @snapshot.LoadedCount loaded · @snapshot.TotalDocuments.ToString("N0") documents
             </Stat>
         </StatGroup>
 
-        @if (snapshot.RateHistory.Count >= 2)
-        {
-            <div class="admin-monitor-panel">
-                <span class="admin-monitor-panel-title">Searches a minute, the last hour</span>
-                <Chart Type="line" Height="120" ShowLegend="false" YAxis="right"
-                       Series="@(new List<Chart.ChartSeries> { new("Searches", snapshot.RateHistory, Fill: "solid") })"
-                       Labels="@RateLabels(snapshot.RateHistory.Count)" />
-            </div>
-        }
-
         @if (snapshot.Datasets.Count > 0)
         {
             <div class="admin-monitor-row">
                 <div class="admin-monitor-panel">
                     <span class="admin-monitor-panel-title">Documents by dataset</span>
-                    <BarMeter Segments="DocumentsByDataset(snapshot)" Format="@(v => v.ToString("N0"))" />
+                    <BarMeter Segments="DocumentsByDataset(snapshot)" Labels="legend" Format="@(v => v.ToString("N0"))" />
                 </div>
                 <div class="admin-monitor-panel">
                     <span class="admin-monitor-panel-title">Datasets by state</span>
@@ -147,10 +147,6 @@ else
     public void Dispose() => State.Changed -= OnChanged;
 
     private static string Gb(long mb) => mb >= 1024 ? $"{mb / 1024.0:0.0} GB" : $"{mb:N0} MB";
-
-    /// <summary>One label a reading, the hour's oldest at the left; only every twelfth is drawn.</summary>
-    private static string[] RateLabels(int count) =>
-        Enumerable.Range(0, count).Select(i => count - 1 - i == 0 ? "now" : $"-{count - 1 - i} min").ToArray();
 
     /// <summary>The largest four datasets by loaded documents, the rest as one segment.</summary>
     private static List<BarMeter.Segment> DocumentsByDataset(MonitorSnapshot s)

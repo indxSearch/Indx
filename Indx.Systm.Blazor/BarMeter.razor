@@ -16,9 +16,10 @@
         {
             <span class="indx-barmeter-label">@Label</span>
         }
-        <div class="indx-barmeter-shares">
+        <div class="indx-barmeter-shares @(Labels == "legend" ? "indx-barmeter-shares-legend" : "")">
             @foreach (var part in parts)
             {
+                if (Labels != "heads" || (part.Share < MinHeadShare && !part.Last)) { continue; }
                 <div class="indx-barmeter-head @(part.Last ? "indx-barmeter-head-last" : "")" style="--seg-from: @(part.From)%; --seg-to: @(part.To)%;">
                     <span class="indx-barmeter-head-name">@part.Segment.Label</span>
                     <span class="indx-barmeter-head-share">@ShowShare(part.Segment)</span>
@@ -35,6 +36,19 @@
                 <span class="indx-barmeter-divider" style="--seg-from: @(part.From)%;"></span>
             }
         </div>
+        @if (Labels == "legend")
+        {
+            <ul class="indx-barmeter-legend">
+                @foreach (var part in parts)
+                {
+                    <li class="indx-barmeter-legend-item">
+                        <span class="indx-barmeter-swatch" style="background: @part.Color;"></span>
+                        <span class="indx-barmeter-legend-name">@part.Segment.Label</span>
+                        <span class="indx-barmeter-legend-share">@ShowShare(part.Segment)</span>
+                    </li>
+                }
+            </ul>
+        }
     </div>
 }
 else if (Shape == "ring")
@@ -92,6 +106,9 @@ else
     /// its name and share above it and a hairline between. Holders by kind, documents by type. The row
     /// shape only; Value, Max and the foot are not used.</summary>
     [Parameter] public IReadOnlyList<Segment>? Segments { get; set; }
+    /// <summary>Where the segments' names and shares go: "heads" above each segment (a segment under
+    /// 8 % of the row gets none, the last one apart), or "legend", a list under the bars, for many or narrow segments.</summary>
+    [Parameter] public string Labels { get; set; } = "heads";
     /// <summary>The value as shown; defaults to the number with thousands separators.</summary>
     [Parameter] public Func<double, string>? Format { get; set; }
     /// <summary>The ceiling as shown; defaults to "of" and the formatted max.</summary>
@@ -143,9 +160,14 @@ else
 
     private static string F(double v) => v.ToString("0.##", Inv);
 
-    // The same four steps as Waffle, apart enough to tell at 2px.
+    // The same four steps as Waffle, apart enough to tell at 2px; a fifth segment and on keep the
+    // last, never back to the ink.
     private static readonly string[] SegmentTones = { "var(--lv8)", "var(--lv5)", "var(--lv4)", "var(--lv3)" };
-    private readonly record struct Part(Segment Segment, string From, string To, string Color, bool Last);
+    private static string ToneOf(int i) => SegmentTones[Math.Min(i, SegmentTones.Length - 1)];
+    // A head needs room: a segment narrower than this gets none, so heads never pile up. The last
+    // keeps its head whatever its width, since it sits against the right edge with the edge to itself.
+    private const double MinHeadShare = 0.08;
+    private readonly record struct Part(Segment Segment, string From, string To, double Share, string Color, bool Last);
 
     private double SegmentSum => Segments?.Sum(g => Math.Max(0, g.Value)) ?? 0;
     private string ShowShare(Segment g) => Format != null ? Format(g.Value) : $"{Math.Round((SegmentSum > 0 ? g.Value / SegmentSum : 0) * 100)} %";
@@ -163,7 +185,7 @@ else
             start += share;
             bool last = i == Segments.Count - 1;
             parts.Add(new Part(g, (from * 100).ToString("0.###", Inv), ((last ? 1 : start) * 100).ToString("0.###", Inv),
-                g.Color ?? SegmentTones[i % SegmentTones.Length], last));
+                share, g.Color ?? ToneOf(i), last));
         }
         return parts;
     }
