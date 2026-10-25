@@ -72,7 +72,7 @@ else
                group a day, a bar an hour, the day's searches above it and today in the teal. 30
                and 90 days keep the line, where a day is a point worth having. *@
             <div class="stats-chart-head">
-                <span class="stats-chart-title">Per hour <span class="stats-chart-totals">@Totals</span></span>
+                <span class="stats-chart-title">Per hour</span>
             </div>
             <GroupedBars Groups="dayHour" Labels="HourNames" Height="150"
                          Format="@((v, g, i) => $"{N((long)v)} {(v == 1 ? "search" : "searches")}")"
@@ -83,7 +83,7 @@ else
             @* The window day by day: searches as an area with the selects on it, against a value
                axis, as a line or as bars. *@
             <div class="stats-chart-head">
-                <span class="stats-chart-title">Per day <span class="stats-chart-totals">@Totals</span></span>
+                <span class="stats-chart-title">Per day</span>
                 <SegmentedControl Items="ChartTypeItems" @bind-Value="_chartType" AriaLabel="Chart type" />
             </div>
             <Chart Series="_series" Labels="_labels" Type="@_chartType" Height="180" Markers="Markers" YAxis="right" />
@@ -102,6 +102,18 @@ else
                row looked lost. No surface under them: the heatmap's empty cells are the Base tone.
                The typing panel, the tallest, comes last, so it never leaves a gap under a short
                neighbour: the grid aligns to the top and masonry is not shipped. *@
+            @* The window's figures, as the Search or ask section opens with its own: the tiles sit
+               with the pictures they summarise rather than above every section. *@
+            <StatGroup Columns="@(HasConversions ? 5 : 4)" Class="stats-overview-tiles">
+                <Stat Label="Searches" LabelIcon="DatasetIcons.Search" Hint="Every search with text in the window, keystrokes collapsed."><ValueContent>@N(_overview.Searches)</ValueContent></Stat>
+                <Stat Label="Fuzzy finds" LabelIcon="DatasetIcons.FuzzySearch" Hint="Searches with typos too large for an exact match, where the visitor still chose a result fuzzy search found."><ValueContent>@N(_overview.UncoveredChosen)</ValueContent></Stat>
+                <Stat Label="Click-through" LabelIcon="DatasetIcons.ClickThrough" Hint="Share of searches that ended in a chosen result."><ValueContent>@Pct(_overview.ClickedSearches, _overview.Searches)</ValueContent></Stat>
+                <Stat Label="Avg. click position" LabelIcon="DatasetIcons.ClickPosition" Hint="Mean position of the chosen result. Lower means the right hit is nearer the top."><ValueContent>@AvgPos()</ValueContent></Stat>
+                @if (HasConversions)
+                {
+                    <Stat Label="Conversions" LabelIcon="DatasetIcons.Conversions" Hint="Conversions the storefront reported for results found here."><ValueContent>@N(_overview.Converts)</ValueContent></Stat>
+                }
+            </StatGroup>
             <div class="stats-overview">
         @* When people search: the week by hour in the dataset's own time zone, a day per row and
            an hour per column, a cell's tone its searches. Nights, weekends and the evening peak
@@ -1047,14 +1059,6 @@ else
 
     private static string Pct(long numerator, long denominator) =>
         denominator == 0 ? "–" : ((double)numerator / denominator).ToString("0.0 %");
-
-    /// <summary>The window's totals beside the chart's title, where the tiles were: the searches,
-    /// the click-through, and the conversions when the window has any. The rest of what the tiles
-    /// said is read in its section: fuzzy finds under Fuzzy search, the click position under
-    /// Which result is chosen.</summary>
-    private string Totals =>
-        $"{N(_overview.Searches)} searches, {Pct(_overview.ClickedSearches, _overview.Searches)} clicked"
-        + (HasConversions ? $", {N(_overview.Converts)} conversions" : "");
 
     private string AvgPos() =>
         _overview.Selects == 0 ? "–" : ((double)_overview.PositionSum / _overview.Selects).ToString("0.0");

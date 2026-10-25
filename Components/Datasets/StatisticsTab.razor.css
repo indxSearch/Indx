@@ -46,13 +46,6 @@
     color: var(--lv7);
 }
 
-/* The window's totals after the chart's title, in the label tone. */
-.stats-chart-totals {
-    margin-left: 10px;
-    font: var(--text-xs);
-    font-weight: var(--book, 350);
-    color: var(--lv5);
-}
 
 /* The sections' tabs, between the chart and the table they choose. */
 .stats-sections {
@@ -143,7 +136,8 @@
 /* Beside a section's controls while its list reloads: the rows stay until the new ones land. */
 .stats-view-busy { display: inline-flex; align-items: center; gap: 6px; color: var(--lv4); font: var(--text-xs); }
 
-/* The Overview section: a third each, as the stat tiles; one under the other on a phone. */
+/* The Overview section's tiles, then its pictures a third each; one under the other on a phone. */
+::deep .stats-overview-tiles { margin-bottom: 14px; }
 .stats-overview {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
