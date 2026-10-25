@@ -34,12 +34,14 @@ else
        heap and resident both move with paging, a steady count still means balanced alloc/free. *@
     <div class="admin-monitor-stats">
         <StatGroup Columns="6">
-            <Stat Label="CPU" Hint="This process's share of all cores over the last second.">
+            <Stat Hint="This process's share of all cores over the last second.">
+                <LabelContent><span class="admin-monitor-label"><span class="admin-monitor-label-mark" aria-hidden="true"><Indx.Systm.Blazor.Icons.Cpu Size="14" Color="currentColor" /></span>CPU</span></LabelContent>
                 <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.CpuPercent" Max="100" Format="@(v => $"{v:0} %")"
                                   Color="@(snapshot.Process.CpuPercent > 85 ? "var(--CSignal)" : null)" /></Figure>
                 <ChildContent>of @Environment.ProcessorCount cores</ChildContent>
             </Stat>
-            <Stat Label="Memory" Hint="Resident memory, against what the runtime may use on this machine or in this container. It includes the unmanaged memory the search engine allocates itself, which the managed heap does not.">
+            <Stat Hint="Resident memory, against what the runtime may use on this machine or in this container. It includes the unmanaged memory the search engine allocates itself, which the managed heap does not.">
+                <LabelContent><span class="admin-monitor-label"><span class="admin-monitor-label-mark" aria-hidden="true"><Indx.Systm.Blazor.Icons.Ram Size="14" Color="currentColor" /></span>Memory</span></LabelContent>
                 <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.WorkingSetMb" Max="@Math.Max(snapshot.Process.AvailableMb, 1)" Format="@(v => $"{v / Math.Max(snapshot.Process.AvailableMb, 1) * 100:0} %")"
                                   Color="@(snapshot.Process.AvailableMb > 0 && snapshot.Process.WorkingSetMb > snapshot.Process.AvailableMb * 0.85 ? "var(--CSignal)" : null)" /></Figure>
                 <ChildContent>@Gb(snapshot.Process.WorkingSetMb) of @Gb(snapshot.Process.AvailableMb)</ChildContent>
