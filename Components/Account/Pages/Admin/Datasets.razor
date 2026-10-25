@@ -46,6 +46,17 @@ else if (_rows.Count == 0)
 }
 else
 {
+    @* Documents by dataset, the largest four and the rest: what the instance holds, read from the
+       store, so a hibernated dataset counts too. Moved here from Monitor on 25 Oct 2026: it is
+       about the datasets, not about how the instance is doing right now. *@
+    @if (_rows.Any(r => r.RecordCount > 0))
+    {
+        <div class="admin-datasets-docs">
+            <span class="admin-datasets-docs-title">Documents by dataset</span>
+            <BarMeter Segments="DocumentsByDataset()" Labels="legend" Format="@(v => v.ToString("N0"))" />
+        </div>
+    }
+
     @* systm Table: seven columns do not fit a phone, so the table scrolls inside its own frame
        with the dataset name pinned, and reaches the right edge of the screen while it does. *@
     @* Carries the scope attribute that Datasets.razor.css's ::deep rules need above the table;
@@ -245,6 +256,19 @@ else
                 ka.KeepAliveTimeHrs, ka.Ready, ka.Remaining, ka.RecordCount);
         }).ToList());
         _rows = [.. rows.OrderBy(r => r.TeamName ?? r.TeamId).ThenBy(r => r.DataSetName)];
+    }
+
+    /// <summary>The largest four datasets by stored documents, the rest as one segment. A name may
+    /// recur in another team, so a repeated one says whose it is.</summary>
+    private List<BarMeter.Segment> DocumentsByDataset()
+    {
+        var rows = _rows!.Where(r => r.RecordCount > 0).OrderByDescending(r => r.RecordCount).ToList();
+        var repeated = rows.GroupBy(r => r.DataSetName).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
+        var top = rows.Take(4).Select(r => new BarMeter.Segment(
+            repeated.Contains(r.DataSetName) ? $"{r.DataSetName} ({r.TeamName ?? r.TeamId})" : r.DataSetName, r.RecordCount)).ToList();
+        var rest = rows.Skip(4).Sum(r => (double)r.RecordCount);
+        if (rest > 0) top.Add(new("Others", rest));
+        return top;
     }
 
     private void BeginEdit(DatasetRow row)

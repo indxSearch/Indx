@@ -1,23 +1,9 @@
-/* The instance at a glance: the stats, the rate chart and the two share panels, above the stream. */
+/* The instance at a glance: the stats, above the stream. */
 .admin-monitor-stats {
     display: flex;
     flex-direction: column;
     gap: 14px;
     margin-bottom: 24px;
-}
-
-.admin-monitor-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: calc(var(--spacing) * 2);
-    background: var(--lv2);
-    border-radius: var(--radius);
-    min-width: 0;
-}
-
-@media (prefers-color-scheme: dark) {
-    .admin-monitor-panel { background: var(--lv1); }
 }
 
 /* The rate's sparkline fills the tile's foot, the height of a line of text. */
@@ -27,10 +13,6 @@
     min-width: 80px;
 }
 
-.admin-monitor-panel-title {
-    font: var(--text-xs);
-    color: var(--lv5);
-}
 
 /* ::deep throughout: the table element belongs to systm Table, not to this page. */
 

@@ -62,13 +62,6 @@ else
             </Stat>
         </StatGroup>
 
-        @if (snapshot.Datasets.Count > 0)
-        {
-            <div class="admin-monitor-panel">
-                <span class="admin-monitor-panel-title">Documents by dataset</span>
-                <BarMeter Segments="DocumentsByDataset(snapshot)" Labels="legend" Format="@(v => v.ToString("N0"))" />
-            </div>
-        }
     </div>
 
     @if (_events.Count == 0)
@@ -140,15 +133,6 @@ else
     private static string Gb(long mb) => mb >= 1024 ? $"{mb / 1024.0:0.0} GB" : $"{mb:N0} MB";
 
     /// <summary>The largest four datasets by loaded documents, the rest as one segment.</summary>
-    private static List<BarMeter.Segment> DocumentsByDataset(MonitorSnapshot s)
-    {
-        var withDocs = s.Datasets.Where(d => d.DocumentCount > 0).OrderByDescending(d => d.DocumentCount).ToList();
-        var top = withDocs.Take(4).Select(d => new BarMeter.Segment(d.DataSetName, d.DocumentCount)).ToList();
-        var rest = withDocs.Skip(4).Sum(d => (double)d.DocumentCount);
-        if (rest > 0) top.Add(new("Others", rest));
-        if (top.Count == 0) top.Add(new("None loaded", 1, "var(--lv2)"));
-        return top;
-    }
 
     /// <summary>Ready, hibernated, then the in-between states, then error in the signal red.</summary>
     private static List<Waffle.Segment> DatasetsByState(MonitorSnapshot s)

@@ -1,3 +1,23 @@
+/* Documents by dataset, above the table, on the Base surface like a stat. */
+.admin-datasets-docs {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: calc(var(--spacing) * 2);
+    margin-bottom: 24px;
+    background: var(--lv2);
+    border-radius: var(--radius);
+}
+
+@media (prefers-color-scheme: dark) {
+    .admin-datasets-docs { background: var(--lv1); }
+}
+
+.admin-datasets-docs-title {
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
 /* Cells keep to one line, so the row height stays even and a narrow screen scrolls the table
    sideways instead of stacking every value into a tall column. ::deep: the table element is
    systm Table's. */

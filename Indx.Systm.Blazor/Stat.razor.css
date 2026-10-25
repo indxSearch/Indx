@@ -20,6 +20,18 @@
     color: var(--lv5);
 }
 
+/* The middle row: the height the label and the foot leave, its content centred in it. Tiles in a
+   StatGroup are as tall as the tallest, so their middles line up and their feet sit at the bottom. */
+.indx-stat-body {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    align-self: stretch;
+    min-width: 0;
+}
+
 /* A label with a hint says so: a dotted underline and the help cursor. */
 .indx-stat-label--hint {
     cursor: help;
@@ -73,6 +85,9 @@
     max-width: 100%;
     margin-top: 6px;
 }
+
+/* The foot of a tile without a figure: the full width (a sparkline, a strip of cells fills it). */
+.indx-stat > .indx-stat-foot { align-self: stretch; }
 
 .indx-stat-figure {
     display: inline-flex;

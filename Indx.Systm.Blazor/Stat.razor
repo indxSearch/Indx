@@ -1,20 +1,29 @@
 @* Port of indx-systm Stat: one number with its label, on the Base surface tone. A count, a KPI, a
    state (pass a Chip as ValueContent, or a word with an Icon). Put several in a StatGroup. *@
 
-@* With a figure the label stays on top, where every tile has it; the figure sits under it with
-   the value and foot beside. *@
+@* Three rows: the label on top, the body in the middle, the foot at the bottom. The body takes
+   the height the others leave and centres what it holds, so in a StatGroup, whose tiles are as
+   tall as the tallest, the labels line up at the top, the feet at the bottom, and a ring, a number
+   and a chip sit on one middle (25 Oct 2026). With a figure the label stays on top too; the figure
+   sits in the body with the value and foot beside it. *@
 <div class="indx-stat @Class">
     @LabelFragment
-    @if (Figure != null)
+    <span class="indx-stat-body">
+        @if (Figure != null)
+        {
+            <span class="indx-stat--figured">
+                <span class="indx-stat-figure">@Figure</span>
+                <span class="indx-stat-text">@ValueFragment @FootFragment</span>
+            </span>
+        }
+        else
+        {
+            @ValueFragment
+        }
+    </span>
+    @if (Figure == null)
     {
-        <span class="indx-stat--figured">
-            <span class="indx-stat-figure">@Figure</span>
-            <span class="indx-stat-text">@ValueAndFoot</span>
-        </span>
-    }
-    else
-    {
-        @ValueAndFoot
+        @FootFragment
     }
 </div>
 
@@ -57,7 +66,7 @@
         }
     </text>;
 
-    private RenderFragment ValueAndFoot => @<text>
+    private RenderFragment ValueFragment => @<text>
         @if (HasValue)
         {
             <span class="indx-stat-value" style="@(Color != null ? $"color: {Color};" : null)">
@@ -65,6 +74,9 @@
                 @(ValueContent ?? (RenderFragment)(b => b.AddContent(0, Value)))
             </span>
         }
+    </text>;
+
+    private RenderFragment FootFragment => @<text>
         @if (ChildContent != null)
         {
             <span class="indx-stat-foot">@ChildContent</span>
