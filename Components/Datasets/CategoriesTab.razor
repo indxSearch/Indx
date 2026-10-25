@@ -150,7 +150,7 @@
                         {
                             var f = _health.FiguresOf(n.Id);
                             <div class="browse-figures">
-                                @if (_health.IsBoosted(n.Id)) { <span class="browse-figure">@DatasetIcons.Boost(12) boosted by a rule</span> }
+                                @if (_health.IsBoosted(n.Id)) { <span class="browse-figure">@DatasetIcons.Boost(14) boosted by a rule</span> }
                                 @if (_health.AnySelects) { <span class="browse-figure">@(f.Selects == 0 ? "never selected" : $"{f.Selects:N0} selections") in @Stats.RetentionDays days</span> }
                                 @if (_health.AnyConverts) { <span class="browse-figure">@(f.Converts == 0 ? "never purchased" : $"{f.Converts:N0} purchases") in @Stats.RetentionDays days</span> }
                             </div>

@@ -162,9 +162,6 @@ CREATE TABLE IF NOT EXISTS SearchEvents (
 );
 CREATE INDEX IF NOT EXISTS IX_Search_TeamDsTime ON SearchEvents(TeamId, DataSet, Timestamp);
 CREATE INDEX IF NOT EXISTS IX_Search_ZeroHits   ON SearchEvents(TeamId, DataSet, Timestamp) WHERE HitCount = 0;
--- The keystroke rule counts a session's superseded searches per settled one (Typing): without
--- this it scanned the table once per search, minutes on 300k events (25 Oct 2026).
-CREATE INDEX IF NOT EXISTS IX_Search_Session   ON SearchEvents(TeamId, DataSet, Session, Timestamp) WHERE Superseded = 1;
 
 CREATE TABLE IF NOT EXISTS SelectEvents (
     Id          INTEGER PRIMARY KEY,
@@ -381,6 +378,13 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                     logger.LogInformation("statistics: where a search came from and whether it counts are separate now ({Uncounted} uncounted); re-rolling the kept days", uncounted);
             }
             catch (SqliteException) { /* already there */ }
+            // The keystroke rule counts a session's superseded searches per settled one (Typing):
+            // without this it scanned the table once per search, minutes on 300k events (25 Oct
+            // 2026). After the migrations, since it names Superseded, which a file from before the
+            // column has only once the ALTER above has run; in the base script it broke EnsureSchema
+            // on such a file, and the keystrokes were never marked (StatisticsStoreUpgradeTests).
+            cmd.CommandText = "CREATE INDEX IF NOT EXISTS IX_Search_Session ON SearchEvents(TeamId, DataSet, Session, Timestamp) WHERE Superseded = 1";
+            cmd.ExecuteNonQuery();
         }
 
         /// <summary>The keystroke rule in SQL, for rows the writer did not mark: a search with
