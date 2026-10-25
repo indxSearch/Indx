@@ -1,93 +1,208 @@
 @using System.Globalization
-@* One series around a clock face: a bar a sample, from the top clockwise, its length the value,
-   around a hollow centre. A thin guide a sample runs out to the rim, a dashed line at the top
-   marks the start of the period. For a long series whose shape matters more than any one
-   reading: a year of searches a day, the hours of a day. Hover reads a bar by its angle, as Chart
-   reads by x, and says what it is in a tooltip at the bar's end. Port of the React RadialChart
-   in indx-systm. *@
-<div class="indx-radial @Class" style="--radial-size: @(Size)px;@(Color != null ? $"color: {Color};" : null)" @onpointerleave="() => _hover = null">
-    <svg class="indx-radial-svg" style="--radial-bar: @F(BarWidth)px;" viewBox="0 0 @Size @Size" width="@Size" height="@Size" role="img" aria-label="@AriaLabel"
-         @onpointermove="OnPointer" @onpointerdown="OnPointer">
-        @for (int i = 0; i < Values.Count; i++)
+@* Bars around a clock face, from the top clockwise, around a hollow centre, in three shapes.
+   One series: a bar a sample, its length the value, with a hairline guide a sample out to the
+   rim and a dashed line at the top for the start of the period; a year of days, the hours of a
+   day. Several series: the sample's slot shared between them, each in its colour, with a legend;
+   searches and asks by hour. Groups, the rose: a sector of bars per group, all at the group's
+   length over a dim track, a gap between sectors, the name and the value in the sector; a handful
+   of kinds compared. Hover reads a bar by its angle, as Chart reads by x. Port of the React
+   RadialChart in indx-systm. *@
+<div class="indx-radial-wrapper @Class">
+    <div class="indx-radial" style="--radial-size: @(Size)px;" @onpointerleave="() => _hover = null">
+        <svg class="indx-radial-svg" style="--radial-bar: @F(BarWidth)px;" viewBox="0 0 @Size @Size" width="@Size" height="@Size" role="img" aria-label="@AriaLabel"
+             @onpointermove="OnPointer" @onpointerdown="OnPointer">
+            @for (int slot = 0; slot < Slots; slot++)
+            {
+                if (IsGap(slot)) { continue; }
+                var (gx1, gy1) = Point(slot, Inner);
+                var (gx2, gy2) = Point(slot, Outer);
+                if (Grouped)
+                {
+                    @* The rose's track: the full bar, dim, under the lit one. *@
+                    <line class="indx-radial-track" x1="@F(gx1)" y1="@F(gy1)" x2="@F(gx2)" y2="@F(gy2)" />
+                }
+                else
+                {
+                    <line class="indx-radial-guide" x1="@F(gx1)" y1="@F(gy1)" x2="@F(gx2)" y2="@F(gy2)" />
+                }
+            }
+            @if (!Grouped && Slots > 0)
+            {
+                var (sx1, sy1) = Point(0, Inner);
+                var (sx2, sy2) = Point(0, Outer);
+                <line class="indx-radial-start" x1="@F(sx1)" y1="@F(sy1)" x2="@F(sx2)" y2="@F(sy2)" />
+            }
+            @for (int slot = 0; slot < Slots; slot++)
+            {
+                if (IsGap(slot)) { continue; }
+                for (int s = 0; s < Lanes; s++)
+                {
+                    var len = LengthOf(ValueAt(s, slot));
+                    if (len <= 0) { continue; }
+                    var (bx1, by1) = Point(slot, Inner, s);
+                    var (bx2, by2) = Point(slot, Inner + len, s);
+                    bool hovered = _hover is { } h && (Grouped ? GroupOf(h) == GroupOf(slot) : h == slot);
+                    <line class="indx-radial-bar @(hovered ? "indx-radial-hovered" : "")" style="stroke: @ColorOf(s);"
+                          x1="@F(bx1)" y1="@F(by1)" x2="@F(bx2)" y2="@F(by2)" />
+                }
+            }
+            @* SVG text is a reserved Razor tag, so the rose's names and values go through the builder. *@
+            @RenderSectorLabels
+        </svg>
+        @if (Centre != null)
         {
-            var (gx1, gy1) = Point(i, Inner);
-            var (gx2, gy2) = Point(i, Outer);
-            <line class="indx-radial-guide" x1="@F(gx1)" y1="@F(gy1)" x2="@F(gx2)" y2="@F(gy2)" />
+            <div class="indx-radial-centre" style="width: @F(Inner * 2)px; height: @F(Inner * 2)px;">@Centre</div>
         }
-        @{
-            var (sx1, sy1) = Point(0, Inner);
-            var (sx2, sy2) = Point(0, Outer);
-        }
-        <line class="indx-radial-start" x1="@F(sx1)" y1="@F(sy1)" x2="@F(sx2)" y2="@F(sy2)" />
-        @for (int i = 0; i < Values.Count; i++)
+        @if (_hover is { } hv && Format != null)
         {
-            var len = LengthOf(Values[i]);
-            if (len <= 0) { continue; }
-            var (bx1, by1) = Point(i, Inner);
-            var (bx2, by2) = Point(i, Inner + len);
-            <line class="indx-radial-bar @(_hover == i ? "indx-radial-hovered" : "")" x1="@F(bx1)" y1="@F(by1)" x2="@F(bx2)" y2="@F(by2)" />
+            double longest = Math.Max(Enumerable.Range(0, Lanes).Max(i => LengthOf(ValueAt(i, hv))), Span * 0.15);
+            var (tx, ty) = Point(hv, Inner + longest + 6);
+            <div class="indx-radial-tooltip @(tx > Outer ? "indx-radial-tooltip-left" : "")" style="left: @F(tx)px; top: @F(ty)px;">
+                @if (!Grouped)
+                {
+                    <span class="indx-radial-tooltip-label">@(Labels != null && hv < Labels.Count ? Labels[hv] : (hv + 1).ToString(CultureInfo.InvariantCulture))</span>
+                }
+                @if (Grouped)
+                {
+                    var g = Groups![GroupOf(hv)];
+                    <span class="indx-radial-tooltip-row"><span class="indx-radial-tooltip-name">@g.Label</span><span class="indx-radial-tooltip-value">@Format(g.Value, GroupOf(hv))</span></span>
+                }
+                else
+                {
+                    @for (int s = 0; s < Lanes; s++)
+                    {
+                        var ser = All[s];
+                        <span class="indx-radial-tooltip-row">
+                            @if (Lanes > 1) { <span class="indx-radial-tooltip-dot" style="background: @ColorOf(s);"></span><span class="indx-radial-tooltip-name">@ser.Label</span> }
+                            <span class="indx-radial-tooltip-value">@Format(hv < ser.Values.Count ? ser.Values[hv] : 0, hv)</span>
+                        </span>
+                    }
+                }
+            </div>
         }
-    </svg>
-    @if (Centre != null)
+    </div>
+    @if (ShowLegend && !Grouped && Lanes > 1)
     {
-        <div class="indx-radial-centre" style="width: @F(Inner * 2)px; height: @F(Inner * 2)px;">@Centre</div>
-    }
-    @if (_hover is { } h && Format != null && h < Values.Count)
-    {
-        var len = LengthOf(Values[h]);
-        var (tx, ty) = Point(h, Inner + Math.Max(len, (Outer - Inner) * 0.15) + 6);
-        <div class="indx-radial-tooltip @(tx > Outer ? "indx-radial-tooltip-left" : "")" style="left: @F(tx)px; top: @F(ty)px;">
-            <span class="indx-radial-tooltip-label">@(Labels != null && h < Labels.Count ? Labels[h] : (h + 1).ToString(CultureInfo.InvariantCulture))</span>
-            <span class="indx-radial-tooltip-value">@Format(Values[h], h)</span>
+        <div class="indx-radial-legend">
+            @for (int s = 0; s < Lanes; s++)
+            {
+                <span class="indx-radial-legend-item"><span class="indx-radial-legend-mark" style="background: @ColorOf(s);"></span><span class="indx-radial-legend-label">@All[s].Label</span></span>
+            }
         </div>
     }
 </div>
 
 @code {
-    /// <summary>One value a sample, from the top clockwise.</summary>
-    [Parameter, EditorRequired] public IReadOnlyList<double> Values { get; set; } = Array.Empty<double>();
+    /// <summary>One series over the samples; the first is the ink, the rest need a colour.</summary>
+    public sealed record Series(string Label, IReadOnlyList<double> Values, string? Color = null);
+    /// <summary>A group of the rose: its name, its value and, optionally, its colour.</summary>
+    public sealed record Group(string Label, double Value, string? Color = null);
+
+    /// <summary>One series: a value a sample, from the top clockwise.</summary>
+    [Parameter] public IReadOnlyList<double>? Values { get; set; }
+    /// <summary>Several series over the same samples, each in its colour; the first is the ink.</summary>
+    [Parameter] public IReadOnlyList<Series>? SeriesList { get; set; }
     /// <summary>What each sample is, for the tooltip: a date, an hour. The index when left out.</summary>
     [Parameter] public IReadOnlyList<string>? Labels { get; set; }
+    /// <summary>The rose: a sector a group, its bars at the group's value, the name and value in it.</summary>
+    [Parameter] public IReadOnlyList<Group>? Groups { get; set; }
+    /// <summary>Bars in a group's sector; 6 by default.</summary>
+    [Parameter] public int BarsPerGroup { get; set; } = 6;
     /// <summary>The diameter in pixels; 240 by default.</summary>
     [Parameter] public int Size { get; set; } = 240;
     /// <summary>The hollow centre's share of the radius; 0.4 by default.</summary>
     [Parameter] public double Hollow { get; set; } = 0.4;
     /// <summary>The value that reaches the rim; the largest by default.</summary>
     [Parameter] public double? Max { get; set; }
-    /// <summary>The bars' colour; the ink by default. The hovered bar is always the ink.</summary>
+    /// <summary>The bars' colour for one series; the ink by default. The hovered bar is always the ink.</summary>
     [Parameter] public string? Color { get; set; }
-    /// <summary>The tooltip's text for a sample, from the value and its index. Nothing by default.</summary>
+    /// <summary>The tooltip's text for a value, from the value and its index. Nothing by default.</summary>
     [Parameter] public Func<double, int, string>? Format { get; set; }
     /// <summary>What sits in the hollow centre: a total, a Stat.</summary>
     [Parameter] public RenderFragment? Centre { get; set; }
+    /// <summary>The legend under several series; on by default.</summary>
+    [Parameter] public bool ShowLegend { get; set; } = true;
     /// <summary>A name for assistive technology: "Searches per day, last year".</summary>
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? Class { get; set; }
 
+    private const string DefaultColor = "var(--lv6)";
     private int? _hover;
+
     private double Outer => Size / 2.0;
     private double Inner => Outer * Math.Min(0.9, Math.Max(0, Hollow));
-    private double Top => Max ?? Values.Where(double.IsFinite).DefaultIfEmpty(0).Max();
+    private double Span => Outer - Inner;
+    private bool Grouped => Groups is { Count: > 0 };
+    // The shape, as one list of series over slots: a group is one series whose samples are its
+    // bars, with an empty slot between sectors; groups and series are the same drawing after that.
+    private IReadOnlyList<Series> All => Grouped ? [new Series("", Array.Empty<double>(), Color)]
+        : SeriesList is { Count: > 0 } ? SeriesList : [new Series("", Values ?? Array.Empty<double>(), Color)];
+    private int Lanes => All.Count;
+    private int Slots => Grouped ? Groups!.Count * (BarsPerGroup + 1) : All.Max(s => s.Values.Count);
+    private int GroupOf(int slot) => Grouped ? slot / (BarsPerGroup + 1) : -1;
+    private bool IsGap(int slot) => Grouped && slot % (BarsPerGroup + 1) == BarsPerGroup;
+    private double ValueAt(int s, int slot) => Grouped ? (IsGap(slot) ? double.NaN : Groups![GroupOf(slot)].Value)
+        : slot < All[s].Values.Count ? All[s].Values[slot] : double.NaN;
+    private double Top => Max ?? (Grouped
+        ? Groups!.Select(g => g.Value).Where(double.IsFinite).DefaultIfEmpty(0).Max()
+        : All.SelectMany(s => s.Values).Where(double.IsFinite).DefaultIfEmpty(0).Max());
+    private double Step => 2 * Math.PI / Math.Max(1, Slots);
+    private double AngleOf(int slot, int lane = 0) => -Math.PI / 2 + Step * (slot + (Lanes > 1 ? (lane + 0.5) / Lanes - 0.5 : 0));
+    private (double X, double Y) Point(int slot, double r, int lane = 0) => (Outer + r * Math.Cos(AngleOf(slot, lane)), Outer + r * Math.Sin(AngleOf(slot, lane)));
+    private double LengthOf(double v) => Top > 0 && double.IsFinite(v) ? Math.Max(0, v) / Top * Span : 0;
+    // A bar is 2px, as the BarMeter's, where the hollow's edge has room for that; with many it
+    // thins so they stay apart there, down to a hairline.
+    private double BarWidth => Math.Max(0.5, Math.Min(2, 2 * Math.PI * Inner / Math.Max(1, Slots * Lanes) * 0.55));
+    private string ColorOf(int s) => All[s].Color ?? (Grouped ? Groups![0].Color : null) ?? DefaultColor;
 
-    private double AngleOf(int i) => (-90 + 360.0 * i / Math.Max(1, Values.Count)) * Math.PI / 180;
-    private (double X, double Y) Point(int i, double r) => (Outer + r * Math.Cos(AngleOf(i)), Outer + r * Math.Sin(AngleOf(i)));
-    private double LengthOf(double v) => Top > 0 && double.IsFinite(v) ? Math.Max(0, v) / Top * (Outer - Inner) : 0;
-    // A bar is 2px, as the BarMeter's, where the hollow's edge has room for that; with many samples
-    // it thins so the bars stay apart there, down to a hairline.
-    private double BarWidth => Math.Max(0.5, Math.Min(2, 2 * Math.PI * Inner / Math.Max(1, Values.Count) * 0.55));
+    // The rose's names and values, upright at the sector's middle, out near the rim, when the
+    // sectors are few enough to hold them.
+    private RenderFragment RenderSectorLabels => builder =>
+    {
+        if (!Grouped || Groups!.Count > 12 || Size < 200) return;
+        int seq = 0;
+        for (int i = 0; i < Groups.Count; i++)
+        {
+            var g = Groups[i];
+            double mid = i * (BarsPerGroup + 1) + (BarsPerGroup - 1) / 2.0;
+            double angle = -Math.PI / 2 + Step * mid;
+            double r = Inner + Span * 0.72;
+            double tx = Outer + r * Math.Cos(angle), ty = Outer + r * Math.Sin(angle);
+            builder.OpenElement(seq++, "text");
+            builder.AddAttribute(seq++, "class", "indx-radial-sector-text");
+            builder.AddAttribute(seq++, "x", F(tx));
+            builder.AddAttribute(seq++, "y", F(ty));
+            builder.AddAttribute(seq++, "text-anchor", "middle");
+            builder.OpenElement(seq++, "tspan");
+            builder.AddAttribute(seq++, "class", "indx-radial-sector-value");
+            builder.AddAttribute(seq++, "x", F(tx));
+            builder.AddAttribute(seq++, "dy", "-0.2em");
+            builder.AddContent(seq++, Format != null ? Format(g.Value, i) : g.Value.ToString("0.##", CultureInfo.InvariantCulture));
+            builder.CloseElement();
+            builder.OpenElement(seq++, "tspan");
+            builder.AddAttribute(seq++, "class", "indx-radial-sector-name");
+            builder.AddAttribute(seq++, "x", F(tx));
+            builder.AddAttribute(seq++, "dy", "1.3em");
+            builder.AddContent(seq++, g.Label);
+            builder.CloseElement();
+            builder.CloseElement();
+        }
+    };
 
-    // The bar under the pointer: by its angle from the centre, clockwise from the top. Outside
-    // the ring, and inside the hollow, there is none. Only a move to another bar redraws.
+    // The slot under the pointer: by its angle from the centre, clockwise from the top. Outside
+    // the ring, inside the hollow, and in a gap between sectors, there is none. Only a move to
+    // another slot redraws.
     private void OnPointer(PointerEventArgs e)
     {
-        if (Values.Count == 0 || Format == null) return;
+        if (Slots == 0 || Format == null) return;
         double x = e.OffsetX - Outer, y = e.OffsetY - Outer;
         double r = Math.Sqrt(x * x + y * y);
         int? next = null;
         if (r >= Inner && r <= Outer)
         {
-            double deg = (Math.Atan2(y, x) * 180 / Math.PI + 90 + 360) % 360;
-            next = (int)Math.Round(deg / 360 * Values.Count) % Values.Count;
+            double turn = ((Math.Atan2(y, x) + Math.PI / 2 + 2 * Math.PI) % (2 * Math.PI)) / (2 * Math.PI);
+            int slot = (int)Math.Round(turn * Slots) % Slots;
+            next = IsGap(slot) ? null : slot;
         }
         if (next == _hover) { _skipRender = true; return; }
         _hover = next;

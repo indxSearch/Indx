@@ -1,8 +1,13 @@
+.indx-radial-wrapper {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
 .indx-radial {
     position: relative;
     width: var(--radial-size, 240px);
     height: var(--radial-size, 240px);
-    color: var(--lv6);
 }
 
 .indx-radial-svg {
@@ -24,17 +29,47 @@
     stroke-dasharray: 2 2;
 }
 
-/* The bars, 2px as the BarMeter's or thinner with many samples, in the series colour; the
-   hovered one in the ink and never thinner than 2px, so it can be seen. */
+/* The bars, 2px as the BarMeter's or thinner with many, in the series colour; the hovered ones
+   in the ink and never thinner than 2px, so they can be seen. */
 .indx-radial-bar {
-    stroke: currentColor;
     stroke-width: var(--radial-bar, 2px);
     stroke-linecap: butt;
 }
 
 .indx-radial-hovered {
-    stroke: var(--lv8);
+    stroke: var(--lv8) !important;
     stroke-width: 2px;
+}
+
+/* The rose's track: a sector's bars at full length, dim, under the lit ones. */
+.indx-radial-track {
+    stroke: var(--lv2);
+    stroke-width: var(--radial-bar, 2px);
+    stroke-linecap: butt;
+}
+
+/* The rose's names and values, upright in the sector, with a halo in the page tone so they
+   read over the bars. */
+::deep .indx-radial-sector-text {
+    pointer-events: none;
+    font: var(--text-2xs);
+    fill: var(--lv5);
+    paint-order: stroke;
+    stroke: var(--lv0);
+    stroke-width: 4px;
+    stroke-linejoin: round;
+}
+
+::deep .indx-radial-sector-value {
+    font: var(--text-sm);
+    font-weight: var(--med);
+    fill: var(--lv8);
+    font-variant-numeric: tabular-nums;
+}
+
+::deep .indx-radial-sector-name {
+    font: var(--text-2xs);
+    fill: var(--lv5);
 }
 
 .indx-radial-centre {
@@ -67,6 +102,48 @@
 
 .indx-radial-tooltip-left {
     transform: translate(-100%, -50%);
+}
+
+.indx-radial-tooltip-row {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.indx-radial-tooltip-dot {
+    width: 5px;
+    height: 5px;
+    flex: none;
+}
+
+.indx-radial-tooltip-name {
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+/* The legend under several series, as the Chart's. */
+.indx-radial-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    padding-left: 8px;
+}
+
+.indx-radial-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.indx-radial-legend-mark {
+    width: 12px;
+    height: 2px;
+    flex: none;
+}
+
+.indx-radial-legend-label {
+    font: var(--text-xs);
+    color: var(--lv5);
 }
 
 .indx-radial-tooltip-label {
