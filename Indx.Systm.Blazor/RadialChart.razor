@@ -47,8 +47,8 @@
                 {
                     var len = LengthOf(ValueAt(s, slot));
                     if (len <= 0) { continue; }
-                    var (bx1, by1) = Point(slot, Inner, s);
-                    var (bx2, by2) = Point(slot, Inner + len, s);
+                    var (bx1, by1) = Point(slot, BarFrom, s);
+                    var (bx2, by2) = Point(slot, BarTo(len), s);
                     bool hovered = _hover == slot;
                     <line class="indx-radial-bar @(hovered ? "indx-radial-hovered" : "")" style="stroke: @ColorOf(s);"
                           x1="@F(bx1)" y1="@F(by1)" x2="@F(bx2)" y2="@F(by2)" />
@@ -64,7 +64,8 @@
         @if (_hover is { } hv && Format != null)
         {
             double longest = Math.Max(Enumerable.Range(0, Lanes).Max(i => LengthOf(ValueAt(i, hv))), Span * 0.15);
-            var (tx, ty) = Point(hv, Inner + longest + 6);
+            // At the bar's end: past it from the hollow, or inside it from the rim.
+            var (tx, ty) = Point(hv, Inverse && !Grouped ? Outer - longest - 6 : Inner + longest + 6);
             <div class="indx-radial-tooltip @(tx > Outer ? "indx-radial-tooltip-left" : "")" style="left: @F(tx)px; top: @F(ty)px;">
                 @if (!Grouped)
                 {
@@ -122,6 +123,8 @@
     [Parameter] public int Size { get; set; } = 240;
     /// <summary>The hollow centre's share of the radius; 0.4 by default.</summary>
     [Parameter] public double Hollow { get; set; } = 0.4;
+    /// <summary>Bars hung from the rim, growing inward over the ticks, as a dial; the value sits in the centre.</summary>
+    [Parameter] public bool Inverse { get; set; }
     /// <summary>The value that reaches the rim; the largest by default.</summary>
     [Parameter] public double? Max { get; set; }
     /// <summary>The bars' colour for one series; the ink by default. The hovered bar is always the ink.</summary>
@@ -175,6 +178,9 @@
     private double AngleOf(int slot, int lane = 0) => -Math.PI / 2 + Step * (slot + (Lanes > 1 ? (lane + 0.5) / Lanes - 0.5 : 0));
     private (double X, double Y) Point(int slot, double r, int lane = 0) => (Outer + r * Math.Cos(AngleOf(slot, lane)), Outer + r * Math.Sin(AngleOf(slot, lane)));
     private double LengthOf(double v) => Top > 0 && double.IsFinite(v) ? Math.Max(0, v) / Top * Span : 0;
+    // Where a bar starts and where it ends: from the hollow out, or from the rim in.
+    private double BarFrom => Inverse ? Outer : Inner;
+    private double BarTo(double len) => Inverse ? Outer - len : Inner + len;
     // A bar is 2px, as the BarMeter's, where the hollow's edge has room for that; with many it
     // thins so they stay apart there, down to a hairline.
     private double BarWidth => Math.Max(0.5, Math.Min(2, 2 * Math.PI * Inner / Math.Max(1, Slots * Lanes) * 0.55));
