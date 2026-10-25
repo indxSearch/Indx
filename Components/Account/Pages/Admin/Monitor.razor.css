@@ -20,6 +20,13 @@
     .admin-monitor-panel { background: var(--lv1); }
 }
 
+/* The rate's sparkline fills the tile's foot, the height of a line of text. */
+::deep .admin-monitor-spark {
+    display: block;
+    width: 100%;
+    min-width: 80px;
+}
+
 .admin-monitor-panel-title {
     font: var(--text-xs);
     color: var(--lv5);

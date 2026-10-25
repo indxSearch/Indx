@@ -50,10 +50,8 @@ else
             <Stat Label="Searches" Hint="Counted since the monitor started." Value="@snapshot.SearchesTotal.ToString("N0")">
                 since the monitor started
             </Stat>
-            <Stat Label="Avg searches per minute" Hint="Over the last minute; the line is the last hour, one reading a minute.">
-                <Figure><Sparkline Values="snapshot.RateHistory" Width="64px" Height="24" Fill="true" Baseline="true" AriaLabel="Searches a minute, the last hour" /></Figure>
-                <ValueContent>@snapshot.SearchesPerMinute.ToString("N0")</ValueContent>
-                <ChildContent>the last hour</ChildContent>
+            <Stat Label="Avg searches per minute" Hint="Over the last minute; the line is the last hour, one reading a minute." Value="@snapshot.SearchesPerMinute.ToString("N0")">
+                <Sparkline Values="snapshot.RateHistory" Width="100%" Height="16" Fill="true" Baseline="true" Class="admin-monitor-spark" AriaLabel="Searches a minute, the last hour" />
             </Stat>
             <Stat Label="Datasets" Hint="One cell a dataset: ready in the ink, hibernated dim, an error in the signal red." Value="@snapshot.Datasets.Count.ToString("N0")">
                 @if (snapshot.Datasets.Count > 0)

@@ -63,10 +63,11 @@
     color: var(--lv5);
 }
 
-/* With a figure: the graphic at the left, the label and foot stacked beside it and centred on it. */
+/* With a figure: the graphic at the left, the label and foot stacked beside it, from the top,
+   so the label lines up with the labels of the tiles without a figure. */
 .indx-stat--figured {
     flex-direction: row;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
 }
 
