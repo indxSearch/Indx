@@ -50,7 +50,7 @@ else
                          aria-expanded="@(hasKids ? (p.Open ? "true" : "false") : null)" aria-level="@(p.Depth + 1)"
                          data-node="@n.Id"
                          class="indx-tree-pill @(isSelected ? "indx-tree-pill-selected" : "") @(onPath ? "indx-tree-pill-path" : "") @(n.Muted ? "indx-tree-muted" : "")"
-                         @onclick="() => Select(n.Id)" @onkeydown="e => OnKey(e, p)" @onkeydown:preventDefault="_preventKey">
+                         @onclick="() => Select(n)" @onkeydown="e => OnKey(e, p)" @onkeydown:preventDefault="_preventKey">
                         <span class="indx-tree-name">@n.Label</span>
                         @if (n.Count is { } count)
                         {
@@ -254,7 +254,13 @@ else
         if (!_expanded!.Remove(id)) _expanded.Add(id);
     }
 
-    private Task Select(string id) => SelectedChanged.InvokeAsync(id);
+    /// <summary>Choosing a node opens it as well, when it has children and is closed: the one click a
+    /// reader makes should show what is under it. The step closes it again.</summary>
+    private Task Select(Node n)
+    {
+        if (n.Children is { Count: > 0 } && !IsOpen(n.Id)) _expanded!.Add(n.Id);
+        return SelectedChanged.InvokeAsync(n.Id);
+    }
 
     private async Task OnKey(KeyboardEventArgs e, Placed p)
     {
@@ -272,7 +278,7 @@ else
             case "ArrowLeft":
                 if (p.Open) { Toggle(p.Node.Id); _preventKey = true; return; }
                 to = p.Parent?.Node.Id; break;
-            case "Enter": case " ": _preventKey = true; await Select(p.Node.Id); return;
+            case "Enter": case " ": _preventKey = true; await Select(p.Node); return;
             case "Home": to = visible[0]; break;
             case "End": to = visible[^1]; break;
         }
@@ -331,7 +337,7 @@ else
                         {
                             <span class="indx-tree-disclosure-space"></span>
                         }
-                        <button type="button" class="indx-tree-row-name" @onclick="() => Select(n.Id)">@n.Label</button>
+                        <button type="button" class="indx-tree-row-name" @onclick="() => Select(n)">@n.Label</button>
                         @if (n.Count is { } count)
                         {
                             <span class="indx-tree-chip">@(Format != null ? Format(count) : count.ToString("N0"))</span>
