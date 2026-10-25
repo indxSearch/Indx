@@ -19,6 +19,14 @@ namespace IndxServer.Components.Datasets
         private List<AskQuestionStat> _askQuestions = [];
         private List<AskOfferStat> _askOffers = [];
         private string _askView = "questions";
+        // The section's pictures: the window day by day, the budget day by day and today's, and
+        // when people ask.
+        private List<AskDayStat> _askDays = [];
+        private List<AskBudgetDayStat> _askBudgetDays = [];
+        private long _askCallsToday;
+        private int _askBudgetToday;
+        private WeekHourStat? _askWeekHour;
+        private long _askFromDay, _askToDay;
 
         [Inject] private SearchOrAskService SearchOrAsk { get; set; } = default!;
 
@@ -46,7 +54,63 @@ namespace IndxServer.Components.Datasets
             _askBudget = store.AskBudget(team, ds, fromDay, toDay);
             _askQuestions = HasSearchOrAsk ? store.TopQuestions(team, ds, fromDay, toDay, 25, source) : [];
             _askOffers = HasSearchOrAsk ? store.TopOffers(team, ds, fromDay, toDay, 25, source) : [];
+            (_askFromDay, _askToDay) = (fromDay, toDay);
+            _askDays = HasSearchOrAsk ? store.AsksByDay(team, ds, fromDay, toDay, source) : [];
+            _askBudgetDays = HasSearchOrAsk ? store.BudgetByDay(team, ds, fromDay, toDay) : [];
+            _askWeekHour = HasSearchOrAsk ? store.AsksByWeekHour(team, ds, Math.Max(fromDay, toDay - Stats.RetentionDays + 1), toDay, source) : null;
+            // Today against its budget: the budget's day is UTC, as the service counts it.
+            long todayUtc = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            _askCallsToday = HasSearchOrAsk ? store.BudgetCalls(team, ds, todayUtc) : 0;
+            _askBudgetToday = SearchOrAsk.Settings(team, ds).DailyCallBudget;
             if (!HasSearchOrAsk && _section == "search-or-ask") _section = "queries";
+        }
+
+        /// <summary>How the asks ended, as shares of one bar: answered in the ink, the rest down
+        /// the ladder, failed in the signal red. "Sources could not answer" is the unanswered less
+        /// the ones that found nothing, which are their own segment.</summary>
+        private IReadOnlyList<BarMeter.Segment> AskOutcomeSegments()
+        {
+            var segments = new List<BarMeter.Segment>();
+            void Add(string label, long n, string? color = null) { if (n > 0) segments.Add(new(label, n, color)); }
+            Add("Answered", _ask.Answered);
+            Add("Nothing found", _ask.NothingFound);
+            Add("Sources could not answer", Math.Max(0, _ask.Unanswered - _ask.NothingFound));
+            Add("Stopped", _ask.Stopped);
+            Add("Failed", _ask.Failed, "var(--CSignal)");
+            return segments;
+        }
+
+        /// <summary>Offers and asks, one value a day across the window, days with nothing as zero.</summary>
+        private (double[] Offers, double[] Asks, double[] Cost, string[] Labels) AskDaySeries()
+        {
+            int days = (int)(_askToDay - _askFromDay + 1);
+            var byDay = _askDays.ToDictionary(d => d.Day);
+            var offers = new double[days]; var asks = new double[days]; var cost = new double[days]; var labels = new string[days];
+            int epoch = DateOnly.Parse("1970-01-01").DayNumber;
+            for (int i = 0; i < days; i++)
+            {
+                var d = byDay.GetValueOrDefault(_askFromDay + i);
+                offers[i] = d.Offers; asks[i] = d.Asks; cost[i] = d.Cost;
+                labels[i] = DateOnly.FromDayNumber((int)(_askFromDay + i) + epoch).ToString("d MMM");
+            }
+            return (offers, asks, cost, labels);
+        }
+
+        /// <summary>The calls per day against the budget, the window's days in order; the budget
+        /// shown is the largest any day in the window had, since it can be changed under Options.</summary>
+        private (double[] Calls, int Budget, string[] Labels) AskBudgetSeries()
+        {
+            int days = (int)(_askToDay - _askFromDay + 1);
+            var byDay = _askBudgetDays.ToDictionary(d => d.Day);
+            var calls = new double[days]; var labels = new string[days];
+            int epoch = DateOnly.Parse("1970-01-01").DayNumber;
+            for (int i = 0; i < days; i++)
+            {
+                calls[i] = byDay.GetValueOrDefault(_askFromDay + i).Calls;
+                labels[i] = DateOnly.FromDayNumber((int)(_askFromDay + i) + epoch).ToString("d MMM");
+            }
+            int budget = _askBudgetDays.Count > 0 ? _askBudgetDays.Max(d => d.Budget) : _askBudgetToday;
+            return (calls, budget, labels);
         }
 
         private static string Usd(double usd) => usd == 0 ? "–" : usd < 0.01 ? "< $0.01" : usd.ToString("$#,##0.00");
