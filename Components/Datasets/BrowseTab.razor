@@ -15,6 +15,8 @@
 @inject DatasetMetadataStore Metadata
 @inject BoostRuleStore BoostStore
 @inject StatisticsService Stats
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 @if (!Active) { return; }
 
@@ -41,7 +43,7 @@
         {
             <p class="browse-note">@_tree.Cut.ToString("N0") path@(_tree.Cut == 1 ? "" : "s") deeper than @CategoryHierarchy.MaxDepth levels @(_tree.Cut == 1 ? "is" : "are") cut at level @CategoryHierarchy.MaxDepth.</p>
         }
-        <div class="browse-frame">
+        <div class="browse-frame" @ref="_frame">
         <div class="indx-list-toolbar browse-toolbar">
             <SelectField Size="micro" Variant="ghost" Options="SourceOptions" Value="@_source?.Key" ValueChanged="OnSourceChanged" aria-label="Hierarchy" />
             @if (Ctx.IsEditor && _source is { IsGroup: false })
@@ -67,6 +69,7 @@
                     <SegmentedControl Size="micro" AriaLabel="Zoom" Value="@_zoom" ValueChanged="@(v => _zoom = v)" Items="_zooms" />
                 }
                 <SegmentedControl Size="micro" AriaLabel="View" @bind-Value="_view" Items="_views" />
+                <Button Variant="ghost" Size="micro" IconLeft="@(_fullscreen ? DatasetIcons.Minimize : DatasetIcons.Maximize)" aria-label="@(_fullscreen ? "Leave full screen" : "Full screen")" title="@(_fullscreen ? "Leave full screen" : "Full screen")" @onclick="ToggleFullscreen" />
             </div>
         </div>
         @if (_error != null)
@@ -183,6 +186,10 @@
 
     private string _view = "tree";
     private string _zoom = "100";
+    private ElementReference _frame;
+    private bool _fullscreen;
+    private bool _watching;
+    private DotNetObjectReference<BrowseTab>? _self;
     private int _openDepth = 2;
     private DatasetMetadataStore.CategorySetting? _setting;
     private IReadOnlyList<CategorySource>? _sources;
@@ -526,10 +533,46 @@
         Ctx.NotifyChanged();
     }
 
+    /// <summary>The frame to the browser's full screen and back (wwwroot/js/fullscreen.js).</summary>
+    private async Task ToggleFullscreen()
+    {
+        try
+        {
+            if (!_watching)
+            {
+                _self = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("indxFullscreen.watch", _frame, _self);
+                _watching = true;
+            }
+            await JS.InvokeVoidAsync("indxFullscreen.toggle", _frame);
+        }
+        catch (JSException) { }
+        catch (JSDisconnectedException) { }
+    }
+
+    [JSInvokable]
+    public void OnFullscreenChanged(bool on)
+    {
+        if (_fullscreen == on) return;
+        _fullscreen = on;
+        _ = InvokeAsync(StateHasChanged);
+    }
+
     public override void Dispose()
     {
         _names.Dispose();
         Ctx.DocumentsReplaced -= Invalidate;
         base.Dispose();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_watching)
+        {
+            try { await JS.InvokeVoidAsync("indxFullscreen.unwatch", _frame); }
+            catch (JSDisconnectedException) { }
+            catch (Exception) { }
+        }
+        _self?.Dispose();
     }
 }

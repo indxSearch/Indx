@@ -16,6 +16,12 @@
     border: 1px solid var(--lv2);
     background: var(--lv0);
 }
+/* In the browser's full screen the frame is the screen: the same room, border and all. */
+.browse-frame:fullscreen {
+    height: 100vh;
+    min-height: 0;
+    border: none;
+}
 .browse-pad { padding: 16px; }
 .browse-stage { position: relative; flex: 1; min-height: 0; }
 .browse-stage ::deep .indx-tree-canvas,
