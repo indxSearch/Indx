@@ -3,7 +3,7 @@ using IndxServer.Models;
 namespace IndxServer.Components.Datasets
 {
     /// <summary>
-    /// What the Browse tab marks on a category: boosted by a saved rule, never selected and never
+    /// What the Categories tab marks on a category: boosted by a saved rule, never selected and never
     /// purchased in the statistics window. Pure: takes the tree, the rules and the documents that
     /// were selected or converted with the categories each document is filed under, and answers
     /// per node id. A node is never selected when no document under it, itself and its

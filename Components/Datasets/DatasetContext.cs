@@ -259,7 +259,7 @@ namespace IndxServer.Components.Datasets
         // ── UI state shared between tabs ──────────────────────────────────────
         public string ActiveTab { get; set; } = "fields";
 
-        /// <summary>A rule the Browse tab asks the Boost rules tab to start: a value condition per
+        /// <summary>A rule the Categories tab asks the Boost rules tab to start: a value condition per
         /// level of the category (one for a path field, one per field of a group). The Boost rules
         /// tab takes it when it next renders and clears it; nothing is saved until the editor saves.</summary>
         public BoostDraftRule? BoostDraft { get; set; }

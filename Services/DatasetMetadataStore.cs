@@ -5,7 +5,7 @@ using Microsoft.Data.Sqlite;
 namespace IndxServer.Services
 {
     /// <summary>
-    /// Server-owned per-dataset metadata. Holds an owner-authored <c>Description</c>, the Browse tab's category field and separator, (used by the MCP
+    /// Server-owned per-dataset metadata. Holds an owner-authored <c>Description</c>, the Categories tab's category field and separator, (used by the MCP
     /// <c>describe_dataset</c> tool to give agents domain context) and the declared <c>KeyField</c>
     /// (the JSON field whose value is the document's primary key — see <c>indx_dataset_primary_key.md</c>).
     /// The lib does not persist the key-field name anywhere, so the server owns it and re-applies it
@@ -21,7 +21,7 @@ namespace IndxServer.Services
         private readonly ConcurrentDictionary<string, string> _keyFieldCache = new();
         private readonly ConcurrentDictionary<string, CategorySetting> _categoryCache = new();
 
-        /// <summary>The Browse tab's choice: which facetable field holds the category paths and what
+        /// <summary>The Categories tab's choice: which facetable field holds the category paths and what
         /// separates the levels in them; an empty field means not chosen, an empty separator that the
         /// values are flat, and a null separator that it is detected from the values.</summary>
         public sealed record CategorySetting(string Field, string? Separator)
@@ -182,7 +182,7 @@ namespace IndxServer.Services
             _keyFieldCache.TryRemove(Key(teamId, dataSetName), out _);
         }
 
-        /// <summary>The dataset's category field and separator for the Browse tab; <see cref="CategorySetting.None"/>
+        /// <summary>The dataset's category field and separator for the Categories tab; <see cref="CategorySetting.None"/>
         /// when not chosen. Cached after first read.</summary>
         public CategorySetting LoadCategory(string teamId, string dataSetName)
         {

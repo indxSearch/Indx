@@ -4,7 +4,7 @@ using Indx.Api;
 namespace IndxServer.Components.Datasets
 {
     /// <summary>
-    /// Where the Browse tab's categories come from: a hierarchy group, fields that share a dotted
+    /// Where the Categories tab's categories come from: a hierarchy group, fields that share a dotted
     /// prefix and each hold one level ("category.department", "category.section", "category.type"),
     /// or one field whose values are paths ("Apparel > Shoes > Running shoes"). A flat field, one
     /// whose values have no separator and no siblings in a group, is not a hierarchy and is not

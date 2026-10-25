@@ -21,7 +21,7 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> Agent = Of<Icons.AiAgent>();
         public static readonly RenderFragment<int> PanelAdd = Of<Icons.PanelAdd>();
         public static readonly RenderFragment<int> Fields = Of<Icons.Field>();
-        public static readonly RenderFragment<int> Browse = Of<Icons.GitBranch>();
+        public static readonly RenderFragment<int> Categories = Of<Icons.NodeTree>();   // the Trees pixl once it is published
         public static readonly RenderFragment<int> NeverSelected = Of<Icons.Ghost>();
         public static readonly RenderFragment<int> NeverPurchased = Of<Icons.EmptyBox>();
         public static readonly RenderFragment<int> Maximize = Of<Icons.Maximize>();

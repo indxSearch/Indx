@@ -222,7 +222,7 @@
     private ElementReference _frame;
     private bool _fullscreen;
     private bool _watching;
-    private DotNetObjectReference<BrowseTab>? _self;
+    private DotNetObjectReference<CategoriesTab>? _self;
     private int _openDepth = 2;
     private DatasetMetadataStore.CategorySetting? _setting;
     private IReadOnlyList<CategorySource>? _sources;
@@ -258,7 +258,7 @@
     private readonly string _pathSample;
     private readonly string[] _groupSample;
 
-    public BrowseTab()
+    public CategoriesTab()
     {
         (_pathExample, _pathOpen, var pathPaths) = Example(seed: 7, roots: 2, perRoot: 3, deeper: true);
         (_groupExample, _groupOpen, var groupPaths) = Example(seed: 23, roots: 2, perRoot: 2, deeper: false);
@@ -384,7 +384,7 @@
     {
         if (!Ctx.IsEditor || _source == null) return;
         try { Metadata.SaveCategory(Ctx.TeamId, Ctx.Name, new DatasetMetadataStore.CategorySetting(_source.Key, _separator)); }
-        catch (Exception ex) { Console.WriteLine($"[Browse] could not save the category setting for {Ctx.Name}: {ex.Message}"); }
+        catch (Exception ex) { Console.WriteLine($"[Categories] could not save the category setting for {Ctx.Name}: {ex.Message}"); }
     }
 
     /// <summary>Reads the chosen hierarchy's histogram and builds the tree and its marks.</summary>
@@ -499,7 +499,7 @@
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Browse] statistics could not be read for {Ctx.Name}: {ex.Message}");
+                Console.WriteLine($"[Categories] statistics could not be read for {Ctx.Name}: {ex.Message}");
             }
         }
         // A group's rule is one condition per level; the first field names the boost for the health's purpose.
@@ -552,7 +552,7 @@
         catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
-            Console.WriteLine($"[Browse] products failed for {Ctx.Name}: {ex.Message}");
+            Console.WriteLine($"[Categories] products failed for {Ctx.Name}: {ex.Message}");
             if (_productReads.IsCurrent(ticket)) { _products = Array.Empty<Product>(); _ = InvokeAsync(StateHasChanged); }
         }
     }

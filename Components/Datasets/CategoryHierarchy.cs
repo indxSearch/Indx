@@ -1,7 +1,7 @@
 namespace IndxServer.Components.Datasets
 {
     /// <summary>
-    /// A field's facet values read as a category hierarchy, for the Browse tab's TreeCanvas. The
+    /// A field's facet values read as a category hierarchy, for the Categories tab's TreeCanvas. The
     /// values are paths in the way a Google product feed writes product_type and
     /// google_product_category: "Apparel &amp; Accessories > Shoes > Running shoes", one path per
     /// value, the separator detected from the values when the dataset has not said which. A node's

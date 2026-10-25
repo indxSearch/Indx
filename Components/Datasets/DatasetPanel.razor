@@ -62,7 +62,7 @@
                 @* ── Tabs. All stay mounted so edit state survives switching; only the active one renders. ── *@
                 <UploadFlow Active="@(asleep ? sleepTab is null or "status" : tab == "fields")" />
                 <FieldConfigTab Active="@(tab == "fields" && isReady)" />
-                <BrowseTab Active="@(tab == "browse" && isReady)" />
+                <CategoriesTab Active="@(tab == "categories" && isReady)" />
                 <SearchPreviewTab Active="@(tab == "search")" />
                 <StatusTab Active="@(tab == "status" && !asleep)" />
                 <OptionsTab Active="@(sleepTab == "options")" />
@@ -171,7 +171,7 @@
         var layout = new (string Title, string[] Keys)[]
         {
             ("Overview", ["status", "statistics"]),
-            ("Data", ["fields", "browse"]),
+            ("Data", ["fields", "categories"]),
             ("Relevance", ["query-parameters", "boosts", "synonyms"]),
             ("Try it", ["search", "search-or-ask"]),
             ("Settings", ["options"]),
@@ -247,7 +247,7 @@
         if (isReady || pending) items.Add(Tab("status", "Status", DatasetIcons.Status, isReady));
         items.Add(Tab("fields", "Field configuration", DatasetIcons.Fields, true));
         // The categories of a catalogue, read from a facet: needs the built index.
-        if (isReady || pending) items.Add(Tab("browse", "Browse", DatasetIcons.Browse, isReady));
+        if (isReady || pending) items.Add(Tab("categories", "Categories", DatasetIcons.Categories, isReady));
         // Configuration only, read on every search: needs no built index.
         if ((isReady || pending) && Ctx.IsEditor)
             items.Add(Tab("query-parameters", "Query parameters", DatasetIcons.QueryParameters, true));

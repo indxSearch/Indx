@@ -1,4 +1,4 @@
-// Takes an element to the browser's full screen and back (Components/Datasets/BrowseTab.razor):
+// Takes an element to the browser's full screen and back (Components/Datasets/CategoriesTab.razor):
 // the Browse frame is already as tall as the window leaves, and full screen is the rest. The
 // component hears each change, since Escape leaves full screen without a click.
 window.indxFullscreen = {

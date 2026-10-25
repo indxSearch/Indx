@@ -201,7 +201,7 @@
         if (Active && !_loaded) Load();
         if (Active && Ctx.BoostDraft is { } draft)
         {
-            // From the Browse tab: a rule on one category, at the top like a new rule, unsaved.
+            // From the Categories tab: a rule on one category, at the top like a new rule, unsaved.
             Ctx.BoostDraft = null;
             _error = null;
             _rules.Insert(0, new BoostRule { Name = draft.Name, Conditions = draft.Conditions.Select(c => new BoostCondition { Field = c.Field, Value = c.Value }).ToList() });
