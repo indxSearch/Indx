@@ -1,0 +1,82 @@
+.indx-grouped-bars {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+}
+
+.indx-grouped-bars-svg {
+    display: block;
+    touch-action: pan-y;
+}
+
+/* Where a group starts: a hairline the height of the bars and their head. */
+.indx-grouped-bars-divider {
+    stroke: var(--lv3);
+    stroke-width: 1px;
+}
+
+/* The group's name and its figure, above the bars at its start; emitted by the builder, so ::deep. */
+::deep .indx-grouped-bars-head {
+    font: var(--text-xs);
+    font-weight: var(--med);
+    fill: var(--lv7);
+}
+
+::deep .indx-grouped-bars-sub {
+    font: var(--text-2xs);
+    fill: var(--lv5);
+}
+
+/* The bars, 2px as the BarMeter's, in the ink or the group's colour; the hovered one 3px in
+   the ink. */
+.indx-grouped-bars-bar {
+    fill: var(--lv6);
+}
+
+.indx-grouped-bars-bar-hovered {
+    fill: var(--lv8);
+}
+
+/* The band under a group: the surface tone, or the group's colour when it is highlighted. */
+.indx-grouped-bars-band {
+    fill: var(--lv2);
+}
+
+/* The sample labels under the band. */
+::deep .indx-grouped-bars-tick {
+    font: var(--text-2xs);
+    fill: var(--lv4);
+}
+
+/* The tooltip, the Chart's, beside the hovered bar's top. */
+.indx-grouped-bars-tooltip {
+    position: absolute;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--lv0);
+    border: 1px solid var(--lv2);
+    padding: 4px 8px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.indx-grouped-bars-tooltip-left {
+    transform: translate(-100%, -50%);
+}
+
+.indx-grouped-bars-tooltip-label {
+    font: var(--text-2xs);
+    color: var(--lv4);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.indx-grouped-bars-tooltip-value {
+    font: var(--text-xs);
+    font-weight: var(--med);
+    color: var(--lv7);
+    font-variant-numeric: tabular-nums;
+}
