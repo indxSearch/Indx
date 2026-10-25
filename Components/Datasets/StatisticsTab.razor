@@ -495,16 +495,6 @@ else
                             </div>
                         </div>
                     }
-                    @* The ask profile, last as the search one is: shares on one scale, the window
-                       before this one as a second shape. *@
-                    @if (_askProfile is { } askProfile)
-                    {
-                        <div class="stats-overview-item">
-                            <div class="stats-chart-head"><span class="stats-chart-title">Ask profile</span></div>
-                            <p class="stats-help">@(_askProfileBefore != null ? $"This window against the {_days} days before it." : "The shape of Search or ask in this window: each axis a share.")</p>
-                            <RadarChart Axes="AskProfileAxes" Series="AskProfileSeries(askProfile, _askProfileBefore)" Size="220" Max="1" Format="@(v => $"{v * 100:0}%")" AriaLabel="Ask profile" />
-                        </div>
-                    }
                 </div>
             }
             else if (_askView == "questions")

@@ -27,8 +27,7 @@ namespace IndxServer.Components.Datasets
         private int _askBudgetToday;
         private WeekHourStat? _askWeekHour;
         private (long[] Calls, long[] Spent)? _askHours;
-        private AskProfile? _askProfile;
-        private AskProfile? _askProfileBefore;
+
         private long _askFromDay, _askToDay;
 
         [Inject] private SearchOrAskService SearchOrAsk { get; set; } = default!;
@@ -64,13 +63,6 @@ namespace IndxServer.Components.Datasets
             _askDays = HasSearchOrAsk ? store.AsksByDay(team, ds, fromDay, toDay, source) : [];
             _askBudgetDays = HasSearchOrAsk ? store.BudgetByDay(team, ds, fromDay, toDay) : [];
             _askHours = HasSearchOrAsk ? store.BudgetCallsByHour(team, ds, Math.Max(fromDay, toDay - Stats.RetentionDays + 1), toDay) : null;
-            // The profile, and the same-length window before this one as its second shape: the ask
-            // rollups reach back as far as the day tables do, so every window has one.
-            _askProfile = HasSearchOrAsk ? AskProfile.Build(_ask, _askBudgetDays) : null;
-            int span = (int)(toDay - fromDay + 1);
-            _askProfileBefore = _askProfile != null
-                ? AskProfile.Build(store.AskOverview(team, ds, fromDay - span, fromDay - 1, source), store.BudgetByDay(team, ds, fromDay - span, fromDay - 1))
-                : null;
             _askWeekHour = HasSearchOrAsk ? store.AsksByWeekHour(team, ds, Math.Max(fromDay, toDay - Stats.RetentionDays + 1), toDay, source) : null;
             // Today against its budget: the budget's day is UTC, as the service counts it.
             long todayUtc = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
@@ -125,14 +117,6 @@ namespace IndxServer.Components.Datasets
             }
             int budget = _askBudgetDays.Count > 0 ? _askBudgetDays.Max(d => d.Budget) : _askBudgetToday;
             return (calls, budget, labels);
-        }
-
-        private IReadOnlyList<RadarChart.Axis> AskProfileAxes => AskProfile.AxisLabels(CitesSources).Select(l => new RadarChart.Axis(l)).ToList();
-        private List<RadarChart.RadarSeries> AskProfileSeries(AskProfile now, AskProfile? before)
-        {
-            var list = new List<RadarChart.RadarSeries> { new("This window", now.Values(CitesSources)) };
-            if (before != null) list.Add(new("Before", before.Values(CitesSources), "var(--lv4)"));
-            return list;
         }
 
         private static string Usd(double usd) => usd == 0 ? "–" : usd < 0.01 ? "< $0.01" : usd.ToString("$#,##0.00");
