@@ -156,7 +156,7 @@
 
 /* The clock, centred in its third; the busiest hour's tile in the hollow. */
 .stats-clock { display: flex; justify-content: center; }
-::deep .stats-clock-centre { text-align: center; }
+::deep .stats-clock-centre { text-align: center; background: transparent; padding: 0; align-items: center; }
 ::deep .stats-clock-centre .indx-stat-value { font: var(--text-lg); font-weight: 300; }
 
 /* The Search or ask pictures, between the tiles and the tables. */
