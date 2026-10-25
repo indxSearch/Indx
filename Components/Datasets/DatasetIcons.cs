@@ -26,6 +26,16 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> NeverPurchased = Of<Icons.EmptyBox>();
         public static readonly RenderFragment<int> Maximize = Of<Icons.Maximize>();
         public static readonly RenderFragment<int> TreeView = Of<Icons.NodeTree>();
+        // The statistics tiles' label icons, and the monitor's.
+        public static readonly RenderFragment<int> Cpu = Of<Icons.Cpu>();
+        public static readonly RenderFragment<int> Ram = Of<Icons.Ram>();
+        public static readonly RenderFragment<int> ClickThrough = Of<Icons.ClickSelect>();
+        public static readonly RenderFragment<int> ClickPosition = Of<Icons.Results>();
+        public static readonly RenderFragment<int> Conversions = Of<Icons.ShoppingCart>();
+        public static readonly RenderFragment<int> NotAnswered = Of<Icons.Empty>();
+        public static readonly RenderFragment<int> SourcesOpened = Of<Icons.ExternalLink>();
+        public static readonly RenderFragment<int> Cost = Of<Icons.Coins>();
+        public static readonly RenderFragment<int> Calls = Of<Icons.Pulse>();
         public static readonly RenderFragment<int> ListView = Of<Icons.HierarchyList>();
         public static readonly RenderFragment<int> Minimize = Of<Icons.Minimize>();
         public static readonly RenderFragment<int> Delete = Of<Icons.Stop>();

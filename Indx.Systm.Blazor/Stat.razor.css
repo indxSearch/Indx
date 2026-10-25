@@ -16,8 +16,17 @@
 }
 
 .indx-stat-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font: var(--text-xs);
     color: var(--lv5);
+}
+
+/* The icon before the label, in its tone. */
+.indx-stat-label-icon {
+    display: inline-flex;
+    line-height: 0;
 }
 
 /* The middle row: the height the label and the foot leave, its content centred in it. Tiles in a

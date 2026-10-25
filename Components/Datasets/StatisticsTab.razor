@@ -38,14 +38,6 @@ else
         </div>
     </div>
 
-    @* What the tab is, and where its numbers come from. *@
-    <div class="stats-intro">
-        <p>
-            Searches with text are counted by the server; clicks and conversions arrive when your storefront
-            sends them to <code>events/select</code> and <code>events/convert</code>.
-        </p>
-    </div>
-
     @if (!_loaded)
     {
         @* The shape of what is coming: the five tiles, the chart and the first rows of a table, so
@@ -85,13 +77,13 @@ else
             </p>
         }
         <StatGroup Columns="@(HasConversions ? 5 : 4)">
-            <Stat Label="Searches" Hint="Every search with text in the window, keystrokes collapsed."><ValueContent>@N(_overview.Searches)</ValueContent></Stat>
-            <Stat Label="Fuzzy finds" Hint="Searches with typos too large for an exact match, where the visitor still chose a result fuzzy search found."><ValueContent>@N(_overview.UncoveredChosen)</ValueContent></Stat>
-            <Stat Label="Click-through" Hint="Share of searches that ended in a chosen result."><ValueContent>@Pct(_overview.ClickedSearches, _overview.Searches)</ValueContent></Stat>
-            <Stat Label="Avg. click position" Hint="Mean position of the chosen result. Lower means the right hit is nearer the top."><ValueContent>@AvgPos()</ValueContent></Stat>
+            <Stat Label="Searches" LabelIcon="DatasetIcons.Search" Hint="Every search with text in the window, keystrokes collapsed."><ValueContent>@N(_overview.Searches)</ValueContent></Stat>
+            <Stat Label="Fuzzy finds" LabelIcon="DatasetIcons.FuzzySearch" Hint="Searches with typos too large for an exact match, where the visitor still chose a result fuzzy search found."><ValueContent>@N(_overview.UncoveredChosen)</ValueContent></Stat>
+            <Stat Label="Click-through" LabelIcon="DatasetIcons.ClickThrough" Hint="Share of searches that ended in a chosen result."><ValueContent>@Pct(_overview.ClickedSearches, _overview.Searches)</ValueContent></Stat>
+            <Stat Label="Avg. click position" LabelIcon="DatasetIcons.ClickPosition" Hint="Mean position of the chosen result. Lower means the right hit is nearer the top."><ValueContent>@AvgPos()</ValueContent></Stat>
             @if (HasConversions)
             {
-                <Stat Label="Conversions" Hint="Conversions the storefront reported for results found here."><ValueContent>@N(_overview.Converts)</ValueContent></Stat>
+                <Stat Label="Conversions" LabelIcon="DatasetIcons.Conversions" Hint="Conversions the storefront reported for results found here."><ValueContent>@N(_overview.Converts)</ValueContent></Stat>
             }
         </StatGroup>
 
@@ -400,18 +392,18 @@ else
                answer lead: they are what to write next. Offers lists the texts an offer was shown
                beside, so a false one can be found. Code in StatisticsTab.SearchOrAsk.cs. *@
             <StatGroup Columns="@(CitesSources ? 6 : 5)">
-                <Stat Label="Offers shown" Hint="Searches an offer to ask was shown beside, each once however many pauses judged it."><ValueContent>@N(_ask.Offers)</ValueContent></Stat>
-                <Stat Label="Questions asked" Hint="Questions asked, and how many per offer shown."><ValueContent>@N(_ask.Asks) <span class="stats-tile-sub">@Pct(_ask.Asks, _ask.Offers)</span></ValueContent></Stat>
-                <Stat Label="Not answered" Hint="Questions the search found nothing for, or whose sources the judge doubted could answer them."><ValueContent>@N(_ask.Unanswered) <span class="stats-tile-sub">@Pct(_ask.Unanswered, _ask.Asks)</span></ValueContent></Stat>
+                <Stat Label="Offers shown" LabelIcon="DatasetIcons.AskOffers" Hint="Searches an offer to ask was shown beside, each once however many pauses judged it."><ValueContent>@N(_ask.Offers)</ValueContent></Stat>
+                <Stat Label="Questions asked" LabelIcon="DatasetIcons.AskQuestions" Hint="Questions asked, and how many per offer shown."><ValueContent>@N(_ask.Asks) <span class="stats-tile-sub">@Pct(_ask.Asks, _ask.Offers)</span></ValueContent></Stat>
+                <Stat Label="Not answered" LabelIcon="DatasetIcons.NotAnswered" Hint="Questions the search found nothing for, or whose sources the judge doubted could answer them."><ValueContent>@N(_ask.Unanswered) <span class="stats-tile-sub">@Pct(_ask.Unanswered, _ask.Asks)</span></ValueContent></Stat>
                 @if (CitesSources)
                 {
-                    <Stat Label="Sources opened" Hint="Cited sources opened from an answer."><ValueContent>@N(_ask.SourcesOpened)</ValueContent></Stat>
+                    <Stat Label="Sources opened" LabelIcon="DatasetIcons.SourcesOpened" Hint="Cited sources opened from an answer."><ValueContent>@N(_ask.SourcesOpened)</ValueContent></Stat>
                 }
                 @{ var setup = SearchOrAsk.Setup; }
-                <Stat Label="Cost" Hint="@(setup.CostsReported
+                <Stat Label="Cost" LabelIcon="DatasetIcons.Cost" Hint="@(setup.CostsReported
                     ? "What the AI behind Search or ask cost: the judge, the answers, and the filters the model makes while visitors type, as OpenRouter reports it for each call. An answer a visitor leaves before it is written has no cost reported and is not counted. Median time to an answer's first words beside it."
                     : $"{string.Join(" and ", setup.UnpricedProviders)} {(setup.UnpricedProviders.Count == 1 ? "does" : "do")} not report what a call costs, only its tokens, so no cost is shown here rather than an estimate that may be wrong. Your bill is in that provider's own console. Median time to an answer's first words beside it.")"><ValueContent>@(setup.CostsReported ? Usd(_ask.Cost + _askBudget.Cost) : "—") <span class="stats-tile-sub">@Seconds(_ask.MedianFirstTextMs)</span></ValueContent></Stat>
-                <Stat Label="Calls" Hint="Calls against the daily budget: each judgement, each question asked and each filter the model made while typing, the console's tester included. On a day the budget ran out, the calls after it were turned away, and visitors saw no offers until midnight UTC."><ValueContent>@N(_askBudget.Calls) <span class="stats-tile-sub">@BudgetLine</span></ValueContent></Stat>
+                <Stat Label="Calls" LabelIcon="DatasetIcons.Calls" Hint="Calls against the daily budget: each judgement, each question asked and each filter the model made while typing, the console's tester included. On a day the budget ran out, the calls after it were turned away, and visitors saw no offers until midnight UTC."><ValueContent>@N(_askBudget.Calls) <span class="stats-tile-sub">@BudgetLine</span></ValueContent></Stat>
             </StatGroup>
             <div class="stats-view">
                 <SegmentedControl Items="AskViewItems" Value="@_askView" ValueChanged="@(v => _askView = v ?? "overview")" AriaLabel="Search or ask view" />

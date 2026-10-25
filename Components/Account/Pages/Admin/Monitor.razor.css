@@ -81,5 +81,3 @@
 
 /* The CPU and Memory tiles carry their pixl icon before the name, the label's companion as on a
    Tab: the same tone, the same line, under the hint's dotted underline together. */
-.admin-monitor-label { display: inline-flex; align-items: center; gap: 6px; }
-.admin-monitor-label-mark { display: inline-flex; }
