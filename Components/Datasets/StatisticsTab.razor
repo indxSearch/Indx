@@ -142,8 +142,48 @@ else
             </div>
         }
 
+        @* How people type: the searches by their word count, with a filter or not, and the median
+           length. One word and a filter is a catalogue being browsed; three words is a question. *@
+        @if (_typing is { Total: > 0 } typing)
+        {
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">How people type</span>
             </div>
-            @if (_weekHour is not { Total: > 0 } && _positions is not { Total: > 0 })
+            <p class="stats-help">A search is @typing.MedianLength characters in the middle, and @Pct(typing.WithFilter, typing.Total) come with a filter.</p>
+            <BarMeter Segments="TypingSegments(typing)" Labels="legend" Format="@(v => Pct((long)v, typing.Total))" />
+            </div>
+        }
+
+        @* Searches by surface, the window day by day stacked by the surface that sent them: the
+           named ones in the ink and the patterns, the unnamed rest dim. Only for the whole dataset
+           (one surface chosen above leaves nothing to split) and once there is more than one. *@
+        @if (_source == null && _bySurface.Count > 1)
+        {
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">Searches by surface</span>
+            </div>
+            <p class="stats-help">Where the searches came from, day by day: the surface each page names with <code>source</code>.</p>
+            <Chart Series="_bySurface" Labels="_labels" Type="bar" Stacked="true" Height="140" />
+            </div>
+        }
+
+        @* Languages: the language of the page each search came from, as the storefront reports
+           it, the searches that named none as the unnamed rest. *@
+        @if (_locales.Count > 0 && _locales.Any(l => l.Locale != null))
+        {
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">Languages</span>
+            </div>
+            <p class="stats-help">The language of the page the search was typed on, as the page reports it; a cell is a percent.</p>
+            <Waffle Segments="LocaleSegments(_locales)" Format="@((f, v) => Pct((long)v, _locales.Sum(l => l.Searches)))" AriaLabel="Searches by language" />
+            </div>
+        }
+
+            </div>
+            @if (_weekHour is not { Total: > 0 } && _positions is not { Total: > 0 } && _typing is not { Total: > 0 })
             {
                 <p class="stats-empty">No searches with text in this period.</p>
             }
@@ -556,6 +596,54 @@ else
     // by one (the store filters on a name); the unnamed rest is what is left of the total.
     private WeekHourStat? _weekHour;
     private PositionStat? _positions;
+    private TypingStat? _typing;
+    private List<LocaleStat> _locales = [];
+    // The searches per day split by the surface that sent them. The named surfaces are read one
+    // by one (the store filters on a name); the unnamed rest is what is left of the total.
+    private IReadOnlyList<Chart.ChartSeries> _bySurface = [];
+    private static readonly string[] SurfaceFills = ["solid", "hatch", "dots", "checker"];
+
+    private static IReadOnlyList<BarMeter.Segment> TypingSegments(TypingStat t) =>
+    [
+        new("One word", t.OneWord), new("Two words", t.TwoWords), new("Three or more", t.ThreeOrMore),
+    ];
+
+    /// <summary>Most first, as the store orders them; the unnamed rest last and dim; a tag shown as
+    /// its language's own name where the runtime knows it ("norsk bokmål (Norge)"), else as sent.</summary>
+    private static IReadOnlyList<Waffle.Segment> LocaleSegments(List<LocaleStat> locales) =>
+        locales.Where(l => l.Searches > 0)
+            .Select(l => l.Locale == null ? new Waffle.Segment("Unnamed", l.Searches, "var(--lv2)") : new Waffle.Segment(LocaleName(l.Locale), l.Searches))
+            .ToList();
+
+    private static string LocaleName(string tag)
+    {
+        try { return System.Globalization.CultureInfo.GetCultureInfo(tag).NativeName; }
+        catch (System.Globalization.CultureNotFoundException) { return tag; }
+    }
+
+    /// <summary>One series per surface that named itself, the first solid and the patterns after,
+    /// and the unnamed rest in the dim tone when there is any; empty unless the dataset has more
+    /// than one surface to show.</summary>
+    private List<Chart.ChartSeries> BySurface(StatisticsStore store, string team, string ds, long fromDay, long toDay, int days, double[] total)
+    {
+        var named = _sources.Where(x => x.Source != null && x.Searches > 0).Select(x => x.Source!).ToList();
+        if (named.Count == 0 || (named.Count == 1 && !_sources.Any(x => x.Source == null && x.Searches > 0))) return [];
+        var rest = (double[])total.Clone();
+        var series = new List<Chart.ChartSeries>();
+        for (int n = 0; n < named.Count; n++)
+        {
+            var byDay = store.TimeSeries(team, ds, fromDay, toDay, named[n]).ToDictionary(r => r.Day);
+            var data = new double[days];
+            for (int i = 0; i < days; i++)
+            {
+                data[i] = byDay.GetValueOrDefault(fromDay + i).Searches;
+                rest[i] = Math.Max(0, rest[i] - data[i]);
+            }
+            series.Add(new(named[n], data, Fill: SurfaceFills[n % SurfaceFills.Length]));
+        }
+        if (rest.Any(v => v > 0)) series.Add(new("Unnamed", rest, "var(--lv3)"));
+        return series;
+    }
 
     private static readonly string[] WeekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
     private static readonly IReadOnlyList<Heatmap.Label> HourLabels =
@@ -671,6 +759,9 @@ else
             long rawFrom = Math.Max(fromDay, toDay - Stats.RetentionDays + 1);
             _weekHour = store.SearchesByWeekHour(team, ds, rawFrom, toDay, source);
             _positions = store.SelectPositions(team, ds, rawFrom, toDay, source);
+            _typing = store.Typing(team, ds, rawFrom, toDay, source);
+            _locales = store.Locales(team, ds, rawFrom, toDay, source);
+            _bySurface = source == null ? BySurface(store, team, ds, fromDay, toDay, days, searches) : [];
             // One step stronger than the searches' grey (--lv4), not a colour: it is a count beside
             // them, and the blue drew the eye from the searches the chart is about.
             if (withCalls) _series = [.. _series, new("Search or ask calls", calls, "var(--lv5)")];

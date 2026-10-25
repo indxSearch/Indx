@@ -14,7 +14,10 @@ namespace IndxServer.Services
     public readonly record struct SearchEventRow(
         string QueryId, string TeamId, string DataSet, string QueryText, string? FilterKey,
         int HitCount, string? Subject, long Timestamp, string? Source = null, string? Session = null,
-        bool? Covered = null, bool Counted = true, string? Typed = null);
+        bool? Covered = null, bool Counted = true, string? Typed = null, string? Locale = null);
+    // Locale: the language the page was in (?locale=, a BCP 47 tag such as nb-NO), as the
+    // storefront reports it; what "which languages do people search in" is read from. Not where
+    // they are: that would take their address, which the statistics do not keep.
     // Typed: what the visitor typed, when the page searched something else for it (Search or
     // ask's Ask phrases search "lis" for "show me a lis"). Only the keystroke rule reads it, in
     // memory; QueryText stays what was searched, and nothing new is stored.
@@ -307,6 +310,12 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
             catch (SqliteException) { /* already there */ }
             try
             {
+                cmd.CommandText = "ALTER TABLE SearchEvents ADD COLUMN Locale TEXT NULL";
+                cmd.ExecuteNonQuery();
+            }
+            catch (SqliteException) { /* already there */ }
+            try
+            {
                 cmd.CommandText = "ALTER TABLE SearchEvents ADD COLUMN Session TEXT NULL";
                 cmd.ExecuteNonQuery();
                 // The column arriving means this file predates "what counts as a search"
@@ -408,8 +417,9 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = @"INSERT OR IGNORE INTO SearchEvents
-                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp, Source, Session, Covered, Counted)
-                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts, $src, $sess, $cov, $cnt)";
+                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp, Source, Session, Covered, Counted, Locale)
+                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts, $src, $sess, $cov, $cnt, $loc)";
+                var loc = cmd.Parameters.Add("$loc", SqliteType.Text);
                 var qid = cmd.Parameters.Add("$qid", SqliteType.Text);
                 var team = cmd.Parameters.Add("$team", SqliteType.Text);
                 var ds = cmd.Parameters.Add("$ds", SqliteType.Text);
@@ -427,7 +437,7 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                     qid.Value = e.QueryId; team.Value = e.TeamId; ds.Value = e.DataSet;
                     text.Value = e.QueryText; filter.Value = (object?)e.FilterKey ?? DBNull.Value;
                     hits.Value = e.HitCount; subj.Value = (object?)e.Subject ?? DBNull.Value;
-                    ts.Value = e.Timestamp; src.Value = (object?)e.Source ?? DBNull.Value;
+                    ts.Value = e.Timestamp; src.Value = (object?)e.Source ?? DBNull.Value; loc.Value = (object?)e.Locale ?? DBNull.Value;
                     sess.Value = (object?)e.Session ?? DBNull.Value;
                     cov.Value = e.Covered is bool covered ? (covered ? 1 : 0) : DBNull.Value;
                     cnt.Value = e.Counted ? 1 : 0;
@@ -1006,7 +1016,7 @@ GROUP BY TeamId, DataSet, DocumentKey;";
         /// </list>
         /// </summary>
         private static string CountedSearches(string where) => $@"(
-SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.Timestamp, s.Covered, s.Source,
+SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.Timestamp, s.Covered, s.Source, s.Locale,
        -- Per counted search through IX_Select_QueryId, after the WHERE has dropped the
        -- keystrokes. Not a GROUP BY over SelectEvents joined in: that grouped every select ever
        -- kept on every read (StatisticsReadCostProbeTests).

@@ -99,6 +99,10 @@ namespace IndxServer.Controllers
                     // one ?probe= did both, and a surface that should count could not be named.
                     // A caller can only hide its own searches.
                     var source = StatisticsService.CleanSource(Request.Query["source"].FirstOrDefault());
+                    // ?locale=<tag> is the language the page was in, as the storefront reports it
+                    // (intrface sends the document's lang, else the browser's): which languages
+                    // people search in. Not where they are; nothing here reads an address.
+                    var locale = StatisticsService.CleanLocale(Request.Query["locale"].FirstOrDefault());
                     bool counted = !string.Equals(Request.Query["count"].FirstOrDefault()?.Trim(), "false",
                         StringComparison.OrdinalIgnoreCase);
                     // The header is minted either way, so a client can always read one; a click
@@ -116,7 +120,8 @@ namespace IndxServer.Controllers
                             Session: string.IsNullOrWhiteSpace(session) ? null : session,
                             Source: source, Counted: counted,
                             Covered: StatisticsService.CoverageConfirmed(query, res),
-                            Typed: string.IsNullOrWhiteSpace(typed) ? null : typed.Length > 1000 ? typed[..1000] : typed));
+                            Typed: string.IsNullOrWhiteSpace(typed) ? null : typed.Length > 1000 ? typed[..1000] : typed,
+                            Locale: locale));
                 }
                 ServerTiming(tStart, tTeam, tDataset, tSearch);
                 return res;
