@@ -25,13 +25,15 @@
     [Parameter] public bool Elevated { get; set; }
     /// <summary>"positive" turns the track green (teal in dark mode) when on, for settings where on versus off must be seen at a glance.</summary>
     [Parameter] public string Variant { get; set; } = "default";
+    /// <summary>Draws a 0 on the track when off and a | when on, the marks of a power switch, in whole pixels.</summary>
+    [Parameter] public bool Marks { get; set; }
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private string _id => Id ?? _generatedId;
     private readonly string _generatedId = $"toggle-{Guid.NewGuid():N}";
 
-    private string _wrapperClass => $"indx-toggle-wrapper{(Disabled ? " indx-toggle-disabled" : "")}{(Elevated ? " indx-toggle-elevated" : "")}{(Variant == "positive" ? " indx-toggle-positive" : "")}";
+    private string _wrapperClass => $"indx-toggle-wrapper{(Disabled ? " indx-toggle-disabled" : "")}{(Elevated ? " indx-toggle-elevated" : "")}{(Variant == "positive" ? " indx-toggle-positive" : "")}{(Marks ? " indx-toggle-marks" : "")}";
 
     private async Task OnChange(ChangeEventArgs e)
     {

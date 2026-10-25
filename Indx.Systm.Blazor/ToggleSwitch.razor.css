@@ -75,6 +75,33 @@
     background-color: #080809;
 }
 
+/* Marks: a 0 on the track when off, a | when on, as on a power switch. Drawn as background layers
+   in whole pixels, so they are sharp on a 1x screen: the 0 is a 5x5 ring with a 1px stroke and
+   the corners left out (four 1px bars), the | is 1x5. Both sit 5px from the track's outer edge,
+   on row 7 of 18. The handle covers the other side. */
+.indx-toggle-marks .indx-toggle-input:not(:checked) + .indx-toggle-slider {
+    background-image:
+        linear-gradient(var(--lv3), var(--lv3)),
+        linear-gradient(var(--lv3), var(--lv3)),
+        linear-gradient(var(--lv3), var(--lv3)),
+        linear-gradient(var(--lv3), var(--lv3));
+    background-size: 3px 1px, 3px 1px, 1px 3px, 1px 3px;
+    background-position: 19px 7px, 19px 11px, 18px 8px, 22px 8px;
+    background-repeat: no-repeat;
+}
+
+.indx-toggle-marks .indx-toggle-input:checked + .indx-toggle-slider {
+    background-image: linear-gradient(var(--lv8), var(--lv8));
+    background-size: 1px 5px;
+    background-position: 5px 7px;
+    background-repeat: no-repeat;
+}
+
+/* Positive keeps its dark handle, so its | is dark too. */
+.indx-toggle-marks.indx-toggle-positive .indx-toggle-input:checked + .indx-toggle-slider {
+    background-image: linear-gradient(#080809, #080809);
+}
+
 .indx-toggle-input:disabled + .indx-toggle-slider {
     opacity: 0.5;
     pointer-events: none;
