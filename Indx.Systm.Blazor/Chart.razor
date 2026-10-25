@@ -550,12 +550,27 @@
             ? Labels[tip.Index]
             : (tip.Index + 1).ToString(CultureInfo.InvariantCulture);
 
+    // Kept inside the frame, which clips. The box's size is estimated from its rows and its
+    // longest name (a row is 20px, a character about 6.5px), since it is not measured before it
+    // is drawn: below the pointer when that fits, else above, else pinned to the top.
     private string TooltipStyle(TooltipState tip)
     {
-        var tipX = Math.Min(Math.Max(tip.X, 60), _containerWidth - 60);
-        return tip.Y < 80
+        int rows = Series.Count
+            + Series.Count(s => s.HasBand && tip.Index < s.Low!.Count && tip.Index < s.High!.Count)
+            + (IsStacked && Series.Count > 1 ? 1 : 0)
+            + (Markers?.Count(m => m.Index == tip.Index) ?? 0);
+        int longest = Math.Max(TooltipLabel(tip).Length,
+            Math.Max(Series.Count > 0 ? Series.Max(s => s.Label.Length + 8) : 0, Markers is { Count: > 0 } ? Markers.Max(m => m.Label.Length) : 0));
+        double tipW = Math.Min(Math.Max(90, longest * 6.5 + 36), Math.Max(120, _containerWidth - 16));
+        double tipH = 30 + rows * 20;
+        var tipX = Math.Min(Math.Max(tip.X, tipW / 2 + 4), _containerWidth - tipW / 2 - 4);
+        bool below = tip.Y + 12 + tipH <= Height;
+        bool above = tip.Y - 8 - tipH >= 0;
+        return below
             ? $"left:{F(tipX)}px;top:{F(tip.Y + 12)}px;transform:translate(-50%,0);"
-            : $"left:{F(tipX)}px;top:{F(tip.Y - 8)}px;transform:translate(-50%,-100%);";
+            : above
+                ? $"left:{F(tipX)}px;top:{F(tip.Y - 8)}px;transform:translate(-50%,-100%);"
+                : $"left:{F(tipX)}px;top:4px;transform:translate(-50%,0);";
     }
 
     private void OnMouseMove(MouseEventArgs e)

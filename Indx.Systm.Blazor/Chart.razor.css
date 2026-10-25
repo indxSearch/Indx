@@ -73,6 +73,7 @@
     font: var(--text-xs);
     color: var(--lv5);
     flex: 1;
+    white-space: nowrap;
 }
 
 .indx-chart-tooltip-value {
