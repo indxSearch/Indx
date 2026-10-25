@@ -11,6 +11,10 @@ namespace IndxServer.Services
     /// <see cref="WithSession"/> searches that carried a session; 0 with none.</summary>
     public sealed record TypingStat(long[] Words, long WithFilter, long MedianLength, long MidWord, long WithSession, long Keystrokes)
     {
+        /// <summary>False when the window held more than <see cref="StatisticsStore.TypingDetailMaxSearches"/>
+        /// searches, so <see cref="MidWord"/> and <see cref="Keystrokes"/> were left unmeasured: both are
+        /// a pass over the texts per text, worth seconds on a busy shop's quarter, and nice to have.</summary>
+        public bool DetailMeasured { get; init; } = true;
         public long Total { get { long n = 0; foreach (var w in Words) n += w; return n; } }
         public long OneWord => Words[0];
         public long TwoWords => Words[1];
@@ -35,9 +39,11 @@ namespace IndxServer.Services
             var tz = ZoneOf(teamId, dataSet);
             using var conn = Open();
             using var cmd = conn.CreateCommand();
-            // Words: one more than the single spaces left once runs are collapsed (three passes
-            // fold up to eight spaces, which is more than a query has).
-            const string Words = "(length(trim(c.QueryText)) - length(replace(replace(replace(replace(trim(c.QueryText), '    ', ' '), '   ', ' '), '  ', ' '), ' ', '')) + 1)";
+            // Words: one more than the spaces, runs of spaces collapsed first (three passes fold up
+            // to eight, which is more than a query has). The folding costs three replaces per row,
+            // a second over a busy shop's quarter, so only a text with a run gets it.
+            const string Folded = "replace(replace(replace(trim(c.QueryText), '    ', ' '), '   ', ' '), '  ', ' ')";
+            const string Words = $"(CASE WHEN c.QueryText LIKE '%  %' THEN length({Folded}) - length(replace({Folded}, ' ', '')) ELSE length(trim(c.QueryText)) - length(replace(trim(c.QueryText), ' ', '')) END + 1)";
             cmd.CommandText = $@"
 SELECT SUM({Words} = 1), SUM({Words} = 2), SUM({Words} = 3), SUM({Words} = 4), SUM({Words} >= 5),
        SUM(c.FilterKey IS NOT NULL AND c.FilterKey <> '')
@@ -60,6 +66,7 @@ SELECT SUM({Words} = 1), SUM({Words} = 2), SUM({Words} = 3), SUM({Words} = 4), S
             }
             long total = words.Sum();
             if (total == 0) return TypingStat.Empty;
+            bool detail = total <= TypingDetailMaxSearches;
 
             using var median = conn.CreateCommand();
             median.CommandText = $@"
@@ -78,6 +85,8 @@ SELECT length(trim(c.QueryText)) FROM {CountedSearches(LiveWhereFor(source))} c
             // at the join ("pika" and "pikachu", not "pika" and "pika evolution"). Over the distinct
             // texts, each weighted by its searches, so the comparison is texts by texts rather than
             // searches by searches; and only up to a size where that is cheap.
+            long midWordCount = 0, withSession = 0, keystrokes = 0;
+            if (!detail) return new TypingStat(words, filtered, mid, 0, 0, 0) { DetailMeasured = false };
             using var midWord = conn.CreateCommand();
             midWord.CommandText = $@"
 WITH q AS (SELECT lower(trim(c.QueryText)) AS t, COUNT(*) AS n
@@ -96,7 +105,6 @@ SELECT (SELECT COUNT(*) FROM q),
             midWord.Parameters.AddWithValue("$liveFrom", StatisticsDays.Start(tz, fromDay));
             midWord.Parameters.AddWithValue("$toEx", StatisticsDays.Start(tz, toDay + 1));
             AddSource(midWord, source);
-            long midWordCount = 0;
             using (var r = midWord.ExecuteReader())
                 if (r.Read() && !r.IsDBNull(1)) midWordCount = r.GetInt64(1);
 
@@ -117,7 +125,6 @@ SELECT (SELECT COUNT(*) FROM k),
             keys.Parameters.AddWithValue("$liveFrom", StatisticsDays.Start(tz, fromDay));
             keys.Parameters.AddWithValue("$toEx", StatisticsDays.Start(tz, toDay + 1));
             AddSource(keys, source);
-            long withSession = 0, keystrokes = 0;
             using (var r = keys.ExecuteReader())
                 if (r.Read()) { withSession = r.GetInt64(0); keystrokes = withSession > 0 && !r.IsDBNull(1) ? r.GetInt64(1) : 0; }
 
@@ -127,6 +134,10 @@ SELECT (SELECT COUNT(*) FROM k),
         /// <summary>Past this many distinct texts the mid-word comparison, texts by texts, is left
         /// out rather than made slow: it reads 0 then.</summary>
         private const int MidWordMaxTexts = 5000;
+
+        /// <summary>Counted searches in a window past which the mid-word and keystroke rules are
+        /// skipped: furniture's quarter, 290k, cost 2.3 s of a 3 s tab load (25 Oct 2026).</summary>
+        public const long TypingDetailMaxSearches = 50_000;
 
         /// <summary>
         /// Counted searches with text in [fromDay, toDay] by the language the page reported, most

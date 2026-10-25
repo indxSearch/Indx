@@ -203,9 +203,12 @@ else
             <div class="stats-typing-figures">
                 <Stat Label="Median length" Value="@($"{typing.MedianLength} chars")" />
                 <Stat Label="With a filter" Value="@Pct(typing.WithFilter, typing.Total)" />
-                <Stat Label="Settled mid-word" Hint="Searches that stopped on a partial word, pika for pikachu, because the results were already right: search as you type paying off. Counted where someone else went on to type the whole word, so a lower bound." Value="@Pct(typing.MidWord, typing.Total)" />
-                <Stat Label="Keystrokes" Hint="The searches a visitor's typing sent before the one that settled, in the middle; over the searches that carried a session, which the console and plain API calls do not." Value="@(typing.WithSession > 0 ? N(typing.Keystrokes) : "–")">
-                    @if (typing.WithSession > 0) { <text>of @N(typing.WithSession) with a session</text> }
+                <Stat Label="Settled mid-word" Hint="Searches that stopped on a partial word, pika for pikachu, because the results were already right: search as you type paying off. Counted where someone else went on to type the whole word, so a lower bound. Not measured past 50,000 searches in the window." Value="@(typing.DetailMeasured ? Pct(typing.MidWord, typing.Total) : "–")">
+                    @if (!typing.DetailMeasured) { <text>not measured at this volume</text> }
+                </Stat>
+                <Stat Label="Keystrokes" Hint="The searches a visitor's typing sent before the one that settled, in the middle; over the searches that carried a session, which the console and plain API calls do not. Not measured past 50,000 searches in the window." Value="@(typing.DetailMeasured && typing.WithSession > 0 ? N(typing.Keystrokes) : "–")">
+                    @if (!typing.DetailMeasured) { <text>not measured at this volume</text> }
+                    else if (typing.WithSession > 0) { <text>of @N(typing.WithSession) with a session</text> }
                 </Stat>
             </div>
             </div>
