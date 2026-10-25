@@ -14,7 +14,7 @@
 @if (View == "list")
 {
     <div class="indx-tree-list-wrap @Class">
-        @RenderList(Roots, 0)
+        @RenderList(_tree, 0)
     </div>
 }
 else
@@ -22,6 +22,10 @@ else
     var placed = Layout();
     double width = _columns.Count > 0 ? _columns[^1] + placed.Where(p => p.Depth == _columns.Count - 1).Max(p => p.Width) : 0;
     <div class="indx-tree-canvas @Class" role="tree" aria-label="@AriaLabel">
+        @if (placed.Count == 0)
+        {
+            <div class="indx-tree-empty">Nothing matches</div>
+        }
         <div class="indx-tree-sheet" style="width: @F(width)px; height: @F(_height)px;" @ref="_sheet">
             <svg class="indx-tree-edges" width="@F(width)" height="@F(_height)" aria-hidden="true">
                 @foreach (var p in placed)
@@ -99,6 +103,9 @@ else
     [Parameter] public int MaxChildren { get; set; } = 50;
     /// <summary>The count as shown; the number by default.</summary>
     [Parameter] public Func<int, string>? Format { get; set; }
+    /// <summary>A filter: only nodes it accepts stay, with the path down to each; an ancestor kept only as
+    /// the way down is drawn muted, and a branch holding a match is opened. "Only boosted."</summary>
+    [Parameter] public Func<Node, bool>? Visible { get; set; }
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? Class { get; set; }
 
@@ -119,6 +126,8 @@ else
     }
 
     private HashSet<string>? _expanded;
+    private IReadOnlyList<Node> _tree = Array.Empty<Node>();
+    private readonly HashSet<string> _opened = new();
     private readonly HashSet<string> _showAll = new();
     private readonly Dictionary<string, double> _measured = new();
     private HashSet<string> _path = new();
@@ -135,7 +144,22 @@ else
         _expanded ??= new HashSet<string>(DefaultExpanded ?? Roots.Select(r => r.Id));
         _path = new HashSet<string>();
         foreach (var r in Roots) Walk(r, new List<string>());
+        // The tree after the filter: a node stays when it matches or a descendant does; one that
+        // stays only as the way down is muted and opened. Without a filter the tree is as given.
+        _opened.Clear();
+        _tree = Visible is null ? Roots : Roots.Select(Prune).Where(n => n != null).ToList()!;
     }
+
+    private Node? Prune(Node n)
+    {
+        var kids = n.Children?.Select(Prune).Where(c => c != null).Select(c => c!).ToList() ?? new List<Node>();
+        bool match = Visible!(n);
+        if (!match && kids.Count == 0) return null;
+        if (kids.Count > 0) _opened.Add(n.Id);
+        return n with { Children = kids.Count > 0 ? kids : null, Muted = n.Muted || !match };
+    }
+
+    private bool IsOpen(string id) => _expanded!.Contains(id) || _opened.Contains(id);
 
     // The path to the chosen node, for lighting it.
     private bool Walk(Node n, List<string> trail)
@@ -168,7 +192,7 @@ else
         int row = 0;
         Placed Place(Node n, int depth, Placed? parent)
         {
-            bool open = n.Children is { Count: > 0 } && _expanded!.Contains(n.Id);
+            bool open = n.Children is { Count: > 0 } && IsOpen(n.Id);
             var kids = open ? (_showAll.Contains(n.Id) ? n.Children! : n.Children!.Take(MaxChildren).ToList()) : (IReadOnlyList<Node>)Array.Empty<Node>();
             int more = open ? n.Children!.Count - kids.Count : 0;
             var self = new Placed { Node = n, Depth = depth, Width = PillWidth(n), Parent = parent, Open = open, More = more };
@@ -188,7 +212,7 @@ else
             }
             return self;
         }
-        foreach (var r in Roots) Place(r, 0, null);
+        foreach (var r in _tree) Place(r, 0, null);
         _columns = new List<double>();
         double x = 0;
         foreach (var w in widths) { _columns.Add(x); x += w + ColumnGap; }
@@ -272,7 +296,7 @@ else
             @foreach (var n in nodes)
             {
                 bool hasKids = n.Children is { Count: > 0 };
-                bool open = _expanded!.Contains(n.Id);
+                bool open = IsOpen(n.Id);
                 bool isSelected = n.Id == Selected;
                 <li @key="n.Id" role="treeitem" aria-expanded="@(hasKids ? (open ? "true" : "false") : null)" aria-selected="@(isSelected ? "true" : "false")">
                     <div class="indx-tree-row @(isSelected ? "indx-tree-row-selected" : "") @(n.Muted ? "indx-tree-muted" : "")" style="padding-left: @(8 + depth * 18)px;">
