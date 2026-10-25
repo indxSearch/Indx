@@ -1,4 +1,5 @@
-@* One choice from a few, side by side: a row of equal cells in a hairline frame, one active. For
+@* One choice from a few, side by side: a row of cells on one hairline rule, the chosen one
+   underlined, the Tabs look without the navigation. For
    the period of a chart, the interval of a graph, the type of a view: a compact control for a
    panel's header, where Tabs would be too tall and a Select hides the options. A cell is a word
    or an icon; the icon-only cell takes an AriaLabel. Arrow keys move between cells. Port of the
@@ -34,7 +35,7 @@
     [Parameter, EditorRequired] public IReadOnlyList<Item> Items { get; set; } = Array.Empty<Item>();
     [Parameter] public string? Value { get; set; }
     [Parameter] public EventCallback<string> ValueChanged { get; set; }
-    /// <summary>"micro" is 22px tall, for a panel header; "default" 28px, beside a micro Button.</summary>
+    /// <summary>"micro" is 24px tall, for a panel header; "default" 30px, the height of a micro Tab.</summary>
     [Parameter] public string Size { get; set; } = "micro";
     /// <summary>Cells share the width equally instead of taking their content's.</summary>
     [Parameter] public bool Stretch { get; set; }
