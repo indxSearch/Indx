@@ -56,6 +56,73 @@
     }
 }
 
+/* Segments: the row as shares. Each segment is the fill clipped to its span, in its own tone,
+   with its name and share in a head above, and a hairline at each boundary through the bars and
+   a little above them, never up through the heads, so a narrow segment's head is not cut. The
+   last head sits against the right edge, since its segment may be too narrow to hold it. */
+.indx-barmeter-shares {
+    position: relative;
+    padding-top: 34px;
+}
+
+.indx-barmeter-segment {
+    clip-path: inset(0 calc(100% - var(--seg-to, 100%)) 0 var(--seg-from, 0%));
+}
+
+@supports (width: round(1px, 2px)) {
+    .indx-barmeter-segment {
+        clip-path: inset(0 calc(100% - round(var(--seg-to, 100%), 4px)) 0 round(var(--seg-from, 0%), 4px));
+    }
+}
+
+.indx-barmeter-head {
+    position: absolute;
+    top: 0;
+    left: var(--seg-from, 0%);
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding-left: 6px;
+    white-space: nowrap;
+}
+
+.indx-barmeter-head:first-child {
+    padding-left: 0;
+}
+
+.indx-barmeter-head-last {
+    left: auto;
+    right: 0;
+    align-items: flex-end;
+    padding-left: 0;
+}
+
+.indx-barmeter-head-name {
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+.indx-barmeter-head-share {
+    font: var(--text-sm);
+    color: var(--lv7);
+    font-variant-numeric: tabular-nums;
+}
+
+.indx-barmeter-divider {
+    position: absolute;
+    bottom: 0;
+    height: 20px;
+    left: var(--seg-from, 0%);
+    width: 1px;
+    background: var(--lv3);
+}
+
+@supports (width: round(1px, 2px)) {
+    .indx-barmeter-divider {
+        left: calc(round(var(--seg-from, 0%), 4px) - 1px);
+    }
+}
+
 /* The ring: the same bars as radial lines around a circle.
    The value and ceiling sit in the middle, the label beneath. currentColor is the ink, or the
    Color parameter set inline on the meter. */

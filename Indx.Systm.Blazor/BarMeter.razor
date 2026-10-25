@@ -4,8 +4,40 @@
    it from 96px, and the label beneath; a 48px ring holds a short value and fits a Stat. Where ProgressBar is a percentage on its way to done, BarMeter goes
    up and down: CPU pressure, memory in use, a quota. The row's bars are drawn by a repeating
    gradient, so their number follows the width; the ring's are SVG lines, as many as keep the same
-   4px pitch at the middle of the band. Port of the React BarMeter in indx-systm. *@
-@if (Shape == "ring")
+   4px pitch at the middle of the band. With Segments the row is shares of a whole instead of a
+   level: each segment its share of the bars in a tone of its own, the name and share above it, a
+   hairline between; a colour stays on the bars, the share is ink. Port of the React BarMeter in
+   indx-systm. *@
+@if (Segments != null && Shape != "ring")
+{
+    var parts = Parts();
+    <div class="indx-barmeter indx-barmeter-segmented" role="img" aria-label="@Label">
+        @if (!string.IsNullOrEmpty(Label))
+        {
+            <span class="indx-barmeter-label">@Label</span>
+        }
+        <div class="indx-barmeter-shares">
+            @foreach (var part in parts)
+            {
+                <div class="indx-barmeter-head @(part.Last ? "indx-barmeter-head-last" : "")" style="--seg-from: @(part.From)%; --seg-to: @(part.To)%;">
+                    <span class="indx-barmeter-head-name">@part.Segment.Label</span>
+                    <span class="indx-barmeter-head-share">@ShowShare(part.Segment)</span>
+                </div>
+            }
+            <div class="indx-barmeter-bars" aria-hidden="true">
+                @foreach (var part in parts)
+                {
+                    <div class="indx-barmeter-fill indx-barmeter-segment" style="--seg-from: @(part.From)%; --seg-to: @(part.To)%; color: @part.Color;"></div>
+                }
+            </div>
+            @foreach (var part in parts.Skip(1))
+            {
+                <span class="indx-barmeter-divider" style="--seg-from: @(part.From)%;"></span>
+            }
+        </div>
+    </div>
+}
+else if (Shape == "ring")
 {
     <div class="indx-barmeter indx-barmeter-ring" role="meter" aria-valuenow="@_now" aria-valuemin="0" aria-valuemax="@_max"
          style="--meter-size: @(Size)px;@(_color)">
@@ -51,8 +83,15 @@ else
 @code {
     /// <summary>What is measured: "CPU pressure", "Memory". A ring inside a Stat leaves it to the Stat.</summary>
     [Parameter] public string Label { get; set; } = "";
+    /// <summary>The level; with Segments, left out: the segments are the whole.</summary>
     [Parameter] public double Value { get; set; }
     [Parameter] public double Max { get; set; } = 100;
+    /// <summary>A segment of the row as shares: its label, its value and, optionally, its colour; without one, the tone ladder from the ink down, four steps.</summary>
+    public sealed record Segment(string Label, double Value, string? Color = null);
+    /// <summary>The row as shares of a whole: each segment its share of the bars in its own tone, with
+    /// its name and share above it and a hairline between. Holders by kind, documents by type. The row
+    /// shape only; Value, Max and the foot are not used.</summary>
+    [Parameter] public IReadOnlyList<Segment>? Segments { get; set; }
     /// <summary>The value as shown; defaults to the number with thousands separators.</summary>
     [Parameter] public Func<double, string>? Format { get; set; }
     /// <summary>The ceiling as shown; defaults to "of" and the formatted max.</summary>
@@ -103,4 +142,29 @@ else
     }
 
     private static string F(double v) => v.ToString("0.##", Inv);
+
+    // The same four steps as Waffle, apart enough to tell at 2px.
+    private static readonly string[] SegmentTones = { "var(--lv8)", "var(--lv5)", "var(--lv4)", "var(--lv3)" };
+    private readonly record struct Part(Segment Segment, string From, string To, string Color, bool Last);
+
+    private double SegmentSum => Segments?.Sum(g => Math.Max(0, g.Value)) ?? 0;
+    private string ShowShare(Segment g) => Format != null ? Format(g.Value) : $"{Math.Round((SegmentSum > 0 ? g.Value / SegmentSum : 0) * 100)} %";
+
+    private List<Part> Parts()
+    {
+        var parts = new List<Part>();
+        if (Segments == null) return parts;
+        double sum = SegmentSum, start = 0;
+        for (int i = 0; i < Segments.Count; i++)
+        {
+            var g = Segments[i];
+            double from = start;
+            double share = sum > 0 ? Math.Max(0, g.Value) / sum : 0;
+            start += share;
+            bool last = i == Segments.Count - 1;
+            parts.Add(new Part(g, (from * 100).ToString("0.###", Inv), ((last ? 1 : start) * 100).ToString("0.###", Inv),
+                g.Color ?? SegmentTones[i % SegmentTones.Length], last));
+        }
+        return parts;
+    }
 }
