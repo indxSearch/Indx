@@ -1,8 +1,24 @@
 .browse-tab { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
 
-.browse-toolbar { align-items: center; flex-wrap: wrap; margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--lv2); flex: none; }
-.browse-label { color: var(--lv5); font: var(--text-xs); }
-.browse-toolbar-end { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.browse-toolbar { align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--lv2); flex: none; }
+.browse-label { color: var(--lv5); font: var(--text-xs); white-space: nowrap; }
+.browse-count { color: var(--lv5); font: var(--text-xs); white-space: nowrap; }
+.browse-tb-source { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.browse-tb-filter { flex: 1 1 160px; max-width: 320px; }
+.browse-tb-controls { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.browse-tb-full { display: inline-flex; }
+
+/* Narrow (the frame, not the window: it is a container): the hierarchy and the full screen step
+   on the first row, the filter across the second, the controls across the third; the count goes. */
+.browse-frame { container-type: inline-size; }
+@container (max-width: 720px) {
+    .browse-tb-source { flex: 1 1 0; order: 0; }
+    .browse-tb-source ::deep .indx-select { max-width: 100%; }
+    .browse-tb-full { order: 1; }
+    .browse-tb-filter { order: 2; flex-basis: 100%; max-width: none; }
+    .browse-tb-controls { order: 3; flex-basis: 100%; margin-left: 0; gap: 8px; }
+    .browse-count { display: none; }
+}
 
 .browse-note { color: var(--lv5); font: var(--text-sm); margin: 0; }
 
@@ -56,6 +72,6 @@
 .browse-product-title { color: var(--lv7); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .browse-product-key { color: var(--lv4); font: var(--text-xs); font-family: var(--font-mono); flex: none; }
 
-@media (max-width: 900px) {
-    ::deep .browse-panel { position: static; width: auto; max-height: none; margin-top: 12px; }
+@container (max-width: 720px) {
+    ::deep .browse-panel { left: 12px; width: auto; top: auto; bottom: 12px; max-height: 60%; }
 }

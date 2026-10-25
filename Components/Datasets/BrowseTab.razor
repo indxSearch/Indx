@@ -45,22 +45,24 @@
         }
         <div class="browse-frame" @ref="_frame">
         <div class="indx-list-toolbar browse-toolbar">
-            <SelectField Size="micro" Variant="ghost" Options="SourceOptions" Value="@_source?.Key" ValueChanged="OnSourceChanged" aria-label="Hierarchy" />
-            @if (Ctx.IsEditor && _source is { IsGroup: false })
-            {
-                <span class="browse-label">Separator</span>
-                <SelectField Size="micro" Variant="ghost" Options="SeparatorOptions" Value="@SeparatorValue" ValueChanged="OnSeparatorChanged" aria-label="Level separator" />
-            }
+            <div class="browse-tb-source">
+                <SelectField Size="micro" Variant="ghost" Options="SourceOptions" Value="@_source?.Key" ValueChanged="OnSourceChanged" aria-label="Hierarchy" />
+                @if (Ctx.IsEditor && _source is { IsGroup: false })
+                {
+                    <span class="browse-label">Separator</span>
+                    <SelectField Size="micro" Variant="ghost" Options="SeparatorOptions" Value="@SeparatorValue" ValueChanged="OnSeparatorChanged" aria-label="Level separator" />
+                }
+            </div>
             @if (_tree != null)
             {
-                <div class="indx-list-toolbar-filter">
+                <div class="browse-tb-filter">
                     <SearchField Size="micro" Placeholder="Filter categories" Value="@_filter" ValueChanged="OnFilterChanged" aria-label="Filter categories by name" />
                 </div>
             }
-            <div class="browse-toolbar-end">
+            <div class="browse-tb-controls">
                 @if (_tree != null)
                 {
-                    <span class="indx-list-toolbar-end">@_tree.Nodes.ToString("N0") categories, @(_tree.Depth) level@(_tree.Depth == 1 ? "" : "s")</span>
+                    <span class="browse-count">@_tree.Nodes.ToString("N0") categories, @(_tree.Depth) level@(_tree.Depth == 1 ? "" : "s")</span>
                     @if (_tree.Depth > 1)
                     {
                         <span class="browse-label">Open to</span>
@@ -69,8 +71,10 @@
                     <SegmentedControl Size="micro" AriaLabel="Zoom" Value="@_zoom" ValueChanged="@(v => _zoom = v)" Items="_zooms" />
                 }
                 <SegmentedControl Size="micro" AriaLabel="View" @bind-Value="_view" Items="_views" />
-                <Button Variant="ghost" Size="micro" IconLeft="@(_fullscreen ? DatasetIcons.Minimize : DatasetIcons.Maximize)" aria-label="@(_fullscreen ? "Leave full screen" : "Full screen")" title="@(_fullscreen ? "Leave full screen" : "Full screen")" @onclick="ToggleFullscreen" />
             </div>
+            <span class="browse-tb-full">
+                <Button Variant="ghost" Size="micro" IconLeft="@(_fullscreen ? DatasetIcons.Minimize : DatasetIcons.Maximize)" aria-label="@(_fullscreen ? "Leave full screen" : "Full screen")" title="@(_fullscreen ? "Leave full screen" : "Full screen")" @onclick="ToggleFullscreen" />
+            </span>
         </div>
         @if (_error != null)
         {
