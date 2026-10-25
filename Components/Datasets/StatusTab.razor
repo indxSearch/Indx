@@ -66,27 +66,7 @@
             }
         </StatGroup>
 
-        @* Days woken, for a dataset on a timed hibernation: the days a request found it asleep and
-           loaded it, or someone woke it by hand, from the statistics store's change log (every
-           wake is reported there, and the log is never pruned). A day's tone is its wakes; most
-           days are one. Not shown for always-on or client-managed datasets, which do not wake. *@
-        @if (IsTimed(ka) && _wakes is { } wakes)
-        {
-            <h3 class="status-heading status-heading--section">Days woken</h3>
-            <p class="status-help">
-                @if (_wakeDays == 0)
-                {
-                    <text>Not woken in the last @WakeWeeks weeks: no request has found it asleep.</text>
-                }
-                else
-                {
-                    <text>Woken on @_wakeDays of the last @(WakeWeeks * 7) days, @_wakeTotal @(_wakeTotal == 1 ? "time" : "times") in all. A day in the ink was woken more than once.</text>
-                }
-            </p>
-            <Heatmap Values="wakes.Values" ColumnLabels="wakes.ColumnLabels" RowLabels="wakes.RowLabels" Max="@Math.Max(2, _wakeMax)"
-                     Format="@((v, i) => wakes.Dates[i] is { } d ? $"{d:d MMM yyyy}: {(v == 0 ? "not woken" : v == 1 ? "woken once" : $"woken {v:0} times")}" : "")"
-                     AriaLabel="@($"Days woken, last {WakeWeeks} weeks")" />
-        }
+        <DatasetWakeDays Ctx="Ctx" />
 
         @if (_observr)
         {
@@ -125,55 +105,6 @@
         base.OnInitialized();
         Findings.Changed += OnFindingsChanged;
         LoadFindings();
-    }
-
-    private bool _wakesLoaded;
-
-    // Awaited, as the Statistics tab does, so static rendering (prerender, the render tests)
-    // waits for the calendar; interactively the tab paints and fills it in.
-    protected override async Task OnParametersSetAsync()
-    {
-        if (Active && !_wakesLoaded)
-        {
-            _wakesLoaded = true;
-            await LoadWakesAsync();
-        }
-    }
-
-    private const int WakeWeeks = 16;
-    private Heatmap.Calendar? _wakes;
-    private int _wakeDays, _wakeTotal;
-    private double _wakeMax;
-
-    /// <summary>A timed keep-alive: hours that run out, so the dataset sleeps and is woken. Always-on
-    /// and client-managed datasets never wake on demand.</summary>
-    private static bool IsTimed(IndxServerInternalApi.KeepAliveInfo? ka) =>
-        ka is { KeepAliveTimeHrs: > 0 and not int.MaxValue };
-
-    /// <summary>The wakes in the window, counted per local day of the dataset's statistics zone, as
-    /// the cells of a calendar. Off the circuit thread, like the Statistics tab's reads.</summary>
-    private async Task LoadWakesAsync()
-    {
-        if (!IsTimed(Ctx.KeepAlive) || !Stats.Enabled || Stats.Store is not { } store) return;
-        var (team, ds) = (Ctx.TeamId, Ctx.Name);
-        Heatmap.Calendar? calendar = null;
-        await Task.Run(() =>
-        {
-            var tz = store.ZoneOf(team, ds);
-            long toDay = StatisticsDays.Today(tz);
-            long fromDay = toDay - WakeWeeks * 7 + 1;
-            var perDay = new Dictionary<long, int>();
-            foreach (var c in store.Changes(team, ds, fromDay, toDay))
-                if (c.Kind == DatasetChangeKind.Wake)
-                    perDay[StatisticsDays.DayOf(tz, c.Timestamp)] = perDay.GetValueOrDefault(StatisticsDays.DayOf(tz, c.Timestamp)) + 1;
-            _wakeDays = perDay.Count;
-            _wakeTotal = perDay.Values.Sum();
-            _wakeMax = perDay.Count > 0 ? perDay.Values.Max() : 0;
-            int epoch = DateOnly.Parse("1970-01-01").DayNumber;
-            calendar = Heatmap.CalendarCells(DateOnly.FromDayNumber((int)fromDay + epoch), DateOnly.FromDayNumber((int)toDay + epoch),
-                d => perDay.GetValueOrDefault(d.DayNumber - epoch));
-        });
-        _wakes = calendar;
     }
 
     public override void Dispose()

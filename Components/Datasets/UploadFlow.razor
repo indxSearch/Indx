@@ -138,6 +138,9 @@ else if (state == SystemState.Error)
         <div class="up-row up-top8">
             <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Eye" @onclick="StartWake">Wake up</Button>
         </div>
+        @* How often it is woken is the thing to know about a dataset on idle eviction, and the
+           reason to change its keep-alive; nothing for one that only wakes by hand. *@
+        <DatasetWakeDays Ctx="Ctx" />
         @* Wake up is the one thing this view is for. Downloading the data, deleting the dataset and
            the rest need no engine and live on Options, which is open while the dataset sleeps. *@
         @if (Ctx.IsAdmin)
