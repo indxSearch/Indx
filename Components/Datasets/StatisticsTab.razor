@@ -475,6 +475,36 @@ else
                                    Series="@(new List<Chart.ChartSeries> { new("Cost", days.Cost) })" />
                         </div>
                     }
+                    @* When the budget goes: the calls by hour of the day round a clock, and over them
+                       the hours a day's budget ran out, in the signal red. In UTC, as the budget's day
+                       is: a budget that runs out at the same hour most days is one to raise, or not. *@
+                    @if (_askHours is { } askHours && askHours.Calls.Sum() > 0)
+                    {
+                        int busiest = Array.IndexOf(askHours.Calls, askHours.Calls.Max());
+                        long ranOut = askHours.Spent.Sum();
+                        <div class="stats-overview-item">
+                            <div class="stats-chart-head"><span class="stats-chart-title">When the budget goes</span></div>
+                            <p class="stats-help">Calls by hour of the day, UTC@(ranOut > 0 ? $", and the hour the budget ran out on the {N(ranOut)} day{(ranOut == 1 ? "" : "s")} it did" : "").</p>
+                            <div class="stats-clock">
+                                <RadialChart SeriesList="@(ranOut > 0
+                                                 ? new List<RadialChart.Series> { new("Calls", askHours.Calls.Select(h => (double)h).ToArray()), new("Budget ran out", askHours.Spent.Select(h => (double)h).ToArray(), "var(--CSignal)") }
+                                                 : new List<RadialChart.Series> { new("Calls", askHours.Calls.Select(h => (double)h).ToArray()) })"
+                                             Labels="ClockLabels" Size="220" Format="@((v, i) => v.ToString("N0"))" AriaLabel="Calls by hour of the day, and the hours the budget ran out">
+                                    <Centre><Stat Label="Busiest" Value="@($"{busiest:00}:00")" Class="stats-clock-centre" /></Centre>
+                                </RadialChart>
+                            </div>
+                        </div>
+                    }
+                    @* The ask profile, last as the search one is: shares on one scale, the window
+                       before this one as a second shape. *@
+                    @if (_askProfile is { } askProfile)
+                    {
+                        <div class="stats-overview-item">
+                            <div class="stats-chart-head"><span class="stats-chart-title">Ask profile</span></div>
+                            <p class="stats-help">@(_askProfileBefore != null ? $"This window against the {_days} days before it." : "The shape of Search or ask in this window: each axis a share.")</p>
+                            <RadarChart Axes="AskProfileAxes" Series="AskProfileSeries(askProfile, _askProfileBefore)" Size="220" Max="1" Format="@(v => $"{v * 100:0}%")" AriaLabel="Ask profile" />
+                        </div>
+                    }
                 </div>
             }
             else if (_askView == "questions")

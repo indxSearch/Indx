@@ -82,6 +82,50 @@ namespace IndxServer.Services
 
         /// <summary>The budget day by day in [fromDay, toDay]: calls, refusals and the day's budget.
         /// The budget's days are UTC, as <see cref="AskBudget"/> reads them.</summary>
+        /// <summary>
+        /// The calls against the budget by hour of the day, and the hour the budget ran out on each
+        /// day it did: for the clock that says when a day's budget tends to go. Calls are the
+        /// judgements that reached the model (the cached ones cost nothing) and the questions, from
+        /// the raw rows; the filters made while typing have no row and are left out. In UTC, as the
+        /// budget's day is. Spent[h] is the days whose budget ran out in hour h.
+        /// </summary>
+        public (long[] Calls, long[] Spent) BudgetCallsByHour(string teamId, string dataSet, long fromDay, long toDay)
+        {
+            const long Hour = 60 * 60 * 1000;
+            var calls = new long[24];
+            var spent = new long[24];
+            long fromMs = fromDay * 86_400_000L, toMsExcl = (toDay + 1) * 86_400_000L;
+            using var conn = Open();
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = $@"
+SELECT (Timestamp / {Hour}) % 24 AS H, COUNT(*) FROM AskIntentEvents
+ WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $from AND Timestamp < $toEx AND Cached = 0 AND Counted = 1
+ GROUP BY H
+UNION ALL
+SELECT (Timestamp / {Hour}) % 24 AS H, COUNT(*) FROM AskEvents
+ WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $from AND Timestamp < $toEx AND Counted = 1
+ GROUP BY H";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSet);
+                cmd.Parameters.AddWithValue("$from", fromMs);
+                cmd.Parameters.AddWithValue("$toEx", toMsExcl);
+                using var r = cmd.ExecuteReader();
+                while (r.Read()) calls[(int)r.GetInt64(0)] += r.GetInt64(1);
+            }
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "SELECT SpentAt FROM AskBudgetDays WHERE TeamId = $t AND DataSet = $d AND Day BETWEEN $fromDay AND $toDay AND SpentAt IS NOT NULL";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSet);
+                cmd.Parameters.AddWithValue("$fromDay", fromDay);
+                cmd.Parameters.AddWithValue("$toDay", toDay);
+                using var r = cmd.ExecuteReader();
+                while (r.Read()) spent[(int)((r.GetInt64(0) / Hour) % 24)]++;
+            }
+            return (calls, spent);
+        }
+
         public List<AskBudgetDayStat> BudgetByDay(string teamId, string dataSet, long fromDay, long toDay)
         {
             using var conn = Open();
