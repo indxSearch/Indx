@@ -51,6 +51,40 @@ SELECT c.Timestamp / {Quarter} AS Q, COUNT(*) FROM {CountedSearches(LiveWhereFor
         }
 
         /// <summary>
+        /// Counted searches with text in [fromDay, toDay], by local day and hour: [day - fromDay,
+        /// hour]. The window itself hour by hour, where <see cref="SearchesByWeekHour"/> folds it
+        /// onto one week. Counted per quarter of an hour in UTC and placed in local time here, as
+        /// that one is; on the day a clock goes back the repeated hour adds into one.
+        /// </summary>
+        public long[,] SearchesByDayHour(string teamId, string dataSet, long fromDay, long toDay, string? source = null)
+        {
+            const long Quarter = 15 * 60 * 1000;
+            var tz = ZoneOf(teamId, dataSet);
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+SELECT c.Timestamp / {Quarter} AS Q, COUNT(*) FROM {CountedSearches(LiveWhereFor(source))} c
+ WHERE trim(c.QueryText) <> ''
+ GROUP BY Q";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$liveFrom", StatisticsDays.Start(tz, fromDay));
+            cmd.Parameters.AddWithValue("$toEx", StatisticsDays.Start(tz, toDay + 1));
+            AddSource(cmd, source);
+            var grid = new long[Math.Max(0, toDay - fromDay + 1), 24];
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                long ms = r.GetInt64(0) * Quarter;
+                long day = StatisticsDays.DayOf(tz, ms) - fromDay;
+                if (day < 0 || day >= grid.GetLength(0)) continue;
+                var local = TimeZoneInfo.ConvertTimeFromUtc(DateTimeOffset.FromUnixTimeMilliseconds(ms).UtcDateTime, tz);
+                grid[day, local.Hour] += r.GetInt64(1);
+            }
+            return grid;
+        }
+
+        /// <summary>
         /// Counted selects in [fromDay, toDay] by the 1-based position of what was chosen. From the
         /// raw rows, as far back as they are kept; the daily tables hold only the sum of positions.
         /// For one surface, the selects whose search came from it.

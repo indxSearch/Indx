@@ -92,13 +92,28 @@ else
             <Stat Label="Conversions" Hint="Conversions the storefront reported for results found here."><ValueContent>@N(_overview.Converts)</ValueContent></Stat>
         </StatGroup>
 
-        @* The window day by day: searches as an area with the selects on it, against a value axis,
-           as a line or as bars. *@
-        <div class="stats-chart-head">
-            <span class="stats-chart-title">Per day</span>
-            <SegmentedControl Items="ChartTypeItems" @bind-Value="_chartType" AriaLabel="Chart type" />
-        </div>
-        <Chart Series="_series" Labels="_labels" Type="@_chartType" Height="180" Markers="Markers" YAxis="right" />
+        @if (_dayHour is { } dayHour)
+        {
+            @* Seven days are seven points as a line, so the week is shown hour by hour instead: a
+               group a day, a bar an hour, the day's searches above it and today in the teal. 30
+               and 90 days keep the line, where a day is a point worth having. *@
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">Per hour</span>
+            </div>
+            <GroupedBars Groups="dayHour" Labels="HourNames" Height="150"
+                         Format="@((v, g, i) => $"{N((long)v)} {(v == 1 ? "search" : "searches")}")"
+                         AriaLabel="Searches by hour, the last 7 days" />
+        }
+        else
+        {
+            @* The window day by day: searches as an area with the selects on it, against a value
+               axis, as a line or as bars. *@
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">Per day</span>
+                <SegmentedControl Items="ChartTypeItems" @bind-Value="_chartType" AriaLabel="Chart type" />
+            </div>
+            <Chart Series="_series" Labels="_labels" Type="@_chartType" Height="180" Markers="Markers" YAxis="right" />
+        }
 
         @* The detail sections, one at a time, just above the table they choose: each can carry its
            own view settings, and a phone shows one table rather than five. *@
@@ -720,6 +735,26 @@ else
         return series;
     }
 
+    // The 7-day window hour by hour, one group a day; null for 30 and 90 days.
+    private IReadOnlyList<GroupedBars.Group>? _dayHour;
+    private static readonly string[] HourNames = Enumerable.Range(0, 24).Select(h => h.ToString("00")).ToArray();
+
+    /// <summary>A group a day, "Mon 19 Oct", the day's searches above it, today highlighted.</summary>
+    private static IReadOnlyList<GroupedBars.Group> DayHourGroups(long[,] grid, long fromDay, long today)
+    {
+        int epoch = DateOnly.Parse("1970-01-01").DayNumber;
+        var groups = new List<GroupedBars.Group>();
+        for (int d = 0; d < grid.GetLength(0); d++)
+        {
+            var values = new double[24];
+            long total = 0;
+            for (int h = 0; h < 24; h++) { values[h] = grid[d, h]; total += grid[d, h]; }
+            var date = DateOnly.FromDayNumber((int)(fromDay + d) + epoch);
+            groups.Add(new GroupedBars.Group(date.ToString("ddd d MMM"), values, N(total), Highlight: fromDay + d == today));
+        }
+        return groups;
+    }
+
     private static readonly string[] WeekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
     private static readonly IReadOnlyList<Heatmap.Label> HourLabels =
         [new(0, "00"), new(6, "06"), new(12, "12"), new(18, "18"), new(23, "23")];
@@ -836,6 +871,7 @@ else
             _positions = store.SelectPositions(team, ds, rawFrom, toDay, source);
             _typing = store.Typing(team, ds, rawFrom, toDay, source);
             _locales = store.Locales(team, ds, rawFrom, toDay, source);
+            _dayHour = days == 7 ? DayHourGroups(store.SearchesByDayHour(team, ds, fromDay, toDay, source), fromDay, toDay) : null;
             _bySurface = source == null ? BySurface(store, team, ds, fromDay, toDay, days, searches) : [];
             // One step stronger than the searches' grey (--lv4), not a colour: it is a count beside
             // them, and the blue drew the eye from the searches the chart is about.
