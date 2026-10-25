@@ -27,10 +27,39 @@
     }
     else if (_sources.Count == 0)
     {
-        <Alert Variant="info">
-            <Title>No hierarchy to browse</Title>
-            <Description>The tree is read from a facetable field whose values are paths, such as <code>product_type</code> with "Furniture > Chairs > Office chairs", or from fields that each hold a level, such as <code>category.department</code> and <code>category.section</code>. Mark such fields <strong>Facetable</strong> under Field configuration, then come back here.</Description>
-        </Alert>
+        @* No hierarchy among the facetable fields: the page is the guide, in the shape of the
+           datasets page's first visit. The two shapes the tree reads, each drawn as the tree it
+           would make, and the step to Field configuration for an editor. *@
+        <div class="browse-empty">
+            <div class="browse-empty-message">
+                <span class="browse-empty-icon"><NodeTree Size="70" Color="var(--lv4)" /></span>
+                <div class="browse-empty-title">No hierarchy to browse</div>
+                <div class="browse-empty-detail">
+                    The tree is drawn from a facetable field whose values are paths, or from fields that each hold a level. This dataset has neither marked Facetable yet.
+                </div>
+            </div>
+            <div class="browse-empty-shapes">
+                <div class="browse-empty-shape">
+                    <h4 class="browse-empty-shape-title">A path in one field</h4>
+                    <p class="browse-empty-shape-text">One value per product with the levels in it, the way a Google product feed writes <code>product_type</code> and <code>google_product_category</code>. Any separator the values agree on works.</p>
+                    <pre class="browse-empty-code">"product_type": "Furniture > Chairs > Office chairs"</pre>
+                    <div class="browse-empty-tree"><TreeCanvas Roots="_pathExample" DefaultExpanded="_exampleOpen" AriaLabel="A tree from a path field" /></div>
+                </div>
+                <div class="browse-empty-shape">
+                    <h4 class="browse-empty-shape-title">A level per field</h4>
+                    <p class="browse-empty-shape-text">Fields that share a prefix and each hold one level, as a nested object does. Two or more of them, marked Facetable, make a group.</p>
+                    <pre class="browse-empty-code">"category": { "department": "Furniture", "section": "Chairs", "type": "Office chairs" }</pre>
+                    <div class="browse-empty-tree"><TreeCanvas Roots="_pathExample" DefaultExpanded="_exampleOpen" AriaLabel="A tree from level fields" /></div>
+                </div>
+            </div>
+            @if (Ctx.IsEditor)
+            {
+                <div class="browse-empty-actions">
+                    <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Fields" @onclick="@(() => { Ctx.ActiveTab = "fields"; Ctx.NotifyChanged(); })">Open Field configuration</Button>
+                    <span class="browse-empty-hint">Mark the field, or the group's fields, Facetable and save; the tree reads them at once.</span>
+                </div>
+            }
+        </div>
     }
     else
     {
@@ -215,6 +244,24 @@
     private string _filter = "";
     private HashSet<string>? _nameMatches;   // node ids whose label the filter finds; null when no filter
     private readonly FieldNameFilter _names = new();
+
+    // The example the empty state draws, the same tree for either shape.
+    private static readonly string[] _exampleOpen = { "Furniture", "Furniture > Chairs" };
+    private static readonly TreeCanvas.Node[] _pathExample =
+    {
+        new("Furniture", "Furniture", 1_240, new TreeCanvas.Node[]
+        {
+            new("Furniture > Chairs", "Chairs", 310, new TreeCanvas.Node[]
+            {
+                new("Furniture > Chairs > Office chairs", "Office chairs", 120),
+                new("Furniture > Chairs > Dining chairs", "Dining chairs", 95),
+                new("Furniture > Chairs > Armchairs", "Armchairs", 95),
+            }),
+            new("Furniture > Tables", "Tables", 280, new TreeCanvas.Node[] { new("Furniture > Tables > Desks", "Desks", 140) }),
+            new("Furniture > Sofas", "Sofas", 210),
+        }),
+        new("Lighting", "Lighting", 410, new TreeCanvas.Node[] { new("Lighting > Lamps", "Lamps", 410) }),
+    };
 
     private static readonly TreeCanvas.Mark BoostedMark = new(DatasetIcons.Boost, "Boosted by a rule");
     private static readonly TreeCanvas.Mark NeverSelectedMark = new(DatasetIcons.NeverSelected, "Never selected in the statistics window");
