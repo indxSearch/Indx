@@ -36,14 +36,12 @@ else
         <StatGroup Columns="6">
             <Stat Hint="This process's share of all cores over the last second.">
                 <LabelContent><span class="admin-monitor-label"><span class="admin-monitor-label-mark" aria-hidden="true"><Indx.Systm.Blazor.Icons.Cpu Size="14" Color="currentColor" /></span>CPU</span></LabelContent>
-                <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.CpuPercent" Max="100" Format="@(v => $"{v:0} %")"
-                                  Color="@(snapshot.Process.CpuPercent > 85 ? "var(--CSignal)" : null)" /></Figure>
+                <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.CpuPercent" Max="100" Format="@(v => $"{v:0} %")" Zones="Pressure" /></Figure>
                 <ChildContent>of @Environment.ProcessorCount cores</ChildContent>
             </Stat>
             <Stat Hint="Resident memory, against what the runtime may use on this machine or in this container. It includes the unmanaged memory the search engine allocates itself, which the managed heap does not.">
                 <LabelContent><span class="admin-monitor-label"><span class="admin-monitor-label-mark" aria-hidden="true"><Indx.Systm.Blazor.Icons.Ram Size="14" Color="currentColor" /></span>Memory</span></LabelContent>
-                <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.WorkingSetMb" Max="@Math.Max(snapshot.Process.AvailableMb, 1)" Format="@(v => $"{v / Math.Max(snapshot.Process.AvailableMb, 1) * 100:0} %")"
-                                  Color="@(snapshot.Process.AvailableMb > 0 && snapshot.Process.WorkingSetMb > snapshot.Process.AvailableMb * 0.85 ? "var(--CSignal)" : null)" /></Figure>
+                <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.WorkingSetMb" Max="@Math.Max(snapshot.Process.AvailableMb, 1)" Format="@(v => $"{v / Math.Max(snapshot.Process.AvailableMb, 1) * 100:0} %")" Zones="Pressure" /></Figure>
                 <ChildContent>@Gb(snapshot.Process.WorkingSetMb) of @Gb(snapshot.Process.AvailableMb)</ChildContent>
             </Stat>
             <Stat Label="Native pool" Hint="The unmanaged memory the search engine holds for its score arrays, and the count of those allocations. A steady count means they are being released." Value="@Gb(snapshot.Process.NativePoolMb)">
@@ -131,6 +129,9 @@ else
     }
 
     public void Dispose() => State.Changed -= OnChanged;
+
+    // A warning from 70 percent, the signal red from 85, as the terminal monitor turns red.
+    private static readonly BarMeter.Zone[] Pressure = [new(0.7, "var(--CWarning)"), new(0.85, "var(--CSignal)")];
 
     private static string Gb(long mb) => mb >= 1024 ? $"{mb / 1024.0:0.0} GB" : $"{mb:N0} MB";
 

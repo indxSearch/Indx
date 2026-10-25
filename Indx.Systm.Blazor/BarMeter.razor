@@ -59,7 +59,8 @@ else if (Shape == "ring")
             <svg class="indx-barmeter-svg" viewBox="0 0 @Size @Size" width="@Size" height="@Size" aria-hidden="true">
                 @foreach (var line in RingLines())
                 {
-                    <line class="@(line.Lit ? "indx-barmeter-lit" : "indx-barmeter-dim")"
+                    <line class="@(line.Lit ? "indx-barmeter-lit" : line.Zone != null ? "indx-barmeter-zone-bar" : "indx-barmeter-dim")"
+                          style="@(line.Zone != null ? $"stroke: {line.Zone};" : null)"
                           x1="@line.X1" y1="@line.Y1" x2="@line.X2" y2="@line.Y2" />
                 }
             </svg>
@@ -85,6 +86,13 @@ else
             <span class="indx-barmeter-label">@Label</span>
         }
         <div class="indx-barmeter-bars" aria-hidden="true">
+            @if (Zones != null)
+            {
+                @foreach (var z in Zones)
+                {
+                    <div class="indx-barmeter-fill indx-barmeter-zone" style="--zone-from: @((z.From * 100).ToString("0.###", Inv))%; color: @z.Color;"></div>
+                }
+            }
             <div class="indx-barmeter-fill" style="--meter-fill: @(_pct)%;@(_color)"></div>
         </div>
         <div class="indx-barmeter-foot" aria-hidden="true">
@@ -113,8 +121,13 @@ else
     [Parameter] public Func<double, string>? Format { get; set; }
     /// <summary>The ceiling as shown; defaults to "of" and the formatted max.</summary>
     [Parameter] public string? MaxLabel { get; set; }
-    /// <summary>The filled bars' colour, for a level that has become a problem: the signal red past a threshold.</summary>
+    /// <summary>The filled bars' colour, for a level that has become a problem: the signal red past a threshold. Overrides the zones.</summary>
     [Parameter] public string? Color { get; set; }
+    /// <summary>A level from which the meter changes colour: where it starts as a share of Max, 0 to 1, and the colour.</summary>
+    public sealed record Zone(double From, string Color);
+    /// <summary>Levels from which the filled bars change colour: a warning from 70 %, the signal red from 85 %.
+    /// The bars past the level show each zone faintly, so the thresholds can be seen before they are reached.</summary>
+    [Parameter] public IReadOnlyList<Zone>? Zones { get; set; }
     /// <summary>"bar" (default), a row of bars, or "ring", a ring of them.</summary>
     [Parameter] public string Shape { get; set; } = "bar";
     /// <summary>The ring's diameter in pixels; 72 by default, 48 the smallest that holds a value. From 96 the ceiling joins the value in the middle. The row ignores it.</summary>
@@ -133,11 +146,14 @@ else
     private string _pct => (_fraction * 100).ToString(Inv);
     private string _now => Value.ToString(Inv);
     private string _max => Max.ToString(Inv);
-    private string _color => string.IsNullOrEmpty(Color) ? "" : $"color: {Color};";
+    /// <summary>The colour of the zone the level has reached, or none below the first.</summary>
+    private string? ZoneColor(double at) => Zones?.Where(z => at >= z.From).OrderByDescending(z => z.From).FirstOrDefault()?.Color;
+    private string? FillColor => string.IsNullOrEmpty(Color) ? ZoneColor(_fraction) : Color;
+    private string _color => FillColor is { } c ? $"color: {c};" : "";
     private string _ceiling => MaxLabel ?? $"of {Show(Max)}";
     private string Show(double n) => Format != null ? Format(n) : n.ToString("#,0.##");
 
-    private readonly record struct RingLine(bool Lit, string X1, string Y1, string X2, string Y2);
+    private readonly record struct RingLine(bool Lit, string X1, string Y1, string X2, string Y2, string? Zone = null);
 
     // The ring's bars: 2px radial lines from the inner to the outer radius, as many as give a 4px
     // pitch along the middle of the band, the first at the top and the rest clockwise. The filled
@@ -154,7 +170,8 @@ else
             double angle = (-90 + 360.0 * i / count) * Math.PI / 180;
             double cos = Math.Cos(angle), sin = Math.Sin(angle);
             yield return new RingLine(i < filled,
-                F(outer + inner * cos), F(outer + inner * sin), F(outer + outer * cos), F(outer + outer * sin));
+                F(outer + inner * cos), F(outer + inner * sin), F(outer + outer * cos), F(outer + outer * sin),
+                i < filled ? null : ZoneColor((double)i / count));
         }
     }
 

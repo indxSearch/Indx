@@ -50,9 +50,20 @@
     text-align: right;
 }
 
+/* A zone on the track: the bars from the zone's start to the end, faint in its colour, under
+   the fill, so the thresholds are seen before they are reached. */
+.indx-barmeter-zone {
+    clip-path: inset(0 0 0 var(--zone-from, 0%));
+    opacity: 0.35;
+}
+
 @supports (width: round(1px, 2px)) {
     .indx-barmeter-fill {
         clip-path: inset(0 calc(100% - round(var(--meter-fill, 0%), 4px)) 0 0);
+    }
+
+    .indx-barmeter-zone {
+        clip-path: inset(0 0 0 round(var(--zone-from, 0%), 4px));
     }
 }
 
@@ -191,6 +202,11 @@
 
 .indx-barmeter-dim {
     stroke: var(--lv3);
+}
+
+/* A bar past the level inside a zone: the zone's colour, faint. */
+.indx-barmeter-zone-bar {
+    opacity: 0.35;
 }
 
 .indx-barmeter-centre {
