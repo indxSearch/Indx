@@ -27,6 +27,20 @@
     margin: 18px 0;
 }
 
+/* A chart's header: what it shows at the left, its own settings at the right. */
+.stats-chart-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 6px;
+}
+
+.stats-chart-title {
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
 /* The sections' tabs, between the chart and the table they choose. */
 .stats-sections {
     margin-top: 24px;

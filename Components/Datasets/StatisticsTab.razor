@@ -26,8 +26,7 @@ else
        belongs to everything below, the tiles and the chart included, the surface and the period.
        The detail sections are tabs just above their table, further down. *@
     <div class="indx-context-bar">
-        <Tabs Items="WindowItems" Active="@_days.ToString()" ActiveChanged="@(v => SetWindow(v))"
-              Size="micro" Variant="button" AriaLabel="Period" />
+        <SegmentedControl Items="WindowItems" Value="@_days.ToString()" ValueChanged="@(v => SetWindow(v))" AriaLabel="Period" />
         <div class="indx-context-bar-end">
             @* Shown once any search named its surface (?source=, intrface's source prop): the
                numbers below for one surface alone. The changes are the owners', not a surface's,
@@ -93,7 +92,24 @@ else
             <Stat Label="Conversions" Hint="Conversions the storefront reported for results found here."><ValueContent>@N(_overview.Converts)</ValueContent></Stat>
         </StatGroup>
 
-        <Chart Series="_series" Labels="_labels" Type="line" Height="180" Markers="Markers" />
+        @* The window day by day: searches as an area with the selects on it, against a value axis,
+           as a line or as bars. *@
+        <div class="stats-chart-head">
+            <span class="stats-chart-title">Per day</span>
+            <SegmentedControl Items="ChartTypeItems" @bind-Value="_chartType" AriaLabel="Chart type" />
+        </div>
+        <Chart Series="_series" Labels="_labels" Type="@_chartType" Height="180" Markers="Markers" YAxis="right" />
+
+        @* Searches by surface, stacked, once the searches name more than one: the named surfaces
+           in the ink and the pixel patterns, the unnamed rest dim. Only for the whole dataset;
+           with one surface chosen above there is nothing to split. *@
+        @if (_source == null && _bySurface.Count > 1)
+        {
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">Searches by surface</span>
+            </div>
+            <Chart Series="_bySurface" Labels="_labels" Type="bar" Stacked="true" Height="160" YAxis="right" />
+        }
 
         @* The detail sections, one at a time, just above the table they choose: each can carry its
            own view settings, and a phone shows one table rather than five. *@
@@ -492,10 +508,22 @@ else
     private TimeZoneInfo _zone = TimeZoneInfo.Utc;
     private bool _wasActive;
 
-    private static readonly List<Tabs.TabItem> WindowItems =
+    private static readonly List<SegmentedControl.Item> WindowItems =
     [
-        new("7 days", "7"), new("30 days", "30"), new("90 days", "90"),
+        new("7", "7 days"), new("30", "30 days"), new("90", "90 days"),
     ];
+
+    private string _chartType = "line";
+    private static readonly List<SegmentedControl.Item> ChartTypeItems =
+    [
+        new("line", Icon: size => @<Indx.Systm.Blazor.Icons.Graph Size="size" Color="currentColor" />, AriaLabel: "Line"),
+        new("bar", Icon: size => @<Indx.Systm.Blazor.Icons.Analytics Size="size" Color="currentColor" />, AriaLabel: "Bars"),
+    ];
+
+    // The searches per day split by the surface that sent them. The named surfaces are read one
+    // by one (the store filters on a name); the unnamed rest is what is left of the total.
+    private IReadOnlyList<Chart.ChartSeries> _bySurface = [];
+    private static readonly string[] SurfaceFills = ["solid", "hatch", "dots", "checker"];
 
     private bool Empty => _overview.Searches == 0 && _overview.Selects == 0 && _overview.Converts == 0
                           && _topFilters.Count == 0 && _changes.Count == 0 && !HasSearchOrAsk
@@ -566,9 +594,10 @@ else
             }
             _series = new List<Chart.ChartSeries>
             {
-                new("Searches", searches),
+                new("Searches", searches, Fill: "solid"),
                 new("Selects", selects, "var(--CTeal)"),
             };
+            _bySurface = source == null ? BySurface(store, team, ds, fromDay, toDay, days, searches) : [];
             // One step stronger than the searches' grey (--lv4), not a colour: it is a count beside
             // them, and the blue drew the eye from the searches the chart is about.
             if (withCalls) _series = [.. _series, new("Search or ask calls", calls, "var(--lv5)")];
@@ -577,6 +606,30 @@ else
         _label = null;   // the label field may have changed on the Options tab
         _loaded = true;
         await Render();
+    }
+
+    /// <summary>One series per surface that named itself, each the first fill in the ink and the
+    /// patterns after, and the unnamed rest in the dim tone when there is any; empty unless the
+    /// dataset has more than one surface to show.</summary>
+    private List<Chart.ChartSeries> BySurface(StatisticsStore store, string team, string ds, long fromDay, long toDay, int days, double[] total)
+    {
+        var named = _sources.Where(x => x.Source != null && x.Searches > 0).Select(x => x.Source!).ToList();
+        if (named.Count == 0 || (named.Count == 1 && !_sources.Any(x => x.Source == null && x.Searches > 0))) return [];
+        var rest = (double[])total.Clone();
+        var series = new List<Chart.ChartSeries>();
+        for (int n = 0; n < named.Count; n++)
+        {
+            var byDay = store.TimeSeries(team, ds, fromDay, toDay, named[n]).ToDictionary(r => r.Day);
+            var data = new double[days];
+            for (int i = 0; i < days; i++)
+            {
+                data[i] = byDay.GetValueOrDefault(fromDay + i).Searches;
+                rest[i] = Math.Max(0, rest[i] - data[i]);
+            }
+            series.Add(new(named[n], data, Fill: SurfaceFills[n % SurfaceFills.Length]));
+        }
+        if (rest.Any(v => v > 0)) series.Add(new("Unnamed", rest, "var(--lv3)"));
+        return series;
     }
 
     /// <summary>The lists whose rows depend on a section's view settings.</summary>
