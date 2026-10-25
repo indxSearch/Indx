@@ -95,6 +95,13 @@
     background: var(--CLightBlue);
 }
 
+/* The total of a stacked bar, under its parts with a rule between. */
+.indx-chart-tooltip-total {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--lv2);
+}
+
 /* Legend */
 .indx-chart-legend {
     display: flex;

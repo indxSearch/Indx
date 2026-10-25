@@ -87,17 +87,23 @@
                 {
                     var groupW = _cw / _dataLen;
                     const double barGap = 2.0;
-                    var barW = Math.Max((groupW - barGap * (Series.Count + 1)) / Series.Count, 2);
+                    var seriesCount = IsStacked ? 1 : Series.Count;
+                    var barW = Math.Max((groupW - barGap * (seriesCount + 1)) / seriesCount, 2);
                     var bottom = PadTop + _ch;
+                    // Stacked: each series starts where the ones before it ended.
+                    var stackBase = new double[_dataLen];
                     @for (int si = 0; si < Series.Count; si++)
                     {
                         var s = Series[si];
                         var color = PaintOf(s, si);
                         @for (int i = 0; i < s.Data.Count; i++)
                         {
-                            var bx = PadLeft + i * groupW + barGap + si * (barW + barGap);
-                            var by = ToY(s.Data[i]);
-                            var bh = Math.Max(bottom - by, 0);
+                            var bx = IsStacked ? PadLeft + i * groupW + barGap : PadLeft + i * groupW + barGap + si * (barW + barGap);
+                            var part = IsStacked ? Math.Max(0, s.Data[i]) : s.Data[i];
+                            var from = IsStacked ? stackBase[i] : 0;
+                            if (IsStacked) { stackBase[i] += part; }
+                            var by = ToY(from + part);
+                            var bh = IsStacked ? Math.Max(ToY(from) - by, 0) : Math.Max(bottom - by, 0);
                             <rect x="@F(bx)" y="@F(by)" width="@F(barW)" height="@F(bh)" fill="@color" />
                         }
                     }
@@ -139,6 +145,14 @@
                         <span class="indx-chart-tooltip-dot" style="background:@(s.Color ?? DefaultLineColor);"></span>
                         <span class="indx-chart-tooltip-name">@s.Label</span>
                         <span class="indx-chart-tooltip-value">@FormatValue(tip.Index < s.Data.Count ? s.Data[tip.Index] : 0)</span>
+                    </div>
+                }
+                @if (IsStacked && Series.Count > 1)
+                {
+                    <div class="indx-chart-tooltip-row indx-chart-tooltip-total">
+                        <span class="indx-chart-tooltip-dot" style="visibility: hidden;"></span>
+                        <span class="indx-chart-tooltip-name">Total</span>
+                        <span class="indx-chart-tooltip-value">@FormatValue(tip.Index < _totals.Length ? _totals[tip.Index] : 0)</span>
                     </div>
                 }
                 @if (Markers != null)
@@ -234,6 +248,12 @@
     [Parameter] public Func<double, string>? YFormat { get; set; }
     /// <summary>Levels to read the data against, each a dashed line with its label in a tag at the right.</summary>
     [Parameter] public IReadOnlyList<ChartReference>? References { get; set; }
+    /// <summary>Bars only: the series on top of each other in one bar per label, in series order from
+    /// the baseline, so the bar's height is the total. The tooltip lists each part and the total.</summary>
+    [Parameter] public bool Stacked { get; set; }
+
+    private bool IsStacked => Stacked && Type == "bar";
+    private double[] _totals = Array.Empty<double>();
 
     private bool HasAxis => YAxis is "left" or "right";
     private readonly List<double> _ticks = new();
@@ -286,9 +306,23 @@
         // The range: the data, and any reference, which must be in view to be read against. With
         // an axis the range widens to round ticks, so the top gridline carries a label.
         var all = new List<double>();
-        foreach (var s in Series)
-            foreach (var d in s.Data)
-                if (!double.IsNaN(d) && !double.IsInfinity(d)) all.Add(d);
+        var dataLenAll = Series.Count > 0 ? Series.Max(s => s.Data.Count) : 0;
+        if (IsStacked)
+        {
+            // Stacked, the range is set by the totals per label, not the parts.
+            _totals = new double[dataLenAll];
+            for (int i = 0; i < dataLenAll; i++)
+                foreach (var s in Series)
+                    _totals[i] += i < s.Data.Count ? Math.Max(0, s.Data[i]) : 0;
+            all.AddRange(_totals);
+        }
+        else
+        {
+            _totals = Array.Empty<double>();
+            foreach (var s in Series)
+                foreach (var d in s.Data)
+                    if (!double.IsNaN(d) && !double.IsInfinity(d)) all.Add(d);
+        }
         var refs = (References ?? Array.Empty<ChartReference>()).Select(r => r.Value).Where(double.IsFinite).ToList();
         var maxVal = all.Count > 0 || refs.Count > 0 ? Math.Max(all.Concat(refs).Max(), 0) : 1.0;
         _minVal = Type == "bar"
