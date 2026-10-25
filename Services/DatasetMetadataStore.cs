@@ -5,7 +5,7 @@ using Microsoft.Data.Sqlite;
 namespace IndxServer.Services
 {
     /// <summary>
-    /// Server-owned per-dataset metadata. Holds an owner-authored <c>Description</c> (used by the MCP
+    /// Server-owned per-dataset metadata. Holds an owner-authored <c>Description</c>, the Browse tab's category field and separator, (used by the MCP
     /// <c>describe_dataset</c> tool to give agents domain context) and the declared <c>KeyField</c>
     /// (the JSON field whose value is the document's primary key — see <c>indx_dataset_primary_key.md</c>).
     /// The lib does not persist the key-field name anywhere, so the server owns it and re-applies it
@@ -19,6 +19,15 @@ namespace IndxServer.Services
 
         private readonly ConcurrentDictionary<string, string> _cache = new();
         private readonly ConcurrentDictionary<string, string> _keyFieldCache = new();
+        private readonly ConcurrentDictionary<string, CategorySetting> _categoryCache = new();
+
+        /// <summary>The Browse tab's choice: which facetable field holds the category paths and what
+        /// separates the levels in them; an empty field means not chosen, an empty separator that the
+        /// values are flat, and a null separator that it is detected from the values.</summary>
+        public sealed record CategorySetting(string Field, string? Separator)
+        {
+            public static readonly CategorySetting None = new("", null);
+        }
 
         private static string Key(string teamId, string dataSetName) => $"{teamId}\0{dataSetName}";
         private static string DbPath => IndxServer.Engine.IndxServerInternalApi.SearchDbConnectionString;
@@ -40,6 +49,8 @@ namespace IndxServer.Services
                            DatasetName TEXT NOT NULL,
                            Description TEXT NOT NULL,
                            KeyField    TEXT NOT NULL DEFAULT '',
+                           CategoryField TEXT NOT NULL DEFAULT '',
+                           CategorySeparator TEXT NULL,
                            UpdatedUtc  TEXT NOT NULL,
                            PRIMARY KEY (TeamId, DatasetName)
                        );";
@@ -54,6 +65,16 @@ namespace IndxServer.Services
                     alter.ExecuteNonQuery();
                 }
                 catch (SqliteException) { /* column already exists */ }
+                foreach (var column in new[] { "CategoryField TEXT NOT NULL DEFAULT ''", "CategorySeparator TEXT NULL" })
+                {
+                    try
+                    {
+                        using var alter = conn.CreateCommand();
+                        alter.CommandText = $"ALTER TABLE {Table} ADD COLUMN {column};";
+                        alter.ExecuteNonQuery();
+                    }
+                    catch (SqliteException) { /* column already exists */ }
+                }
             }
             catch (Exception ex)
             {
@@ -161,10 +182,60 @@ namespace IndxServer.Services
             _keyFieldCache.TryRemove(Key(teamId, dataSetName), out _);
         }
 
+        /// <summary>The dataset's category field and separator for the Browse tab; <see cref="CategorySetting.None"/>
+        /// when not chosen. Cached after first read.</summary>
+        public CategorySetting LoadCategory(string teamId, string dataSetName)
+        {
+            return _categoryCache.GetOrAdd(Key(teamId, dataSetName), _ => ReadCategoryFromDb(teamId, dataSetName));
+        }
+
+        private CategorySetting ReadCategoryFromDb(string teamId, string dataSetName)
+        {
+            if (!DbExists()) return CategorySetting.None;
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT CategoryField, CategorySeparator FROM {Table} WHERE TeamId = $t AND DatasetName = $d";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSetName);
+                using var reader = cmd.ExecuteReader();
+                if (!reader.Read()) return CategorySetting.None;
+                return new CategorySetting(reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1));
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to read category setting for {Team}/{Dataset}", teamId, dataSetName);
+                return CategorySetting.None;
+            }
+        }
+
+        /// <summary>Sets the category field and separator and invalidates the cache.</summary>
+        public void SaveCategory(string teamId, string dataSetName, CategorySetting setting)
+        {
+            new Indx.Storage.SqLiteManager(DbPath, createOrOpenDatabase: true); // ensure base schema exists
+            EnsureTable();
+            using var conn = Connection();
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                $@"INSERT INTO {Table} (TeamId, DatasetName, Description, KeyField, CategoryField, CategorySeparator, UpdatedUtc)
+                   VALUES ($t, $d, '', '', $f, $s, $u)
+                   ON CONFLICT(TeamId, DatasetName) DO UPDATE SET CategoryField = $f, CategorySeparator = $s, UpdatedUtc = $u;";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSetName);
+            cmd.Parameters.AddWithValue("$f", setting.Field ?? "");
+            cmd.Parameters.AddWithValue("$s", (object?)setting.Separator ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
+            cmd.ExecuteNonQuery();
+            _categoryCache.TryRemove(Key(teamId, dataSetName), out _);
+        }
+
         /// <summary>Removes a dataset's description (on dataset delete) and invalidates the cache.</summary>
         public void Delete(string teamId, string dataSetName)
         {
-            if (!DbExists()) { _cache.TryRemove(Key(teamId, dataSetName), out _); _keyFieldCache.TryRemove(Key(teamId, dataSetName), out _); return; }
+            if (!DbExists()) { _cache.TryRemove(Key(teamId, dataSetName), out _); _keyFieldCache.TryRemove(Key(teamId, dataSetName), out _); _categoryCache.TryRemove(Key(teamId, dataSetName), out _); return; }
             try
             {
                 using var conn = Connection();
@@ -183,6 +254,7 @@ namespace IndxServer.Services
             {
                 _cache.TryRemove(Key(teamId, dataSetName), out _);
                 _keyFieldCache.TryRemove(Key(teamId, dataSetName), out _);
+                _categoryCache.TryRemove(Key(teamId, dataSetName), out _);
             }
         }
 
@@ -191,8 +263,10 @@ namespace IndxServer.Services
         {
             var description = Load(fromTeamId, dataSetName);
             var keyField = LoadKeyField(fromTeamId, dataSetName);
+            var category = LoadCategory(fromTeamId, dataSetName);
             if (!string.IsNullOrEmpty(description)) Save(toTeamId, dataSetName, description);
             if (!string.IsNullOrEmpty(keyField)) SaveKeyField(toTeamId, dataSetName, keyField);
+            if (category.Field.Length > 0) SaveCategory(toTeamId, dataSetName, category);
             Delete(fromTeamId, dataSetName);
         }
 
@@ -201,8 +275,10 @@ namespace IndxServer.Services
         {
             var description = Load(teamId, dataSetName);
             var keyField = LoadKeyField(teamId, dataSetName);
+            var category = LoadCategory(teamId, dataSetName);
             if (!string.IsNullOrEmpty(description)) Save(teamId, newName, description);
             if (!string.IsNullOrEmpty(keyField)) SaveKeyField(teamId, newName, keyField);
+            if (category.Field.Length > 0) SaveCategory(teamId, newName, category);
             Delete(teamId, dataSetName);
         }
     }
