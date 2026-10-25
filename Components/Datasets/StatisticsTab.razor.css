@@ -6,6 +6,9 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
+    /* Room under the last table: the page's own bottom gutter is the width of a side one, and a
+       table ending that close to the window's edge reads as cut off. */
+    padding-bottom: calc(var(--spacing) * 8);
 }
 
 .stats-intro {
