@@ -1,0 +1,84 @@
+.indx-radial {
+    position: relative;
+    width: var(--radial-size, 240px);
+    height: var(--radial-size, 240px);
+    color: var(--lv6);
+}
+
+.indx-radial-svg {
+    display: block;
+    /* a drag around the face scrubs the tooltip; the page still scrolls */
+    touch-action: pan-y;
+}
+
+/* A guide a sample, from the hollow to the rim, as the ticks of a dial. */
+.indx-radial-guide {
+    stroke: var(--lv2);
+    stroke-width: 0.5px;
+}
+
+/* The start of the period, at the top. */
+.indx-radial-start {
+    stroke: var(--lv4);
+    stroke-width: 1px;
+    stroke-dasharray: 2 2;
+}
+
+/* The bars, 2px as the BarMeter's or thinner with many samples, in the series colour; the
+   hovered one in the ink and never thinner than 2px, so it can be seen. */
+.indx-radial-bar {
+    stroke: currentColor;
+    stroke-width: var(--radial-bar, 2px);
+    stroke-linecap: butt;
+}
+
+.indx-radial-hovered {
+    stroke: var(--lv8);
+    stroke-width: 2px;
+}
+
+.indx-radial-centre {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    pointer-events: none;
+}
+
+/* The tooltip: the Chart's, at the bar's end, to its right or its left past the middle. */
+.indx-radial-tooltip {
+    position: absolute;
+    transform: translateY(-50%);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    background: var(--lv0);
+    border: 1px solid var(--lv2);
+    padding: 4px 8px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.indx-radial-tooltip-left {
+    transform: translate(-100%, -50%);
+}
+
+.indx-radial-tooltip-label {
+    font: var(--text-2xs);
+    color: var(--lv4);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.indx-radial-tooltip-value {
+    font: var(--text-xs);
+    font-weight: var(--med);
+    color: var(--lv7);
+    font-variant-numeric: tabular-nums;
+}
