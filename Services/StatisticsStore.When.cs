@@ -89,6 +89,36 @@ SELECT c.Timestamp / {Quarter} AS Q, COUNT(*) FROM {CountedSearches(LiveWhereFor
         /// raw rows, as far back as they are kept; the daily tables hold only the sum of positions.
         /// For one surface, the selects whose search came from it.
         /// </summary>
+        /// <summary>
+        /// Counted selects in [fromDay, toDay] by the dataset's local hour of the day, for the clock
+        /// beside the searches' hours; placed in local time per quarter of an hour, as
+        /// <see cref="SearchesByWeekHour"/> places the searches.
+        /// </summary>
+        public long[] SelectsByHour(string teamId, string dataSet, long fromDay, long toDay, string? source = null)
+        {
+            const long Quarter = 15 * 60 * 1000;
+            var tz = ZoneOf(teamId, dataSet);
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+SELECT Timestamp / {Quarter} AS Q, COUNT(*) FROM SelectEvents
+ WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $liveFrom AND Timestamp < $toEx AND Counted = 1{EventFromSource("SelectEvents", source)}
+ GROUP BY Q";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$liveFrom", StatisticsDays.Start(tz, fromDay));
+            cmd.Parameters.AddWithValue("$toEx", StatisticsDays.Start(tz, toDay + 1));
+            AddSource(cmd, source);
+            var hours = new long[24];
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var local = TimeZoneInfo.ConvertTimeFromUtc(DateTimeOffset.FromUnixTimeMilliseconds(r.GetInt64(0) * Quarter).UtcDateTime, tz);
+                hours[local.Hour] += r.GetInt64(1);
+            }
+            return hours;
+        }
+
         public PositionStat SelectPositions(string teamId, string dataSet, long fromDay, long toDay, string? source = null)
         {
             var tz = ZoneOf(teamId, dataSet);

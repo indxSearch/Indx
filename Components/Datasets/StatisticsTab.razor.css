@@ -154,6 +154,11 @@
 .stats-overview-item .stats-chart-head { margin-top: 0; margin-bottom: 0; }
 .stats-overview-item .stats-help { margin-bottom: 6px; }
 
+/* The clock, centred in its third; the busiest hour's tile in the hollow. */
+.stats-clock { display: flex; justify-content: center; }
+::deep .stats-clock-centre { text-align: center; }
+::deep .stats-clock-centre .indx-stat-value { font: var(--text-lg); font-weight: 300; }
+
 /* The Search or ask pictures, between the tiles and the tables. */
 .stats-ask-panels { margin: 6px 0 10px; }
 

@@ -146,6 +146,27 @@ else
             </div>
         }
 
+        @* The day's rhythm: the window's searches by hour of the day round a clock, the selects
+           laid over them, the busiest hour in the centre. The heatmap says which day and hour; the
+           clock says the shape of a day at a glance. *@
+        @if (_weekHour is { Total: > 0 } clockWeek)
+        {
+            var hours = HourTotals(clockWeek);
+            int busiest = Array.IndexOf(hours, hours.Max());
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">The day's rhythm</span>
+            </div>
+            <p class="stats-help">Searches by hour of the day round the clock, selections over them.</p>
+            <div class="stats-clock">
+                <RadialChart SeriesList="@(new List<RadialChart.Series> { new("Searches", hours.Select(h => (double)h).ToArray()), new("Selects", (_hourSelects ?? new long[24]).Select(h => (double)h).ToArray(), "var(--CTeal)") })"
+                             Labels="ClockLabels" Size="220" Format="@((v, i) => v.ToString("N0"))" AriaLabel="Searches and selections by hour of the day">
+                    <Centre><Stat Label="Busiest" Value="@($"{busiest:00}:00")" Class="stats-clock-centre" /></Centre>
+                </RadialChart>
+            </div>
+            </div>
+        }
+
         @* Searches by surface, the window day by day stacked by the surface that sent them: the
            named ones in the ink and the patterns, the unnamed rest dim. Only for the whole dataset
            (one surface chosen above leaves nothing to split) and once there is more than one. *@
@@ -175,6 +196,19 @@ else
 
         @* Languages: the language of the page each search came from, as the storefront reports
            it, the searches that named none as the unnamed rest. *@
+        @* The search profile: six shares on one scale, and the window before this one as a second
+           shape when the raw rows still reach it, so a change is the shape moving. *@
+        @if (_profile is { } profile)
+        {
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">Search profile</span>
+            </div>
+            <p class="stats-help">@(_profileBefore != null ? $"This window against the {_days} days before it." : "The shape of search in this window: each axis a share of the searches.")</p>
+            <RadarChart Axes="ProfileAxes" Series="ProfileSeries(profile, _profileBefore)" Size="220" Max="1" Format="@(v => $"{v * 100:0}%")" AriaLabel="Search profile" />
+            </div>
+        }
+
         @if (_locales.Count > 0 && _locales.Any(l => l.Locale != null))
         {
             <div class="stats-overview-item">
@@ -691,6 +725,9 @@ else
     // The searches per day split by the surface that sent them. The named surfaces are read one
     // by one (the store filters on a name); the unnamed rest is what is left of the total.
     private WeekHourStat? _weekHour;
+    private long[]? _hourSelects;
+    private SearchProfile? _profile;
+    private SearchProfile? _profileBefore;   // the window before this one, when the raw rows reach that far
     private PositionStat? _positions;
     private TypingStat? _typing;
     private List<LocaleStat> _locales = [];
@@ -759,6 +796,21 @@ else
     }
 
     private static readonly string[] WeekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    private static readonly string[] ClockLabels = Enumerable.Range(0, 24).Select(h => h.ToString("00")).ToArray();
+    private static long[] HourTotals(WeekHourStat week)
+    {
+        var hours = new long[24];
+        for (int d = 0; d < 7; d++) for (int h = 0; h < 24; h++) hours[h] += week.Searches[d, h];
+        return hours;
+    }
+    private static readonly IReadOnlyList<RadarChart.Axis> ProfileAxes = SearchProfile.AxisLabels.Select(l => new RadarChart.Axis(l)).ToList();
+    private static List<RadarChart.RadarSeries> ProfileSeries(SearchProfile now, SearchProfile? before)
+    {
+        var list = new List<RadarChart.RadarSeries> { new("This window", now.Values) };
+        if (before != null) list.Add(new("Before", before.Values, "var(--lv4)"));
+        return list;
+    }
+
     private static readonly IReadOnlyList<Heatmap.Label> HourLabels =
         [new(0, "00"), new(6, "06"), new(12, "12"), new(18, "18"), new(23, "23")];
     private static readonly IReadOnlyList<Heatmap.Label> WeekdayLabels =
@@ -871,8 +923,19 @@ else
             // Raw rows only, so no further back than they are kept.
             long rawFrom = Math.Max(fromDay, toDay - Stats.RetentionDays + 1);
             _weekHour = store.SearchesByWeekHour(team, ds, rawFrom, toDay, source);
+            _hourSelects = store.SelectsByHour(team, ds, rawFrom, toDay, source);
             _positions = store.SelectPositions(team, ds, rawFrom, toDay, source);
             _typing = store.Typing(team, ds, rawFrom, toDay, source);
+            _profile = SearchProfile.Build(_overview, _typing, _positions);
+            // The window before this one, the same length, for the radar's second shape: only while
+            // the raw rows (typing, positions) still reach it.
+            _profileBefore = null;
+            if (_profile != null && days * 2 <= Stats.RetentionDays)
+            {
+                long beforeFrom = fromDay - days, beforeTo = fromDay - 1;
+                _profileBefore = SearchProfile.Build(store.Overview(team, ds, beforeFrom, beforeTo, source),
+                    store.Typing(team, ds, beforeFrom, beforeTo, source), store.SelectPositions(team, ds, beforeFrom, beforeTo, source));
+            }
             _locales = store.Locales(team, ds, rawFrom, toDay, source);
             _dayHour = days == 7 ? DayHourGroups(store.SearchesByDayHour(team, ds, fromDay, toDay, source), fromDay, toDay) : null;
             _bySurface = source == null ? BySurface(store, team, ds, fromDay, toDay, days, searches) : [];
