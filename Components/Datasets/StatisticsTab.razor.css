@@ -46,6 +46,14 @@
     color: var(--lv7);
 }
 
+/* The window's totals after the chart's title, in the label tone. */
+.stats-chart-totals {
+    margin-left: 10px;
+    font: var(--text-xs);
+    font-weight: var(--book, 350);
+    color: var(--lv5);
+}
+
 /* The sections' tabs, between the chart and the table they choose. */
 .stats-sections {
     margin-top: 24px;
