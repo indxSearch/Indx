@@ -1,28 +1,39 @@
 .browse-tab { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
 
-.browse-toolbar { align-items: center; }
+.browse-toolbar { align-items: center; flex-wrap: wrap; }
 .browse-label { color: var(--lv5); font: var(--text-xs); }
-.browse-toolbar-end { margin-left: auto; display: flex; align-items: center; gap: 12px; }
-
-.browse-health { display: flex; gap: 24px; flex-wrap: wrap; }
+.browse-toolbar-end { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 
 .browse-note { color: var(--lv5); font: var(--text-sm); margin: 0; }
 
-/* The canvas and the chosen category's panel side by side; the canvas bounded in height, since a
-   branch of fifty opened makes it tall, and scrolling inside it. */
-.browse-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 340px;
-    gap: 16px;
-    align-items: start;
+/* The stage: the canvas across the width and as tall as the window leaves, scrolling inside;
+   the chosen category's panel floats over its right edge. */
+.browse-stage { position: relative; }
+.browse-stage ::deep .indx-tree-canvas,
+.browse-stage ::deep .indx-tree-list-wrap {
+    height: calc(100vh - var(--header-height) - 150px);
+    min-height: 360px;
+    overflow: auto;
 }
-.browse-canvas ::deep .indx-tree-canvas { max-height: 70vh; }
-.browse-canvas ::deep .indx-tree-list-wrap { max-height: 70vh; overflow: auto; }
 
-::deep .browse-panel { padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+::deep .browse-panel {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 340px;
+    max-height: calc(100% - 24px);
+    overflow: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+.browse-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
 .browse-panel-title { font: var(--text-lg); color: var(--lv8); }
 .browse-panel-path { font: var(--text-xs); color: var(--lv5); margin-top: 2px; word-break: break-word; }
 .browse-stats { display: flex; gap: 16px; flex-wrap: wrap; }
+.browse-figures { display: flex; flex-direction: column; gap: 4px; }
+.browse-figure { display: inline-flex; align-items: center; gap: 6px; font: var(--text-xs); color: var(--lv5); }
 .browse-actions { display: flex; gap: 8px; }
 .browse-products-title { font: var(--text-xs); color: var(--lv5); text-transform: uppercase; letter-spacing: 0.05em; }
 .browse-products { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
@@ -31,5 +42,5 @@
 .browse-product-key { color: var(--lv4); font: var(--text-xs); font-family: var(--font-mono); flex: none; }
 
 @media (max-width: 900px) {
-    .browse-grid { grid-template-columns: minmax(0, 1fr); }
+    ::deep .browse-panel { position: static; width: auto; max-height: none; margin-top: 12px; }
 }

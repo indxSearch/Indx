@@ -1,11 +1,13 @@
-@* The dataset's categories as a tree: one facetable field read as paths ("Apparel > Shoes >
-   Running shoes"), drawn on a TreeCanvas with the products in each category counted, and the
-   chosen category's products beside it. For a catalogue, where the picture of the hierarchy
-   says what the data holds and what is thin. The field and the separator are the dataset's
-   choice, kept in the metadata store; the tree is read from the engine's own facet histogram
-   (an empty search with facets on, which the engine caches), only while the dataset is Ready,
-   off the circuit thread and with a timeout, and never wakes a sleeping dataset. The tree lists
-   categories, never products: those come twenty at a time for the chosen one. *@
+@* The dataset's categories as a tree, across the width: a hierarchy group (fields that each hold
+   a level, "category.department › section › type") or a path field ("Apparel > Shoes > Running
+   shoes") drawn on a TreeCanvas with the products in each category counted. The chosen category's
+   products float in a panel over the canvas. Sources are found from the field configuration and
+   one facet read, so the picker offers only what draws a tree. A path field's histogram is the
+   engine's cached empty search with facets; a group's comes from a pass over the documents. Both
+   run off the circuit thread with a timeout, only while the dataset is Ready, never waking one.
+   The tree lists categories, never products: those come twenty at a time for the chosen one.
+   Marks on a node (a boost rule, never selected, never purchased in the statistics window) are
+   quiet: the figures are Observr's business, the tree is for seeing the catalogue. *@
 @using System.Text.Json
 @using Indx.Api
 @using IndxServer.Services
@@ -17,25 +19,24 @@
 @if (!Active) { return; }
 
 <div class="browse-tab">
-    @{
-        var facetable = FacetableFields();
-        var fieldOptions = facetable.Select(f => new SelectField.SelectOption(f.FieldName, f.FieldName)).ToList();
+    @if (_sources == null)
+    {
+        <p class="browse-note">@(_error ?? "Reading the fields…")</p>
     }
-    @if (facetable.Count == 0)
+    else if (_sources.Count == 0)
     {
         <Alert Variant="info">
-            <Title>No facetable field to browse</Title>
-            <Description>The tree is read from a field's facet values. Mark the field that holds the category, such as <code>product_type</code> or <code>google_product_category</code>, <strong>Facetable</strong> under Field configuration, then come back here.</Description>
+            <Title>No hierarchy to browse</Title>
+            <Description>The tree is read from a facetable field whose values are paths, such as <code>product_type</code> with "Furniture > Chairs > Office chairs", or from fields that each hold a level, such as <code>category.department</code> and <code>category.section</code>. Mark such fields <strong>Facetable</strong> under Field configuration, then come back here.</Description>
         </Alert>
     }
     else
     {
         <div class="indx-list-toolbar browse-toolbar">
-            <span class="browse-label">Field</span>
-            <SelectField Size="micro" Variant="ghost" Options="fieldOptions" Value="@Field" ValueChanged="OnFieldChanged" aria-label="Category field" />
-            @if (Ctx.IsEditor)
+            <SelectField Size="micro" Variant="ghost" Options="SourceOptions" Value="@_source?.Key" ValueChanged="OnSourceChanged" aria-label="Hierarchy" />
+            @if (Ctx.IsEditor && _source is { IsGroup: false })
             {
-                <span class="browse-label">Levels</span>
+                <span class="browse-label">Separator</span>
                 <SelectField Size="micro" Variant="ghost" Options="SeparatorOptions" Value="@SeparatorValue" ValueChanged="OnSeparatorChanged" aria-label="Level separator" />
             }
             @if (_tree != null)
@@ -48,10 +49,12 @@
                 @if (_tree != null)
                 {
                     <span class="indx-list-toolbar-end">@_tree.Nodes.ToString("N0") categories, @(_tree.Depth) level@(_tree.Depth == 1 ? "" : "s")</span>
-                }
-                @if (_health != null)
-                {
-                    <SegmentedControl Size="micro" AriaLabel="Show" Value="@_only" ValueChanged="OnOnlyChanged" Items="ShowItems()" />
+                    @if (_tree.Depth > 1)
+                    {
+                        <span class="browse-label">Open to</span>
+                        <SegmentedControl Size="micro" AriaLabel="Open to level" Value="@_openDepth.ToString()" ValueChanged="@(v => _openDepth = int.Parse(v))" Items="DepthItems()" />
+                    }
+                    <SegmentedControl Size="micro" AriaLabel="Zoom" Value="@_zoom" ValueChanged="@(v => _zoom = v)" Items="_zooms" />
                 }
                 <SegmentedControl Size="micro" AriaLabel="View" @bind-Value="_view" Items="_views" />
             </div>
@@ -69,60 +72,31 @@
         {
             <Alert Variant="info">
                 <Title>Too many values to draw</Title>
-                <Description><code>@Field</code> has more than @CategoryHierarchy.MaxValues.ToString("N0") distinct values. A category field has hundreds; this one looks like a name or a code. Choose another field above.</Description>
+                <Description>@_source!.Label has more than @CategoryHierarchy.MaxValues.ToString("N0") distinct paths. A category tree has hundreds; this looks like a name or a code. Choose another hierarchy above.</Description>
             </Alert>
         }
         else if (_tree != null)
         {
-            @if (_tree.Separator == null && _tree.Depth == 1 && _separator == null)
-            {
-                <p class="browse-note">No level separator was found in the values, so the categories are shown flat. If the field uses one, choose it under Levels.</p>
-            }
             @if (_tree.Cut > 0)
             {
                 <p class="browse-note">@_tree.Cut.ToString("N0") path@(_tree.Cut == 1 ? "" : "s") deeper than @CategoryHierarchy.MaxDepth levels @(_tree.Cut == 1 ? "is" : "are") cut at level @CategoryHierarchy.MaxDepth.</p>
             }
-            @if (_health != null)
-            {
-                var counts = _health.Count(_tree);
-                <div class="browse-health">
-                    <Stat Label="Boosted" Value="@counts.Boosted.ToString("N0")" Icon="DatasetIcons.Boost" />
-                    @if (_health.AnySelects)
-                    {
-                        <Stat Label="@($"Never selected in {Stats.RetentionDays} days")" Value="@counts.NeverSelected.ToString("N0")" Icon="DatasetIcons.NeverSelected" />
-                    }
-                    else
-                    {
-                        <Stat Label="Never selected" Value="no selections recorded yet" />
-                    }
-                    @if (_health.AnyConverts)
-                    {
-                        <Stat Label="@($"Never purchased in {Stats.RetentionDays} days")" Value="@counts.NeverPurchased.ToString("N0")" Icon="DatasetIcons.NeverPurchased" />
-                    }
-                    else
-                    {
-                        <Stat Label="Never purchased" Value="no conversions recorded yet" />
-                    }
-                </div>
-            }
-            <div class="browse-grid">
-                <div class="browse-canvas">
-                    <TreeCanvas Roots="_nodes" Selected="@_selected" SelectedChanged="OnSelected" View="@_view" Visible="VisiblePredicate" AriaLabel="@($"Categories of {Ctx.Name} by {Field}")" />
-                </div>
-                <Surface Class="browse-panel">
-                    @if (_selectedNode == null)
-                    {
-                        <p class="browse-note">Choose a category to see its products.</p>
-                    }
-                    else
-                    {
-                        var n = _selectedNode;
+            <div class="browse-stage">
+                <TreeCanvas Roots="_nodes" Selected="@_selected" SelectedChanged="OnSelected" View="@_view" Visible="VisiblePredicate"
+                            Zoom="@ZoomFactor" OpenDepth="@_openDepth" AriaLabel="@($"Categories of {Ctx.Name} by {_source!.Label}")" />
+                @if (_selectedNode != null)
+                {
+                    var n = _selectedNode;
+                    <Surface Class="browse-panel">
                         <div class="browse-panel-head">
-                            <div class="browse-panel-title">@n.Label</div>
-                            @if (_tree.Separator != null && n.Id.Contains(_tree.Separator))
-                            {
-                                <div class="browse-panel-path">@n.Id</div>
-                            }
+                            <div>
+                                <div class="browse-panel-title">@n.Label</div>
+                                @if (n.Id.Contains(Separator))
+                                {
+                                    <div class="browse-panel-path">@n.Id</div>
+                                }
+                            </div>
+                            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.No" AriaLabel="Close" @onclick="@(() => { _selected = null; _selectedNode = null; _products = null; })" />
                         </div>
                         <div class="browse-stats">
                             <Stat Label="Products" Value="@n.Count.ToString("N0")" />
@@ -132,22 +106,13 @@
                                 <Stat Label="Subcategories" Value="@n.Children.Count.ToString("N0")" />
                             }
                         </div>
-                        @if (_health != null)
+                        @if (_health != null && (_health.IsBoosted(n.Id) || _health.AnySelects || _health.AnyConverts))
                         {
                             var f = _health.FiguresOf(n.Id);
-                            <div class="browse-stats">
-                                @if (_health.IsBoosted(n.Id))
-                                {
-                                    <Stat Label="Boost rule" Value="active" Icon="DatasetIcons.Boost" />
-                                }
-                                @if (_health.AnySelects)
-                                {
-                                    <Stat Label="@($"Selected, {Stats.RetentionDays} days")" Value="@(f.Selects == 0 ? "never" : $"{f.Selects:N0} on {f.SelectedProducts:N0} products")" Icon="@(f.Selects == 0 ? DatasetIcons.NeverSelected : null)" />
-                                }
-                                @if (_health.AnyConverts)
-                                {
-                                    <Stat Label="@($"Purchased, {Stats.RetentionDays} days")" Value="@(f.Converts == 0 ? "never" : $"{f.Converts:N0} on {f.PurchasedProducts:N0} products")" Icon="@(f.Converts == 0 ? DatasetIcons.NeverPurchased : null)" />
-                                }
+                            <div class="browse-figures">
+                                @if (_health.IsBoosted(n.Id)) { <span class="browse-figure">@DatasetIcons.Boost(12) boosted by a rule</span> }
+                                @if (_health.AnySelects) { <span class="browse-figure">@(f.Selects == 0 ? "never selected" : $"{f.Selects:N0} selections") in @Stats.RetentionDays days</span> }
+                                @if (_health.AnyConverts) { <span class="browse-figure">@(f.Converts == 0 ? "never purchased" : $"{f.Converts:N0} purchases") in @Stats.RetentionDays days</span> }
                             </div>
                         }
                         @if (Ctx.IsEditor && IsFilterable)
@@ -159,7 +124,7 @@
                         <div class="browse-products-title">Products in this category</div>
                         @if (!IsFilterable)
                         {
-                            <p class="browse-note">Mark <code>@Field</code> Filterable under Field configuration to list the products here, and to boost a category.</p>
+                            <p class="browse-note">Mark @(_source!.IsGroup ? "the group's fields" : $"{_source.Key}") Filterable under Field configuration to list the products here, and to boost a category.</p>
                         }
                         else if (_products == null)
                         {
@@ -182,8 +147,8 @@
                                 <p class="browse-note">The first @_products.Count of @n.Count.ToString("N0").</p>
                             }
                         }
-                    }
-                </Surface>
+                    </Surface>
+                }
             </div>
         }
     }
@@ -196,6 +161,7 @@
     private const string Flat = "flat";
 
     private static readonly SegmentedControl.Item[] _views = { new("tree", "Tree"), new("list", "List") };
+    private static readonly SegmentedControl.Item[] _zooms = { new("50", "50%"), new("75", "75%"), new("100", "100%") };
     private static readonly SelectField.SelectOption[] SeparatorOptions =
     {
         new("Detect", Detect),
@@ -211,97 +177,43 @@
     private sealed record Product(long Key, string Title);
 
     private string _view = "tree";
+    private string _zoom = "100";
+    private int _openDepth = 2;
     private DatasetMetadataStore.CategorySetting? _setting;
-    private string? _field;
-    private string? _separator;          // null detects, "" is flat
+    private IReadOnlyList<CategorySource>? _sources;
+    private CategorySource? _source;
+    private string? _separator;          // path fields: null detects, "" is flat
     private CategoryHierarchy.Tree? _tree;
     private IReadOnlyList<TreeCanvas.Node> _nodes = Array.Empty<TreeCanvas.Node>();
     private Dictionary<string, CategoryHierarchy.Node> _byId = new();
     private bool _declined;
     private bool _reading;
     private string? _error;
-    private object? _readFor;            // the saved field configuration the tree was read under
+    private object? _readFor;            // the saved field configuration the sources were found under
     private string? _selected;
     private CategoryHierarchy.Node? _selectedNode;
     private IReadOnlyList<Product>? _products;
     private readonly LatestOnly _reads = new();
     private readonly LatestOnly _productReads = new();
     private CategoryHealth? _health;
-    private string _only = "all";
     private string _filter = "";
     private HashSet<string>? _nameMatches;   // node ids whose label the filter finds; null when no filter
     private readonly FieldNameFilter _names = new();
-
-    /// <summary>The name filter, as the field configuration's: a small engine over the labels, so a
-    /// typo still finds the category, plus a plain substring match. A match on a label lights
-    /// that node; the tree keeps the way down to it.</summary>
-    private Task OnFilterChanged(string? text)
-    {
-        _filter = text ?? "";
-        if (_filter.Trim().Length == 0) { _nameMatches = null; }
-        else
-        {
-            var all = _nodes.SelectMany(Flatten).ToList();
-            var labels = all.Select(n => n.Label).Distinct(StringComparer.Ordinal).ToList();
-            var hit = _names.Match(labels, _filter);
-            _nameMatches = all.Where(n => hit.Contains(n.Label)).Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
-        }
-        return OnOnlyChanged(_only);
-    }
 
     private static readonly TreeCanvas.Mark BoostedMark = new(DatasetIcons.Boost, "Boosted by a rule");
     private static readonly TreeCanvas.Mark NeverSelectedMark = new(DatasetIcons.NeverSelected, "Never selected in the statistics window");
     private static readonly TreeCanvas.Mark NeverPurchasedMark = new(DatasetIcons.NeverPurchased, "Never purchased in the statistics window");
 
-    private List<SegmentedControl.Item> ShowItems()
-    {
-        var items = new List<SegmentedControl.Item> { new("all", "All"), new("boosted", "Boosted", DatasetIcons.Boost) };
-        if (_health!.AnySelects) items.Add(new("never-selected", "Never selected", DatasetIcons.NeverSelected));
-        if (_health.AnyConverts) items.Add(new("never-purchased", "Never purchased", DatasetIcons.NeverPurchased));
-        return items;
-    }
-
-    private Func<TreeCanvas.Node, bool>? VisiblePredicate
-    {
-        get
-        {
-            Func<TreeCanvas.Node, bool>? mark = _only == "all" || _health == null ? null : _only switch
-            {
-                "boosted" => n => _health.IsBoosted(n.Id),
-                "never-selected" => n => _health.IsNeverSelected(n.Id),
-                "never-purchased" => n => _health.IsNeverPurchased(n.Id),
-                _ => null,
-            };
-            var names = _nameMatches;
-            if (names == null) return mark;
-            if (mark == null) return n => names.Contains(n.Id);
-            return n => names.Contains(n.Id) && mark(n);
-        }
-    }
-
-    /// <summary>A filter changes what is in view, so the chosen category follows: the first match,
-    /// or none when the chosen one is still in view.</summary>
-    private Task OnOnlyChanged(string value)
-    {
-        _only = value;
-        var visible = VisiblePredicate;
-        if (visible == null || _selectedNode != null && visible(ToNode(_selectedNode))) return Task.CompletedTask;
-        var first = _nodes.SelectMany(Flatten).FirstOrDefault(visible);
-        return first != null ? OnSelected(first.Id) : Task.CompletedTask;
-    }
-
-    private static IEnumerable<TreeCanvas.Node> Flatten(TreeCanvas.Node n)
-    {
-        yield return n;
-        if (n.Children != null) foreach (var c in n.Children) foreach (var d in Flatten(c)) yield return d;
-    }
-
-    private string? Field => _field;
+    private double ZoomFactor => int.Parse(_zoom) / 100.0;
+    private string Separator => _source is { IsGroup: true } ? CategorySource.GroupSeparator : _tree?.Separator ?? "\0";
     private string SeparatorValue => _separator == null ? Detect : _separator == "" ? Flat : _separator;
-    private bool IsFilterable => Ctx.SavedFields?.FirstOrDefault(f => f.FieldName == _field)?.Filterable == true;
+    private bool IsFilterable => _source != null && _source.Fields.All(f => Ctx.SavedFields?.FirstOrDefault(x => x.FieldName == f)?.Filterable == true);
+    private List<SelectField.SelectOption> SourceOptions => _sources?.Select(s => new SelectField.SelectOption(s.Label, s.Key)).ToList() ?? new();
 
-    private List<FieldProxy> FacetableFields() =>
-        Ctx.SavedFields?.Where(f => f.Facetable == true).ToList() ?? new();
+    private List<SegmentedControl.Item> DepthItems() =>
+        Enumerable.Range(1, Math.Min(_tree?.Depth ?? 1, CategoryHierarchy.MaxDepth)).Select(d => new SegmentedControl.Item(d.ToString(), d.ToString())).ToList();
+
+    private Func<TreeCanvas.Node, bool>? VisiblePredicate => _nameMatches is { } names ? n => names.Contains(n.Id) : null;
 
     protected override void OnInitialized()
     {
@@ -313,37 +225,54 @@
     {
         if (!Active) return;
         _setting ??= Metadata.LoadCategory(Ctx.TeamId, Ctx.Name);
-        var facetable = FacetableFields();
-        if (facetable.Count == 0) return;
-        if (_field == null)
-        {
-            // The dataset's choice when it still is facetable; else the first field that looks like
-            // a category, else the first facetable one.
-            var saved = facetable.FirstOrDefault(f => f.FieldName == _setting.Field);
-            var likely = facetable.FirstOrDefault(f => f.FieldName.Contains("categor", StringComparison.OrdinalIgnoreCase) || f.FieldName.Contains("product_type", StringComparison.OrdinalIgnoreCase));
-            _field = (saved ?? likely ?? facetable[0]).FieldName;
-            _separator = saved != null ? _setting.Separator : null;
-        }
-        // Read on first show, and again after the field configuration is saved: a facet's
-        // values do not change with it, but which fields are facetable does.
-        if (_tree == null && !_reading && _error == null || !ReferenceEquals(_readFor, Ctx.SavedFields))
-            _ = ReadAsync();
+        // Found on first show, and again after the field configuration is saved.
+        if (Ctx.SavedFields != null && !ReferenceEquals(_readFor, Ctx.SavedFields) && !_reading)
+            _ = FindSourcesAsync();
     }
 
     private void Invalidate()
     {
-        _tree = null; _declined = false; _error = null; _products = null;
-        _ = ReadAsync();
+        _tree = null; _declined = false; _error = null; _products = null; _sources = null; _readFor = null;
+        _ = FindSourcesAsync();
     }
 
-    private Task OnFieldChanged(string? field)
+    /// <summary>The hierarchies this dataset offers, and the first read of the chosen one: the
+    /// dataset's saved choice when it is still offered, else the first.</summary>
+    private async Task FindSourcesAsync()
     {
-        if (field == null || field == _field) return Task.CompletedTask;
-        _field = field;
+        var fields = Ctx.SavedFields;
+        if (fields == null) return;
+        if (Ctx.EngineState != SystemState.Ready) { _error = "The dataset is not ready."; _sources ??= Array.Empty<CategorySource>(); return; }
+        var ticket = _reads.Begin();
+        _reading = true; _error = null;
+        try
+        {
+            var facets = await Task.Run(() => ReadFacets());
+            if (!_reads.IsCurrent(ticket)) return;
+            _readFor = fields;
+            _sources = CategorySource.Find(fields, facets);
+            _source = _sources.FirstOrDefault(s => s.Key == _setting!.Field) ?? _sources.FirstOrDefault();
+            _separator = _source != null && _source.Key == _setting!.Field ? _setting.Separator : null;
+            _reading = false;
+            if (_source != null) await ReadAsync(facets);
+            else await InvokeAsync(StateHasChanged);
+        }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
+        {
+            if (_reads.IsCurrent(ticket)) { _error = ex.Message; _sources ??= Array.Empty<CategorySource>(); _reading = false; try { await InvokeAsync(StateHasChanged); } catch (ObjectDisposedException) { } }
+        }
+    }
+
+    private Task OnSourceChanged(string? key)
+    {
+        var source = _sources?.FirstOrDefault(s => s.Key == key);
+        if (source == null || source == _source) return Task.CompletedTask;
+        _source = source;
         _separator = null;
         _selected = null; _selectedNode = null; _products = null;
         Remember();
-        return ReadAsync();
+        return ReadAsync(null);
     }
 
     private Task OnSeparatorChanged(string? value)
@@ -351,40 +280,50 @@
         _separator = value == Detect || value == null ? null : value == Flat ? "" : value;
         _selected = null; _selectedNode = null; _products = null;
         Remember();
-        return ReadAsync();
+        return ReadAsync(null);
     }
 
     /// <summary>Keeps the choice for the dataset. Editors only; a viewer's picks live in the tab.</summary>
     private void Remember()
     {
-        if (!Ctx.IsEditor || _field == null) return;
-        try { Metadata.SaveCategory(Ctx.TeamId, Ctx.Name, new DatasetMetadataStore.CategorySetting(_field, _separator)); }
+        if (!Ctx.IsEditor || _source == null) return;
+        try { Metadata.SaveCategory(Ctx.TeamId, Ctx.Name, new DatasetMetadataStore.CategorySetting(_source.Key, _separator)); }
         catch (Exception ex) { Console.WriteLine($"[Browse] could not save the category setting for {Ctx.Name}: {ex.Message}"); }
     }
 
-    private async Task ReadAsync()
+    /// <summary>Reads the chosen hierarchy's histogram and builds the tree and its marks.</summary>
+    private async Task ReadAsync(IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? facets)
     {
-        if (_field == null) return;
+        var source = _source;
+        if (source == null) return;
         if (Ctx.EngineState != SystemState.Ready) { _error = "The dataset is not ready."; return; }
         var ticket = _reads.Begin();
-        var field = _field; var separator = _separator; var readFor = Ctx.SavedFields;
+        var separator = source.IsGroup ? CategorySource.GroupSeparator : _separator;
         _reading = true; _error = null;
         try
         {
-            var values = await Task.Run(() => ReadFacet(field));
+            var values = await Task.Run(() =>
+            {
+                if (source.IsGroup)
+                {
+                    var engine = Ctx.FindEngine();
+                    return engine == null ? null : CategorySource.GroupHistogram(engine, source.Fields);
+                }
+                facets ??= ReadFacets();
+                return facets != null && facets.TryGetValue(source.Key, out var v) ? v : null;
+            });
             if (!_reads.IsCurrent(ticket)) return;
-            _readFor = readFor;
-            if (values == null) { _error = $"No facet values came back for {field}. The field may be empty, or the read timed out."; _tree = null; _health = null; }
+            if (values == null) { _error = $"No values came back for {source.Label}. The field may be empty, or the read timed out."; _tree = null; _health = null; }
             else
             {
                 var tree = CategoryHierarchy.Build(values, separator);
                 _declined = tree == null;
                 _tree = tree;
-                _health = tree == null ? null : await Task.Run(() => ReadHealth(tree, field));
+                _health = tree == null ? null : await Task.Run(() => ReadHealth(tree, source));
                 if (!_reads.IsCurrent(ticket)) return;
-                if (_only != "all" && (_health == null || !ShowItems().Any(i => i.Value == _only))) _only = "all";
                 _byId = new Dictionary<string, CategoryHierarchy.Node>(StringComparer.Ordinal);
                 _nodes = tree == null ? Array.Empty<TreeCanvas.Node>() : tree.Roots.Select(ToNode).ToList();
+                _openDepth = Math.Min(_openDepth, Math.Max(1, tree?.Depth ?? 1));
                 if (_selected != null && _byId.TryGetValue(_selected, out var again)) { _selectedNode = again; _ = ReadProductsAsync(again); }
                 else { _selected = null; _selectedNode = null; _products = null; }
             }
@@ -400,14 +339,13 @@
         }
     }
 
-    /// <summary>The field's histogram over the whole dataset: an empty search with facets on,
-    /// which the engine answers from its cache after the first read. Null when nothing came back.</summary>
-    private IReadOnlyList<KeyValuePair<string, int>>? ReadFacet(string field)
+    /// <summary>Every facetable field's histogram over the whole dataset: an empty search with
+    /// facets on, which the engine answers from its cache after the first read.</summary>
+    private IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? ReadFacets()
     {
         var query = new global::Indx.Http.QueryProxy { Text = string.Empty, MaxNumberOfRecordsToReturn = 1, EnableFacets = true, TimeOutLimitMilliseconds = ReadTimeoutMs };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
-        if (result.Facets == null || !result.Facets.TryGetValue(field, out var values)) return result.DidTimeOut ? null : Array.Empty<KeyValuePair<string, int>>();
-        return values;
+        return result.Facets;
     }
 
     private TreeCanvas.Node ToNode(CategoryHierarchy.Node n)
@@ -426,8 +364,8 @@
     /// <summary>The marks' sources: the saved boost rules, and every document selected or converted
     /// in the statistics window with the categories it is filed under, read from the engine by key.
     /// The window's distinct documents bound the work; a dataset without statistics gets the
-    /// boost marks alone.</summary>
-    private CategoryHealth ReadHealth(CategoryHierarchy.Tree tree, string field)
+    /// boost marks alone. For a group, a document's path is its levels joined.</summary>
+    private CategoryHealth ReadHealth(CategoryHierarchy.Tree tree, CategorySource source)
     {
         var rules = BoostStore.Load(Ctx.TeamId, Ctx.Name);
         var activity = new List<(CategoryHealth.Activity, IReadOnlyList<string>)>();
@@ -438,13 +376,27 @@
             {
                 var zone = store.ZoneOf(Ctx.TeamId, Ctx.Name);
                 long toDay = StatisticsDays.Today(zone);
-                var fields = Ctx.SavedFields ?? Array.Empty<FieldProxy>();
                 foreach (var d in store.TopDocuments(Ctx.TeamId, Ctx.Name, toDay - Stats.RetentionDays, toDay, int.MaxValue))
                 {
                     var json = engine.GetJsonDataOfKey(d.DocumentKey);
                     if (string.IsNullOrEmpty(json)) continue;
                     IReadOnlyList<string> paths;
-                    try { using var doc = JsonDocument.Parse(json); paths = DocumentInspection.Values(doc.RootElement, field); }
+                    try
+                    {
+                        using var doc = JsonDocument.Parse(json);
+                        if (source.IsGroup)
+                        {
+                            var levels = new List<string>();
+                            foreach (var field in source.Fields)
+                            {
+                                var value = DocumentInspection.Values(doc.RootElement, field).FirstOrDefault(v => v.Trim().Length > 0);
+                                if (value == null) break;
+                                levels.Add(value.Trim());
+                            }
+                            paths = [string.Join(CategorySource.GroupSeparator, levels)];
+                        }
+                        else paths = DocumentInspection.Values(doc.RootElement, source.Key);
+                    }
                     catch { continue; }
                     activity.Add((new CategoryHealth.Activity(d.Selects, d.Converts), paths));
                 }
@@ -454,7 +406,31 @@
                 Console.WriteLine($"[Browse] statistics could not be read for {Ctx.Name}: {ex.Message}");
             }
         }
-        return new CategoryHealth(tree, rules, field, DateOnly.FromDateTime(DateTime.Today), activity);
+        // A group's rule is one condition per level; the first field names the boost for the health's purpose.
+        return new CategoryHealth(tree, rules, source.IsGroup ? source.Fields[^1] : source.Key, DateOnly.FromDateTime(DateTime.Today), activity);
+    }
+
+    /// <summary>The name filter, as the field configuration's: a small engine over the labels, so a
+    /// typo still finds the category, plus a plain substring match. A match on a label lights
+    /// that node; the tree keeps the way down to it.</summary>
+    private Task OnFilterChanged(string? text)
+    {
+        _filter = text ?? "";
+        if (_filter.Trim().Length == 0) { _nameMatches = null; return Task.CompletedTask; }
+        var all = _nodes.SelectMany(Flatten).ToList();
+        var labels = all.Select(n => n.Label).Distinct(StringComparer.Ordinal).ToList();
+        var hit = _names.Match(labels, _filter);
+        _nameMatches = all.Where(n => hit.Contains(n.Label)).Select(n => n.Id).ToHashSet(StringComparer.Ordinal);
+        // The chosen category follows the filter: the first match, unless it is still in view.
+        if (_selected != null && _nameMatches.Contains(_selected)) return Task.CompletedTask;
+        var first = all.FirstOrDefault(n => _nameMatches.Contains(n.Id));
+        return first != null ? OnSelected(first.Id) : Task.CompletedTask;
+    }
+
+    private static IEnumerable<TreeCanvas.Node> Flatten(TreeCanvas.Node n)
+    {
+        yield return n;
+        if (n.Children != null) foreach (var c in n.Children) foreach (var d in Flatten(c)) yield return d;
     }
 
     private Task OnSelected(string id)
@@ -465,8 +441,8 @@
         return _selectedNode != null && IsFilterable ? ReadProductsAsync(_selectedNode) : Task.CompletedTask;
     }
 
-    /// <summary>The first products filed under this exact value, by a value filter on the field;
-    /// the engine's own filter, so it needs the field Filterable.</summary>
+    /// <summary>The first products filed under this category, by the engine's own value filters:
+    /// one on the path field, or one per level of a group, which needs the fields Filterable.</summary>
     private async Task ReadProductsAsync(CategoryHierarchy.Node node)
     {
         var ticket = _productReads.Begin();
@@ -485,13 +461,27 @@
         }
     }
 
+    /// <summary>The field and value of each condition that picks this category out.</summary>
+    private List<(string Field, string Value)> ConditionsOf(CategoryHierarchy.Node node)
+    {
+        if (_source is not { IsGroup: true })
+            return [(_source!.Key, node.Id == CategoryHierarchy.NoCategory && node.Label == CategoryHierarchy.NoCategory ? "" : node.Id)];
+        var levels = CategoryHierarchy.Split(node.Id, CategorySource.GroupSeparator);
+        return levels.Select((v, i) => (_source.Fields[Math.Min(i, _source.Fields.Count - 1)], v)).ToList();
+    }
+
     private IReadOnlyList<Product> ReadProducts(CategoryHierarchy.Node node)
     {
         var engine = Ctx.FindEngine();
-        if (engine == null || _field == null) return Array.Empty<Product>();
-        var value = node.Label == CategoryHierarchy.NoCategory && node.Id == CategoryHierarchy.NoCategory ? "" : node.Id;
-        var filter = engine.CreateValueFilter(_field, value, isCaseSensitive: false, out var error);
-        if (filter == null) throw new InvalidOperationException(error ?? "The filter could not be made.");
+        if (engine == null || _source == null) return Array.Empty<Product>();
+        global::Indx.Api.Filter? filter = null;
+        foreach (var (field, value) in ConditionsOf(node))
+        {
+            var one = engine.CreateValueFilter(field, value, isCaseSensitive: false, out var error);
+            if (one == null) throw new InvalidOperationException(error ?? "The filter could not be made.");
+            filter = filter == null ? one : filter & one;
+        }
+        if (filter == null) return Array.Empty<Product>();
         var query = new global::Indx.Http.QueryProxy
         {
             Text = string.Empty, MaxNumberOfRecordsToReturn = ProductsShown, EnableFacets = true,
@@ -525,8 +515,8 @@
     /// <summary>Hands a rule on this category to the Boost rules tab and opens it.</summary>
     private void BoostThis()
     {
-        if (_selectedNode == null || _field == null) return;
-        Ctx.BoostDraft = new DatasetContext.BoostDraftRule(_selectedNode.Label, _field, _selectedNode.Id);
+        if (_selectedNode == null || _source == null) return;
+        Ctx.BoostDraft = new DatasetContext.BoostDraftRule(_selectedNode.Label, ConditionsOf(_selectedNode));
         Ctx.ActiveTab = "boosts";
         Ctx.NotifyChanged();
     }

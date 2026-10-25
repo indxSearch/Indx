@@ -11,6 +11,7 @@
     position: relative;
     padding: 16px;
     box-sizing: content-box;
+    transform-origin: top left;
 }
 
 .indx-tree-edges {

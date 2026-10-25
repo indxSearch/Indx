@@ -26,7 +26,7 @@ else
         {
             <div class="indx-tree-empty">Nothing matches</div>
         }
-        <div class="indx-tree-sheet" style="width: @F(width)px; height: @F(_height)px;" @ref="_sheet">
+        <div class="indx-tree-sheet" style="width: @F(width)px; height: @F(_height)px;@(Zoom == 1 ? "" : $" transform: scale({F(Zoom)}); margin-right: {F(-(width + 32) * (1 - Zoom))}px; margin-bottom: {F(-(_height + 32) * (1 - Zoom))}px;")" @ref="_sheet">
             <svg class="indx-tree-edges" width="@F(width)" height="@F(_height)" aria-hidden="true">
                 @foreach (var p in placed)
                 {
@@ -106,6 +106,11 @@ else
     /// <summary>A filter: only nodes it accepts stay, with the path down to each; an ancestor kept only as
     /// the way down is drawn muted, and a branch holding a match is opened. "Only boosted."</summary>
     [Parameter] public Func<Node, bool>? Visible { get; set; }
+    /// <summary>The canvas drawn at this scale, 1 by default: 0.5 shows twice the tree in the same room.</summary>
+    [Parameter] public double Zoom { get; set; } = 1;
+    /// <summary>When set or changed, the tree is opened to this many levels and closed below: 1 shows the
+    /// roots, 2 their children. Null leaves the opening to the component.</summary>
+    [Parameter] public int? OpenDepth { get; set; }
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? Class { get; set; }
 
@@ -139,9 +144,18 @@ else
     private IJSObjectReference? _module;
     private bool _disposed;
 
+    private int? _openedTo;
+
     protected override void OnParametersSet()
     {
         _expanded ??= new HashSet<string>(DefaultExpanded ?? Roots.Select(r => r.Id));
+        if (OpenDepth is { } depth && depth != _openedTo)
+        {
+            _openedTo = depth;
+            _expanded = new HashSet<string>();
+            void Open(Node n, int d) { if (d < depth - 1 && n.Children is { Count: > 0 }) { _expanded.Add(n.Id); foreach (var c in n.Children) Open(c, d + 1); } }
+            foreach (var r in Roots) Open(r, 0);
+        }
         _path = new HashSet<string>();
         foreach (var r in Roots) Walk(r, new List<string>());
         // The tree after the filter: a node stays when it matches or a descendant does; one that
@@ -280,7 +294,8 @@ else
             bool changed = false;
             foreach (var (id, w) in widths)
             {
-                if (w > 0 && (!_measured.TryGetValue(id, out var old) || Math.Abs(old - w) >= 1)) { _measured[id] = w; changed = true; }
+                var unscaled = Math.Ceiling(w / Zoom);
+                if (w > 0 && (!_measured.TryGetValue(id, out var old) || Math.Abs(old - unscaled) >= 1)) { _measured[id] = unscaled; changed = true; }
             }
             if (changed) StateHasChanged();
         }
