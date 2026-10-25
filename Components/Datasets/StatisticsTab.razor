@@ -100,23 +100,54 @@ else
         </div>
         <Chart Series="_series" Labels="_labels" Type="@_chartType" Height="180" Markers="Markers" YAxis="right" />
 
-        @* Searches by surface, stacked, once the searches name more than one: the named surfaces
-           in the ink and the pixel patterns, the unnamed rest dim. Only for the whole dataset;
-           with one surface chosen above there is nothing to split. *@
-        @if (_source == null && _bySurface.Count > 1)
-        {
-            <div class="stats-chart-head">
-                <span class="stats-chart-title">Searches by surface</span>
-            </div>
-            <Chart Series="_bySurface" Labels="_labels" Type="bar" Stacked="true" Height="160" YAxis="right" />
-        }
-
         @* The detail sections, one at a time, just above the table they choose: each can carry its
            own view settings, and a phone shows one table rather than five. *@
         <div class="stats-sections">
-            <Tabs Items="SectionItems" Active="@_section" ActiveChanged="@(v => _section = v ?? "queries")"
+            <Tabs Items="SectionItems" Active="@_section" ActiveChanged="@(v => _section = v ?? "overview")"
                   Scrollable AriaLabel="Statistics sections" />
         </div>
+
+        @if (_section == "overview")
+        {
+            @* A third each, as the stat tiles above: stretched across the page the heatmap and the
+               row looked lost. No surface under them: the heatmap's empty cells are the Base tone. *@
+            <div class="stats-overview">
+        @* When people search: the week by hour in the dataset's own time zone, a day per row and
+           an hour per column, a cell's tone its searches. Nights, weekends and the evening peak
+           show at a glance (25 Oct 2026; the Overview section, first, in the place searches by surface had: the
+           surface select above narrows this as it does the rest). *@
+        @if (_weekHour is { Total: > 0 } week)
+        {
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">When people search</span>
+            </div>
+            <p class="stats-help">@WeekHourSummary(week)@(Stats.RetentionDays < _days ? $" From the last {Stats.RetentionDays} days, as far back as single searches are kept." : "")</p>
+            <Heatmap Values="WeekHourCells(week)" Rows="7" ColumnLabels="HourLabels" RowLabels="WeekdayLabels"
+                     Format="@((v, i) => $"{WeekdayNames[i % 7]} {i / 7:00}:00-{(i / 7 + 1) % 24:00}:00: {N((long)v)} {(v == 1 ? "search" : "searches")}")"
+                     AriaLabel="Searches by weekday and hour" Cell="9" />
+            </div>
+        }
+
+        @* Which result is chosen: the clicks by the position of what was clicked. Most on the first
+           says the ranking puts the right thing on top; many from far down, that it can do better. *@
+        @if (_positions is { Total: > 0 } positions)
+        {
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">Which result is chosen</span>
+            </div>
+            <p class="stats-help">The first result in @Pct(positions.First, positions.Total) of @N(positions.Total) clicks@(positions.BelowTen > 0 ? $", and one below the tenth in {Pct(positions.BelowTen, positions.Total)}" : "").</p>
+            <BarMeter Segments="PositionSegments(positions)" Labels="legend" Format="@(v => Pct((long)v, positions.Total))" />
+            </div>
+        }
+
+            </div>
+            @if (_weekHour is not { Total: > 0 } && _positions is not { Total: > 0 })
+            {
+                <p class="stats-empty">No searches with text in this period.</p>
+            }
+        }
 
         @if (_section == "queries")
         {
@@ -401,7 +432,7 @@ else
     private OverviewStat _overview;
     private List<QueryStat> _topQueries = [];
     private List<QueryStat> _fuzzy = [];
-    private string _section = "queries";
+    private string _section = "overview";
     private long _fromDay, _toDay;
 
     // Each section's view settings. They live as long as the tab does; a new window keeps them.
@@ -489,6 +520,7 @@ else
     /// warning, and the badge and the marks are the same thing. Over 99 it says 99+.</summary>
     private List<Tabs.TabItem> SectionItems =>
     [
+        new("Overview", "overview", DatasetIcons.Statistics),
         new("Top queries", "queries", DatasetIcons.TopQueries),
         new("Fuzzy search", "fuzzy", DatasetIcons.FuzzySearch),
         new("Top documents", "documents", DatasetIcons.TopDocuments),
@@ -522,8 +554,46 @@ else
 
     // The searches per day split by the surface that sent them. The named surfaces are read one
     // by one (the store filters on a name); the unnamed rest is what is left of the total.
-    private IReadOnlyList<Chart.ChartSeries> _bySurface = [];
-    private static readonly string[] SurfaceFills = ["solid", "hatch", "dots", "checker"];
+    private WeekHourStat? _weekHour;
+    private PositionStat? _positions;
+
+    private static readonly string[] WeekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    private static readonly IReadOnlyList<Heatmap.Label> HourLabels =
+        [new(0, "00"), new(6, "06"), new(12, "12"), new(18, "18"), new(23, "23")];
+    private static readonly IReadOnlyList<Heatmap.Label> WeekdayLabels =
+        [new(0, "Mon"), new(1, "Tue"), new(2, "Wed"), new(3, "Thu"), new(4, "Fri"), new(5, "Sat"), new(6, "Sun")];
+
+    /// <summary>The grid as the Heatmap reads it: column by column (an hour each), top to bottom
+    /// (Monday to Sunday).</summary>
+    private static IReadOnlyList<double?> WeekHourCells(WeekHourStat week)
+    {
+        var cells = new double?[7 * 24];
+        for (int hour = 0; hour < 24; hour++)
+            for (int day = 0; day < 7; day++)
+                cells[hour * 7 + day] = week.Searches[day, hour];
+        return cells;
+    }
+
+    /// <summary>The busiest hour of the week, and how much of the searching is at night.</summary>
+    private static string WeekHourSummary(WeekHourStat week)
+    {
+        int bestDay = 0, bestHour = 0;
+        long night = 0;
+        for (int day = 0; day < 7; day++)
+            for (int hour = 0; hour < 24; hour++)
+            {
+                if (week.Searches[day, hour] > week.Searches[bestDay, bestHour]) (bestDay, bestHour) = (day, hour);
+                if (hour < 6) night += week.Searches[day, hour];
+            }
+        long weekend = 0;
+        for (int hour = 0; hour < 24; hour++) weekend += week.Searches[5, hour] + week.Searches[6, hour];
+        return $"Busiest on {WeekdayNames[bestDay]}s from {bestHour:00}:00. {Pct(night, week.Total)} of searches are between 00:00 and 06:00, {Pct(weekend, week.Total)} at the weekend.";
+    }
+
+    private static IReadOnlyList<BarMeter.Segment> PositionSegments(PositionStat p) =>
+    [
+        new("1st", p.First), new("2nd", p.Second), new("3rd", p.Third), new("4th to 10th", p.FourToTen), new("Below 10th", p.BelowTen),
+    ];
 
     private bool Empty => _overview.Searches == 0 && _overview.Selects == 0 && _overview.Converts == 0
                           && _topFilters.Count == 0 && _changes.Count == 0 && !HasSearchOrAsk
@@ -597,7 +667,10 @@ else
                 new("Searches", searches, Fill: "solid"),
                 new("Selects", selects, "var(--CTeal)"),
             };
-            _bySurface = source == null ? BySurface(store, team, ds, fromDay, toDay, days, searches) : [];
+            // Raw rows only, so no further back than they are kept.
+            long rawFrom = Math.Max(fromDay, toDay - Stats.RetentionDays + 1);
+            _weekHour = store.SearchesByWeekHour(team, ds, rawFrom, toDay, source);
+            _positions = store.SelectPositions(team, ds, rawFrom, toDay, source);
             // One step stronger than the searches' grey (--lv4), not a colour: it is a count beside
             // them, and the blue drew the eye from the searches the chart is about.
             if (withCalls) _series = [.. _series, new("Search or ask calls", calls, "var(--lv5)")];
@@ -606,30 +679,6 @@ else
         _label = null;   // the label field may have changed on the Options tab
         _loaded = true;
         await Render();
-    }
-
-    /// <summary>One series per surface that named itself, each the first fill in the ink and the
-    /// patterns after, and the unnamed rest in the dim tone when there is any; empty unless the
-    /// dataset has more than one surface to show.</summary>
-    private List<Chart.ChartSeries> BySurface(StatisticsStore store, string team, string ds, long fromDay, long toDay, int days, double[] total)
-    {
-        var named = _sources.Where(x => x.Source != null && x.Searches > 0).Select(x => x.Source!).ToList();
-        if (named.Count == 0 || (named.Count == 1 && !_sources.Any(x => x.Source == null && x.Searches > 0))) return [];
-        var rest = (double[])total.Clone();
-        var series = new List<Chart.ChartSeries>();
-        for (int n = 0; n < named.Count; n++)
-        {
-            var byDay = store.TimeSeries(team, ds, fromDay, toDay, named[n]).ToDictionary(r => r.Day);
-            var data = new double[days];
-            for (int i = 0; i < days; i++)
-            {
-                data[i] = byDay.GetValueOrDefault(fromDay + i).Searches;
-                rest[i] = Math.Max(0, rest[i] - data[i]);
-            }
-            series.Add(new(named[n], data, Fill: SurfaceFills[n % SurfaceFills.Length]));
-        }
-        if (rest.Any(v => v > 0)) series.Add(new("Unnamed", rest, "var(--lv3)"));
-        return series;
     }
 
     /// <summary>The lists whose rows depend on a section's view settings.</summary>

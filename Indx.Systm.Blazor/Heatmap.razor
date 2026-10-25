@@ -15,22 +15,33 @@
             }
         </div>
     }
-    <div class="indx-heatmap-grid" role="img" aria-label="@AriaLabel">
-        @{
-            int columns = (Values.Count + Rows - 1) / Rows;
-            double top = Max ?? Values.Where(v => v.HasValue).Select(v => v!.Value).DefaultIfEmpty(0).Max();
-        }
-        @for (int i = 0; i < columns * Rows; i++)
-        {
-            var v = i < Values.Count ? Values[i] : null;
-            if (v == null)
+    @{
+        int columns = (Values.Count + Rows - 1) / Rows;
+        double top = Max ?? Values.Where(v => v.HasValue).Select(v => v!.Value).DefaultIfEmpty(0).Max();
+    }
+    <div class="indx-heatmap-grid-wrap" @onmouseleave="() => _hover = null">
+        <div class="indx-heatmap-grid" role="img" aria-label="@AriaLabel">
+            @for (int i = 0; i < columns * Rows; i++)
             {
-                <span class="indx-heatmap-gap"></span>
-                continue;
+                var v = i < Values.Count ? Values[i] : null;
+                if (v == null)
+                {
+                    <span class="indx-heatmap-gap"></span>
+                    continue;
+                }
+                int level = LevelOf(v.Value, top);
+                var index = i;
+                <span class="indx-heatmap-cell @(_hover == i ? "indx-heatmap-hovered" : "")" style="@(level > 0 ? $"background: {Levels[level - 1]};" : null)"
+                      @onmouseover="@(Format != null ? () => _hover = index : null)"></span>
             }
-            int level = LevelOf(v.Value, top);
-            <span class="indx-heatmap-cell" style="@(level > 0 ? $"background: {Levels[level - 1]};" : null)"
-                  title="@(Format != null ? Format(v.Value, i) : null)"></span>
+        </div>
+        @* The hovered cell's tooltip, beside it: at the right, or at the left near the far edge. *@
+        @if (_hover is { } h && Format != null && h < Values.Count && Values[h] is { } hv)
+        {
+            int col = h / Rows, row = h % Rows;
+            bool rightHalf = col > columns / 2.0;
+            <div class="indx-heatmap-tooltip @(rightHalf ? "indx-heatmap-tooltip-left" : "")"
+                 style="top: @(row * Pitch + Cell / 2.0)px; left: @(rightHalf ? col * Pitch - 6 : col * Pitch + Cell + 6)px;">@Format(hv, h)</div>
         }
     </div>
     @if (ColumnLabels != null)
@@ -60,13 +71,14 @@
     [Parameter] public IReadOnlyList<Label>? RowLabels { get; set; }
     /// <summary>A cell's side in pixels; 6 by default, with a 2px gap.</summary>
     [Parameter] public int Cell { get; set; } = 6;
-    /// <summary>A cell's title on hover, from the value and the cell's index. Nothing by default.</summary>
+    /// <summary>What a cell says on hover, in a tooltip beside it, from the value and the cell's index. Nothing by default.</summary>
     [Parameter] public Func<double, int, string>? Format { get; set; }
     /// <summary>A name for assistive technology: "Days woken, last six months".</summary>
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? Class { get; set; }
 
     private int Pitch => Cell + 2;
+    private int? _hover;
 
     // From the empty tone up to the ink in four steps.
     private static readonly string[] Levels = { "var(--lv3)", "var(--lv4)", "var(--lv5)", "var(--lv8)" };

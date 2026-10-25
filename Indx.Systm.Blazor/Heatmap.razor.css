@@ -3,9 +3,15 @@
     display: inline-grid;
     grid-template-columns: auto;
     gap: 4px;
-    font: var(--text-xs);
+    font: var(--text-2xs);
     color: var(--lv5);
     font-variant-numeric: tabular-nums;
+}
+
+/* The grid and its tooltip share a box, so the tooltip is placed by the cell's grid position. */
+.indx-heatmap-grid-wrap {
+    position: relative;
+    width: max-content;
 }
 
 .indx-heatmap--rows {
@@ -24,6 +30,30 @@
 
 .indx-heatmap-cell {
     background: var(--lv2);
+}
+
+/* The hovered cell, outlined a pixel out so the tone under it still reads. */
+.indx-heatmap-hovered {
+    outline: 1px solid var(--lv5);
+    outline-offset: 1px;
+}
+
+/* The tooltip: the Chart's, beside the cell, centred on it. */
+.indx-heatmap-tooltip {
+    position: absolute;
+    transform: translateY(-50%);
+    background: var(--lv0);
+    border: 1px solid var(--lv2);
+    padding: 4px 8px;
+    font: var(--text-xs);
+    color: var(--lv7);
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.indx-heatmap-tooltip-left {
+    transform: translate(-100%, -50%);
 }
 
 .indx-heatmap-gap {

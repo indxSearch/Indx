@@ -27,18 +27,20 @@
     margin: 18px 0;
 }
 
-/* A chart's header: what it shows at the left, its own settings at the right. */
+/* A chart's header: a small title at the left, its own settings at the right, air under it. */
 .stats-chart-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
-    margin-top: 6px;
+    margin-top: 10px;
+    margin-bottom: 8px;
 }
 
 .stats-chart-title {
-    font: var(--text-xs);
-    color: var(--lv5);
+    font: var(--text-sm);
+    font-weight: var(--med);
+    color: var(--lv7);
 }
 
 /* The sections' tabs, between the chart and the table they choose. */
@@ -129,3 +131,26 @@
 
 /* Beside a section's controls while its list reloads: the rows stay until the new ones land. */
 .stats-view-busy { display: inline-flex; align-items: center; gap: 6px; color: var(--lv4); font: var(--text-xs); }
+
+/* The Overview section: a third each, as the stat tiles; one under the other on a phone. */
+.stats-overview {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 24px;
+    align-items: start;
+}
+
+.stats-overview-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+    padding-top: 8px;
+}
+
+.stats-overview-item .stats-chart-head { margin-top: 0; margin-bottom: 0; }
+.stats-overview-item .stats-help { margin-bottom: 6px; }
+
+@media (max-width: 900px) {
+    .stats-overview { grid-template-columns: minmax(0, 1fr); }
+}
