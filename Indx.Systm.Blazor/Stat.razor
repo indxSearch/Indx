@@ -1,17 +1,22 @@
 @* Port of indx-systm Stat: one number with its label, on the Base surface tone. A count, a KPI, a
    state (pass a Chip as ValueContent, or a word with an Icon). Put several in a StatGroup. *@
 
-@if (Figure != null)
-{
-    <div class="indx-stat indx-stat--figured @Class">
-        <span class="indx-stat-figure">@Figure</span>
-        <span class="indx-stat-text">@Text</span>
-    </div>
-}
-else
-{
-    <div class="indx-stat @Class">@Text</div>
-}
+@* With a figure the label stays on top, where every tile has it; the figure sits under it with
+   the value and foot beside. *@
+<div class="indx-stat @Class">
+    @LabelFragment
+    @if (Figure != null)
+    {
+        <span class="indx-stat--figured">
+            <span class="indx-stat-figure">@Figure</span>
+            <span class="indx-stat-text">@ValueAndFoot</span>
+        </span>
+    }
+    else
+    {
+        @ValueAndFoot
+    }
+</div>
 
 @code {
     /// <summary>What the number is: "Searches", "Click-through".</summary>
@@ -20,7 +25,7 @@ else
     [Parameter] public RenderFragment? LabelContent { get; set; }
     /// <summary>The number, formatted. Left out when the figure carries it.</summary>
     [Parameter] public string? Value { get; set; }
-    /// <summary>A graphic at the left, the label and foot beside it: a BarMeter ring with the number in it.</summary>
+    /// <summary>A graphic under the label, the value and foot beside it: a BarMeter ring with the number in it.</summary>
     [Parameter] public RenderFragment? Figure { get; set; }
     /// <summary>The value as markup, in place of Value: a chip for a state, a skeleton while it loads.</summary>
     [Parameter] public RenderFragment? ValueContent { get; set; }
@@ -41,7 +46,7 @@ else
     private RenderFragment LabelBody => LabelContent ?? (b => b.AddContent(0, Label));
     private bool HasValue => Value != null || ValueContent != null || Icon != null;
 
-    private RenderFragment Text => @<text>
+    private RenderFragment LabelFragment => @<text>
         @if (!string.IsNullOrEmpty(Hint))
         {
             <Tooltip Content="@Hint"><span class="indx-stat-label indx-stat-label--hint">@LabelBody</span></Tooltip>
@@ -50,6 +55,9 @@ else
         {
             <span class="indx-stat-label">@LabelBody</span>
         }
+    </text>;
+
+    private RenderFragment ValueAndFoot => @<text>
         @if (HasValue)
         {
             <span class="indx-stat-value" style="@(Color != null ? $"color: {Color};" : null)">
