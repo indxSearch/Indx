@@ -110,7 +110,10 @@ else
         @if (_section == "overview")
         {
             @* A third each, as the stat tiles above: stretched across the page the heatmap and the
-               row looked lost. No surface under them: the heatmap's empty cells are the Base tone. *@
+               row looked lost. No surface under them: the heatmap's empty cells are the Base tone.
+               In rows of a height, since the grid aligns to the top and masonry is not shipped:
+               the heatmap, the surface chart and the typing panel across the first row, the two
+               short ones, position and languages, across the second. *@
             <div class="stats-overview">
         @* When people search: the week by hour in the dataset's own time zone, a day per row and
            an hour per column, a cell's tone its searches. Nights, weekends and the evening peak
@@ -129,16 +132,17 @@ else
             </div>
         }
 
-        @* Which result is chosen: the clicks by the position of what was clicked. Most on the first
-           says the ranking puts the right thing on top; many from far down, that it can do better. *@
-        @if (_positions is { Total: > 0 } positions)
+        @* Searches by surface, the window day by day stacked by the surface that sent them: the
+           named ones in the ink and the patterns, the unnamed rest dim. Only for the whole dataset
+           (one surface chosen above leaves nothing to split) and once there is more than one. *@
+        @if (_source == null && _bySurface.Count > 1)
         {
             <div class="stats-overview-item">
             <div class="stats-chart-head">
-                <span class="stats-chart-title">Which result is chosen</span>
+                <span class="stats-chart-title">Searches by surface</span>
             </div>
-            <p class="stats-help">The first result in @Pct(positions.First, positions.Total) of @N(positions.Total) clicks@(positions.BelowTen > 0 ? $", and one below the tenth in {Pct(positions.BelowTen, positions.Total)}" : "").</p>
-            <BarMeter Segments="PositionSegments(positions)" Labels="legend" Format="@(v => Pct((long)v, positions.Total))" />
+            <p class="stats-help">Where the searches came from, day by day: the surface each page names with <code>source</code>.</p>
+            <Chart Series="_bySurface" Labels="_labels" Type="bar" Stacked="true" Height="140" />
             </div>
         }
 
@@ -167,17 +171,16 @@ else
             </div>
         }
 
-        @* Searches by surface, the window day by day stacked by the surface that sent them: the
-           named ones in the ink and the patterns, the unnamed rest dim. Only for the whole dataset
-           (one surface chosen above leaves nothing to split) and once there is more than one. *@
-        @if (_source == null && _bySurface.Count > 1)
+        @* Which result is chosen: the clicks by the position of what was clicked. Most on the first
+           says the ranking puts the right thing on top; many from far down, that it can do better. *@
+        @if (_positions is { Total: > 0 } positions)
         {
             <div class="stats-overview-item">
             <div class="stats-chart-head">
-                <span class="stats-chart-title">Searches by surface</span>
+                <span class="stats-chart-title">Which result is chosen</span>
             </div>
-            <p class="stats-help">Where the searches came from, day by day: the surface each page names with <code>source</code>.</p>
-            <Chart Series="_bySurface" Labels="_labels" Type="bar" Stacked="true" Height="140" />
+            <p class="stats-help">The first result in @Pct(positions.First, positions.Total) of @N(positions.Total) clicks@(positions.BelowTen > 0 ? $", and one below the tenth in {Pct(positions.BelowTen, positions.Total)}" : "").</p>
+            <BarMeter Segments="PositionSegments(positions)" Labels="legend" Format="@(v => Pct((long)v, positions.Total))" />
             </div>
         }
 
