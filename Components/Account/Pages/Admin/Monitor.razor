@@ -130,8 +130,9 @@ else
 
     public void Dispose() => State.Changed -= OnChanged;
 
-    // A warning from 70 percent, the signal red from 85, as the terminal monitor turns red.
-    private static readonly BarMeter.Zone[] Pressure = [new(0.7, "var(--CWarning)"), new(0.85, "var(--CSignal)")];
+    // Cool blue when idle, teal when fine, the warning amber from 70 percent, the signal red from
+    // 85, as the terminal monitor's gauges.
+    private static readonly BarMeter.Zone[] Pressure = [new(0, "var(--CLightBlue)"), new(0.3, "var(--CTeal)"), new(0.7, "var(--CWarning)"), new(0.85, "var(--CSignal)")];
 
     private static string Gb(long mb) => mb >= 1024 ? $"{mb / 1024.0:0.0} GB" : $"{mb:N0} MB";
 
