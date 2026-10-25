@@ -1,0 +1,90 @@
+@* One choice from a few, side by side: a row of equal cells in a hairline frame, one active. For
+   the period of a chart, the interval of a graph, the type of a view: a compact control for a
+   panel's header, where Tabs would be too tall and a Select hides the options. A cell is a word
+   or an icon; the icon-only cell takes an AriaLabel. Arrow keys move between cells. Port of the
+   React SegmentedControl in indx-systm. *@
+<div class="indx-segmented indx-segmented-@Size @(Stretch ? "indx-segmented-stretch" : "") @(Disabled ? "indx-segmented-disabled" : "") @Class"
+     role="radiogroup" aria-label="@AriaLabel" @onkeydown="OnKeyDown">
+    @for (int i = 0; i < Items.Count; i++)
+    {
+        var idx = i;
+        var item = Items[i];
+        var active = item.Value == Value;
+        var off = Disabled || item.Disabled;
+        <button type="button" role="radio" aria-checked="@(active ? "true" : "false")" aria-label="@item.AriaLabel"
+                class="indx-segmented-cell @(active ? "indx-segmented-active" : "") @(item.Icon != null && item.Label == null ? "indx-segmented-icon-only" : "")"
+                tabindex="@(active ? 0 : -1)" disabled="@off" @ref="_cells[idx]"
+                @onclick="() => Choose(item)">
+            @if (item.Icon != null)
+            {
+                <span class="indx-segmented-icon" aria-hidden="true">@item.Icon(IconSize)</span>
+            }
+            @item.Label
+        </button>
+    }
+</div>
+
+@code {
+    /// <summary>A cell: its value, its label and/or icon (drawn at <see cref="IconSize"/>), and for an icon-only cell its name.</summary>
+    public sealed record Item(string Value, string? Label = null, RenderFragment<int>? Icon = null, string? AriaLabel = null, bool Disabled = false);
+
+    /// <summary>A pixl icon's width in a cell: 14, two cells of the 7-wide grid, as in a micro Tab.</summary>
+    public const int IconSize = 14;
+
+    [Parameter, EditorRequired] public IReadOnlyList<Item> Items { get; set; } = Array.Empty<Item>();
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string> ValueChanged { get; set; }
+    /// <summary>"micro" is 22px tall, for a panel header; "default" 28px, beside a micro Button.</summary>
+    [Parameter] public string Size { get; set; } = "micro";
+    /// <summary>Cells share the width equally instead of taking their content's.</summary>
+    [Parameter] public bool Stretch { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    /// <summary>What the choice is: "Period".</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private async Task Choose(Item item)
+    {
+        if (Disabled || item.Disabled || item.Value == Value) return;
+        Value = item.Value;
+        await ValueChanged.InvokeAsync(item.Value);
+    }
+
+    // Arrows move to the next enabled cell and choose it, wrapping; Home and End to the ends. The
+    // chosen cell is the one with tabindex 0, so focus follows the choice on the next render.
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        if (Disabled || Items.Count == 0) return;
+        var from = Items.ToList().FindIndex(it => it.Value == Value);
+        var dir = e.Key is "ArrowRight" or "ArrowDown" ? 1 : e.Key is "ArrowLeft" or "ArrowUp" ? -1 : 0;
+        int to = -1;
+        if (dir != 0)
+        {
+            for (int step = 1; step <= Items.Count; step++)
+            {
+                var i = ((from + dir * step) % Items.Count + Items.Count) % Items.Count;
+                if (!Items[i].Disabled) { to = i; break; }
+            }
+        }
+        else if (e.Key == "Home") to = Items.ToList().FindIndex(it => !it.Disabled);
+        else if (e.Key == "End") to = Items.ToList().FindLastIndex(it => !it.Disabled);
+        if (to < 0 || to == from) return;
+        await Choose(Items[to]);
+        _focusIndex = to;
+    }
+
+    private readonly Dictionary<int, ElementReference> _cells = new();
+    private int _focusIndex = -1;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusIndex < 0) return;
+        var i = _focusIndex;
+        _focusIndex = -1;
+        if (_cells.TryGetValue(i, out var cell))
+        {
+            try { await cell.FocusAsync(); }
+            catch (Exception) { /* the circuit or the element is gone */ }
+        }
+    }
+}

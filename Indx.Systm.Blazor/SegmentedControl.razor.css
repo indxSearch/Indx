@@ -1,0 +1,88 @@
+/* A hairline frame of cells; a hairline between each pair, so the dividers read as one line. */
+.indx-segmented {
+    display: inline-flex;
+    align-items: stretch;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    background: var(--lv0);
+    max-width: 100%;
+}
+
+.indx-segmented-stretch {
+    display: flex;
+}
+
+.indx-segmented-stretch .indx-segmented-cell {
+    flex: 1 1 0;
+    justify-content: center;
+}
+
+.indx-segmented-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    border: none;
+    border-left: 1px solid var(--lv3);
+    background: transparent;
+    color: var(--lv5);
+    font: var(--text-xs);
+    font-weight: var(--med);
+    white-space: nowrap;
+    cursor: pointer;
+    font-variant-numeric: tabular-nums;
+}
+
+.indx-segmented-cell:first-child {
+    border-left: none;
+}
+
+.indx-segmented-cell:hover {
+    color: var(--lv7);
+}
+
+/* The chosen cell: the surface tone under it and the ink on it. */
+.indx-segmented-active,
+.indx-segmented-active:hover {
+    background: var(--lv2);
+    color: var(--lv8);
+}
+
+.indx-segmented-cell:focus-visible {
+    outline: 1px solid var(--lv8);
+    outline-offset: -1px;
+    z-index: 1;
+}
+
+.indx-segmented-cell:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+.indx-segmented-disabled {
+    opacity: 0.6;
+}
+
+.indx-segmented-icon {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.indx-segmented-micro .indx-segmented-cell {
+    height: 22px;
+    padding: 0 8px;
+}
+
+.indx-segmented-micro .indx-segmented-icon-only {
+    padding: 0 6px;
+}
+
+.indx-segmented-default .indx-segmented-cell {
+    height: 28px;
+    padding: 0 10px;
+}
+
+.indx-segmented-default .indx-segmented-icon-only {
+    padding: 0 8px;
+}
