@@ -172,6 +172,11 @@
 
 .stats-typing-figures ::deep .indx-stat-value { font: var(--text-lg); font-weight: 300; }
 
+/* The thirds hold a 220px dial or a 24-column heatmap each; under about 1400px of window (the
+   side column and the gutters take 300) they would touch, so two columns, then one. */
+@media (max-width: 1400px) {
+    .stats-overview { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 900px) {
     .stats-overview { grid-template-columns: minmax(0, 1fr); }
 }
