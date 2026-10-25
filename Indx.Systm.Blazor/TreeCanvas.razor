@@ -1,6 +1,7 @@
 @using System.Globalization
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.JSInterop
+@using Indx.Systm.Blazor.Icons
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 @* A hierarchy as a horizontal tree: a pill a node with its name and a count, children fanned out
@@ -45,11 +46,11 @@ else
                 bool onPath = _path.Contains(n.Id) && !isSelected;
                 bool hasKids = n.Children is { Count: > 0 };
                 <div @key="n.Id" class="indx-tree-slot" style="left: @F(p.X)px; top: @F(p.Y - 15)px;">
-                    <button type="button" role="treeitem" aria-selected="@(isSelected ? "true" : "false")"
-                            aria-expanded="@(hasKids ? (p.Open ? "true" : "false") : null)" aria-level="@(p.Depth + 1)"
-                            data-node="@n.Id"
-                            class="indx-tree-pill @(isSelected ? "indx-tree-pill-selected" : "") @(onPath ? "indx-tree-pill-path" : "") @(n.Muted ? "indx-tree-muted" : "")"
-                            @onclick="() => Select(n.Id)" @onkeydown="e => OnKey(e, p)" @onkeydown:preventDefault="_preventKey">
+                    <div role="treeitem" tabindex="0" aria-selected="@(isSelected ? "true" : "false")"
+                         aria-expanded="@(hasKids ? (p.Open ? "true" : "false") : null)" aria-level="@(p.Depth + 1)"
+                         data-node="@n.Id"
+                         class="indx-tree-pill @(isSelected ? "indx-tree-pill-selected" : "") @(onPath ? "indx-tree-pill-path" : "") @(n.Muted ? "indx-tree-muted" : "")"
+                         @onclick="() => Select(n.Id)" @onkeydown="e => OnKey(e, p)" @onkeydown:preventDefault="_preventKey">
                         <span class="indx-tree-name">@n.Label</span>
                         @if (n.Count is { } count)
                         {
@@ -64,10 +65,11 @@ else
                         }
                         @if (hasKids)
                         {
-                            <span role="button" tabindex="-1" class="indx-tree-toggle" aria-label="@(p.Open ? "Close" : "Open")"
-                                  @onclick="() => Toggle(n.Id)" @onclick:stopPropagation="true">@(p.Open ? "−" : "+")</span>
+                            <span class="indx-tree-toggle" @onclick:stopPropagation="true">
+                                <Button Variant="ghost" Size="micro" tabindex="-1" aria-label="@(p.Open ? "Close" : "Open")" IconLeft="@(p.Open ? MinusIcon : PlusIcon)" @onclick="() => Toggle(n.Id)" />
+                            </span>
                         }
-                    </button>
+                    </div>
                     @if (p.More > 0)
                     {
                         double left = (p.Depth + 1 < _columns.Count ? _columns[p.Depth + 1] : p.X + p.Width + ColumnGap) - p.X;
@@ -90,6 +92,9 @@ else
 
     /// <summary>A mark's icon width: 14, two cells of the 7-wide grid.</summary>
     public const int MarkSize = 14;
+
+    private static readonly RenderFragment<int> PlusIcon = size => @<Plus Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> MinusIcon = size => @<Minus Size="size" Color="currentColor" />;
 
     [Parameter, EditorRequired] public IReadOnlyList<Node> Roots { get; set; } = Array.Empty<Node>();
     /// <summary>The chosen node's id; the path to it is lit.</summary>
@@ -267,6 +272,7 @@ else
             case "ArrowLeft":
                 if (p.Open) { Toggle(p.Node.Id); _preventKey = true; return; }
                 to = p.Parent?.Node.Id; break;
+            case "Enter": case " ": _preventKey = true; await Select(p.Node.Id); return;
             case "Home": to = visible[0]; break;
             case "End": to = visible[^1]; break;
         }
@@ -317,7 +323,9 @@ else
                     <div class="indx-tree-row @(isSelected ? "indx-tree-row-selected" : "") @(n.Muted ? "indx-tree-muted" : "")" style="padding-left: @(8 + depth * 18)px;">
                         @if (hasKids)
                         {
-                            <button type="button" class="indx-tree-disclosure" aria-label="@(open ? "Close" : "Open")" @onclick="() => Toggle(n.Id)">@(open ? "−" : "+")</button>
+                            <span class="indx-tree-disclosure">
+                                <Button Variant="secondary" Size="micro" aria-label="@(open ? "Close" : "Open")" IconLeft="@(open ? MinusIcon : PlusIcon)" @onclick="() => Toggle(n.Id)" />
+                            </span>
                         }
                         else
                         {
