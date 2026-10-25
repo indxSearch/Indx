@@ -1,6 +1,7 @@
 
 .status-heading { margin-top: 8px; margin-bottom: 6px; }
 .status-heading--section { margin-top: 24px; }
+.status-help { font: var(--text-sm); color: var(--lv5); margin: 0 0 10px; }
 .status-heading--observr { display: flex; align-items: center; gap: 8px; margin-top: 32px; margin-bottom: 14px; }
 /* The bar under the heading stands a little further from the cards than the Statistics bar from its tiles. */
 .status-tab ::deep .indx-context-bar { margin-bottom: 16px; }
