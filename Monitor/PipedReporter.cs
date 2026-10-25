@@ -55,6 +55,11 @@ namespace IndxServer.Monitor
             if (p.PrivateMb > 0)
                 sb.Append(Inv, $"priv {p.PrivateMb,7:N0}MB  ");
             sb.Append(Inv, $"ws {p.WorkingSetMb,7:N0}MB  gc {p.Gen0}/{p.Gen1}/{p.Gen2}  ");
+            // The gauges the screen draws as bars, as figures: the process's share of the cores
+            // and resident against what the runtime may use. Left out before the first CPU
+            // reading and where no ceiling is known, rather than a confident 0.
+            if (p.CpuPercent > 0 || p.AvailableMb > 0)
+                sb.Append(Inv, $"cpu {p.CpuPercent,3:0}%  mem {(p.AvailableMb > 0 ? (double)p.WorkingSetMb / p.AvailableMb * 100 : 0),3:0}%  ");
             sb.AppendLine(Inv, $"nat {p.NativeBlocks,6:N0} ({p.NativePoolMb:N0}MB pooled)");
 
             sb.AppendLine("           " + s.Filters.Describe());

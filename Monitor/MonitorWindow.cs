@@ -35,8 +35,10 @@ namespace IndxServer.Monitor
         /// log and in a screenshot someone pastes into an issue.</summary>
         private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-        /// <summary>Rows taken by the header: air, three rows of logo, air.</summary>
-        private const int HeaderHeight = 5;
+        /// <summary>Rows taken by the header: air, three rows of logo, air, three rows of gauges, air.</summary>
+        private const int HeaderHeight = 9;
+        /// <summary>Where the gauges start: under the logo's air.</summary>
+        private const int MetersTop = 5;
         /// <summary>Below these a pane stops being worth having.</summary>
         private const int MinDatasets = 4, MinEvents = 3;
 
@@ -48,6 +50,7 @@ namespace IndxServer.Monitor
         private readonly Label _header = new();
         private readonly Label _filters = new();
         private readonly PixlIconView _stateIcon = new();
+        private readonly MeterView _meters = new();
         private readonly TableView _datasets = new();
         private readonly TableView _events = new();
         private readonly FrameView _datasetsFrame;
@@ -90,6 +93,11 @@ namespace IndxServer.Monitor
             _filters.HotKeySpecifier = NoHotKey;
             // Mirrors the logo: three columns in from the right edge, level with it.
             _stateIcon.X = Pos.AnchorEnd(PixlIcon.Width + 3); _stateIcon.Y = 1;
+
+            // ── Gauges ──
+            // CPU, memory and the search rate as bars and a sparkline, under the figures and
+            // aligned with them, the width of the row less the margins.
+            _meters.X = textLeft; _meters.Y = MetersTop; _meters.Width = Dim.Fill(PixlIcon.Width + 5);
 
             // ── Datasets ──
             // BottomResizable is the divider: dragging it sets an absolute height, which
@@ -148,7 +156,7 @@ namespace IndxServer.Monitor
 
             foreach (var table in new[] { _datasets, _events }) ShowSelection(table);
 
-            Add(logo, heading, _header, _filters, _stateIcon, _datasetsFrame, eventsFrame, reachable, status);
+            Add(logo, heading, _header, _filters, _stateIcon, _meters, _datasetsFrame, eventsFrame, reachable, status);
             _datasetsFrame.FrameChanged += (_, _) => KeepDividerInBounds();
 
             Refresh();
@@ -305,11 +313,13 @@ namespace IndxServer.Monitor
             _header.SetNeedsDraw();
             _filters.SetNeedsDraw();
             _stateIcon.SetNeedsDraw();
+            _meters.SetNeedsDraw();
         }
 
         private void ShowHeader(MonitorSnapshot s)
         {
             var p = s.Process;
+            _meters.Snapshot = s;
             // PrivateMemorySize64 is 0 on Unix, where this runs in a container; a confident 0MB
             // would be worse than leaving the column out.
             string priv = p.PrivateMb > 0 ? string.Create(Inv, $"   priv {p.PrivateMb:N0}MB") : "";
