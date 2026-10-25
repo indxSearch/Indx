@@ -10,6 +10,23 @@
         @if (_containerWidth > 0 && Series.Count > 0)
         {
             <svg width="@F(_containerWidth)" height="@Height" class="indx-chart-svg">
+                @* The pixel patterns a series may be filled with: a 4px tile of cells in its colour. *@
+                @if (Series.Any(s => IsPattern(FillOf(s))))
+                {
+                    <defs>
+                        @for (int si = 0; si < Series.Count; si++)
+                        {
+                            var fill = FillOf(Series[si]);
+                            if (!IsPattern(fill)) { continue; }
+                            <pattern id="@PatternId(si)" width="4" height="4" patternUnits="userSpaceOnUse">
+                                @foreach (var (x, y, w, h) in PatternCells[fill])
+                                {
+                                    <rect x="@x" y="@y" width="@w" height="@h" fill="@ColorOf(Series[si])" />
+                                }
+                            </pattern>
+                        }
+                    </defs>
+                }
                 @* midline *@
                 <line x1="@F(PadLeft)" y1="@F(PadTop + _ch * 0.5)" x2="@F(PadLeft + _cw)" y2="@F(PadTop + _ch * 0.5)"
                       stroke="var(--chart-midline)" stroke-width="0.5" />
@@ -36,6 +53,12 @@
                         var s = Series[si];
                         if (s.Data.Count == 0) { continue; }
                         var color = s.Color ?? DefaultLineColor;
+                        var fill = FillOf(s);
+                        @if (fill != "none" && s.Data.Count > 1)
+                        {
+                            @* The area under the line, down to the baseline (or zero, where the range goes below it). *@
+                            <polygon points="@AreaPoints(s)" fill="@PaintOf(s, si)" fill-opacity="@(fill == "solid" ? F(AreaOpacity) : "1")" stroke="none" />
+                        }
                         <polyline points="@LinePoints(s)" fill="none" stroke="@color" stroke-width="1"
                                   stroke-linejoin="round" stroke-linecap="round" />
                         @for (int i = 0; i < s.Data.Count; i++)
@@ -57,7 +80,7 @@
                     @for (int si = 0; si < Series.Count; si++)
                     {
                         var s = Series[si];
-                        var color = s.Color ?? "var(--chart-bar)";
+                        var color = PaintOf(s, si);
                         @for (int i = 0; i < s.Data.Count; i++)
                         {
                             var bx = PadLeft + i * groupW + barGap + si * (barW + barGap);
@@ -120,10 +143,21 @@
     @if (ShowLegend && Series.Count > 1)
     {
         <div class="indx-chart-legend">
-            @foreach (var s in Series)
+            @for (int li = 0; li < Series.Count; li++)
             {
+                var s = Series[li];
                 <div class="indx-chart-legend-item">
-                    <div class="indx-chart-legend-mark" style="background:@(s.Color ?? DefaultLineColor);"></div>
+                    @if (IsPattern(FillOf(s)))
+                    {
+                        <svg class="indx-chart-legend-swatch" width="12" height="8" aria-hidden="true">
+                            <rect width="12" height="8" fill="@PaintOf(s, li)" />
+                        </svg>
+                    }
+                    else
+                    {
+                        @* The bar tone token lives on the chart frame, so out here a bar's mark takes the line grey. *@
+                        <div class="indx-chart-legend-mark" style="background:@(s.Color ?? DefaultLineColor);"></div>
+                    }
                     <span class="indx-chart-legend-label">@s.Label</span>
                 </div>
             }
@@ -132,8 +166,31 @@
 </div>
 
 @code {
-    /// <summary>One plotted series. <c>Color</c>/<c>HoverColor</c> are CSS colors (e.g. "var(--CTeal)").</summary>
-    public sealed record ChartSeries(string Label, IReadOnlyList<double> Data, string? Color = null, string? HoverColor = null);
+    /// <summary>One plotted series. <c>Color</c>/<c>HoverColor</c> are CSS colors (e.g. "var(--CTeal)").
+    /// <c>Fill</c> is how it is filled, a bar or the area under a line: "solid" is the series colour,
+    /// flat on a bar and faint under a line; "hatch", "dots" and "checker" are drawn in the colour on
+    /// the 2px pixel grid, so two series tell apart in one tone; "none" leaves a line as a line.
+    /// Bars are solid unless told otherwise, a line is none.</summary>
+    public sealed record ChartSeries(string Label, IReadOnlyList<double> Data, string? Color = null, string? HoverColor = null, string? Fill = null);
+
+    // The pixel patterns, each a 4px tile of 1px or 2px cells in the series colour.
+    private static readonly Dictionary<string, (int X, int Y, int W, int H)[]> PatternCells = new()
+    {
+        ["hatch"] = new[] { (0, 3, 1, 1), (1, 2, 1, 1), (2, 1, 1, 1), (3, 0, 1, 1) },
+        ["dots"] = new[] { (0, 0, 2, 2) },
+        ["checker"] = new[] { (0, 0, 2, 2), (2, 2, 2, 2) },
+    };
+
+    /// <summary>The faintness of a solid area under a line, so the midline and other lines show through.</summary>
+    private const double AreaOpacity = 0.14;
+
+    private readonly string _patternId = "indx-chart-" + Guid.NewGuid().ToString("N")[..8];
+    private string PatternId(int si) => $"{_patternId}-{si}";
+    private static bool IsPattern(string fill) => PatternCells.ContainsKey(fill);
+    private string FillOf(ChartSeries s) => s.Fill ?? (Type == "bar" ? "solid" : "none");
+    private string ColorOf(ChartSeries s) => s.Color ?? (Type == "bar" ? "var(--chart-bar)" : DefaultLineColor);
+    /// <summary>What a shape is painted with: the colour, or the series' pattern in that colour.</summary>
+    private string PaintOf(ChartSeries s, int si) => IsPattern(FillOf(s)) ? $"url(#{PatternId(si)})" : ColorOf(s);
 
     [Parameter, EditorRequired] public IReadOnlyList<ChartSeries> Series { get; set; } = Array.Empty<ChartSeries>();
     [Parameter] public string[]? Labels { get; set; }
@@ -237,6 +294,12 @@
             sb.Append(F(ToX(i))).Append(',').Append(F(ToY(s.Data[i])));
         }
         return sb.ToString();
+    }
+
+    private string AreaPoints(ChartSeries s)
+    {
+        var baseY = ToY(Math.Max(_minVal, 0));
+        return $"{F(ToX(0))},{F(baseY)} {LinePoints(s)} {F(ToX(s.Data.Count - 1))},{F(baseY)}";
     }
 
     private static string F(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);

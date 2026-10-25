@@ -115,6 +115,12 @@
     flex-shrink: 0;
 }
 
+/* A patterned series shows its pattern, not a line, so the legend says which bar is which. */
+.indx-chart-legend-swatch {
+    display: block;
+    flex-shrink: 0;
+}
+
 .indx-chart-legend-label {
     font: var(--text-xs);
     color: var(--lv5);
