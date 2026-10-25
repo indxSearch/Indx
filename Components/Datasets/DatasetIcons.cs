@@ -25,6 +25,8 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> NeverSelected = Of<Icons.Ghost>();
         public static readonly RenderFragment<int> NeverPurchased = Of<Icons.EmptyBox>();
         public static readonly RenderFragment<int> Maximize = Of<Icons.Maximize>();
+        public static readonly RenderFragment<int> TreeView = Of<Icons.NodeTree>();
+        public static readonly RenderFragment<int> ListView = Of<Icons.HierarchyList>();
         public static readonly RenderFragment<int> Minimize = Of<Icons.Minimize>();
         public static readonly RenderFragment<int> Delete = Of<Icons.Stop>();
         public static readonly RenderFragment<int> Boost = Of<Icons.Boost>();
