@@ -73,7 +73,7 @@
             var shown = Shown();
             <h3 class="status-heading status-heading--section status-heading--observr"><span class="indx-observr">@DatasetIcons.Observr(14)</span>Observations</h3>
             <div class="indx-context-bar">
-                <Tabs Items="StatusItems" Active="@_view" ActiveChanged="@(v => _view = v ?? Open)" Size="micro" Variant="button" AriaLabel="Findings shown" />
+                <SegmentedControl Items="StatusItems" Value="@_view" ValueChanged="@(v => _view = v ?? Open)" AriaLabel="Findings shown" />
                 <div class="indx-context-bar-end">
                     @if (KindOptions.Count > 1)
                     {
@@ -128,12 +128,12 @@
         .Where(f => _kind == null || KindOf(f) == _kind)
         .ToList();
 
-    private List<Tabs.TabItem> StatusItems
+    private List<SegmentedControl.Item> StatusItems
     {
         get
         {
             var open = _findings.Count(f => f.Status == ObservrFinding.Open);
-            return [new("Open", Open, DatasetIcons.OpenFinding, Badge: open > 0 ? open.ToString() : null, BadgeTone: "info"), new("Archive", Archive, DatasetIcons.Archive)];
+            return [new(Open, "Open", DatasetIcons.OpenFinding, Badge: open > 0 ? open.ToString() : null, BadgeTone: "info"), new(Archive, "Archive", DatasetIcons.Archive)];
         }
     }
 

@@ -67,6 +67,23 @@
     flex-shrink: 0;
 }
 
+/* The badge, as on a Tab: a count that asks for attention, or in the info blue, information. */
+.indx-segmented-badge {
+    display: inline-block;
+    padding: 0 5px;
+    font: var(--text-2xs);
+    font-weight: var(--med);
+    line-height: 14px;
+    color: var(--lv0);
+    background: var(--CSignal);
+    border-radius: var(--radius);
+}
+
+.indx-segmented-badge-info {
+    color: #080809;
+    background: var(--CLightBlue);
+}
+
 .indx-segmented-micro .indx-segmented-cell {
     height: 24px;
     padding: 0 11px;

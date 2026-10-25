@@ -71,7 +71,7 @@
         </StatGroup>
 
         <div class="indx-context-bar tov-bar">
-            <Tabs Items="@ViewItems(openCount)" Active="@_view" ActiveChanged="@(v => _view = v ?? Open)" Size="micro" Variant="button" AriaLabel="Findings shown" />
+            <SegmentedControl Items="@ViewItems(openCount)" Value="@_view" ValueChanged="@(v => _view = v ?? Open)" AriaLabel="Findings shown" />
             <div class="indx-context-bar-end">
                 @if (DatasetOptions.Count > 2)
                 {
@@ -106,10 +106,10 @@
 
     private const string Open = "open", Archive = "archive";
 
-    private static List<Tabs.TabItem> ViewItems(int open) =>
+    private static List<SegmentedControl.Item> ViewItems(int open) =>
     [
-        new("Open", Open, DatasetIcons.OpenFinding, Badge: open > 0 ? open.ToString() : null, BadgeTone: "info"),
-        new("Archive", Archive, DatasetIcons.Archive),
+        new(Open, "Open", DatasetIcons.OpenFinding, Badge: open > 0 ? open.ToString() : null, BadgeTone: "info"),
+        new(Archive, "Archive", DatasetIcons.Archive),
     ];
 
     private static RenderFragment Tile(string text) => @<text>@text</text>;

@@ -21,13 +21,19 @@
                 <span class="indx-segmented-icon" aria-hidden="true">@item.Icon(IconSize)</span>
             }
             @item.Label
+            @if (item.Badge != null)
+            {
+                <span class="indx-segmented-badge @(item.BadgeTone == "info" ? "indx-segmented-badge-info" : null)">@item.Badge</span>
+            }
         </button>
     }
 </div>
 
 @code {
-    /// <summary>A cell: its value, its label and/or icon (drawn at <see cref="IconSize"/>), and for an icon-only cell its name.</summary>
-    public sealed record Item(string Value, string? Label = null, RenderFragment<int>? Icon = null, string? AriaLabel = null, bool Disabled = false);
+    /// <summary>A cell: its value, its label and/or icon (drawn at <see cref="IconSize"/>), for an icon-only cell its name,
+    /// and a badge after the label as on a Tab: a count in the signal red, or "info" blue for information.</summary>
+    public sealed record Item(string Value, string? Label = null, RenderFragment<int>? Icon = null, string? AriaLabel = null, bool Disabled = false,
+        string? Badge = null, string BadgeTone = "signal");
 
     /// <summary>A pixl icon's width in a cell: 14, two cells of the 7-wide grid, as in a micro Tab.</summary>
     public const int IconSize = 14;

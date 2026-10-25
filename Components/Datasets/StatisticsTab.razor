@@ -281,7 +281,7 @@ else
                the visitor chose a result anyway. One of the things Indx does that others do not, so
                the section leads with the finds; "All" adds the searches nothing was chosen from. *@
             <div class="stats-view">
-                <Tabs Items="FuzzyItems" Active="@(_fuzzyAll ? "all" : "selected")" ActiveChanged="SetFuzzyView" Size="micro" Variant="button" AriaLabel="Fuzzy searches shown" />
+                <SegmentedControl Items="FuzzyItems" Value="@(_fuzzyAll ? "all" : "selected")" ValueChanged="SetFuzzyView" AriaLabel="Fuzzy searches shown" />
                 @if (_listsLoading) { <span class="stats-view-busy" aria-live="polite"><Spinner Size="14" /> Loading…</span> }
             </div>
             <p class="stats-help">
@@ -355,7 +355,7 @@ else
                 <Stat Label="Calls" Hint="Calls against the daily budget: each judgement, each question asked and each filter the model made while typing, the console's tester included. On a day the budget ran out, the calls after it were turned away, and visitors saw no offers until midnight UTC."><ValueContent>@N(_askBudget.Calls) <span class="stats-tile-sub">@BudgetLine</span></ValueContent></Stat>
             </StatGroup>
             <div class="stats-view">
-                <Tabs Items="AskViewItems" Active="@_askView" ActiveChanged="@(v => _askView = v ?? "overview")" Size="micro" Variant="button" AriaLabel="Search or ask view" />
+                <SegmentedControl Items="AskViewItems" Value="@_askView" ValueChanged="@(v => _askView = v ?? "overview")" AriaLabel="Search or ask view" />
             </div>
             @if (_askView == "overview")
             {
@@ -582,8 +582,8 @@ else
         ct => Observr().AskLowClickAsync(Ctx.TeamId, Ctx.Name, q, _fromDay, _toDay, ct), () => InvokeAsync(LoadAsync)));
     private void AskChange(ChangeStat c) => Agent.Run(new IndxServer.Services.Observr.AgentAction($"Did this help: {ChangeDescriptions.Describe(c.Kind, c.Summary)}?",
         ct => Observr().AskChangeAsync(Ctx.TeamId, Ctx.Name, c, ct)));
-    private static readonly List<Tabs.TabItem> FuzzyItems =
-        [new("Selected", "selected", DatasetIcons.FuzzySelected), new("All", "all", DatasetIcons.FuzzyAll)];
+    private static readonly List<SegmentedControl.Item> FuzzyItems =
+        [new("selected", "Selected", DatasetIcons.FuzzySelected), new("all", "All", DatasetIcons.FuzzyAll)];
     private static readonly List<SelectField.SelectOption> DocumentOrderOptions =
     [
         new("Most selected", "selects"),

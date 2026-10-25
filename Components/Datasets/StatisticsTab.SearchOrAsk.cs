@@ -42,11 +42,11 @@ namespace IndxServer.Components.Datasets
             HasSearchOrAsk ? [new("Search or ask", "search-or-ask", DatasetIcons.SearchOrAsk)] : [];
 
         // Overview first and the default, the pictures; Questions, what to write next; Offers.
-        private static readonly List<Tabs.TabItem> AskViewItems =
+        private static readonly List<SegmentedControl.Item> AskViewItems =
         [
-            new("Overview", "overview", DatasetIcons.AskOverview),
-            new("Questions", "questions", DatasetIcons.AskQuestions),
-            new("Offers", "offers", DatasetIcons.AskOffers),
+            new("overview", "Overview", DatasetIcons.AskOverview),
+            new("questions", "Questions", DatasetIcons.AskQuestions),
+            new("offers", "Offers", DatasetIcons.AskOffers),
         ];
 
         private void LoadSearchOrAsk(StatisticsStore store, string team, string ds, long fromDay, long toDay, string? source)
