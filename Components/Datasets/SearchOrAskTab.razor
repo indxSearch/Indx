@@ -14,7 +14,6 @@
 @inject SearchOrAskStore Store
 @inject BrowserFiles Files
 @inject SearchOrAskService Service
-@inject SearchOrAskOptions ModelOptions
 @inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
 @inject IndxServer.Services.Observr.ObservrSubscription ObservrSubscription
 @inject IndxServer.Services.Observr.AgentPanelState Agent
@@ -461,8 +460,8 @@
     // First-word times measured on the docs with eight sources (Notes/search-or-ask-server.md).
     private IEnumerable<SelectField.SelectOption> AnswerOptions =>
     [
-        new($"Best quality ({ModelName(ModelOptions.AnswerModel)}), first words in 3 to 5 s", SearchOrAskSettings.BestAnswers),
-        new($"Fast ({ModelName(ModelOptions.FastAnswerModel)}), first words in about 1 s", SearchOrAskSettings.FastAnswers),
+        new($"Best quality ({ModelName(Service.Setup.AnswerModel)}), first words in 3 to 5 s", SearchOrAskSettings.BestAnswers),
+        new($"Fast ({ModelName(Service.Setup.FastAnswerModel)}), first words in about 1 s", SearchOrAskSettings.FastAnswers),
     ];
 
     /// <summary>"anthropic/claude-sonnet-5.5" as "claude-sonnet-5.5": the provider adds nothing here.</summary>

@@ -50,9 +50,14 @@ internal class InstanceSettings
     /// instance needs a model key (Indx:SearchOrAsk:ApiKey).</summary>
     public bool SearchOrAskShown { get; set; } = false;
 
-    /// <summary>The OpenRouter key Search or ask uses, set in the console (Admin, Settings,
-    /// Experimental), so a self-hosted instance needs no server configuration for it. A key in the
-    /// configuration (Indx:SearchOrAsk:ApiKey, or its environment variable) wins over this one.</summary>
+    /// <summary>Search or ask's keys, one per provider (openrouter, openai, anthropic, typesafe,
+    /// compatible), set in the console (Admin, Settings, Experimental), so a self-hosted instance
+    /// needs no server configuration for it. A key in the configuration (Indx:SearchOrAsk:Keys:…)
+    /// wins over the one here for the same provider.</summary>
+    public Dictionary<string, string>? SearchOrAskKeys { get; set; }
+
+    /// <summary>The answer provider's key, as the console saved it before 26 Oct 2026. Read as that
+    /// provider's key; the console moves it into <see cref="SearchOrAskKeys"/> on its next save.</summary>
     public string? SearchOrAskApiKey { get; set; }
 
     /// <summary>The provider choices beside the key (<see cref="SearchOrAsk.SearchOrAskProviderSettings"/>):
@@ -64,6 +69,8 @@ internal class InstanceSettings
     public bool SearchOrAskEuRouting { get; set; }
     public string? SearchOrAskJudgeProvider { get; set; }
     public string? SearchOrAskJudgeApiKey { get; set; }
+    /// <summary>standard or ultrafast: OpenAI's speed tier for the answers.</summary>
+    public string? SearchOrAskAnswerSpeed { get; set; }
     public string? SearchOrAskAnswerModel { get; set; }
     public string? SearchOrAskFastAnswerModel { get; set; }
     public string? SearchOrAskFilterModel { get; set; }

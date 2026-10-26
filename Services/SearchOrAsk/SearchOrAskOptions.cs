@@ -13,17 +13,26 @@ namespace IndxServer.Services.SearchOrAsk
     {
         public const string Section = "Indx:SearchOrAsk";
 
-        /// <summary>The answer provider's key (OpenRouter's, by default).</summary>
+        /// <summary>One key per provider (<c>Keys:OpenRouter</c>, <c>Keys:OpenAi</c>, <c>Keys:Anthropic</c>,
+        /// <c>Keys:TypeSafe</c>, <c>Keys:Compatible</c>): each wins over the console's key for that
+        /// provider, and the rest can still be set in the console.</summary>
+        public Dictionary<string, string>? Keys { get; set; }
+        /// <summary>The answer provider's key, from before keys were kept per provider: read as the
+        /// key of <see cref="Provider"/> (OpenRouter when none is named).</summary>
         public string? ApiKey { get; set; }
-        /// <summary>openrouter, openai or anthropic.</summary>
+        /// <summary>openrouter, openai, anthropic or compatible.</summary>
         public string? Provider { get; set; }
         /// <summary>The OpenAI-compatible endpoint's base URL (…/v1).</summary>
         public string? BaseUrl { get; set; }
-        /// <summary>OpenRouter's EU endpoint, where requests stay in the EU.</summary>
+        /// <summary>Keep the requests in the EU where the provider can: OpenRouter's EU endpoint for
+        /// the answers, OpenAI's EU data residency for everything.</summary>
         public bool? EuRouting { get; set; }
+        /// <summary>standard or ultrafast: OpenAI's speed tier for the answers.</summary>
+        public string? AnswerSpeed { get; set; }
         /// <summary>openrouter or typesafe (Jev), or openai (the Decisions API).</summary>
         public string? JudgeProvider { get; set; }
-        /// <summary>The judge's own key, when its door is not the answer provider's.</summary>
+        /// <summary>The judge's key, from before keys were kept per provider: read as the key of the
+        /// judge's door.</summary>
         public string? JudgeApiKey { get; set; }
 
         /// <summary>Pinned, not an alias: the thresholds were measured on this model, and an alias
@@ -33,16 +42,14 @@ namespace IndxServer.Services.SearchOrAsk
         public string TypeSafeJudgeModel { get; set; } = "jev-1.13.0";
         /// <summary>OpenAI's Decisions API model, when the judge is that instead of Jev.</summary>
         public string DecisionsModel { get; set; } = "gpt-6-luna";
-        /// <summary>The model a dataset's <c>answers: best</c> writes with, the default. Measured on
-        /// the docs (11 Oct 2026): first words after 3.5 to 5 s, about $0.018 an answer.</summary>
-        public string AnswerModel { get; set; } = "anthropic/claude-sonnet-5.5";
-
-        /// <summary>The model for <c>answers: fast</c>: first words after about 1.2 s, about $0.005.</summary>
-        public string FastAnswerModel { get; set; } = "anthropic/claude-haiku-4.5";
-
-        /// <summary>Turns a catalogue visitor's description into filters, as JSON. Haiku kept the source
-        /// record in 40 of 40 descriptions on the school register, in 1.2 to 2 s.</summary>
-        public string FilterModel { get; set; } = "anthropic/claude-haiku-4.5";
+        /// <summary>The OpenRouter models, when the configuration names them; else the console's, else
+        /// <see cref="ModelDefaults"/> (Sonnet for <c>answers: best</c>, first words after 3.5 to 5 s,
+        /// about $0.018 an answer on the docs, 11 Oct 2026; Haiku for <c>answers: fast</c>, about
+        /// 1.2 s and $0.005, and for the filters, which kept the source record in 40 of 40
+        /// descriptions on the school register). Null by default, so the console can choose.</summary>
+        public string? AnswerModel { get; set; }
+        public string? FastAnswerModel { get; set; }
+        public string? FilterModel { get; set; }
 
 
         /// <summary>A judgement later than this is no use to a visitor who has typed on; the
@@ -55,6 +62,6 @@ namespace IndxServer.Services.SearchOrAsk
         public int AskPerMinute { get; set; } = 8;
 
         /// <summary>Whether the configuration alone names a key (the console may still).</summary>
-        public bool Available => !string.IsNullOrWhiteSpace(ApiKey);
+        public bool Available => !string.IsNullOrWhiteSpace(ApiKey) || Keys?.Values.Any(k => !string.IsNullOrWhiteSpace(k)) == true;
     }
 }

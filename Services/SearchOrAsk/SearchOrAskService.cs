@@ -52,15 +52,13 @@ namespace IndxServer.Services.SearchOrAsk
     {
         public bool Shown => settings.Load().SearchOrAskShown;
         public string? ModelKey => settings.Load().SearchOrAskApiKey;
-        public SearchOrAskProviderSettings Providers
-        {
-            get
-            {
-                var s = settings.Load();
-                return new SearchOrAskProviderSettings(s.SearchOrAskProvider, s.SearchOrAskApiKey, s.SearchOrAskBaseUrl, s.SearchOrAskEuRouting,
-                    s.SearchOrAskJudgeProvider, s.SearchOrAskJudgeApiKey, s.SearchOrAskAnswerModel, s.SearchOrAskFastAnswerModel, s.SearchOrAskFilterModel);
-            }
-        }
+        public SearchOrAskProviderSettings Providers => ProvidersOf(settings.Load());
+
+        /// <summary>The console's provider settings as a settings file holds them.</summary>
+        public static SearchOrAskProviderSettings ProvidersOf(InstanceSettings s) =>
+            new(s.SearchOrAskProvider, s.SearchOrAskApiKey, s.SearchOrAskBaseUrl, s.SearchOrAskEuRouting,
+                s.SearchOrAskJudgeProvider, s.SearchOrAskJudgeApiKey, s.SearchOrAskAnswerModel, s.SearchOrAskFastAnswerModel, s.SearchOrAskFilterModel,
+                s.SearchOrAskKeys, s.SearchOrAskAnswerSpeed);
     }
 
     /// <summary>An earlier question and its answer in the same conversation, for a follow-up.</summary>
@@ -178,19 +176,35 @@ namespace IndxServer.Services.SearchOrAsk
                 var answer = await _models.JudgeAsync(state, questions, timeout.Token);
                 return $"it answered{(answer.Cost is { } c ? $" for ${c:0.0000}" : "")}";
             });
-            var answers = Try($"The answers ({s.AnswerModel})", s.AnswersAvailable, async () =>
+            // The answer model as the answers call it: streamed, at the chosen speed, so a tier or a
+            // model the endpoint refuses shows here and not on a visitor's first question.
+            var answers = Try($"The answers ({s.AnswerModel}{(s.AnswerSpeed is { } tier ? ", " + tier : "")})", s.AnswersAvailable, async () =>
             {
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-                timeout.CancelAfter(TimeSpan.FromSeconds(20));
-                var (content, cost) = await _models.CompleteAsync(s.FastAnswerModel, "Reply with the one word OK.", "Ready?", timeout.Token);
-                return $"\"{content.Trim()}\"{(cost is { } c ? $" for ${c:0.0000}" : "")}";
+                timeout.CancelAfter(TimeSpan.FromSeconds(30));
+                var usage = new AnswerUsage();
+                var text = new System.Text.StringBuilder();
+                await foreach (var delta in _models.AnswerAsync(s.AnswerModel, "Reply with the one word OK.", "Ready?", [], usage, timeout.Token))
+                    text.Append(delta);
+                return $"\"{text.ToString().Trim()}\"{(usage.Cost is { } c ? $" for ${c:0.0000}" : "")}";
             });
             return (await judge, await answers);
         }
 
-        /// <summary>Where the key in use comes from, for the console: "configuration", "console" or null.</summary>
+        /// <summary>Where the answer provider's key comes from, for the console: "configuration",
+        /// "console" or null.</summary>
         public string? ModelKeySource =>
-            !string.IsNullOrWhiteSpace(_options.ApiKey) ? "configuration" : ModelKey != null ? "console" : null;
+            ConfiguredKeyHolders.Contains(Setup.Provider) ? "configuration" : ModelKey != null ? "console" : null;
+
+        /// <summary>The providers whose key the configuration holds: the console shows those as set
+        /// there, and keeps the rest editable.</summary>
+        public IReadOnlySet<string> ConfiguredKeyHolders => SearchOrAskSetup.ConfiguredKeys(_options).Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>The choices the configuration makes, which the console then shows and cannot change.</summary>
+        public bool ProviderConfigured => !string.IsNullOrWhiteSpace(_options.Provider);
+        public bool JudgeProviderConfigured => !string.IsNullOrWhiteSpace(_options.JudgeProvider);
+        public bool EuRoutingConfigured => _options.EuRouting != null;
+        public bool AnswerSpeedConfigured => !string.IsNullOrWhiteSpace(_options.AnswerSpeed);
 
         /// <summary>The answer provider's key in use.</summary>
         public string? ModelKey => Setup.AnswerKey;

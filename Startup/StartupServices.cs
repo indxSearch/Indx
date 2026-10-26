@@ -136,6 +136,7 @@ internal static class StartupServices
         // service and the clients alike, so a request sees one consistent choice.
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskSetupProvider>();
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.ISearchOrAskModels, IndxServer.Services.SearchOrAsk.SearchOrAskModelClients>();
+        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskModelLists>();
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskService>();
 
         // Indx Observr (Notes/Anders/observr-plan.md): the instance reaches out with its licence

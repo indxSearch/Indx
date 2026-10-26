@@ -245,15 +245,25 @@ namespace IndxServer.Services.SearchOrAsk
 
         private string ChatCompletions(SearchOrAskSetup s) => s.AnswerBaseUrl + "/chat/completions";
 
+        /// <summary>The reply's length cap, by the name the endpoint reads: OpenAI's own models take
+        /// <c>max_completion_tokens</c> and refuse <c>max_tokens</c>, which every compatible endpoint
+        /// and OpenRouter still read. OpenAI's cap also covers the model's reasoning, so it gets room
+        /// for that on top of the reply.</summary>
+        public static void Limit(SearchOrAskSetup s, JsonObject body, int tokens)
+        {
+            if (s.OpenAiItself) body["max_completion_tokens"] = tokens * 4;
+            else body["max_tokens"] = tokens;
+        }
+
         private async Task<(JsonNode Message, double? Cost)> OpenAiChatAsync(SearchOrAskSetup s, string model, JsonArray messages, JsonArray tools, CancellationToken ct)
         {
             var body = new JsonObject
             {
                 ["model"] = model,
-                ["max_tokens"] = 1500,
                 ["messages"] = messages.DeepClone(),
                 ["tools"] = tools.DeepClone(),
             };
+            Limit(s, body, 1500);
             if (s.ReportsCost) body["usage"] = new JsonObject { ["include"] = true };
             var reply = await OpenAiPostAsync(s, body, ct);
             var message = reply?["choices"]?[0]?["message"] ?? throw new SearchOrAskModelException(502, "No message in the reply");
@@ -265,12 +275,14 @@ namespace IndxServer.Services.SearchOrAsk
             var body = new JsonObject
             {
                 ["model"] = model,
-                ["max_tokens"] = 600,
-                ["temperature"] = 0,
                 ["messages"] = new JsonArray(
                     new JsonObject { ["role"] = "system", ["content"] = system },
                     new JsonObject { ["role"] = "user", ["content"] = user }),
             };
+            Limit(s, body, 600);
+            // A fixed temperature for the filters' JSON, where the endpoint takes one: OpenAI's newer
+            // models answer 400 to anything but their default.
+            if (!s.OpenAiItself) body["temperature"] = 0;
             if (s.ReportsCost) body["usage"] = new JsonObject { ["include"] = true };
             var reply = await OpenAiPostAsync(s, body, ct);
             var content = reply?["choices"]?[0]?["message"]?["content"]?.GetValue<string>() ?? "";
@@ -296,7 +308,6 @@ namespace IndxServer.Services.SearchOrAsk
             {
                 ["model"] = model,
                 ["stream"] = true,
-                ["max_tokens"] = 1500,
                 // The last chunk then carries the usage: OpenRouter's cost in USD, or the tokens an
                 // estimate is made from.
                 ["stream_options"] = new JsonObject { ["include_usage"] = true },
@@ -309,6 +320,8 @@ namespace IndxServer.Services.SearchOrAsk
                     }),
                     new JsonObject { ["role"] = "user", ["content"] = user }]),
             };
+            Limit(s, body, 1500);
+            if (s.AnswerSpeed is { } tier) body["service_tier"] = tier;
             if (s.ReportsCost) body["usage"] = new JsonObject { ["include"] = true };
             using var request = new HttpRequestMessage(HttpMethod.Post, ChatCompletions(s))
             {
