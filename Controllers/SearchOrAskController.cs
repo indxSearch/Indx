@@ -276,15 +276,17 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
-        /// A visitor's verdict on an answer, Indx's own or the site's: <c>helpful</c> true or false,
-        /// and optionally why. The statistics show the share of answers marked helpful. A later
-        /// verdict on the same ask replaces the earlier one. 202.
+        /// A verdict on an answer: <c>helpful</c> true or false, and optionally why. The statistics
+        /// show the share marked helpful. A later verdict on the same ask replaces the earlier one.
+        /// Behind the same instance switch as events/ask, for a site that reports its own: visitors
+        /// rarely press a thumb, so it is not offered as a way to judge answers (26 Oct 2026). 202.
         /// </summary>
+        [ApiExplorerSettings(IgnoreApi = true)]
         [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/events/answer-feedback")]
         public IActionResult AnswerFeedback(string teamName, string dataSetName, [FromBody] AnswerFeedbackRequest request)
         {
-            if (!service.Shown) return NotFound();
+            if (!service.Shown || !service.AnswersElsewhereAllowed) return NotFound();
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
             if (!service.ShownFor(ctx.OwnerKey, dataSetName)) return NotFound();
