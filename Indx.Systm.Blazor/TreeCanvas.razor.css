@@ -1,24 +1,47 @@
-/* The canvas: a frame that scrolls both ways; the sheet inside is as large as the open tree. */
+/* The board: a frame that clips; the view inside is moved and scaled by TreeCanvas.razor.js, the
+   sheet in it as large as the open tree. Without a height of its own the board is as tall as the
+   tree at 100%. */
 .indx-tree-canvas {
     position: relative;
-    overflow: auto;
+    overflow: hidden;
     max-width: 100%;
     background-color: var(--lv0);
     border: 1px solid var(--lv2);
+    touch-action: pan-x pan-y;
+    /* Its layers (grid, view, handles, controls) stack inside it, never over what a page lays on top. */
+    isolation: isolate;
+}
+
+.indx-tree-canvas:focus-visible {
+    outline: 2px solid var(--lv5);
+    outline-offset: -2px;
+}
+
+.indx-tree-view {
+    position: relative;
+    z-index: 1;
+    width: max-content;
+    transform-origin: 0 0;
 }
 
 .indx-tree-sheet {
     position: relative;
     padding: 16px;
     box-sizing: content-box;
-    transform-origin: top left;
 }
 
-.indx-tree-edges {
+.indx-tree-edges,
+.indx-tree-handles {
     position: absolute;
     top: 16px;
     left: 16px;
     overflow: visible;
+    pointer-events: none;
+}
+
+/* Over the pills, so a handle sits on the border it marks. */
+.indx-tree-handles {
+    z-index: 1;
 }
 
 /* The connectors: hairlines, the path to the chosen node in the positive colour. */
@@ -29,9 +52,25 @@
 }
 
 .indx-tree-edge-lit {
-    fill: none;
     stroke: var(--CPositive);
     stroke-width: 1.5px;
+}
+
+/* To a node kept only as the way down to a match: dashed, as the node is dim. */
+.indx-tree-edge-muted {
+    stroke-dasharray: 3 3;
+}
+
+/* A handle: a small square on the canvas tone, ringed in the edge's grey; lit along the path. */
+.indx-tree-handle {
+    fill: var(--lv0);
+    stroke: var(--lv4);
+    stroke-width: 1px;
+}
+
+.indx-tree-handle-lit {
+    fill: var(--CPositive);
+    stroke: var(--CPositive);
 }
 
 .indx-tree-slot {
@@ -138,6 +177,14 @@
     color: var(--CPositiveHandle);
 }
 
+/* On the chosen node's fill the ghost's grey hover would sit on the green as a patch: the step
+   darkens the fill instead, as the count chip does. */
+.indx-tree-pill-selected .indx-tree-toggle ::deep button:hover:not(:disabled),
+.indx-tree-pill-selected .indx-tree-toggle ::deep button:active:not(:disabled) {
+    color: var(--CPositiveHandle);
+    background: rgba(0, 0, 0, 0.18);
+}
+
 /* The step to the rest of a node's children, under the ones shown. */
 .indx-tree-more {
     position: absolute;
@@ -215,25 +262,56 @@
     color: var(--lv5);
 }
 
-/* A systm pattern behind the tree (Pattern), washed to a fifth of its ink by a layer of the canvas
-   tone over it: the dark-ink variant, the white-ink one in dark mode. Each is named here rather
-   than left to the -light variable's own swap, which the React globals do not make. Attached to
-   the scrolled content, so the pattern moves with the tree when it is dragged or scrolled. */
-.indx-tree-patterned {
-    background-image:
-        linear-gradient(color-mix(in srgb, var(--lv0) 80%, transparent), color-mix(in srgb, var(--lv0) 80%, transparent)),
-        var(--indx-tree-pattern);
-    background-attachment: local;
+/* A systm pattern behind the tree (Pattern), on a layer of its own under the view: washed to a
+   fifth of its ink by the canvas tone over it, the dark-ink variant and the white-ink one in dark
+   mode (named here, since the React globals do not swap the -light variable). It follows the view:
+   offset by the pan, its tile scaled by the zoom (--tree-x, --tree-y, --tree-zoom, set by the module). */
+.indx-tree-grid {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    --indx-tree-wash: linear-gradient(color-mix(in srgb, var(--lv0) 80%, transparent), color-mix(in srgb, var(--lv0) 80%, transparent));
+    background-image: var(--indx-tree-wash), var(--indx-tree-pattern);
+    background-size: auto, calc(var(--indx-tree-tile) * var(--tree-zoom, 1)) calc(var(--indx-tree-tile) * var(--tree-zoom, 1));
+    background-position: 0 0, var(--tree-x, 0) var(--tree-y, 0);
 }
 @media (prefers-color-scheme: dark) {
-    .indx-tree-patterned {
-        background-image:
-            linear-gradient(color-mix(in srgb, var(--lv0) 80%, transparent), color-mix(in srgb, var(--lv0) 80%, transparent)),
-            var(--indx-tree-pattern-dark);
+    .indx-tree-grid {
+        background-image: var(--indx-tree-wash), var(--indx-tree-pattern-dark);
     }
 }
 
-/* Drag to pan: the hand over the canvas, the closed hand while dragging, over the pills too. */
+/* The zoom controls: a column in the board's lower left corner, on the canvas tone with a hairline,
+   over the view and never moved by it. The last shows the zoom; it returns to 100%. */
+.indx-tree-controls {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 2px;
+    background: var(--lv0);
+    border: 1px solid var(--lv2);
+    cursor: default;
+}
+
+.indx-tree-controls ::deep button {
+    justify-content: center;
+    width: 30px;
+    min-width: 0;
+    padding: 0;
+}
+
+.indx-tree-zoom-label {
+    font: var(--text-2xs);
+    color: var(--lv5);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Drag to pan: the hand over the board, the closed hand while dragging, over the pills too. */
 .indx-tree-pannable { cursor: grab; }
 .indx-tree-pannable[data-panning],
 .indx-tree-pannable[data-panning] * {

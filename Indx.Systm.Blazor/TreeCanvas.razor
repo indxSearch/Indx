@@ -11,9 +11,11 @@
    the connectors, so they focus and read; arrows move between them, right opens, left closes. A
    node with many children shows the first so many and a step to the rest. The list view is the
    same tree as nested rows, for a phone and for a screen reader. The pills' widths are measured
-   after a render and the layout redone with them. The canvas pans by dragging with a mouse or pen,
-   and can lay one of the systm patterns behind the tree, which moves with it. Port of the React
-   TreeCanvas in indx-systm. *@
+   after a render and the layout redone with them. The tree lies on a board that pans and zooms as
+   a design canvas does (TreeCanvas.razor.js): drag it, scroll it with two fingers, pinch or
+   Ctrl/Cmd and the wheel to zoom at the pointer, the controls in its corner to zoom or fit; it
+   opens fitted to the tree. A systm pattern behind it follows the view. Handles mark where the
+   edges leave and arrive. Port of the React TreeCanvas in indx-systm. *@
 @if (View == "list")
 {
     <div class="indx-tree-list-wrap @Class">
@@ -24,13 +26,21 @@ else
 {
     var placed = Layout();
     double width = _columns.Count > 0 ? _columns[^1] + placed.Where(p => p.Depth == _columns.Count - 1).Max(p => p.Width) : 0;
-    <div class="indx-tree-canvas @(Pan ? "indx-tree-pannable" : "") @(KnownPattern != null ? "indx-tree-patterned" : "") @Class"
-         style="@(KnownPattern != null ? $"--indx-tree-pattern: var(--pattern-{Pattern}-light); --indx-tree-pattern-dark: var(--pattern-{Pattern}-dark);" : null)" role="tree" aria-label="@AriaLabel" @ref="_canvas">
+    @* The board: the grid layer behind, the view (which this component never styles, so the
+       module's pan and zoom survive a render) holding the sheet, and the controls over it. *@
+    <div class="indx-tree-canvas @(Pan ? "indx-tree-pannable" : "") @Class" role="tree" aria-label="@AriaLabel"
+         tabindex="@(Pan ? "0" : null)" @ref="_canvas">
+        @if (KnownPattern != null)
+        {
+            <div class="indx-tree-grid" aria-hidden="true" @ref="_grid"
+                 style="--indx-tree-pattern: var(--pattern-@(KnownPattern)-light); --indx-tree-pattern-dark: var(--pattern-@(KnownPattern)-dark); --indx-tree-tile: @(TileOf(KnownPattern))px;"></div>
+        }
         @if (placed.Count == 0)
         {
             <div class="indx-tree-empty">Nothing matches</div>
         }
-        <div class="indx-tree-sheet" style="width: @F(width)px; height: @F(_height)px;@(Zoom == 1 ? "" : $" transform: scale({F(Zoom)}); margin-right: {F(-(width + 32) * (1 - Zoom))}px; margin-bottom: {F(-(_height + 32) * (1 - Zoom))}px;")" @ref="_sheet">
+        <div class="indx-tree-view" @ref="_view">
+        <div class="indx-tree-sheet" style="width: @F(width)px; height: @F(_height)px;" @ref="_sheet">
             <svg class="indx-tree-edges" width="@F(width)" height="@F(_height)" aria-hidden="true">
                 @foreach (var p in placed)
                 {
@@ -39,7 +49,8 @@ else
                     double x1 = a.X + a.Width, y1 = a.Y, x2 = p.X, y2 = p.Y;
                     double c = (x2 - x1) / 2;
                     bool lit = _path.Contains(p.Node.Id) && _path.Contains(a.Node.Id);
-                    <path class="@(lit ? "indx-tree-edge-lit" : "indx-tree-edge")" d="M @F(x1) @F(y1) C @F(x1 + c) @F(y1), @F(x2 - c) @F(y2), @F(x2) @F(y2)" />
+                    // A dashed line to a node kept only as the way down to a match.
+                    <path class="indx-tree-edge @(lit ? "indx-tree-edge-lit" : "") @(p.Node.Muted ? "indx-tree-edge-muted" : "")" d="M @F(x1) @F(y1) C @F(x1 + c) @F(y1), @F(x2 - c) @F(y2), @F(x2) @F(y2)" />
                 }
             </svg>
             @foreach (var p in placed)
@@ -81,7 +92,33 @@ else
                     }
                 </div>
             }
+            @* The handles: a square where an edge leaves a node and where it arrives, over the
+               pills' borders, lit along the path. *@
+            <svg class="indx-tree-handles" width="@F(width)" height="@F(_height)" aria-hidden="true">
+                @foreach (var p in placed)
+                {
+                    bool lit = _path.Contains(p.Node.Id);
+                    if (p.Parent is not null)
+                    {
+                        <rect class="indx-tree-handle @(lit ? "indx-tree-handle-lit" : "")" x="@F(p.X - Handle / 2)" y="@F(p.Y - Handle / 2)" width="@F(Handle)" height="@F(Handle)" />
+                    }
+                    if (p.Open)
+                    {
+                        <rect class="indx-tree-handle @(lit && p.Node.Id != Selected ? "indx-tree-handle-lit" : "")" x="@F(p.X + p.Width - Handle / 2)" y="@F(p.Y - Handle / 2)" width="@F(Handle)" height="@F(Handle)" />
+                    }
+                }
+            </svg>
         </div>
+        </div>
+        @if (Pan)
+        {
+            <div class="indx-tree-controls" role="toolbar" aria-label="Zoom">
+                <Button Variant="ghost" Size="micro" IconLeft="PlusIcon" aria-label="Zoom in" title="Zoom in (+)" data-tree-action="in" />
+                <Button Variant="ghost" Size="micro" IconLeft="MinusIcon" aria-label="Zoom out" title="Zoom out (-)" data-tree-action="out" />
+                <Button Variant="ghost" Size="micro" IconLeft="FitIcon" aria-label="Fit the tree in view" title="Fit in view (0)" data-tree-action="fit" />
+                <Button Variant="ghost" Size="micro" aria-label="Zoom to 100%" title="Zoom to 100%" data-tree-action="reset"><span class="indx-tree-zoom-label" data-tree-zoom-label></span></Button>
+            </div>
+        }
     </div>
 }
 
@@ -98,6 +135,7 @@ else
 
     private static readonly RenderFragment<int> PlusIcon = size => @<Plus Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> MinusIcon = size => @<Minus Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> FitIcon = size => @<Marquee Size="size" Color="currentColor" />;
 
     [Parameter, EditorRequired] public IReadOnlyList<Node> Roots { get; set; } = Array.Empty<Node>();
     /// <summary>The chosen node's id; the path to it is lit.</summary>
@@ -114,13 +152,15 @@ else
     /// <summary>A filter: only nodes it accepts stay, with the path down to each; an ancestor kept only as
     /// the way down is drawn muted, and a branch holding a match is opened. "Only boosted."</summary>
     [Parameter] public Func<Node, bool>? Visible { get; set; }
-    /// <summary>The canvas drawn at this scale, 1 by default: 0.5 shows twice the tree in the same room.</summary>
-    [Parameter] public double Zoom { get; set; } = 1;
+    /// <summary>The zoom the tree opens at, from the left; null (the default) fits it in view when that
+    /// leaves it readable, and opens it at 100% from the left when not.</summary>
+    [Parameter] public double? Zoom { get; set; }
     /// <summary>When set or changed, the tree is opened to this many levels and closed below: 1 shows the
     /// roots, 2 their children. Null leaves the opening to the component.</summary>
     [Parameter] public int? OpenDepth { get; set; }
-    /// <summary>Drag with a mouse or pen to move the tree, as on a design canvas; on by default. The
-    /// wheel and touch scroll as before, and a press that does not move is a click.</summary>
+    /// <summary>The board: drag to pan, two-finger scroll to pan, pinch or Ctrl/Cmd and the wheel to zoom,
+    /// the arrows, + - and 0 on it, and the zoom controls in its corner; on by default. Off, the tree is
+    /// a still picture at <see cref="Zoom"/> or fitted, for an example inside a page that scrolls.</summary>
     [Parameter] public bool Pan { get; set; } = true;
     /// <summary>A systm pattern behind the tree, faint, moving with it: "grid-12", "grid-24", "grid-6",
     /// "checkerboard", "checkerboard-spaced-4" (6, 8, 10). None by default.</summary>
@@ -134,6 +174,11 @@ else
 
     // Set when the pattern is one of the set; the canvas then takes its dark-ink and white-ink variables.
     private string? KnownPattern => Pattern != null && Patterns.Contains(Pattern) ? Pattern : null;
+
+    // A pattern's tile, which the grid scales with the zoom: the number in its name, 2 for the checkerboard.
+    private static int TileOf(string pattern) => int.TryParse(pattern[(pattern.LastIndexOf('-') + 1)..], out var n) ? n : 2;
+
+    private const double Handle = 5;
 
     private const double Row = 44;
     private const double ColumnGap = 56;
@@ -163,6 +208,11 @@ else
     private bool _preventKey;
     private ElementReference _sheet;
     private ElementReference _canvas;
+    private ElementReference _view;
+    private ElementReference _grid;
+    private bool _viewPending = true;     // the first view (fitted) is set once the pills are measured
+    private IReadOnlyList<Node>? _viewFor;
+    private string? _viewOf;
     private IJSObjectReference? _module;
     private bool _disposed;
 
@@ -171,6 +221,9 @@ else
     protected override void OnParametersSet()
     {
         _expanded ??= new HashSet<string>(DefaultExpanded ?? Roots.Select(r => r.Id));
+        // A new tree, or the board drawn again after the list, opens at its first view; opening and
+        // closing nodes, a new selection or a filter keep the view where the reader left it.
+        if (!ReferenceEquals(_viewFor, Roots) || _viewOf != View) { _viewPending = true; _viewFor = Roots; _viewOf = View; }
         if (OpenDepth is { } depth && depth != _openedTo)
         {
             _openedTo = depth;
@@ -319,15 +372,20 @@ else
                 if (_disposed) { await module.DisposeAsync(); return; }
                 _module = module;
             }
-            if (Pan) await _module.InvokeVoidAsync("pan", _canvas);
+            await _module.InvokeVoidAsync("attach", _canvas, _view, KnownPattern != null ? _grid : (ElementReference?)null, Pan);
             var widths = await _module.InvokeAsync<Dictionary<string, double>>("measure", _sheet);
             bool changed = false;
             foreach (var (id, w) in widths)
             {
-                var unscaled = Math.Ceiling(w / Zoom);
-                if (w > 0 && (!_measured.TryGetValue(id, out var old) || Math.Abs(old - unscaled) >= 1)) { _measured[id] = unscaled; changed = true; }
+                if (w > 0 && (!_measured.TryGetValue(id, out var old) || Math.Abs(old - w) >= 1)) { _measured[id] = w; changed = true; }
             }
             if (changed) StateHasChanged();
+            else if (_viewPending)
+            {
+                // The pills are measured and the layout is final: now the first view can be fitted.
+                _viewPending = false;
+                await _module.InvokeVoidAsync("initial", _canvas, Zoom);
+            }
         }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }

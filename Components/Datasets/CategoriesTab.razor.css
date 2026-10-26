@@ -1,31 +1,39 @@
 .browse-tab { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; }
 
-.browse-toolbar { align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 0; padding: 8px 12px 4px; flex: none; }
+.browse-toolbar { align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 0; padding: 8px 12px; border-bottom: 1px solid var(--lv2); flex: none; }
 .browse-label { color: var(--lv5); font: var(--text-xs); white-space: nowrap; }
 .browse-count { color: var(--lv5); font: var(--text-xs); white-space: nowrap; }
 .browse-tb-filter { flex: 1 1 160px; max-width: 320px; }
 .browse-tb-controls { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .browse-tb-full { display: inline-flex; }
 
-/* What the tree is drawn from, under the toolbar and quieter than it: set once, then left. */
-.browse-sources { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 16px; padding: 0 12px 6px; border-bottom: 1px solid var(--lv2); flex: none; min-width: 0; }
-.browse-source { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
-/* Each picker as wide as its choice, not its longest option as systm's ghost select is: a scope
-   such as "contentType: publication (631)" would otherwise leave "All records" a wide gap. */
-.browse-source ::deep .indx-select-sizer-hidden { display: none; }
-
-/* The zoom, in the canvas's corner: the one control that belongs to the tree view alone. */
-.browse-zoom { position: absolute; left: 12px; bottom: 12px; z-index: 1; background: var(--lv0); }
+/* What the tree is drawn from: a ghost button, and a small menu under it on the raised tone, each
+   picker a row of its own; a transparent backdrop closes it. */
+.browse-tb-source { position: relative; display: inline-flex; }
+.browse-source-backdrop { position: fixed; inset: 0; z-index: 9; }
+::deep .browse-source-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    z-index: 10;
+    width: 300px;
+    max-width: calc(100vw - 32px);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.browse-source-row { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 
 /* Narrow (the frame, not the window: it is a container): the filter across the first row with the
-   full screen step, the controls across the second; the count goes. The zoom moves to the top,
-   out of the way of the chosen category's panel, which comes up from the bottom here. */
+   full screen step, the controls across the second; the count goes. The canvas's zoom controls
+   move to the top, out of the way of the chosen category's panel, which comes up from the bottom here. */
 .browse-frame { container-type: inline-size; }
 @container (max-width: 720px) {
     .browse-tb-filter { flex: 1 1 0; max-width: none; }
     .browse-tb-controls { order: 3; flex-basis: 100%; margin-left: 0; gap: 8px; }
     .browse-count { display: none; }
-    .browse-zoom { bottom: auto; top: 12px; }
+    .browse-stage ::deep .indx-tree-controls { bottom: auto; top: 12px; }
 }
 
 .browse-note { color: var(--lv5); font: var(--text-sm); margin: 0; }
@@ -48,12 +56,13 @@
 }
 .browse-pad { padding: 16px; }
 .browse-stage { position: relative; flex: 1; min-height: 0; }
+/* The board fills the stage and pans inside it; the list scrolls. */
 .browse-stage ::deep .indx-tree-canvas,
 .browse-stage ::deep .indx-tree-list-wrap {
     height: 100%;
     border: none;
-    overflow: auto;
 }
+.browse-stage ::deep .indx-tree-list-wrap { overflow: auto; }
 
 ::deep .browse-panel {
     position: absolute;
