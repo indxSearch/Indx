@@ -26,13 +26,16 @@ namespace IndxServer.Controllers
         public sealed record FiltersRequest(string? Text);
 
         /// <summary>The window's Search or ask statistics. Rates are null where nothing was offered
-        /// or asked. Cost is in USD as OpenRouter reports it, judge and answers together.</summary>
+        /// or asked. AskedAgain counts the questions a visitor asked again in other words soon after,
+        /// in the same session (a sign the answer missed), over the asks that carried a session;
+        /// Rephrased lists the pairs. Cost is in USD as OpenRouter reports it, judge and answers together.</summary>
         public sealed record SearchOrAskStatisticsResponse(
             long Judged, long Offers, long StrongOffers, long Asks, double? TakeRate,
             long Answered, long NothingFound, long Failed, long Stopped, long Unanswered, double? UnansweredRate,
             long SourcesOpened, double? SourcesOpenedPerAnswer, double Cost, long? MedianFirstTextMs,
             AskQuestionStat[] Questions, AskOfferStat[] Offered,
-            long Calls = 0, long CallsRefused = 0, int DaysBudgetRanOut = 0);
+            long Calls = 0, long CallsRefused = 0, int DaysBudgetRanOut = 0,
+            long AskedAgain = 0, double? AskedAgainRate = null, AskRephrasingStat[]? Rephrased = null);
         /// <summary>A question, and for a follow-up the conversation so far (the last three turns are used).</summary>
         public sealed record AskRequest(string? Question, AskTurn[]? History = null);
 
@@ -258,6 +261,7 @@ namespace IndxServer.Controllers
             limit = Math.Clamp(limit, 1, 500);
             var o = s.AskOverview(ctx.OwnerKey, dataSetName, fromDay, today, src);
             var budget = s.AskBudget(ctx.OwnerKey, dataSetName, fromDay, today);
+            var (again, rephrased) = s.AskedAgain(ctx.OwnerKey, dataSetName, fromDay, today, limit, src);
             static double? Rate(double n, double d) => d == 0 ? null : n / d;
             return new SearchOrAskStatisticsResponse(o.Judged, o.Offers, o.StrongOffers, o.Asks, Rate(o.Asks, o.Offers),
                 o.Answered, o.NothingFound, o.Failed, o.Stopped, o.Unanswered, Rate(o.Unanswered, o.Asks),
@@ -266,6 +270,7 @@ namespace IndxServer.Controllers
                 s.TopOffers(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray())
             {
                 Calls = budget.Calls, CallsRefused = budget.Refused, DaysBudgetRanOut = budget.DaysRunOut,
+                AskedAgain = again.AskedAgain, AskedAgainRate = Rate(again.AskedAgain, again.Asks), Rephrased = rephrased.ToArray(),
             };
         }
 

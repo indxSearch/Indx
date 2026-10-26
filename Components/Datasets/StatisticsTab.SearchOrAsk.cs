@@ -15,6 +15,8 @@ namespace IndxServer.Components.Datasets
     public partial class StatisticsTab
     {
         private AskOverviewStat _ask;
+        private AskedAgainStat _askedAgain;
+        private List<AskRephrasingStat> _rephrased = [];
         private AskBudgetStat _askBudget;
         private List<AskQuestionStat> _askQuestions = [];
         private List<AskOfferStat> _askOffers = [];
@@ -58,6 +60,7 @@ namespace IndxServer.Components.Datasets
             // The budget belongs to the dataset, not to a surface: the whole window whatever the source.
             _askBudget = store.AskBudget(team, ds, fromDay, toDay);
             _askQuestions = HasSearchOrAsk ? store.TopQuestions(team, ds, fromDay, toDay, 25, source) : [];
+            (_askedAgain, _rephrased) = HasSearchOrAsk ? store.AskedAgain(team, ds, fromDay, toDay, 25, source) : (default, []);
             _askOffers = HasSearchOrAsk ? store.TopOffers(team, ds, fromDay, toDay, 25, source) : [];
             (_askFromDay, _askToDay) = (fromDay, toDay);
             _askDays = HasSearchOrAsk ? store.AsksByDay(team, ds, fromDay, toDay, source) : [];

@@ -382,10 +382,11 @@ else
             @* Search or ask (Notes/search-or-ask-server.md). The questions the content did not
                answer lead: they are what to write next. Offers lists the texts an offer was shown
                beside, so a false one can be found. Code in StatisticsTab.SearchOrAsk.cs. *@
-            <StatGroup Columns="@(CitesSources ? 6 : 5)">
+            <StatGroup Columns="@(CitesSources ? 7 : 6)">
                 <Stat Label="Offers shown" LabelIcon="DatasetIcons.AskOffers" Hint="Searches an offer to ask was shown beside, each once however many pauses judged it."><ValueContent>@N(_ask.Offers)</ValueContent></Stat>
                 <Stat Label="Questions asked" LabelIcon="DatasetIcons.AskQuestions" Hint="Questions asked, and how many per offer shown."><ValueContent>@N(_ask.Asks) <span class="stats-tile-sub">@Pct(_ask.Asks, _ask.Offers)</span></ValueContent></Stat>
                 <Stat Label="Not answered" LabelIcon="DatasetIcons.NotAnswered" Hint="Questions the search found nothing for, or whose sources the judge doubted could answer them."><ValueContent>@N(_ask.Unanswered) <span class="stats-tile-sub">@Pct(_ask.Unanswered, _ask.Asks)</span></ValueContent></Stat>
+                <Stat Label="Asked again" LabelIcon="DatasetIcons.AskedAgain" Hint="Answers the visitor followed within five minutes with the same question in other words: the quiet sign an answer missed, where Not answered is the content missing. Counted over the questions that carried a session; a follow-up to the answer is not a rewording. The pairs are under Questions."><ValueContent>@N(_askedAgain.AskedAgain) <span class="stats-tile-sub">@Pct(_askedAgain.AskedAgain, _askedAgain.Asks)</span></ValueContent></Stat>
                 @if (CitesSources)
                 {
                     <Stat Label="Sources opened" LabelIcon="DatasetIcons.SourcesOpened" Hint="Cited sources opened from an answer."><ValueContent>@N(_ask.SourcesOpened)</ValueContent></Stat>
@@ -500,6 +501,27 @@ else
                         }
                     </tbody>
                 </Table>
+                }
+                @if (_rephrased.Count > 0)
+                {
+                    @* The visitor's own correction: how the question was meant, which is what to write for. *@
+                    <h3 class="stats-subhead">Asked again in other words</h3>
+                    <p class="stats-help">A question followed within five minutes by the same one in other words, in the same visit. The second wording says how it was meant; when its answer had a source opened, it landed where the first did not.</p>
+                    <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Questions asked again" Class="stats-table">
+                        <thead><tr><th>First asked</th><th>Asked again as</th><th class="stats-num">Times</th>@if (CitesSources) {<th class="stats-num">Then opened</th>}<th>Last</th></tr></thead>
+                        <tbody>
+                            @foreach (var r in _rephrased)
+                            {
+                                <tr>
+                                    <td>@r.First</td>
+                                    <td>@r.Again</td>
+                                    <td class="stats-num">@N(r.Times)</td>
+                                    @if (CitesSources) { <td class="stats-num">@(r.AgainOpened > 0 ? N(r.AgainOpened) : "–")</td> }
+                                    <td><TimeAgo Value="@DateTimeOffset.FromUnixTimeMilliseconds(r.LastAsked).UtcDateTime" TooltipPosition="left" /></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </Table>
                 }
             }
             else

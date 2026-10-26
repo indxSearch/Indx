@@ -182,3 +182,11 @@
 @media (max-width: 900px) {
     .stats-overview { grid-template-columns: minmax(0, 1fr); }
 }
+
+/* A second table in a view (Questions: the ones asked again), titled as a setting group is. */
+.stats-subhead {
+    margin: 32px 0 4px;
+    font: var(--text-sm);
+    font-weight: var(--med);
+    color: var(--lv7);
+}

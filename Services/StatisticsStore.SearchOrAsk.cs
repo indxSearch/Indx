@@ -23,13 +23,23 @@ namespace IndxServer.Services
     public readonly record struct AskRefocusMissStat(string Phrase, string Searched, long Times);
 
     /// <summary>One question asked. The question is stored (it is new text, not a search); the
-    /// answer is not (decided 11 Oct 2026). SourceKeys are the document keys handed to the model,
+    /// answer is not (decided 11 Oct 2026). FollowUp: asked with the conversation so far, so it
+    /// continues the answer before it rather than asking it again. SourceKeys are the document keys handed to the model,
     /// comma separated, in their citation order. Outcome is answered, nothingFound, failed or
     /// stopped. A select whose queryId is <see cref="AskId"/> is a cited source opened.</summary>
     public readonly record struct AskEventRow(
         string AskId, string TeamId, string DataSet, string? QueryId, string Question, string Model,
         string SourceKeys, string Outcome, long? FirstTextMs, long TotalMs, double? Cost, double? Answerable,
-        string? Subject, string? Session, string? Source, long Timestamp, bool Counted = true);
+        string? Subject, string? Session, string? Source, long Timestamp, bool Counted = true, bool FollowUp = false);
+
+    /// <summary>A question asked again in other words, soon after, in the same session: the first
+    /// wording, the second, how often the pair was seen, the last time, and how often the second
+    /// answer had a source opened (it landed where the first did not).</summary>
+    public readonly record struct AskRephrasingStat(string First, string Again, long Times, long LastAsked, long AgainOpened);
+
+    /// <summary>The asks a rewording could be told for (those with a session), and how many were
+    /// followed by one.</summary>
+    public readonly record struct AskedAgainStat(long Asks, long AskedAgain);
 
     /// <summary>A window's Search or ask totals. Offers count each search an offer was shown beside
     /// once, however many pauses judged it. Unanswered is the asks that found nothing or whose
@@ -150,6 +160,14 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
                 }
                 catch (SqliteException) { /* already there */ }
             }
+            // Whether a question continued a conversation (26 Oct 2026): a follow-up is not a question
+            // asked again in other words.
+            try
+            {
+                cmd.CommandText = "ALTER TABLE AskEvents ADD COLUMN FollowUp INTEGER NOT NULL DEFAULT 0";
+                cmd.ExecuteNonQuery();
+            }
+            catch (SqliteException) { /* already there */ }
             // The budget's cost column came a few hours after its table (20 Oct 2026): a table made
             // without it is given it, since CREATE TABLE IF NOT EXISTS leaves an existing one alone.
             try
@@ -198,8 +216,8 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
                 cmd.Transaction = tx;
                 cmd.CommandText = @"INSERT OR IGNORE INTO AskEvents
                     (AskId, TeamId, DataSet, QueryId, Question, Model, SourceKeys, Outcome, FirstTextMs, TotalMs, Cost,
-                     Answerable, Subject, Session, Source, Timestamp, Counted)
-                    VALUES ($id, $t, $d, $q, $question, $m, $keys, $out, $first, $total, $cost, $a, $subj, $sess, $src, $ts, $cnt)";
+                     Answerable, Subject, Session, Source, Timestamp, Counted, FollowUp)
+                    VALUES ($id, $t, $d, $q, $question, $m, $keys, $out, $first, $total, $cost, $a, $subj, $sess, $src, $ts, $cnt, $follow)";
                 cmd.Parameters.AddWithValue("$id", r.AskId);
                 cmd.Parameters.AddWithValue("$t", r.TeamId);
                 cmd.Parameters.AddWithValue("$d", r.DataSet);
@@ -217,6 +235,7 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
                 cmd.Parameters.AddWithValue("$src", (object?)r.Source ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("$ts", r.Timestamp);
                 cmd.Parameters.AddWithValue("$cnt", r.Counted ? 1 : 0);
+                cmd.Parameters.AddWithValue("$follow", r.FollowUp ? 1 : 0);
                 cmd.ExecuteNonQuery();
             }
             tx.Commit();

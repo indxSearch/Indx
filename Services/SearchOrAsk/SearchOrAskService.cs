@@ -534,7 +534,7 @@ namespace IndxServer.Services.SearchOrAsk
             return new IntentOutcome(IntentStatus.Ok);
         }
 
-        private static readonly HashSet<string> QuestionWords = new(StringComparer.OrdinalIgnoreCase)
+        internal static readonly HashSet<string> QuestionWords = new(StringComparer.OrdinalIgnoreCase)
         {
             "how", "what", "whats", "why", "where", "which", "who", "when", "is", "are", "does", "do", "did", "can",
             "could", "should", "would", "will", "the", "a", "an", "about", "of", "to", "i", "me", "my", "it", "there",
@@ -711,7 +711,7 @@ namespace IndxServer.Services.SearchOrAsk
                         question, model, string.Join(',', merged), outcome, firstText, Ms(),
                         Sum(usage.Cost, judged?.Cost), judged?[SearchOrAskRecipes.Answerable],
                         Blank(origin.Subject), Blank(origin.Session), origin.Source,
-                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted));
+                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted, FollowUp: history.Count > 0));
                 }
             }
         }
