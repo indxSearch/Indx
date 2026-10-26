@@ -1,6 +1,6 @@
 /* The section's menu is a second column beside the admin menu, built as that one is: from the
    header to the window's bottom, sticking while the section scrolls (the shell scrolls, not the
-   window), its menu with the admin menu's own padding so the two titles line up. A hairline
+   window), its title level with the admin menu's. A hairline
    between the two menus runs the column's whole height. The layout reaches out over the content's
    padding on the top, left and bottom for that, and the section takes the padding back. On a
    phone the menu is the scrolling row above the section, as the admin column becomes a bar. */
@@ -18,6 +18,9 @@
     border-left: 1px solid var(--lv2);
     overflow-y: auto;
 }
+/* The labels start under the header trail's icon, 50px into the column: the menu's own 10px
+   inset plus 21px, the Buttons adding their 10px padding and the hairline its 1px. */
+.settings-side ::deep .side-menu { padding-left: 31px; }
 .settings-main {
     flex: 1;
     min-width: 0;
@@ -32,6 +35,7 @@
 @media (max-width: 768px) {
     .settings-layout { flex-direction: column; align-items: stretch; margin: 0; }
     .settings-side { width: auto; height: auto; position: static; border-left: none; border-bottom: 1px solid var(--lv2); overflow: visible; padding-bottom: 8px; }
+    .settings-side ::deep .side-menu { padding-left: 0; }
     .settings-main { padding: 16px 0 0; max-width: none; }
 }
 
