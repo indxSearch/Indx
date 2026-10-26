@@ -195,3 +195,5 @@
    how its visits ended, how it was asked, where it landed. */
 .stats-need-open ::deep .indx-btn { justify-content: flex-start; max-width: 100%; text-align: left; }
 .stats-need { display: flex; flex-direction: column; gap: 16px; }
+.stats-need-visits { display: inline-flex; align-items: center; gap: 8px; }
+.stats-need-count { font-variant-numeric: tabular-nums; color: var(--lv6); }

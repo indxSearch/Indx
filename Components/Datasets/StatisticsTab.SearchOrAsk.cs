@@ -20,6 +20,21 @@ namespace IndxServer.Components.Datasets
         private List<AskNeedStat> _needs = [];
         private AskNeedStat? _need;
 
+        /// <summary>At most this many cells in a need's row: a need asked in more visits shows its
+        /// shares across them, so a busy need does not widen the table.</summary>
+        private const int NeedCells = 24;
+
+        /// <summary>A need's visits as waffle cells, in the same tones as its bar.</summary>
+        private static IReadOnlyList<Waffle.Segment> NeedWaffle(AskNeedStat need)
+        {
+            var segments = new List<Waffle.Segment>();
+            void Add(string label, long n, string color) { if (n > 0) segments.Add(new(label, n, color)); }
+            Add("First try", need.FirstTry, "var(--lv8)");
+            Add("After asking again", need.AfterRewording, "var(--lv5)");
+            Add("Gave up", need.GaveUp, "var(--CSignal)");
+            return segments;
+        }
+
         /// <summary>How a need's visits ended, as shares of one bar, the way the overview shows how
         /// the asks ended: first try in the ink, after asking again down the ladder, given up in the
         /// signal red.</summary>
