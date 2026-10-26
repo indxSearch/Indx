@@ -4,7 +4,6 @@
 @using Microsoft.AspNetCore.Authorization
 @using IndxServer.Services
 @using IndxServer.Services.SearchOrAsk
-@using Icons = Indx.Systm.Blazor.Icons
 @attribute [Authorize(Roles = "Admin")]
 @inject InstanceSettingsService SettingsService
 @inject ILogger<Settings> Logger
@@ -105,7 +104,7 @@
                                     }
                                     else if (status.Works == true)
                                     {
-                                        <span class="soa-key-ok"><Icons.Check Size="14" /> @status.Message</span>
+                                        <span class="soa-key-ok"><Indx.Systm.Blazor.Icons.Check Size="14" /> @status.Message</span>
                                     }
                                     else if (status.Works == false)
                                     {
@@ -271,12 +270,12 @@
     [Parameter] public string? Section { get; set; }
     private string _section = "general";
 
-    private static readonly RenderFragment<int> _iconGeneral = size => @<Icons.SlidersVertical Size="size" Color="currentColor" />;
-    private static readonly RenderFragment<int> _iconAccess = size => @<Icons.Lock Size="size" Color="currentColor" />;
-    private static readonly RenderFragment<int> _iconRegistration = size => @<Icons.UserPlus Size="size" Color="currentColor" />;
-    private static readonly RenderFragment<int> _iconWebsites = size => @<Icons.InternetBrowser Size="size" Color="currentColor" />;
-    private static readonly RenderFragment<int> _iconMcp = size => @<Icons.Mcp Size="size" Color="currentColor" />;
-    private static readonly RenderFragment<int> _iconAsk = size => @<Icons.SearchOrAsk Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconGeneral = size => @<Indx.Systm.Blazor.Icons.SlidersVertical Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconAccess = size => @<Indx.Systm.Blazor.Icons.Lock Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconRegistration = size => @<Indx.Systm.Blazor.Icons.UserPlus Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconWebsites = size => @<Indx.Systm.Blazor.Icons.InternetBrowser Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconMcp = size => @<Indx.Systm.Blazor.Icons.Mcp Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconAsk = size => @<Indx.Systm.Blazor.Icons.SearchOrAsk Size="size" Color="currentColor" />;
 
     private static readonly IReadOnlyList<SideMenuGroup> _menu =
     [

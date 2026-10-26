@@ -1,4 +1,4 @@
-.side-menu { display: flex; flex-direction: column; gap: 18px; padding: 16px 0 16px 10px; }
+.side-menu { display: flex; flex-direction: column; gap: 18px; padding: 16px 10px; }
 .side-menu-group { display: flex; flex-direction: column; gap: 2px; }
 .side-menu-title { padding: 0 10px 4px; font: var(--text-2xs); font-weight: var(--med); letter-spacing: 0.02em; text-transform: uppercase; color: var(--lv4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Menu items are systm Buttons; styled from the container because a class passed to the component
