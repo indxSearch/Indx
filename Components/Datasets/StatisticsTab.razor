@@ -490,7 +490,7 @@ else
                 @if (_needs.Count == 0) { <p class="stats-empty">No question was asked in more than one visit or in more than one way in this period.</p> }
                 else {
                 <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Needs" Class="stats-table">
-                    <thead><tr><th>Need</th><th class="stats-num">Asked as</th><th>Visits</th><th class="stats-num">Gave up</th><th>Last asked</th></tr></thead>
+                    <thead><tr><th>Need</th><th class="stats-num">Asked as</th><th>Visits</th><th>Last asked</th></tr></thead>
                     <tbody>
                         @foreach (var need in _needs)
                         {
@@ -506,7 +506,6 @@ else
                                         <span class="stats-need-count">@N(n.Visits)</span>
                                     </span>
                                 </td>
-                                <td class="stats-num">@(n.GaveUp > 0 ? Pct(n.GaveUp, n.Visits) : "–")</td>
                                 <td><TimeAgo Value="@DateTimeOffset.FromUnixTimeMilliseconds(n.LastAsked).UtcDateTime" TooltipPosition="left" /></td>
                             </tr>
                         }
