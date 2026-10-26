@@ -534,7 +534,7 @@ namespace IndxServer.Services.SearchOrAsk
             return new IntentOutcome(IntentStatus.Ok);
         }
 
-        internal static readonly HashSet<string> QuestionWords = new(StringComparer.OrdinalIgnoreCase)
+        private static readonly HashSet<string> QuestionWords = new(StringComparer.OrdinalIgnoreCase)
         {
             "how", "what", "whats", "why", "where", "which", "who", "when", "is", "are", "does", "do", "did", "can",
             "could", "should", "would", "will", "the", "a", "an", "about", "of", "to", "i", "me", "my", "it", "there",
@@ -712,6 +712,8 @@ namespace IndxServer.Services.SearchOrAsk
                         Sum(usage.Cost, judged?.Cost), judged?[SearchOrAskRecipes.Answerable],
                         Blank(origin.Subject), Blank(origin.Session), origin.Source,
                         DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted, FollowUp: history.Count > 0));
+                    if (askId != null && outcome != "stopped")
+                        CompareWithLastAsk(teamId, dataSetName, settings, askId, question, history.Count > 0, origin);
                 }
             }
         }
@@ -761,6 +763,56 @@ namespace IndxServer.Services.SearchOrAsk
                 foreach (var list in lists)
                     if (merged.Count < SourcesForAnswer && i < list.Count && !merged.Contains(list[i].Key)) merged.Add(list[i].Key);
             return (typedSearch, merged);
+        }
+
+        /// <summary>The last question each visit asked, for the next one to be compared with: by team,
+        /// dataset and session, with its ask id and when. Kept in memory; a restart only means the
+        /// first question after it is not compared.</summary>
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<(string, string, string), (string AskId, string Question, long At)> _lastAsk = new();
+
+        /// <summary>
+        /// After a question is recorded: when the same visit asked another within five minutes, and
+        /// this one is no follow-up and not the same text again (a double submit, not a miss), the
+        /// judge is asked whether it is the same request in other words. Off the visitor's path, once
+        /// per pair, against the daily budget; the probability lands on this ask's row.
+        /// </summary>
+        private void CompareWithLastAsk(string teamId, string dataSetName, SearchOrAskSettings settings, string askId, string question,
+            bool followUp, SearchOrAskOrigin origin)
+        {
+            if (Blank(origin.Session) is not { } session || !origin.Counted) return;
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var key = (teamId, dataSetName, session);
+            var had = _lastAsk.TryGetValue(key, out var last);
+            _lastAsk[key] = (askId, question, now);
+            if (_lastAsk.Count > 20_000)
+                foreach (var stale in _lastAsk.Where(e => now - e.Value.At > SearchOrAskRephrasing.Window.TotalMilliseconds).Select(e => e.Key).ToList())
+                    _lastAsk.TryRemove(stale, out _);
+            if (!had || followUp || now - last.At > SearchOrAskRephrasing.Window.TotalMilliseconds) return;
+            if (SearchOrAskRephrasing.Normalise(last.Question) == SearchOrAskRephrasing.Normalise(question)) return;
+            if (!JudgeAvailable || Writer is not { } w) return;
+            var site = SiteDescription(teamId, dataSetName, settings);
+            _ = Task.Run(async () =>
+            {
+                if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget)) return;
+                if (await RephrasedAsync(site, last.Question, question) is { } p)
+                    w.RecordAskRephrase(new AskRephraseRow(askId, teamId, dataSetName, last.AskId, p));
+            });
+        }
+
+        /// <summary>The judge's word on two questions in a row: the probability the second asks the
+        /// first again, or null when the judge failed or took too long.</summary>
+        public async Task<double?> RephrasedAsync(string site, string first, string second)
+        {
+            using var timeout = new CancellationTokenSource(_options.JudgeTimeoutMs * 2);
+            try
+            {
+                var state = new JsonObject { ["site"] = site, ["first"] = first, ["second"] = second };
+                return (await _models.JudgeAsync(state, SearchOrAskRecipes.RephraseQuestions(), timeout.Token))[SearchOrAskRecipes.Rephrased];
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or SearchOrAskModelException or HttpRequestException)
+            {
+                return null;
+            }
         }
 
         /// <summary>The judge's answerable question alone, on the question and what its search

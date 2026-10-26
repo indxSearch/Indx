@@ -85,6 +85,26 @@ namespace IndxServer.Services.SearchOrAsk
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown Search or ask kind."),
         };
 
+        /// <summary>Whether a visitor asked the same question again in other words: asked of two
+        /// questions in a row from one visit (26 Oct 2026). Word and record matching were tried first
+        /// and were wrong more often than right on the local questions: every question on a film site
+        /// says "movie", and on a small dataset unrelated questions draw on the same few pages.</summary>
+        public const string Rephrased = "rephrased";
+
+        public static Dictionary<string, JsonObject> RephraseQuestions() => new()
+        {
+            [Rephrased] = Noul(
+                "`first` and `second` are two questions a visitor asked one after the other in the search field of `site`, " +
+                "and each was answered. Is `second` the same request as `first`, asked again in other words because the " +
+                "answer to `first` did not give the visitor what they wanted?",
+                "`second` asks for the same thing as `first`: the same subject and the same need, reworded, made more " +
+                "specific, given context `first` lacked, or corrected (a typo fixed, a name spelled another way). The " +
+                "visitor is trying again.",
+                "`second` is a new question: another subject, another item or another need, even on the same site and " +
+                "topic. Or it builds on the answer to `first`, asking about what that answer said or listed (\"which of " +
+                "these\", \"and the cheapest?\", \"tell me more\"), which means the answer served them."),
+        };
+
         /// <summary>A yes/no question answered with a probability ("noul" in Jev's API).</summary>
         private static JsonObject Noul(string instructions, string whenTrue, string whenFalse) => new()
         {

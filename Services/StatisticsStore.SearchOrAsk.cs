@@ -37,6 +37,10 @@ namespace IndxServer.Services
     /// answer had a source opened (it landed where the first did not).</summary>
     public readonly record struct AskRephrasingStat(string First, string Again, long Times, long LastAsked, long AgainOpened);
 
+    /// <summary>The judge's word on a question and the one before it in the same visit: the
+    /// probability it is the same request in other words. Written onto the ask's row.</summary>
+    public readonly record struct AskRephraseRow(string AskId, string TeamId, string DataSet, string RephraseOf, double P);
+
     /// <summary>The asks a rewording could be told for (those with a session), and how many were
     /// followed by one.</summary>
     public readonly record struct AskedAgainStat(long Asks, long AskedAgain);
@@ -162,12 +166,16 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
             }
             // Whether a question continued a conversation (26 Oct 2026): a follow-up is not a question
             // asked again in other words.
-            try
+            // And the judge's word on whether it asked the question before it again, with that one's id.
+            foreach (var column in new[] { "FollowUp INTEGER NOT NULL DEFAULT 0", "RephraseOf TEXT", "RephraseP REAL" })
             {
-                cmd.CommandText = "ALTER TABLE AskEvents ADD COLUMN FollowUp INTEGER NOT NULL DEFAULT 0";
-                cmd.ExecuteNonQuery();
+                try
+                {
+                    cmd.CommandText = $"ALTER TABLE AskEvents ADD COLUMN {column}";
+                    cmd.ExecuteNonQuery();
+                }
+                catch (SqliteException) { /* already there */ }
             }
-            catch (SqliteException) { /* already there */ }
             // The budget's cost column came a few hours after its table (20 Oct 2026): a table made
             // without it is given it, since CREATE TABLE IF NOT EXISTS leaves an existing one alone.
             try
@@ -180,9 +188,11 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
 
         /// <summary>Writes Search or ask's rows in one transaction. Called only by
         /// <see cref="StatisticsWriter"/>, like <see cref="WriteBatch"/>.</summary>
-        public void WriteSearchOrAsk(IReadOnlyList<AskIntentEventRow> intents, IReadOnlyList<AskEventRow> asks)
+        public void WriteSearchOrAsk(IReadOnlyList<AskIntentEventRow> intents, IReadOnlyList<AskEventRow> asks,
+            IReadOnlyList<AskRephraseRow>? rephrased = null)
         {
-            if (intents.Count == 0 && asks.Count == 0) return;
+            rephrased ??= [];
+            if (intents.Count == 0 && asks.Count == 0 && rephrased.Count == 0) return;
             using var conn = Open();
             using var tx = conn.BeginTransaction();
             foreach (var r in intents)
@@ -236,6 +246,19 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
                 cmd.Parameters.AddWithValue("$ts", r.Timestamp);
                 cmd.Parameters.AddWithValue("$cnt", r.Counted ? 1 : 0);
                 cmd.Parameters.AddWithValue("$follow", r.FollowUp ? 1 : 0);
+                cmd.ExecuteNonQuery();
+            }
+            // After the asks of the same batch: the judgement comes after its ask, never before.
+            foreach (var r in rephrased)
+            {
+                using var cmd = conn.CreateCommand();
+                cmd.Transaction = tx;
+                cmd.CommandText = "UPDATE AskEvents SET RephraseOf = $of, RephraseP = $p WHERE AskId = $id AND TeamId = $t AND DataSet = $d";
+                cmd.Parameters.AddWithValue("$of", r.RephraseOf);
+                cmd.Parameters.AddWithValue("$p", r.P);
+                cmd.Parameters.AddWithValue("$id", r.AskId);
+                cmd.Parameters.AddWithValue("$t", r.TeamId);
+                cmd.Parameters.AddWithValue("$d", r.DataSet);
                 cmd.ExecuteNonQuery();
             }
             tx.Commit();
