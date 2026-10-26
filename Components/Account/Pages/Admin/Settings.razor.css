@@ -18,9 +18,10 @@
     border-left: 1px solid var(--lv2);
     overflow-y: auto;
 }
-/* The labels start under the header trail's icon, 50px into the column: the menu's own 10px
-   inset plus 21px, the Buttons adding their 10px padding and the hairline its 1px. */
-.settings-side ::deep .side-menu { padding-left: 31px; }
+/* The icons start under the header trail's icon, 50px into the column: the menu's inset, the
+   hairline's 1px, and a micro Button's padding beside an icon. Measured, not derived: change one
+   of those and look again. */
+.settings-side ::deep .side-menu { padding-left: 38px; }
 .settings-main {
     flex: 1;
     min-width: 0;
