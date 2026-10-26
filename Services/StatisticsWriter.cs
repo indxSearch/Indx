@@ -47,6 +47,7 @@ namespace IndxServer.Services
         public void RecordDocuments(in DocumentCountRow row) => Enqueue(row);
         public void RecordAskIntent(in AskIntentEventRow row) => Enqueue(row);
         public void RecordAsk(in AskEventRow row) => Enqueue(row);
+        public void RecordAskFeedback(in AskFeedbackRow row) => Enqueue(row);
         public void RecordBudget(in AskBudgetRow row) => Enqueue(row);
 
         private void Enqueue(object row)
@@ -89,6 +90,7 @@ namespace IndxServer.Services
             var documents = new List<DocumentCountRow>();
             var intents = new List<AskIntentEventRow>();
             var asks = new List<AskEventRow>();
+            var feedback = new List<AskFeedbackRow>();
             var budget = new List<AskBudgetRow>();
             while (_queue.TryDequeue(out var row))
             {
@@ -102,11 +104,12 @@ namespace IndxServer.Services
                     case DocumentCountRow d: documents.Add(d); break;
                     case AskIntentEventRow i: intents.Add(i); break;
                     case AskEventRow a: asks.Add(a); break;
+                    case AskFeedbackRow f: feedback.Add(f); break;
                     case AskBudgetRow b: budget.Add(b); break;
                 }
             }
             var count = searches.Count + selects.Count + converts.Count + changes.Count + documents.Count
-                        + intents.Count + asks.Count + budget.Count;
+                        + intents.Count + asks.Count + feedback.Count + budget.Count;
             if (count == 0) return;
             // In the order they were asked for: the queue has them as they finished.
             searches.Sort((a, b) => a.Timestamp.CompareTo(b.Timestamp));
@@ -116,7 +119,7 @@ namespace IndxServer.Services
             {
                 store.WriteBatch(searches, selects, converts, superseded);
                 store.WriteChanges(changes, documents);
-                store.WriteSearchOrAsk(intents, asks);
+                store.WriteSearchOrAsk(intents, asks, feedback);
                 store.WriteBudget(budget);
                 Interlocked.Add(ref _flushedTotal, count);
                 Interlocked.Increment(ref _flushes);

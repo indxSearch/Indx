@@ -15,6 +15,10 @@ namespace IndxServer.Components.Datasets
     public partial class StatisticsTab
     {
         private AskOverviewStat _ask;
+        private AskFeedbackStat _askFeedback;
+
+        /// <summary>Whether any visitor rated an answer in the window: the tile shows only then.</summary>
+        private bool HasFeedback => _askFeedback.Helpful + _askFeedback.NotHelpful > 0;
         private AskBudgetStat _askBudget;
         private List<AskQuestionStat> _askQuestions = [];
         private List<AskOfferStat> _askOffers = [];
@@ -55,6 +59,7 @@ namespace IndxServer.Components.Datasets
         {
             _citesSources = SearchOrAsk.Settings(team, ds).Kind != SearchOrAskRecipes.Catalogue;
             _ask = store.AskOverview(team, ds, fromDay, toDay, source);
+            _askFeedback = store.AskFeedback(team, ds, fromDay, toDay, source);
             // The budget belongs to the dataset, not to a surface: the whole window whatever the source.
             _askBudget = store.AskBudget(team, ds, fromDay, toDay);
             _askQuestions = HasSearchOrAsk ? store.TopQuestions(team, ds, fromDay, toDay, 25, source) : [];

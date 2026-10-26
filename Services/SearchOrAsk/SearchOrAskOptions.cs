@@ -29,6 +29,9 @@ namespace IndxServer.Services.SearchOrAsk
         public bool? EuRouting { get; set; }
         /// <summary>standard or ultrafast: OpenAI's speed tier for the answers.</summary>
         public string? AnswerSpeed { get; set; }
+        /// <summary>Lets a dataset have its answers written by the site's own model (answersBy:
+        /// elsewhere). Off by default; the console's switch does the same.</summary>
+        public bool AllowAnswersElsewhere { get; set; }
         /// <summary>openrouter or typesafe (Jev), or openai (the Decisions API).</summary>
         public string? JudgeProvider { get; set; }
         /// <summary>The judge's key, from before keys were kept per provider: read as the key of the
