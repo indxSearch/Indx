@@ -18,6 +18,20 @@ namespace IndxServer.Components.Datasets
         private AskedAgainStat _askedAgain;
         private List<AskRephrasingStat> _rephrased = [];
         private List<AskNeedStat> _needs = [];
+        private AskNeedStat? _need;
+
+        /// <summary>How a need's visits ended, as shares of one bar, the way the overview shows how
+        /// the asks ended: first try in the ink, after asking again down the ladder, given up in the
+        /// signal red.</summary>
+        private static IReadOnlyList<BarMeter.Segment> NeedSegments(AskNeedStat need)
+        {
+            var segments = new List<BarMeter.Segment>();
+            void Add(string label, long n, string? color = null) { if (n > 0) segments.Add(new(label, n, color)); }
+            Add("First try", need.FirstTry);
+            Add("After asking again", need.AfterRewording);
+            Add("Gave up", need.GaveUp, "var(--CSignal)");
+            return segments;
+        }
         private AskBudgetStat _askBudget;
         private List<AskQuestionStat> _askQuestions = [];
         private List<AskOfferStat> _askOffers = [];

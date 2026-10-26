@@ -191,18 +191,7 @@
     color: var(--lv7);
 }
 
-/* Needs: a card each, the visits' ends in one bar (first try in the ink, after asking again in a
-   mid tone, given up in the signal red), then the wordings and the record it landed on. */
-.stats-needs { display: flex; flex-direction: column; gap: 16px; margin-top: 12px; }
-.stats-need { display: flex; flex-direction: column; gap: 10px; padding: 16px; background: var(--lv1); border: 1px solid var(--lv2); border-radius: var(--radius); }
-.stats-need-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-.stats-need-title { font: var(--text-base); font-weight: var(--med); color: var(--lv8); }
-.stats-need-visits { font: var(--text-xs); color: var(--lv5); white-space: nowrap; }
-.stats-need-bar { display: flex; height: 8px; gap: 2px; border-radius: var(--radius); overflow: hidden; }
-.stats-need-first { background: var(--lv8); }
-.stats-need-after { background: var(--lv5); }
-.stats-need-gaveup { background: var(--CSignal); }
-.stats-need-legend { display: flex; gap: 16px; flex-wrap: wrap; font: var(--text-xs); color: var(--lv6); }
-.stats-need-legend > span { display: inline-flex; align-items: center; gap: 6px; }
-.stats-need-key { display: inline-block; width: 8px; height: 8px; border-radius: 2px; }
-.stats-need-landed { margin: 0; font: var(--text-xs); color: var(--lv6); }
+/* Needs: a list in the tables' style, the title a ghost Button that opens the need in a Modal:
+   how its visits ended, how it was asked, where it landed. */
+.stats-need-open ::deep .indx-btn { justify-content: flex-start; max-width: 100%; text-align: left; }
+.stats-need { display: flex; flex-direction: column; gap: 16px; }
