@@ -5,6 +5,10 @@
    replaces its own classes (Blazor attribute splat), not merges with them. */
 .side-menu-item ::deep .indx-btn { width: 100%; justify-content: flex-start; }
 .side-menu-note { padding: 6px 10px 0; font: var(--text-2xs); color: var(--lv4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A newer release under the version: a ghost micro Button, the security one in the ink. */
+.side-menu-update { padding: 4px 0 0; }
+.side-menu-update ::deep .indx-btn { color: var(--lv6); }
+.side-menu-update ::deep .indx-btn:hover, .side-menu-update-security ::deep .indx-btn { color: var(--lv8); }
 .side-menu-badge { margin-left: auto; font: var(--text-2xs); font-weight: var(--med); padding: 0 5px; border-radius: 3px; background: var(--CSignal); color: var(--lv0); }
 .side-menu-experimental { display: inline-flex; margin-left: auto; color: var(--lv5); }
 
@@ -12,6 +16,6 @@
 @media (max-width: 768px) {
     .side-menu { flex-direction: row; gap: 8px; padding: 0; overflow-x: auto; min-width: 0; flex: 1; }
     .side-menu-group { flex-direction: row; gap: 2px; }
-    .side-menu-title, .side-menu-note { display: none; }
+    .side-menu-title, .side-menu-note, .side-menu-update { display: none; }
     .side-menu-item ::deep .indx-btn { width: auto; white-space: nowrap; }
 }

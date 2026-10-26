@@ -69,6 +69,7 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> TopDocuments = Of<Icons.SortAscending>();
         public static readonly RenderFragment<int> Browsing = Of<Icons.InternetBrowser>();
         public static readonly RenderFragment<int> Changes = Of<Icons.Update>();
+        public static readonly RenderFragment<int> Mail = Of<Icons.Mail>();
         public static readonly RenderFragment<int> FuzzySelected = Of<Icons.ClickSelect>();
         // The Search or ask views: the pictures, the questions asked, the offers shown.
         public static readonly RenderFragment<int> AskOverview = Of<Icons.Analytics>();

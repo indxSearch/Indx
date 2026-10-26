@@ -37,6 +37,14 @@
             {
                 <div class="side-menu-note" title="@group.Note">@group.Note</div>
             }
+            @if (group.Update is { } update)
+            {
+                <div class="side-menu-update @(update.Security ? "side-menu-update-security" : "")">
+                    <Button Variant="ghost" Size="micro" IconLeft="IndxServer.Components.Datasets.DatasetIcons.Changes" Href="@update.Href"
+                            target="_blank" rel="noopener" title="@update.Title">@update.Text</Button>
+                </div>
+            }
+            }
         </div>
     }
 </nav>

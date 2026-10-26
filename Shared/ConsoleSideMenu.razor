@@ -6,6 +6,8 @@
 @implements IDisposable
 @inject NavigationManager NavigationManager
 @inject IndxServer.Services.SideMenuState Menu
+@inject InstanceSettingsService Settings
+@inject IEditionService Edition
 
 @if (_groups.Count > 0)
 {
@@ -47,6 +49,22 @@
             return;
         }
         (_groups, _active) = ForUrl(NavigationManager.Uri);
+        if (_groups.Count > 0 && _groups[0].Title == "Admin" && UpdateNotice.Pending(Settings.Load(), ReleaseVersion.Current) is { } pending)
+            _groups = [_groups[0] with { Update = UpdateLine(pending, Edition.Edition == IndxEdition.Managed) }, .. _groups.Skip(1)];
+    }
+
+    /// <summary>The newer release, under the version: a link to it, or for a Managed instance an
+    /// email to support, since Indx installs it.</summary>
+    private static SideMenuUpdate UpdateLine((string Version, string? Url, bool Security) pending, bool managed)
+    {
+        var text = pending.Security ? $"Security update {pending.Version}" : $"{pending.Version} available";
+        var title = managed
+            ? $"Indx {pending.Version} is out. Indx installs it: write to support@indx.co."
+            : $"Indx {pending.Version} is out: open the release notes.";
+        var href = managed
+            ? $"mailto:support@indx.co?subject={Uri.EscapeDataString($"Please install Indx {pending.Version}")}"
+            : pending.Url ?? "https://github.com/indxSearch/Indx/releases";
+        return new SideMenuUpdate(text, href, title, pending.Security);
     }
 
     /// <summary>The area's sections when no page set them: admin, account. Read off the URL so the

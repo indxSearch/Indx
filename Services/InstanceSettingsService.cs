@@ -82,7 +82,7 @@ internal class InstanceSettings
     /// announced once, however often the check runs.</summary>
     public string? LastAnnouncedRelease { get; set; }
 
-    /// <summary>Where that release is, and whether it fixes a security issue: the Monitor page's
+    /// <summary>Where that release is, and whether it fixes a security issue: the admin side column's
     /// line about it.</summary>
     public string? LastAnnouncedReleaseUrl { get; set; }
     public bool LastAnnouncedReleaseSecurity { get; set; }

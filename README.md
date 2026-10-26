@@ -469,7 +469,7 @@ The download endpoint is **hardcoded** to the Indx portal (`https://license.indx
 
 Once a day the server asks [license.indx.co](https://license.indx.co) which Indx release is the
 latest. When it is newer than the one running, every admin gets one notification in the console,
-and the Monitor page shows a line about it until the server is updated. Email is off for an
+and the admin area shows it under the running version until the server is updated. Email is off for an
 ordinary release (each admin can turn it on under notification settings); a release that fixes a
 security issue says so and is emailed as well. A self-hosted server points at the release on
 GitHub; a Managed instance is updated by Indx, since Azure keeps its files out of the customer's

@@ -78,7 +78,7 @@ namespace IndxServer.Services
             && !string.Equals(lastNotified, latest.ToString(), StringComparison.OrdinalIgnoreCase);
 
         /// <summary>The newer release this server was told about, if it still runs an older one:
-        /// what the Monitor page's quiet line shows.</summary>
+        /// what the admin side column's line under the version shows.</summary>
         internal static (string Version, string? Url, bool Security)? Pending(InstanceSettings s, ReleaseVersion? current)
         {
             var announced = ReleaseVersion.Parse(s.LastAnnouncedRelease);
@@ -103,7 +103,7 @@ namespace IndxServer.Services
     /// <summary>
     /// Once a day, asks the licence portal which release is the latest and, when it is newer than
     /// this server, tells the admins once. A release is a notice in the console (the bell, and a line
-    /// on the Monitor page), emailed only to admins who turned that on; a security release is also
+    /// under the version in the admin side column), emailed only to admins who turned that on; a security release is also
     /// emailed by default.
     /// Anonymous: the request carries no token and nothing about the instance, so it works for every
     /// install, licensed or not, and tells the portal nothing. <c>Updates:Check</c> false switches

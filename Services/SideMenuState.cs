@@ -8,8 +8,13 @@ namespace IndxServer.Services
         bool Disabled = false, string? Title = null, string? Badge = null, string? BadgeTitle = null, bool Experimental = false);
 
     /// <summary>A group of items under a title; <see cref="Note"/> is one quiet line under them
-    /// (the admin area's version).</summary>
-    public sealed record SideMenuGroup(string? Title, IReadOnlyList<SideMenuItem> Items, string? Note = null);
+    /// (the admin area's version), <see cref="Update"/> a second when a newer release is out.</summary>
+    public sealed record SideMenuGroup(string? Title, IReadOnlyList<SideMenuItem> Items, string? Note = null, SideMenuUpdate? Update = null);
+
+    /// <summary>The newer release under the version: what it says, where it leads (the release, or
+    /// for a Managed instance, which Indx updates, an email to support), the hover text, and whether
+    /// it fixes a security issue.</summary>
+    public sealed record SideMenuUpdate(string Text, string Href, string Title, bool Security);
 
     /// <summary>
     /// Per-circuit slot for what the side column's menu shows, the way <see cref="HeaderState"/>
