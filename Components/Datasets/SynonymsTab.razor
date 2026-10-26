@@ -133,10 +133,8 @@
             {
                 <InputField Label="From" placeholder="e.g. hms" @bind-Value="_modalFrom" />
             }
-            <div>
-                <InputField Label="Synonyms" placeholder="term; term; term" @bind-Value="_modalTerms" />
-                <span class="syn-hint">Separate terms with semicolons — a comma is part of a term. Multi-word terms are fine.</span>
-            </div>
+            <TagsInput Label="Synonyms" Placeholder="Type a term, then Enter" Separators=";" @bind-Value="_modalTerms"
+                       Hint="Enter or a semicolon ends a term; a comma or a space is part of it, so multi-word terms are fine." />
             @if (!string.IsNullOrEmpty(_modalError))
             {
                 <p class="syn-error syn-error--modal">@_modalError</p>
@@ -170,7 +168,7 @@
     private SynonymEntry? _modalTarget;
     private bool _modalOneWay;
     private string? _modalFrom;
-    private string? _modalTerms;
+    private IReadOnlyList<string> _modalTerms = [];
     private string? _modalError;
 
     // The filter box is itself an Indx search: the entries are indexed in a small in-memory
@@ -195,9 +193,6 @@
         var json = Ctx.Engines.GetSynonyms(Ctx.Name, Ctx.TeamId)?.GetSerialized();
         _list = json == null ? null : SynonymList.Deserialize(json);
     }
-
-    private static string[] SplitTerms(string? text) =>
-        (text ?? string.Empty).Split(';', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
 
     private void InvalidateFilterEngine()
     {
@@ -271,7 +266,7 @@
         _modalTarget = entry;
         _modalOneWay = entry?.Direction == SynonymDirection.OneWay;
         _modalFrom = entry?.Source;
-        _modalTerms = entry == null ? null : string.Join("; ", entry.Terms);
+        _modalTerms = entry == null ? [] : entry.Terms.ToList();
         _modalOpen = true;
     }
 
@@ -284,7 +279,7 @@
     {
         if (_saving) return;
         _modalError = null;
-        var terms = SplitTerms(_modalTerms);
+        var terms = _modalTerms.Select(t => t.Trim()).Where(t => t.Length > 0).ToArray();
         if (terms.Length == 0) { _modalError = "Enter at least one synonym."; return; }
         if (_modalOneWay && string.IsNullOrWhiteSpace(_modalFrom)) { _modalError = "A one-way entry needs a From term."; return; }
 

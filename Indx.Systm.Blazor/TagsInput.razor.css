@@ -1,0 +1,110 @@
+.indx-tags-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 0;
+}
+
+/* The field: an InputField's border and height, the chips and the box wrapping inside it. */
+.indx-tags {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    min-height: 30px;
+    padding: 3px 6px;
+    box-sizing: border-box;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    background: transparent;
+    cursor: text;
+}
+
+.indx-tags:hover,
+.indx-tags:focus-within {
+    border-color: var(--lv5);
+}
+
+.indx-tags-disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* A value: the Chip's tone and type, with its remove step at the end. */
+.indx-tags-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 100%;
+    padding: 1px 2px 1px 7px; /* the right 2px matches the gap above and below the circle */
+    border-radius: 10px;
+    background: var(--lv2);
+    color: var(--lv7);
+    font: var(--text-xs);
+    /* 19px in all (a 17px line and 1px padding), so the 15px remove circle sits in the chip's round
+       end with 2px above, below and after it. Set after font, which sets a line height too. */
+    line-height: 17px;
+}
+
+.indx-tags-text {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.indx-tags-remove {
+    display: inline-flex;
+    /* A 15px circle: the 7x5 X centres in it on whole pixels (4 across, 5 down). */
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 15px;
+    height: 15px;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--lv5);
+    line-height: 0;
+    cursor: pointer;
+}
+
+/* The pixl X at 7, one pixel a cell, drawn as a block: inline it sat on the text's baseline, high. */
+.indx-tags-remove ::deep svg {
+    display: block;
+}
+
+.indx-tags-remove:hover,
+.indx-tags-remove:focus-visible {
+    background: var(--lv3);
+    color: var(--lv8);
+    outline: none;
+}
+
+/* The box: borderless, taking the rest of the row and wrapping to a line of its own when short. */
+.indx-tags-input {
+    flex: 1 1 80px;
+    min-width: 80px;
+    height: 22px;
+    padding: 0 2px;
+    border: none;
+    background: transparent;
+    color: var(--lv7);
+    font: var(--text-xs);
+    outline: none;
+}
+
+.indx-tags-input::placeholder {
+    color: var(--lv5);
+}
+
+.indx-tags-hint {
+    font: var(--text-2xs);
+    color: var(--lv5);
+}
+
+/* The label as an InputField's (whose own rule is scoped to it). */
+.indx-input-label {
+    font: var(--text-xs);
+    color: var(--lv6);
+}

@@ -1,0 +1,142 @@
+@* A list of short values edited as chips in one field: synonym terms, allowed websites, a rule's
+   values. Typing a separator or Enter makes the text so far a chip; a paste with separators in it
+   makes one per part; leaving the field keeps what was typed. Backspace in the empty box takes the
+   last chip back into it, so a typo is mended rather than retyped, and each chip has its own
+   remove step. A value already there (ignoring case) is not added twice. The separators are the
+   caller's: a synonym term may hold a comma or a space, so there only ";" and Enter divide.
+   Port of the React TagsInput in indx-systm. *@
+@using Indx.Systm.Blazor.Icons
+
+<div class="indx-tags-wrapper">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label for="@_id" class="indx-input-label">@Label</label>
+    }
+    <div class="indx-tags @(Disabled ? "indx-tags-disabled" : "")" @onclick="FocusBox">
+        @for (int i = 0; i < _values.Count; i++)
+        {
+            var index = i;
+            var value = _values[i];
+            <span class="indx-tags-chip" @key="value">
+                <span class="indx-tags-text">@value</span>
+                @if (!Disabled)
+                {
+                    <button type="button" class="indx-tags-remove" aria-label="@($"Remove {value}")" title="Remove"
+                            @onclick="() => RemoveAt(index)" @onclick:stopPropagation="true"><XOrError Size="7" Color="currentColor" /></button>
+                }
+            </span>
+        }
+        <input id="@_id" class="indx-tags-input" @ref="_box" @key="_box_.Key" value="@_box_.Rendered"
+               placeholder="@(_values.Count == 0 ? Placeholder : null)" aria-label="@(AriaLabel ?? Label)" disabled="@Disabled"
+               @oninput="OnInput" @onkeydown="OnKeyDown" @onblur="OnBlur" />
+    </div>
+    @if (!string.IsNullOrEmpty(Hint))
+    {
+        <span class="indx-tags-hint">@Hint</span>
+    }
+</div>
+
+@code {
+    /// <summary>The values, in order.</summary>
+    [Parameter] public IReadOnlyList<string>? Value { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<string>> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    /// <summary>A line under the field: what divides the values, what a value may hold.</summary>
+    [Parameter] public string? Hint { get; set; }
+    /// <summary>The characters that end a value as it is typed or pasted, besides Enter; ";" and "," by default.</summary>
+    [Parameter] public string Separators { get; set; } = ";,";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+
+    private readonly string _id = $"tags-{Guid.NewGuid():N}";
+    private List<string> _values = new();
+    private IReadOnlyList<string>? _given;
+    private readonly LiveInputState _box_ = new("");
+    private ElementReference _box;
+    private bool _refocus;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_given, Value)) { _given = Value; _values = Value?.ToList() ?? new(); }
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString() ?? "";
+        if (text.IndexOfAny(Separators.ToCharArray()) < 0) { _box_.Typed(text); return; }
+        // A separator typed or pasted: every part before the last is a value; the last is still being typed.
+        var parts = text.Split(Separators.ToCharArray());
+        bool added = false;
+        foreach (var part in parts[..^1]) added |= Add(part);
+        SetBox(parts[^1].TrimStart());
+        if (added) await Changed();
+    }
+
+    private async Task OnKeyDown(KeyboardEventArgs e)
+    {
+        var text = _box_.Text ?? "";
+        if (e.Key == "Enter" && text.Trim().Length > 0)
+        {
+            SetBox("");
+            if (Add(text)) await Changed();
+        }
+        else if (e.Key == "Backspace" && text.Length == 0 && _values.Count > 0)
+        {
+            // The last chip back into the box, to be mended rather than retyped.
+            var last = _values[^1];
+            _values.RemoveAt(_values.Count - 1);
+            SetBox(last);
+            await Changed();
+        }
+    }
+
+    private async Task OnBlur()
+    {
+        var text = _box_.Text ?? "";
+        if (text.Trim().Length == 0) return;
+        _box_.Set("");
+        if (Add(text)) await Changed();
+    }
+
+    private bool Add(string text)
+    {
+        var value = text.Trim();
+        if (value.Length == 0 || _values.Contains(value, StringComparer.OrdinalIgnoreCase)) return false;
+        _values.Add(value);
+        return true;
+    }
+
+    private async Task RemoveAt(int index)
+    {
+        if (index < 0 || index >= _values.Count) return;
+        _values.RemoveAt(index);
+        await Changed();
+        await FocusBox();
+    }
+
+    // The box shows new text: a fresh element, which loses the focus, so it is given back after the render.
+    private void SetBox(string text)
+    {
+        if (_box_.Set(text)) _refocus = true;
+    }
+
+    private Task Changed()
+    {
+        _given = _values.ToList();
+        return ValueChanged.InvokeAsync(_given);
+    }
+
+    private async Task FocusBox()
+    {
+        if (Disabled) return;
+        try { await _box.FocusAsync(); } catch (InvalidOperationException) { } catch (Microsoft.JSInterop.JSException) { }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_refocus) return;
+        _refocus = false;
+        await FocusBox();
+    }
+}
