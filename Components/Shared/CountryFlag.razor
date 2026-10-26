@@ -1,0 +1,50 @@
+@* The flag for a language tag, where the tag says which country: "nb-NO" gets Norway's, "en-GB"
+   the United Kingdom's, "pt-BR" Brazil's. A language is not a country, so a tag that names none
+   ("en", "de") gets nothing rather than a guess. The Sámi languages get the flag of Sápmi whatever
+   region they name: the flag of a people and their language, not of a state. A country without a
+   pictogram shows its code in a chip, as the tag spells it. The flags are pixl pictograms
+   (CountryFlags.g.cs, from generate-blazor-flags.js), in their own colours in both themes. *@
+
+@switch (Resolve(Locale))
+{
+    case { Flag: { } key, Region: var region }:
+        <svg class="country-flag" width="@Size" height="@(Size * 5 / 7)" viewBox="0 0 7 5" shape-rendering="crispEdges"
+             role="img" aria-label="@NameOf(key, region)">
+            <title>@NameOf(key, region)</title>
+            @((MarkupString)CountryFlags.Rects[key])
+        </svg>
+        break;
+    case { Region: { } region }:
+        <Chip Class="country-flag-code">@region</Chip>
+        break;
+}
+
+@code {
+    /// <summary>A language tag, as the page sent it: "nb-NO", "en_GB", "se".</summary>
+    [Parameter, EditorRequired] public string? Locale { get; set; }
+    /// <summary>The width in pixels, a multiple of 7 for whole cells; 14 by default, for small text.</summary>
+    [Parameter] public int Size { get; set; } = 14;
+
+    private static readonly HashSet<string> Sami = new(StringComparer.OrdinalIgnoreCase) { "se", "sma", "smj", "smn", "sms" };
+
+    /// <summary>What a tag shows: the key of its flag, and the region it names. Both null for a tag
+    /// with no country (nothing is shown); a region without a flag is shown as its code. A numeric
+    /// region ("es-419", Latin America) is an area, not a country, and shows nothing.</summary>
+    public static (string? Flag, string? Region) Resolve(string? tag)
+    {
+        if (string.IsNullOrWhiteSpace(tag)) return (null, null);
+        var parts = tag.Trim().Split('-', '_');
+        string? region = parts.Skip(1).FirstOrDefault(p => p.Length == 2 && p.All(char.IsAsciiLetter))?.ToUpperInvariant();
+        if (Sami.Contains(parts[0])) return ("sami", region);
+        if (region == null) return (null, null);
+        return (CountryFlags.Rects.ContainsKey(region) ? region : null, region);
+    }
+
+    private static string NameOf(string? flag, string? region)
+    {
+        if (flag == "sami") return "Sápmi";
+        if (region == "EU") return "European Union";
+        try { return region != null ? new System.Globalization.RegionInfo(region).EnglishName : ""; }
+        catch (ArgumentException) { return region ?? ""; }
+    }
+}

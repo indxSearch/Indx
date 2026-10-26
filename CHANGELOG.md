@@ -24,7 +24,8 @@ patch can pick up a newer core without changing the HTTP contract.
   its own, with a clock of when the day's budget tends to run out.
 - **Languages.** Send `?locale=` with a search, a BCP 47 tag such as `nb-NO`, and Statistics
   counts the languages visitors search in; a browser's `Accept-Language` is read when the
-  parameter is left out.
+  parameter is left out. A language whose tag names a country, `nb-NO` or `pt-BR`, carries that
+  country's flag.
 - **Admin > Monitor** shows the process's CPU and memory against what the machine allows, the
   native memory pool, searches a minute over the last hour and every dataset's state at a glance.
   The terminal monitor has the same gauges.

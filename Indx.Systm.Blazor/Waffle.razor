@@ -1,20 +1,40 @@
 @* Shares of a whole as a grid of pixel squares: each segment gets its share of the cells, filled
    column by column from the left, the first segment in the ink and the rest down the tone ladder,
    with a legend beneath. A portfolio by holding, a dataset by field type, searches by source.
-   Where a pie would be, this is the pixel version. Port of the React Waffle in indx-systm. *@
+   Where a pie would be, this is the pixel version. Hovering a cell names its segment in a
+   tooltip beside it, and a cell or a legend entry under the pointer dims the other segments, so
+   which is which can be browsed from either side. Port of the React Waffle in indx-systm. *@
 <div class="indx-waffle @Class">
-    <div class="indx-waffle-grid" role="img" aria-label="@AriaLabel"
-         style="--waffle-rows: @Rows; --waffle-cell: @(Cell)px;">
-        @{
-            var counts = AllocateCells(Segments.Select(s => s.Value).ToArray(), Columns * Rows);
-            int seg = 0, used = 0;
-        }
-        @for (int i = 0; i < Columns * Rows; i++)
+    <div class="indx-waffle-grid-wrap" @onmouseleave="Leave">
+        <div class="indx-waffle-grid" role="img" aria-label="@AriaLabel"
+             style="--waffle-rows: @Rows; --waffle-cell: @(Cell)px;">
+            @{
+                var counts = AllocateCells(Segments.Select(s => s.Value).ToArray(), Columns * Rows);
+                int seg = 0, used = 0;
+            }
+            @for (int i = 0; i < Columns * Rows; i++)
+            {
+                while (seg < counts.Length && used >= counts[seg]) { seg++; used = 0; }
+                var color = seg < counts.Length ? ColorOf(seg) : null;
+                used++;
+                var (cell, of) = (i, seg < counts.Length ? seg : -1);
+                <span class="indx-waffle-cell @(_segment is { } hs && hs != of ? "indx-waffle-dim" : null)"
+                      style="@(color != null ? $"background: {color};" : null)"
+                      @onmouseover="() => Hover(cell, of)"></span>
+            }
+        </div>
+        @* The hovered cell's segment, beside it: at the right, or at the left past the middle. *@
+        @if (_cell is { } c && _segment is { } sg && sg < Segments.Count)
         {
-            while (seg < counts.Length && used >= counts[seg]) { seg++; used = 0; }
-            var color = seg < counts.Length ? ColorOf(seg) : null;
-            used++;
-            <span class="indx-waffle-cell" style="@(color != null ? $"background: {color};" : null)"></span>
+            int col = c / Rows, row = c % Rows, pitch = Cell + 2;
+            bool rightHalf = col > Columns / 2.0;
+            var s = Segments[sg];
+            <div class="indx-waffle-tooltip @(rightHalf ? "indx-waffle-tooltip-left" : "")"
+                 style="top: @(row * pitch + Cell / 2.0)px; left: @(rightHalf ? col * pitch - 6 : col * pitch + Cell + 6)px;">
+                @if (s.Icon != null) { <span class="indx-waffle-icon">@s.Icon</span> }
+                <span class="indx-waffle-name">@s.Label</span>
+                <span class="indx-waffle-share">@Show(s)</span>
+            </div>
         }
     </div>
     @if (Legend)
@@ -23,8 +43,10 @@
             @for (int i = 0; i < Segments.Count; i++)
             {
                 var s = Segments[i];
-                <li class="indx-waffle-item">
+                var index = i;
+                <li class="indx-waffle-item" @onmouseover="() => { _cell = null; _segment = index; }" @onmouseleave="Leave">
                     <span class="indx-waffle-swatch" style="background: @ColorOf(i);"></span>
+                    @if (s.Icon != null) { <span class="indx-waffle-icon">@s.Icon</span> }
                     <span class="indx-waffle-name">@s.Label</span>
                     <span class="indx-waffle-share">@Show(s)</span>
                 </li>
@@ -34,8 +56,9 @@
 </div>
 
 @code {
-    /// <summary>A segment: its label, its value and, optionally, its colour; without one, the tone ladder from the ink down, four steps, so a fifth segment needs one.</summary>
-    public sealed record Segment(string Label, double Value, string? Color = null);
+    /// <summary>A segment: its label, its value and, optionally, its colour; without one, the tone ladder from the ink down, four steps, so a fifth segment needs one.
+    /// An icon goes before the label in the legend, about the text's height: a pixl icon at 14, or a flag.</summary>
+    public sealed record Segment(string Label, double Value, string? Color = null, RenderFragment? Icon = null);
 
     [Parameter, EditorRequired] public IReadOnlyList<Segment> Segments { get; set; } = Array.Empty<Segment>();
     /// <summary>Cells across; 20 by default.</summary>
@@ -55,6 +78,15 @@
     // Four steps apart enough to tell at 4px: lv6 is all but lv8 in both themes. A fifth segment
     // and on keep the last step, never back to the ink, so give them a colour to tell apart.
     private static readonly string[] Tones = { "var(--lv8)", "var(--lv5)", "var(--lv4)", "var(--lv3)" };
+
+    // The segment under the pointer, from a cell or a legend entry, and the cell when it is one.
+    private int? _segment, _cell;
+    private void Leave() => (_segment, _cell) = (null, null);
+    private void Hover(int cell, int segment)
+    {
+        if (segment < 0) { Leave(); return; }
+        (_segment, _cell) = (segment, cell);
+    }
 
     private double Sum => Segments.Sum(s => Math.Max(0, s.Value));
     private string ColorOf(int i) => Segments[i].Color ?? Tones[Math.Min(i, Tones.Length - 1)];

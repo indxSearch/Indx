@@ -16,8 +16,40 @@
     width: max-content;
 }
 
+/* The grid and its tooltip share a box, so the tooltip is placed by the cell's grid position. */
+.indx-waffle-grid-wrap {
+    position: relative;
+    width: max-content;
+}
+
 .indx-waffle-cell {
     background: var(--lv2);
+}
+
+/* The other segments while one is under the pointer. */
+.indx-waffle-dim {
+    opacity: 0.25;
+}
+
+/* The tooltip: the Heatmap's, beside the cell, centred on it. */
+.indx-waffle-tooltip {
+    position: absolute;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--lv0);
+    border: 1px solid var(--lv2);
+    padding: 4px 8px;
+    font: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.indx-waffle-tooltip-left {
+    transform: translate(-100%, -50%);
 }
 
 .indx-waffle-legend {
@@ -40,6 +72,11 @@
 .indx-waffle-swatch {
     width: 4px;
     height: 4px;
+    flex: none;
+}
+
+.indx-waffle-icon {
+    display: inline-flex;
     flex: none;
 }
 

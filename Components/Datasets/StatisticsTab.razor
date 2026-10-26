@@ -188,7 +188,7 @@ else
             <div class="stats-chart-head">
                 <span class="stats-chart-title">Languages</span>
             </div>
-            <p class="stats-help">The language of the page the search was typed on, as the page reports it; a cell is a percent.</p>
+            <p class="stats-help">The language of the page the search was typed on, as the page reports it; a cell is a percent. A flag where the page names its country too.</p>
             <Waffle Segments="LocaleSegments(_locales)" Format="@((f, v) => Pct((long)v, _locales.Sum(l => l.Searches)))" AriaLabel="Searches by language" />
             </div>
         }
@@ -753,11 +753,17 @@ else
     private static readonly string[] WordLabels = ["1 word", "2", "3", "4", "5 or more"];
 
     /// <summary>Most first, as the store orders them; the unnamed rest last and dim; a tag shown as
-    /// its language's own name where the runtime knows it ("norsk bokmål (Norge)"), else as sent.</summary>
+    /// its language's own name where the runtime knows it ("norsk bokmål (Norge)"), else as sent,
+    /// with the country's flag where the tag names one (CountryFlag: a language is not a country).</summary>
     private static IReadOnlyList<Waffle.Segment> LocaleSegments(List<LocaleStat> locales) =>
         locales.Where(l => l.Searches > 0)
-            .Select(l => l.Locale == null ? new Waffle.Segment("Unnamed", l.Searches, "var(--lv2)") : new Waffle.Segment(LocaleName(l.Locale), l.Searches))
+            .Select(l => l.Locale == null
+                ? new Waffle.Segment("Unnamed", l.Searches, "var(--lv2)")
+                : new Waffle.Segment(LocaleName(l.Locale), l.Searches, Icon: FlagOf(l.Locale)))
             .ToList();
+
+    private static RenderFragment? FlagOf(string tag) =>
+        CountryFlag.Resolve(tag) is (null, null) ? null : @<CountryFlag Locale="@tag" />;
 
     private static string LocaleName(string tag)
     {
