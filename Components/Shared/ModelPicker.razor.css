@@ -1,8 +1,0 @@
-/* The field, its "choose" step under it, and the list in place: a quiet surface, one model a row. */
-.model-picker { display: flex; flex-direction: column; gap: 4px; align-items: stretch; min-width: 0; }
-.model-picker > ::deep .indx-btn { align-self: flex-start; }
-.model-picker-list { display: flex; flex-direction: column; gap: 2px; padding: 8px; background: var(--lv1); border: 1px solid var(--lv2); border-radius: var(--radius); max-height: 320px; overflow-y: auto; }
-.model-picker-list ::deep .indx-btn { width: 100%; justify-content: space-between; gap: 12px; }
-.model-picker-id { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--font-mono); }
-.model-picker-price { flex: none; color: var(--lv5); font: var(--text-2xs); }
-.model-picker-note { margin: 4px 0 0; font: var(--text-xs); color: var(--lv5); }

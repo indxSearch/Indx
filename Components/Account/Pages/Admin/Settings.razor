@@ -1,123 +1,145 @@
 @page "/admin/settings"
+@page "/admin/settings/{Section}"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using IndxServer.Services
+@using IndxServer.Services.SearchOrAsk
+@using Icons = Indx.Systm.Blazor.Icons
 @attribute [Authorize(Roles = "Admin")]
 @inject InstanceSettingsService SettingsService
 @inject ILogger<Settings> Logger
 @inject IConfiguration Configuration
-@inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
-@inject IndxServer.Services.SearchOrAsk.SearchOrAskModelLists ModelLists
+@inject SearchOrAskService SearchOrAsk
+@inject SearchOrAskModelLists ModelLists
 
 <PageTitle>Admin — Settings</PageTitle>
 
+@* One section at a time, chosen in the column on the right (on a phone, the row above): the page
+   had grown to six sections in one scroll. Each section has its own address, and the form is one
+   working copy, so an edit in one section survives a visit to another and one Save takes them all.
+   Keys are the exception: they save at once, from a modal, and are tried as they are saved. *@
+<div class="settings-layout">
+    <div class="settings-main">
+        <h2>@SectionTitle</h2>
+        <p style="color: var(--lv5); margin-bottom: 32px;">@SectionLead</p>
 
+        @if (!string.IsNullOrEmpty(_successMessage))
+        {
+            <div style="margin-bottom: 24px;"><Alert Variant="success">@_successMessage</Alert></div>
+        }
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <div style="margin-bottom: 24px;"><Alert Variant="destructive">@_errorMessage</Alert></div>
+        }
 
-<h2>Instance Settings</h2>
-<p style="color: var(--lv5); margin-bottom: 40px;">Configure registration and access control for this Indx instance.</p>
+        @switch (_section)
+        {
+            case "access":
+                <div class="settings-stack">
+                    <div>
+                        <ToggleSwitch Label="Require email verification" @bind-Checked="_requireEmailVerification" />
+                        <p class="settings-note settings-indent">Users must confirm their email address before they can sign in.</p>
+                    </div>
+                    <div>
+                        <ToggleSwitch Label="Allow users to delete their own account" @bind-Checked="_allowUserSelfDeletion" />
+                        <p class="settings-note settings-indent">When disabled, only admins can delete accounts.</p>
+                    </div>
+                </div>
+                break;
 
-@if (!string.IsNullOrEmpty(_successMessage))
-{
-    <div style="max-width: 520px; margin-bottom: 24px;"><Alert Variant="success">@_successMessage</Alert></div>
-}
-@if (!string.IsNullOrEmpty(_errorMessage))
-{
-    <div style="max-width: 520px; margin-bottom: 24px;"><Alert Variant="destructive">@_errorMessage</Alert></div>
-}
+            case "registration":
+                <SelectField Label="Registration mode" Value="@_registrationMode" ValueChanged="OnModeChanged" Options="_modeOptions" />
+                @if (_registrationMode == "EmailDomain")
+                {
+                    <div style="margin-top: 20px;">
+                        <Textarea Label="Allowed domains" Rows="4" @bind-Value="_allowedDomainsText" placeholder="yourcompany.com&#10;partner.com" />
+                        <p class="settings-note" style="margin-top: 6px;">One per line, such as <code>yourcompany.com</code>.</p>
+                    </div>
+                }
+                break;
 
-<div style="max-width: 520px;">
+            case "websites":
+                <Textarea Label="Allowed origins" Rows="4" @bind-Value="_originsText" placeholder="https://shop.example.com&#10;https://*.example.com" />
+                <p class="settings-note" style="margin-top: 6px;">
+                    One per line, with <code>https://</code>. A <code>*.</code> allows every subdomain. Servers, apps and this console need no entry.
+                </p>
+                break;
 
-    <div style="margin-bottom: 32px;">
-        <h3>General</h3>
-        <p style="color: var(--lv5); margin: 8px 0 20px;">Basic configuration for this instance.</p>
-        <InputField Label="Instance Name" @bind-Value="_instanceName" placeholder="Indx" />
-        <p style="font: var(--text-xs); color: var(--lv4); margin-top: 6px;">Shown in emails and the browser title.</p>
-    </div>
+            case "mcp":
+                <ToggleSwitch Label="Enable MCP server" @bind-Checked="_mcpEnabled" />
+                <p class="settings-note settings-indent">
+                    Exposes a read-only <code>/mcp</code> endpoint (search, describe, get document) authenticated by API key.
+                    When disabled, the endpoint returns 404. Users connect via <a href="/account/api-key">API keys</a>.
+                </p>
+                break;
 
-    <div style="margin-bottom: 32px;">
-        <h3>Access</h3>
-        <p style="color: var(--lv5); margin: 8px 0 20px;">Control sign-in and account behaviour.</p>
-        <div style="display: flex; flex-direction: column; gap: 16px;">
-            <div>
-                <ToggleSwitch Label="Require email verification" @bind-Checked="_requireEmailVerification" />
-                <p style="font: var(--text-xs); color: var(--lv4); margin-top: 4px; margin-left: 48px;">Users must confirm their email address before they can sign in.</p>
-            </div>
-            <div>
-                <ToggleSwitch Label="Allow users to delete their own account" @bind-Checked="_allowUserSelfDeletion" />
-                <p style="font: var(--text-xs); color: var(--lv4); margin-top: 4px; margin-left: 48px;">When disabled, only admins can delete accounts.</p>
-            </div>
-        </div>
-    </div>
-
-    <div style="margin-bottom: 32px;">
-        <h3>Websites</h3>
-        <p style="color: var(--lv5); margin: 8px 0 20px;">The websites whose pages may call this instance's API from the browser, such as a shop with a search box.</p>
-        <Textarea Label="Allowed origins" Rows="4" @bind-Value="_originsText" placeholder="https://shop.example.com&#10;https://*.example.com" />
-        <p style="font: var(--text-xs); color: var(--lv4); margin-top: 6px;">
-            One per line, with <code>https://</code>. A <code>*.</code> allows every subdomain. Servers, apps and this console need no entry.
-        </p>
-    </div>
-
-    <div style="margin-bottom: 32px;">
-        <h3>AI Agents (MCP)</h3>
-        <p style="color: var(--lv5); margin: 8px 0 20px;">Let AI agents query your datasets over the Model Context Protocol.</p>
-        <div>
-            <ToggleSwitch Label="Enable MCP server" @bind-Checked="_mcpEnabled" />
-            <p style="font: var(--text-xs); color: var(--lv4); margin-top: 4px; margin-left: 48px;">
-                Exposes a read-only <code>/mcp</code> endpoint (search, describe, get document) authenticated by API key.
-                When disabled, the endpoint returns 404. Users connect via <a href="/account/api-key">API keys</a>.
-            </p>
-        </div>
-    </div>
-
-    <div style="margin-bottom: 32px;">
-        <h3>Experimental</h3>
-        <p style="color: var(--lv5); margin: 8px 0 20px;">Features still being tried. Off until switched on here.</p>
-        <div>
-            <ToggleSwitch Label="Show Search or ask" @bind-Checked="_searchOrAskShown" />
-            <p style="font: var(--text-xs); color: var(--lv4); margin-top: 4px; margin-left: 48px;">
-                Offers to answer what visitors ask, written from a dataset's records. Adds a Search or ask tab to
-                each dataset, where it is switched on one dataset at a time. Sends what visitors type to the model
-                provider you choose, with your own key.
-            </p>
-            @if (_searchOrAskShown)
-            {
-                <div class="soa-admin">
-                    @* Keys first, one per provider, then the two roles, each naming a provider: switching
-                       is a choice, and a key is never typed twice (26 Oct 2026). A key the configuration
-                       holds shows as set there and cannot be edited here; the rest can. *@
-                    <h4 class="soa-admin-head">Keys</h4>
-                    <p class="soa-admin-note">One key per provider you use. They are kept in this instance's settings file, as the licence is, and never shown again once saved.</p>
-                    @foreach (var holder in KeyFields)
-                    {
-                        var h = holder;
-                        @if (_configKeys.Contains(h))
+            case "search-or-ask":
+                <ToggleSwitch Label="Show Search or ask" @bind-Checked="_searchOrAskShown" />
+                <p class="settings-note settings-indent">
+                    Experimental. Offers to answer what visitors ask, written from a dataset's records. Adds a Search or ask tab to
+                    each dataset, where it is switched on one dataset at a time. Sends what visitors type to the model
+                    providers you choose, with your own keys.
+                </p>
+                @if (_searchOrAskShown)
+                {
+                    <h3 class="settings-head">Keys</h3>
+                    <p class="settings-note">One key per provider you use. A key is kept in this instance's settings file, as the licence is, never shown again, and tried as it is saved.</p>
+                    <div class="soa-keys">
+                        @foreach (var holder in KeyRows)
                         {
-                            <InputField Label="@KeyName(h)" type="password" Value="" ValueExpression="() => _blank" disabled placeholder="Set in the server's configuration" />
-                        }
-                        else
-                        {
-                            <InputField Label="@KeyName(h)" type="password" autocomplete="off" Value="@(_newKeys.GetValueOrDefault(h) ?? "")"
-                                        ValueChanged="@(v => _newKeys[h] = v)" ValueExpression="() => _blank"
-                                        placeholder="@(_savedKeys.Contains(h) && !_removeKeys.Contains(h) ? "Saved; type to replace" : KeyPlaceholder(h))" />
-                            @if (_savedKeys.Contains(h) && !_removeKeys.Contains(h))
-                            {
-                                <div class="soa-admin-keyline">
-                                    <span>Saved.</span>
-                                    <Button Variant="ghost" Size="micro" @onclick="() => _removeKeys.Add(h)">Remove key</Button>
+                            var h = holder;
+                            var status = _keyStatus.GetValueOrDefault(h);
+                            <div class="soa-key">
+                                <div class="soa-key-name">@ProviderName(h)</div>
+                                <div class="soa-key-state">
+                                    @if (!HasKey(h))
+                                    {
+                                        <span class="soa-key-dim">No key</span>
+                                    }
+                                    else if (_checkingKeys.Contains(h))
+                                    {
+                                        <StreamStatus>Trying the key…</StreamStatus>
+                                    }
+                                    else if (status.Works == true)
+                                    {
+                                        <span class="soa-key-ok"><Icons.Check Size="14" /> @status.Message</span>
+                                    }
+                                    else if (status.Works == false)
+                                    {
+                                        <span class="soa-key-bad">@status.Message</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="soa-key-dim">@(status.Message ?? "Saved.")</span>
+                                    }
+                                    @if (_configKeys.Contains(h))
+                                    {
+                                        <span class="soa-key-dim">Set in the server's configuration.</span>
+                                    }
                                 </div>
-                            }
-                            else if (_removeKeys.Contains(h))
-                            {
-                                <p class="soa-admin-note">Removed when you save.</p>
-                            }
+                                <div class="soa-key-actions">
+                                    @if (!_configKeys.Contains(h))
+                                    {
+                                        @if (HasKey(h))
+                                        {
+                                            <Button Variant="ghost" Size="micro" @onclick="() => OpenKeyModal(h)">Replace</Button>
+                                            <ConfirmButton Label="Remove" Title="@($"Remove the {ProviderName(h)} key?")"
+                                                           Prompt="@RemovePrompt(h)" ConfirmLabel="Remove key" OnConfirm="() => RemoveKeyAsync(h)" />
+                                        }
+                                        else
+                                        {
+                                            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Key" @onclick="() => OpenKeyModal(h)">Add key</Button>
+                                        }
+                                    }
+                                </div>
+                            </div>
                         }
-                    }
+                    </div>
 
-                    <h4 class="soa-admin-head">Decisions</h4>
+                    <h3 class="settings-head">Decisions</h3>
                     <SelectField Label="The judge" Options="_judgeOptions" Value="@_judgeProvider" ValueChanged="@(v => _judgeProvider = v ?? "openrouter")"
                                  disabled="@SearchOrAsk.JudgeProviderConfigured" />
-                    <p class="soa-admin-note">
+                    <p class="settings-note">
                         @if (_judgeProvider == "decisions")
                         {
                             <text>OpenAI's Decisions API in place of Jev, on the OpenAI key: the same questions, far more decided. The thresholds were measured on Jev; Observr's replay tunes them per dataset.</text>
@@ -126,74 +148,82 @@
                         {
                             <text>Jev, TypeSafe's decision model, is served on OpenRouter and by TypeSafe directly.</text>
                         }
-                        @if (!HasKey(IndxServer.Services.SearchOrAsk.SearchOrAskProviders.JudgeKeyHolder(_judgeProvider)))
-                        {
-                            <text> Needs the @KeyName(IndxServer.Services.SearchOrAsk.SearchOrAskProviders.JudgeKeyHolder(_judgeProvider)) above: Search or ask does not run without the judge.</text>
-                        }
                     </p>
+                    @if (!HasKey(SearchOrAskProviders.JudgeKeyHolder(_judgeProvider)))
+                    {
+                        <Alert Variant="destructive">Add the @ProviderName(SearchOrAskProviders.JudgeKeyHolder(_judgeProvider)) key above: Search or ask does not run without the judge.</Alert>
+                    }
 
-                    <h4 class="soa-admin-head">Answers and filters</h4>
+                    <h3 class="settings-head">Answers and filters</h3>
                     <SelectField Label="Provider" Options="_providerOptions" Value="@_provider" ValueChanged="OnProviderChanged"
                                  disabled="@SearchOrAsk.ProviderConfigured" />
                     @if (!HasKey(_provider))
                     {
-                        <p class="soa-admin-note">Needs the @KeyName(_provider) above.</p>
+                        <Alert Variant="destructive">Add the @ProviderName(_provider) key above: the answers need it.</Alert>
                     }
                     @if (_provider == "compatible")
                     {
                         <InputField Label="Base URL" @bind-Value="_baseUrl" placeholder="https://my-endpoint.example/v1" />
-                        <p class="soa-admin-note">Any endpoint that speaks OpenAI's chat completions: Azure OpenAI, Mistral, Groq, a local model.</p>
+                        <p class="settings-note">Any endpoint that speaks OpenAI's chat completions: Azure OpenAI, Mistral, Groq, a local model. Save, and its models are listed below.</p>
                     }
                     @if (_provider is "openrouter" or "openai")
                     {
-                        <ToggleSwitch Label="Keep requests in the EU" Checked="@_euRouting" CheckedChanged="OnEuChanged" Disabled="@SearchOrAsk.EuRoutingConfigured" />
-                        <p class="soa-admin-note soa-admin-indent">
-                            @if (_provider == "openai")
-                            {
-                                <text>OpenAI's EU data residency (eu.api.openai.com): requests are stored and processed in Europe, the Decisions API's included. It works only with a key from an OpenAI project created with Europe as its region.</text>
-                            }
-                            else
-                            {
-                                <text>OpenRouter's EU endpoint for the answers and the filters: those requests are processed in the EU and go only to providers there, and a model with no EU provider is refused rather than routed out. The models listed below are the ones it serves. The decisions are the exception: Jev has no EU provider, so what visitors type still goes to Jev through OpenRouter's global endpoint.</text>
-                            }
-                        </p>
+                        <div>
+                            <ToggleSwitch Label="Keep requests in the EU" Checked="@_euRouting" CheckedChanged="OnEuChanged" Disabled="@SearchOrAsk.EuRoutingConfigured" />
+                            <p class="settings-note settings-indent">
+                                @if (_provider == "openai")
+                                {
+                                    <text>OpenAI's EU data residency (eu.api.openai.com): requests are stored and processed in Europe, the Decisions API's included. It works only with a key from an OpenAI project created with Europe as its region.</text>
+                                }
+                                else
+                                {
+                                    <text>OpenRouter's EU endpoint for the answers and the filters: those requests are processed in the EU and go only to providers there, and the models listed below are the ones it serves. The decisions are the exception: Jev has no EU provider, so what visitors type still goes to Jev through OpenRouter's global endpoint.</text>
+                                }
+                            </p>
+                        </div>
                     }
                     @if (_provider == "openai")
                     {
                         <SelectField Label="Answer speed" Options="_speedOptions" Value="@_answerSpeed" ValueChanged="@(v => _answerSpeed = v ?? "standard")"
                                      disabled="@SearchOrAsk.AnswerSpeedConfigured" />
-                        <p class="soa-admin-note">Ultrafast is OpenAI's faster tier for the answers, at several times the price, offered for some models such as Sol. The filters always run at standard speed.</p>
+                        <p class="settings-note">Ultrafast is OpenAI's faster tier for the answers, at several times the price, offered for some models such as Sol. The filters always run at standard speed.</p>
                     }
-                    <div class="soa-admin-models">
-                        <ModelPicker Label="Answer model" @bind-Value="_answerModel" Placeholder="@_defaults.Answer" Models="_models" />
-                        <ModelPicker Label="Fast answer model" @bind-Value="_fastModel" Placeholder="@_defaults.Fast" Models="_models" />
-                        <ModelPicker Label="Filter model" @bind-Value="_filterModel" Placeholder="@_defaults.Filter" Models="_models" />
-                    </div>
-                    <p class="soa-admin-note">
-                        @if (_modelsLoading)
-                        {
-                            <text>Reading the provider's models…</text>
-                        }
-                        else if (_modelsProblem != null)
-                        {
-                            <text>The provider's list is not available: @_modelsProblem Any model name can be typed.</text>
-                        }
-                        else
-                        {
-                            <text>Left empty, the provider's default in grey is used. Any model the provider serves can be typed.</text>
-                        }
-                        @if (_provider != "openrouter")
-                        {
-                            <text> Only OpenRouter reports what a call costs, so the statistics show no cost for this provider.</text>
-                        }
-                    </p>
 
-                    @* The saved keys, tried: one trivial call per door, the provider's own words back. *@
-                    <div style="margin-top: 4px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start;">
-                        <Button Variant="secondary" Size="micro" @onclick="CheckKeysAsync" Disabled="@(_checking || IsDirty)">Check the keys</Button>
+                    @if (_modelsLoading)
+                    {
+                        <StreamStatus>Reading the provider's models…</StreamStatus>
+                    }
+                    else if (_models is { Count: > 0 })
+                    {
+                        <SelectField Label="Answer model" Options="ModelOptions(_answerModel, _defaults.Answer)" Value="@_answerModel" ValueChanged="@(v => _answerModel = v ?? "")" />
+                        <SelectField Label="Fast answer model" Options="ModelOptions(_fastModel, _defaults.Fast)" Value="@_fastModel" ValueChanged="@(v => _fastModel = v ?? "")" />
+                        <SelectField Label="Filter model" Options="ModelOptions(_filterModel, _defaults.Filter)" Value="@_filterModel" ValueChanged="@(v => _filterModel = v ?? "")" />
+                        <p class="settings-note">
+                            The models the provider offers@(_provider == "openrouter" && _euRouting ? " in the EU" : ""), read from its own list.
+                            @if (_provider != "openrouter")
+                            {
+                                <text> Only OpenRouter reports what a call costs, so the statistics show no cost for this provider.</text>
+                            }
+                        </p>
+                    }
+                    else
+                    {
+                        @* No list to choose from (no key yet, or an endpoint without one): the names are typed. *@
+                        <InputField Label="Answer model" @bind-Value="_answerModel" placeholder="@_defaults.Answer" />
+                        <InputField Label="Fast answer model" @bind-Value="_fastModel" placeholder="@_defaults.Fast" />
+                        <InputField Label="Filter model" @bind-Value="_filterModel" placeholder="@_defaults.Filter" />
+                        <p class="settings-note">
+                            @(_modelsProblem ?? "The provider gave no list of models.") The model names are typed; left empty, the provider's default in grey is used.
+                        </p>
+                    }
+
+                    @* The roles tried end to end, with the saved settings: one decision from the judge and a
+                       one-word answer from the answer model, the providers' own words back. *@
+                    <div class="settings-try">
+                        <Button Variant="secondary" Size="micro" @onclick="CheckKeysAsync" Disabled="@(_checking || IsDirty)">Try the judge and the answer model</Button>
                         @if (IsDirty && !_checking)
                         {
-                            <p class="soa-admin-note">Save first: the check uses the saved keys.</p>
+                            <p class="settings-note">Save first: the try uses the saved settings.</p>
                         }
                         @if (_checking)
                         {
@@ -201,82 +231,120 @@
                         }
                         else if (_checked != null)
                         {
-                            <p class="soa-admin-note soa-admin-mono">@_checked.Value.Judge</p>
-                            <p class="soa-admin-note soa-admin-mono">@_checked.Value.Answers</p>
+                            <p class="settings-note settings-mono">@_checked.Value.Judge</p>
+                            <p class="settings-note settings-mono">@_checked.Value.Answers</p>
                         }
                     </div>
-                </div>
-            }
-        </div>
-    </div>
+                }
+                break;
 
-    <div style="margin-bottom: 32px;">
-        <h3>Registration</h3>
-        <p style="color: var(--lv5); margin: 8px 0 20px;">Control who can create accounts on this instance.</p>
-
-        <SelectField Label="Registration Mode"
-                     Value="@_registrationMode"
-                     ValueChanged="OnModeChanged"
-                     Options="_modeOptions" />
-
-        @if (_registrationMode == "EmailDomain")
-        {
-            <div style="margin-top: 20px;">
-                <p style="font: var(--text-xs); color: var(--lv5); margin-bottom: 8px;">
-                    Allowed domains — one per line (e.g. <code style="background: var(--lv1); padding: 2px 5px; border-radius: 3px;">yourcompany.com</code>)
-                </p>
-                <textarea class="indx-text-input"
-                          rows="4"
-                          style="width: 100%; resize: vertical; font-family: var(--font-mono); font-size: 12px;"
-                          @bind="_allowedDomainsText"
-                          placeholder="yourcompany.com&#10;partner.com"></textarea>
-            </div>
+            default:
+                <InputField Label="Instance name" @bind-Value="_instanceName" placeholder="Indx" />
+                <p class="settings-note" style="margin-top: 6px;">Shown in emails and the browser title.</p>
+                break;
         }
     </div>
 
-    @* The page action pattern (app.css): Save then Cancel, only while something changed. *@
-    <SaveBar Visible="@IsDirty" Message="Unsaved changes">
-        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" @onclick="Save">Save</Button>
-        <Button Variant="secondary" Size="micro" @onclick="Cancel">Cancel</Button>
-    </SaveBar>
-
+    <aside class="settings-side">
+        <SideMenu Groups="_menu" Active="@_section" />
+    </aside>
 </div>
 
+<Modal Open="_keyModalOpen" OpenChanged="@(v => _keyModalOpen = v)" Title="@(_keyModalHolder is { } mh ? (HasKey(mh) ? $"Replace the {ProviderName(mh)} key" : $"Add the {ProviderName(mh)} key") : "")">
+    <div class="indx-modal-form">
+        <InputField Label="Key" type="password" autocomplete="off" @bind-Value="_keyDraft" placeholder="@KeyPlaceholder(_keyModalHolder ?? "")" />
+        <p class="settings-note">@KeyHelp(_keyModalHolder ?? "")</p>
+        <div class="indx-form-actions">
+            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Disabled="@string.IsNullOrWhiteSpace(_keyDraft)" @onclick="SaveKeyAsync">Save and try it</Button>
+            <Button Variant="secondary" Size="micro" @onclick="() => _keyModalOpen = false">Cancel</Button>
+        </div>
+    </div>
+</Modal>
+
+@* The page action pattern (app.css): Save then Cancel, only while something changed. *@
+<SaveBar Visible="@IsDirty" Message="Unsaved changes">
+    <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" @onclick="Save">Save</Button>
+    <Button Variant="secondary" Size="micro" @onclick="Cancel">Cancel</Button>
+</SaveBar>
+
 @code {
+    [Parameter] public string? Section { get; set; }
+    private string _section = "general";
+
+    private static readonly RenderFragment<int> _iconGeneral = size => @<Icons.SlidersVertical Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconAccess = size => @<Icons.Lock Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconRegistration = size => @<Icons.UserPlus Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconWebsites = size => @<Icons.InternetBrowser Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconMcp = size => @<Icons.Mcp Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconAsk = size => @<Icons.SearchOrAsk Size="size" Color="currentColor" />;
+
+    private static readonly IReadOnlyList<SideMenuGroup> _menu =
+    [
+        new SideMenuGroup("Settings", [
+            new("general", "General", _iconGeneral, "/admin/settings"),
+            new("access", "Access", _iconAccess, "/admin/settings/access"),
+            new("registration", "Registration", _iconRegistration, "/admin/settings/registration"),
+            new("websites", "Websites", _iconWebsites, "/admin/settings/websites"),
+            new("mcp", "AI agents (MCP)", _iconMcp, "/admin/settings/mcp"),
+            new("search-or-ask", "Search or ask", _iconAsk, "/admin/settings/search-or-ask", Experimental: true),
+        ]),
+    ];
+
+    private string SectionTitle => _section switch
+    {
+        "access" => "Access",
+        "registration" => "Registration",
+        "websites" => "Websites",
+        "mcp" => "AI agents (MCP)",
+        "search-or-ask" => "Search or ask",
+        _ => "General",
+    };
+
+    private string SectionLead => _section switch
+    {
+        "access" => "Sign-in and account behaviour.",
+        "registration" => "Who can create accounts on this instance.",
+        "websites" => "The websites whose pages may call this instance's API from the browser, such as a shop with a search box.",
+        "mcp" => "Let AI agents query your datasets over the Model Context Protocol.",
+        "search-or-ask" => "One search field that also answers questions, with the model providers you choose.",
+        _ => "Basic configuration for this instance.",
+    };
+
     private string _instanceName = "Indx";
     private bool _requireEmailVerification;
     private bool _allowUserSelfDeletion = true;
     private bool _mcpEnabled = true;
     private bool _searchOrAskShown;
-    // Keys by provider. A saved key is never shown again: a field holds only a new one being typed.
-    private readonly Dictionary<string, string?> _newKeys = [];
-    private readonly HashSet<string> _removeKeys = [];
     private HashSet<string> _savedKeys = [];
     private IReadOnlySet<string> _configKeys = new HashSet<string>();
-    private string? _blank;
+    private readonly Dictionary<string, (bool? Works, string? Message)> _keyStatus = [];
+    private readonly HashSet<string> _checkingKeys = [];
+    private bool _keyModalOpen;
+    private string? _keyModalHolder;
+    private string? _keyDraft;
     private string _provider = "openrouter";
     private string _baseUrl = "";
     private bool _euRouting;
     private string _judgeProvider = "openrouter";
     private string _answerSpeed = "standard";
     private string _answerModel = "", _fastModel = "", _filterModel = "";
-    private IReadOnlyList<IndxServer.Services.SearchOrAsk.ModelOption>? _models;
+    private IReadOnlyList<ModelOption>? _models;
     private string? _modelsProblem;
     private bool _modelsLoading;
     private int _modelsAsk;
     private bool _checking;
     private (string Judge, string Answers)? _checked;
 
-    // The compatible endpoint's key is asked for only when it is the provider: most never use one.
-    private IEnumerable<string> KeyFields => IndxServer.Services.SearchOrAsk.SearchOrAskProviders.KeyHolders
-        .Where(h => h != "compatible" || _provider == "compatible" || _savedKeys.Contains(h));
-    private static string KeyName(string holder) => holder switch
+    // The compatible endpoint's key is listed only when it is the provider or has a key: most never use one.
+    private IEnumerable<string> KeyRows => SearchOrAskProviders.KeyHolders
+        .Where(h => h != "compatible" || _provider == "compatible" || HasKey(h));
+    private static string ProviderName(string holder) => holder switch
     {
-        "openai" => "OpenAI key",
-        "anthropic" => "Anthropic key",
-        "typesafe" => "TypeSafe key",
-        "compatible" => "Compatible endpoint's key",
-        _ => "OpenRouter key",
+        "openai" => "OpenAI",
+        "anthropic" => "Anthropic",
+        "typesafe" => "TypeSafe",
+        "compatible" => "compatible endpoint",
+        _ => "OpenRouter",
     };
     private static string KeyPlaceholder(string holder) => holder switch
     {
@@ -285,10 +353,38 @@
         "openrouter" => "sk-or-…",
         _ => "",
     };
-    /// <summary>Whether a provider has a key once this form is saved.</summary>
-    private bool HasKey(string holder) => _configKeys.Contains(holder)
-        || !string.IsNullOrWhiteSpace(_newKeys.GetValueOrDefault(holder))
-        || (_savedKeys.Contains(holder) && !_removeKeys.Contains(holder));
+    private static string KeyHelp(string holder) => holder switch
+    {
+        "openai" => "From platform.openai.com, API keys. For EU data residency, a key from a project created with Europe as its region.",
+        "anthropic" => "From console.anthropic.com, API keys.",
+        "typesafe" => "From TypeSafe, for Jev on their own endpoint.",
+        "compatible" => "The key your endpoint expects as a bearer token.",
+        _ => "From openrouter.ai, Keys. One OpenRouter key serves both the judge and the answers.",
+    };
+    private string RemovePrompt(string holder)
+    {
+        var uses = new List<string>();
+        if (SearchOrAskProviders.JudgeKeyHolder(_judgeProvider) == holder) uses.Add("the judge");
+        if (_provider == holder) uses.Add("the answers");
+        return uses.Count == 0 ? "Nothing uses it now." : $"Search or ask stops: {string.Join(" and ", uses)} use it.";
+    }
+    private bool HasKey(string holder) => _configKeys.Contains(holder) || _savedKeys.Contains(holder);
+
+    private (string Answer, string Fast, string Filter) _defaults => ModelDefaults.For(_provider);
+
+    /// <summary>The provider's models for one role: the default first (an empty value), then the
+    /// list; a saved name the list does not hold stays choosable, marked, rather than vanishing.</summary>
+    private IEnumerable<SelectField.SelectOption> ModelOptions(string current, string fallback)
+    {
+        var options = new List<SelectField.SelectOption>
+        {
+            new(string.IsNullOrEmpty(fallback) ? "Choose a model" : $"Default: {fallback}", ""),
+        };
+        if (!string.IsNullOrWhiteSpace(current) && _models!.All(m => m.Id != current))
+            options.Add(new($"{current} (not in the provider's list)", current));
+        options.AddRange(_models!.Select(m => new SelectField.SelectOption(m.Price is { } p ? $"{m.Id} · {p}" : m.Id, m.Id)));
+        return options;
+    }
 
     private async Task OnProviderChanged(string? value)
     {
@@ -318,6 +414,64 @@
         StateHasChanged();
     }
 
+    /// <summary>Tries one provider's saved key, at no cost (SearchOrAskModelLists.VerifyKeyAsync).</summary>
+    private async Task VerifyKeyAsync(string holder)
+    {
+        _checkingKeys.Add(holder);
+        StateHasChanged();
+        try
+        {
+            var eu = SearchOrAsk.Setup.EuRouting && holder == "openai";
+            _keyStatus[holder] = await ModelLists.VerifyKeyAsync(holder, eu, _baseUrl, CancellationToken.None);
+        }
+        finally
+        {
+            _checkingKeys.Remove(holder);
+            StateHasChanged();
+        }
+    }
+
+    private void OpenKeyModal(string holder)
+    {
+        _keyModalHolder = holder;
+        _keyDraft = null;
+        _keyModalOpen = true;
+    }
+
+    /// <summary>A key saves at once, beside the form's working copy, and is tried straight away.</summary>
+    private async Task SaveKeyAsync()
+    {
+        if (_keyModalHolder is not { } holder || string.IsNullOrWhiteSpace(_keyDraft)) return;
+        WriteKeys(keys => keys[holder] = _keyDraft.Trim());
+        _keyDraft = null;
+        _keyModalOpen = false;
+        await VerifyKeyAsync(holder);
+        if (holder == _provider) await LoadModelsAsync();
+    }
+
+    private async Task RemoveKeyAsync(string holder)
+    {
+        WriteKeys(keys => keys.Remove(holder));
+        _keyStatus.Remove(holder);
+        if (holder == _provider) await LoadModelsAsync();
+    }
+
+    /// <summary>Changes the saved keys only, the rest of the file as it is: the two older single
+    /// keys move into the map and are cleared.</summary>
+    private void WriteKeys(Action<Dictionary<string, string>> change)
+    {
+        var settings = SettingsService.Load();
+        var keys = InstanceSearchOrAskSwitch.ProvidersOf(settings).AllKeys();
+        change(keys);
+        settings.SearchOrAskKeys = keys.Count > 0 ? keys : null;
+        settings.SearchOrAskApiKey = null;
+        settings.SearchOrAskJudgeApiKey = null;
+        SettingsService.Save(settings);
+        SearchOrAsk.InstanceSettingsChanged();
+        _savedKeys = keys.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _checked = null;
+    }
+
     private async Task CheckKeysAsync()
     {
         if (_checking) return;
@@ -345,7 +499,6 @@
         new("Jev, through TypeSafe directly", "typesafe"),
         new("OpenAI's Decisions API", "decisions"),
     ];
-    private (string Answer, string Fast, string Filter) _defaults => IndxServer.Services.SearchOrAsk.ModelDefaults.For(_provider);
     private string _registrationMode = "Open";
     private string _allowedDomainsText = "";
     private string _originsText = "";
@@ -356,10 +509,10 @@
 
     private static readonly IEnumerable<SelectField.SelectOption> _modeOptions =
     [
-        new("Open — anyone can register", "Open"),
-        new("Email Domain — restrict to specific domains", "EmailDomain"),
-        new("Invite — specific email addresses only", "Invite"),
-        new("Closed — no new registrations", "Closed"),
+        new("Open: anyone can register", "Open"),
+        new("Email domain: specific domains only", "EmailDomain"),
+        new("Invite: specific email addresses only", "Invite"),
+        new("Closed: no new registrations", "Closed"),
     ];
 
     // What the page last loaded or saved, to tell whether there is anything to save.
@@ -367,13 +520,29 @@
     private (string, bool, bool, bool, bool, string, string, string) Current =>
         (_instanceName, _requireEmailVerification, _allowUserSelfDeletion, _mcpEnabled, _searchOrAskShown, _registrationMode, _allowedDomainsText,
          string.Join('\n', _provider, _baseUrl, _euRouting, _judgeProvider, _answerSpeed, _answerModel, _fastModel, _filterModel, _originsText));
-    private bool IsDirty => Current != _saved || _newKeys.Values.Any(k => !string.IsNullOrWhiteSpace(k)) || _removeKeys.Count > 0;
+    private bool IsDirty => Current != _saved;
 
-    protected override void OnInitialized() => LoadFromSettings();
+    private bool _loaded;
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    protected override void OnParametersSet()
     {
-        if (firstRender && _searchOrAskShown) await LoadModelsAsync();
+        _section = Section?.ToLowerInvariant() is { } s && _menu[0].Items.Any(i => i.Key == s) ? s : "general";
+        _successMessage = null;
+        if (!_loaded)
+        {
+            _loaded = true;
+            LoadFromSettings();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // The keys are tried and the models read when the section is first opened, not on every visit.
+        if (_section == "search-or-ask" && _searchOrAskShown && _models == null && !_modelsLoading)
+        {
+            foreach (var h in KeyRows.Where(HasKey).ToList()) _ = VerifyKeyAsync(h);
+            await LoadModelsAsync();
+        }
     }
 
     private void Cancel()
@@ -393,10 +562,8 @@
         _searchOrAskShown = settings.SearchOrAskShown;
         // What is in force, the configuration's choices included, so the form shows what runs.
         var setup = SearchOrAsk.Setup;
-        _savedKeys = IndxServer.Services.SearchOrAsk.InstanceSearchOrAskSwitch.ProvidersOf(settings).AllKeys().Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _savedKeys = InstanceSearchOrAskSwitch.ProvidersOf(settings).AllKeys().Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
         _configKeys = SearchOrAsk.ConfiguredKeyHolders;
-        _newKeys.Clear();
-        _removeKeys.Clear();
         _provider = setup.Provider;
         _baseUrl = settings.SearchOrAskBaseUrl ?? "";
         _euRouting = setup.EuRouting;
@@ -420,7 +587,7 @@
         _errorMessage = null;
     }
 
-    private void Save()
+    private async Task Save()
     {
         _successMessage = null;
         _errorMessage = null;
@@ -441,22 +608,16 @@
             }
 
             // Mutate the loaded settings in place — never construct a fresh InstanceSettings,
-            // or fields this page doesn't edit (SetupComplete, LicenseToken, Plan, AllowedEmails)
-            // get silently wiped to their defaults.
+            // or fields this page doesn't edit (SetupComplete, LicenseToken, Plan, AllowedEmails,
+            // the Search or ask keys) get silently wiped to their defaults.
             var settings = SettingsService.Load();
+            var listChanged = settings.SearchOrAskProvider != _provider || settings.SearchOrAskEuRouting != _euRouting
+                || (settings.SearchOrAskBaseUrl ?? "") != _baseUrl.Trim();
             settings.InstanceName = _instanceName.Trim();
             settings.RequireEmailVerification = _requireEmailVerification;
             settings.AllowUserSelfDeletion = _allowUserSelfDeletion;
             settings.McpEnabled = _mcpEnabled;
             settings.SearchOrAskShown = _searchOrAskShown;
-            // The keys by provider: the two older single keys move in here and are cleared.
-            var keys = IndxServer.Services.SearchOrAsk.InstanceSearchOrAskSwitch.ProvidersOf(settings).AllKeys();
-            foreach (var h in _removeKeys) keys.Remove(h);
-            foreach (var (h, key) in _newKeys)
-                if (!string.IsNullOrWhiteSpace(key)) keys[h] = key.Trim();
-            settings.SearchOrAskKeys = keys.Count > 0 ? keys : null;
-            settings.SearchOrAskApiKey = null;
-            settings.SearchOrAskJudgeApiKey = null;
             settings.SearchOrAskProvider = _provider;
             settings.SearchOrAskBaseUrl = string.IsNullOrWhiteSpace(_baseUrl) ? null : _baseUrl.Trim();
             settings.SearchOrAskEuRouting = _euRouting;
@@ -472,13 +633,10 @@
             SettingsService.Save(settings);
             if (settings.AllowedOrigins is not null) _originsText = _originsLoaded = string.Join("\n", settings.AllowedOrigins);
             SearchOrAsk.InstanceSettingsChanged();
-            _savedKeys = keys.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
-            _newKeys.Clear();
-            _removeKeys.Clear();
             _saved = Current;
-            _ = LoadModelsAsync();
-
+            _checked = null;
             _successMessage = "Settings saved.";
+            if (listChanged && _section == "search-or-ask") await LoadModelsAsync();
         }
         catch (Exception ex)
         {

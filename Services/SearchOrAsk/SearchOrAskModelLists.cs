@@ -65,6 +65,36 @@ namespace IndxServer.Services.SearchOrAsk
             catch (Exception ex) when (ex is HttpRequestException or System.Text.Json.JsonException) { return ([], $"Could not read the list: {ex.Message}"); }
         }
 
+        /// <summary>Whether a provider's saved key works, asked the cheapest way the provider offers
+        /// and at no cost: OpenRouter describes its key (<c>GET /key</c>), the others list their
+        /// models with it. TypeSafe has no such call: null, and the judge's check says. The message
+        /// is the provider's own reason when it refuses.</summary>
+        public async Task<(bool? Works, string Message)> VerifyKeyAsync(string provider, bool eu, string? baseUrl, CancellationToken ct)
+        {
+            var key = setup.Current.KeyFor(provider);
+            if (string.IsNullOrWhiteSpace(key)) return (false, "No key.");
+            if (provider == SearchOrAskProviders.TypeSafe) return (null, "Saved. TypeSafe has no call to try a key with; Try the models below asks Jev.");
+            if (provider == SearchOrAskProviders.OpenRouter)
+            {
+                try
+                {
+                    using var request = new HttpRequestMessage(HttpMethod.Get, SearchOrAskProviders.OpenRouterGlobal + "/key");
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", key);
+                    using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                    timeout.CancelAfter(TimeSpan.FromSeconds(15));
+                    using var response = await http.CreateClient(SearchOrAskModelClients.HttpClientName).SendAsync(request, timeout.Token);
+                    var body = await response.Content.ReadAsStringAsync(timeout.Token);
+                    return response.IsSuccessStatusCode
+                        ? (true, "Works.")
+                        : (false, $"OpenRouter answered {(int)response.StatusCode}: {SearchOrAskModelClients.Reason(body)}");
+                }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return (false, "OpenRouter did not answer in time."); }
+                catch (HttpRequestException ex) { return (false, $"OpenRouter could not be reached: {ex.Message}"); }
+            }
+            var (models, problem) = await ListAsync(provider, eu, baseUrl, ct);
+            return problem == null ? (true, $"Works: {models.Count} models available.") : (false, problem);
+        }
+
         /// <summary>A <c>/models</c> answer as options: OpenAI's shape (<c>data[].id</c>), which
         /// OpenRouter and Anthropic share, with a name and OpenRouter's per-token prices where given.
         /// Batch variants are left out: the answers are never batched.</summary>

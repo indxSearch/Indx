@@ -1,9 +1,34 @@
+/* The section in the middle, its menu in a column on the right in the admin menu's style; on a
+   phone the menu is the scrolling row above the section, as the side column becomes a bar. */
+.settings-layout { display: flex; gap: 48px; align-items: flex-start; }
+.settings-main { flex: 1; min-width: 0; max-width: 600px; display: flex; flex-direction: column; gap: 12px; }
+.settings-main > h2 { margin: 0; }
+.settings-side { width: var(--side-width); flex: none; position: sticky; top: 0; }
 
-/* Search or ask's provider block: one column of fields under the switch, the model names in a row. */
-.soa-admin { margin: 16px 0 0 48px; display: flex; flex-direction: column; gap: 10px; max-width: 560px; }
-.soa-admin-models { display: flex; flex-direction: column; gap: 10px; }
-.soa-admin-head { font: var(--text-sm); font-weight: var(--med); color: var(--lv7); margin: 6px 0 -2px; }
-.soa-admin-note { font: var(--text-xs); color: var(--lv4); margin: 0; }
-.soa-admin-indent { margin-left: 48px; margin-top: -4px; }
-.soa-admin-mono { color: var(--lv6); font-family: var(--font-mono); }
-.soa-admin-keyline { display: flex; align-items: center; gap: 8px; margin-top: -4px; font: var(--text-xs); color: var(--lv4); }
+@media (max-width: 768px) {
+    .settings-layout { flex-direction: column-reverse; gap: 16px; }
+    .settings-side { width: 100%; position: static; overflow-x: auto; }
+}
+
+.settings-stack { display: flex; flex-direction: column; gap: 16px; }
+.settings-head { font: var(--text-sm); font-weight: var(--med); color: var(--lv7); margin: 20px 0 0; }
+.settings-note { font: var(--text-xs); color: var(--lv4); margin: 0; }
+.settings-indent { margin: 4px 0 0 48px; }
+.settings-mono { color: var(--lv6); font-family: var(--font-mono); }
+.settings-try { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+
+/* The keys: one row a provider, its name, whether its key works, and the steps for it. */
+.soa-keys { display: flex; flex-direction: column; border: 1px solid var(--lv2); border-radius: var(--radius); }
+.soa-key { display: grid; grid-template-columns: 120px 1fr auto; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--lv2); }
+.soa-key:last-child { border-bottom: none; }
+.soa-key-name { font: var(--text-sm); color: var(--lv8); }
+.soa-key-state { display: flex; flex-direction: column; gap: 2px; min-width: 0; font: var(--text-xs); }
+.soa-key-ok { display: inline-flex; align-items: center; gap: 6px; color: var(--lv8); }
+.soa-key-bad { color: var(--CSignal); overflow-wrap: anywhere; }
+.soa-key-dim { color: var(--lv5); }
+.soa-key-actions { display: flex; gap: 4px; }
+
+@media (max-width: 560px) {
+    .soa-key { grid-template-columns: 1fr auto; }
+    .soa-key-state { grid-column: 1 / -1; grid-row: 2; }
+}
