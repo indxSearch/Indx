@@ -113,10 +113,6 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>A provider's key, wherever it came from, or null.</summary>
         public string? KeyFor(string provider) => Keys != null && Keys.TryGetValue(provider, out var k) ? k : null;
 
-        /// <summary>The answers go to OpenAI itself, whose newer models take <c>max_completion_tokens</c>
-        /// and no fixed temperature, where every compatible endpoint still reads <c>max_tokens</c>.</summary>
-        public bool OpenAiItself => Provider == SearchOrAskProviders.OpenAi;
-
         /// <summary>Answers and filters can run: the answer provider has a key.</summary>
         public bool AnswersAvailable => !string.IsNullOrWhiteSpace(AnswerKey);
         /// <summary>The judge can run: Jev's door has a key.</summary>
