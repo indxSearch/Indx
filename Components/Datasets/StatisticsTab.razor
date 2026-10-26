@@ -481,6 +481,56 @@ else
                     }
                 </div>
             }
+            else if (_askView == "needs")
+            {
+                @* A need: one thing visitors wanted, in all the ways they put it, and how each visit ended.
+                   The ones given up most come first; the wording that landed and the record it landed on
+                   say what to change so the first wording finds it (Notes/search-or-ask-server.md). *@
+                <p class="stats-help">What visitors wanted, in all the ways they asked it. A visit ends answered at the first try, answered after asking again in other words, or given up. The ones given up most come first: make the first wording find what the wording that landed found.</p>
+                @if (_needs.Count == 0) { <p class="stats-empty">No question was asked in more than one visit or in more than one way in this period.</p> }
+                else
+                {
+                    <div class="stats-needs">
+                        @foreach (var need in _needs)
+                        {
+                            <div class="stats-need">
+                                <div class="stats-need-head">
+                                    <span class="stats-need-title">@need.Title</span>
+                                    <span class="stats-need-visits">@N(need.Visits) @(need.Visits == 1 ? "visit" : "visits") · <TimeAgo Value="@DateTimeOffset.FromUnixTimeMilliseconds(need.LastAsked).UtcDateTime" TooltipPosition="left" /></span>
+                                </div>
+                                <div class="stats-need-bar" role="img" aria-label="@($"{Pct(need.FirstTry, need.Visits)} answered at the first try, {Pct(need.AfterRewording, need.Visits)} after asking again, {Pct(need.GaveUp, need.Visits)} given up")">
+                                    @if (need.FirstTry > 0) { <span class="stats-need-first" style="flex: @need.FirstTry"></span> }
+                                    @if (need.AfterRewording > 0) { <span class="stats-need-after" style="flex: @need.AfterRewording"></span> }
+                                    @if (need.GaveUp > 0) { <span class="stats-need-gaveup" style="flex: @need.GaveUp"></span> }
+                                </div>
+                                <div class="stats-need-legend">
+                                    <span><span class="stats-need-key stats-need-first"></span>First try @Pct(need.FirstTry, need.Visits)</span>
+                                    <span><span class="stats-need-key stats-need-after"></span>After asking again @Pct(need.AfterRewording, need.Visits)</span>
+                                    <span><span class="stats-need-key stats-need-gaveup"></span>Gave up @Pct(need.GaveUp, need.Visits)</span>
+                                </div>
+                                <Table AriaLabel="@($"How {need.Title} was asked")" Class="stats-table stats-need-wordings">
+                                    <thead><tr><th>How it was asked</th><th class="stats-num">Times</th><th class="stats-num">Asked again</th>@if (CitesSources) {<th class="stats-num">Landed</th>}</tr></thead>
+                                    <tbody>
+                                        @foreach (var w in need.Wordings)
+                                        {
+                                            <tr>
+                                                <td>@w.Text</td>
+                                                <td class="stats-num">@N(w.Asked)</td>
+                                                <td class="stats-num">@(w.Reworded > 0 ? N(w.Reworded) : "–")</td>
+                                                @if (CitesSources) { <td class="stats-num">@(w.Landed > 0 ? N(w.Landed) : "–")</td> }
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </Table>
+                                @if (need.LandedOn.Count > 0)
+                                {
+                                    <p class="stats-need-landed">Landed on @string.Join(" · ", need.LandedOn.Select(r => TitleOf(r.DocumentKey)))</p>
+                                }
+                            </div>
+                        }
+                    </div>
+                }
+            }
             else if (_askView == "questions")
             {
                 <p class="stats-help">The questions visitors asked. The ones the content did not answer come first: they are what to write next.</p>

@@ -17,6 +17,7 @@ namespace IndxServer.Components.Datasets
         private AskOverviewStat _ask;
         private AskedAgainStat _askedAgain;
         private List<AskRephrasingStat> _rephrased = [];
+        private List<AskNeedStat> _needs = [];
         private AskBudgetStat _askBudget;
         private List<AskQuestionStat> _askQuestions = [];
         private List<AskOfferStat> _askOffers = [];
@@ -49,6 +50,7 @@ namespace IndxServer.Components.Datasets
         private static readonly List<SegmentedControl.Item> AskViewItems =
         [
             new("overview", "Overview", DatasetIcons.AskOverview),
+            new("needs", "Needs", DatasetIcons.AskNeeds),
             new("questions", "Questions", DatasetIcons.AskQuestions),
             new("offers", "Offers", DatasetIcons.AskOffers),
         ];
@@ -61,6 +63,7 @@ namespace IndxServer.Components.Datasets
             _askBudget = store.AskBudget(team, ds, fromDay, toDay);
             _askQuestions = HasSearchOrAsk ? store.TopQuestions(team, ds, fromDay, toDay, 25, source) : [];
             (_askedAgain, _rephrased) = HasSearchOrAsk ? store.AskedAgain(team, ds, fromDay, toDay, 25, source) : (default, []);
+            _needs = HasSearchOrAsk ? store.AskNeeds(team, ds, fromDay, toDay, 25, source) : [];
             _askOffers = HasSearchOrAsk ? store.TopOffers(team, ds, fromDay, toDay, 25, source) : [];
             (_askFromDay, _askToDay) = (fromDay, toDay);
             _askDays = HasSearchOrAsk ? store.AsksByDay(team, ds, fromDay, toDay, source) : [];

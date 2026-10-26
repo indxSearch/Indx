@@ -76,6 +76,7 @@ namespace IndxServer.Components.Datasets
         // The Search or ask views: the pictures, the questions asked, the offers shown.
         public static readonly RenderFragment<int> AskOverview = Of<Icons.Analytics>();
         public static readonly RenderFragment<int> AskQuestions = Of<Icons.Question>();
+        public static readonly RenderFragment<int> AskNeeds = Of<Icons.Layers>();
         public static readonly RenderFragment<int> AskOffers = Of<Icons.LightBulb>();
         public static readonly RenderFragment<int> FuzzyAll = Of<Icons.SearchAsYouType>();
         public static readonly RenderFragment<int> ShowMore = Of<Icons.Plus>();

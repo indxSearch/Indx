@@ -28,14 +28,16 @@ namespace IndxServer.Controllers
         /// <summary>The window's Search or ask statistics. Rates are null where nothing was offered
         /// or asked. AskedAgain counts the questions a visitor asked again in other words soon after,
         /// in the same session (a sign the answer missed), over the asks that carried a session;
-        /// Rephrased lists the pairs. Cost is in USD as OpenRouter reports it, judge and answers together.</summary>
+        /// Rephrased lists the pairs; Needs bundles the questions into what visitors wanted, each with its
+        /// wordings, how its visits ended and the records its answers landed on. Cost is in USD as
+        /// OpenRouter reports it, judge and answers together.</summary>
         public sealed record SearchOrAskStatisticsResponse(
             long Judged, long Offers, long StrongOffers, long Asks, double? TakeRate,
             long Answered, long NothingFound, long Failed, long Stopped, long Unanswered, double? UnansweredRate,
             long SourcesOpened, double? SourcesOpenedPerAnswer, double Cost, long? MedianFirstTextMs,
             AskQuestionStat[] Questions, AskOfferStat[] Offered,
             long Calls = 0, long CallsRefused = 0, int DaysBudgetRanOut = 0,
-            long AskedAgain = 0, double? AskedAgainRate = null, AskRephrasingStat[]? Rephrased = null);
+            long AskedAgain = 0, double? AskedAgainRate = null, AskRephrasingStat[]? Rephrased = null, AskNeedStat[]? Needs = null);
         /// <summary>A question, and for a follow-up the conversation so far (the last three turns are used).</summary>
         public sealed record AskRequest(string? Question, AskTurn[]? History = null);
 
@@ -271,6 +273,7 @@ namespace IndxServer.Controllers
             {
                 Calls = budget.Calls, CallsRefused = budget.Refused, DaysBudgetRanOut = budget.DaysRunOut,
                 AskedAgain = again.AskedAgain, AskedAgainRate = Rate(again.AskedAgain, again.Asks), Rephrased = rephrased.ToArray(),
+                Needs = s.AskNeeds(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray(),
             };
         }
 
