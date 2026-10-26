@@ -266,7 +266,7 @@ namespace IndxServer.Services.SearchOrAsk
             Limit(s, body, 1500);
             if (s.ReportsCost) body["usage"] = new JsonObject { ["include"] = true };
             var reply = await OpenAiPostAsync(s, body, ct);
-            var message = reply?["choices"]?[0]?["message"] ?? throw new SearchOrAskModelException(502, "No message in the reply");
+            var message = FirstChoice(reply)?["message"] ?? throw new SearchOrAskModelException(502, "No message in the reply");
             return (message.DeepClone(), Cost(s, model, reply?["usage"]));
         }
 
@@ -285,7 +285,7 @@ namespace IndxServer.Services.SearchOrAsk
             if (!s.OpenAiItself) body["temperature"] = 0;
             if (s.ReportsCost) body["usage"] = new JsonObject { ["include"] = true };
             var reply = await OpenAiPostAsync(s, body, ct);
-            var content = reply?["choices"]?[0]?["message"]?["content"]?.GetValue<string>() ?? "";
+            var content = FirstChoice(reply)?["message"]?["content"]?.GetValue<string>() ?? "";
             return (content, Cost(s, model, reply?["usage"]));
         }
 
@@ -353,17 +353,24 @@ namespace IndxServer.Services.SearchOrAsk
             catch (Exception e) when (e is JsonException or InvalidOperationException or FormatException) { return null; }
         }
 
+        /// <summary>The text in a streamed chunk. OpenAI's last chunk, the one with the usage, has an
+        /// empty <c>choices</c> list (OpenRouter's never does), so the first choice is looked for,
+        /// not indexed: a JsonArray's indexer throws past its end.</summary>
         public static string? DeltaOf(string chunkJson)
         {
             try
             {
-                return JsonNode.Parse(chunkJson)?["choices"]?[0]?["delta"]?["content"]?.GetValue<string>();
+                return FirstChoice(JsonNode.Parse(chunkJson))?["delta"]?["content"]?.GetValue<string>();
             }
             catch (JsonException)
             {
                 return null;
             }
         }
+
+        /// <summary>A reply's first choice, or null when it has none.</summary>
+        private static JsonNode? FirstChoice(JsonNode? reply) =>
+            reply?["choices"] is JsonArray { Count: > 0 } choices ? choices[0] : null;
 
         // ── Anthropic's messages API ─────────────────────────────────────────
 
