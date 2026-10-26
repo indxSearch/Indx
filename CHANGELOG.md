@@ -16,7 +16,9 @@ patch can pick up a newer core without changing the HTTP contract.
   the whole catalogue as a tree, every category with its product count, the chosen one with its
   first products beside it and a step to boost it. Open to a level, zoom, filter by name, or read
   it as a list; full screen when the tree is wide. A category no visitor has selected or bought
-  from in the last 90 days carries a quiet mark.
+  from in the last 90 days carries a quiet mark. A dataset that mixes kinds of records, books with
+  authors and series, can limit the tab to one kind, and its "No category" then lists the books
+  that have none.
 - **Statistics, in pictures.** The Overview now shows when people search as a week-by-hour grid
   and as a clock of the day, where searches come from, which result gets chosen, which languages
   visitors search in, how they type, and a profile of the window against the one before it:

@@ -23,8 +23,10 @@ namespace IndxServer.Services
 
         /// <summary>The Categories tab's choice: which facetable field holds the category paths and what
         /// separates the levels in them; an empty field means not chosen, an empty separator that the
-        /// values are flat, and a null separator that it is detected from the values.</summary>
-        public sealed record CategorySetting(string Field, string? Separator)
+        /// values are flat, and a null separator that it is detected from the values. The scope limits
+        /// the tab to the documents with one value in one field ("contentType" = "publication");
+        /// null for the whole dataset.</summary>
+        public sealed record CategorySetting(string Field, string? Separator, string? ScopeField = null, string? ScopeValue = null)
         {
             public static readonly CategorySetting None = new("", null);
         }
@@ -51,6 +53,8 @@ namespace IndxServer.Services
                            KeyField    TEXT NOT NULL DEFAULT '',
                            CategoryField TEXT NOT NULL DEFAULT '',
                            CategorySeparator TEXT NULL,
+                           CategoryScopeField TEXT NULL,
+                           CategoryScopeValue TEXT NULL,
                            UpdatedUtc  TEXT NOT NULL,
                            PRIMARY KEY (TeamId, DatasetName)
                        );";
@@ -65,7 +69,7 @@ namespace IndxServer.Services
                     alter.ExecuteNonQuery();
                 }
                 catch (SqliteException) { /* column already exists */ }
-                foreach (var column in new[] { "CategoryField TEXT NOT NULL DEFAULT ''", "CategorySeparator TEXT NULL" })
+                foreach (var column in new[] { "CategoryField TEXT NOT NULL DEFAULT ''", "CategorySeparator TEXT NULL", "CategoryScopeField TEXT NULL", "CategoryScopeValue TEXT NULL" })
                 {
                     try
                     {
@@ -197,12 +201,13 @@ namespace IndxServer.Services
                 using var conn = Connection();
                 conn.Open();
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = $"SELECT CategoryField, CategorySeparator FROM {Table} WHERE TeamId = $t AND DatasetName = $d";
+                cmd.CommandText = $"SELECT CategoryField, CategorySeparator, CategoryScopeField, CategoryScopeValue FROM {Table} WHERE TeamId = $t AND DatasetName = $d";
                 cmd.Parameters.AddWithValue("$t", teamId);
                 cmd.Parameters.AddWithValue("$d", dataSetName);
                 using var reader = cmd.ExecuteReader();
                 if (!reader.Read()) return CategorySetting.None;
-                return new CategorySetting(reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1));
+                return new CategorySetting(reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3));
             }
             catch (Exception ex)
             {
@@ -211,7 +216,7 @@ namespace IndxServer.Services
             }
         }
 
-        /// <summary>Sets the category field and separator and invalidates the cache.</summary>
+        /// <summary>Sets the category field, separator and scope and invalidates the cache.</summary>
         public void SaveCategory(string teamId, string dataSetName, CategorySetting setting)
         {
             new Indx.Storage.SqLiteManager(DbPath, createOrOpenDatabase: true); // ensure base schema exists
@@ -220,13 +225,16 @@ namespace IndxServer.Services
             conn.Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText =
-                $@"INSERT INTO {Table} (TeamId, DatasetName, Description, KeyField, CategoryField, CategorySeparator, UpdatedUtc)
-                   VALUES ($t, $d, '', '', $f, $s, $u)
-                   ON CONFLICT(TeamId, DatasetName) DO UPDATE SET CategoryField = $f, CategorySeparator = $s, UpdatedUtc = $u;";
+                $@"INSERT INTO {Table} (TeamId, DatasetName, Description, KeyField, CategoryField, CategorySeparator, CategoryScopeField, CategoryScopeValue, UpdatedUtc)
+                   VALUES ($t, $d, '', '', $f, $s, $sf, $sv, $u)
+                   ON CONFLICT(TeamId, DatasetName) DO UPDATE SET CategoryField = $f, CategorySeparator = $s,
+                       CategoryScopeField = $sf, CategoryScopeValue = $sv, UpdatedUtc = $u;";
             cmd.Parameters.AddWithValue("$t", teamId);
             cmd.Parameters.AddWithValue("$d", dataSetName);
             cmd.Parameters.AddWithValue("$f", setting.Field ?? "");
             cmd.Parameters.AddWithValue("$s", (object?)setting.Separator ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$sf", (object?)setting.ScopeField ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$sv", (object?)setting.ScopeValue ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
             cmd.ExecuteNonQuery();
             _categoryCache.TryRemove(Key(teamId, dataSetName), out _);

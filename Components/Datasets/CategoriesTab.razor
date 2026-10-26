@@ -7,7 +7,9 @@
    run off the circuit thread with a timeout, only while the dataset is Ready, never waking one.
    The tree lists categories, never products: those come twenty at a time for the chosen one.
    Marks on a node (a boost rule, never selected, never purchased in the statistics window) are
-   quiet: the figures are Observr's business, the tree is for seeing the catalogue. *@
+   quiet: the figures are Observr's business, the tree is for seeing the catalogue. A dataset that
+   mixes kinds of records (books, authors, series) can limit the tab to one value of a field, saved
+   for the dataset; every count, list and mark is then of that part alone. *@
 @using System.Text.Json
 @using Indx.Api
 @using IndxServer.Services
@@ -80,6 +82,11 @@
                 {
                     <span class="browse-label">Separator</span>
                     <SelectField Size="micro" Variant="ghost" Options="SeparatorOptions" Value="@SeparatorValue" ValueChanged="OnSeparatorChanged" aria-label="Level separator" />
+                }
+                @if (_scopes is { Count: > 0 })
+                {
+                    <span class="browse-label">Records</span>
+                    <SelectField Size="micro" Variant="ghost" Options="ScopeOptions" Value="@(_scope?.Key ?? AllRecords)" ValueChanged="OnScopeChanged" aria-label="The records the tree counts" />
                 }
             </div>
             @if (_tree != null)
@@ -155,7 +162,7 @@
                                 @if (_health.AnyConverts) { <span class="browse-figure">@(f.Converts == 0 ? "never purchased" : $"{f.Converts:N0} purchases") in @Stats.RetentionDays days</span> }
                             </div>
                         }
-                        @if (Ctx.IsEditor && IsFilterable)
+                        @if (Ctx.IsEditor && IsFilterable && !CategoryHierarchy.IsNoCategory(n))
                         {
                             <div class="browse-actions">
                                 <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Boost" @onclick="BoostThis">Boost this category</Button>
@@ -200,6 +207,7 @@
     private const int ReadTimeoutMs = 10_000;
     private const string Detect = "detect";
     private const string Flat = "flat";
+    private const string AllRecords = "all";
 
     private static readonly SegmentedControl.Item[] _views = { new("tree", "Tree", DatasetIcons.TreeView), new("list", "List", DatasetIcons.ListView) };
     private static readonly SegmentedControl.Item[] _zooms = { new("50", "50%"), new("75", "75%"), new("100", "100%") };
@@ -228,6 +236,10 @@
     private IReadOnlyList<CategorySource>? _sources;
     private CategorySource? _source;
     private string? _separator;          // path fields: null detects, "" is flat
+    private IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? _allFacets;   // the whole dataset's, for the scopes offered
+    private IReadOnlyList<CategorySource.Scope>? _scopes;
+    private CategorySource.Scope? _scope;            // null: the whole dataset
+    private IReadOnlySet<long>? _scopeKeys;          // the documents in the scope, as of the last read
     private CategoryHierarchy.Tree? _tree;
     private IReadOnlyList<TreeCanvas.Node> _nodes = Array.Empty<TreeCanvas.Node>();
     private Dictionary<string, CategoryHierarchy.Node> _byId = new();
@@ -304,6 +316,8 @@
     private string Separator => _source is { IsGroup: true } ? CategorySource.GroupSeparator : _tree?.Separator ?? "\0";
     private string SeparatorValue => _separator == null ? Detect : _separator == "" ? Flat : _separator;
     private bool IsFilterable => _source != null && _source.Fields.All(f => Ctx.SavedFields?.FirstOrDefault(x => x.FieldName == f)?.Filterable == true);
+    private List<SelectField.SelectOption> ScopeOptions =>
+        _scopes?.Select(s => new SelectField.SelectOption($"{s.Label} ({s.Count:N0})", s.Key)).Prepend(new SelectField.SelectOption("All records", AllRecords)).ToList() ?? new();
     private List<SelectField.SelectOption> SourceOptions => _sources?.Select(s => new SelectField.SelectOption(s.Label, s.Key)).ToList() ?? new();
 
     private List<SegmentedControl.Item> DepthItems() =>
@@ -346,9 +360,11 @@
             var facets = await Task.Run(() => ReadFacets());
             if (!_reads.IsCurrent(ticket)) return;
             _readFor = fields;
+            _allFacets = facets;
             _sources = CategorySource.Find(fields, facets);
             _source = _sources.FirstOrDefault(s => s.Key == _setting!.Field) ?? _sources.FirstOrDefault();
             _separator = _source != null && _source.Key == _setting!.Field ? _setting.Separator : null;
+            FindScopes(_setting!.ScopeField, _setting.ScopeValue);
             _reading = false;
             if (_source != null) await ReadAsync(facets);
             else await InvokeAsync(StateHasChanged);
@@ -366,6 +382,26 @@
         if (source == null || source == _source) return Task.CompletedTask;
         _source = source;
         _separator = null;
+        FindScopes(_scope?.Field, _scope?.Value);
+        _selected = null; _selectedNode = null; _products = null;
+        Remember();
+        return ReadAsync(null);
+    }
+
+    /// <summary>The scopes the chosen source offers, and the one in use: the given field and value
+    /// while they are still offered, else the whole dataset.</summary>
+    private void FindScopes(string? field, string? value)
+    {
+        var fields = Ctx.SavedFields;
+        _scopes = _source == null || fields == null ? null : CategorySource.Scopes(fields, _allFacets, _source);
+        _scope = _scopes?.FirstOrDefault(s => s.Field == field && s.Value == value);
+    }
+
+    private Task OnScopeChanged(string? key)
+    {
+        var scope = _scopes?.FirstOrDefault(s => s.Key == key);
+        if (scope == _scope) return Task.CompletedTask;
+        _scope = scope;
         _selected = null; _selectedNode = null; _products = null;
         Remember();
         return ReadAsync(null);
@@ -383,7 +419,7 @@
     private void Remember()
     {
         if (!Ctx.IsEditor || _source == null) return;
-        try { Metadata.SaveCategory(Ctx.TeamId, Ctx.Name, new DatasetMetadataStore.CategorySetting(_source.Key, _separator)); }
+        try { Metadata.SaveCategory(Ctx.TeamId, Ctx.Name, new DatasetMetadataStore.CategorySetting(_source.Key, _separator, _scope?.Field, _scope?.Value)); }
         catch (Exception ex) { Console.WriteLine($"[Categories] could not save the category setting for {Ctx.Name}: {ex.Message}"); }
     }
 
@@ -395,27 +431,31 @@
         if (Ctx.EngineState != SystemState.Ready) { _error = "The dataset is not ready."; return; }
         var ticket = _reads.Begin();
         var separator = source.IsGroup ? CategorySource.GroupSeparator : _separator;
+        var scope = _scope;
         _reading = true; _error = null;
         try
         {
-            var values = await Task.Run(() =>
+            // A scope is a value filter; the group pass and the marks take its documents' keys, a
+            // path field's histogram is the facet read under it.
+            var (values, keys) = await Task.Run(() =>
             {
+                var engine = Ctx.FindEngine();
+                var filter = engine == null ? null : ScopeFilter(engine, scope);
+                var keys = filter == null ? null : CategorySource.KeysIn(engine!, filter, ReadTimeoutMs);
                 if (source.IsGroup)
-                {
-                    var engine = Ctx.FindEngine();
-                    return engine == null ? null : CategorySource.GroupHistogram(engine, source.Fields);
-                }
-                facets ??= ReadFacets();
-                return facets != null && facets.TryGetValue(source.Key, out var v) ? v : null;
+                    return (engine == null ? null : CategorySource.GroupHistogram(engine, source.Fields, keys), keys);
+                var read = filter != null ? ReadFacets(filter.SerializedKey) : facets ?? ReadFacets();
+                return (read != null && read.TryGetValue(source.Key, out var v) ? (IReadOnlyList<KeyValuePair<string, int>>)v : null, keys);
             });
             if (!_reads.IsCurrent(ticket)) return;
+            _scopeKeys = keys;
             if (values == null) { _error = $"No values came back for {source.Label}. The field may be empty, or the read timed out."; _tree = null; _health = null; }
             else
             {
                 var tree = CategoryHierarchy.Build(values, separator);
                 _declined = tree == null;
                 _tree = tree;
-                _health = tree == null ? null : await Task.Run(() => ReadHealth(tree, source));
+                _health = tree == null ? null : await Task.Run(() => ReadHealth(tree, source, keys));
                 if (!_reads.IsCurrent(ticket)) return;
                 _byId = new Dictionary<string, CategoryHierarchy.Node>(StringComparer.Ordinal);
                 _nodes = tree == null ? Array.Empty<TreeCanvas.Node>() : tree.Roots.Select(ToNode).ToList();
@@ -435,11 +475,15 @@
         }
     }
 
-    /// <summary>Every facetable field's histogram over the whole dataset: an empty search with
-    /// facets on, which the engine answers from its cache after the first read.</summary>
-    private IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? ReadFacets()
+    /// <summary>Every facetable field's histogram over the whole dataset, or under a filter: an
+    /// empty search with facets on, which the engine answers from its cache after the first read.</summary>
+    private IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? ReadFacets(string? filterKey = null)
     {
-        var query = new global::Indx.Http.QueryProxy { Text = string.Empty, MaxNumberOfRecordsToReturn = 1, EnableFacets = true, TimeOutLimitMilliseconds = ReadTimeoutMs };
+        var query = new global::Indx.Http.QueryProxy
+        {
+            Text = string.Empty, MaxNumberOfRecordsToReturn = 1, EnableFacets = true, TimeOutLimitMilliseconds = ReadTimeoutMs,
+            Filter = filterKey == null ? null : new global::Indx.Http.FilterProxy(filterKey),
+        };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         return result.Facets;
     }
@@ -460,8 +504,9 @@
     /// <summary>The marks' sources: the saved boost rules, and every document selected or converted
     /// in the statistics window with the categories it is filed under, read from the engine by key.
     /// The window's distinct documents bound the work; a dataset without statistics gets the
-    /// boost marks alone. For a group, a document's path is its levels joined.</summary>
-    private CategoryHealth ReadHealth(CategoryHierarchy.Tree tree, CategorySource source)
+    /// boost marks alone. For a group, a document's path is its levels joined. Under a scope, the
+    /// documents outside it are left out.</summary>
+    private CategoryHealth ReadHealth(CategoryHierarchy.Tree tree, CategorySource source, IReadOnlySet<long>? scope)
     {
         var rules = BoostStore.Load(Ctx.TeamId, Ctx.Name);
         var activity = new List<(CategoryHealth.Activity, IReadOnlyList<string>)>();
@@ -474,23 +519,14 @@
                 long toDay = StatisticsDays.Today(zone);
                 foreach (var d in store.TopDocuments(Ctx.TeamId, Ctx.Name, toDay - Stats.RetentionDays, toDay, int.MaxValue))
                 {
+                    if (scope != null && !scope.Contains(d.DocumentKey)) continue;
                     var json = engine.GetJsonDataOfKey(d.DocumentKey);
                     if (string.IsNullOrEmpty(json)) continue;
                     IReadOnlyList<string> paths;
                     try
                     {
                         using var doc = JsonDocument.Parse(json);
-                        if (source.IsGroup)
-                        {
-                            var levels = new List<string>();
-                            foreach (var field in source.Fields)
-                            {
-                                var value = DocumentInspection.Values(doc.RootElement, field).FirstOrDefault(v => v.Trim().Length > 0);
-                                if (value == null) break;
-                                levels.Add(value.Trim());
-                            }
-                            paths = [string.Join(CategorySource.GroupSeparator, levels)];
-                        }
+                        if (source.IsGroup) paths = [CategorySource.PathOf(doc.RootElement, source.Fields)];
                         else paths = DocumentInspection.Values(doc.RootElement, source.Key);
                     }
                     catch { continue; }
@@ -557,41 +593,71 @@
         }
     }
 
-    /// <summary>The field and value of each condition that picks this category out.</summary>
+    /// <summary>The field and value of each condition that picks this category out. Not for
+    /// "No category", which is the absence of a value and has no condition to boost on.</summary>
     private List<(string Field, string Value)> ConditionsOf(CategoryHierarchy.Node node)
     {
-        if (_source is not { IsGroup: true })
-            return [(_source!.Key, node.Id == CategoryHierarchy.NoCategory && node.Label == CategoryHierarchy.NoCategory ? "" : node.Id)];
+        if (_source is not { IsGroup: true }) return [(_source!.Key, node.Id)];
         var levels = CategoryHierarchy.Split(node.Id, CategorySource.GroupSeparator);
         return levels.Select((v, i) => (_source.Fields[Math.Min(i, _source.Fields.Count - 1)], v)).ToList();
     }
 
+    /// <summary>The products listed for a node, found the way its count was made. A category is
+    /// the engine's value filters, one on the path field or one per level of a group. "No category"
+    /// is a group's documents with no first level, read from the documents as the histogram is,
+    /// or a path field's blank and null values, which are the facet keys it counted. Both under
+    /// the scope.</summary>
     private IReadOnlyList<Product> ReadProducts(CategoryHierarchy.Node node)
     {
         var engine = Ctx.FindEngine();
         if (engine == null || _source == null) return Array.Empty<Product>();
-        global::Indx.Api.Filter? filter = null;
-        foreach (var (field, value) in ConditionsOf(node))
+        IEnumerable<long> keys;
+        if (_source.IsGroup && CategoryHierarchy.IsNoCategory(node))
+            keys = CategorySource.Uncategorised(engine, _source.Fields, _scopeKeys, ProductsShown);
+        else
         {
-            var one = engine.CreateValueFilter(field, value, isCaseSensitive: false, out var error);
-            if (one == null) throw new InvalidOperationException(error ?? "The filter could not be made.");
-            filter = filter == null ? one : filter & one;
+            global::Indx.Api.Filter? filter = null;
+            if (CategoryHierarchy.IsNoCategory(node))
+            {
+                // A blank value may have no filter of its own; a null always does.
+                foreach (var value in new[] { CategoryHierarchy.NullValue, "" })
+                    if (engine.CreateValueFilter(_source.Key, value, isCaseSensitive: false, out _) is { } one)
+                        filter = filter == null ? one : filter | one;
+            }
+            else
+            {
+                foreach (var (field, value) in ConditionsOf(node))
+                {
+                    var one = engine.CreateValueFilter(field, value, isCaseSensitive: false, out var error);
+                    if (one == null) throw new InvalidOperationException(error ?? "The filter could not be made.");
+                    filter = filter == null ? one : filter & one;
+                }
+            }
+            if (filter == null) return Array.Empty<Product>();
+            if (ScopeFilter(engine, _scope) is { } scope) filter &= scope;
+            var query = new global::Indx.Http.QueryProxy
+            {
+                Text = string.Empty, MaxNumberOfRecordsToReturn = ProductsShown, EnableFacets = true,
+                Filter = new global::Indx.Http.FilterProxy(filter.SerializedKey), TimeOutLimitMilliseconds = ReadTimeoutMs,
+            };
+            keys = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId).Records.Select(r => r.DocumentKey);
         }
-        if (filter == null) return Array.Empty<Product>();
-        var query = new global::Indx.Http.QueryProxy
-        {
-            Text = string.Empty, MaxNumberOfRecordsToReturn = ProductsShown, EnableFacets = true,
-            Filter = new global::Indx.Http.FilterProxy(filter.SerializedKey), TimeOutLimitMilliseconds = ReadTimeoutMs,
-        };
-        var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         var fields = Ctx.SavedFields ?? Array.Empty<FieldProxy>();
         var list = new List<Product>();
-        foreach (var record in result.Records.Take(ProductsShown))
+        foreach (var key in keys.Take(ProductsShown))
         {
-            var json = engine.GetJsonDataOfKey(record.DocumentKey);
-            list.Add(new Product(record.DocumentKey, TitleOf(json, fields) ?? $"#{record.DocumentKey}"));
+            var json = engine.GetJsonDataOfKey(key);
+            list.Add(new Product(key, TitleOf(json, fields) ?? $"#{key}"));
         }
         return list;
+    }
+
+    /// <summary>The scope's value filter, or null for the whole dataset.</summary>
+    private static global::Indx.Api.Filter? ScopeFilter(ISearchEngine engine, CategorySource.Scope? scope)
+    {
+        if (scope == null) return null;
+        return engine.CreateValueFilter(scope.Field, scope.Value, isCaseSensitive: false, out var error)
+            ?? throw new InvalidOperationException($"The records could not be limited to {scope.Label}: {error}");
     }
 
     /// <summary>The heaviest searchable field's first value: a title, a name.</summary>
@@ -611,7 +677,7 @@
     /// <summary>Hands a rule on this category to the Boost rules tab and opens it.</summary>
     private void BoostThis()
     {
-        if (_selectedNode == null || _source == null) return;
+        if (_selectedNode == null || _source == null || CategoryHierarchy.IsNoCategory(_selectedNode)) return;
         Ctx.BoostDraft = new DatasetContext.BoostDraftRule(_selectedNode.Label, ConditionsOf(_selectedNode));
         Ctx.ActiveTab = "boosts";
         Ctx.NotifyChanged();

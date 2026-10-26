@@ -21,6 +21,8 @@ namespace IndxServer.Components.Datasets
         public const int MaxDepth = 8;
         public const int MaxLabelLength = 60;
         public const string NoCategory = "No category";
+        /// <summary>The value a facet and a value filter give a JSON null.</summary>
+        public const string NullValue = "null";
         /// <summary>The share of values that must carry the separator for the field to be a hierarchy.</summary>
         public const double SeparatorShare = 0.6;
 
@@ -116,14 +118,19 @@ namespace IndxServer.Components.Datasets
         }
 
         /// <summary>The path's segments, trimmed, empties dropped; a blank value is the one segment
-        /// <see cref="NoCategory"/>.</summary>
+        /// <see cref="NoCategory"/>, and so is "null": the engine's facet reports a JSON null under
+        /// that key, so a document whose category is null is filed nowhere, not under "null".</summary>
         public static List<string> Split(string value, string? separator)
         {
+            if (value.Trim() == NullValue) return [NoCategory];
             var parts = separator == null ? [value] : value.Split(separator, StringSplitOptions.None);
             var segments = parts.Select(p => p.Trim()).Where(p => p.Length > 0).ToList();
             if (segments.Count == 0) segments.Add(NoCategory);
             return segments;
         }
+
+        /// <summary>The node for the documents filed nowhere: a blank, null or missing first level.</summary>
+        public static bool IsNoCategory(Node node) => node.Id == NoCategory && node.Label == NoCategory;
 
         private static string Clip(string label) =>
             label.Length <= MaxLabelLength ? label : label[..(MaxLabelLength - 1)].TrimEnd() + "…";
