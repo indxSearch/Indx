@@ -32,25 +32,9 @@ namespace IndxServer.Controllers
             long Answered, long NothingFound, long Failed, long Stopped, long Unanswered, double? UnansweredRate,
             long SourcesOpened, double? SourcesOpenedPerAnswer, double Cost, long? MedianFirstTextMs,
             AskQuestionStat[] Questions, AskOfferStat[] Offered,
-            long Calls = 0, long CallsRefused = 0, int DaysBudgetRanOut = 0,
-            long Helpful = 0, long NotHelpful = 0, double? HelpfulRate = null);
+            long Calls = 0, long CallsRefused = 0, int DaysBudgetRanOut = 0);
         /// <summary>A question, and for a follow-up the conversation so far (the last three turns are used).</summary>
         public sealed record AskRequest(string? Question, AskTurn[]? History = null);
-
-        /// <summary>A question the site's own model answered: the question, the records it gave the
-        /// model (document keys, in citation order), how it ended (answered, nothingFound, failed,
-        /// stopped; answered when left out), the milliseconds to its first words and to its end, the
-        /// model's name, and an ask id of the site's own if it has one. queryId, session, source and
-        /// subject may come here or as query parameters, as on every Search or ask call.</summary>
-        public sealed record AskEventRequest(string? Question, long[]? Sources = null, string? Outcome = null,
-            long? FirstTextMs = null, long? TotalMs = null, string? Model = null, string? AskId = null,
-            string? QueryId = null, string? Session = null, string? Source = null, string? Subject = null, bool? Count = null);
-
-        /// <summary>The ask id an answer reported or Indx wrote has, for its feedback and selects.</summary>
-        public sealed record AskEventResponse(string AskId);
-
-        /// <summary>A visitor's verdict on one answer: helpful or not, and optionally why (500 characters).</summary>
-        public sealed record AnswerFeedbackRequest(string? AskId, bool? Helpful, string? Comment = null);
 
         /// <summary>
         /// What the dataset sets, what it runs with (the site description and fields after defaults),
@@ -80,7 +64,7 @@ namespace IndxServer.Controllers
             return new SearchOrAskSettingsResponse(settings,
                 new SearchOrAskEffective(service.SiteDescription(ctx.OwnerKey, dataSetName, settings),
                     fields.TitleField, fields.SectionFields, fields.SnippetFields, settings.AskPhrases ?? SearchOrAskPhrases.Default),
-                service.AvailableFor(ctx.OwnerKey, dataSetName));
+                service.Available);
         }
 
         /// <summary>Replaces the dataset's settings. Applies from the next call; no reindex.</summary>
@@ -97,8 +81,6 @@ namespace IndxServer.Controllers
                 return ApiProblems.InvalidArgument("A body with the settings is required.");
             if (settings.Validate() is { } invalid)
                 return ApiProblems.InvalidArgument(invalid);
-            if (settings.AnswersBy == SearchOrAskSettings.AnswersElsewhere && !service.AnswersElsewhereAllowed)
-                return ApiProblems.InvalidArgument("answersBy elsewhere is not allowed on this instance: an instance admin allows it in Admin, Settings, Search or ask.");
             // Whether the dataset has the feature is a team admin's (PUT shown), not an editor's.
             settings.Shown = store.Load(ctx.OwnerKey, dataSetName)?.Shown ?? false;
             store.Save(ctx.OwnerKey, dataSetName, settings);
@@ -240,62 +222,6 @@ namespace IndxServer.Controllers
             return new EmptyResult();
         }
 
-        /// <summary>
-        /// Records a question that the site's own model answered, as Indx records its own: it counts
-        /// in the statistics as an ask, and a select whose <c>queryId</c> is the returned
-        /// <c>askId</c> as a source opened. For a dataset whose answers are written elsewhere
-        /// (<c>answersBy: elsewhere</c>), but accepted on any; 404 unless the instance allows answers
-        /// written elsewhere. 202 with the ask id.
-        /// </summary>
-        // Out of the API description: it is for a customer who already has a model, told about it,
-        // not a path to put in front of everyone (26 Oct 2026).
-        [ApiExplorerSettings(IgnoreApi = true)]
-        [KeyAccess(ApiKeyLevel.Search)]
-        [HttpPost(DataSetRoute + "/events/ask")]
-        public ActionResult<AskEventResponse> AskEvent(string teamName, string dataSetName, [FromBody] AskEventRequest request)
-        {
-            if (!service.Shown || !service.AnswersElsewhereAllowed) return NotFound();
-            var ctx = ResolveTeam(teamName, out var error);
-            if (ctx == null) return error!;
-            if (!service.ShownFor(ctx.OwnerKey, dataSetName)) return NotFound();
-            var question = request?.Question?.Trim() ?? "";
-            if (question.Length == 0 || question.Length > SearchOrAskService.MaxQuestion)
-                return ApiProblems.InvalidArgument($"Send {{ question }} of 1 to {SearchOrAskService.MaxQuestion} characters.");
-            var outcome = request!.Outcome?.Trim() is { Length: > 0 } o ? o : "answered";
-            if (!SearchOrAskService.AskOutcomes.Contains(outcome))
-                return ApiProblems.InvalidArgument($"outcome must be one of: {string.Join(", ", SearchOrAskService.AskOutcomes)}.");
-            if (request.Sources is { Length: > 50 })
-                return ApiProblems.InvalidArgument("Send at most 50 sources.");
-            var origin = Origin();
-            origin = new SearchOrAskOrigin(request.QueryId ?? origin.QueryId, request.Session ?? origin.Session,
-                StatisticsService.CleanSource(request.Source) ?? origin.Source, request.Subject ?? origin.Subject, request.Count ?? origin.Counted);
-            var askId = service.RecordExternalAsk(ctx.OwnerKey, dataSetName, question, request.Sources ?? [], outcome,
-                request.FirstTextMs is >= 0 ? request.FirstTextMs : null, request.TotalMs is >= 0 ? request.TotalMs : null,
-                request.Model, request.AskId, origin);
-            return Accepted(new AskEventResponse(askId));
-        }
-
-        /// <summary>
-        /// A visitor's verdict on an answer, Indx's own or the site's: <c>helpful</c> true or false,
-        /// and optionally why. The statistics show the share of answers marked helpful. A later
-        /// verdict on the same ask replaces the earlier one. 202.
-        /// </summary>
-        [KeyAccess(ApiKeyLevel.Search)]
-        [HttpPost(DataSetRoute + "/events/answer-feedback")]
-        public IActionResult AnswerFeedback(string teamName, string dataSetName, [FromBody] AnswerFeedbackRequest request)
-        {
-            if (!service.Shown) return NotFound();
-            var ctx = ResolveTeam(teamName, out var error);
-            if (ctx == null) return error!;
-            if (!service.ShownFor(ctx.OwnerKey, dataSetName)) return NotFound();
-            if (string.IsNullOrWhiteSpace(request?.AskId) || request.AskId.Length > 64)
-                return ApiProblems.InvalidArgument("Send { askId }: the Indx-Ask-Id of the answer, or the askId events/ask returned.");
-            if (request.Helpful is not { } helpful)
-                return ApiProblems.InvalidArgument("Send { helpful: true } or { helpful: false }.");
-            service.RecordFeedback(ctx.OwnerKey, dataSetName, request.AskId, helpful, request.Comment);
-            return Accepted();
-        }
-
         /// <summary>The statistics' view of the caller, read as a search reads it: <c>?queryId=</c>
         /// (the page's search behind this, whose text the statistics show), <c>?session=</c>,
         /// <c>?source=</c>, <c>?subject=</c> and <c>?count=false</c>.</summary>
@@ -332,7 +258,6 @@ namespace IndxServer.Controllers
             limit = Math.Clamp(limit, 1, 500);
             var o = s.AskOverview(ctx.OwnerKey, dataSetName, fromDay, today, src);
             var budget = s.AskBudget(ctx.OwnerKey, dataSetName, fromDay, today);
-            var verdicts = s.AskFeedback(ctx.OwnerKey, dataSetName, fromDay, today, src);
             static double? Rate(double n, double d) => d == 0 ? null : n / d;
             return new SearchOrAskStatisticsResponse(o.Judged, o.Offers, o.StrongOffers, o.Asks, Rate(o.Asks, o.Offers),
                 o.Answered, o.NothingFound, o.Failed, o.Stopped, o.Unanswered, Rate(o.Unanswered, o.Asks),
@@ -341,8 +266,6 @@ namespace IndxServer.Controllers
                 s.TopOffers(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray())
             {
                 Calls = budget.Calls, CallsRefused = budget.Refused, DaysBudgetRanOut = budget.DaysRunOut,
-                Helpful = verdicts.Helpful, NotHelpful = verdicts.NotHelpful,
-                HelpfulRate = Rate(verdicts.Helpful, verdicts.Helpful + verdicts.NotHelpful),
             };
         }
 
@@ -365,10 +288,7 @@ namespace IndxServer.Controllers
             {
                 case IntentStatus.Unavailable:
                     return ApiProblems.Problem(StatusCodes.Status409Conflict, "searchOrAskUnavailable", "Search or ask is not available",
-                        "This instance has no model key for this (Admin, Settings, Search or ask; or Indx:SearchOrAsk:Keys).");
-                case IntentStatus.AnswersElsewhere:
-                    return ApiProblems.Problem(StatusCodes.Status409Conflict, "answersElsewhere", "Answers are written elsewhere",
-                        "This dataset's answers are written by the site's own model: report each question with POST events/ask.");
+                        "This instance has no model key configured (Indx:SearchOrAsk:ApiKey).");
                 case IntentStatus.Disabled:
                     return ApiProblems.Problem(StatusCodes.Status409Conflict, "searchOrAskDisabled", "Search or ask is off",
                         "Search or ask is not switched on for this dataset.");

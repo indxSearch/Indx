@@ -31,14 +31,6 @@ namespace IndxServer.Services
         string SourceKeys, string Outcome, long? FirstTextMs, long TotalMs, double? Cost, double? Answerable,
         string? Subject, string? Session, string? Source, long Timestamp, bool Counted = true);
 
-    /// <summary>A visitor's verdict on one answer (events/answer-feedback): helpful or not, and why
-    /// when they said. It is written onto the ask's row; a verdict for an ask not (yet) written is
-    /// dropped, as a select for an unknown query id counts for nothing.</summary>
-    public readonly record struct AskFeedbackRow(string AskId, string TeamId, string DataSet, bool Helpful, string? Comment, long Timestamp);
-
-    /// <summary>The verdicts in a window: answers marked helpful and not, from the raw rows.</summary>
-    public readonly record struct AskFeedbackStat(long Helpful, long NotHelpful);
-
     /// <summary>A window's Search or ask totals. Offers count each search an offer was shown beside
     /// once, however many pauses judged it. Unanswered is the asks that found nothing or whose
     /// sources the judge thought could not answer. MedianFirstTextMs is read from the raw rows.</summary>
@@ -158,16 +150,6 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
                 }
                 catch (SqliteException) { /* already there */ }
             }
-            // A visitor's verdict on an answer (26 Oct 2026, events/answer-feedback), on the ask's row.
-            foreach (var column in new[] { "Helpful INTEGER", "FeedbackComment TEXT", "FeedbackAt INTEGER" })
-            {
-                try
-                {
-                    cmd.CommandText = $"ALTER TABLE AskEvents ADD COLUMN {column}";
-                    cmd.ExecuteNonQuery();
-                }
-                catch (SqliteException) { /* already there */ }
-            }
             // The budget's cost column came a few hours after its table (20 Oct 2026): a table made
             // without it is given it, since CREATE TABLE IF NOT EXISTS leaves an existing one alone.
             try
@@ -180,11 +162,9 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
 
         /// <summary>Writes Search or ask's rows in one transaction. Called only by
         /// <see cref="StatisticsWriter"/>, like <see cref="WriteBatch"/>.</summary>
-        public void WriteSearchOrAsk(IReadOnlyList<AskIntentEventRow> intents, IReadOnlyList<AskEventRow> asks,
-            IReadOnlyList<AskFeedbackRow>? feedback = null)
+        public void WriteSearchOrAsk(IReadOnlyList<AskIntentEventRow> intents, IReadOnlyList<AskEventRow> asks)
         {
-            feedback ??= [];
-            if (intents.Count == 0 && asks.Count == 0 && feedback.Count == 0) return;
+            if (intents.Count == 0 && asks.Count == 0) return;
             using var conn = Open();
             using var tx = conn.BeginTransaction();
             foreach (var r in intents)
@@ -239,38 +219,7 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
                 cmd.Parameters.AddWithValue("$cnt", r.Counted ? 1 : 0);
                 cmd.ExecuteNonQuery();
             }
-            // After the asks of the same batch, so a quick verdict still finds its row.
-            foreach (var f in feedback)
-            {
-                using var cmd = conn.CreateCommand();
-                cmd.Transaction = tx;
-                cmd.CommandText = @"UPDATE AskEvents SET Helpful = $h, FeedbackComment = $c, FeedbackAt = $ts
-                    WHERE AskId = $id AND TeamId = $t AND DataSet = $d";
-                cmd.Parameters.AddWithValue("$h", f.Helpful ? 1 : 0);
-                cmd.Parameters.AddWithValue("$c", (object?)f.Comment ?? DBNull.Value);
-                cmd.Parameters.AddWithValue("$ts", f.Timestamp);
-                cmd.Parameters.AddWithValue("$id", f.AskId);
-                cmd.Parameters.AddWithValue("$t", f.TeamId);
-                cmd.Parameters.AddWithValue("$d", f.DataSet);
-                cmd.ExecuteNonQuery();
-            }
             tx.Commit();
-        }
-
-        /// <summary>The window's verdicts on answers. Raw rows only: within retention, which the
-        /// console's windows are.</summary>
-        public AskFeedbackStat AskFeedback(string teamId, string dataSet, long fromDay, long toDay, string? source = null)
-        {
-            var tz = ZoneOf(teamId, dataSet);
-            using var conn = Open();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"SELECT COALESCE(SUM(CASE WHEN Helpful = 1 THEN 1 ELSE 0 END), 0),
-                                       COALESCE(SUM(CASE WHEN Helpful = 0 THEN 1 ELSE 0 END), 0)
-                FROM AskEvents a WHERE a.TeamId = $t AND a.DataSet = $d AND a.Timestamp >= $from AND a.Timestamp < $to
-                  AND a.Counted = 1" + (source == null ? "" : " AND a.Source = $src");
-            AddWindow(cmd, teamId, dataSet, StatisticsDays.Start(tz, fromDay), StatisticsDays.Start(tz, toDay + 1), source);
-            using var r = cmd.ExecuteReader();
-            return r.Read() ? new AskFeedbackStat(r.GetInt64(0), r.GetInt64(1)) : default;
         }
 
         // The window's sums over raw rows in [$from, $to), the one definition the rollup and the

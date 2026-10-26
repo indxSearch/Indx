@@ -71,9 +71,6 @@ internal class InstanceSettings
     public string? SearchOrAskJudgeApiKey { get; set; }
     /// <summary>standard or ultrafast: OpenAI's speed tier for the answers.</summary>
     public string? SearchOrAskAnswerSpeed { get; set; }
-    /// <summary>Lets a dataset's answers be written by the site's own model, which reports its
-    /// questions back (events/ask). Off: the choice is not offered and the route answers 404.</summary>
-    public bool SearchOrAskAnswersElsewhere { get; set; }
     public string? SearchOrAskAnswerModel { get; set; }
     public string? SearchOrAskFastAnswerModel { get; set; }
     public string? SearchOrAskFilterModel { get; set; }

@@ -32,12 +32,12 @@
         <Chip Size="large" Color="var(--CTeal)" TextColor="#080809" Icon="DatasetIcons.Experimental">Experimental</Chip>
     </div>
 
-    @if (!CanRun)
+    @if (!Service.Available)
     {
         <Alert Variant="warning">
             <Description>
-                This instance has no model key for this, so Search or ask cannot run. An instance admin adds one, with the
-                provider of their choice, in Admin, Settings, Search or ask. The settings below are kept until then.
+                This instance has no model key, so Search or ask cannot run. An instance admin adds one, with the
+                provider of their choice, in Admin, Settings, Experimental. The settings below are kept until then.
             </Description>
         </Alert>
     }
@@ -61,9 +61,7 @@
                 @Head("Search or ask")
                 <tbody>
                     @Row(DatasetIcons.SearchOrAsk, "Offer answers",
-                         Elsewhere
-                             ? $"Sends what visitors type to {SearchOrAskProviders.Label(Service.Setup.JudgeProvider)} for the judge. Your own model writes the answers. Name both in your privacy notice."
-                             : $"Sends what visitors type to {Service.Setup.Receivers}, and their questions to the answer model. Name this in your privacy notice.",
+                         $"Sends what visitors type to {Service.Setup.Receivers}, and their questions to the answer model. Name this in your privacy notice.",
                          _edit.Enabled, @<ToggleSwitch Label="Enabled" Variant="positive" Checked="@_edit.Enabled" CheckedChanged="@(v => _edit.Enabled = v)" />)
                     @Row(Icon<Icons.Book>(), "Kind of site", "How the judge tells a question from a lookup.",
                          false, @<div class="soa-select"><SelectField Size="micro" Options="KindOptions" Value="@_edit.Kind" ValueChanged="@(v => _edit.Kind = v ?? SearchOrAskRecipes.Documentation)" /></div>)
@@ -94,23 +92,12 @@
                              <Microsoft.AspNetCore.Components.Forms.InputFile OnChange="UploadKnowledgeAsync" accept=".md,.markdown,.txt,text/markdown,text/plain" style="display:none" id="@KnowledgeInputId" />
                              @if (_knowledgeError != null) { <span class="soa-error">@_knowledgeError</span> }
                          </div>)
-                    @if (Service.AnswersElsewhereAllowed)
-                    {
-                    @Row(Icon<Icons.Server>(), "Who writes the answers", Elsewhere
-                             ? "Your own model, on your site. Report each question with events/ask, and a visitor's verdict with events/answer-feedback, and the statistics count them as Indx's own."
-                             : "This instance's answer model, from the dataset's records.",
-                         Elsewhere,
-                         @<div class="soa-select"><SelectField Size="micro" Options="AnswersByOptions" Value="@_edit.AnswersBy" ValueChanged="@(v => _edit.AnswersBy = v ?? SearchOrAskSettings.AnswersByIndx)" /></div>)
-                    }
-                    @if (!Elsewhere)
-                    {
-                        @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
-                             _edit.Answers != SearchOrAskSettings.BestAnswers,
-                             @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
-                        @Row(Icon<Icons.Paragraph>(), "Answer instructions", "The answers' voice and house rules.",
-                             !string.IsNullOrWhiteSpace(_edit.AnswerInstructions),
-                             @<Textarea Rows="3" @bind-Value="_edit.AnswerInstructions" placeholder="Formal. Say du. Never recommend another shop." />)
-                    }
+                    @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
+                         _edit.Answers != SearchOrAskSettings.BestAnswers,
+                         @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
+                    @Row(Icon<Icons.Paragraph>(), "Answer instructions", "The answers' voice and house rules.",
+                         !string.IsNullOrWhiteSpace(_edit.AnswerInstructions),
+                         @<Textarea Rows="3" @bind-Value="_edit.AnswerInstructions" placeholder="Formal. Say du. Never recommend another shop." />)
                     @Row(Icon<Icons.UserText>(), "Answer language", "The visitor's language, or one for every answer.",
                          !string.IsNullOrWhiteSpace(_edit.AnswerLanguage),
                          @<div class="soa-select"><SelectField Size="micro" Options="LanguageOptions" Value="@(_edit.AnswerLanguage ?? VisitorsLanguage)" ValueChanged="@(v => _edit.AnswerLanguage = v == VisitorsLanguage ? null : v)" /></div>)
@@ -249,7 +236,7 @@
                     </div>
                     <span class="soa-help">Type as a visitor would. Uses the settings below, saved or not. Each pause is one call against the budget.</span>
                 </div>
-                @if (!CanRun)
+                @if (!Service.Available)
                 {
                     <span class="soa-help soa-try-off">Needs the instance's model key.</span>
                 }
@@ -281,12 +268,7 @@
                         }
                         else if (_try is { } r)
                         {
-                            @if (Elsewhere && r.Offer != "none")
-                            {
-                                @* Nothing to ask here: the site's own model answers. The offer is what the page shows. *@
-                                <span class="soa-try-none"><span class="soa-try-none-icon"><Indx.Systm.Blazor.Icons.SearchOrAsk Size="14" Color="currentColor" /></span>@(r.Offer == "strong" ? "Your page offers \"Ask the assistant\"" : "Your page offers \"Ask about this\""), and your own model answers.</span>
-                            }
-                            else if (r.Offer == "strong")
+                            @if (r.Offer == "strong")
                             {
                                 <Button Variant="primary" Size="micro" IconLeft="_iconAgent" Loading="@_asking" @onclick="AskAsync">Ask the assistant</Button>
                                 <span class="soa-try-hint"><kbd class="soa-kbd">↵</kbd> to ask</span>
@@ -299,10 +281,7 @@
                             {
                                 @* The flat spectrum, the spinner at rest, keeps the line's indent with the spinners'. *@
                                 <span class="soa-try-none"><span class="soa-try-none-icon"><Indx.Systm.Blazor.Icons.SpectrumFlat Size="14" Color="currentColor" /></span>No offer: the visitor sees the results and nothing more.</span>
-                                @if (!Elsewhere)
-                                {
-                                    <Button Variant="ghost" Size="micro" Loading="@_asking" @onclick="AskAsync">Ask anyway</Button>
-                                }
+                                <Button Variant="ghost" Size="micro" Loading="@_asking" @onclick="AskAsync">Ask anyway</Button>
                             }
                         }
                         else if (_tryMessage != null)
@@ -477,18 +456,6 @@
             new("Documentation, help and reference", SearchOrAskRecipes.Documentation),
             new("Catalogue: a description becomes filters", SearchOrAskRecipes.Catalogue),
         ];
-
-    /// <summary>The answers are the site's own (26 Oct 2026): the judge runs, nothing is asked here.</summary>
-    private bool Elsewhere => Service.AnswersElsewhere(_edit);
-
-    /// <summary>Whether this dataset can run with the instance's keys: elsewhere needs the judge's only.</summary>
-    private bool CanRun => Elsewhere ? Service.JudgeAvailable : Service.Available;
-
-    private static readonly IEnumerable<SelectField.SelectOption> AnswersByOptions =
-    [
-        new("Indx, from the records", SearchOrAskSettings.AnswersByIndx),
-        new("Our own model, on our site", SearchOrAskSettings.AnswersElsewhere),
-    ];
 
     // First-word times measured on the docs with eight sources (Notes/search-or-ask-server.md).
     private IEnumerable<SelectField.SelectOption> AnswerOptions =>

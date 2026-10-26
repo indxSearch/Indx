@@ -219,15 +219,6 @@
                         </p>
                     }
 
-                    @* Quiet on purpose: Indx's own answers are the product. For a customer who already has
-                       a model, not a choice to put in front of everyone (26 Oct 2026). *@
-                    <h3 class="settings-head">Answers written elsewhere</h3>
-                    <ToggleSwitch Label="Allow a site's own answer model" @bind-Checked="_answersElsewhere" Disabled="@SearchOrAsk.AnswersElsewhereConfigured" />
-                    <p class="settings-note settings-indent">
-                        Lets a dataset use Indx for the search and the judge while its own model writes the answers, reporting each question back
-                        so the statistics count it. Off, datasets are not offered the choice.
-                    </p>
-
                     @* The roles tried end to end, with the saved settings: one decision from the judge and a
                        one-word answer from the answer model, the providers' own words back. *@
                     <div class="settings-try">
@@ -335,7 +326,6 @@
     private bool _euRouting;
     private string _judgeProvider = "openrouter";
     private string _answerSpeed = "standard";
-    private bool _answersElsewhere;
     private string _answerModel = "", _fastModel = "", _filterModel = "";
     private IReadOnlyList<ModelOption>? _models;
     private string? _modelsProblem;
@@ -528,7 +518,7 @@
     private (string, bool, bool, bool, bool, string, string, string) _saved;
     private (string, bool, bool, bool, bool, string, string, string) Current =>
         (_instanceName, _requireEmailVerification, _allowUserSelfDeletion, _mcpEnabled, _searchOrAskShown, _registrationMode, _allowedDomainsText,
-         string.Join('\n', _provider, _baseUrl, _euRouting, _judgeProvider, _answerSpeed, _answersElsewhere, _answerModel, _fastModel, _filterModel, _originsText));
+         string.Join('\n', _provider, _baseUrl, _euRouting, _judgeProvider, _answerSpeed, _answerModel, _fastModel, _filterModel, _originsText));
     private bool IsDirty => Current != _saved;
 
     private bool _loaded;
@@ -578,7 +568,6 @@
         _euRouting = setup.EuRouting;
         _judgeProvider = setup.JudgeProvider;
         _answerSpeed = settings.SearchOrAskAnswerSpeed ?? "standard";
-        _answersElsewhere = SearchOrAsk.AnswersElsewhereAllowed;
         _answerModel = settings.SearchOrAskAnswerModel ?? "";
         _fastModel = settings.SearchOrAskFastAnswerModel ?? "";
         _filterModel = settings.SearchOrAskFilterModel ?? "";
@@ -633,7 +622,6 @@
             settings.SearchOrAskEuRouting = _euRouting;
             settings.SearchOrAskJudgeProvider = _judgeProvider;
             settings.SearchOrAskAnswerSpeed = _answerSpeed == "standard" ? null : _answerSpeed;
-            if (!SearchOrAsk.AnswersElsewhereConfigured) settings.SearchOrAskAnswersElsewhere = _answersElsewhere;
             settings.SearchOrAskAnswerModel = string.IsNullOrWhiteSpace(_answerModel) ? null : _answerModel.Trim();
             settings.SearchOrAskFastAnswerModel = string.IsNullOrWhiteSpace(_fastModel) ? null : _fastModel.Trim();
             settings.SearchOrAskFilterModel = string.IsNullOrWhiteSpace(_filterModel) ? null : _filterModel.Trim();

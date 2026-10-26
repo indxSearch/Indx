@@ -14,7 +14,7 @@ namespace IndxServer.Services.SearchOrAsk
     /// before the judge was asked; the controller maps the refusals to problems.</summary>
     public sealed record IntentOutcome(IntentStatus Status, IntentResult? Result = null, int RetryAfterSeconds = 0);
 
-    public enum IntentStatus { Ok, Unavailable, Disabled, RateLimited, BudgetSpent, AnswersElsewhere }
+    public enum IntentStatus { Ok, Unavailable, Disabled, RateLimited, BudgetSpent }
 
     /// <summary>
     /// The intent response. <c>p</c> is the judge's probability that the visitor is asking for
@@ -45,10 +45,6 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>The console's provider settings, the key among them.</summary>
         SearchOrAskProviderSettings Providers => new(ApiKey: ModelKey);
-
-        /// <summary>Whether a dataset may have its answers written by the site's own model: an
-        /// instance admin's switch, off by default (<see cref="SearchOrAskService.AnswersElsewhereAllowed"/>).</summary>
-        bool AnswersElsewhereAllowed => false;
     }
 
     /// <summary>The switch and the console's provider settings, as the instance settings file holds them.</summary>
@@ -57,7 +53,6 @@ namespace IndxServer.Services.SearchOrAsk
         public bool Shown => settings.Load().SearchOrAskShown;
         public string? ModelKey => settings.Load().SearchOrAskApiKey;
         public SearchOrAskProviderSettings Providers => ProvidersOf(settings.Load());
-        public bool AnswersElsewhereAllowed => settings.Load().SearchOrAskAnswersElsewhere;
 
         /// <summary>The console's provider settings as a settings file holds them.</summary>
         public static SearchOrAskProviderSettings ProvidersOf(InstanceSettings s) =>
@@ -156,22 +151,6 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>Whether the judge can be asked: Jev's door has a key.</summary>
         public bool JudgeAvailable => Setup.JudgeAvailable;
 
-        /// <summary>Whether a dataset may have its answers written by the site's own model. Off unless an
-        /// instance admin switches it on (Admin, Settings, Search or ask) or the configuration does
-        /// (<c>Indx:SearchOrAsk:AllowAnswersElsewhere</c>): Indx's own answers are the product, and
-        /// this is for a customer who already has a model, not a path to suggest (26 Oct 2026).</summary>
-        public bool AnswersElsewhereAllowed => _options.AllowAnswersElsewhere || (_instance?.AnswersElsewhereAllowed ?? false);
-
-        /// <summary>Whether this dataset's answers are written elsewhere: it says so, and it may.</summary>
-        public bool AnswersElsewhere(string teamId, string dataSetName) => AnswersElsewhere(Settings(teamId, dataSetName));
-        public bool AnswersElsewhere(SearchOrAskSettings settings) =>
-            settings.AnswersBy == SearchOrAskSettings.AnswersElsewhere && AnswersElsewhereAllowed;
-
-        /// <summary>Whether one dataset can run: a dataset whose answers are written elsewhere needs
-        /// only the judge, since no answer model of this instance is ever called for it.</summary>
-        public bool AvailableFor(string teamId, string dataSetName) =>
-            AnswersElsewhere(teamId, dataSetName) ? JudgeAvailable : Available;
-
         /// <summary>One line per door, for the admin's "Check the keys": what the judge and the
         /// answer model say to a trivial call, in the provider's own words when they refuse. Only
         /// a failure's reason tells a spent key budget from a moderation flag from a wrong key
@@ -226,7 +205,6 @@ namespace IndxServer.Services.SearchOrAsk
         public bool JudgeProviderConfigured => !string.IsNullOrWhiteSpace(_options.JudgeProvider);
         public bool EuRoutingConfigured => _options.EuRouting != null;
         public bool AnswerSpeedConfigured => !string.IsNullOrWhiteSpace(_options.AnswerSpeed);
-        public bool AnswersElsewhereConfigured => _options.AllowAnswersElsewhere;
 
         /// <summary>The answer provider's key in use.</summary>
         public string? ModelKey => Setup.AnswerKey;
@@ -539,43 +517,14 @@ namespace IndxServer.Services.SearchOrAsk
         private static int RetryAfter(RateLimitLease lease) =>
             lease.TryGetMetadata(MetadataName.RetryAfter, out var ra) ? Math.Max(1, (int)Math.Ceiling(ra.TotalSeconds)) : 60;
 
-        // ── Answers written elsewhere: what the site reports ────────────────────────────────
-
-        public const int MaxFeedbackComment = 500;
-        public static readonly string[] AskOutcomes = ["answered", "nothingFound", "failed", "stopped"];
-
-        /// <summary>A question the site's own model answered, recorded as Indx's own asks are, so
-        /// the statistics count it, its sources opened (a select whose queryId is the ask id) and
-        /// its feedback. The model is the site's name for it, "external" when it gives none; the
-        /// cost stays unknown. Returns the ask id, minted here unless the site sends its own.</summary>
-        public string RecordExternalAsk(string teamId, string dataSetName, string question, IReadOnlyList<long> sources,
-            string outcome, long? firstTextMs, long? totalMs, string? model, string? askId, SearchOrAskOrigin origin)
-        {
-            var id = Blank(askId) is { Length: <= 64 } given ? given : Guid.NewGuid().ToString("N");
-            Writer?.RecordAsk(new AskEventRow(id, teamId, dataSetName, Blank(origin.QueryId), question,
-                Blank(model) is { } m ? (m.Length > 80 ? m[..80] : m) : "external", string.Join(',', sources), outcome,
-                firstTextMs, totalMs ?? firstTextMs ?? 0, null, null,
-                Blank(origin.Subject), Blank(origin.Session), origin.Source,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted));
-            return id;
-        }
-
-        /// <summary>A visitor's verdict on an answer, Indx's or the site's own: helpful or not, and
-        /// optionally why. It lands on the ask's row; a later verdict replaces an earlier one.</summary>
-        public void RecordFeedback(string teamId, string dataSetName, string askId, bool helpful, string? comment) =>
-            Writer?.RecordAskFeedback(new AskFeedbackRow(askId.Trim(), teamId, dataSetName, helpful,
-                Blank(comment) is { } c ? (c.Length > MaxFeedbackComment ? c[..MaxFeedbackComment] : c) : null,
-                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
-
         // ── Ask ─────────────────────────────────────────────────────────────────────────────
 
         /// <summary>Whether an ask may proceed: the same gates as intent, against the ask limit.
         /// Ask counts against the daily budget too: it is the expensive call.</summary>
         public IntentOutcome CanAsk(string teamId, string dataSetName, string clientAddress, SearchOrAskSettings? trial = null)
         {
-            var settings = trial ?? Settings(teamId, dataSetName);
-            if (AnswersElsewhere(settings)) return new IntentOutcome(IntentStatus.AnswersElsewhere);
             if (!Available) return new IntentOutcome(IntentStatus.Unavailable);
+            var settings = trial ?? Settings(teamId, dataSetName);
             if (trial == null && !settings.Enabled) return new IntentOutcome(IntentStatus.Disabled);
             using (var lease = _askLimiter.AttemptAcquire(clientAddress))
                 if (!lease.IsAcquired)

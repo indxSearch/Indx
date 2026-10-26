@@ -382,17 +382,13 @@ else
             @* Search or ask (Notes/search-or-ask-server.md). The questions the content did not
                answer lead: they are what to write next. Offers lists the texts an offer was shown
                beside, so a false one can be found. Code in StatisticsTab.SearchOrAsk.cs. *@
-            <StatGroup Columns="@(5 + (CitesSources ? 1 : 0) + (HasFeedback ? 1 : 0))">
+            <StatGroup Columns="@(CitesSources ? 6 : 5)">
                 <Stat Label="Offers shown" LabelIcon="DatasetIcons.AskOffers" Hint="Searches an offer to ask was shown beside, each once however many pauses judged it."><ValueContent>@N(_ask.Offers)</ValueContent></Stat>
                 <Stat Label="Questions asked" LabelIcon="DatasetIcons.AskQuestions" Hint="Questions asked, and how many per offer shown."><ValueContent>@N(_ask.Asks) <span class="stats-tile-sub">@Pct(_ask.Asks, _ask.Offers)</span></ValueContent></Stat>
                 <Stat Label="Not answered" LabelIcon="DatasetIcons.NotAnswered" Hint="Questions the search found nothing for, or whose sources the judge doubted could answer them."><ValueContent>@N(_ask.Unanswered) <span class="stats-tile-sub">@Pct(_ask.Unanswered, _ask.Asks)</span></ValueContent></Stat>
                 @if (CitesSources)
                 {
                     <Stat Label="Sources opened" LabelIcon="DatasetIcons.SourcesOpened" Hint="Cited sources opened from an answer."><ValueContent>@N(_ask.SourcesOpened)</ValueContent></Stat>
-                }
-                @if (HasFeedback)
-                {
-                    <Stat Label="Rated helpful" LabelIcon="DatasetIcons.Helpful" Hint="Answers visitors marked helpful, of the ones they rated (events/answer-feedback). Most visitors rate nothing, so read it beside the questions not answered."><ValueContent>@Pct(_askFeedback.Helpful, _askFeedback.Helpful + _askFeedback.NotHelpful) <span class="stats-tile-sub">@N(_askFeedback.Helpful + _askFeedback.NotHelpful) rated</span></ValueContent></Stat>
                 }
                 @{ var setup = SearchOrAsk.Setup; }
                 <Stat Label="Cost" LabelIcon="DatasetIcons.Cost" Hint="@(setup.CostsReported

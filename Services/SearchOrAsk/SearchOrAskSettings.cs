@@ -104,17 +104,6 @@ namespace IndxServer.Services.SearchOrAsk
         /// (<see cref="SearchOrAskOptions.AnswerModel"/>, <see cref="SearchOrAskOptions.FastAnswerModel"/>).</summary>
         public string Answers { get; set; } = BestAnswers;
 
-        public const string AnswersByIndx = "indx";
-        public const string AnswersElsewhere = "elsewhere";
-
-        /// <summary>Who writes the answers: <c>indx</c> (the default; the instance's answer model) or
-        /// <c>elsewhere</c>, the site's own model (26 Oct 2026, a customer who has one). Elsewhere, the
-        /// judge still runs and offers, <c>ask</c> answers 409 <c>answersElsewhere</c>, and the site
-        /// reports each question with <c>events/ask</c> and a visitor's verdict with
-        /// <c>events/answer-feedback</c>, so the statistics see them as they see Indx's own. The
-        /// instance then needs only the judge's key.</summary>
-        public string AnswersBy { get; set; } = AnswersByIndx;
-
         /// <summary>The words a question is built with, taken off its start so the list searches what
         /// it is about while the visitor types (<see cref="SearchOrAskPhrases"/>). Null: the default
         /// English list; the GET's <c>effective.askPhrases</c> is what applies.</summary>
@@ -143,8 +132,6 @@ namespace IndxServer.Services.SearchOrAsk
                 return $"kind must be one of: {string.Join(", ", SearchOrAskRecipes.Kinds)}.";
             if (SiteDescription is { Length: > MaxSiteDescription })
                 return $"siteDescription is at most {MaxSiteDescription} characters.";
-            if (AnswersBy is not (AnswersByIndx or AnswersElsewhere))
-                return $"answersBy must be {AnswersByIndx} or {AnswersElsewhere}.";
             if (Answers is not (BestAnswers or FastAnswers))
                 return $"answers must be {BestAnswers} or {FastAnswers}.";
             if (FiltersWhileTyping is not (FiltersOff or FiltersFromFacets or FiltersWithModel))
