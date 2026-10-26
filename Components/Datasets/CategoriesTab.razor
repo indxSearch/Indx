@@ -99,13 +99,12 @@
             @* What the tree is drawn from (hierarchy, separator, records), set once for the dataset
                and then left: behind one button, which names the records when the tree counts
                only part of the dataset, so a limited tree never reads as the whole. *@
-            <span class="browse-tb-source" @onkeydown="@(e => { if (e.Key == "Escape") _sourceOpen = false; })">
-                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Sliders" aria-label="Hierarchy and records" title="Hierarchy and records"
-                        aria-expanded="@(_sourceOpen ? "true" : "false")" @onclick="() => _sourceOpen = !_sourceOpen">@(_scope?.Label)</Button>
-                @if (_sourceOpen)
-                {
-                    <div class="browse-source-backdrop" @onclick="() => _sourceOpen = false"></div>
-                    <Surface Class="browse-source-menu">
+            <span class="browse-tb-source">
+                <Popover AriaLabel="Hierarchy and records" Class="browse-source-menu">
+                    <Trigger>
+                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Sliders" aria-label="Hierarchy and records" title="Hierarchy and records">@(_scope?.Label)</Button>
+                    </Trigger>
+                    <ChildContent>
                         <div class="browse-source-row">
                             <span class="browse-label">Hierarchy</span>
                             <SelectField Size="micro" Options="SourceOptions" Value="@_source?.Key" ValueChanged="OnSourceChanged" aria-label="Hierarchy" />
@@ -124,8 +123,8 @@
                                 <SelectField Size="micro" Options="ScopeOptions" Value="@(_scope?.Key ?? AllRecords)" ValueChanged="OnScopeChanged" aria-label="The records the tree counts" />
                             </div>
                         }
-                    </Surface>
-                }
+                    </ChildContent>
+                </Popover>
             </span>
             <span class="browse-tb-full">
                 <Button Variant="ghost" Size="micro" IconLeft="@(_fullscreen ? DatasetIcons.Minimize : DatasetIcons.Maximize)" aria-label="@(_fullscreen ? "Leave full screen" : "Full screen")" title="@(_fullscreen ? "Leave full screen" : "Full screen")" @onclick="ToggleFullscreen" />
@@ -227,7 +226,6 @@
     private const string Detect = "detect";
     private const string Flat = "flat";
     private const string AllRecords = "all";
-    private bool _sourceOpen;
 
     private static readonly SegmentedControl.Item[] _views = { new("tree", "Tree", DatasetIcons.TreeView), new("list", "List", DatasetIcons.ListView) };
     private static readonly SelectField.SelectOption[] SeparatorOptions =

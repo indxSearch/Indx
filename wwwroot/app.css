@@ -529,55 +529,8 @@ a.btn-danger:hover {
 }
 
 /* Header dropdowns (Instance, personal): trigger + right-anchored Surface of ghost buttons. */
-.nav-dropdown {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
-
-.nav-dropdown-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 999;
-}
-
-.nav-dropdown-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    z-index: 1000;
-    min-width: 200px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.nav-dropdown-menu .indx-btn-ghost:hover {
-    background: var(--lv3) !important;
-}
-
-@media (prefers-color-scheme: dark) {
-    .nav-dropdown-menu .indx-btn-ghost:hover {
-        background: var(--lv2) !important;
-    }
-}
-
-/* Menu items are systm Buttons; styled from the container because a class attribute passed to
-   the component would replace its own classes (Blazor attribute splat), not merge with them. */
-.nav-dropdown-menu .indx-btn {
-    width: 100%;
-    justify-content: flex-start;
-}
-
-.nav-menu-form {
-    display: contents;
-}
-
-.nav-menu-divider {
-    height: 1px;
-    background: var(--lv3);
-    margin: 4px 0;
-}
+.nav-dropdown { display: flex; align-items: center; }
+.nav-dropdown-menu { min-width: 200px; }
 
 /* Notification bell: square, quiet, like a ghost button. */
 .nav-bell {

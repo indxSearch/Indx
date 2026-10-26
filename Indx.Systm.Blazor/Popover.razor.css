@@ -1,0 +1,72 @@
+.indx-popover-anchor {
+    position: relative;
+    display: inline-flex;
+}
+
+.indx-popover-trigger {
+    display: inline-flex;
+}
+
+/* The panel: the raised surface tone, fixed to the window and placed by the module; hidden until
+   placed, so it never shows a frame at the corner. No shadow and no motion: it is simply there. */
+.indx-popover {
+    position: fixed;
+    z-index: 1000;
+    box-sizing: border-box;
+    min-width: 180px;
+    max-width: calc(100vw - 16px);
+    /* No scrolling of its own: a SelectField inside opens its list within the panel, and a
+       scrolling panel would clip it. A long panel sets its own height and overflow. */
+    padding: var(--spacing);
+    border-radius: var(--radius);
+    background: var(--lv2);
+    color: var(--lv8);
+    outline: none;
+}
+
+.indx-popover:not([data-placed]) {
+    visibility: hidden;
+}
+
+@media (prefers-color-scheme: dark) {
+    .indx-popover {
+        background: var(--lv1);
+    }
+}
+
+/* A menu: a column of ghost Buttons, full width, labels from the left, the hover a step up from
+   the panel's tone. Styled from the panel, since a class passed to Button replaces its own. */
+.indx-popover-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 200px;
+}
+
+.indx-popover-menu ::deep .indx-btn {
+    width: 100%;
+    justify-content: flex-start;
+}
+
+.indx-popover.indx-popover-menu ::deep .indx-btn-ghost:hover:not(:disabled),
+.indx-popover.indx-popover-menu ::deep .indx-btn-ghost:focus-visible {
+    background: var(--lv3);
+}
+
+@media (prefers-color-scheme: dark) {
+    .indx-popover.indx-popover-menu ::deep .indx-btn-ghost:hover:not(:disabled),
+    .indx-popover.indx-popover-menu ::deep .indx-btn-ghost:focus-visible {
+        background: var(--lv2);
+    }
+}
+
+/* A form inside a menu (log out posts) lays its Button out as a direct item. */
+.indx-popover-menu ::deep form {
+    display: contents;
+}
+
+::deep .indx-popover-divider {
+    height: 1px;
+    background: var(--lv3);
+    margin: 4px 0;
+}

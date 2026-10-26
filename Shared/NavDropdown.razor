@@ -1,18 +1,16 @@
-@* A header menu: a ghost trigger and a right-anchored Surface of ghost buttons — the same
-   pattern the breadcrumb switchers use. Close on backdrop click, Escape, or navigation.
-   The label sits in its own span so a narrow header can hide it and keep icon plus caret; the
-   aria-label carries the name when it does. *@
-@inject NavigationManager NavigationManager
-@implements IDisposable
+@* A header menu: a ghost trigger and a systm Popover menu of ghost buttons, lined up with the
+   trigger's right edge. The Popover closes it on a press outside, Escape or navigation. The label
+   sits in its own span so a narrow header can hide it and keep icon plus caret; the aria-label
+   carries the name when it does. *@
 
-<div class="nav-dropdown">
-    <Button Variant="ghost" Size="micro" IconLeft="@Icon" IconRight="@_caret" title="@Title" aria-label="@(Title ?? Label)" aria-haspopup="menu" aria-expanded="@(_open ? "true" : "false")" @onclick="() => _open = !_open" @onkeydown="OnKeyDown"><span class="nav-dropdown-label">@Label</span></Button>
-    @if (_open)
-    {
-        <div class="nav-dropdown-backdrop" @onclick="() => _open = false"></div>
-        <Surface Class="nav-dropdown-menu">@ChildContent</Surface>
-    }
-</div>
+<span class="nav-dropdown">
+<Popover Role="menu" AriaLabel="@(Title ?? Label)" Class="nav-dropdown-menu">
+    <Trigger>
+        <Button Variant="ghost" Size="micro" IconLeft="@Icon" IconRight="@_caret" title="@Title" aria-label="@(Title ?? Label)"><span class="nav-dropdown-label">@Label</span></Button>
+    </Trigger>
+    <ChildContent>@ChildContent</ChildContent>
+</Popover>
+</span>
 
 @code {
     [Parameter] public string? Label { get; set; }
@@ -20,11 +18,5 @@
     [Parameter] public RenderFragment<int>? Icon { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
 
-    private bool _open;
     private static readonly RenderFragment<int> _caret = size => @<ChevronDown Size="size" Color="currentColor" />;
-
-    protected override void OnInitialized() => NavigationManager.LocationChanged += OnLocationChanged;
-    private void OnLocationChanged(object? s, LocationChangedEventArgs e) { if (_open) { _open = false; InvokeAsync(StateHasChanged); } }
-    private void OnKeyDown(KeyboardEventArgs e) { if (e.Key == "Escape") _open = false; }
-    public void Dispose() => NavigationManager.LocationChanged -= OnLocationChanged;
 }

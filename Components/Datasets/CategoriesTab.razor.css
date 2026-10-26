@@ -7,17 +7,11 @@
 .browse-tb-controls { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .browse-tb-full { display: inline-flex; }
 
-/* What the tree is drawn from: a ghost button, and a small menu under it on the raised tone, each
-   picker a row of its own; a transparent backdrop closes it. */
-.browse-tb-source { position: relative; display: inline-flex; }
-.browse-source-backdrop { position: fixed; inset: 0; z-index: 9; }
-::deep .browse-source-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    z-index: 10;
+/* What the tree is drawn from: a ghost button and a systm Popover under it, each picker a row of
+   its own. */
+.browse-tb-source { display: inline-flex; }
+.browse-tb-source ::deep .browse-source-menu {
     width: 300px;
-    max-width: calc(100vw - 32px);
     padding: 12px;
     display: flex;
     flex-direction: column;

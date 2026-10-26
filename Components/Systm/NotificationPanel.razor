@@ -2,75 +2,74 @@
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager NavigationManager
 
+@* The bell and its panel, a systm Popover: a press outside, Escape or a navigation closes it. *@
 <div class="notif-wrapper">
-    @if (_open)
-    {
-        <button class="nav-bell notif-trigger notif-trigger--active @(_unreadCount > 0 ? "notif-trigger--has-unread" : "")" aria-label="Notifications" @onclick="Toggle">
-            <Bell Size="14" />
-            @if (_unreadCount > 0)
+    <Popover Open="_open" OpenChanged="OnOpenChanged" AriaLabel="Notifications" Class="notif-panel">
+        <Trigger>
+            @if (_open)
             {
-                <span class="notif-badge"></span>
-            }
-        </button>
-    }
-    else
-    {
-        <Tooltip Content="Notifications" Position="bottom">
-            <button class="nav-bell notif-trigger @(_unreadCount > 0 ? "notif-trigger--has-unread" : "")" aria-label="Notifications" @onclick="Toggle">
-                <Bell Size="14" />
-                @if (_unreadCount > 0)
-                {
-                    <span class="notif-badge"></span>
-                }
-            </button>
-        </Tooltip>
-    }
-
-    @if (_open)
-    {
-        <div class="notif-backdrop" @onclick="Close"></div>
-
-        <div class="notif-panel" role="dialog" aria-label="Notifications">
-            <div class="notif-panel-header">
-                <span class="notif-panel-title">Notifications</span>
-                @if (_unreadCount > 0)
-                {
-                    <button class="notif-mark-all" @onclick="MarkAllRead"><Check Size="14" /> Mark all read</button>
-                }
-            </div>
-
-            @if (_notifications.Count == 0)
-            {
-                <p class="notif-empty">No notifications yet.</p>
+                <button class="nav-bell notif-trigger notif-trigger--active @(_unreadCount > 0 ? "notif-trigger--has-unread" : "")" aria-label="Notifications">
+                    <Bell Size="14" />
+                    @if (_unreadCount > 0)
+                    {
+                        <span class="notif-badge"></span>
+                    }
+                </button>
             }
             else
             {
-                <ul class="notif-list">
-                    @foreach (var n in _notifications)
-                    {
-                        <li class="notif-row @(!n.IsRead ? "notif-row--unread" : "")"
-                            @onclick="() => MarkRead(n)">
-                            <div class="notif-dot-col">
-                                @if (!n.IsRead)
-                                {
-                                    <span class="notif-dot"></span>
-                                }
-                            </div>
-                            <div class="notif-content">
-                                <p class="notif-title">@n.Title</p>
-                                <p class="notif-body">@n.Body</p>
-                                <p class="notif-time"><TimeAgo Value="n.CreatedAt" TooltipPosition="right" /></p>
-                            </div>
-                        </li>
-                    }
-                </ul>
+                <Tooltip Content="Notifications" Position="bottom">
+                    <button class="nav-bell notif-trigger @(_unreadCount > 0 ? "notif-trigger--has-unread" : "")" aria-label="Notifications">
+                        <Bell Size="14" />
+                        @if (_unreadCount > 0)
+                        {
+                            <span class="notif-badge"></span>
+                        }
+                    </button>
+                </Tooltip>
             }
-
-            <div class="notif-panel-footer">
-                <a href="/account/notifications" @onclick="Close">See all notifications</a>
-            </div>
+        </Trigger>
+        <ChildContent>
+        <div class="notif-panel-header">
+            <span class="notif-panel-title">Notifications</span>
+            @if (_unreadCount > 0)
+            {
+                <button class="notif-mark-all" @onclick="MarkAllRead"><Check Size="14" /> Mark all read</button>
+            }
         </div>
-    }
+
+        @if (_notifications.Count == 0)
+        {
+            <p class="notif-empty">No notifications yet.</p>
+        }
+        else
+        {
+            <ul class="notif-list">
+                @foreach (var n in _notifications)
+                {
+                    <li class="notif-row @(!n.IsRead ? "notif-row--unread" : "")"
+                        @onclick="() => MarkRead(n)">
+                        <div class="notif-dot-col">
+                            @if (!n.IsRead)
+                            {
+                                <span class="notif-dot"></span>
+                            }
+                        </div>
+                        <div class="notif-content">
+                            <p class="notif-title">@n.Title</p>
+                            <p class="notif-body">@n.Body</p>
+                            <p class="notif-time"><TimeAgo Value="n.CreatedAt" TooltipPosition="right" /></p>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+
+        <div class="notif-panel-footer">
+            <a href="/account/notifications" @onclick="Close">See all notifications</a>
+        </div>
+        </ChildContent>
+    </Popover>
 </div>
 
 @code {
@@ -89,9 +88,9 @@
             _unreadCount = await NotificationService.GetUnreadCountAsync(_userId);
     }
 
-    private async Task Toggle()
+    private async Task OnOpenChanged(bool open)
     {
-        _open = !_open;
+        _open = open;
         if (_open && _userId != null)
         {
             _notifications = await NotificationService.GetRecentAsync(_userId, 10);

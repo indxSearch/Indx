@@ -29,22 +29,12 @@
 }
 
 /* Backdrop */
-.notif-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 99;
-}
-
-/* Panel */
-.notif-panel {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 0;
+/* Panel: the Popover's, on the canvas tone with a hairline, flush to its edges. */
+.notif-wrapper ::deep .notif-panel {
     width: 320px;
+    padding: 0;
     background: var(--lv0);
     border: 1px solid var(--lv3);
-    border-radius: var(--radius);
-    z-index: 100;
     overflow: hidden;
 }
 
