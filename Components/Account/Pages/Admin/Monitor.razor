@@ -7,6 +7,8 @@
 @attribute [Authorize(Roles = "Admin")]
 @implements IDisposable
 @inject MonitorState State
+@inject InstanceSettingsService Settings
+@inject IEditionService Edition
 
 <PageTitle>Admin — Monitor</PageTitle>
 
@@ -18,6 +20,26 @@
     <div>
         <h2 style="margin-bottom: 4px;">Monitor</h2>
         <p style="color: var(--lv5);">What this server has been doing, newest first.</p>
+        @* A newer release, said once by UpdateCheckJob in the bell; here it stays until the
+           server runs it, the quiet line other self-hosted servers keep in their admin area. *@
+        @if (_pending is { } pending)
+        {
+            <p class="admin-monitor-update">
+                <Indx.Systm.Blazor.Icons.Update Size="14" />
+                <span>
+                    @(pending.Security ? $"Indx {pending.Version} fixes a security issue" : $"Indx {pending.Version} is available");
+                    this server runs @ReleaseVersion.Current.
+                    @if (Edition.Edition == IndxEdition.Managed)
+                    {
+                        <text>Indx installs it: write to support@indx.co.</text>
+                    }
+                    else
+                    {
+                        <a href="@(pending.Url ?? "https://github.com/indxSearch/Indx/releases")" target="_blank" rel="noopener">Release notes</a>
+                    }
+                </span>
+            </p>
+        }
     </div>
 </div>
 
@@ -112,9 +134,11 @@ else
 @code {
     private MonitorSnapshot? _snapshot;
     private List<MonitorEvent> _events = [];
+    private (string Version, string? Url, bool Security)? _pending;
 
     protected override void OnInitialized()
     {
+        _pending = UpdateNotice.Pending(Settings.Load(), ReleaseVersion.Current);
         State.Changed += OnChanged;
         Read();
     }

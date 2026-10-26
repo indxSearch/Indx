@@ -81,3 +81,17 @@
 
 /* The CPU and Memory tiles carry their pixl icon before the name, the label's companion as on a
    Tab: the same tone, the same line, under the hint's dotted underline together. */
+
+/* A newer release: one quiet line under the subtitle, the dim tone, the icon beside it. */
+.admin-monitor-update {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+    color: var(--lv6);
+    font: var(--text-sm);
+}
+
+.admin-monitor-update a {
+    color: var(--lv8);
+}

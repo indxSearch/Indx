@@ -11,7 +11,10 @@ internal sealed class NotificationChannelPref
 }
 
 /// <summary>Display metadata for a notification type shown in the preferences UI.</summary>
-internal sealed record NotificationTypeInfo(NotificationType Type, string Label, string Description, bool AdminOnly);
+/// <remarks><see cref="EmailByDefault"/> false keeps a type to the console until the user turns its
+/// email on: a release notice belongs in the bell, as other self-hosted servers show it, and only a
+/// security release is worth an email nobody asked for.</remarks>
+internal sealed record NotificationTypeInfo(NotificationType Type, string Label, string Description, bool AdminOnly, bool EmailByDefault = true);
 
 /// <summary>
 /// Per-user notification channel preferences, keyed by <see cref="NotificationType"/> and
@@ -35,7 +38,8 @@ internal static class NotificationPreferences
         new(NotificationType.BoostRuleExpired,   "Boost rule expired",    "A scheduled boost rule on one of your team's datasets has passed its end date and no longer applies.", AdminOnly: false),
         new(NotificationType.BackupFailed,       "Backup failed",         "A scheduled database backup did not produce a verified copy. The copy, if any, was discarded.", AdminOnly: true),
         new(NotificationType.LowDiskSpace,       "Low disk space",        "The disk holding the databases and backups is below the configured free-space threshold.", AdminOnly: true),
-        new(NotificationType.UpdateAvailable,    "Update available",      "A newer Indx release is out: once per release, with what it fixes and how this instance gets it.", AdminOnly: true),
+        new(NotificationType.UpdateAvailable,    "Update available",      "A newer Indx release is out: once per release, with how this instance gets it. In the console; email only if you turn it on.", AdminOnly: true, EmailByDefault: false),
+        new(NotificationType.SecurityUpdate,     "Security update",       "A newer Indx release fixes a security issue: once per release, with how this instance gets it.", AdminOnly: true),
         new(NotificationType.RepeatedApiErrors,  "Repeated API errors",   "More unhandled API errors than the configured threshold within the window. Each error is in the server log with its trace id.", AdminOnly: true),
     ];
 
@@ -62,13 +66,17 @@ internal static class NotificationPreferences
         return !(prefs.TryGetValue(type, out var p) && p.InApp == false);
     }
 
-    /// <summary>Effective email setting for a type (default: the legacy global flag).</summary>
+    /// <summary>Effective email setting for a type (default: the legacy global flag, unless the
+    /// type is console-only by default).</summary>
     public static bool EmailEnabled(ApplicationUser user, NotificationType type)
     {
         var prefs = Parse(user.NotificationPreferences);
         if (prefs.TryGetValue(type, out var p) && p.Email.HasValue) return p.Email.Value;
-        return user.EmailNotificationsEnabled;
+        return user.EmailNotificationsEnabled && EmailByDefault(type);
     }
+
+    private static bool EmailByDefault(NotificationType type) =>
+        Catalog.FirstOrDefault(i => i.Type == type)?.EmailByDefault ?? true;
 
     /// <summary>Types the user has switched OFF for in-app display (used to filter their feed).</summary>
     public static List<NotificationType> DisabledInApp(ApplicationUser user) =>

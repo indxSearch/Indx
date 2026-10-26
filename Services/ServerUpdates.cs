@@ -77,6 +77,15 @@ namespace IndxServer.Services
             current != null && latest != null && latest.CompareTo(current) > 0
             && !string.Equals(lastNotified, latest.ToString(), StringComparison.OrdinalIgnoreCase);
 
+        /// <summary>The newer release this server was told about, if it still runs an older one:
+        /// what the Monitor page's quiet line shows.</summary>
+        internal static (string Version, string? Url, bool Security)? Pending(InstanceSettings s, ReleaseVersion? current)
+        {
+            var announced = ReleaseVersion.Parse(s.LastAnnouncedRelease);
+            if (current is null || announced is null || announced.CompareTo(current) <= 0) return null;
+            return (announced.ToString(), s.LastAnnouncedReleaseUrl, s.LastAnnouncedReleaseSecurity);
+        }
+
         public static (string Title, string Body) For(LatestRelease release, ReleaseVersion current, bool managed)
         {
             var version = ReleaseVersion.Parse(release.Version)?.ToString() ?? release.Version;
@@ -93,7 +102,9 @@ namespace IndxServer.Services
 
     /// <summary>
     /// Once a day, asks the licence portal which release is the latest and, when it is newer than
-    /// this server, tells the admins once: in the console and by email, as other admin notices.
+    /// this server, tells the admins once. A release is a notice in the console (the bell, and a line
+    /// on the Monitor page), emailed only to admins who turned that on; a security release is also
+    /// emailed by default.
     /// Anonymous: the request carries no token and nothing about the instance, so it works for every
     /// install, licensed or not, and tells the portal nothing. <c>Updates:Check</c> false switches
     /// it off.
@@ -140,8 +151,11 @@ namespace IndxServer.Services
             var (title, body) = UpdateNotice.For(release, current, edition.Edition == IndxEdition.Managed);
             using (var scope = services.CreateScope())
                 await scope.ServiceProvider.GetRequiredService<NotificationService>()
-                    .CreateForAdminsAsync(NotificationType.UpdateAvailable, title, body, release.Url);
+                    .CreateForAdminsAsync(release.Security ? NotificationType.SecurityUpdate : NotificationType.UpdateAvailable,
+                        title, body, release.Url);
             s.LastAnnouncedRelease = latest!.ToString();
+            s.LastAnnouncedReleaseUrl = release.Url;
+            s.LastAnnouncedReleaseSecurity = release.Security;
             settings.Save(s);
             logger.LogInformation("update check: {Latest} is available (this is {Current}); the admins were told", latest, current);
         }

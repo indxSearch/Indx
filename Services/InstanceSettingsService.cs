@@ -82,6 +82,11 @@ internal class InstanceSettings
     /// announced once, however often the check runs.</summary>
     public string? LastAnnouncedRelease { get; set; }
 
+    /// <summary>Where that release is, and whether it fixes a security issue: the Monitor page's
+    /// line about it.</summary>
+    public string? LastAnnouncedReleaseUrl { get; set; }
+    public bool LastAnnouncedReleaseSecurity { get; set; }
+
     /// <summary>The licence portal's last answer about Observr, kept so a restart during a portal
     /// outage keeps Observr as a running instance would (ObservrSubscription): the answer, when it
     /// came, and a hash of the token it was for, so a new token asks afresh.</summary>

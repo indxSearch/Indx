@@ -29,8 +29,9 @@ patch can pick up a newer core without changing the HTTP contract.
   native memory pool, searches a minute over the last hour and every dataset's state at a glance.
   The terminal monitor has the same gauges.
 - **Update notices.** Once a day the server checks which Indx release is the latest and tells its
-  admins once when a newer one is out, in the console and by email, with what it fixes and how to
-  get it; a security release says so. The check is anonymous. `Updates:Check` set to `false`
+  admins once when a newer one is out: a notification in the console and a line on the Monitor
+  page, with how to get it. A security release says so and is emailed too; an ordinary one is
+  emailed only to admins who turn that on. The check is anonymous. `Updates:Check` set to `false`
   switches it off.
 - **Websites, set in the console.** Admin > Settings now lists the websites whose pages may call
   the API from the browser, such as a shop with a search box. A change applies at once, without a

@@ -468,11 +468,12 @@ The download endpoint is **hardcoded** to the Indx portal (`https://license.indx
 ### Updates
 
 Once a day the server asks [license.indx.co](https://license.indx.co) which Indx release is the
-latest, and when it is newer than the one running, every admin is told once: in the console's
-notifications and by email, with what the release fixes and how to get it. A self-hosted server
-points at the release on GitHub; a Managed instance is updated by Indx, since Azure keeps its files
-out of the customer's reach, and the notice says to write to support@indx.co. A release that fixes
-a security issue says so in the title.
+latest. When it is newer than the one running, every admin gets one notification in the console,
+and the Monitor page shows a line about it until the server is updated. Email is off for an
+ordinary release (each admin can turn it on under notification settings); a release that fixes a
+security issue says so and is emailed as well. A self-hosted server points at the release on
+GitHub; a Managed instance is updated by Indx, since Azure keeps its files out of the customer's
+reach, and the notice says to write to support@indx.co.
 
 The check is one anonymous request: no token, no instance id, nothing about your data. Switch it
 off with:
