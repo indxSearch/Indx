@@ -75,20 +75,11 @@
             <p class="browse-note">@_tree.Cut.ToString("N0") path@(_tree.Cut == 1 ? "" : "s") deeper than @CategoryHierarchy.MaxDepth levels @(_tree.Cut == 1 ? "is" : "are") cut at level @CategoryHierarchy.MaxDepth.</p>
         }
         <div class="browse-frame" @ref="_frame">
+        @* The toolbar: the filter and the view's controls first, the choice of what the tree is
+           drawn from (hierarchy, separator, records) on a quiet line under it, since it is set
+           once for the dataset and then left. The zoom sits in the canvas, the only view it
+           applies to. *@
         <div class="indx-list-toolbar browse-toolbar">
-            <div class="browse-tb-source">
-                <SelectField Size="micro" Variant="ghost" Options="SourceOptions" Value="@_source?.Key" ValueChanged="OnSourceChanged" aria-label="Hierarchy" />
-                @if (Ctx.IsEditor && _source is { IsGroup: false })
-                {
-                    <span class="browse-label">Separator</span>
-                    <SelectField Size="micro" Variant="ghost" Options="SeparatorOptions" Value="@SeparatorValue" ValueChanged="OnSeparatorChanged" aria-label="Level separator" />
-                }
-                @if (_scopes is { Count: > 0 })
-                {
-                    <span class="browse-label">Records</span>
-                    <SelectField Size="micro" Variant="ghost" Options="ScopeOptions" Value="@(_scope?.Key ?? AllRecords)" ValueChanged="OnScopeChanged" aria-label="The records the tree counts" />
-                }
-            </div>
             @if (_tree != null)
             {
                 <div class="browse-tb-filter">
@@ -104,13 +95,32 @@
                         <span class="browse-label">Open to</span>
                         <SegmentedControl Size="micro" AriaLabel="Open to level" Value="@_openDepth.ToString()" ValueChanged="@(v => _openDepth = int.Parse(v))" Items="DepthItems()" />
                     }
-                    <SegmentedControl Size="micro" AriaLabel="Zoom" Value="@_zoom" ValueChanged="@(v => _zoom = v)" Items="_zooms" />
                 }
                 <SegmentedControl Size="micro" AriaLabel="View" @bind-Value="_view" Items="_views" />
             </div>
             <span class="browse-tb-full">
                 <Button Variant="ghost" Size="micro" IconLeft="@(_fullscreen ? DatasetIcons.Minimize : DatasetIcons.Maximize)" aria-label="@(_fullscreen ? "Leave full screen" : "Full screen")" title="@(_fullscreen ? "Leave full screen" : "Full screen")" @onclick="ToggleFullscreen" />
             </span>
+        </div>
+        <div class="browse-sources">
+            <span class="browse-source">
+                <span class="browse-label">Hierarchy</span>
+                <SelectField Size="micro" Variant="ghost" Options="SourceOptions" Value="@_source?.Key" ValueChanged="OnSourceChanged" aria-label="Hierarchy" />
+            </span>
+            @if (Ctx.IsEditor && _source is { IsGroup: false })
+            {
+                <span class="browse-source">
+                    <span class="browse-label">Separator</span>
+                    <SelectField Size="micro" Variant="ghost" Options="SeparatorOptions" Value="@SeparatorValue" ValueChanged="OnSeparatorChanged" aria-label="Level separator" />
+                </span>
+            }
+            @if (_scopes is { Count: > 0 })
+            {
+                <span class="browse-source">
+                    <span class="browse-label">Records</span>
+                    <SelectField Size="micro" Variant="ghost" Options="ScopeOptions" Value="@(_scope?.Key ?? AllRecords)" ValueChanged="OnScopeChanged" aria-label="The records the tree counts" />
+                </span>
+            }
         </div>
         @if (_error != null)
         {
@@ -129,8 +139,14 @@
         else if (_tree != null)
         {
             <div class="browse-stage">
-                <TreeCanvas Roots="_nodes" Selected="@_selected" SelectedChanged="OnSelected" View="@_view" Visible="VisiblePredicate"
+                <TreeCanvas Roots="_nodes" Selected="@_selected" SelectedChanged="OnSelected" View="@_view" Visible="VisiblePredicate" Pattern="grid-12"
                             Zoom="@ZoomFactor" OpenDepth="@_openDepth" AriaLabel="@($"Categories of {Ctx.Name} by {_source!.Label}")" />
+                @if (_view == "tree")
+                {
+                    <div class="browse-zoom">
+                        <SegmentedControl Size="micro" AriaLabel="Zoom" Value="@_zoom" ValueChanged="@(v => _zoom = v)" Items="_zooms" />
+                    </div>
+                }
                 @if (_selectedNode != null)
                 {
                     var n = _selectedNode;

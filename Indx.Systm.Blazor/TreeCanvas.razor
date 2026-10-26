@@ -11,7 +11,9 @@
    the connectors, so they focus and read; arrows move between them, right opens, left closes. A
    node with many children shows the first so many and a step to the rest. The list view is the
    same tree as nested rows, for a phone and for a screen reader. The pills' widths are measured
-   after a render and the layout redone with them. Port of the React TreeCanvas in indx-systm. *@
+   after a render and the layout redone with them. The canvas pans by dragging with a mouse or pen,
+   and can lay one of the systm patterns behind the tree, which moves with it. Port of the React
+   TreeCanvas in indx-systm. *@
 @if (View == "list")
 {
     <div class="indx-tree-list-wrap @Class">
@@ -22,7 +24,8 @@ else
 {
     var placed = Layout();
     double width = _columns.Count > 0 ? _columns[^1] + placed.Where(p => p.Depth == _columns.Count - 1).Max(p => p.Width) : 0;
-    <div class="indx-tree-canvas @Class" role="tree" aria-label="@AriaLabel">
+    <div class="indx-tree-canvas @(Pan ? "indx-tree-pannable" : "") @(KnownPattern != null ? "indx-tree-patterned" : "") @Class"
+         style="@(KnownPattern != null ? $"--indx-tree-pattern: var(--pattern-{Pattern}-light); --indx-tree-pattern-dark: var(--pattern-{Pattern}-dark);" : null)" role="tree" aria-label="@AriaLabel" @ref="_canvas">
         @if (placed.Count == 0)
         {
             <div class="indx-tree-empty">Nothing matches</div>
@@ -116,8 +119,21 @@ else
     /// <summary>When set or changed, the tree is opened to this many levels and closed below: 1 shows the
     /// roots, 2 their children. Null leaves the opening to the component.</summary>
     [Parameter] public int? OpenDepth { get; set; }
+    /// <summary>Drag with a mouse or pen to move the tree, as on a design canvas; on by default. The
+    /// wheel and touch scroll as before, and a press that does not move is a click.</summary>
+    [Parameter] public bool Pan { get; set; } = true;
+    /// <summary>A systm pattern behind the tree, faint, moving with it: "grid-12", "grid-24", "grid-6",
+    /// "checkerboard", "checkerboard-spaced-4" (6, 8, 10). None by default.</summary>
+    [Parameter] public string? Pattern { get; set; }
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>The patterns <see cref="Pattern"/> takes, the systm set in indx-systm.css.</summary>
+    public static readonly IReadOnlyList<string> Patterns =
+        ["grid-12", "grid-24", "grid-6", "checkerboard", "checkerboard-spaced-4", "checkerboard-spaced-6", "checkerboard-spaced-8", "checkerboard-spaced-10"];
+
+    // Set when the pattern is one of the set; the canvas then takes its dark-ink and white-ink variables.
+    private string? KnownPattern => Pattern != null && Patterns.Contains(Pattern) ? Pattern : null;
 
     private const double Row = 44;
     private const double ColumnGap = 56;
@@ -146,6 +162,7 @@ else
     private List<Placed> _placed = new();
     private bool _preventKey;
     private ElementReference _sheet;
+    private ElementReference _canvas;
     private IJSObjectReference? _module;
     private bool _disposed;
 
@@ -302,6 +319,7 @@ else
                 if (_disposed) { await module.DisposeAsync(); return; }
                 _module = module;
             }
+            if (Pan) await _module.InvokeVoidAsync("pan", _canvas);
             var widths = await _module.InvokeAsync<Dictionary<string, double>>("measure", _sheet);
             bool changed = false;
             foreach (var (id, w) in widths)

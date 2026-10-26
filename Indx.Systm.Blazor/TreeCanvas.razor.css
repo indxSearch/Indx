@@ -214,3 +214,29 @@
     font: var(--text-sm);
     color: var(--lv5);
 }
+
+/* A systm pattern behind the tree (Pattern), washed to a fifth of its ink by a layer of the canvas
+   tone over it: the dark-ink variant, the white-ink one in dark mode. Each is named here rather
+   than left to the -light variable's own swap, which the React globals do not make. Attached to
+   the scrolled content, so the pattern moves with the tree when it is dragged or scrolled. */
+.indx-tree-patterned {
+    background-image:
+        linear-gradient(color-mix(in srgb, var(--lv0) 80%, transparent), color-mix(in srgb, var(--lv0) 80%, transparent)),
+        var(--indx-tree-pattern);
+    background-attachment: local;
+}
+@media (prefers-color-scheme: dark) {
+    .indx-tree-patterned {
+        background-image:
+            linear-gradient(color-mix(in srgb, var(--lv0) 80%, transparent), color-mix(in srgb, var(--lv0) 80%, transparent)),
+            var(--indx-tree-pattern-dark);
+    }
+}
+
+/* Drag to pan: the hand over the canvas, the closed hand while dragging, over the pills too. */
+.indx-tree-pannable { cursor: grab; }
+.indx-tree-pannable[data-panning],
+.indx-tree-pannable[data-panning] * {
+    cursor: grabbing;
+    user-select: none;
+}
