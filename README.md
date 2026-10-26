@@ -207,7 +207,9 @@ search, and nothing is re-indexed.
 Two kinds of entries:
 
 - **Two-way**: all terms are equivalent; matching any of them pulls in the whole group.
-  For inflected forms and spelling variants (*geriatri / geriatrisk / geriatriske*).
+  For different words for the same thing (*legemiddel / medisin*). Not for typos, spelling
+  variants or translation: the search matches characters, and a list in two languages is not a
+  translation.
 - **One-way**: only the **From** term expands, into its synonyms. For acronyms: *hms*
   should bring in *helse, miljø og sikkerhet*, but a search for *helse* must not become
   a search for *hms*. Multi-word terms are matched as whole phrases.
