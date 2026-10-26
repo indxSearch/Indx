@@ -14,11 +14,14 @@
 
 <PageTitle>Admin — Settings</PageTitle>
 
-@* One section at a time, chosen in the column on the right (on a phone, the row above): the page
+@* One section at a time, chosen in a column of its own beside the admin menu (on a phone, the row above): the page
    had grown to six sections in one scroll. Each section has its own address, and the form is one
    working copy, so an edit in one section survives a visit to another and one Save takes them all.
    Keys are the exception: they save at once, from a modal, and are tried as they are saved. *@
 <div class="settings-layout">
+    <aside class="settings-side">
+        <SideMenu Groups="_menu" Active="@_section" />
+    </aside>
     <div class="settings-main">
         <h2>@SectionTitle</h2>
         <p style="color: var(--lv5); margin-bottom: 32px;">@SectionLead</p>
@@ -245,9 +248,6 @@
         }
     </div>
 
-    <aside class="settings-side">
-        <SideMenu Groups="_menu" Active="@_section" />
-    </aside>
 </div>
 
 <Modal Open="_keyModalOpen" OpenChanged="@(v => _keyModalOpen = v)" Title="@(_keyModalHolder is { } mh ? (HasKey(mh) ? $"Replace the {ProviderName(mh)} key" : $"Add the {ProviderName(mh)} key") : "")">

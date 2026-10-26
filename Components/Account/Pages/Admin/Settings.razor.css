@@ -1,13 +1,16 @@
-/* The section in the middle, its menu in a column on the right in the admin menu's style; on a
-   phone the menu is the scrolling row above the section, as the side column becomes a bar. */
-.settings-layout { display: flex; gap: 48px; align-items: flex-start; }
+/* The section's menu in a column of its own on the left, beside the admin menu and in its style:
+   a hairline between them and the section, the menu's own top padding dropped so its title starts
+   level with the section's heading. On a phone the menu is the scrolling row above the section,
+   as the admin column becomes a bar. */
+.settings-layout { display: flex; gap: 40px; align-items: flex-start; }
+.settings-side { width: 200px; flex: none; position: sticky; top: 16px; padding-right: 16px; border-right: 1px solid var(--lv2); min-height: 320px; }
+.settings-side ::deep .side-menu { padding: 0; }
 .settings-main { flex: 1; min-width: 0; max-width: 600px; display: flex; flex-direction: column; gap: 12px; }
 .settings-main > h2 { margin: 0; }
-.settings-side { width: var(--side-width); flex: none; position: sticky; top: 0; }
 
 @media (max-width: 768px) {
-    .settings-layout { flex-direction: column-reverse; gap: 16px; }
-    .settings-side { width: 100%; position: static; overflow-x: auto; }
+    .settings-layout { flex-direction: column; gap: 20px; }
+    .settings-side { width: 100%; min-height: 0; position: static; padding: 0 0 8px; border-right: none; border-bottom: 1px solid var(--lv2); overflow-x: auto; }
 }
 
 .settings-stack { display: flex; flex-direction: column; gap: 16px; }
