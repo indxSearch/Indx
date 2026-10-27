@@ -137,10 +137,12 @@ namespace IndxServer.Services.Webhooks
         public async Task<string> FetchAllAsync(SanitySource source, CancellationToken ct = default)
         {
             var client = http.CreateClient(HttpClientName);
-            var url = $"https://{source.ProjectId}.api.sanity.io/{source.ApiVersion}/data/query/{source.Dataset}";
+            // The perspective goes in the address: the POST body takes only the query and its
+            // params, and Sanity refuses anything else in it ("unknown field").
+            var url = $"https://{source.ProjectId}.api.sanity.io/{source.ApiVersion}/data/query/{source.Dataset}?perspective=published";
             using var request = new HttpRequestMessage(HttpMethod.Post, url)
             {
-                Content = new StringContent(JsonSerializer.Serialize(new { query = source.Query, perspective = "published" }), Encoding.UTF8, "application/json"),
+                Content = new StringContent(JsonSerializer.Serialize(new { query = source.Query }), Encoding.UTF8, "application/json"),
             };
             if (!string.IsNullOrEmpty(source.Token)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", source.Token);
             using var response = await client.SendAsync(request, ct);
