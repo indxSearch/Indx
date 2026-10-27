@@ -179,7 +179,7 @@ namespace IndxServer.Services.Webhooks
         public IReadOnlyList<SourceSetting> Settings { get; } =
         [
             new("projectId", "Sanity project id", Placeholder: "abc123de", Required: true),
-            new("dataset", "Sanity dataset", Placeholder: "production", Required: true),
+            new("dataset", "Sanity dataset", Placeholder: "production", Required: true, Default: "production"),
             new("query", "GROQ query", Placeholder: "*[_type == \"product\"]{_id, title, price}", Required: true, Multiline: true,
                 Hint: "Picks and shapes the documents. Use the same filter and projection in Sanity's webhook."),
             new("token", "Read token", Secret: true, Hint: "Only for a private dataset. Never shown again."),
@@ -191,7 +191,7 @@ namespace IndxServer.Services.Webhooks
             if (settings == null) return (null, "A Sanity webhook needs settings: { projectId, dataset, query }.");
             var (hours, hoursProblem) = SourceSettings.ReadHours(settings);
             if (hoursProblem != null) return (null, hoursProblem);
-            var source = new SanitySource(SourceSettings.Text(settings, "projectId") ?? "", SourceSettings.Text(settings, "dataset") ?? "",
+            var source = new SanitySource(SourceSettings.Text(settings, "projectId") ?? "", SourceSettings.Text(settings, "dataset") ?? "production",
                 SourceSettings.Text(settings, "query") ?? "", SourceSettings.Text(settings, "token"),
                 SourceSettings.Text(settings, "apiVersion") ?? SanitySource.DefaultApiVersion, hours);
             return source.Problem() is { } problem ? (null, problem) : (source.ToJson(), null);

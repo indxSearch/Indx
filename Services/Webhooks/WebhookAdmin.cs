@@ -17,6 +17,10 @@ namespace IndxServer.Services.Webhooks
             if (string.IsNullOrEmpty(name) || name.Length > 80) return (null, "Give the webhook a name of 1 to 80 characters.");
             var source = string.IsNullOrWhiteSpace(request.Source) ? sources.Get(WebhookSources.Indx) : sources.Get(request.Source);
             if (source == null) return (null, $"source is one of {sources.Known}.");
+            // A required setting left empty is named as such, before the source checks its form:
+            // "is needed" says more than an alphabet the empty value does not match.
+            if (source.Settings.FirstOrDefault(s => s.Required && s.Default == null && SourceSettings.Text(request.Settings, s.Key) == null) is { } missing)
+                return (null, $"{missing.Label} is needed.");
             var (config, problem) = source.Configure(request.Settings);
             if (problem != null) return (null, problem);
             var idField = string.IsNullOrWhiteSpace(request.IdField) ? source.DefaultIdField : request.IdField.Trim();
