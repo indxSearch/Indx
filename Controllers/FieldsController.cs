@@ -18,7 +18,7 @@ using System.Text.Json;
 namespace IndxServer.Controllers
 {
     /// <summary>
-    /// Field roles (searchable, filterable, facetable, sortable, word-indexing, embeddable, key) and the field configuration.
+    /// Field roles (searchable, filterable, facetable, sortable, embeddable, key) and the field configuration.
     /// The roles are read one list at a time and written in one place, <c>PUT fields/configuration</c>:
     /// until Oct 2026 each list also had a PUT of its own, which set its one flag on the live
     /// engine with no rebuild, so a role that needs one took effect only at the next index build.
@@ -38,7 +38,7 @@ namespace IndxServer.Controllers
             if (ctx == null) return error!;
             if (IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
-            return IndxServerInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, true, false, false, false, false, false);
+            return IndxServerInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, true, false, false, false, false);
         }
 
         /// <summary>
@@ -52,7 +52,7 @@ namespace IndxServer.Controllers
             if (ctx == null) return error!;
             if (IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
-            return IndxServerInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, false, false, true, false);
+            return IndxServerInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, false, false, true);
         }
 
         /// <summary>
@@ -66,7 +66,7 @@ namespace IndxServer.Controllers
             if (ctx == null) return error!;
             if (IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
-            return IndxServerInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, false, true, false, false);
+            return IndxServerInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, false, true, false);
         }
 
         /// <summary>
@@ -80,7 +80,7 @@ namespace IndxServer.Controllers
             if (ctx == null) return error!;
             if (IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
-            return IndxServerInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, true, false, false, false, false);
+            return IndxServerInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, true, false, false, false);
         }
 
         /// <summary>
@@ -94,21 +94,7 @@ namespace IndxServer.Controllers
             if (ctx == null) return error!;
             if (IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
-            return IndxServerInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, true, false, false, false);
-        }
-
-        /// <summary>
-        /// GetWordIndexingFields will return the array of word-indexing field names.
-        /// </summary>
-        [KeyAccess(ApiKeyLevel.Read)]
-        [HttpGet(DataSetRoute + "/fields/word-indexing")]
-        public ActionResult<string[]> GetWordIndexingFields(string teamName, string dataSetName)
-        {
-            var ctx = ResolveTeam(teamName, out var error);
-            if (ctx == null) return error!;
-            if (IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
-                return ApiProblems.DatasetNotFound(dataSetName);
-            return IndxServerInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, false, false, false, true);
+            return IndxServerInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, false, true, false, false);
         }
 
         /// <summary>
@@ -128,7 +114,7 @@ namespace IndxServer.Controllers
 
         /// <summary>
         /// SetFieldConfiguration sets any combination of field properties (Searchable, Filterable,
-        /// Facetable, Sortable, WordIndexing, Embeddable, PreloadFilters, Weight, BM25b, BM25k1,
+        /// Facetable, Sortable, Embeddable, PreloadFilters, Weight, BM25b, BM25k1, PatternMatching,
         /// IndexSizes, NumberOfStartCharacters, NumberOfStopCharacters) in one call. Nullable properties have replace semantics: null = leave untouched,
         /// any value (including false) = overwrite.
         ///

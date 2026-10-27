@@ -61,7 +61,9 @@ namespace IndxServer.Components.Datasets
                 existing.Filterable = imp.Filterable;
                 existing.Facetable = imp.Facetable;
                 existing.Sortable = imp.Sortable;
-                existing.WordIndexing = imp.WordIndexing;
+                // A file exported before Oct 2026 has WordIndexing and no PatternMatching: the
+                // field keeps the pattern matching it has.
+                if (imp.PatternMatching.HasValue) existing.PatternMatching = imp.PatternMatching;
                 existing.Embeddable = imp.Embeddable;
                 existing.PreloadFilters = imp.PreloadFilters;
                 existing.Weight = imp.Weight;
@@ -84,7 +86,6 @@ namespace IndxServer.Components.Datasets
             f.Filterable = false;
             f.Facetable = false;
             f.Sortable = false;
-            f.WordIndexing = false;
             f.Embeddable = false;
             f.PreloadFilters = false;
         }

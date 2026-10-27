@@ -21,7 +21,7 @@
                 <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Results can be sorted by this field's value.">Sortable</span></th>
                 @if (ShowAdvanced)
                 {
-                    <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
+                    <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Matches inside words as well as whole words: a query finds the field by any part of a word. Off, the default, only whole words, within a typo or two and by their start. Leave it off for codes, identifiers and tags.">PatternMatching</span></th>
                     <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
                     <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
                 }
@@ -216,7 +216,12 @@
         new("Filterable", false, f => f.Filterable, (f, v) => f.Filterable = v, NeedsType: true, NotOnAVector: true),
         new("Facetable", false, f => f.Facetable, (f, v) => f.Facetable = v, NotOnAVector: true),
         new("Sortable", false, f => f.Sortable, (f, v) => f.Sortable = v, NeedsType: true, NotOnAVector: true),
-        new("WordIndexing", true, f => f.WordIndexing, (f, v) => f.WordIndexing = v, NotOnAVector: true),
+        // Off, the index sizes and anchors the field had are not sent: they would apply to nothing.
+        new("PatternMatching", true, f => f.PatternMatching, (f, v) =>
+        {
+            f.PatternMatching = v;
+            if (!v) { f.IndexSizes = null; f.NumberOfStartCharacters = null; f.NumberOfStopCharacters = null; }
+        }),
         new("Embeddable", true, f => f.Embeddable, (f, v) => f.Embeddable = v, IsEmbeddable: true),
         new("PreloadFilters", true, f => f.PreloadFilters, (f, v) => f.PreloadFilters = v, NotOnAVector: true),
     ];
@@ -466,7 +471,7 @@
     [Parameter] public ScoringSetup Scoring { get; set; } = ScoringSetup.Default;
     /// <summary>Also list fields with no capability ticked.</summary>
     [Parameter] public bool ShowUnused { get; set; }
-    /// <summary>Show the WordIndexing / Embeddable / PreloadFilters / BM25 columns
+    /// <summary>Show the PatternMatching / Embeddable / PreloadFilters / BM25 columns
     /// and switch the weight control from slider to number input.</summary>
     [Parameter] public bool ShowAdvanced { get; set; }
     /// <summary>Set once the user has touched a Searchable box — the owner uses it to decide
@@ -486,7 +491,7 @@
 
     public static bool IsUnused(FieldProxy f) =>
         f.Searchable != true && f.Filterable != true && f.Facetable != true &&
-        f.Sortable != true && f.WordIndexing != true && f.Embeddable != true &&
+        f.Sortable != true && f.Embeddable != true &&
         f.PreloadFilters != true;
 
     /// <summary>Parses a numeric cell, clamping to the range the scoring can represent. The

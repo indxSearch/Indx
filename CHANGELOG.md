@@ -15,6 +15,16 @@ in the AI skill.
 
 ### Changed
 
+- **A field is matched by whole words unless it has pattern matching** (IndxSearchLib 5.1,
+  `Field.PatternMatching`). `PUT fields/configuration` takes `patternMatching` (true or false) with
+  `indexSizes`, `numberOfStartCharacters` and `numberOfStopCharacters`, which are its settings;
+  `GET` reports them, null for a field matched by whole words only. A dataset configured before
+  keeps pattern matching on every searchable field, so it ranks as it did; a new one has it off
+  until it is set. `wordIndexing` is gone: every searchable field has its words in the word lookup,
+  a body that still sends it is read without it, and `GET fields/word-indexing` is removed. The
+  console's WordIndexing column is a PatternMatching column.
+- **High resolution is removed** (`highResolution`, the console column). A body that still sends it
+  is read without it.
 - **`Indx:BoostSaturationCeiling` is read as 1 to 255.** 0 or less ("no cap") or more than 255 is
   read as 255, the most a search can carry, with a warning in the log, so saved boost rules can
   never take a search past it and have it refused.

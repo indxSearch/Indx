@@ -147,7 +147,7 @@ namespace IndxServer.Components.Datasets
                     if ((o.Filterable ?? false) != (e.Filterable ?? false)) return true;
                     if ((o.Facetable ?? false) != (e.Facetable ?? false)) return true;
                     if ((o.Sortable ?? false) != (e.Sortable ?? false)) return true;
-                    if ((o.WordIndexing ?? false) != (e.WordIndexing ?? false)) return true;
+                    if ((o.PatternMatching ?? false) != (e.PatternMatching ?? false)) return true;
                     if ((o.Embeddable ?? false) != (e.Embeddable ?? false)) return true;
                     if ((o.PreloadFilters ?? false) != (e.PreloadFilters ?? false)) return true;
                     if (o.Weight != e.Weight) return true;
@@ -176,7 +176,7 @@ namespace IndxServer.Components.Datasets
             Filterable = f.Filterable ?? false,
             Facetable = f.Facetable ?? false,
             Sortable = f.Sortable ?? false,
-            WordIndexing = f.WordIndexing ?? false,
+            PatternMatching = f.PatternMatching ?? false,
             Embeddable = f.Embeddable ?? false,
             PreloadFilters = f.PreloadFilters ?? false,
             Weight = f.Weight,

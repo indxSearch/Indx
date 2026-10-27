@@ -345,6 +345,8 @@ namespace IndxServer.Mcp
                     ["weight"] = f.Weight,
                     ["bm25b"] = f.BM25b,
                     ["bm25k1"] = f.BM25k1,
+                    // Matched inside words too, with these sizes and anchors; off, by whole words only.
+                    ["patternMatching"] = f.PatternMatching,
                     ["indexSizes"] = f.IndexSizes is { } sizes ? new JsonArray(sizes.Select(s => (JsonNode)s).ToArray()) : null,
                     ["startCharacters"] = f.NumberOfStartCharacters,
                     ["stopCharacters"] = f.NumberOfStopCharacters,

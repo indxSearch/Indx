@@ -78,7 +78,7 @@ namespace IndxServer.Engine
         ///
         /// Private so external callers (including Blazor pages in the same assembly)
         /// cannot reach the generic-callback surface and accidentally apply field-config
-        /// mutations (Searchable/WordIndexing/Embeddable/BM25b/BM25k1) post-Load. Those
+        /// mutations (Searchable/Embeddable/BM25b/BM25k1/PatternMatching) post-Load. Those
         /// must go through <see cref="RunFieldConfigurationOnShadow"/> which applies the
         /// override before Load so <c>MakeSearchEngines</c> sees the new set when it
         /// builds <c>_indexableFields</c>. Internal callers in this class route through
@@ -115,7 +115,7 @@ namespace IndxServer.Engine
                 TResult result = mutation(shadow);
 
                 // Re-index to capture any field-config changes the mutation may have made
-                // (Searchable/BM25b/BM25k1/WordIndexing/Embeddable). For pure document
+                // (Searchable/BM25b/BM25k1/PatternMatching/Embeddable). For pure document
                 // mutations (insert/update/delete) this is a no-op against an already
                 // up-to-date index, but the safety guarantee is worth the cost.
                 RunIndex(shadow, key, "post-mutation");
@@ -211,7 +211,7 @@ namespace IndxServer.Engine
         /// <summary>
         /// Builds a shadow with the supplied field configuration applied between Init and
         /// Load, then atomically swaps it in. Use this for SetFieldConfiguration changes
-        /// that flip Searchable/WordIndexing/Embeddable/BM25b/BM25k1: those flags are
+        /// that flip Searchable/Embeddable/BM25b/BM25k1/PatternMatching: those flags are
         /// consumed during LoadSync to build _indexableFields, so they must be set before
         /// Load runs. Applying them via the post-mutation callback in
         /// <see cref="RunMutationOnShadow{TResult}"/> would leave _indexableFields in the

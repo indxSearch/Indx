@@ -98,7 +98,7 @@ namespace IndxServer.Services
                 Flag(wanted.Filterable, field.Filterable, "filterable");
                 Flag(wanted.Facetable, field.Facetable, "facetable");
                 Flag(wanted.Sortable, field.Sortable, "sortable");
-                Flag(wanted.WordIndexing, field.WordIndexing, "word indexed");
+                Flag(wanted.PatternMatching, field.PatternMatching != null, "pattern matched");
                 Flag(wanted.Embeddable, field.Embeddable, "embeddable");
                 Flag(wanted.PreloadFilters, field.PreloadFilters, "preloaded");
                 Flag(wanted.CaseSensitive, field.CaseSensitive, "case-sensitive");
@@ -106,12 +106,18 @@ namespace IndxServer.Services
                 Number(wanted.Weight, field.Weight, "weight");
                 Number(wanted.BM25b, field.BM25b, "BM25 b");
                 Number(wanted.BM25k1, field.BM25k1, "BM25 k1");
-                Count(wanted.NumberOfStartCharacters, field.NumberOfStartCharacters, "start characters");
-                Count(wanted.NumberOfStopCharacters, field.NumberOfStopCharacters, "stop characters");
-                if (wanted.IndexSizes is { } sizes && !field.IndexSizes.AsSpan().SequenceEqual(sizes))
-                    changes.Add(new Change(wanted.FieldName,
-                        $"index sizes [{string.Join(", ", field.IndexSizes)}] → [{string.Join(", ", sizes)}]",
-                        "index sizes changed"));
+                // The sizes and anchors of a field that has pattern matching and keeps it; a field
+                // turned on or off is said by the flag above, and values for a field that stays off
+                // apply to nothing (the engine says so).
+                if (field.PatternMatching is { } pattern && wanted.PatternMatching != false)
+                {
+                    Count(wanted.NumberOfStartCharacters, pattern.NumberOfStartCharacters, "start characters");
+                    Count(wanted.NumberOfStopCharacters, pattern.NumberOfStopCharacters, "stop characters");
+                    if (wanted.IndexSizes is { } sizes && !pattern.IndexSizes.AsSpan().SequenceEqual(sizes))
+                        changes.Add(new Change(wanted.FieldName,
+                            $"index sizes [{string.Join(", ", pattern.IndexSizes)}] → [{string.Join(", ", sizes)}]",
+                            "index sizes changed"));
+                }
 
                 void Flag(bool? asked, bool now, string role)
                 {

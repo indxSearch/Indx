@@ -282,7 +282,7 @@ namespace IndxServer.Engine
             };
         }
 
-        internal string[] GetFields(string dataSetName, string teamId, bool all, bool indexable, bool sortable, bool filterable, bool facetable, bool wordIndexing)
+        internal string[] GetFields(string dataSetName, string teamId, bool all, bool indexable, bool sortable, bool filterable, bool facetable)
         {
             try
             {
@@ -302,8 +302,6 @@ namespace IndxServer.Engine
                     else if (fields[i].Filterable && filterable)
                         returnList.Add(fields[i].Name);
                     else if (fields[i].Facetable && facetable)
-                        returnList.Add(fields[i].Name);
-                    else if (fields[i].WordIndexing && wordIndexing)
                         returnList.Add(fields[i].Name);
                 }
                 return returnList.ToArray();
