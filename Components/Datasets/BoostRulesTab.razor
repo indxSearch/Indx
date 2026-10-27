@@ -79,7 +79,7 @@
                         {
                             var cond = rule.Conditions[ci];
                             <div class="boost-condition">
-                                <div class="boost-w190"><SelectField Size="micro" Options="FieldOptionsForCondition(cond.Field)" Value="@cond.Field" ValueChanged="@(v => OnConditionFieldChanged(cond, v))" /></div>
+                                <div class="boost-w190"><Combobox Size="micro" Options="FieldOptionsForCondition(cond.Field)" Search="q => _fieldSearch.Find(FieldOptionsForCondition(cond.Field), q)" SearchPlaceholder="Search the fields" AriaLabel="Field" Value="@cond.Field" ValueChanged="@(v => OnConditionFieldChanged(cond, v))" /></div>
                                 @if (IsNumericField(cond.Field))
                                 {
                                     <span class="boost-label">between</span>
@@ -214,6 +214,15 @@
         var rules = BoostStore.Load(Ctx.TeamId, Ctx.Name);
         _savedJson = JsonSerializer.Serialize(rules, JsonOpts);
         _rules = JsonSerializer.Deserialize<List<BoostRule>>(_savedJson, JsonOpts) ?? new();
+    }
+
+    // The conditions' field pickers search with Indx, over one micro index for the tab.
+    private readonly IndxServer.Components.Shared.OptionSearch _fieldSearch = new();
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        _fieldSearch.Dispose();
     }
 
     private List<string> FilterableFieldNames() =>

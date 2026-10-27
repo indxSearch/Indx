@@ -110,8 +110,8 @@
         </p>
         <div class="opt-row">
             <div class="opt-w240">
-                <SelectField Size="micro" Label="Name documents by" Options="LabelFieldOptions"
-                             Value="@(_labelField ?? "")" ValueChanged="SetLabelField" disabled="@(!Ctx.IsAdmin)" />
+                <Combobox Size="micro" Label="Name documents by" Options="LabelFieldOptions" Search="q => _labelSearch.Find(LabelFieldOptions, q)"
+                          SearchPlaceholder="Search the fields" Value="@(_labelField ?? "")" ValueChanged="SetLabelField" Disabled="@(!Ctx.IsAdmin)" />
             </div>
         </div>
         <p class="indx-section-help opt-gap">
@@ -120,8 +120,8 @@
         </p>
         <div class="opt-row">
             <div class="opt-w240">
-                <SelectField Size="micro" Label="Time zone" Options="TimeZoneOptions"
-                             Value="@(_timeZone ?? "")" ValueChanged="SetTimeZone" disabled="@(!Ctx.IsAdmin || _savingZone)" />
+                <Combobox Size="micro" Label="Time zone" Options="TimeZoneOptions" Search="q => _zoneSearch.Find(TimeZoneOptions, q)"
+                          SearchPlaceholder="Search the zones" Value="@(_timeZone ?? "")" ValueChanged="SetTimeZone" Disabled="@(!Ctx.IsAdmin || _savingZone)" />
             </div>
             @if (_savingZone) { <span class="opt-muted">Counting the days again…</span> }
         </div>
@@ -329,6 +329,8 @@
 
     private string? _labelField;
     private bool _labelFieldLoaded;
+    // The two long pickers search with Indx: a micro index each, built on the first search.
+    private readonly IndxServer.Components.Shared.OptionSearch _labelSearch = new(), _zoneSearch = new();
 
     /// <summary>"First searchable field (title)" and the dataset's fields, vector fields left out.
     /// From the engine only when it is loaded (never woken for this); asleep, the choice made
@@ -685,6 +687,8 @@
     public override void Dispose()
     {
         base.Dispose();
+        _labelSearch.Dispose();
+        _zoneSearch.Dispose();
         _replaceTransferCts?.Cancel();
         _replaceTransferCts?.Dispose();
         _replacePollCts?.Cancel();

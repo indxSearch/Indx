@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Indx.Api;
 using Indx.Systm.Blazor;
 using Microsoft.AspNetCore.Components;
@@ -148,11 +147,7 @@ namespace IndxServer.Components.Shared
             {
                 var engine = Engine();
                 if (engine != null)
-                {
-                    var result = engine.Search(new Query { Text = needle, MaxNumberOfRecordsToReturn = MaxResults });
-                    foreach (var r in result.Records)
-                        if (r.Score > 0 && r.DocumentKey >= 0 && r.DocumentKey < _items.Count) Take((int)r.DocumentKey);
-                }
+                    foreach (var i in MicroIndex.Find(engine, needle, _items.Count, MaxResults)) Take(i);
             }
             catch
             {
@@ -164,23 +159,7 @@ namespace IndxServer.Components.Shared
         private SearchEngine? Engine()
         {
             if (_engine != null || _items.Count == 0) return _engine;
-            var docs = _items.Select((x, i) => new { key = i, text = $"{x.Item.Label} {x.Item.Group} {x.Keywords}".Replace('›', ' ').Replace(':', ' ') });
-            using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(docs)));
-            var engine = new SearchEngine();
-            var init = new ProcessMonitor();
-            engine.Init(stream, "key", init);
-            init.WaitForCompletion();
-            foreach (var field in engine.GetFieldList())
-                if (field.Name == "text") field.Searchable = true;
-            stream.Position = 0;
-            var load = new ProcessMonitor();
-            engine.Load(stream, load);
-            load.WaitForCompletion();
-            var index = new ProcessMonitor();
-            engine.Index(monitor: index);
-            index.WaitForCompletion();
-            _engine = engine;
-            return engine;
+            return _engine = MicroIndex.Build(_items.Select(x => $"{x.Item.Label} {x.Item.Group} {x.Keywords}".Replace('›', ' ').Replace(':', ' ')));
         }
 
         public void Dispose()

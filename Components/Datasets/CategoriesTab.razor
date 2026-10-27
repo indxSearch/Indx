@@ -107,7 +107,7 @@
                     <ChildContent>
                         <div class="browse-source-row">
                             <span class="browse-label">Hierarchy</span>
-                            <SelectField Size="micro" Options="SourceOptions" Value="@_source?.Key" ValueChanged="OnSourceChanged" aria-label="Hierarchy" />
+                            <Combobox Size="micro" Options="SourceOptions" Search="q => _sourceSearch.Find(SourceOptions, q)" SearchPlaceholder="Search the hierarchies" Value="@_source?.Key" ValueChanged="OnSourceChanged" AriaLabel="Hierarchy" />
                         </div>
                         @if (Ctx.IsEditor && _source is { IsGroup: false })
                         {
@@ -333,6 +333,8 @@
     private bool IsFilterable => _source != null && _source.Fields.All(f => Ctx.SavedFields?.FirstOrDefault(x => x.FieldName == f)?.Filterable == true);
     private List<SelectField.SelectOption> ScopeOptions =>
         _scopes?.Select(s => new SelectField.SelectOption($"{s.Label} ({s.Count:N0})", s.Key)).Prepend(new SelectField.SelectOption("All records", AllRecords)).ToList() ?? new();
+    // The hierarchy picker searches with Indx, over a micro index of the hierarchies.
+    private readonly IndxServer.Components.Shared.OptionSearch _sourceSearch = new();
     private List<SelectField.SelectOption> SourceOptions => _sources?.Select(s => new SelectField.SelectOption(s.Label, s.Key)).ToList() ?? new();
 
     private List<SegmentedControl.Item> DepthItems() =>
@@ -726,6 +728,7 @@
     public override void Dispose()
     {
         _names.Dispose();
+        _sourceSearch.Dispose();
         Ctx.DocumentsReplaced -= Invalidate;
         base.Dispose();
     }
