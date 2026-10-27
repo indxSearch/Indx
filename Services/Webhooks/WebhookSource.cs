@@ -140,12 +140,12 @@ namespace IndxServer.Services.Webhooks
     }
 
     /// <summary>The generic scheme: the sender signs each call with <c>X-Indx-Signature</c> and
-    /// sends the full set itself. Own code, or an add-on such as Indx.Optimizely.</summary>
+    /// sends the full set itself. Own code, or an add-on such as Indx.Connector.Optimizely.</summary>
     public sealed class IndxWebhookSource : IWebhookSource
     {
         public string Id => WebhookSources.Indx;
         public string Label => "Signed calls";
-        public string Description => "Your own code, or an add-on such as Indx.Optimizely, signs each call with the secret.";
+        public string Description => "Your own code, or an add-on such as Indx.Connector.Optimizely, signs each call with the secret.";
         public string DefaultIdField => "id";
         public IReadOnlyList<SourceSetting> Settings => [];
         public bool Pulls => false;
