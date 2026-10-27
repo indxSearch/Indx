@@ -62,3 +62,5 @@
     .soa-key { grid-template-columns: 1fr auto; }
     .soa-key-state { grid-column: 1 / -1; grid-row: 2; }
 }
+
+.settings-problem { color: var(--CSignal); }

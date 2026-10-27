@@ -734,6 +734,7 @@ internal static class StartupServices
         // with the token the portal writes into its app settings.
         builder.Services.AddHostedService<Services.LicenseRefreshJob>();
         // A newer release, announced to the admins once (Updates:Check false switches it off).
+        builder.Services.AddSingleton<Services.ManagedUpdateClient>();
         builder.Services.AddHostedService<Services.UpdateCheckJob>();
 
         // Application Insights: only activate when a connection string is configured.

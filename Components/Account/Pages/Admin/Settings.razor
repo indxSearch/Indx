@@ -237,6 +237,10 @@
                 }
                 break;
 
+            case "version":
+                <VersionSection />
+                break;
+
             default:
                 <InputField Label="Instance name" @bind-Value="_instanceName" placeholder="Indx" />
                 <p class="settings-note" style="margin-top: 6px;">Shown in emails and the browser title.</p>
@@ -273,6 +277,7 @@
     private static readonly RenderFragment<int> _iconWebsites = size => @<Indx.Systm.Blazor.Icons.InternetBrowser Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconMcp = size => @<Indx.Systm.Blazor.Icons.Mcp Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconAsk = size => @<Indx.Systm.Blazor.Icons.SearchOrAsk Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconVersion = size => @<Indx.Systm.Blazor.Icons.Update Size="size" Color="currentColor" />;
 
     private static readonly IReadOnlyList<SideMenuGroup> _menu =
     [
@@ -283,6 +288,7 @@
             new("websites", "Websites", _iconWebsites, "/admin/settings/websites"),
             new("mcp", "AI agents (MCP)", _iconMcp, "/admin/settings/mcp"),
             new("search-or-ask", "Search or ask", _iconAsk, "/admin/settings/search-or-ask", Experimental: true),
+            new("version", "Version", _iconVersion, "/admin/settings/version"),
         ]),
     ];
 
@@ -293,6 +299,7 @@
         "websites" => "Websites",
         "mcp" => "AI agents (MCP)",
         "search-or-ask" => "Search or ask",
+        "version" => "Version",
         _ => "General",
     };
 
@@ -303,6 +310,7 @@
         "websites" => "The websites whose pages may call this instance's API from the browser, such as a shop with a search box.",
         "mcp" => "Let AI agents query your datasets over the Model Context Protocol.",
         "search-or-ask" => "One search field that also answers questions, with the model providers you choose.",
+        "version" => "Which Indx this instance runs, and its updates.",
         _ => "Basic configuration for this instance.",
     };
 

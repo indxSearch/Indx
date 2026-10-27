@@ -94,7 +94,7 @@ namespace IndxServer.Services
                 ? $"Indx {version} fixes a security issue. This instance runs {current}; install it soon."
                 : $"Indx {version} is out. This instance runs {current}.";
             var how = managed
-                ? "This instance is looked after through Azure, so it is updated by Indx: write to support@indx.co and we install it, with a backup first."
+                ? "Update it under Admin > Settings > Version: a backup is taken first, and the instance restarts on the new version in a few minutes."
                 : $"Download it from {release.Url ?? "https://github.com/indxSearch/Indx/releases"}; the release notes say what changed.";
             return (title, $"{what} {how}");
         }
@@ -140,9 +140,21 @@ namespace IndxServer.Services
         {
             var current = ReleaseVersion.Current;
             if (current is null) return;
-            using var client = httpClients.CreateClient();
-            client.Timeout = TimeSpan.FromSeconds(20);
-            var release = await client.GetFromJsonAsync<LatestRelease>(LatestReleaseUrl, ct);
+            LatestRelease? release;
+            // A Managed install is told of the release it can update to (the one on offer), not of
+            // the newest release anywhere, which may not be on offer to it yet.
+            var managed = services.GetService<ManagedUpdateClient>();
+            if (managed is { CanUpdate: true })
+            {
+                var (offered, _) = await managed.CheckAsync(ct);
+                release = offered == null ? null : new LatestRelease(offered.Version, offered.Name, null, offered.PublishedAt, false);
+            }
+            else
+            {
+                using var client = httpClients.CreateClient();
+                client.Timeout = TimeSpan.FromSeconds(20);
+                release = await client.GetFromJsonAsync<LatestRelease>(LatestReleaseUrl, ct);
+            }
             if (release is null) return;
             var latest = ReleaseVersion.Parse(release.Version);
             var s = settings.Load();

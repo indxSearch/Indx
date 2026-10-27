@@ -59,10 +59,10 @@
     {
         var text = pending.Security ? $"Security update {pending.Version}" : $"{pending.Version} available";
         var title = managed
-            ? $"Indx {pending.Version} is out. Indx installs it: write to support@indx.co."
+            ? $"Indx {pending.Version} is available: update it under Settings > Version."
             : $"Indx {pending.Version} is out: open the release notes.";
         var href = managed
-            ? $"mailto:support@indx.co?subject={Uri.EscapeDataString($"Please install Indx {pending.Version}")}"
+            ? "/admin/settings/version"
             : pending.Url ?? "https://github.com/indxSearch/Indx/releases";
         return new SideMenuUpdate(text, href, title, pending.Security);
     }

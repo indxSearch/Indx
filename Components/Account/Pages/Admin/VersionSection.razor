@@ -1,0 +1,97 @@
+@* Admin > Settings > Version: which Indx this instance runs, and on a Managed App install the update
+   to the release on offer, by the admin, when it suits them (ManagedUpdateClient). A self-hosted
+   instance is updated by whoever runs it, so it gets the address of the releases instead. *@
+@using IndxServer.Services
+@inject ManagedUpdateClient Updates
+@inject IEditionService Edition
+
+<div class="settings-stack">
+    <p>This instance runs <strong>Indx @(ReleaseVersion.Current?.ToString() ?? "of an unknown version")</strong>.</p>
+
+    @if (Edition.Edition != IndxEdition.Managed)
+    {
+        <p class="settings-note">
+            New versions are on <a href="https://github.com/indxSearch/Indx/releases" target="_blank" rel="noopener">GitHub</a>,
+            with what changed. Install one the way this instance was installed; the data folder stays as it is.
+        </p>
+    }
+    else if (!Updates.CanUpdate)
+    {
+        <p class="settings-note">
+            Updates come with the token Indx writes into the install when it is made, and this install has none yet.
+            If that stays so, write to <a href="mailto:support@indx.co">support@indx.co</a>.
+        </p>
+    }
+    else if (_moving is { } moving)
+    {
+        <Alert Variant="info">
+            <Title>Moving to Indx @moving.Version</Title>
+            <Description>The backup is taken and Azure has the new version. Indx restarts on it within a minute or two, then loads the datasets; this page reconnects when it is back.</Description>
+        </Alert>
+    }
+    else if (_checking)
+    {
+        <p class="settings-note">Asking which version is on offer…</p>
+    }
+    else if (_problem != null)
+    {
+        <p class="settings-note settings-problem">@_problem</p>
+        <div><Button Variant="secondary" Size="micro" @onclick="CheckAsync">Ask again</Button></div>
+    }
+    else if (_offered is { } offered && IsNewer(offered))
+    {
+        <div>
+            <p><strong>Indx @offered.Version is available</strong>@if (offered.PublishedAt is { } at) {<span>, published <TimeAgo Value="at" /></span>}.</p>
+            <p class="settings-note">
+                What changed is in the <a href="https://github.com/indxSearch/Indx/releases" target="_blank" rel="noopener">release notes</a>.
+                Updating takes a few minutes, longer with large datasets, and suits a quiet hour.
+            </p>
+        </div>
+        <div><Button Variant="primary" Size="micro" @onclick="() => _confirmOpen = true">Update to @offered.Version</Button></div>
+        <ConfirmModal @bind-Open="_confirmOpen" Title="@($"Update to Indx {offered.Version}?")" Consequences="Consequences(offered)"
+                      ConfirmLabel="Update now" OnConfirm="UpdateAsync" />
+    }
+    else
+    {
+        <p class="settings-note">This is the newest version on offer.</p>
+        <div><Button Variant="secondary" Size="micro" @onclick="CheckAsync">Check again</Button></div>
+    }
+</div>
+
+@code {
+    private OfferedRelease? _offered, _moving;
+    private string? _problem;
+    private bool _checking, _confirmOpen;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (Edition.Edition == IndxEdition.Managed && Updates.CanUpdate) await CheckAsync();
+    }
+
+    private async Task CheckAsync()
+    {
+        _checking = true;
+        _problem = null;
+        StateHasChanged();
+        (_offered, _problem) = await Updates.CheckAsync();
+        _checking = false;
+    }
+
+    private static bool IsNewer(OfferedRelease offered) =>
+        ReleaseVersion.Parse(offered.Version) is { } v && (ReleaseVersion.Current is not { } current || v.CompareTo(current) > 0);
+
+    private static IReadOnlyList<string> Consequences(OfferedRelease offered) =>
+    [
+        "A backup of the databases is taken first.",
+        $"Indx restarts on {offered.Version}. Search and this console are away for a few minutes, longer while large datasets load.",
+        "Datasets, users, keys and settings stay as they are.",
+    ];
+
+    private async Task<string?> UpdateAsync()
+    {
+        if (_offered is not { } offered) return "Nothing is on offer.";
+        var problem = await Updates.UpdateAsync(offered);
+        if (problem == null) _moving = offered;
+        return problem;
+    }
+}
