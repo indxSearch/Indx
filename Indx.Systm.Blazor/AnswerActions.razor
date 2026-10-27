@@ -1,0 +1,54 @@
+@* Port of indx-systm AnswerActions: the row under a finished answer, Copy on the left and the
+   follow-up prompt on the right. Copy puts Text on the clipboard itself and says Copied for two
+   seconds; a host that copies by its own means passes OnCopy instead. *@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="indx-chat-actions @Class">
+    @if (Text != null || OnCopy.HasDelegate)
+    {
+        <Button Variant="ghost" Size="micro" IconLeft="@(_copied ? _iconCheck : _iconCopy)" @onclick="Copy">@(_copied ? "Copied" : "Copy")</Button>
+    }
+    <span class="indx-chat-actions-spacer"></span>
+    @if (OnFollowUp.HasDelegate)
+    {
+        <Button Variant="ghost" Size="micro" IconRight="_iconFollow" @onclick="() => OnFollowUp.InvokeAsync()">@FollowUpLabel</Button>
+    }
+</div>
+
+@code {
+    /// <summary>What Copy puts on the clipboard: the answer as text.</summary>
+    [Parameter] public string? Text { get; set; }
+    /// <summary>Copies by the host's own means in place of Text.</summary>
+    [Parameter] public EventCallback OnCopy { get; set; }
+    [Parameter] public EventCallback OnFollowUp { get; set; }
+    [Parameter] public string FollowUpLabel { get; set; } = "Ask a follow-up";
+    [Parameter] public string? Class { get; set; }
+
+    private static readonly RenderFragment<int> _iconCopy = size => @<Copy Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconCheck = size => @<Check Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconFollow = size => @<ChevronRight Size="size" Color="currentColor" />;
+
+    private bool _copied;
+    private CancellationTokenSource? _reset;
+
+    private async Task Copy()
+    {
+        try
+        {
+            if (OnCopy.HasDelegate) await OnCopy.InvokeAsync();
+            else await JS.InvokeVoidAsync("navigator.clipboard.writeText", Text ?? "");
+        }
+        catch (JSException) { return; }
+        catch (JSDisconnectedException) { return; }
+        _copied = true;
+        _reset?.Cancel();
+        var reset = _reset = new CancellationTokenSource();
+        try { await Task.Delay(2000, reset.Token); } catch (TaskCanceledException) { return; }
+        _copied = false;
+        StateHasChanged();
+    }
+
+    public void Dispose() => _reset?.Cancel();
+}

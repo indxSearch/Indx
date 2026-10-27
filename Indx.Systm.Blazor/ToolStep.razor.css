@@ -1,0 +1,45 @@
+.indx-tool { display: flex; flex-direction: column; min-width: 0; }
+.indx-tool-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    min-width: 0;
+    padding: 3px 0;
+    font: var(--text-xs);
+    line-height: 18px;
+    color: var(--lv6);
+    text-align: left;
+}
+/* A row that opens is a button the width of the message, its hover a tone behind it. */
+button.indx-tool-row {
+    width: calc(100% + 8px);
+    margin: 0 -4px;
+    padding: 3px 4px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+button.indx-tool-row:hover { background: var(--lv2); }
+.indx-tool-icon { display: inline-flex; flex-shrink: 0; color: var(--lv5); }
+.indx-tool[data-state="running"] .indx-tool-icon { color: var(--CTeal); }
+.indx-tool[data-state="error"] .indx-tool-icon,
+.indx-tool[data-state="error"] .indx-tool-meta { color: var(--CSignal); }
+.indx-tool-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.indx-tool-meta { flex-shrink: 0; color: var(--lv4); }
+.indx-tool-chevron { display: inline-flex; flex-shrink: 0; margin-left: auto; color: var(--lv4); }
+/* Under the line, in from the icon: what went in and what came back. */
+.indx-tool-detail {
+    margin: 4px 0 6px 21px;
+    padding: 8px 10px;
+    max-height: 240px;
+    overflow: auto;
+    font: var(--text-2xs);
+    font-family: var(--font-mono);
+    line-height: 1.5;
+    color: var(--lv6);
+    background: var(--lv2);
+    border-radius: 4px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

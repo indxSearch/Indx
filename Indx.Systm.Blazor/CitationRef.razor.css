@@ -1,0 +1,20 @@
+.indx-chat-ref {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    margin: 0 2px;
+    font: var(--text-2xs);
+    font-weight: var(--med);
+    font-family: inherit;
+    color: var(--lv6);
+    background: var(--lv2);
+    border: none;
+    border-radius: 3px;
+    vertical-align: 2px;
+    text-decoration: none;
+    cursor: pointer;
+}
+.indx-chat-ref:hover { background: var(--lv3); text-decoration: none; }

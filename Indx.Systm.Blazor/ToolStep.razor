@@ -1,0 +1,59 @@
+@* One thing an assistant did on its way to an answer, "Searched furniture for oak table", with
+   what came of it at the end ("12 records"). Running it has the spinner StreamStatus has; done it
+   has the tool's icon (a check without one); failed, the error mark in the signal colour. With
+   Detail the row opens to show what went in and what came back. Stack them in ToolSteps. Port of
+   the React ToolStep in indx-systm. *@
+@using Indx.Systm.Blazor.Icons
+
+<div class="indx-tool @Class" data-state="@State" aria-busy="@(State == "running" ? "true" : null)">
+    @if (Detail != null)
+    {
+        <button type="button" class="indx-tool-row indx-tool-row--open" aria-expanded="@(_open ? "true" : "false")"
+                aria-controls="@(_open ? _detailId : null)" @onclick="() => _open = !_open">
+            @Row
+            <span class="indx-tool-chevron" aria-hidden="true">
+                @if (_open) { <ChevronDown Size="14" Color="currentColor" /> } else { <ChevronRight Size="14" Color="currentColor" /> }
+            </span>
+        </button>
+    }
+    else
+    {
+        <div class="indx-tool-row">@Row</div>
+    }
+    @if (_open && Detail != null)
+    {
+        <div id="@_detailId" class="indx-tool-detail">@Detail</div>
+    }
+</div>
+
+@code {
+    /// <summary>What was done, as a short past-tense line (or present, while running).</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>"running", "done" or "error".</summary>
+    [Parameter] public string State { get; set; } = "done";
+    /// <summary>What came of it, after the line: "12 records", "timed out".</summary>
+    [Parameter] public string? Meta { get; set; }
+    /// <summary>The tool's 14px pixl icon, shown when done; a check without one.</summary>
+    [Parameter] public RenderFragment<int>? Icon { get; set; }
+    /// <summary>What went in and what came back, shown when the row is opened.</summary>
+    [Parameter] public RenderFragment? Detail { get; set; }
+    /// <summary>Opened from the start.</summary>
+    [Parameter] public bool DefaultOpen { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private readonly string _detailId = $"indx-tool-{Guid.NewGuid():N}";
+    private bool _open;
+
+    protected override void OnInitialized() => _open = DefaultOpen;
+
+    private RenderFragment Row => @<text>
+        <span class="indx-tool-icon">
+            @if (State == "running") { <Spinner Size="14" /> }
+            else if (State == "error") { <XOrError Size="14" Color="currentColor" /> }
+            else if (Icon != null) { @Icon(14) }
+            else { <Check Size="14" Color="currentColor" /> }
+        </span>
+        <span class="indx-tool-label">@ChildContent</span>
+        @if (!string.IsNullOrEmpty(Meta)) { <span class="indx-tool-meta">@Meta</span> }
+    </text>;
+}

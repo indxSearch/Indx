@@ -1,13 +1,26 @@
 @* Port of indx-systm ChatPanel: the frame of a conversation. An optional header, a scrolling
    thread, the composer and a hints row. Sized by its container: give it a height and the thread
-   scrolls. One surface; the parts are told apart by tone and spacing, never by shadows. *@
+   scrolls. One surface; the parts are told apart by tone and spacing, never by shadows. Scrolled
+   up from the newest turn, a Latest button shows over the bottom of the thread and takes the
+   reader back; it appears and goes in ChatPanel.razor.js, with no round trip. *@
+@using Microsoft.JSInterop
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
 <div class="indx-chat @Class" aria-label="@AriaLabel">
     @if (Header != null)
     {
         <div class="indx-chat-header">@Header</div>
     }
-    <div class="indx-chat-thread" role="log" aria-live="polite">@ChildContent</div>
+    <div class="indx-chat-body">
+        <div class="indx-chat-thread" role="log" aria-live="polite" @ref="_thread">@ChildContent</div>
+        @if (JumpToLatest)
+        {
+            <span class="indx-chat-jump">
+                <Button Variant="secondary" Size="micro" IconLeft="_iconDown" data-chat-jump>@JumpLabel</Button>
+            </span>
+        }
+    </div>
     @if (Composer != null)
     {
         <div class="indx-chat-footer">@Composer</div>
@@ -38,4 +51,40 @@
     [Parameter] public RenderFragment? HintsContent { get; set; }
     [Parameter] public string? Class { get; set; }
     [Parameter] public string? AriaLabel { get; set; }
+    /// <summary>The Latest button over the thread while it is scrolled up; false leaves it out.</summary>
+    [Parameter] public bool JumpToLatest { get; set; } = true;
+    [Parameter] public string JumpLabel { get; set; } = "Latest";
+
+    private static readonly RenderFragment<int> _iconDown = size => @<ArrowDown Size="size" Color="currentColor" />;
+    private ElementReference _thread;
+    private IJSObjectReference? _module;
+    private bool _disposed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || !JumpToLatest) return;
+        try
+        {
+            var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Indx.Systm.Blazor/ChatPanel.razor.js");
+            if (_disposed) { await module.DisposeAsync(); return; }
+            _module = module;
+            await _module.InvokeVoidAsync("watch", _thread);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (JSException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (_module is null) return;
+        try
+        {
+            await _module.InvokeVoidAsync("unwatch", _thread);
+            await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException) { }
+        catch (Exception) { }
+    }
 }

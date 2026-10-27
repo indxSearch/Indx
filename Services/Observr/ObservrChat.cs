@@ -6,6 +6,10 @@ namespace IndxServer.Services.Observr
     /// that holds its proposals when it made any.</summary>
     public sealed record ObservrChatOutcome(ObservrStatus Status, string Text = "", long FindingId = 0, string? Reason = null);
 
+    /// <summary>What the Agent is doing while it answers. A tool call has its Tool and a Done line
+    /// for once it has run ("Searched for \"oak\""); reading the question and writing have neither.</summary>
+    public sealed record ObservrChatStatus(string Text, string? Done = null, string? Tool = null);
+
     /// <summary>
     /// The Agent's loop (Notes/Anders/console-shell-plan-2026-10-13.md, stage 5): a question goes
     /// to Observr with the context, the tools and the conversation so far; Observr answers, or asks
@@ -39,7 +43,7 @@ namespace IndxServer.Services.Observr
         }
 
         /// <summary>Asks, and tells <paramref name="status"/> what is being read along the way.</summary>
-        public async Task<ObservrChatOutcome> AskAsync(ObservrChatContext ctx, string userId, string question, Func<string, Task> status, CancellationToken ct)
+        public async Task<ObservrChatOutcome> AskAsync(ObservrChatContext ctx, string userId, string question, Func<ObservrChatStatus, Task> status, CancellationToken ct)
         {
             question = question.Trim();
             if (question.Length == 0) return new ObservrChatOutcome(ObservrStatus.Failed, Reason: "empty");
@@ -63,7 +67,7 @@ namespace IndxServer.Services.Observr
             var fields = tools.FieldNames(ctx);
             int? askId = null;
             var proposals = new List<ObservrProposal>();
-            await status("Reading the question");
+            await status(new ObservrChatStatus("Reading the question"));
             for (var turn = 1; turn <= MaxTurns; turn++)
             {
                 var payload = new
@@ -112,31 +116,32 @@ namespace IndxServer.Services.Observr
                     results.Add(new ToolResult(use.Id, content));
                 }
                 messages.Add(new Turn(ObservrTurn.User, null, null, results));
-                await status("Writing");
+                await status(new ObservrChatStatus("Writing"));
             }
             logger.LogInformation("The Agent ran out of turns for {Team}/{Dataset}", ctx.TeamName, ctx.DataSetName);
             conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.Assistant, "I read more than I could put together into an answer. Ask it in a smaller piece.");
             return new ObservrChatOutcome(ObservrStatus.Failed, Reason: "turns");
         }
 
-        /// <summary>A tool call as the owner reads it while waiting.</summary>
-        private static string Step(string name, Dictionary<string, JsonElement> input)
+        /// <summary>A tool call as the owner reads it: while it runs, and once it has.</summary>
+        private static ObservrChatStatus Step(string name, Dictionary<string, JsonElement> input)
         {
             string Arg(string key) => input.TryGetValue(key, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() ?? "" : "";
-            return name switch
+            var (running, done) = name switch
             {
-                "search" => $"Searching for \"{Arg("text")}\"",
-                "statistics" => "Reading the statistics",
-                "query" => "Looking up the query",
-                "fields" => "Reading the fields and a sample of the records",
-                "synonyms" => "Reading the synonyms",
-                "settings" => "Reading the settings",
-                "findings" => "Reading what Observr found earlier",
-                "datasets" => "Reading the team's datasets",
-                "zero_hit_evidence" => $"Looking at what \"{Arg("query")}\" nearly finds",
-                "docs" => $"Reading up on {Arg("topic").Replace('-', ' ')}",
-                _ => "Reading",
+                "search" => ($"Searching for \"{Arg("text")}\"", $"Searched for \"{Arg("text")}\""),
+                "statistics" => ("Reading the statistics", "Read the statistics"),
+                "query" => ("Looking up the query", "Looked up the query"),
+                "fields" => ("Reading the fields and a sample of the records", "Read the fields and a sample of the records"),
+                "synonyms" => ("Reading the synonyms", "Read the synonyms"),
+                "settings" => ("Reading the settings", "Read the settings"),
+                "findings" => ("Reading what Observr found earlier", "Read what Observr found earlier"),
+                "datasets" => ("Reading the team's datasets", "Read the team's datasets"),
+                "zero_hit_evidence" => ($"Looking at what \"{Arg("query")}\" nearly finds", $"Looked at what \"{Arg("query")}\" nearly finds"),
+                "docs" => ($"Reading up on {Arg("topic").Replace('-', ' ')}", $"Read up on {Arg("topic").Replace('-', ' ')}"),
+                _ => ("Reading", "Read"),
             };
+            return new ObservrChatStatus(running, done, name);
         }
     }
 }

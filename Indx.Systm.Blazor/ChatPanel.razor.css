@@ -7,6 +7,8 @@
     overflow: hidden;
 }
 .indx-chat-header { flex-shrink: 0; padding: 4px 12px 0; }
+/* The thread and, over its bottom edge, the Latest button. */
+.indx-chat-body { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .indx-chat-thread {
     display: flex;
     flex-direction: column;
@@ -39,3 +41,15 @@
     background: var(--lv2);
     border-radius: 3px;
 }
+/* Shown only while the thread is scrolled up (data-away, set by ChatPanel.razor.js). */
+.indx-chat-jump {
+    position: absolute;
+    left: 50%;
+    bottom: 8px;
+    transform: translateX(-50%);
+    display: none;
+}
+.indx-chat[data-away] .indx-chat-jump { display: inline-flex; }
+/* Secondary has no fill; over the thread it needs the panel's own, or the text shows through. */
+.indx-chat-jump ::deep .indx-btn { background: var(--lv1); }
+.indx-chat-jump ::deep .indx-btn:hover { background: var(--lv2); }

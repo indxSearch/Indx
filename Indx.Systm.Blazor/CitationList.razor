@@ -1,0 +1,37 @@
+@* Port of indx-systm CitationList: the sources an answer drew on, as a row of numbered chips.
+   Each is a link when it has an Href, a button otherwise. Nothing is drawn for no sources. *@
+@if (Items.Count > 0)
+{
+    <div class="indx-chat-sources @Class">
+        <div class="indx-chat-label">@Label</div>
+        <div class="indx-chat-wrap">
+            @foreach (var item in Items)
+            {
+                var it = item;
+                if (it.Href != null)
+                {
+                    <a href="@it.Href" class="indx-chat-source" @key="it.N" @onclick="() => OnPick.InvokeAsync(it)">@SourceChip(it)</a>
+                }
+                else
+                {
+                    <button type="button" class="indx-chat-source" @key="it.N" @onclick="() => OnPick.InvokeAsync(it)">@SourceChip(it)</button>
+                }
+            }
+        </div>
+    </div>
+}
+
+@code {
+    /// <summary>A source: its number (as the CitationRef in the text shows it), its name, where it
+    /// lives and the 14px pixl icon of its kind.</summary>
+    public sealed record Item(int N, string Title, string? Href = null, RenderFragment<int>? Icon = null);
+
+    [Parameter, EditorRequired] public IReadOnlyList<Item> Items { get; set; } = [];
+    /// <summary>Heading over the list.</summary>
+    [Parameter] public string Label { get; set; } = "Sources";
+    /// <summary>A source was pressed; a link still follows its Href.</summary>
+    [Parameter] public EventCallback<Item> OnPick { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private static RenderFragment SourceChip(Item it) => @<Chip Icon="it.Icon"><span class="indx-chat-source-n">@it.N</span> @it.Title</Chip>;
+}

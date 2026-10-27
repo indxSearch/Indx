@@ -66,6 +66,13 @@
                 else
                 {
                     <AssistantMessage Label="Observr" Icon="_iconObservr" Class="@past">
+                        @if (t.Id != 0 && t.Id == _stepsFor && _answerSteps.Count > 0)
+                        {
+                            @* What Observr read for its newest answer, for as long as the panel lives. *@
+                            <ToolSteps Summary="@(_answerSteps.Count == 1 ? "1 step" : $"{_answerSteps.Count} steps")">
+                                @foreach (var step in _answerSteps) { <ToolStep Icon="@StepIcon(step.Tool)">@step.Done</ToolStep> }
+                            </ToolSteps>
+                        }
                         @ChatMarkdown.Render(t.Text)
                         @if (t.FindingId is { } fid && _byId.TryGetValue(fid, out var finding) && finding.Status == ObservrFinding.Open)
                         {
@@ -83,7 +90,20 @@
                 @* Observr's answer on its way, as its own message: the step it is on, then a few
                    skeleton lines where the answer will land. Writing gets the grow spinner. *@
                 <AssistantMessage Label="Observr" Icon="_iconObservr" Class="agent-pending">
-                    <StreamStatus SpinnerName="@(_status == "Writing" ? "grow" : Spinners.Names.First())">@_status…</StreamStatus>
+                    @if (_steps.Count > 0)
+                    {
+                        @* Each tool Observr has run, and the one it is running, with its spinner. *@
+                        <ToolSteps>
+                            @foreach (var step in _steps)
+                            {
+                                <ToolStep State="@(step.Finished ? "done" : "running")" Icon="@StepIcon(step.Tool)">@(step.Finished ? step.Done : step.Text)</ToolStep>
+                            }
+                        </ToolSteps>
+                    }
+                    @if (!_steps.Any(st => !st.Finished))
+                    {
+                        <StreamStatus SpinnerName="@(_status == "Writing" ? "grow" : Spinners.Names.First())">@_status…</StreamStatus>
+                    }
                     <div class="agent-pending-lines">
                         <Skeleton Width="92%" />
                         <Skeleton Width="78%" Delay="0.05" />
@@ -123,6 +143,12 @@
     private string _draft = "";
     private bool _running;
     private string _status = "";
+    /// <summary>The tools run for the question under way; the last unfinished one is running.</summary>
+    private readonly List<Step> _steps = [];
+    /// <summary>The steps of the newest answer, shown on it (the turn with id _stepsFor).</summary>
+    private List<Step> _answerSteps = [];
+    private long _stepsFor;
+    private sealed record Step(string Text, string Done, string? Tool) { public bool Finished { get; set; } }
     private string? _error;
     private long _busy;
     private ElementReference _end;
@@ -133,6 +159,27 @@
     /// for 21, which suits the default AI agent (seven dots) but makes the solid Observr glyph loom.</summary>
     private static readonly RenderFragment<int> _iconComposer = _ => @<Observr Size="14" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconClose = size => @<IndentRight Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconSearch = size => @<Search Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconFields = size => @<Database Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconDocs = size => @<Book Size="size" Color="currentColor" />;
+
+    /// <summary>A step's icon by its tool; the rest have the step's check.</summary>
+    private static RenderFragment<int>? StepIcon(string? tool) => tool switch
+    {
+        "search" or "zero_hit_evidence" => _iconSearch,
+        "fields" or "datasets" => _iconFields,
+        "docs" => _iconDocs,
+        _ => null,
+    };
+
+    /// <summary>Observr's progress: a tool call ends the one before it and runs; reading or
+    /// writing ends them all and is the status line.</summary>
+    private void OnStatus(ObservrChatStatus s)
+    {
+        foreach (var step in _steps) step.Finished = true;
+        if (s.Tool != null) _steps.Add(new Step(s.Text, s.Done ?? s.Text, s.Tool));
+        else _status = s.Text;
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -238,11 +285,16 @@
         _running = true;
         _status = "Reading the question";   // until Observr reports its first step, never a bare "…"
         _error = null;
-        _turns.Add(new ObservrTurn(0, ObservrTurn.User, text.Trim(), null, DateTime.UtcNow));
+        _steps.Clear();
+        _answerSteps = [];
+        // Asked here, so it carries where: without it the turn read as asked on another team.
+        _turns.Add(new ObservrTurn(0, ObservrTurn.User, text.Trim(), null, DateTime.UtcNow, _ctx.TeamId, _ctx.DatasetKey));
         StateHasChanged();
+        var answered = false;
         try
         {
-            var outcome = await Chat.AskAsync(_ctx, _userId, text, s => InvokeAsync(() => { _status = s; StateHasChanged(); }), CancellationToken.None);
+            var outcome = await Chat.AskAsync(_ctx, _userId, text, s => InvokeAsync(() => { OnStatus(s); StateHasChanged(); }), CancellationToken.None);
+            answered = outcome.Status == ObservrStatus.Ok;
             if (outcome.Status != ObservrStatus.Ok)
             {
                 // A refusal is not a turn of the thread: it shows here, and the question goes back
@@ -256,6 +308,13 @@
         {
             _running = false;
             Load();
+            if (answered && _steps.Count > 0)
+            {
+                foreach (var step in _steps) step.Finished = true;
+                _answerSteps = [.. _steps];
+                _stepsFor = _turns.LastOrDefault(t => t.Role == ObservrTurn.Assistant)?.Id ?? 0;
+            }
+            _steps.Clear();
             StateHasChanged();
         }
     }
@@ -267,7 +326,7 @@
         _running = true;
         _status = "Observr is looking";
         _error = null;
-        _turns.Add(new ObservrTurn(0, ObservrTurn.User, action.Label, null, DateTime.UtcNow));
+        _turns.Add(new ObservrTurn(0, ObservrTurn.User, action.Label, null, DateTime.UtcNow, _ctx.TeamId, _ctx.DatasetKey));
         StateHasChanged();
         try
         {
