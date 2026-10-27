@@ -39,3 +39,6 @@ code { font-family: var(--font-mono); }
     .wh-grid .wh-label { margin-top: 8px; }
     .wh-form { min-width: 0; }
 }
+
+.wh-calls-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+.wh-calls-head .wh-subtitle { margin: 0; }

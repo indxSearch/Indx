@@ -183,10 +183,37 @@
                                ConfirmLabel="Delete" Variant="primary" OnConfirm="@(() => DeleteHook(hook))" />
             </div>
 
-            <h4 class="wh-subtitle">Latest calls</h4>
-            @if (_deliveries.Count == 0)
+            @* The calls: what they did over time from the hourly tally (kept 30 days, however many
+               calls), then the latest few. One-document calls (Sanity) make thousands a day, so
+               the list is short and can show only the ones that need a look. *@
+            <div class="wh-calls-head">
+                <h4 class="wh-subtitle">Calls</h4>
+                <SegmentedControl Items="RangeItems" Value="@_range" ValueChanged="SetRange" AriaLabel="Period" />
+            </div>
+            @{ var activity = Activity(); }
+            <StatGroup Columns="4" Class="wh-stats">
+                <Stat Label="Calls" LabelIcon="DatasetIcons.Calls" Value="@activity.Calls.ToString("N0")" />
+                <Stat Label="Changes" LabelIcon="DatasetIcons.Changes" Hint="Documents added, updated and deleted. Full syncs are counted as syncs, not as documents."
+                      Value="@activity.Changes.ToString("N0")" />
+                <Stat Label="Need a look" LabelIcon="DatasetIcons.Warning" Hint="Calls held by the brake, refused or failed, and documents refused on their own."
+                      Value="@activity.Problems.ToString("N0")" />
+                <Stat Label="Last call" LabelIcon="DatasetIcons.Clock">
+                    <ValueContent><TimeAgo Value="hook.LastEventUtc" Empty="Never" /></ValueContent>
+                </Stat>
+            </StatGroup>
+            @if (activity.Calls > 0)
             {
-                <p class="wh-empty">No calls yet.</p>
+                <Chart Type="bar" Stacked="true" Height="140" YAxis="right" Labels="activity.Labels" Series="activity.Series" Markers="activity.Markers" />
+            }
+
+            <div class="wh-calls-head">
+                <h4 class="wh-subtitle">Latest calls</h4>
+                <SegmentedControl Items="CallFilterItems" Value="@_callFilter" ValueChanged="@(v => _callFilter = v)" AriaLabel="Which calls" />
+            </div>
+            @{ var calls = _deliveries.Where(d => _callFilter != "problems" || NeedsALook(d)).Take(CallsShown).ToList(); }
+            @if (calls.Count == 0)
+            {
+                <p class="wh-empty">@(_callFilter == "problems" ? "Nothing that needs a look." : "No calls yet.")</p>
             }
             else
             {
@@ -194,21 +221,19 @@
                     <table class="indx-table wh-calls">
                         <thead>
                             <tr>
-                                <th>Received</th><th>Outcome</th><th class="wh-num">Events</th><th class="wh-num">Added</th>
-                                <th class="wh-num">Updated</th><th class="wh-num">Deleted</th><th class="wh-num">Ignored</th><th class="wh-num">Refused</th><th>Detail</th>
+                                <th>Received</th><th>Outcome</th><th class="wh-num">Added</th><th class="wh-num">Updated</th>
+                                <th class="wh-num">Deleted</th><th class="wh-num">Refused</th><th>Detail</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var d in _deliveries)
+                            @foreach (var d in calls)
                             {
                                 <tr>
                                     <td><TimeAgo Value="d.ReceivedUtc" TooltipPosition="left" /></td>
                                     <td>@OutcomeLabel(d.Outcome)</td>
-                                    <td class="wh-num">@d.Events.ToString("N0")</td>
                                     <td class="wh-num">@d.Inserted.ToString("N0")</td>
                                     <td class="wh-num">@d.Updated.ToString("N0")</td>
                                     <td class="wh-num">@d.Deleted.ToString("N0")</td>
-                                    <td class="wh-num">@d.Ignored.ToString("N0")</td>
                                     <td class="wh-num">@d.Refused.ToString("N0")</td>
                                     <td class="wh-call-detail @(d.Outcome is "refused" or "failed" ? "wh-call-detail--bad" : "")">@d.Detail</td>
                                 </tr>
@@ -334,6 +359,65 @@
     private string? _selectedId;
     private List<WebhookHeldBatch> _held = [];
     private List<WebhookDelivery> _deliveries = [];
+    private List<WebhookHour> _hours = [];
+    private string _range = "48h";
+    private string _callFilter = "all";
+
+    /// <summary>Calls listed at once; the rest are in the chart.</summary>
+    private const int CallsShown = 10;
+
+    private static readonly IReadOnlyList<SegmentedControl.Item> RangeItems = [new("48h", "48 hours"), new("30d", "30 days")];
+    private static readonly IReadOnlyList<SegmentedControl.Item> CallFilterItems = [new("all", "All"), new("problems", "Need a look")];
+
+    private static bool NeedsALook(WebhookDelivery d) => d.Outcome is "held" or "refused" or "failed" || d.Refused > 0;
+
+    private void SetRange(string range)
+    {
+        _range = range;
+        LoadSelected();
+    }
+
+    private sealed record ActivityView(int Calls, int Changes, int Problems, string[] Labels,
+        IReadOnlyList<Chart.ChartSeries> Series, IReadOnlyList<Chart.ChartMarker> Markers);
+
+    /// <summary>The hourly tally as the chart and the tiles show it: hour by hour over 48 hours, day
+    /// by day over 30. The hours are UTC, as the exact times on hover are.</summary>
+    private ActivityView Activity()
+    {
+        var byDay = _range == "30d";
+        var now = DateTime.UtcNow;
+        var start = byDay ? now.Date.AddDays(-29) : new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc).AddHours(-47);
+        var points = byDay ? 30 : 48;
+        var added = new double[points];
+        var updated = new double[points];
+        var deleted = new double[points];
+        var held = new int[points];
+        var failed = new int[points];
+        var synced = new int[points];
+        int calls = 0, problems = 0;
+        foreach (var h in _hours)
+        {
+            var i = byDay ? (int)(h.HourUtc.Date - start).TotalDays : (int)(h.HourUtc - start).TotalHours;
+            if (i < 0 || i >= points) continue;
+            added[i] += h.Inserted; updated[i] += h.Updated; deleted[i] += h.Deleted;
+            held[i] += h.Held; failed[i] += h.Failed; synced[i] += h.Synced;
+            calls += h.Calls;
+            problems += h.Held + h.Failed + h.Refused;
+        }
+        var labels = Enumerable.Range(0, points)
+            .Select(i => byDay ? start.AddDays(i).ToString("d MMM", System.Globalization.CultureInfo.InvariantCulture)
+                               : start.AddHours(i).ToString("d MMM HH:00", System.Globalization.CultureInfo.InvariantCulture))
+            .ToArray();
+        var markers = new List<Chart.ChartMarker>();
+        for (var i = 0; i < points; i++)
+        {
+            if (held[i] > 0) markers.Add(new(i, held[i] == 1 ? "1 call held" : $"{held[i]} calls held"));
+            if (failed[i] > 0) markers.Add(new(i, failed[i] == 1 ? "1 call refused or failed" : $"{failed[i]} calls refused or failed"));
+            if (synced[i] > 0) markers.Add(new(i, synced[i] == 1 ? "Full sync" : $"{synced[i]} full syncs"));
+        }
+        return new(calls, (int)(added.Sum() + updated.Sum() + deleted.Sum()), problems, labels,
+            [new("Added", added, Fill: "solid"), new("Updated", updated, Fill: "hatch"), new("Deleted", deleted, Fill: "dots")], markers);
+    }
     private bool _loaded;
     private string? _busy;
     private string? _syncAsked;
@@ -376,7 +460,8 @@
     private void LoadSelected()
     {
         _held = _selectedId == null ? [] : Store.Held(_selectedId);
-        _deliveries = _selectedId == null ? [] : Store.Deliveries(_selectedId, 50);
+        _deliveries = _selectedId == null ? [] : Store.Deliveries(_selectedId, WebhookStore.DeliveriesKept);
+        _hours = _selectedId == null ? [] : Store.Hours(_selectedId, DateTime.UtcNow.AddDays(_range == "30d" ? -30 : -2).AddHours(-1));
     }
 
     private void Select(string id)

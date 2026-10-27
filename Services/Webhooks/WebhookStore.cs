@@ -35,6 +35,11 @@ namespace IndxServer.Services.Webhooks
     public sealed record WebhookDelivery(long Id, string WebhookId, DateTime ReceivedUtc, int Events, int Inserted, int Updated,
         int Deleted, int Ignored, int Refused, int Destructive, string Outcome, string? Detail);
 
+    /// <summary>A webhook's calls in one hour: what they changed, and how many were held, refused
+    /// or failed, or were full syncs.</summary>
+    public sealed record WebhookHour(DateTime HourUtc, int Calls, int Inserted, int Updated, int Deleted, int Refused, int Held,
+        int Failed, int Synced);
+
     /// <summary>A batch the brake stopped: kept whole until an admin applies or discards it.</summary>
     public sealed record WebhookHeldBatch(string Id, string WebhookId, DateTime HeldUtc, string Reason, int Events, string Body,
         string Kind = WebhookKinds.Events);
@@ -51,6 +56,9 @@ namespace IndxServer.Services.Webhooks
     /// </summary>
     public sealed class WebhookStore(ILogger<WebhookStore> logger)
     {
+        /// <summary>Calls kept in a webhook's log beyond the past hour, which is kept whole: the brake
+        /// counts the hour's deletes from it, and a source that sends one document a call (Sanity,
+        /// Contentful) can make thousands of calls an hour on a large dataset.</summary>
         public const int DeliveriesKept = 200;
 
         private static string DbPath => IndxServerInternalApi.SearchDbConnectionString;
@@ -124,6 +132,20 @@ CREATE TABLE IF NOT EXISTS WebhookDeliveries (
     Detail      TEXT
 );
 CREATE INDEX IF NOT EXISTS IX_WebhookDeliveries_Hook ON WebhookDeliveries (WebhookId, Id);
+CREATE INDEX IF NOT EXISTS IX_WebhookDeliveries_Time ON WebhookDeliveries (WebhookId, ReceivedUtc);
+CREATE TABLE IF NOT EXISTS WebhookHours (
+    WebhookId TEXT NOT NULL,
+    Hour      TEXT NOT NULL,
+    Calls     INTEGER NOT NULL,
+    Inserted  INTEGER NOT NULL,
+    Updated   INTEGER NOT NULL,
+    Deleted   INTEGER NOT NULL,
+    Refused   INTEGER NOT NULL,
+    Held      INTEGER NOT NULL,
+    Failed    INTEGER NOT NULL,
+    Synced    INTEGER NOT NULL,
+    PRIMARY KEY (WebhookId, Hour)
+);
 CREATE TABLE IF NOT EXISTS WebhookHeld (
     Id        TEXT PRIMARY KEY,
     WebhookId TEXT NOT NULL,
@@ -306,6 +328,7 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
             using var tx = conn.BeginTransaction();
             int n = 0;
             foreach (var sql in new[] { "DELETE FROM WebhookInbox WHERE WebhookId = $id", "DELETE FROM WebhookDeliveries WHERE WebhookId = $id",
+                                        "DELETE FROM WebhookHours WHERE WebhookId = $id",
                                         "DELETE FROM WebhookHeld WHERE WebhookId = $id", "DELETE FROM Webhooks WHERE Id = $id" })
             {
                 using var cmd = conn.CreateCommand();
@@ -472,7 +495,7 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"INSERT INTO WebhookDeliveries (WebhookId, ReceivedUtc, Events, Inserted, Updated, Deleted, Ignored, Refused, Destructive, Outcome, Detail)
                                 VALUES ($w, $r, $e, $i, $u, $del, $ig, $rf, $ds, $o, $dt);
-                                DELETE FROM WebhookDeliveries WHERE WebhookId = $w AND Id NOT IN
+                                DELETE FROM WebhookDeliveries WHERE WebhookId = $w AND ReceivedUtc < $hourAgo AND Id NOT IN
                                   (SELECT Id FROM WebhookDeliveries WHERE WebhookId = $w ORDER BY Id DESC LIMIT $keep);";
             cmd.Parameters.AddWithValue("$w", d.WebhookId);
             cmd.Parameters.AddWithValue("$r", d.ReceivedUtc.ToString("O"));
@@ -486,7 +509,55 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
             cmd.Parameters.AddWithValue("$o", d.Outcome);
             cmd.Parameters.AddWithValue("$dt", (object?)d.Detail ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$keep", DeliveriesKept);
+            // The past hour stays whole, however many calls it held: it is what the brake counts.
+            cmd.Parameters.AddWithValue("$hourAgo", DateTime.UtcNow.AddHours(-1).ToString("O"));
             cmd.ExecuteNonQuery();
+
+            // The hour's tally, kept for the chart long after the calls themselves are trimmed.
+            using var tally = conn.CreateCommand();
+            tally.CommandText = @"INSERT INTO WebhookHours (WebhookId, Hour, Calls, Inserted, Updated, Deleted, Refused, Held, Failed, Synced)
+                                  VALUES ($w, $h, 1, $i, $u, $del, $rf, $held, $failed, $synced)
+                                  ON CONFLICT (WebhookId, Hour) DO UPDATE SET Calls = Calls + 1, Inserted = Inserted + excluded.Inserted,
+                                    Updated = Updated + excluded.Updated, Deleted = Deleted + excluded.Deleted, Refused = Refused + excluded.Refused,
+                                    Held = Held + excluded.Held, Failed = Failed + excluded.Failed, Synced = Synced + excluded.Synced;
+                                  DELETE FROM WebhookHours WHERE WebhookId = $w AND Hour < $cutoff;";
+            var synced = d.Outcome == "synced";
+            tally.Parameters.AddWithValue("$w", d.WebhookId);
+            tally.Parameters.AddWithValue("$h", HourOf(d.ReceivedUtc));
+            // A full sync replaces the set: counted as a sync, not as that many documents added.
+            tally.Parameters.AddWithValue("$i", synced ? 0 : d.Inserted);
+            tally.Parameters.AddWithValue("$u", d.Updated);
+            tally.Parameters.AddWithValue("$del", d.Deleted);
+            tally.Parameters.AddWithValue("$rf", d.Refused);
+            tally.Parameters.AddWithValue("$held", d.Outcome == "held" ? 1 : 0);
+            tally.Parameters.AddWithValue("$failed", d.Outcome is "refused" or "failed" ? 1 : 0);
+            tally.Parameters.AddWithValue("$synced", synced ? 1 : 0);
+            tally.Parameters.AddWithValue("$cutoff", HourOf(DateTime.UtcNow.AddDays(-HoursKeptDays)));
+            tally.ExecuteNonQuery();
+        }
+
+        /// <summary>Days the hourly tally is kept.</summary>
+        public const int HoursKeptDays = 30;
+
+        private static string HourOf(DateTime utc) => utc.ToUniversalTime().ToString("yyyy-MM-ddTHH", System.Globalization.CultureInfo.InvariantCulture);
+
+        /// <summary>A webhook's calls hour by hour since a time, oldest first; hours without calls are absent.</summary>
+        public List<WebhookHour> Hours(string webhookId, DateTime sinceUtc)
+        {
+            var list = new List<WebhookHour>();
+            if (!Ensure()) return list;
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"SELECT Hour, Calls, Inserted, Updated, Deleted, Refused, Held, Failed, Synced FROM WebhookHours
+                                WHERE WebhookId = $w AND Hour >= $since ORDER BY Hour";
+            cmd.Parameters.AddWithValue("$w", webhookId);
+            cmd.Parameters.AddWithValue("$since", HourOf(sinceUtc));
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                list.Add(new(DateTime.ParseExact(r.GetString(0), "yyyy-MM-ddTHH", System.Globalization.CultureInfo.InvariantCulture,
+                        System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal),
+                    r.GetInt32(1), r.GetInt32(2), r.GetInt32(3), r.GetInt32(4), r.GetInt32(5), r.GetInt32(6), r.GetInt32(7), r.GetInt32(8)));
+            return list;
         }
 
         public List<WebhookDelivery> Deliveries(string webhookId, int limit = 50)
