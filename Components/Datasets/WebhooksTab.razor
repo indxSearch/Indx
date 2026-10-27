@@ -22,7 +22,13 @@
     </p>
 
     <div class="indx-list-toolbar">
-        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNew">New webhook</Button>
+        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="@(() => OpenNew(WebhookSources.Indx))">New generic webhook</Button>
+        @* The plugins: a button each, so what Indx connects to without code is in plain sight. *@
+        @foreach (var plugin in Sources.All.Where(s => s.Id != WebhookSources.Indx))
+        {
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Plugin" title="@plugin.Description"
+                    @onclick="@(() => OpenNew(plugin.Id))">New @plugin.Label webhook</Button>
+        }
         @if (_hooks.Count > 0)
         {
             <span class="indx-list-toolbar-end">@_hooks.Count @(_hooks.Count == 1 ? "webhook" : "webhooks")</span>
@@ -173,15 +179,11 @@
         </section>
     }
 
-    <Modal @bind-Open="_newOpen" Title="New webhook">
-        @{ var chosen = Sources.Get(_source) ?? Sources.All[0]; }
+    @{ var chosen = Sources.Get(_source) ?? Sources.All[0]; }
+    <Modal @bind-Open="_newOpen" Title="@(chosen.Id == WebhookSources.Indx ? "New generic webhook" : $"New {chosen.Label} webhook")"
+           Description="@chosen.Description">
         <div class="indx-modal-form wh-form">
-            <InputField Label="Name" placeholder="Shop, Sanity, Price feed" @bind-Value="_name" />
-            <div>
-                <span class="wh-label">Who calls it</span>
-                <SelectField Size="micro" Options="SourceOptions" Value="@chosen.Id" ValueChanged="ChooseSource" />
-                <span class="wh-hint">@chosen.Description</span>
-            </div>
+            <InputField Label="Name" placeholder="Shop, Price feed, Product catalogue" @bind-Value="_name" />
             @foreach (var field in _settings)
             {
                 var setting = field.Setting;
@@ -279,8 +281,6 @@
         public string? Value { get; set; } = setting.Default;
     }
 
-    private IEnumerable<SelectField.SelectOption> SourceOptions =>
-        Sources.All.Select(s => new SelectField.SelectOption(s.Id == WebhookSources.Indx ? "Your code or an add-on" : s.Label, s.Id));
 
     private List<Row> _hooks = [];
     private string? _selectedId;
@@ -374,18 +374,16 @@
         _pollCts = null;
     }
 
-    private void OpenNew()
+    private void OpenNew(string sourceId)
     {
-        _name = _idField = _versionField = _formError = null;
+        var source = Sources.Get(sourceId) ?? Sources.All[0];
+        _source = source.Id;
+        _settings = source.Settings.Select(s => new FormSetting(s)).ToList();
+        // A plugin's webhook is usually named after it; the generic one after what sends.
+        _name = source.Id == WebhookSources.Indx ? null : source.Label;
+        _idField = _versionField = _formError = null;
         _brake = "10";
-        ChooseSource(WebhookSources.Indx);
         _newOpen = true;
-    }
-
-    private void ChooseSource(string? id)
-    {
-        _source = Sources.Get(id)?.Id ?? WebhookSources.Indx;
-        _settings = Sources.Get(_source)!.Settings.Select(s => new FormSetting(s)).ToList();
     }
 
     private void Create()
