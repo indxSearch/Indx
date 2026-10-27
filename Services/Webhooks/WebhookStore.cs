@@ -628,8 +628,8 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
             return cmd.ExecuteNonQuery() == 1;
         }
 
-        /// <param name="heldUtc">When it was first held: a batch held again (its dataset was busy)
-        /// keeps its place in the order.</param>
+        /// <summary>Holds a batch for an admin. <paramref name="heldUtc"/> is when it was first held:
+        /// a batch held again (its dataset was busy) keeps its place in the order.</summary>
         public WebhookHeldBatch Hold(string webhookId, string reason, int events, string body, string kind = WebhookKinds.Events,
             DateTime? heldUtc = null)
         {
