@@ -206,13 +206,16 @@ namespace IndxServer.Services.SearchOrAsk
         /// the kind's own (<see cref="HintFor"/>), measured 27 Oct 2026 on bare openings against
         /// lookups of the same length: on a catalogue openings scored from 0.18 ("What") and lookups
         /// to 0.15 ("mew"), in Norwegian from 0.19 and to 0.11; on the Indx docs lookups reach 0.30
-        /// ("install").</summary>
+        /// ("install"). Then replayed keystroke by keystroke on the labelled sets, where a name being
+        /// typed scores above the whole name ("skistua b..."): at 0.16 15 of 80 school-register
+        /// lookups got the hint, at 0.25 4, every question still reaching it; on films 1 of 59 either
+        /// way; on the docs 0.31 gives 4 of 29, all 40 questions.</summary>
         public double? Hint { get; set; }
         /// <summary>Proactive answers on its own only from this "finished" score up, so "what type is"
         /// waits for the rest.</summary>
         public double Finished { get; set; } = 0.5;
 
-        public static double HintFor(string kind) => kind == SearchOrAskRecipes.Catalogue ? 0.16 : 0.31;
+        public static double HintFor(string kind) => kind == SearchOrAskRecipes.Catalogue ? 0.25 : 0.31;
 
         /// <summary>A copy with the kind's hint filled in, as each judgement reports it.</summary>
         public SearchOrAskThresholds Resolved(string kind) => new()

@@ -58,6 +58,9 @@
     <div class="soa-layout">
         <div class="soa-settings">
         <div class="soa-groups">
+            @* In the order an owner decides (27 Oct 2026): what it does (on, mode, the site), when it
+               offers and what the list does while asking; then the answers' content, the
+               fine-tuning, and the limits last. *@
             <div class="soa-group">
             <Table AriaLabel="Search or ask" Class="soa-table">
                 @Head("Search or ask")
@@ -65,6 +68,20 @@
                     @Row(DatasetIcons.SearchOrAsk, "Offer answers",
                          $"Sends what visitors type to {Service.Setup.Receivers}, and their questions to the answer model. Name this in your privacy notice.",
                          _edit.Enabled, @<ToggleSwitch Label="Enabled" Variant="positive" Checked="@_edit.Enabled" CheckedChanged="@(v => _edit.Enabled = v)" />)
+                    @* The mode, second on the page: it decides more of what a visitor meets than any
+                       other setting (27 Oct 2026, moved up from When to offer). *@
+                    @Row(Icon<Icons.SlidersHorizontal>(), "Mode", "How forward the offer is, from the most careful to the most forward.",
+                         _edit.Mode != SearchOrAskSettings.ModeSoft,
+                         @<div class="soa-mode">
+                             <SegmentedControl Items="ModeItems" Value="@_edit.Mode" ValueChanged="@(v => _edit.Mode = v ?? SearchOrAskSettings.ModeSoft)" Stretch AriaLabel="Mode" />
+                             <p class="soa-mode-help">@ModeHelp(_edit.Mode)</p>
+                         </div>)
+                    @if (_edit.Mode == SearchOrAskSettings.ModeProactive)
+                    {
+                        @Row(Icon<Icons.Coins>(), "Proactive answers", $"Answers written without a click, per day (UTC). {Service.ProactiveAnswersToday(Ctx.TeamId, Ctx.Name):N0} today.",
+                             _proactiveText != null,
+                             @<div class="soa-number"><InputField @bind-Value="_proactiveText" @bind-Value:after="SetProactive" Error="@_proactiveError" inputmode="numeric" placeholder="500" /></div>)
+                    }
                     @Row(Icon<Icons.Book>(), "Kind of site", "How the judge tells a question from a lookup.",
                          false, @<div class="soa-select"><SelectField Size="micro" Options="KindOptions" Value="@_edit.Kind" ValueChanged="@(v => _edit.Kind = v ?? SearchOrAskRecipes.Documentation)" /></div>)
                     @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold. Empty uses the dataset's description.",
@@ -76,86 +93,6 @@
                              !string.IsNullOrWhiteSpace(_edit.FilterNotes),
                              @<Textarea Rows="4" @bind-Value="_edit.FilterNotes" placeholder="friskole: private" />)
                     }
-                    @Row(Icon<Icons.Owl>(), "Knowledge", "What is true about the site that no record holds. Markdown.",
-                         !string.IsNullOrWhiteSpace(_edit.Knowledge),
-                         @<div class="soa-knowledge">
-                             <Textarea Rows="8" @bind-Value="_edit.Knowledge" placeholder="@KnowledgeExample" />
-                             @if (!string.IsNullOrWhiteSpace(_edit.Knowledge))
-                             {
-                                 <div class="soa-knowledge-preview">@ChatMarkdown.Render(_edit.Knowledge)</div>
-                             }
-                             <div class="soa-knowledge-foot">
-                                 <span class="soa-help">@((_edit.Knowledge?.Length ?? 0).ToString("N0", CultureInfo.InvariantCulture)) of @SearchOrAskSettings.MaxKnowledge.ToString("N0", CultureInfo.InvariantCulture) characters</span>
-                                 <span class="soa-knowledge-files">
-                                     <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" Disabled="@(SavedKnowledge == null)" @onclick="DownloadKnowledgeAsync">Download .md</Button>
-                                     <Button Variant="ghost" Size="micro" IconLeft="UploadIcon" @onclick="() => Files.TriggerFileInputAsync(KnowledgeInputId)">Upload .md</Button>
-                                 </span>
-                             </div>
-                             <Microsoft.AspNetCore.Components.Forms.InputFile OnChange="UploadKnowledgeAsync" accept=".md,.markdown,.txt,text/markdown,text/plain" style="display:none" id="@KnowledgeInputId" />
-                             @if (_knowledgeError != null) { <span class="soa-error">@_knowledgeError</span> }
-                         </div>)
-                    @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
-                         _edit.Answers != SearchOrAskSettings.BestAnswers,
-                         @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
-                    @Row(Icon<Icons.Paragraph>(), "Answer instructions", "The answers' voice and house rules.",
-                         !string.IsNullOrWhiteSpace(_edit.AnswerInstructions),
-                         @<Textarea Rows="3" @bind-Value="_edit.AnswerInstructions" placeholder="Formal. Say du. Never recommend another shop." />)
-                    @Row(Icon<Icons.UserText>(), "Answer language", "The visitor's language, or one for every answer.",
-                         !string.IsNullOrWhiteSpace(_edit.AnswerLanguage),
-                         @<div class="soa-select"><SelectField Size="micro" Options="LanguageOptions" Value="@(_edit.AnswerLanguage ?? VisitorsLanguage)" ValueChanged="@(v => _edit.AnswerLanguage = v == VisitorsLanguage ? null : v)" /></div>)
-                    @Row(Icon<Icons.Coins>(), "Daily call budget", $"Calls per day (UTC). {_callsToday:N0} used today.",
-                         _budgetText != null,
-                         @<div class="soa-number"><InputField @bind-Value="_budgetText" @bind-Value:after="SetBudget" Error="@_budgetError" inputmode="numeric" placeholder="5,000" /></div>)
-                </tbody>
-            </Table>
-            </div>
-
-            <div class="soa-group">
-            <Table AriaLabel="What the judge sees" Class="soa-table">
-                @Head("What the judge sees of a result")
-                <tbody>
-                    @if (TextFields.Count == 0)
-                    {
-                        <TableRow><TableCell Class="soa-cell"><span class="soa-help">The fields can be chosen once the dataset has been analyzed.</span></TableCell></TableRow>
-                    }
-                    else
-                    {
-                        @Row(Icon<Icons.TextSize>(), "Title", "Each result's name.",
-                             _edit.TitleField != null,
-                             @<div class="soa-select"><SelectField Size="micro" Options="TitleOptions" Value="@(_edit.TitleField ?? Automatic)" ValueChanged="@(v => _edit.TitleField = v == Automatic ? null : v)" /></div>)
-                        @Row(Icon<Icons.Tag>(), "Section", "Where a result belongs, such as a category or year.",
-                             _edit.SectionFields != null, FieldChoice(PlaceFields, () => _edit.SectionFields, v => _edit.SectionFields = v, _effective?.SectionFields))
-                        @Row(Icon<Icons.Paragraph>(), "Snippet", "The text the judge reads and answers are written from.",
-                             _edit.SnippetFields != null, FieldChoice(TextFields, () => _edit.SnippetFields, v => _edit.SnippetFields = v, _effective?.SnippetFields))
-                    }
-                </tbody>
-            </Table>
-            </div>
-
-            @* Ask phrases: the words a question is built with, which the page takes off its start
-               so the list searches what the question is about while it is typed. *@
-            <div class="soa-group">
-            <Table AriaLabel="Ask phrases" Class="soa-table">
-                @Head("Ask phrases")
-                <tbody>
-                    @Row(Icon<Icons.Question>(), "Lead-ins", "How a question starts: \"help me find\", \"i'm looking for\". One per line.",
-                         _edit.AskPhrases != null,
-                         @<Textarea Rows="4" @bind-Value="LeadInLines" placeholder="@PhraseLines(p => p.LeadIns, SearchOrAskPhrases.Default)" />)
-                    @Row(Icon<Icons.Tag>(), "What is asked for", "The records' names, as visitors say them: \"the movie\", \"the product\".",
-                         _edit.AskPhrases != null,
-                         @<Textarea Rows="3" @bind-Value="FrameLines" placeholder="@PhraseLines(p => p.Frames, SearchOrAskPhrases.Default)" />)
-                    @Row(Icon<Icons.TextCursor>(), "Links", "The word that joins it to the rest: \"about\", \"with\".",
-                         _edit.AskPhrases != null,
-                         @<Textarea Rows="3" @bind-Value="LinkLines" placeholder="@PhraseLines(p => p.Links, SearchOrAskPhrases.Default)" />)
-                    @Row(Icon<Icons.TextSize>(), "Articles", "\"the\", \"a\", \"an\".",
-                         _edit.AskPhrases != null,
-                         @<Textarea Rows="2" @bind-Value="ArticleLines" placeholder="@PhraseLines(p => p.Articles, SearchOrAskPhrases.Default)" />)
-                    @Row(Icon<Icons.Search>(), "Refocus the search", "While a question is typed, the list searches what it is about.",
-                         !_edit.RefocusWhileTyping,
-                         @<ToggleSwitch Label="Search what the question is about" Checked="@_edit.RefocusWhileTyping" CheckedChanged="@(v => _edit.RefocusWhileTyping = v)" />)
-                    @Row(DatasetIcons.SearchOrAsk, "Invite at once", "The quiet \"Ask about this\" as soon as a question takes shape.",
-                         !_edit.InviteOnAskPhrase,
-                         @<ToggleSwitch Label="Offer to ask on a question's shape" Checked="@_edit.InviteOnAskPhrase" CheckedChanged="@(v => _edit.InviteOnAskPhrase = v)" />)
                 </tbody>
             </Table>
             </div>
@@ -164,15 +101,6 @@
             <Table AriaLabel="When to offer" Class="soa-table">
                 @Head("When to offer")
                 <tbody>
-                    @Row(Icon<Icons.SlidersHorizontal>(), "Mode", ModeHelp(_edit.Mode),
-                         _edit.Mode != SearchOrAskSettings.ModeSoft,
-                         @<div class="soa-select"><SelectField Size="micro" Options="ModeOptions" Value="@_edit.Mode" ValueChanged="@(v => _edit.Mode = v ?? SearchOrAskSettings.ModeSoft)" /></div>)
-                    @if (_edit.Mode == SearchOrAskSettings.ModeProactive)
-                    {
-                        @Row(Icon<Icons.Coins>(), "Proactive answers", $"Answers written without a click, per day (UTC). {Service.ProactiveAnswersToday(Ctx.TeamId, Ctx.Name):N0} today.",
-                             _proactiveText != null,
-                             @<div class="soa-number"><InputField @bind-Value="_proactiveText" @bind-Value:after="SetProactive" Error="@_proactiveError" inputmode="numeric" placeholder="500" /></div>)
-                    }
                     <TableRow>
                         <TableCell Class="soa-cell">
                             <span class="soa-help">On each pause the judge scores what is typed from 0, a lookup, to 1, a question. On a catalogue a sure description of what to list earns the full offer too.</span>
@@ -237,6 +165,102 @@
                              _edit.FiltersWhileTyping != SearchOrAskSettings.FiltersOff,
                              @<div class="soa-select"><SelectField Size="micro" Options="FiltersWhileTypingOptions" Value="@_edit.FiltersWhileTyping" ValueChanged="@(v => _edit.FiltersWhileTyping = v ?? SearchOrAskSettings.FiltersOff)" /></div>)
                     }
+                </tbody>
+            </Table>
+            </div>
+
+            <div class="soa-group">
+            <Table AriaLabel="Answers" Class="soa-table">
+                @Head("Answers")
+                <tbody>
+                    @Row(Icon<Icons.Owl>(), "Knowledge", "What is true about the site that no record holds. Markdown.",
+                         !string.IsNullOrWhiteSpace(_edit.Knowledge),
+                         @<div class="soa-knowledge">
+                             <Textarea Rows="8" @bind-Value="_edit.Knowledge" placeholder="@KnowledgeExample" />
+                             @if (!string.IsNullOrWhiteSpace(_edit.Knowledge))
+                             {
+                                 <div class="soa-knowledge-preview">@ChatMarkdown.Render(_edit.Knowledge)</div>
+                             }
+                             <div class="soa-knowledge-foot">
+                                 <span class="soa-help">@((_edit.Knowledge?.Length ?? 0).ToString("N0", CultureInfo.InvariantCulture)) of @SearchOrAskSettings.MaxKnowledge.ToString("N0", CultureInfo.InvariantCulture) characters</span>
+                                 <span class="soa-knowledge-files">
+                                     <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" Disabled="@(SavedKnowledge == null)" @onclick="DownloadKnowledgeAsync">Download .md</Button>
+                                     <Button Variant="ghost" Size="micro" IconLeft="UploadIcon" @onclick="() => Files.TriggerFileInputAsync(KnowledgeInputId)">Upload .md</Button>
+                                 </span>
+                             </div>
+                             <Microsoft.AspNetCore.Components.Forms.InputFile OnChange="UploadKnowledgeAsync" accept=".md,.markdown,.txt,text/markdown,text/plain" style="display:none" id="@KnowledgeInputId" />
+                             @if (_knowledgeError != null) { <span class="soa-error">@_knowledgeError</span> }
+                         </div>)
+                    @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
+                         _edit.Answers != SearchOrAskSettings.BestAnswers,
+                         @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
+                    @Row(Icon<Icons.Paragraph>(), "Answer instructions", "The answers' voice and house rules.",
+                         !string.IsNullOrWhiteSpace(_edit.AnswerInstructions),
+                         @<Textarea Rows="3" @bind-Value="_edit.AnswerInstructions" placeholder="Formal. Say du. Never recommend another shop." />)
+                    @Row(Icon<Icons.UserText>(), "Answer language", "The visitor's language, or one for every answer.",
+                         !string.IsNullOrWhiteSpace(_edit.AnswerLanguage),
+                         @<div class="soa-select"><SelectField Size="micro" Options="LanguageOptions" Value="@(_edit.AnswerLanguage ?? VisitorsLanguage)" ValueChanged="@(v => _edit.AnswerLanguage = v == VisitorsLanguage ? null : v)" /></div>)
+                </tbody>
+            </Table>
+            </div>
+
+            @* Ask phrases: the words a question is built with, which the page takes off its start
+               so the list searches what the question is about while it is typed. *@
+            <div class="soa-group">
+            <Table AriaLabel="Ask phrases" Class="soa-table">
+                @Head("Ask phrases")
+                <tbody>
+                    @Row(Icon<Icons.Question>(), "Lead-ins", "How a question starts: \"help me find\", \"i'm looking for\". One per line.",
+                         _edit.AskPhrases != null,
+                         @<Textarea Rows="4" @bind-Value="LeadInLines" placeholder="@PhraseLines(p => p.LeadIns, SearchOrAskPhrases.Default)" />)
+                    @Row(Icon<Icons.Tag>(), "What is asked for", "The records' names, as visitors say them: \"the movie\", \"the product\".",
+                         _edit.AskPhrases != null,
+                         @<Textarea Rows="3" @bind-Value="FrameLines" placeholder="@PhraseLines(p => p.Frames, SearchOrAskPhrases.Default)" />)
+                    @Row(Icon<Icons.TextCursor>(), "Links", "The word that joins it to the rest: \"about\", \"with\".",
+                         _edit.AskPhrases != null,
+                         @<Textarea Rows="3" @bind-Value="LinkLines" placeholder="@PhraseLines(p => p.Links, SearchOrAskPhrases.Default)" />)
+                    @Row(Icon<Icons.TextSize>(), "Articles", "\"the\", \"a\", \"an\".",
+                         _edit.AskPhrases != null,
+                         @<Textarea Rows="2" @bind-Value="ArticleLines" placeholder="@PhraseLines(p => p.Articles, SearchOrAskPhrases.Default)" />)
+                    @Row(Icon<Icons.Search>(), "Refocus the search", "While a question is typed, the list searches what it is about.",
+                         !_edit.RefocusWhileTyping,
+                         @<ToggleSwitch Label="Search what the question is about" Checked="@_edit.RefocusWhileTyping" CheckedChanged="@(v => _edit.RefocusWhileTyping = v)" />)
+                    @Row(DatasetIcons.SearchOrAsk, "Invite at once", "The quiet \"Ask about this\" as soon as a question takes shape.",
+                         !_edit.InviteOnAskPhrase,
+                         @<ToggleSwitch Label="Offer to ask on a question's shape" Checked="@_edit.InviteOnAskPhrase" CheckedChanged="@(v => _edit.InviteOnAskPhrase = v)" />)
+                </tbody>
+            </Table>
+            </div>
+
+            <div class="soa-group">
+            <Table AriaLabel="What the judge sees" Class="soa-table">
+                @Head("What the judge sees of a result")
+                <tbody>
+                    @if (TextFields.Count == 0)
+                    {
+                        <TableRow><TableCell Class="soa-cell"><span class="soa-help">The fields can be chosen once the dataset has been analyzed.</span></TableCell></TableRow>
+                    }
+                    else
+                    {
+                        @Row(Icon<Icons.TextSize>(), "Title", "Each result's name.",
+                             _edit.TitleField != null,
+                             @<div class="soa-select"><SelectField Size="micro" Options="TitleOptions" Value="@(_edit.TitleField ?? Automatic)" ValueChanged="@(v => _edit.TitleField = v == Automatic ? null : v)" /></div>)
+                        @Row(Icon<Icons.Tag>(), "Section", "Where a result belongs, such as a category or year.",
+                             _edit.SectionFields != null, FieldChoice(PlaceFields, () => _edit.SectionFields, v => _edit.SectionFields = v, _effective?.SectionFields))
+                        @Row(Icon<Icons.Paragraph>(), "Snippet", "The text the judge reads and answers are written from.",
+                             _edit.SnippetFields != null, FieldChoice(TextFields, () => _edit.SnippetFields, v => _edit.SnippetFields = v, _effective?.SnippetFields))
+                    }
+                </tbody>
+            </Table>
+            </div>
+
+            <div class="soa-group">
+            <Table AriaLabel="Limits" Class="soa-table">
+                @Head("Limits")
+                <tbody>
+                    @Row(Icon<Icons.Coins>(), "Daily call budget", $"Calls per day (UTC). {_callsToday:N0} used today.",
+                         _budgetText != null,
+                         @<div class="soa-number"><InputField @bind-Value="_budgetText" @bind-Value:after="SetBudget" Error="@_budgetError" inputmode="numeric" placeholder="5,000" /></div>)
                 </tbody>
             </Table>
             </div>
@@ -484,13 +508,13 @@
         ];
 
     // First-word times measured on the docs with eight sources (Notes/search-or-ask-server.md).
-    private static readonly IEnumerable<SelectField.SelectOption> ModeOptions =
+    private static readonly IReadOnlyList<SegmentedControl.Item> ModeItems =
     [
-        new("Strict", SearchOrAskSettings.ModeStrict),
-        new("Soft", SearchOrAskSettings.ModeSoft),
-        new("Open", SearchOrAskSettings.ModeOpen),
-        new("Inviting", SearchOrAskSettings.ModeInviting),
-        new("Proactive", SearchOrAskSettings.ModeProactive),
+        new(SearchOrAskSettings.ModeStrict, "Strict"),
+        new(SearchOrAskSettings.ModeSoft, "Soft"),
+        new(SearchOrAskSettings.ModeOpen, "Open"),
+        new(SearchOrAskSettings.ModeInviting, "Inviting"),
+        new(SearchOrAskSettings.ModeProactive, "Proactive"),
     ];
 
     private static string ModeHelp(string mode) => mode switch

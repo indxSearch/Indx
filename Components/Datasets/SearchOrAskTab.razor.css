@@ -154,3 +154,9 @@
 .soa-knowledge-preview ::deep :last-child { margin-bottom: 0; }
 .soa-knowledge-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .soa-knowledge-files { display: flex; gap: 4px; }
+
+/* The mode: the five side by side, and what the chosen one does under them, a size up from the
+   other settings' help, since it is the setting that decides most. */
+/* The full width up to its cap, whatever the help under it says: it sized to the text before. */
+.soa-mode { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 520px; }
+.soa-mode-help { margin: 0; font: var(--text-sm); color: var(--lv6); }
