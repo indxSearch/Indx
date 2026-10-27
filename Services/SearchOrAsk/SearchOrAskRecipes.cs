@@ -27,6 +27,21 @@ namespace IndxServer.Services.SearchOrAsk
         public const string Answerable = "answerable";
         /// <summary>A catalogue's second question: is the visitor describing what to list?</summary>
         public const string Criteria = "criteria";
+        /// <summary>Has the visitor finished typing it? Proactive starts no answer on "what type is":
+        /// the asking score is sure there, so it cannot tell. Measured 27 Oct 2026 (JevProbe recipes
+        /// catalogue-v2-finished on the school register, docs-v3-finished on the Indx docs): whole
+        /// requests 0.71 to 0.93, the same cut off mid-sentence 0.06 to 0.38, in Norwegian and English,
+        /// "hvem driver" 0.43 the one between. No word list: the judge reads any language.</summary>
+        public const string Finished = "finished";
+
+        private static JsonObject FinishedQuestion() => Noul(
+            "`request` is what a visitor has typed so far into the search field of `site`, and may still be typing. " +
+            "Has the visitor finished it, so that it reads as a whole request as it stands?",
+            "The request is whole: a complete question, or a complete name or description, however short. It could " +
+            "be answered or searched as it is.",
+            "The text stops in the middle: it ends on a word that needs more after it, such as a verb, a preposition " +
+            "or an article still waiting for what it is about (\"what type is\", \"hvilken skole er\", \"schools in\"), " +
+            "or on a word cut off while typing.");
 
         public static Dictionary<string, JsonObject> Questions(string kind) => kind switch
         {
@@ -50,6 +65,7 @@ namespace IndxServer.Services.SearchOrAsk
                     "One or more of the results covers what the visitor is asking about, closely enough that an answer could " +
                     "be written from them.",
                     "None of the results covers it, or the visitor is not asking anything that needs an answer."),
+                [Finished] = FinishedQuestion(),
             },
             Catalogue => new()
             {
@@ -81,6 +97,7 @@ namespace IndxServer.Services.SearchOrAsk
                     "One or more of the results holds what the visitor is asking about, closely enough that an answer could " +
                     "be written from it.",
                     "None of the results holds it, or the visitor is not asking anything that needs an answer."),
+                [Finished] = FinishedQuestion(),
             },
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown Search or ask kind."),
         };

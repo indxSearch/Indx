@@ -42,6 +42,8 @@
         </Alert>
     }
 
+    <ModelRefusalAlert />
+
     @if (Ctx.IsEditor && (ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name)))
     {
         <div class="indx-list-toolbar">
@@ -162,6 +164,15 @@
             <Table AriaLabel="When to offer" Class="soa-table">
                 @Head("When to offer")
                 <tbody>
+                    @Row(Icon<Icons.SlidersHorizontal>(), "Mode", ModeHelp(_edit.Mode),
+                         _edit.Mode != SearchOrAskSettings.ModeSoft,
+                         @<div class="soa-select"><SelectField Size="micro" Options="ModeOptions" Value="@_edit.Mode" ValueChanged="@(v => _edit.Mode = v ?? SearchOrAskSettings.ModeSoft)" /></div>)
+                    @if (_edit.Mode == SearchOrAskSettings.ModeProactive)
+                    {
+                        @Row(Icon<Icons.Coins>(), "Proactive answers", $"Answers written without a click, per day (UTC). {Service.ProactiveAnswersToday(Ctx.TeamId, Ctx.Name):N0} today.",
+                             _proactiveText != null,
+                             @<div class="soa-number"><InputField @bind-Value="_proactiveText" @bind-Value:after="SetProactive" Error="@_proactiveError" inputmode="numeric" placeholder="500" /></div>)
+                    }
                     <TableRow>
                         <TableCell Class="soa-cell">
                             <span class="soa-help">On each pause the judge scores what is typed from 0, a lookup, to 1, a question. On a catalogue a sure description of what to list earns the full offer too.</span>
@@ -174,6 +185,17 @@
                     @ThresholdRow(Icon<Icons.CommentChatMessage>(), "Invitation", "A quieter \"Ask about this\".",
                         t => t.Invite, (t, v) => t.Invite = v, Defaults.Invite,
                         t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide)
+                    @if (_edit.Mode is SearchOrAskSettings.ModeInviting or SearchOrAskSettings.ModeProactive)
+                    {
+                        var hint = _edit.Thresholds.Hint ?? SearchOrAskThresholds.HintFor(_edit.Kind);
+                        @Row(Icon<Icons.Spark>(), "Hint", "\"For a quick answer, type a bit more\", from this score. Low: it shows early that the field answers.",
+                             _edit.Thresholds.Hint != null,
+                             @<div class="soa-threshold">
+                                 <span class="soa-threshold-label">Show from</span>
+                                 <Slider Min="0" Max="1" Step="0.01" Value="@hint" ValueChanged="@(v => _edit.Thresholds.Hint = Math.Round(v, 2) == SearchOrAskThresholds.HintFor(_edit.Kind) ? null : Math.Round(v, 2))" AriaLabel="Hint: show from" Class="soa-slider" />
+                                 <span class="soa-threshold-value">@Two(hint)</span>
+                             </div>)
+                    }
                 </tbody>
             </Table>
             </div>
@@ -324,12 +346,16 @@
                         @* The judge's scores, each with what it answers on hover: the labels alone
                            said nothing to an owner reading "p 0.12" (19 Oct 2026). *@
                         <div class="soa-try-scores">
-                            <Tooltip Content="@OfferHelp(j.Offer)"><Chip Size="micro" Class="@($"soa-offer soa-offer--{j.Offer}")">@OfferLabel(j.Offer)</Chip></Tooltip>
+                            <Tooltip Content="@OfferHelp(Seen(j), j.Mode)"><Chip Size="micro" Class="@($"soa-offer soa-offer--{j.Offer}")">@OfferLabel(Seen(j), j.Mode)</Chip></Tooltip>
                             <span class="soa-try-score">
                                 <Tooltip Content="@QuestionHelp">question @Two(j.P)</Tooltip>
                                 @if (j.Criteria is { } c)
                                 {
                                     <text> · </text><Tooltip Content="@DescriptionHelp">description @Two(c)</Tooltip>
+                                }
+                                @if (j.Finished is { } f)
+                                {
+                                    <text> · </text><Tooltip Content="@FinishedHelp">finished @Two(f)</Tooltip>
                                 }
                                 @if (j.Answerable is { } a)
                                 {
@@ -458,6 +484,24 @@
         ];
 
     // First-word times measured on the docs with eight sources (Notes/search-or-ask-server.md).
+    private static readonly IEnumerable<SelectField.SelectOption> ModeOptions =
+    [
+        new("Strict", SearchOrAskSettings.ModeStrict),
+        new("Soft", SearchOrAskSettings.ModeSoft),
+        new("Open", SearchOrAskSettings.ModeOpen),
+        new("Inviting", SearchOrAskSettings.ModeInviting),
+        new("Proactive", SearchOrAskSettings.ModeProactive),
+    ];
+
+    private static string ModeHelp(string mode) => mode switch
+    {
+        SearchOrAskSettings.ModeStrict => "Only the full offer, once the judge is sure it is a question.",
+        SearchOrAskSettings.ModeOpen => "Asking is always there. Enter asks whatever the judge says.",
+        SearchOrAskSettings.ModeInviting => "Open, with an invitation that sweeps as soon as a question starts. No answer until asked.",
+        SearchOrAskSettings.ModeProactive => "Inviting, and the answer written on its own once the judge is sure and the visitor has stopped.",
+        _ => "A quiet invitation early, the full offer once the judge is sure.",
+    };
+
     private IEnumerable<SelectField.SelectOption> AnswerOptions =>
     [
         new($"Best quality ({ModelName(Service.Setup.AnswerModel)}), first words in 3 to 5 s", SearchOrAskSettings.BestAnswers),
@@ -610,6 +654,8 @@
         _edit = JsonSerializer.Deserialize<SearchOrAskSettings>(Json(from ?? new SearchOrAskSettings()), JsonOpts)!;
         _budgetText = from == null || from.DailyCallBudget == Defaults2.DailyCallBudget ? null : from.DailyCallBudget.ToString(CultureInfo.InvariantCulture);
         _budgetError = null;
+        _proactiveText = from == null || from.DailyProactiveAnswers == Defaults2.DailyProactiveAnswers ? null : from.DailyProactiveAnswers.ToString(CultureInfo.InvariantCulture);
+        _proactiveError = null;
         _error = null;
         Refresh();
     }
@@ -707,7 +753,7 @@
         set(own, lines.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList());
         _edit.AskPhrases = own.LeadIns.Count + own.Frames.Count + own.Links.Count + own.Articles.Count == 0 ? null : own;
     }
-    private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _budgetError != null);
+    private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _budgetError != null || _proactiveError != null);
 
 
     /// <summary>Each setting's full explanation, by its name: the name's tooltip. The line under the
@@ -722,6 +768,8 @@
         ["Answers"] = "Best: the stronger model. On a catalogue it can search several times, sort and filter until it has the answer. Fast: the quicker model, answering from one search. Both answer from the records only.",
         ["Answer instructions"] = "How the answers should speak: voice, house rules, what to say when nothing is found, such as \"Formal. Say du. Never recommend another shop.\" They shape the wording; what an answer may claim stays bound to the records.",
         ["Answer language"] = "By default an answer is written in the language the question is asked in. Choose a language to write every answer in it, whatever the visitor writes.",
+        ["Mode"] = "How forward the offer is. Strict: only the full offer, for a site where a wrong offer costs more than a missed one. Soft: the quiet \"Ask about this\" early and the full offer when sure. Open: an Ask button whenever something is typed, and Enter asks; the judge decides only how strong it looks. Inviting: Open, with \"For a quick answer, type a bit more\" sweeping as soon as the judge reads a question starting (Hint, below), but no answer until the visitor asks; meant to teach visitors that the field answers. Proactive: Inviting, and the answer starts by itself once the judge is sure, reads the question as finished, and the visitor has stopped typing for a second, as Notion's search does. The thresholds below apply in all five.",
+        ["Proactive answers"] = "Answers the proactive mode writes without a click, counted per day from midnight UTC. An answer costs as much as hundreds of judgements, so this is the spend proactive adds. Past it the field works as Inviting until midnight. Each also counts against the daily call budget.",
         ["Daily call budget"] = "Every judgement, every question asked, and every filter the model makes while a visitor types (Filters: with the model) counts as one call, however many model calls an answer takes, counted per day from midnight UTC. Once the budget is spent the search works as before and no offers show until midnight. 0 stops all calls.",
         ["Title"] = "The field that names a result, as the judge and the answers refer to it. Automatic picks the dataset's most title-like field.",
         ["Section"] = "Fields that say where a result belongs, such as a category, a year or a chapter. The judge reads them beside the title; leave them empty when the records have none.",
@@ -773,6 +821,18 @@
     };
 
 
+    private string? _proactiveText;
+    private string? _proactiveError;
+
+    private void SetProactive()
+    {
+        _proactiveError = null;
+        var text = _proactiveText?.Trim().Replace(" ", "").Replace(",", "");
+        if (string.IsNullOrEmpty(text)) { _proactiveText = null; _edit.DailyProactiveAnswers = Defaults2.DailyProactiveAnswers; return; }
+        if (!int.TryParse(text, out var n) || n < 0) { _proactiveError = "A whole number, 0 or more"; return; }
+        _edit.DailyProactiveAnswers = n;
+    }
+
     private void SetBudget()
     {
         _budgetError = null;
@@ -786,7 +846,7 @@
     {
         if (_saving) return;
         _error = null;
-        if (_budgetError != null) { _error = "Fix the values marked above, or clear them to use the default."; return; }
+        if (_budgetError != null || _proactiveError != null) { _error = "Fix the values marked above, or clear them to use the default."; return; }
         if (_edit.Validate() is { } invalid) { _error = invalid; return; }
         var toSave = JsonSerializer.Deserialize<SearchOrAskSettings>(Json(_edit), JsonOpts)!;
         // The dataset's switch is the Options tab's (a team admin's): kept as it is now.
@@ -843,7 +903,7 @@
     /// <summary>Enter asks while the full offer is up, as it does for a visitor.</summary>
     private async Task OnTryKey(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && _try is { Offer: "strong" } && !_asking) await AskAsync();
+        if (e.Key == "Enter" && _try is { } j && (j.Offer == "strong" || AskAnytime(j.Mode)) && !_asking) await AskAsync();
     }
 
     private const string QuestionHelp = "How sure the judge is that the visitor is asking a question rather than looking something up. " +
@@ -853,17 +913,38 @@
     private const string AnswerableHelp = "Whether the results on the page could answer it: one of them holds what is asked closely enough to write from. " +
         "It does not decide the offer; the statistics use it to show offers the records could not answer.";
 
-    private static string OfferHelp(string offer) => offer switch
+    private const string FinishedHelp = "Whether the visitor has finished typing it: a whole request, not one that stops on a word still waiting for more (\"what type is\"). " +
+        "Proactive answers on its own only from 0.50, so a sure question still being typed waits.";
+
+    /// <summary>What a visitor's page shows for a judgement: proactive's sure offer on a question
+    /// still being typed is the hint, and the hint below the invitation where the score reaches it.</summary>
+    private static string Seen(IntentResult j) => (j.Offer, j.Mode) switch
     {
-        "strong" => "What a visitor sees for this text: the full offer to answer. Enter asks.",
-        "invite" => "What a visitor sees for this text: the quieter \"Ask about this\".",
+        ("strong", SearchOrAskSettings.ModeProactive) when !(j.Finished >= j.Thresholds.Finished) => "invite",
+        ("none", _) when Sweeps(j.Mode) && j.P >= (j.Thresholds.Hint ?? 1) => "invite",
+        _ => j.Offer,
+    };
+
+    private static bool AskAnytime(string mode) => mode is SearchOrAskSettings.ModeOpen or SearchOrAskSettings.ModeInviting or SearchOrAskSettings.ModeProactive;
+    private static bool Sweeps(string mode) => mode is SearchOrAskSettings.ModeInviting or SearchOrAskSettings.ModeProactive;
+
+    private static string OfferHelp(string offer, string mode) => (offer, mode) switch
+    {
+        ("strong", SearchOrAskSettings.ModeProactive) => "What a visitor sees for this text: the answer, started on its own once they pause.",
+        ("strong", _) => "What a visitor sees for this text: the full offer to answer. Enter asks.",
+        ("invite", _) when Sweeps(mode) => "What a visitor sees for this text: \"For a quick answer, type a bit more\". Enter asks.",
+        ("invite", _) => "What a visitor sees for this text: the quieter \"Ask about this\".",
+        (_, _) when AskAnytime(mode) => "What a visitor sees for this text: the results, and an Ask button. Enter asks.",
         _ => "What a visitor sees for this text: the results and nothing more.",
     };
 
-    private static string OfferLabel(string offer) => offer switch
+    private static string OfferLabel(string offer, string mode) => (offer, mode) switch
     {
-        "strong" => "Offer an answer",
-        "invite" => "Invite to ask",
+        ("strong", SearchOrAskSettings.ModeProactive) => "Answer on its own",
+        ("strong", _) => "Offer an answer",
+        ("invite", _) when Sweeps(mode) => "Type a bit more",
+        ("invite", _) => "Invite to ask",
+        (_, _) when AskAnytime(mode) => "Ask button",
         _ => "Results only",
     };
 
@@ -937,7 +1018,17 @@
         _answerError = null;
         _sources = [];
         _filters = null;
+        // Proactive, as a visitor's page does it: the answer starts on its own once the judge is sure,
+        // the judge reads it as finished (not "what type is"), and the box has stayed still for
+        // a second (intrface's answerAfterMs), the pause included.
+        if (_try is { Offer: "strong", Mode: SearchOrAskSettings.ModeProactive } j && !_asking && j.Finished >= j.Thresholds.Finished)
+        {
+            try { await Task.Delay(1000 - PauseMs, typing.Token); }
+            catch (OperationCanceledException) { return; }
+            if (!_asking) await AskAsync();
+        }
     }
+
 
     private FiltersResult? _filters;
     private bool _filtering;

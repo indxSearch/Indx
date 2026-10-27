@@ -32,16 +32,21 @@ namespace IndxServer.Controllers
         /// in the same session (a sign the answer missed), over the asks that carried a session;
         /// Rephrased lists the pairs; Needs bundles the questions into what visitors wanted, each with its
         /// wordings, how its visits ended and the records its answers landed on. Cost is in USD as
-        /// OpenRouter reports it, judge and answers together.</summary>
+        /// OpenRouter reports it, judge and answers together. Asks are the questions visitors chose to
+        /// ask; ProactiveAnswers the answers the proactive mode wrote on its own, which the outcomes,
+        /// opened sources and cost include.</summary>
         public sealed record SearchOrAskStatisticsResponse(
             long Judged, long Offers, long StrongOffers, long Asks, double? TakeRate,
             long Answered, long NothingFound, long Failed, long Stopped, long Unanswered, double? UnansweredRate,
             long SourcesOpened, double? SourcesOpenedPerAnswer, double Cost, long? MedianFirstTextMs,
             AskQuestionStat[] Questions, AskOfferStat[] Offered,
             long Calls = 0, long CallsRefused = 0, int DaysBudgetRanOut = 0,
-            long AskedAgain = 0, double? AskedAgainRate = null, AskRephrasingStat[]? Rephrased = null, AskNeedStat[]? Needs = null);
-        /// <summary>A question, and for a follow-up the conversation so far (the last three turns are used).</summary>
-        public sealed record AskRequest(string? Question, AskTurn[]? History = null);
+            long AskedAgain = 0, double? AskedAgainRate = null, AskRephrasingStat[]? Rephrased = null, AskNeedStat[]? Needs = null,
+            long ProactiveAnswers = 0);
+        /// <summary>A question, and for a follow-up the conversation so far (the last three turns are used).
+        /// <c>Proactive</c>: the page started this answer on its own, in the proactive mode, rather
+        /// than the visitor asking; it counts against the day's proactive answers.</summary>
+        public sealed record AskRequest(string? Question, AskTurn[]? History = null, bool Proactive = false);
 
         /// <summary>
         /// What the dataset sets, what it runs with (the site description and fields after defaults),
@@ -203,7 +208,8 @@ namespace IndxServer.Controllers
             if (question.Length == 0 || question.Length > SearchOrAskService.MaxQuestion)
                 return ApiProblems.InvalidArgument($"Send {{ question }} of 1 to {SearchOrAskService.MaxQuestion} characters.");
             if (ReadyEngine(dataSetName, ctx.OwnerKey, out var engineError) is not { } engine) return engineError!;
-            if (Refusal(service.CanAsk(ctx.OwnerKey, dataSetName, AuthRateLimiting.ClientIp(HttpContext))) is { } refused)
+            var proactive = request!.Proactive;
+            if (Refusal(service.CanAsk(ctx.OwnerKey, dataSetName, AuthRateLimiting.ClientIp(HttpContext), proactive: proactive)) is { } refused)
                 return refused;
 
             // Minted here so the page has it from the first byte: a select that sends it as its
@@ -223,7 +229,7 @@ namespace IndxServer.Controllers
             try
             {
                 await service.AskAsync(ctx.OwnerKey, dataSetName, engine, question, Send, HttpContext.RequestAborted,
-                    askId: askId, origin: Origin(), history: request!.History);
+                    askId: askId, origin: Origin() with { Proactive = proactive }, history: request.History);
             }
             catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
             {
@@ -271,7 +277,7 @@ namespace IndxServer.Controllers
             var (again, rephrased) = s.AskedAgain(ctx.OwnerKey, dataSetName, fromDay, today, limit, src);
             static double? Rate(double n, double d) => d == 0 ? null : n / d;
             return new SearchOrAskStatisticsResponse(o.Judged, o.Offers, o.StrongOffers, o.Asks, Rate(o.Asks, o.Offers),
-                o.Answered, o.NothingFound, o.Failed, o.Stopped, o.Unanswered, Rate(o.Unanswered, o.Asks),
+                o.Answered, o.NothingFound, o.Failed, o.Stopped, o.Unanswered, Rate(o.Unanswered, o.Asks + o.ProactiveAnswers),
                 o.SourcesOpened, Rate(o.SourcesOpened, o.Answered), o.Cost + budget.Cost, o.MedianFirstTextMs,
                 s.TopQuestions(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray(),
                 s.TopOffers(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray())
@@ -279,6 +285,7 @@ namespace IndxServer.Controllers
                 Calls = budget.Calls, CallsRefused = budget.Refused, DaysBudgetRanOut = budget.DaysRunOut,
                 AskedAgain = again.AskedAgain, AskedAgainRate = Rate(again.AskedAgain, again.Asks), Rephrased = rephrased.ToArray(),
                 Needs = s.AskNeeds(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray(),
+                ProactiveAnswers = o.ProactiveAnswers,
             };
         }
 

@@ -78,11 +78,13 @@ namespace IndxServer.Services.SearchOrAsk
                 var (filters, left, sort, cost) = await SuggestFiltersAsync(teamId, dataSetName, settings, fields, text, ct);
                 // The call has no statistics row of its own; its cost goes with the day's budget.
                 if (cost is > 0) RecordCost(teamId, dataSetName, settings.DailyCallBudget, cost.Value);
+                Succeeded("filters");
                 return new FiltersOutcome(IntentStatus.Ok, new FiltersResult(filters, left, Ms(), Sort: sort));
             }
             catch (SearchOrAskModelException ex)
             {
                 _logger.LogWarning("Search or ask filters failed for {Team}/{Dataset}: {Message}", teamId, dataSetName, ex.Message);
+                Refused("filters", ex);
                 return new FiltersOutcome(IntentStatus.Ok, new FiltersResult([], text, Ms(), $"failed:{ex.Status}"));
             }
             catch (HttpRequestException)

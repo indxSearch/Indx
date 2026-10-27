@@ -31,6 +31,34 @@ namespace IndxServer.Services.SearchOrAsk
 
         public SearchOrAskThresholds Thresholds { get; set; } = new();
 
+        /// <summary>How forward the offer is (27 Oct 2026), from the least to the most:
+        /// <c>strict</c>, only the full offer, once the judge is sure it is a question;
+        /// <c>soft</c> (the default, as it always was), the quiet "Ask about this" early and the full
+        /// offer once the judge is sure; <c>open</c>, asking is always there once something is
+        /// typed (Enter asks, whatever the judge says), the judge deciding only how strong the offer
+        /// looks; <c>inviting</c>, open with an invitation that sweeps as soon as the judge reads a question
+        /// starting (the Hint threshold), but no answer until asked; <c>proactive</c>, inviting, and the answer written on its own once the
+        /// judge is sure, reads it as finished, and the visitor has stopped, at most <see cref="DailyProactiveAnswers"/> a
+        /// day. The thresholds apply in all five.</summary>
+        public string Mode { get; set; } = ModeSoft;
+        public const string ModeStrict = "strict";
+        public const string ModeSoft = "soft";
+        public const string ModeOpen = "open";
+        public const string ModeInviting = "inviting";
+        public const string ModeProactive = "proactive";
+        public static readonly string[] Modes = [ModeStrict, ModeSoft, ModeOpen, ModeInviting, ModeProactive];
+
+        /// <summary>Answers written without being asked, in <see cref="ModeProactive"/>, per dataset
+        /// per UTC day. Past it the offer stays and a visitor asks as in <see cref="ModeInviting"/>. An
+        /// answer costs hundreds of judgements (about 700 on a Best answer, measured on a film
+        /// catalogue), so this is the spend proactive adds.</summary>
+        public int DailyProactiveAnswers { get; set; } = 500;
+
+        /// <summary>The offer for one judgement on its own (<see cref="SearchOrAskThresholds.OfferFor"/>),
+        /// in this mode: strict has no quiet offer.</summary>
+        public string OfferFor(double p, double? criteria = null) =>
+            Thresholds.OfferFor(p, criteria) is var offer && Mode == ModeStrict && offer == "invite" ? "none" : offer;
+
         /// <summary>While the offer is strong (the judge says the visitor is asking), the page shows
         /// the result list only up to the truncation point: the coverage hits stay, the pattern
         /// tail goes, and with nothing confirmed the offer stands alone. The rule runs in the
@@ -149,6 +177,10 @@ namespace IndxServer.Services.SearchOrAsk
                 return $"answerLanguage is at most {MaxAnswerLanguage} characters.";
             if (DailyCallBudget < 0)
                 return "dailyCallBudget cannot be negative.";
+            if (!Modes.Contains(Mode))
+                return $"mode must be one of: {string.Join(", ", Modes)}.";
+            if (DailyProactiveAnswers < 0)
+                return "dailyProactiveAnswers cannot be negative.";
             if (AskPhrases?.Validate() is { } badPhrases)
                 return badPhrases;
             if (Thresholds == null)
@@ -169,6 +201,25 @@ namespace IndxServer.Services.SearchOrAsk
         public double StrongHide { get; set; } = 0.45;
         public double Invite { get; set; } = 0.40;
         public double InviteHide { get; set; } = 0.30;
+        /// <summary>The inviting and proactive modes' hint, "For a quick answer, type a bit more",
+        /// from this score up: low, since its job is to show early that the field answers. Null is
+        /// the kind's own (<see cref="HintFor"/>), measured 27 Oct 2026 on bare openings against
+        /// lookups of the same length: on a catalogue openings scored from 0.18 ("What") and lookups
+        /// to 0.15 ("mew"), in Norwegian from 0.19 and to 0.11; on the Indx docs lookups reach 0.30
+        /// ("install").</summary>
+        public double? Hint { get; set; }
+        /// <summary>Proactive answers on its own only from this "finished" score up, so "what type is"
+        /// waits for the rest.</summary>
+        public double Finished { get; set; } = 0.5;
+
+        public static double HintFor(string kind) => kind == SearchOrAskRecipes.Catalogue ? 0.16 : 0.31;
+
+        /// <summary>A copy with the kind's hint filled in, as each judgement reports it.</summary>
+        public SearchOrAskThresholds Resolved(string kind) => new()
+        {
+            Strong = Strong, StrongHide = StrongHide, Invite = Invite, InviteHide = InviteHide,
+            Hint = Hint ?? HintFor(kind), Finished = Finished,
+        };
 
         public string? Validate()
         {
@@ -178,6 +229,9 @@ namespace IndxServer.Services.SearchOrAsk
             if (StrongHide > Strong) return "thresholds.strongHide cannot be above thresholds.strong.";
             if (InviteHide > Invite) return "thresholds.inviteHide cannot be above thresholds.invite.";
             if (Invite > Strong) return "thresholds.invite cannot be above thresholds.strong.";
+            if (Hint is { } h && (double.IsNaN(h) || h < 0 || h > 1)) return "thresholds.hint must be between 0 and 1.";
+            if (Hint > Invite) return "thresholds.hint cannot be above thresholds.invite.";
+            if (double.IsNaN(Finished) || Finished < 0 || Finished > 1) return "thresholds.finished must be between 0 and 1.";
             return null;
         }
 

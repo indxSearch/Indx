@@ -1,0 +1,20 @@
+/* The text in the muted ink, and a band of the full ink drawn through it: a gradient clipped to the
+   glyphs, twice the text's width, moved across it. */
+.indx-shimmer-text {
+    color: var(--lv5);
+}
+.indx-shimmer-text--active {
+    background: linear-gradient(90deg, var(--lv5) 0%, var(--lv5) 40%, var(--lv8) 50%, var(--lv5) 60%, var(--lv5) 100%);
+    background-size: 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: indx-shimmer-text 2s linear infinite;
+}
+@keyframes indx-shimmer-text {
+    from { background-position: 100% 0; }
+    to { background-position: -100% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .indx-shimmer-text--active { animation: none; background: none; color: var(--lv5); }
+}

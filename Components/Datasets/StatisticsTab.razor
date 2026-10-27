@@ -396,10 +396,15 @@ else
             @* Search or ask (Notes/search-or-ask-server.md). The questions the content did not
                answer lead: they are what to write next. Offers lists the texts an offer was shown
                beside, so a false one can be found. Code in StatisticsTab.SearchOrAsk.cs. *@
-            <StatGroup Columns="@(CitesSources ? 7 : 6)">
+            <StatGroup Columns="@((CitesSources ? 7 : 6) + (_ask.ProactiveAnswers > 0 ? 1 : 0))">
                 <Stat Label="Offers shown" LabelIcon="DatasetIcons.AskOffers" Hint="Searches an offer to ask was shown beside, each once however many pauses judged it."><ValueContent>@N(_ask.Offers)</ValueContent></Stat>
                 <Stat Label="Questions asked" LabelIcon="DatasetIcons.AskQuestions" Hint="Questions asked, and how many per offer shown."><ValueContent>@N(_ask.Asks) <span class="stats-tile-sub">@Pct(_ask.Asks, _ask.Offers)</span></ValueContent></Stat>
-                <Stat Label="Not answered" LabelIcon="DatasetIcons.NotAnswered" Hint="Questions the search found nothing for, or whose sources the judge doubted could answer them."><ValueContent>@N(_ask.Unanswered) <span class="stats-tile-sub">@Pct(_ask.Unanswered, _ask.Asks)</span></ValueContent></Stat>
+                @* Only once the proactive mode has written one: the answers no visitor asked for. *@
+                @if (_ask.ProactiveAnswers > 0)
+                {
+                    <Stat Label="Proactive answers" LabelIcon="DatasetIcons.AskProactive" Hint="Answers the proactive mode wrote on its own, without a click, once the judge was sure. Not in Questions asked: no visitor chose them. Not answered, sources opened and cost include them."><ValueContent>@N(_ask.ProactiveAnswers)</ValueContent></Stat>
+                }
+                <Stat Label="Not answered" LabelIcon="DatasetIcons.NotAnswered" Hint="Questions the search found nothing for, or whose sources the judge doubted could answer them."><ValueContent>@N(_ask.Unanswered) <span class="stats-tile-sub">@Pct(_ask.Unanswered, _ask.Asks + _ask.ProactiveAnswers)</span></ValueContent></Stat>
                 <Stat Label="Asked again" LabelIcon="DatasetIcons.AskedAgain" Hint="Answers the visitor followed within five minutes with the same question in other words, as the judge reads the two: the quiet sign an answer missed, where Not answered is the content missing. Counted over the questions that carried a session; the same text again and a follow-up to the answer are not counted. The pairs are under Questions."><ValueContent>@N(_askedAgain.AskedAgain) <span class="stats-tile-sub">@Pct(_askedAgain.AskedAgain, _askedAgain.Asks)</span></ValueContent></Stat>
                 @if (CitesSources)
                 {

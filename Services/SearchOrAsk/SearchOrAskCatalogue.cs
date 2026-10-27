@@ -99,6 +99,7 @@ namespace IndxServer.Services.SearchOrAsk
                 firstText ??= Ms();
                 await send("text", new { delta });
             }
+            Succeeded("answer");
             await send("done", new { model, askId, latencyMs = Ms() });
             return new CatalogueOutcome("answered", shown.Select(s => s.Key).ToList(), firstText,
                 usage.Cost == null && filterCost == null ? null : (usage.Cost ?? 0) + (filterCost ?? 0));

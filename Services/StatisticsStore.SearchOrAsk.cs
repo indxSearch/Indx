@@ -30,7 +30,8 @@ namespace IndxServer.Services
     public readonly record struct AskEventRow(
         string AskId, string TeamId, string DataSet, string? QueryId, string Question, string Model,
         string SourceKeys, string Outcome, long? FirstTextMs, long TotalMs, double? Cost, double? Answerable,
-        string? Subject, string? Session, string? Source, long Timestamp, bool Counted = true, bool FollowUp = false);
+        string? Subject, string? Session, string? Source, long Timestamp, bool Counted = true, bool FollowUp = false,
+        bool Proactive = false);
 
     /// <summary>A question asked again in other words, soon after, in the same session: the first
     /// wording, the second, how often the pair was seen, the last time, and how often the second
@@ -47,10 +48,12 @@ namespace IndxServer.Services
 
     /// <summary>A window's Search or ask totals. Offers count each search an offer was shown beside
     /// once, however many pauses judged it. Unanswered is the asks that found nothing or whose
-    /// sources the judge thought could not answer. MedianFirstTextMs is read from the raw rows.</summary>
+    /// sources the judge thought could not answer. MedianFirstTextMs is read from the raw rows.
+    /// Asks are the ones a visitor chose; ProactiveAnswers the ones written without being asked
+    /// (the proactive mode), which the outcomes, sources and cost include.</summary>
     public readonly record struct AskOverviewStat(long Judged, long Offers, long StrongOffers, long Asks,
         long Answered, long NothingFound, long Failed, long Stopped, long Unanswered, long SourcesOpened,
-        double Cost, long? MedianFirstTextMs);
+        double Cost, long? MedianFirstTextMs, long ProactiveAnswers = 0);
 
     /// <summary>A call taken against a dataset's daily budget, or one turned away because the day's
     /// budget was spent, on the budget's own day: UTC, days since 1970 as every statistics day. A row
@@ -167,7 +170,8 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
             // Whether a question continued a conversation (26 Oct 2026): a follow-up is not a question
             // asked again in other words.
             // And the judge's word on whether it asked the question before it again, with that one's id.
-            foreach (var column in new[] { "FollowUp INTEGER NOT NULL DEFAULT 0", "RephraseOf TEXT", "RephraseP REAL" })
+            // And whether the answer was written without being asked (27 Oct 2026, the proactive mode).
+            foreach (var column in new[] { "FollowUp INTEGER NOT NULL DEFAULT 0", "RephraseOf TEXT", "RephraseP REAL", "Proactive INTEGER NOT NULL DEFAULT 0" })
             {
                 try
                 {
@@ -176,6 +180,12 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
                 }
                 catch (SqliteException) { /* already there */ }
             }
+            try
+            {
+                cmd.CommandText = "ALTER TABLE DailyAskStats ADD COLUMN ProactiveAnswers INTEGER NOT NULL DEFAULT 0";
+                cmd.ExecuteNonQuery();
+            }
+            catch (SqliteException) { /* already there */ }
             // The budget's cost column came a few hours after its table (20 Oct 2026): a table made
             // without it is given it, since CREATE TABLE IF NOT EXISTS leaves an existing one alone.
             try
@@ -226,8 +236,8 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
                 cmd.Transaction = tx;
                 cmd.CommandText = @"INSERT OR IGNORE INTO AskEvents
                     (AskId, TeamId, DataSet, QueryId, Question, Model, SourceKeys, Outcome, FirstTextMs, TotalMs, Cost,
-                     Answerable, Subject, Session, Source, Timestamp, Counted, FollowUp)
-                    VALUES ($id, $t, $d, $q, $question, $m, $keys, $out, $first, $total, $cost, $a, $subj, $sess, $src, $ts, $cnt, $follow)";
+                     Answerable, Subject, Session, Source, Timestamp, Counted, FollowUp, Proactive)
+                    VALUES ($id, $t, $d, $q, $question, $m, $keys, $out, $first, $total, $cost, $a, $subj, $sess, $src, $ts, $cnt, $follow, $pro)";
                 cmd.Parameters.AddWithValue("$id", r.AskId);
                 cmd.Parameters.AddWithValue("$t", r.TeamId);
                 cmd.Parameters.AddWithValue("$d", r.DataSet);
@@ -246,6 +256,7 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
                 cmd.Parameters.AddWithValue("$ts", r.Timestamp);
                 cmd.Parameters.AddWithValue("$cnt", r.Counted ? 1 : 0);
                 cmd.Parameters.AddWithValue("$follow", r.FollowUp ? 1 : 0);
+                cmd.Parameters.AddWithValue("$pro", r.Proactive ? 1 : 0);
                 cmd.ExecuteNonQuery();
             }
             // After the asks of the same batch: the judgement comes after its ask, never before.
@@ -272,7 +283,7 @@ SELECT
   (SELECT COUNT(*) FROM AskIntentEvents i WHERE {i}),
   (SELECT COUNT(DISTINCT CASE WHEN i.Offer <> 'none' THEN COALESCE(i.QueryId, 'row' || i.rowid) END) FROM AskIntentEvents i WHERE {i}),
   (SELECT COUNT(DISTINCT CASE WHEN i.Offer = 'strong' THEN COALESCE(i.QueryId, 'row' || i.rowid) END) FROM AskIntentEvents i WHERE {i}),
-  (SELECT COUNT(*) FROM AskEvents a WHERE {a}),
+  (SELECT COUNT(*) FROM AskEvents a WHERE {a} AND a.Proactive = 0),
   (SELECT COUNT(*) FROM AskEvents a WHERE {a} AND a.Outcome = 'answered'),
   (SELECT COUNT(*) FROM AskEvents a WHERE {a} AND a.Outcome = 'nothingFound'),
   (SELECT COUNT(*) FROM AskEvents a WHERE {a} AND a.Outcome = 'failed'),
@@ -280,7 +291,8 @@ SELECT
   (SELECT COUNT(*) FROM AskEvents a WHERE {a} AND (a.Outcome = 'nothingFound' OR a.Answerable < $floor)),
   (SELECT COUNT(*) FROM SelectEvents x JOIN AskEvents a ON x.QueryId = a.AskId WHERE {a} AND x.Counted = 1),
   COALESCE((SELECT SUM(i.Cost) FROM AskIntentEvents i WHERE {i}), 0)
-    + COALESCE((SELECT SUM(a.Cost) FROM AskEvents a WHERE {a}), 0)";
+    + COALESCE((SELECT SUM(a.Cost) FROM AskEvents a WHERE {a}), 0),
+  (SELECT COUNT(*) FROM AskEvents a WHERE {a} AND a.Proactive = 1)";
 
         private static string AskSums(string? source)
         {
@@ -299,7 +311,7 @@ SELECT
             cmd.Transaction = tx;
             cmd.CommandText = "DELETE FROM DailyAskStats WHERE Day = $day AND TeamId = $t AND DataSet = $d;" +
                               @"INSERT INTO DailyAskStats (Day, TeamId, DataSet, Judged, Offers, StrongOffers, Asks, Answered,
-                                    NothingFound, Failed, Stopped, Unanswered, SourcesOpened, Cost)
+                                    NothingFound, Failed, Stopped, Unanswered, SourcesOpened, Cost, ProactiveAnswers)
                                 SELECT $day, $t, $d, * FROM (" + AskSums(null) + @")
                                  WHERE EXISTS (SELECT 1 FROM AskIntentEvents WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $from AND Timestamp < $to)
                                     OR EXISTS (SELECT 1 FROM AskEvents WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $from AND Timestamp < $to);";
@@ -345,6 +357,19 @@ SELECT
         }
 
         /// <summary>The calls a dataset's budget day holds so far, for the count after a restart.</summary>
+        /// <summary>Answers written without being asked since <paramref name="fromMs"/>: the proactive
+        /// cap's count of today, read back after a restart.</summary>
+        public long ProactiveAnswersSince(string teamId, string dataSet, long fromMs)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM AskEvents WHERE TeamId = $t AND DataSet = $d AND Proactive = 1 AND Timestamp >= $from";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$from", fromMs);
+            return cmd.ExecuteScalar() is long n ? n : 0;
+        }
+
         public long BudgetCalls(string teamId, string dataSet, long day)
         {
             using var conn = Open();
@@ -399,13 +424,14 @@ SELECT
             long rolledTo = RolledTo(fromDay, toDay, source);
             long liveFromMs = StatisticsDays.Start(tz, Math.Max(fromDay, rolledTo + 1));
             long toMsExcl = StatisticsDays.Start(tz, toDay + 1);
-            var sums = new double[11];
+            var sums = new double[12];
             using var conn = Open();
             using (var cmd = conn.CreateCommand())
             {
                 cmd.CommandText = @"SELECT COALESCE(SUM(Judged),0), COALESCE(SUM(Offers),0), COALESCE(SUM(StrongOffers),0),
                     COALESCE(SUM(Asks),0), COALESCE(SUM(Answered),0), COALESCE(SUM(NothingFound),0), COALESCE(SUM(Failed),0),
-                    COALESCE(SUM(Stopped),0), COALESCE(SUM(Unanswered),0), COALESCE(SUM(SourcesOpened),0), COALESCE(SUM(Cost),0)
+                    COALESCE(SUM(Stopped),0), COALESCE(SUM(Unanswered),0), COALESCE(SUM(SourcesOpened),0), COALESCE(SUM(Cost),0),
+                    COALESCE(SUM(ProactiveAnswers),0)
                     FROM DailyAskStats WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo";
                 cmd.Parameters.AddWithValue("$t", teamId);
                 cmd.Parameters.AddWithValue("$d", dataSet);
@@ -435,7 +461,7 @@ SELECT
                 if (all.Count > 0) median = all[all.Count / 2];
             }
             long L(int k) => (long)sums[k];
-            return new AskOverviewStat(L(0), L(1), L(2), L(3), L(4), L(5), L(6), L(7), L(8), L(9), sums[10], median);
+            return new AskOverviewStat(L(0), L(1), L(2), L(3), L(4), L(5), L(6), L(7), L(8), L(9), sums[10], median, L(11));
         }
 
         /// <summary>The questions asked in the window, the ones the content did not answer first,
@@ -484,7 +510,7 @@ SELECT lower(trim(a.Question)) AS Q, COUNT(*),
             cmd.CommandText = @"
 SELECT lower(trim(s.QueryText)) AS T, COUNT(DISTINCT i.QueryId),
        COUNT(DISTINCT CASE WHEN i.Offer = 'strong' THEN i.QueryId END), MAX(i.P),
-       (SELECT COUNT(*) FROM AskEvents a WHERE a.QueryId IN (
+       (SELECT COUNT(*) FROM AskEvents a WHERE a.Proactive = 0 AND a.QueryId IN (
             SELECT j.QueryId FROM AskIntentEvents j JOIN SearchEvents t ON t.QueryId = j.QueryId
              WHERE j.TeamId = $t AND j.DataSet = $d AND lower(trim(t.QueryText)) = lower(trim(s.QueryText))))
   FROM AskIntentEvents i JOIN SearchEvents s ON s.QueryId = i.QueryId

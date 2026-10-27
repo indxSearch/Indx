@@ -87,6 +87,7 @@ namespace IndxServer.Services.SearchOrAsk
                 catch (Exception ex) when (ex is SearchOrAskModelException or HttpRequestException)
                 {
                     _logger.LogWarning("Search or ask agent failed for {Team}/{Dataset}: {Error}", teamId, dataSetName, ex.Message);
+                    Refused("answer", ex);
                     return null;
                 }
                 messages.Add(message.DeepClone());
@@ -99,6 +100,7 @@ namespace IndxServer.Services.SearchOrAsk
                     // The answer as a few deltas, so a page renders it as it does a streamed one.
                     foreach (var part in answer.Split("\n\n"))
                         await send("text", new { delta = part + "\n\n" });
+                    Succeeded("answer");
                     await send("done", new { model, askId, latencyMs = Ms(), turns = turn });
                     return new AgentOutcome("answered", shownKeys, firstText, cost);
                 }

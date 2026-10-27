@@ -148,6 +148,7 @@
                             <text>Jev, TypeSafe's decision model, is served on OpenRouter and by TypeSafe directly.</text>
                         }
                     </p>
+                    <ModelRefusalAlert />
                     @if (!HasKey(SearchOrAskProviders.JudgeKeyHolder(_judgeProvider)))
                     {
                         <Alert Variant="destructive">Add the @ProviderName(SearchOrAskProviders.JudgeKeyHolder(_judgeProvider)) key above: Search or ask does not run without the judge.</Alert>
@@ -179,6 +180,20 @@
                                     <text>OpenRouter's EU endpoint for the answers and the filters: those requests are processed in the EU and go only to providers there, and the models listed below are the ones it serves. The decisions are the exception: Jev has no EU provider, so what visitors type still goes to Jev through OpenRouter's global endpoint.</text>
                                 }
                             </p>
+                            @if (_euRouting && _provider == "openrouter")
+                            {
+                                @* OpenRouter refuses its EU endpoint below a Business plan, every answer with a 403
+                                   that a visitor sees only as "could not be written" (27 Oct 2026). *@
+                                <div class="settings-indent">
+                                    <Alert Variant="warning"><Description>OpenRouter serves its EU endpoint only on a Business or Enterprise plan. On another plan it refuses every answer and every filter, and visitors see only that the answer could not be written. Check the plan at openrouter.ai before switching this on.</Description></Alert>
+                                </div>
+                            }
+                            @if (_euRouting && _provider == "openai")
+                            {
+                                <div class="settings-indent">
+                                    <Alert Variant="warning"><Description>OpenAI refuses a key from a project without Europe as its region at the EU endpoint, so every call fails. Make the key in such a project before switching this on.</Description></Alert>
+                                </div>
+                            }
                         </div>
                     }
                     @if (_provider == "openai")

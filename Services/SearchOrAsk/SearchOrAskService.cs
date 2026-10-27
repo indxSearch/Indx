@@ -30,7 +30,8 @@ namespace IndxServer.Services.SearchOrAsk
     public sealed record IntentResult(double P, double? Answerable, string Offer, SearchOrAskThresholds Thresholds,
         bool Cached, long Ms, string? Reason = null, double? Criteria = null, bool CutWhileAsking = true,
         double CutShareOfTop = 0.5, double CutTopFloor = 0.2, bool StrictCoverageWhileAsking = true, string FiltersWhileTyping = "off",
-        string? SearchText = null, bool RefocusWhileTyping = true, bool InviteOnAskPhrase = true);
+        string? SearchText = null, bool RefocusWhileTyping = true, bool InviteOnAskPhrase = true,
+        string Mode = SearchOrAskSettings.ModeSoft, double? Finished = null);
 
     /// <summary>One source handed to the answer model, as the visitor's client sees it.</summary>
     public sealed record AskSource(int N, long DocumentKey, string Title);
@@ -79,7 +80,10 @@ namespace IndxServer.Services.SearchOrAsk
     /// the page's search behind it (<c>?queryId=</c>), its session, its surface, an optional
     /// subject, and whether it counts. None (null) records nothing: the console's tester, which
     /// would only ever be uncounted.</summary>
-    public sealed record SearchOrAskOrigin(string? QueryId, string? Session, string? Source, string? Subject, bool Counted);
+    /// <summary><c>Proactive</c>: an answer the page started on its own, in the proactive mode,
+    /// not one the visitor asked for.</summary>
+    public sealed record SearchOrAskOrigin(string? QueryId, string? Session, string? Source, string? Subject, bool Counted,
+        bool Proactive = false);
 
     /// <summary>
     /// Search or ask on the request path: the intent judgement on a typing pause, and the answer
@@ -87,8 +91,41 @@ namespace IndxServer.Services.SearchOrAsk
     /// the measurements every default here comes from. Nothing in here decides whether a dataset
     /// should have the feature: that is Observr's, outside the server.
     /// </summary>
+    /// <summary>A provider's refusal of a model call: which call (<c>judge</c>, <c>answer</c> or
+    /// <c>filters</c>), its status, the provider's own words, when, and what to do about it where the
+    /// reason is one we know.</summary>
+    public sealed record ModelRefusal(string Call, int Status, string Reason, DateTime At, string? Advice);
+
     public sealed partial class SearchOrAskService : IDisposable
     {
+        /// <summary>The latest refusal from a model provider on this instance, for the console to show
+        /// its owners: a visitor only reads "The answer could not be written", and the reason was in
+        /// the log alone (27 Oct 2026: EU routing on OpenRouter without a Business plan refused every
+        /// answer). A rate limit (429) is not one: it passes. The next call of the same kind that
+        /// succeeds clears it.</summary>
+        public ModelRefusal? LastRefusal { get; private set; }
+
+        private void Refused(string call, Exception ex)
+        {
+            if (ex is SearchOrAskModelException { Status: 429 }) return;
+            var (status, reason) = ex is SearchOrAskModelException m ? (m.Status, m.Message) : (0, "The provider could not be reached.");
+            LastRefusal = new ModelRefusal(call, status, reason, DateTime.UtcNow, AdviceFor(reason, status));
+        }
+
+        private void Succeeded(string call)
+        {
+            if (LastRefusal?.Call == call) LastRefusal = null;
+        }
+
+        /// <summary>What an owner can do about a refusal whose reason we have seen before.</summary>
+        public static string? AdviceFor(string reason, int status) =>
+            reason.Contains("Regional routing", StringComparison.OrdinalIgnoreCase)
+                ? "OpenRouter serves its EU endpoint only on a Business or Enterprise plan. Switch off Keep requests in the EU in Admin, Settings, or upgrade the OpenRouter plan."
+            : status == 402 ? "The provider's account is out of credit. Top it up in the provider's own console."
+            : status == 401 ? "The provider does not accept the key. Check it in Admin, Settings."
+            : status == 403 ? "The provider refused the call: a spent key budget, a plan that does not allow it, or a guardrail. Its own words are above."
+            : null;
+
         private readonly SearchOrAskStore _store;
         private readonly DatasetMetadataStore _metadata;
         private readonly ISearchOrAskModels _models;
@@ -108,6 +145,8 @@ namespace IndxServer.Services.SearchOrAsk
 
         // (teamId\0dataset) -> (UTC day, judge calls made that day).
         private readonly ConcurrentDictionary<string, (DateOnly Day, int Calls)> _budget = new();
+        /// <summary>Answers written without being asked today, per dataset (<see cref="SearchOrAskSettings.DailyProactiveAnswers"/>).</summary>
+        private readonly ConcurrentDictionary<string, (DateOnly Day, int Answers)> _proactive = new();
 
         public const int MaxText = 300;
         public const int MaxQuestion = 1000;
@@ -309,11 +348,12 @@ namespace IndxServer.Services.SearchOrAsk
             // questions no phrase catches and which phrase left nothing to find.
             string? askPhrase = taken.Count > 0 ? string.Join(' ', taken) : null;
             int? focusedHits = null;
-            IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null, double? criteria = null)
+            IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null, double? criteria = null,
+                double? finished = null)
             {
-                var result = new IntentResult(p, answerable, settings.Thresholds.OfferFor(p, criteria), settings.Thresholds, cached, Ms(), reason, criteria,
+                var result = new IntentResult(p, answerable, settings.OfferFor(p, criteria), settings.Thresholds.Resolved(settings.Kind), cached, Ms(), reason, criteria,
                     settings.CutWhileAsking, settings.CutShareOfTop, settings.CutTopFloor, settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping, searchText,
-                    settings.RefocusWhileTyping, settings.InviteOnAskPhrase);
+                    settings.RefocusWhileTyping, settings.InviteOnAskPhrase, EffectiveMode(teamId, dataSetName, settings), finished);
                 // A judgement is recorded once the judge or its cache answered for it, a failing
                 // judge included (its reason says so); an identifier never reaches here. A prefetch
                 // is not: the pause that follows is recorded, from the cache it filled.
@@ -346,7 +386,7 @@ namespace IndxServer.Services.SearchOrAsk
                     onState?.Invoke(State(site, text, found));
                 }
                 return new IntentOutcome(IntentStatus.Ok, Result(hit[SearchOrAskRecipes.Asking] ?? 0, hit[SearchOrAskRecipes.Answerable], true,
-                    criteria: hit[SearchOrAskRecipes.Criteria]));
+                    criteria: hit[SearchOrAskRecipes.Criteria], finished: hit[SearchOrAskRecipes.Finished]));
             }
 
             using (var lease = _intentLimiter.AttemptAcquire(prefetch ? clientAddress + "\0prefetch" : clientAddress))
@@ -366,8 +406,9 @@ namespace IndxServer.Services.SearchOrAsk
                 var answer = await _models.JudgeAsync(state, SearchOrAskRecipes.Questions(settings.Kind), timeout.Token);
                 if (_cache.Count > MaxCached) _cache.Clear();
                 _cache[cacheKey] = answer;
+                Succeeded("judge");
                 return new IntentOutcome(IntentStatus.Ok, Result(answer[SearchOrAskRecipes.Asking] ?? 0, answer[SearchOrAskRecipes.Answerable], false,
-                    cost: answer.Cost, criteria: answer[SearchOrAskRecipes.Criteria]));
+                    cost: answer.Cost, criteria: answer[SearchOrAskRecipes.Criteria], finished: answer[SearchOrAskRecipes.Finished]));
             }
             // A judge that is slow, out of credit or down means no offer, never a failed search:
             // p = 0 with the reason, and the search the visitor already has is untouched.
@@ -378,11 +419,13 @@ namespace IndxServer.Services.SearchOrAsk
             catch (SearchOrAskModelException ex)
             {
                 _logger.LogWarning("Search or ask judge failed for {Team}/{Dataset}: {Message}", teamId, dataSetName, ex.Message);
+                Refused("judge", ex);
                 return new IntentOutcome(IntentStatus.Ok, Result(0, null, false, $"failed:{ex.Status}"));
             }
             catch (HttpRequestException ex)
             {
                 _logger.LogWarning(ex, "Search or ask judge unreachable for {Team}/{Dataset}", teamId, dataSetName);
+                Refused("judge", ex);
                 return new IntentOutcome(IntentStatus.Ok, Result(0, null, false, "failed:unreachable"));
             }
         }
@@ -502,6 +545,45 @@ namespace IndxServer.Services.SearchOrAsk
 
         private static long BudgetDay(DateOnly day) => day.DayNumber - new DateOnly(1970, 1, 1).DayNumber;
 
+        /// <summary>The mode a judgement reports: proactive falls back to inviting once the day's
+        /// proactive answers are spent, so the page stops starting answers without being told why.</summary>
+        public string EffectiveMode(string teamId, string dataSetName, SearchOrAskSettings settings) =>
+            settings.Mode == SearchOrAskSettings.ModeProactive && ProactiveToday(teamId, dataSetName).Answers >= settings.DailyProactiveAnswers
+                ? SearchOrAskSettings.ModeInviting : settings.Mode;
+
+        /// <summary>Answers written without a click today (UTC), for the console.</summary>
+        public int ProactiveAnswersToday(string teamId, string dataSetName) => ProactiveToday(teamId, dataSetName).Answers;
+
+        private (DateOnly Day, int Answers) ProactiveToday(string teamId, string dataSetName)
+        {
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var current = _proactive.GetOrAdd($"{teamId}\0{dataSetName}", _ => (today, ProactiveRecorded(teamId, dataSetName, today)));
+            return current.Day == today ? current : (today, 0);
+        }
+
+        private bool TryTakeProactive(string teamId, string dataSetName, int cap)
+        {
+            var key = $"{teamId}\0{dataSetName}";
+            while (true)
+            {
+                var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                var current = _proactive.GetOrAdd(key, _ => (today, ProactiveRecorded(teamId, dataSetName, today)));
+                var answers = current.Day == today ? current.Answers : 0;
+                if (answers >= cap) return false;
+                if (_proactive.TryUpdate(key, (today, answers + 1), current)) return true;
+            }
+        }
+
+        private int ProactiveRecorded(string teamId, string dataSetName, DateOnly day)
+        {
+            try
+            {
+                var from = new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeMilliseconds();
+                return _statistics is { Enabled: true, Store: { } s } ? (int)s.ProactiveAnswersSince(teamId, dataSetName, from) : 0;
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "Could not read today's proactive answers"); return 0; }
+        }
+
         private int CallsRecorded(string teamId, string dataSetName, DateOnly day)
         {
             try { return _statistics is { Enabled: true, Store: { } s } ? (int)s.BudgetCalls(teamId, dataSetName, BudgetDay(day)) : 0; }
@@ -537,11 +619,16 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>Whether an ask may proceed: the same gates as intent, against the ask limit.
         /// Ask counts against the daily budget too: it is the expensive call.</summary>
-        public IntentOutcome CanAsk(string teamId, string dataSetName, string clientAddress, SearchOrAskSettings? trial = null)
+        /// <c>proactive</c> is an answer the page starts on its own: only in the proactive mode, and
+        /// within the day's <see cref="SearchOrAskSettings.DailyProactiveAnswers"/>.</summary>
+        public IntentOutcome CanAsk(string teamId, string dataSetName, string clientAddress, SearchOrAskSettings? trial = null,
+            bool proactive = false)
         {
             if (!Available) return new IntentOutcome(IntentStatus.Unavailable);
             var settings = trial ?? Settings(teamId, dataSetName);
             if (trial == null && !settings.Enabled) return new IntentOutcome(IntentStatus.Disabled);
+            if (proactive && (settings.Mode != SearchOrAskSettings.ModeProactive || !TryTakeProactive(teamId, dataSetName, settings.DailyProactiveAnswers)))
+                return new IntentOutcome(IntentStatus.BudgetSpent, RetryAfterSeconds: SecondsToUtcMidnight());
             using (var lease = _askLimiter.AttemptAcquire(clientAddress))
                 if (!lease.IsAcquired)
                     return new IntentOutcome(IntentStatus.RateLimited, RetryAfterSeconds: RetryAfter(lease));
@@ -633,6 +720,7 @@ namespace IndxServer.Services.SearchOrAsk
                     {
                         outcome = "failed";
                         _logger.LogWarning("Search or ask catalogue answer failed for {Team}/{Dataset}: {Error}", teamId, dataSetName, ex.Message);
+                        Refused("answer", ex);
                         await send("error", new { code = ex is SearchOrAskModelException { Status: 429 } ? "upstreamBusy" : "failed", message = "The answer could not be written." });
                         return;
                     }
@@ -702,18 +790,21 @@ namespace IndxServer.Services.SearchOrAsk
                         await send("text", new { delta });
                     }
                     outcome = "answered";
+                    Succeeded("answer");
                     await send("done", new { model, askId, latencyMs = Ms() });
                 }
                 catch (SearchOrAskModelException ex)
                 {
                     outcome = "failed";
                     _logger.LogWarning("Search or ask answer failed for {Team}/{Dataset}: {Message}", teamId, dataSetName, ex.Message);
+                    Refused("answer", ex);
                     await send("error", new { code = ex.Status == 429 ? "upstreamBusy" : "failed", message = "The answer could not be written." });
                 }
                 catch (HttpRequestException ex)
                 {
                     outcome = "failed";
                     _logger.LogWarning(ex, "Search or ask answer model unreachable for {Team}/{Dataset}", teamId, dataSetName);
+                    Refused("answer", ex);
                     await send("error", new { code = "failed", message = "The answer could not be written." });
                 }
             }
@@ -727,7 +818,7 @@ namespace IndxServer.Services.SearchOrAsk
                         question, model, string.Join(',', merged), outcome, firstText, Ms(),
                         Sum(usage.Cost, judged?.Cost), judged?[SearchOrAskRecipes.Answerable],
                         Blank(origin.Subject), Blank(origin.Session), origin.Source,
-                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted, FollowUp: history.Count > 0));
+                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted, FollowUp: history.Count > 0, Proactive: origin.Proactive));
                     if (askId != null && outcome != "stopped")
                         CompareWithLastAsk(teamId, dataSetName, settings, askId, question, history.Count > 0, origin);
                 }

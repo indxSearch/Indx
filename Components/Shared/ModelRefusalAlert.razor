@@ -1,0 +1,29 @@
+@using IndxServer.Services.SearchOrAsk
+@inject SearchOrAskService SearchOrAsk
+@* The latest refusal from a model provider (SearchOrAskService.LastRefusal), in the provider's own
+   words and, where the reason is one we know, what to do. A visitor only reads "The answer could
+   not be written"; this is where an owner finds out why (27 Oct 2026). *@
+@if (SearchOrAsk.LastRefusal is { } r)
+{
+    <Alert Variant="destructive" Class="@Class">
+        <Title>@What(r.Call) refused</Title>
+        <Description>
+            <TimeAgo Value="r.At" />, the provider answered: “@r.Reason”
+            @if (r.Advice != null)
+            {
+                <br />@r.Advice
+            }
+        </Description>
+    </Alert>
+}
+
+@code {
+    [Parameter] public string? Class { get; set; }
+
+    private static string What(string call) => call switch
+    {
+        "judge" => "The last judgement was",
+        "filters" => "The last filters were",
+        _ => "The last answer was",
+    };
+}

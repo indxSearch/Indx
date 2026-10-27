@@ -81,6 +81,7 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> AskQuestions = Of<Icons.Question>();
         public static readonly RenderFragment<int> AskNeeds = Of<Icons.Layers>();
         public static readonly RenderFragment<int> AskOffers = Of<Icons.LightBulb>();
+        public static readonly RenderFragment<int> AskProactive = Of<Icons.Spark>();
         public static readonly RenderFragment<int> FuzzyAll = Of<Icons.SearchAsYouType>();
         public static readonly RenderFragment<int> ShowMore = Of<Icons.Plus>();
         /// <summary>Erasing data, as opposed to <see cref="Delete"/>, which removes the dataset.</summary>
