@@ -1,0 +1,100 @@
+@* The console's command palette: Cmd or Ctrl and K anywhere, or the search step in the header
+   (ConsolePaletteButton), which opens it through ConsolePaletteState. Drawn in the layout, outside
+   the header: the header's account controls are positioned with a transform, and a fixed overlay
+   inside them is placed against them, not the window. Nothing of it for a visitor not signed in.
+   Its catalog (ConsoleCommands) is built when it opens, from the user's teams, the active team's
+   datasets and the user's roles, and searched with Indx itself (CommandSearch), so a typo or a
+   part of a word still finds the page. *@
+@using IndxServer.Services
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject ConsolePaletteState Palette
+@inject ActiveTeamState ActiveTeam
+@inject IDatasetEngines Engines
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Navigation
+@inject StatisticsService Stats
+@inject IndxServer.Services.Observr.ObservrSubscription Observr
+@inject IJSRuntime JS
+@implements IDisposable
+
+@if (!_signedIn) { return; }
+<CommandPalette Open="_open" OpenChanged="SetOpen" Query="@_query" QueryChanged="OnQuery" Items="_results" OnChoose="Go"
+                Placeholder="Jump to a dataset, a section or a page" EmptyText="Nothing to jump to yet." AriaLabel="Jump to" />
+
+@code {
+    private readonly CommandSearch _search = new();
+    private bool _open;
+    private string _query = "";
+    private IReadOnlyList<CommandPalette.Item> _results = Array.Empty<CommandPalette.Item>();
+
+    private bool _signedIn;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _signedIn = auth.User.Identity?.IsAuthenticated == true;
+        Palette.Changed += OnPaletteChanged;
+    }
+
+    // The header's step opened it.
+    private void OnPaletteChanged()
+    {
+        if (Palette.IsOpen == _open) return;
+        _ = InvokeAsync(async () => { await SetOpen(Palette.IsOpen); StateHasChanged(); });
+    }
+
+    private async Task SetOpen(bool open)
+    {
+        if (open == _open) return;
+        _open = open;
+        Palette.Set(open);
+        if (open)
+        {
+            await BuildAsync();
+            _query = "";
+            _results = _search.Find("");
+        }
+    }
+
+    private void OnQuery(string text)
+    {
+        _query = text;
+        _results = _search.Find(text);
+    }
+
+    private async Task BuildAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var teamId = ActiveTeam.ActiveTeamId?.ToString();
+        IReadOnlyList<string> datasets;
+        try { datasets = teamId == null ? [] : Engines.GetTeamDataSets(teamId); }
+        catch { datasets = []; }
+        var context = new ConsoleCommands.Context(
+            ActiveTeam.Teams.Select(t => (t.Team.Name, t.Role)).ToList(),
+            ActiveTeam.ActiveTeamName,
+            ActiveTeam.ActiveRole,
+            datasets.OrderBy(d => d, StringComparer.CurrentCultureIgnoreCase).ToList(),
+            auth.User.IsInRole("Admin"),
+            Stats.Enabled,
+            Observr.Visible);
+        _search.Use(ConsoleCommands.Build(context));
+    }
+
+    private async Task Go(CommandPalette.Item item)
+    {
+        _open = false;
+        Palette.Set(false);
+        if (item.Id.StartsWith("http", StringComparison.OrdinalIgnoreCase) || item.Id.StartsWith("/swagger", StringComparison.Ordinal))
+        {
+            try { await JS.InvokeVoidAsync("open", item.Id, "_blank", "noopener"); } catch (JSException) { }
+            return;
+        }
+        Navigation.NavigateTo(item.Id);
+    }
+
+    public void Dispose()
+    {
+        Palette.Changed -= OnPaletteChanged;
+        _search.Dispose();
+    }
+}

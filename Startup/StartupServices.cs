@@ -153,6 +153,7 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrTools>();
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrChat>();
         builder.Services.AddScoped<IndxServer.Services.Observr.AgentPanelState>();
+        builder.Services.AddScoped<IndxServer.Services.ConsolePaletteState>();
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrDigestJob>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.Observr.ObservrDigestJob>());
 

@@ -1,0 +1,9 @@
+@* The header's search step: opens the command palette (ConsolePalette, in the layout) through
+   ConsolePaletteState. Cmd or Ctrl and K does the same anywhere. *@
+@inject IndxServer.Services.ConsolePaletteState Palette
+
+<Button Variant="ghost" Size="micro" IconLeft="_iconSearch" title="Jump to (⌘K)" aria-label="Jump to a dataset or page" @onclick="() => Palette.Set(true)" />
+
+@code {
+    private static readonly RenderFragment<int> _iconSearch = size => @<Indx.Systm.Blazor.Icons.Search Size="size" Color="currentColor" />;
+}

@@ -107,6 +107,19 @@
         Ctx.DatasetListChanged += () => OnDatasetListChanged.InvokeAsync();
         Ctx.Renamed += newName => OnRenamed.InvokeAsync(newName);
         OnContextCreated?.Invoke(Ctx);
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    /// <summary>A jump to another tab of this dataset (the command palette, a link) changes only
+    /// ?tab=, and the page is not created again: open the tab the address now names. SyncAddress's
+    /// own replace lands here too, naming the tab already open, and changes nothing.</summary>
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        if (!Visible || Ctx.EngineState != SystemState.Ready) return;
+        if (IndxServer.Services.TeamRoutes.DatasetFromPath(Nav.ToBaseRelativePath(e.Location)) != Name) return;
+        var tab = RequestedTab() ?? "status";
+        if (tab == Ctx.ActiveTab) return;
+        _ = InvokeAsync(() => { Ctx.ActiveTab = tab; Ctx.NotifyChanged(); StateHasChanged(); });
     }
 
     protected override void OnParametersSet()
@@ -306,6 +319,7 @@
 
     public void Dispose()
     {
+        Nav.LocationChanged -= OnLocationChanged;
         Menu.Clear(this);
         Ctx.Changed -= OnCtxChanged;
         _pollCts?.Cancel();

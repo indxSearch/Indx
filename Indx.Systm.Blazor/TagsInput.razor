@@ -6,6 +6,9 @@
    caller's: a synonym term may hold a comma or a space, so there only ";" and Enter divide.
    Port of the React TagsInput in indx-systm. *@
 @using Indx.Systm.Blazor.Icons
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
 
 <div class="indx-tags-wrapper">
     @if (!string.IsNullOrEmpty(Label))
@@ -26,7 +29,7 @@
                 }
             </span>
         }
-        <input id="@_id" class="indx-tags-input" @ref="_box" @key="_box_.Key" value="@_box_.Rendered"
+        <input id="@_id" class="indx-tags-input" @ref="_box" value="@_box_.Rendered"
                placeholder="@(_values.Count == 0 ? Placeholder : null)" aria-label="@(AriaLabel ?? Label)" disabled="@Disabled"
                @oninput="OnInput" @onkeydown="OnKeyDown" @onblur="OnBlur" />
     </div>
@@ -54,7 +57,7 @@
     private IReadOnlyList<string>? _given;
     private readonly LiveInputState _box_ = new("");
     private ElementReference _box;
-    private bool _refocus;
+    private IJSObjectReference? _module;
 
     protected override void OnParametersSet()
     {
@@ -69,7 +72,7 @@
         var parts = text.Split(Separators.ToCharArray());
         bool added = false;
         foreach (var part in parts[..^1]) added |= Add(part);
-        SetBox(parts[^1].TrimStart());
+        await SetBox(parts[^1].TrimStart());
         if (added) await Changed();
     }
 
@@ -78,7 +81,7 @@
         var text = _box_.Text ?? "";
         if (e.Key == "Enter" && text.Trim().Length > 0)
         {
-            SetBox("");
+            await SetBox("");
             if (Add(text)) await Changed();
         }
         else if (e.Key == "Backspace" && text.Length == 0 && _values.Count > 0)
@@ -86,7 +89,7 @@
             // The last chip back into the box, to be mended rather than retyped.
             var last = _values[^1];
             _values.RemoveAt(_values.Count - 1);
-            SetBox(last);
+            await SetBox(last);
             await Changed();
         }
     }
@@ -95,7 +98,7 @@
     {
         var text = _box_.Text ?? "";
         if (text.Trim().Length == 0) return;
-        _box_.Set("");
+        await SetBox("");
         if (Add(text)) await Changed();
     }
 
@@ -115,10 +118,18 @@
         await FocusBox();
     }
 
-    // The box shows new text: a fresh element, which loses the focus, so it is given back after the render.
-    private void SetBox(string text)
+    // New text in the box, put there by the browser half rather than by rendering a new element,
+    // which would lose the focus. The rendered value never follows (see LiveInputState).
+    private async Task SetBox(string text)
     {
-        if (_box_.Set(text)) _refocus = true;
+        _box_.Typed(text);
+        try
+        {
+            _module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Indx.Systm.Blazor/TagsInput.razor.js");
+            await _module.InvokeVoidAsync("setText", _box, text);
+        }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
     }
 
     private Task Changed()
@@ -133,10 +144,11 @@
         try { await _box.FocusAsync(); } catch (InvalidOperationException) { } catch (Microsoft.JSInterop.JSException) { }
     }
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    public async ValueTask DisposeAsync()
     {
-        if (!_refocus) return;
-        _refocus = false;
-        await FocusBox();
+        if (_module is null) return;
+        try { await _module.DisposeAsync(); }
+        catch (JSDisconnectedException) { }
+        catch (Exception) { }
     }
 }

@@ -1,0 +1,126 @@
+/* Over the page, a fifth of the way down, as a search sheet: the overlay dims, the panel on the
+   raised tone with a hairline. No shadow and no motion: it is simply there. */
+.indx-palette-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 18vh 16px 16px;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+.indx-palette {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 560px;
+    max-height: 60vh;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    background: var(--lv1);
+    overflow: hidden;
+}
+
+.indx-palette-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 12px;
+    height: 44px;
+    border-bottom: 1px solid var(--lv2);
+    flex: none;
+}
+
+.indx-palette-icon {
+    display: inline-flex;
+    color: var(--lv5);
+}
+
+.indx-palette-input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: none;
+    background: transparent;
+    color: var(--lv8);
+    font: var(--text-sm);
+    outline: none;
+}
+
+.indx-palette-input::placeholder {
+    color: var(--lv5);
+}
+
+/* A key cap: the code font on the surface tone. */
+.indx-palette-kbd {
+    padding: 1px 5px;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    color: var(--lv5);
+    font: var(--text-2xs);
+    font-family: var(--font-mono);
+}
+
+.indx-palette-list {
+    overflow-y: auto;
+    padding: 4px;
+}
+
+.indx-palette-group {
+    padding: 8px 8px 4px;
+    color: var(--lv5);
+    font: var(--text-2xs);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.indx-palette-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    height: 32px;
+    padding: 0 8px;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--lv7);
+    font: var(--text-sm);
+    text-align: left;
+    cursor: pointer;
+}
+
+/* The highlight, moved by the keys and the pointer alike. */
+.indx-palette-item[data-active] {
+    background: var(--lv2);
+    color: var(--lv8);
+}
+
+.indx-palette-item-icon {
+    display: inline-flex;
+    color: var(--lv5);
+    flex: none;
+}
+
+.indx-palette-item-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.indx-palette-item-hint {
+    flex: none;
+    color: var(--lv5);
+    font: var(--text-xs);
+}
+
+.indx-palette-empty {
+    margin: 0;
+    padding: 16px 8px;
+    color: var(--lv5);
+    font: var(--text-sm);
+}
