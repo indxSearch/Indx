@@ -374,6 +374,24 @@ a.btn-danger:hover {
     flex: none;
 }
 
+/* Under 1280px the page cannot share the window: pushed in, a 220px column and the panel's
+   340px left the content 540px at 1100 and 240 at 800, the header's trail under its own Jump to
+   button, and every breakpoint (which reads the window, not the page) a size behind. So the panel
+   lies over the page at the right instead, the window's height, set off by its line; the page
+   keeps its own width and layout under it. A phone goes further (768px, below). */
+@media (max-width: 1279px) {
+    .shell-agent--open {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        height: 100vh;
+        height: 100dvh;
+        z-index: 70;
+        background: var(--lv0);
+    }
+}
+
 /* The side column, where a page has sections: the systm Sidebar, as wide as it is (the column's
    width, or its rail of icons) and the window's height under the header, sticking as the page
    scrolls. It does not scroll itself: the Sidebar's own body does, so the rail's tooltips can
