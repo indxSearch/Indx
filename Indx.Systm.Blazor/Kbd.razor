@@ -1,0 +1,13 @@
+@* A key, as the keyboard has it: "esc", "⌘K", "⇧↵". After shadcn's Kbd: a filled cap with no
+   outline, the page's font small and medium, the muted surface and text. For a shortcut beside
+   the thing it opens and the hints under a field. Port of the React Kbd in indx-systm. *@
+<kbd class="indx-kbd @Class" @attributes="AdditionalAttributes">@if (Keys != null) { @Keys } else { @ChildContent }</kbd>
+
+@code {
+    /// <summary>The keys as text, "⌘K" or "esc".</summary>
+    [Parameter] public string? Keys { get; set; }
+    /// <summary>Free content in place of Keys, such as a 12px pixl icon.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+}

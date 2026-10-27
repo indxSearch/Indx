@@ -10,7 +10,7 @@
 <span class="nav-jump">
     <Button Variant="secondary" Size="micro" IconLeft="_iconSearch" title="@($"Jump to a dataset or page ({_shortcut})")" aria-label="Jump to a dataset or page" aria-keyshortcuts="@(_mac ? "Meta+K" : "Control+K")" @onclick="() => Palette.Set(true)">
         <span class="nav-jump-label">Jump to…</span>
-        <kbd class="nav-jump-kbd">@_shortcut</kbd>
+        <Kbd Class="nav-jump-kbd" Keys="@_shortcut" />
     </Button>
 </span>
 

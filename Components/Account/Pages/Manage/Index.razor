@@ -39,7 +39,8 @@
                     <strong>Email confirmed:</strong>
                     @if (user.EmailConfirmed)
                     {
-                        <span style="color: var(--CConfirmed); margin-left: 10px;">✓ Confirmed</span>
+                        @* A good state in the plain ink with an icon, never green text. *@
+                        <span style="display: inline-flex; align-items: center; gap: 6px; color: var(--lv7); margin-left: 10px;"><Indx.Systm.Blazor.Icons.Check Size="14" Color="currentColor" />Confirmed</span>
                     }
                     else
                     {

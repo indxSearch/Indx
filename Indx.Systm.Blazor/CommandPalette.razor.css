@@ -53,15 +53,6 @@
     color: var(--lv5);
 }
 
-/* A key cap: the code font on the surface tone. */
-.indx-palette-kbd {
-    padding: 1px 5px;
-    border: 1px solid var(--lv3);
-    border-radius: var(--radius);
-    color: var(--lv5);
-    font: var(--text-2xs);
-    font-family: var(--font-mono);
-}
 
 .indx-palette-list {
     overflow-y: auto;

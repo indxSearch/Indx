@@ -17,7 +17,7 @@
                 <input class="indx-palette-input" type="text" role="combobox" aria-expanded="true" aria-controls="@_listId"
                        aria-autocomplete="list" autocomplete="off" spellcheck="false" placeholder="@Placeholder"
                        @key="_box.Key" value="@_box.Rendered" @oninput="OnInput" />
-                <kbd class="indx-palette-kbd">esc</kbd>
+                <Kbd Keys="esc" />
             </div>
             <div class="indx-palette-list" id="@_listId" role="listbox" aria-label="@AriaLabel">
                 @if (Items.Count == 0)
