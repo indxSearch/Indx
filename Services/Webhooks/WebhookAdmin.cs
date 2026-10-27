@@ -3,44 +3,39 @@ namespace IndxServer.Services.Webhooks
     /// <summary>What a team admin does to a dataset's webhooks, for the API (WebhooksController) and
     /// the console's Webhooks tab alike, so the two cannot drift. Callers check the role and that the
     /// webhook belongs to the dataset; this checks what was asked.</summary>
-    public sealed class WebhookAdmin(WebhookStore store, WebhookApplier applier, WebhookWorker worker)
+    public sealed class WebhookAdmin(WebhookStore store, WebhookApplier applier, WebhookWorker worker, WebhookSourceRegistry sources)
     {
-        /// <summary>A webhook to make. <paramref name="Source"/> is "indx" (default) or "sanity", the
-        /// latter with <paramref name="Sanity"/>; null fields take their defaults.</summary>
+        /// <summary>A webhook to make. <paramref name="Source"/> is a source's id ("indx" by default),
+        /// <paramref name="Settings"/> what that source takes; null fields take their defaults.</summary>
         public sealed record NewWebhook(string? Name, string? IdField = null, string? VersionField = null, double? BrakeShare = null,
-            string? Source = null, SanitySource? Sanity = null);
+            string? Source = null, System.Text.Json.Nodes.JsonObject? Settings = null);
 
-        /// <summary>Makes the webhook, or says why not. A Sanity webhook fetches the full set at once.</summary>
+        /// <summary>Makes the webhook, or says why not. A source Indx fetches from runs its first full sync at once.</summary>
         public (Webhook? Hook, string? Problem) Create(string teamId, string datasetName, NewWebhook request)
         {
             var name = request.Name?.Trim();
-            if (string.IsNullOrEmpty(name) || name.Length > 80) return (null, "Send { name } of 1 to 80 characters.");
-            var source = string.IsNullOrWhiteSpace(request.Source) ? WebhookSources.Indx : request.Source.Trim().ToLowerInvariant();
-            if (!WebhookSources.IsKnown(source)) return (null, "source is \"indx\" or \"sanity\".");
-            string? sourceConfig = null;
-            if (source == WebhookSources.Sanity)
-            {
-                if (request.Sanity is not { } sanity)
-                    return (null, "A Sanity webhook needs { sanity: { projectId, dataset, query } }.");
-                sanity = sanity with { ApiVersion = string.IsNullOrWhiteSpace(sanity.ApiVersion) ? SanitySource.DefaultApiVersion : sanity.ApiVersion.Trim(),
-                                       Token = string.IsNullOrWhiteSpace(sanity.Token) ? null : sanity.Token.Trim() };
-                if (sanity.Problem() is { } problem) return (null, problem);
-                sourceConfig = sanity.Serialize();
-            }
-            var idField = string.IsNullOrWhiteSpace(request.IdField) ? (source == WebhookSources.Sanity ? "_id" : "id") : request.IdField.Trim();
+            if (string.IsNullOrEmpty(name) || name.Length > 80) return (null, "Give the webhook a name of 1 to 80 characters.");
+            var source = string.IsNullOrWhiteSpace(request.Source) ? sources.Get(WebhookSources.Indx) : sources.Get(request.Source);
+            if (source == null) return (null, $"source is one of {sources.Known}.");
+            var (config, problem) = source.Configure(request.Settings);
+            if (problem != null) return (null, problem);
+            var idField = string.IsNullOrWhiteSpace(request.IdField) ? source.DefaultIdField : request.IdField.Trim();
             var share = request.BrakeShare ?? 0.1;
-            if (share is <= 0 or > 1) return (null, "brakeShare is a share of the dataset, above 0 and at most 1.");
+            if (share is <= 0 or > 1) return (null, "The brake is a share of the dataset, above 0 and at most 1 (a percent above 0 and at most 100).");
             var hook = store.Create(teamId, datasetName, name, idField, string.IsNullOrWhiteSpace(request.VersionField) ? null : request.VersionField.Trim(),
-                share, source, sourceConfig);
-            if (sourceConfig != null) RequestSync(hook);
+                share, source.Id, config?.ToJsonString(), source.NewSecret());
+            if (source.Pulls) RequestSync(hook);
             return (hook, null);
         }
+
+        /// <summary>A new secret in the source's form; the old one stops working at once. Null when the webhook is gone.</summary>
+        public string? RotateSecret(Webhook hook) => store.RotateSecret(hook.Id, sources.For(hook).NewSecret());
 
         /// <summary>Queues a fetch of the full set from the webhook's source, unless one already waits.
         /// False for a webhook whose sender sends the full set itself.</summary>
         public bool RequestSync(Webhook hook)
         {
-            if (hook.SourceConfig == null) return false;
+            if (!sources.For(hook).Pulls || hook.SourceConfig == null) return false;
             if (!store.SyncWaiting(hook.Id)) store.Enqueue(hook.Id, "", WebhookKinds.Sync);
             worker.Wake();
             return true;

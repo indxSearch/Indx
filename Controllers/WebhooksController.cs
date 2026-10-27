@@ -14,7 +14,7 @@ namespace IndxServer.Controllers
     /// something changes, and the documents follow without code of the customer's own. Team admins
     /// manage them; the call itself is signed with the webhook's secret instead of a key.
     /// </summary>
-    public class WebhooksController(TeamContextResolver resolver, WebhookStore store, WebhookAdmin admin)
+    public class WebhooksController(TeamContextResolver resolver, WebhookStore store, WebhookAdmin admin, WebhookSourceRegistry sources)
         : DatasetApiController(resolver)
     {
         private const string Route = DataSetRoute + "/webhooks";
@@ -25,26 +25,39 @@ namespace IndxServer.Controllers
         /// an event older than what is indexed is ignored. Optional.</param>
         /// <param name="BrakeShare">The share of the dataset that deletes and destructive updates may
         /// reach within an hour before a batch is held for an admin. Default 0.1.</param>
-        /// <param name="Source">"indx" (default): the sender signs the Indx way. "sanity": a Sanity GROQ
-        /// webhook calls it, and Indx fetches the full set from Sanity with <paramref name="Sanity"/>.</param>
-        /// <param name="Sanity">The Sanity project, dataset and GROQ query, for a "sanity" webhook.</param>
+        /// <param name="Source">Who calls it: "indx" (default), the sender signs the Indx way; "sanity" or
+        /// "contentful", that system's own webhooks call it and Indx fetches the full set from it.</param>
+        /// <param name="Settings">What the source takes: for "sanity" { projectId, dataset, query, token?,
+        /// syncEveryHours? }, for "contentful" { spaceId, deliveryToken, environment?, contentType?, locale?,
+        /// region?, syncEveryHours? }. GET …/webhooks/sources lists every source's settings.</param>
         public sealed record CreateWebhookRequest(string? Name, string? IdField = null, string? VersionField = null, double? BrakeShare = null,
-            string? Source = null, SanitySource? Sanity = null);
+            string? Source = null, System.Text.Json.Nodes.JsonObject? Settings = null);
 
-        /// <summary>A Sanity webhook's settings as listed: the token is never shown, only whether there is one.</summary>
-        public sealed record SanityInfo(string ProjectId, string Dataset, string Query, string ApiVersion, int? SyncEveryHours, bool HasToken);
-
-        /// <summary>A webhook as listed: everything but its secret, which is shown once.</summary>
+        /// <summary>A webhook as listed: everything but its secret, which is shown once. <see cref="Settings"/>
+        /// leaves out the secret ones (a token); <see cref="SecretSettings"/> names those that are set.</summary>
         public sealed record WebhookInfo(string Id, string Name, string Url, string SyncUrl, string Source, string IdField, string? VersionField,
-            double BrakeShare, DateTime CreatedUtc, DateTime? LastEventUtc, DateTime? LastSyncUtc, int Waiting, int Held, SanityInfo? Sanity);
+            double BrakeShare, DateTime CreatedUtc, DateTime? LastEventUtc, DateTime? LastSyncUtc, int Waiting, int Held,
+            System.Text.Json.Nodes.JsonObject? Settings, string[] SecretSettings);
+
+        /// <summary>A source as offered: its id, what it takes and whether Indx fetches the full set from it.</summary>
+        public sealed record SourceInfo(string Id, string Label, string Description, string DefaultIdField, bool Pulls, IReadOnlyList<SourceSetting> Settings);
+
+        /// <summary>The sources a webhook can have, with their settings.</summary>
+        [HttpGet(DataSetRoute + "/webhooks/sources")]
+        public ActionResult<SourceInfo[]> Sources(string teamName, string dataSetName)
+        {
+            var ctx = ResolveTeam(teamName, out var error, write: true, admin: true);
+            if (ctx == null) return error!;
+            return Ok(sources.All.Select(s => new SourceInfo(s.Id, s.Label, s.Description, s.DefaultIdField, s.Pulls, s.Settings)).ToArray());
+        }
 
         public sealed record CreatedWebhook(WebhookInfo Webhook, string Secret);
 
         /// <summary>
         /// Makes a webhook for the dataset. The answer carries its address and its secret, which is
-        /// shown only here: the sender signs each call with it (X-Indx-Signature, or Sanity's own
-        /// header). A dataset without documents yet is filled by the first full sync, which also
-        /// gives it a key field; a Sanity webhook runs that sync at once.
+        /// shown only here: the sender authenticates each call with it, the way its source does. A
+        /// dataset without documents yet is filled by the first full sync, which also gives it a key
+        /// field; a webhook whose source Indx fetches from runs that sync at once.
         /// </summary>
         [HttpPost(Route)]
         public ActionResult<CreatedWebhook> Create(string teamName, string dataSetName, [FromBody] CreateWebhookRequest request)
@@ -56,7 +69,7 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (request == null) return ApiProblems.InvalidArgument("Send { name } of 1 to 80 characters.");
             var (hook, problem) = admin.Create(ctx.OwnerKey, dataSetName, new WebhookAdmin.NewWebhook(request.Name, request.IdField,
-                request.VersionField, request.BrakeShare, request.Source, request.Sanity));
+                request.VersionField, request.BrakeShare, request.Source, request.Settings));
             if (hook == null) return ApiProblems.InvalidArgument(problem!);
             return Ok(new CreatedWebhook(Info(hook), hook.Secret));
         }
@@ -87,7 +100,7 @@ namespace IndxServer.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true, admin: true);
             if (ctx == null) return error!;
             if (Owned(ctx, dataSetName, webhookId) is null) return WebhookNotFound(webhookId);
-            var secret = store.RotateSecret(webhookId)!;
+            var secret = admin.RotateSecret(store.Get(webhookId)!)!;
             return Ok(new CreatedWebhook(Info(store.Get(webhookId)!), secret));
         }
 
@@ -131,7 +144,7 @@ namespace IndxServer.Controllers
 
         /// <summary>
         /// Fetches the full set from the webhook's source now and replaces the dataset's documents
-        /// with it (a Sanity webhook). A webhook whose sender pushes its own sync is told where.
+        /// with it (a Sanity or Contentful webhook). A webhook whose sender pushes its own sync is told where.
         /// </summary>
         [HttpPost(Route + "/{webhookId}/sync")]
         public IActionResult Sync(string teamName, string dataSetName, string webhookId)
@@ -164,17 +177,21 @@ namespace IndxServer.Controllers
 
         private string HookUrl(Webhook hook) => $"{Request.Scheme}://{Request.Host}/hooks/{hook.Id}";
 
-        private WebhookInfo Info(Webhook hook) => new(hook.Id, hook.Name, HookUrl(hook), HookUrl(hook) + "/sync", hook.Source,
-            hook.IdField, hook.VersionField, hook.BrakeShare, hook.CreatedUtc, hook.LastEventUtc, hook.LastSyncUtc,
-            store.WaitingCount(hook.Id), store.Held(hook.Id).Count,
-            SanitySource.Parse(hook.SourceConfig) is { } s
-                ? new SanityInfo(s.ProjectId, s.Dataset, s.Query, s.ApiVersion, s.SyncEveryHours, !string.IsNullOrEmpty(s.Token)) : null);
+        private WebhookInfo Info(Webhook hook)
+        {
+            var source = sources.For(hook);
+            var config = SourceSettings.Parse(hook.SourceConfig);
+            return new(hook.Id, hook.Name, HookUrl(hook), HookUrl(hook) + "/sync", hook.Source,
+                hook.IdField, hook.VersionField, hook.BrakeShare, hook.CreatedUtc, hook.LastEventUtc, hook.LastSyncUtc,
+                store.WaitingCount(hook.Id), store.Held(hook.Id).Count,
+                SourceSettings.Public(source, config), SourceSettings.SecretsSet(source, config));
+        }
     }
 
     /// <summary>
     /// The address a sender calls: <c>POST /hooks/{webhookId}</c> with its events, and
     /// <c>POST /hooks/{webhookId}/sync</c> with the full set. No key: the signature, made with the
-    /// webhook's secret (<c>X-Indx-Signature</c>, or Sanity's <c>sanity-webhook-signature</c>), is
+    /// webhook's secret in the source's own way (<c>X-Indx-Signature</c>, Sanity's signature, Contentful's secret header), is
     /// the authentication, and a call older than five minutes is refused. Accepted calls are stored
     /// before the answer (202) and applied in the order they came, so a sender never waits on the
     /// index and a restart loses nothing it was told was accepted.
@@ -182,7 +199,7 @@ namespace IndxServer.Controllers
     [ApiController]
     [AllowAnonymous]
     [Route("hooks")]
-    public sealed class WebhookReceiverController(WebhookStore store, WebhookWorker worker) : ControllerBase
+    public sealed class WebhookReceiverController(WebhookStore store, WebhookWorker worker, WebhookSourceRegistry sources) : ControllerBase
     {
         public const int MaxBodyBytes = 5 * 1024 * 1024;
         public const int MaxSyncBytes = 256 * 1024 * 1024;
@@ -200,23 +217,17 @@ namespace IndxServer.Controllers
                 return ApiProblems.Problem(StatusCodes.Status404NotFound, "webhookNotFound", "No such webhook", "No webhook has this address.");
             using var reader = new StreamReader(Request.Body);
             var body = await reader.ReadToEndAsync(HttpContext.RequestAborted);
-            if (Refuse(hook, body) is { } refused) return refused;
-            if (Request.Headers.ContainsKey(SanitySignature.Header))
+            var source = sources.For(hook);
+            var call = Call(body);
+            if (Refuse(hook, source.CheckCall(call, hook.Secret, DateTimeOffset.UtcNow)) is { } refused) return refused;
+            string? events;
+            try { events = source.ToEvents(call, hook); }
+            catch (Exception ex) when (ex is FormatException or System.Text.Json.JsonException)
             {
-                // A Sanity delivery: the operation and the document id come in headers.
-                string? normalized;
-                try
-                {
-                    normalized = SanitySignature.ToEvent(body, Request.Headers[SanitySignature.OperationHeader],
-                        Request.Headers[SanitySignature.DocumentIdHeader], hook.IdField);
-                }
-                catch (Exception ex) when (ex is FormatException or System.Text.Json.JsonException)
-                {
-                    return ApiProblems.InvalidArgument(ex.Message);
-                }
-                if (normalized == null) return Accepted(); // a draft: nothing to index
-                body = normalized;
+                return ApiProblems.InvalidArgument(ex.Message);
             }
+            if (events == null) return Accepted(); // a draft, an asset: nothing to index
+            body = events;
             store.Enqueue(hook.Id, body);
             worker.Wake();
             return Accepted();
@@ -232,20 +243,22 @@ namespace IndxServer.Controllers
                 return ApiProblems.Problem(StatusCodes.Status404NotFound, "webhookNotFound", "No such webhook", "No webhook has this address.");
             using var reader = new StreamReader(Request.Body);
             var body = await reader.ReadToEndAsync(HttpContext.RequestAborted);
-            if (Refuse(hook, body) is { } refused) return refused;
+            // The full set pushed is the Indx scheme's, whatever the webhook's source.
+            if (Refuse(hook, WebhookSignature.Check(hook.Secret, Request.Headers[WebhookSignature.Header], body, DateTimeOffset.UtcNow)) is { } refused)
+                return refused;
             if (string.IsNullOrWhiteSpace(body)) return ApiProblems.InvalidArgument("A sync carries the documents.");
             store.Enqueue(hook.Id, body, WebhookKinds.Sync);
             worker.Wake();
             return Accepted();
         }
 
+        /// <summary>The call as a source reads it: header names lowercase, the path as sent.</summary>
+        private SourceCall Call(string body) => new(Request.Method, Request.Path.ToUriComponent() + Request.QueryString.ToUriComponent(),
+            Request.Headers.ToDictionary(h => h.Key.ToLowerInvariant(), h => h.Value.ToString(), StringComparer.Ordinal), body);
+
         /// <summary>A bad signature, or too many calls; null when the call may go on.</summary>
-        private ObjectResult? Refuse(Webhook hook, string body)
+        private ObjectResult? Refuse(Webhook hook, string? problem)
         {
-            var now = DateTimeOffset.UtcNow;
-            var problem = Request.Headers.ContainsKey(SanitySignature.Header)
-                ? SanitySignature.Check(hook.Secret, Request.Headers[SanitySignature.Header], body, now)
-                : WebhookSignature.Check(hook.Secret, Request.Headers[WebhookSignature.Header], body, now);
             if (problem != null)
                 return ApiProblems.Problem(StatusCodes.Status401Unauthorized, "badSignature", "The signature does not hold", problem);
             if (!Allow(hook.Id))

@@ -21,7 +21,19 @@ namespace IndxServer.Services.Webhooks
         /// <summary>The first API version whose default perspective is "published": no drafts.</summary>
         public const string DefaultApiVersion = "v2025-02-19";
 
-        private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+        private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+        {
+            NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowReadingFromString,
+        };
+
+        public static SanitySource? From(JsonObject? config)
+        {
+            if (config == null) return null;
+            try { return config.Deserialize<SanitySource>(Json); }
+            catch (JsonException) { return null; }
+        }
+
+        public JsonObject ToJson() => (JsonObject)JsonSerializer.SerializeToNode(this, Json)!;
 
         public string Serialize() => JsonSerializer.Serialize(this, Json);
 
@@ -37,11 +49,11 @@ namespace IndxServer.Services.Webhooks
         /// steer the request to another server.</summary>
         public string? Problem()
         {
-            if (!ProjectIdShape().IsMatch(ProjectId ?? "")) return "sanity.projectId is the project's id: lowercase letters and digits.";
-            if (!DatasetShape().IsMatch(Dataset ?? "")) return "sanity.dataset is the dataset's name: lowercase letters, digits, - and _.";
-            if (string.IsNullOrWhiteSpace(Query) || Query.Length > 10_000) return "sanity.query is a GROQ query of at most 10,000 characters, such as *[_type == \"product\"]{_id, title, price}.";
-            if (!ApiVersionShape().IsMatch(ApiVersion ?? "")) return "sanity.apiVersion reads like v2025-02-19.";
-            if (SyncEveryHours is < 1 or > 24 * 7) return "sanity.syncEveryHours is between 1 and 168, or null for never.";
+            if (!ProjectIdShape().IsMatch(ProjectId ?? "")) return "The Sanity project id takes lowercase letters and digits only.";
+            if (!DatasetShape().IsMatch(Dataset ?? "")) return "The Sanity dataset takes lowercase letters, digits, - and _ only.";
+            if (string.IsNullOrWhiteSpace(Query) || Query.Length > 10_000) return "The GROQ query is needed, at most 10,000 characters, such as *[_type == \"product\"]{_id, title, price}.";
+            if (!ApiVersionShape().IsMatch(ApiVersion ?? "")) return "The API version reads like v2025-02-19.";
+            if (SyncEveryHours is < 1 or > 24 * 7) return "Fetch the full set every: 1 to 168 hours, or empty for never.";
             return null;
         }
 
@@ -147,6 +159,75 @@ namespace IndxServer.Services.Webhooks
                 JsonObject o => new JsonArray(o.DeepClone()).ToJsonString(),
                 _ => throw new InvalidOperationException("The query gave no documents: it should select a list, such as *[_type == \"product\"]{...}."),
             };
+        }
+    }
+
+    /// <summary>
+    /// Sanity as a source: its GROQ-powered webhooks call the address signed their own way, and Indx
+    /// fetches the full set through the query API. No code on the customer's side.
+    /// </summary>
+    public sealed class SanityWebhookSource(SanityClient client) : IWebhookSource
+    {
+        public string Id => WebhookSources.Sanity;
+        public string Label => "Sanity";
+        public string Description => "A Sanity webhook calls it, and Indx fetches the full set from Sanity itself. No code needed.";
+        public string DefaultIdField => "_id";
+        public bool Pulls => true;
+
+        public IReadOnlyList<SourceSetting> Settings { get; } =
+        [
+            new("projectId", "Sanity project id", Placeholder: "abc123de", Required: true),
+            new("dataset", "Sanity dataset", Placeholder: "production", Required: true),
+            new("query", "GROQ query", Placeholder: "*[_type == \"product\"]{_id, title, price}", Required: true, Multiline: true,
+                Hint: "Picks and shapes the documents. Use the same filter and projection in Sanity's webhook."),
+            new("token", "Read token", Secret: true, Hint: "Only for a private dataset. Never shown again."),
+            SourceSettings.SyncEveryHours,
+        ];
+
+        public (JsonObject? Config, string? Problem) Configure(JsonObject? settings)
+        {
+            if (settings == null) return (null, "A Sanity webhook needs settings: { projectId, dataset, query }.");
+            var (hours, hoursProblem) = SourceSettings.ReadHours(settings);
+            if (hoursProblem != null) return (null, hoursProblem);
+            var source = new SanitySource(SourceSettings.Text(settings, "projectId") ?? "", SourceSettings.Text(settings, "dataset") ?? "",
+                SourceSettings.Text(settings, "query") ?? "", SourceSettings.Text(settings, "token"),
+                SourceSettings.Text(settings, "apiVersion") ?? SanitySource.DefaultApiVersion, hours);
+            return source.Problem() is { } problem ? (null, problem) : (source.ToJson(), null);
+        }
+
+        public string NewSecret() => WebhookStore.NewSecret();
+
+        public string? CheckCall(SourceCall call, string secret, DateTimeOffset now) =>
+            SanitySignature.Check(secret, call.Header(SanitySignature.Header), call.Body, now);
+
+        public string? ToEvents(SourceCall call, Webhook hook) =>
+            SanitySignature.ToEvent(call.Body, call.Header(SanitySignature.OperationHeader), call.Header(SanitySignature.DocumentIdHeader), hook.IdField);
+
+        public bool LeavesOut(string id) => SanitySource.IsUnpublished(id);
+
+        public Task<string> FetchAllAsync(JsonObject config, CancellationToken ct = default) =>
+            client.FetchAllAsync(SanitySource.From(config) ?? throw new InvalidOperationException("The Sanity settings are unreadable."), ct);
+
+        public SetupGuide Setup(JsonObject? config)
+        {
+            var (filter, projection) = SplitQuery(SanitySource.From(config)?.Query ?? "");
+            return new("In Sanity, under API and Webhooks, add a webhook with these settings. Indx is fetching the full set now.",
+            [
+                new("URL", "the address above"),
+                new("Trigger on", "Create, Update, Delete"),
+                new("Filter", filter ?? "the filter from your query", Code: filter != null),
+                new("Projection", projection ?? "the projection from your query", Code: projection != null),
+                new("HTTP method", "POST"),
+                new("Secret", "the secret above"),
+            ]);
+        }
+
+        /// <summary>A query of the usual shape, <c>*[filter]{projection}</c>, split into the two
+        /// settings Sanity's webhook form asks for; nulls when it has another shape.</summary>
+        public static (string? Filter, string? Projection) SplitQuery(string query)
+        {
+            var m = Regex.Match(query.Trim(), @"^\*\s*\[(?<f>.*)\]\s*(?<p>\{.*\})$", RegexOptions.Singleline);
+            return m.Success ? (m.Groups["f"].Value.Trim(), m.Groups["p"].Value.Trim()) : (null, null);
         }
     }
 }

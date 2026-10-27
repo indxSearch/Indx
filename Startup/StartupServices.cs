@@ -137,14 +137,9 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskSetupProvider>();
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.ISearchOrAskModels, IndxServer.Services.SearchOrAsk.SearchOrAskModelClients>();
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskModelLists>();
-        // Incoming webhooks: the store (tables in indx.db), the applier, and the queue's worker,
-        // one instance so the receiving route can wake it.
-        builder.Services.AddSingleton<IndxServer.Services.Webhooks.WebhookStore>();
-        builder.Services.AddSingleton<IndxServer.Services.Webhooks.WebhookApplier>();
-        builder.Services.AddHttpClient(IndxServer.Services.Webhooks.SanityClient.HttpClientName, c => c.Timeout = TimeSpan.FromMinutes(5));
-        builder.Services.AddSingleton<IndxServer.Services.Webhooks.SanityClient>();
-        builder.Services.AddSingleton<IndxServer.Services.Webhooks.WebhookWorker>();
-        builder.Services.AddSingleton<IndxServer.Services.Webhooks.WebhookAdmin>();
+        // Incoming webhooks: the store (tables in indx.db), the sources, the applier, and the queue's
+        // worker, one instance so the receiving route can wake it.
+        IndxServer.Services.Webhooks.WebhookServices.AddIndxWebhooks(builder.Services);
         builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.Webhooks.WebhookWorker>());
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskService>();
 

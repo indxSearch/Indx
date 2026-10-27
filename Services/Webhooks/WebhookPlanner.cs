@@ -155,11 +155,12 @@ namespace IndxServer.Services.Webhooks
         /// <summary>
         /// Plans a full sync: every document the source holds, as <c>[...]</c>, <c>{ "documents": [...] }</c>
         /// or Sanity's <c>{ "result": [...] }</c>. Documents get their numbers as events do; a document
-        /// refused (no id, text in a number field) is left out of the set, and so are drafts. When an
+        /// refused (no id, text in a number field) is left out of the set, and so is what the source
+        /// leaves out (<paramref name="leavesOut"/>: Sanity's drafts). When an
         /// id comes twice the last one counts.
         /// </summary>
         public static WebhookSyncPlan PlanSync(string body, Webhook hook, IWebhookDataset dataset,
-            Func<IEnumerable<string>, Dictionary<string, long>> registry, Func<long, bool> keyTaken)
+            Func<IEnumerable<string>, Dictionary<string, long>> registry, Func<long, bool> keyTaken, Func<string, bool>? leavesOut = null)
         {
             var plan = new WebhookSyncPlan { KeyField = string.IsNullOrEmpty(dataset.KeyField) ? DefaultKeyField : dataset.KeyField };
             JsonArray list;
@@ -181,7 +182,7 @@ namespace IndxServer.Services.Webhooks
             {
                 if (item is not JsonObject o) { plan.Error = "Every document in a sync must be a JSON object."; return plan; }
                 if (IdOf(o, hook.IdField, out var problem) is not { } id) { plan.Refusals.Add(problem!); continue; }
-                if (hook.Source == WebhookSources.Sanity && SanitySource.IsUnpublished(id)) { plan.Skipped++; continue; }
+                if (leavesOut?.Invoke(id) == true) { plan.Skipped++; continue; }
                 docs.Add((id, o));
             }
 

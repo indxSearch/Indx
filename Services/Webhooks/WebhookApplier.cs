@@ -17,7 +17,7 @@ namespace IndxServer.Services.Webhooks
     /// call is applied to the live engine, as the single-document routes do; a large one on a shadow,
     /// as the bulk routes do, so a search is never held up by it.
     /// </summary>
-    public sealed class WebhookApplier(WebhookStore store, StatisticsService statistics, SanityClient sanity, IServiceProvider services,
+    public sealed class WebhookApplier(WebhookStore store, StatisticsService statistics, WebhookSourceRegistry sources, IServiceProvider services,
         ILogger<WebhookApplier> logger)
     {
         /// <summary>Calls with more changes than this run on a shadow.</summary>
@@ -110,18 +110,19 @@ namespace IndxServer.Services.Webhooks
             }
             if (engine.Status.SystemState is SystemState.Loading or SystemState.Indexing) return WebhookOutcome.Retry;
 
+            var source = sources.For(hook);
             if (string.IsNullOrEmpty(body))
             {
-                if (SanitySource.Parse(hook.SourceConfig) is not { } source)
+                if (!source.Pulls || SourceSettings.Parse(hook.SourceConfig) is not { } config)
                 {
                     LogSync(hook, receivedUtc, 0, 0, "refused", "An empty sync, and no source to fetch the set from.");
                     return WebhookOutcome.Refused;
                 }
-                try { body = await sanity.FetchAllAsync(source); }
+                try { body = await source.FetchAllAsync(config); }
                 catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException)
                 {
-                    LogSync(hook, receivedUtc, 0, 0, "failed", $"Fetching from Sanity: {ex.Message}");
-                    await NotifyAsync(hook, "failed", $"Fetching from Sanity: {ex.Message}");
+                    LogSync(hook, receivedUtc, 0, 0, "failed", $"Fetching from {source.Label}: {ex.Message}");
+                    await NotifyAsync(hook, "failed", $"Fetching from {source.Label}: {ex.Message}");
                     store.MarkSynced(hook.Id, DateTime.UtcNow); // tried: the schedule counts from here
                     return WebhookOutcome.Refused;
                 }
@@ -129,7 +130,7 @@ namespace IndxServer.Services.Webhooks
 
             var plan = WebhookPlanner.PlanSync(body, hook, new EngineDataset(engine),
                 ids => store.Keys(hook.TeamId, hook.DatasetName, ids),
-                key => store.KeyTaken(hook.TeamId, hook.DatasetName, key));
+                key => store.KeyTaken(hook.TeamId, hook.DatasetName, key), source.LeavesOut);
             if (plan.Error == null && plan.Count == 0)
                 plan.Error = "A sync with no documents: to empty the dataset, delete its documents instead.";
             if (plan.Error != null)
@@ -173,7 +174,7 @@ namespace IndxServer.Services.Webhooks
             var lines = new List<string> { $"{before:N0} documents before, {plan.Count:N0} now." };
             if (summary.LostRoles.Count > 0) lines.Add("Fields gone or retyped that had a role: " + string.Join(", ", summary.LostRoles));
             if (summary.Added.Count > 0) lines.Add("New fields: " + string.Join(", ", summary.Added.Take(20)));
-            if (plan.Skipped > 0) lines.Add($"{plan.Skipped} drafts left out.");
+            if (plan.Skipped > 0) lines.Add($"{plan.Skipped} unpublished documents left out.");
             lines.AddRange(plan.Refusals.Take(10));
             LogSync(hook, receivedUtc, plan.Count, plan.Refusals.Count, "synced", string.Join("\n", lines));
             if (summary.LostRoles.Count > 0)
@@ -285,7 +286,7 @@ namespace IndxServer.Services.Webhooks
     /// leaves the queue then; one the dataset cannot take yet (it is loading or a shadow is being
     /// built) waits and is tried again shortly. Woken at once when a call arrives.
     /// </summary>
-    public sealed class WebhookWorker(WebhookStore store, WebhookApplier applier, ILogger<WebhookWorker> logger) : BackgroundService
+    public sealed class WebhookWorker(WebhookStore store, WebhookApplier applier, WebhookSourceRegistry sources, ILogger<WebhookWorker> logger) : BackgroundService
     {
         private readonly SemaphoreSlim _signal = new(0);
 
@@ -317,8 +318,8 @@ namespace IndxServer.Services.Webhooks
             int queued = 0;
             foreach (var hook in store.Pulling())
             {
-                if (SanitySource.Parse(hook.SourceConfig) is not { } source) continue;
-                var due = hook.LastSyncUtc is not { } last || source.SyncEveryHours is { } hours && nowUtc - last >= TimeSpan.FromHours(hours);
+                if (!sources.For(hook).Pulls || SourceSettings.Parse(hook.SourceConfig) is not { } config) continue;
+                var due = hook.LastSyncUtc is not { } last || SourceSettings.Hours(config) is { } hours && nowUtc - last >= TimeSpan.FromHours(hours);
                 if (!due || store.SyncWaiting(hook.Id)) continue;
                 store.Enqueue(hook.Id, "", WebhookKinds.Sync);
                 queued++;

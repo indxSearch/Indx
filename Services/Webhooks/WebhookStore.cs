@@ -8,10 +8,9 @@ namespace IndxServer.Services.Webhooks
     /// how its events become documents. <see cref="IdField"/> is the sender's own id (text or a
     /// number); <see cref="VersionField"/>, when named, orders events (an older one is ignored);
     /// <see cref="BrakeShare"/> is the share of the dataset that deletes and destructive updates may
-    /// reach within an hour before a batch is held for an admin. <see cref="Source"/> says who calls:
-    /// "indx" (the generic scheme) or "sanity" (Sanity's GROQ webhooks, signed their way), and
-    /// <see cref="SourceConfig"/> holds what Indx needs to fetch the full set from the source itself
-    /// (<see cref="SanitySource"/>).</summary>
+    /// reach within an hour before a batch is held for an admin. <see cref="Source"/> says who calls,
+    /// an <see cref="IWebhookSource"/> id, and <see cref="SourceConfig"/> holds its settings as JSON,
+    /// among them what Indx needs to fetch the full set from the source itself.</summary>
     public sealed record Webhook(string Id, string TeamId, string DatasetName, string Name, string IdField, string? VersionField,
         double BrakeShare, string Secret, DateTime CreatedUtc, DateTime? LastEventUtc,
         string Source = WebhookSources.Indx, string? SourceConfig = null, DateTime? LastSyncUtc = null);
@@ -20,7 +19,7 @@ namespace IndxServer.Services.Webhooks
     {
         public const string Indx = "indx";
         public const string Sanity = "sanity";
-        public static bool IsKnown(string? s) => s is Indx or Sanity;
+        public const string Contentful = "contentful";
     }
 
     /// <summary>What a call is: changes ("events") or the whole set ("sync"), which replaces the
@@ -168,10 +167,10 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
         public Webhook Create(string teamId, string datasetName, string name, string idField, string? versionField, double brakeShare,
-            string source = WebhookSources.Indx, string? sourceConfig = null)
+            string source = WebhookSources.Indx, string? sourceConfig = null, string? secret = null)
         {
             if (!Ensure()) throw new InvalidOperationException("The search database does not exist yet.");
-            var hook = new Webhook(NewId(), teamId, datasetName, name, idField, versionField, brakeShare, NewSecret(), DateTime.UtcNow, null,
+            var hook = new Webhook(NewId(), teamId, datasetName, name, idField, versionField, brakeShare, secret ?? NewSecret(), DateTime.UtcNow, null,
                 source, sourceConfig);
             using var conn = Open();
             using var cmd = conn.CreateCommand();
@@ -267,10 +266,10 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
         }
 
         /// <summary>A new secret; the old one stops working at once.</summary>
-        public string? RotateSecret(string id)
+        public string? RotateSecret(string id, string? secret = null)
         {
             if (!Ensure()) return null;
-            var secret = NewSecret();
+            secret ??= NewSecret();
             using var conn = Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = "UPDATE Webhooks SET Secret = $s WHERE Id = $id";
