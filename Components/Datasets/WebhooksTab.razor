@@ -37,7 +37,7 @@
 
     @if (_hooks.Count == 0)
     {
-        <p class="wh-empty">No webhooks on this dataset yet.</p>
+        <EmptyState Size="compact" Icon="DatasetIcons.Webhooks" Title="No webhooks yet">Make one above for the system that changes this dataset, and its changes arrive here as they happen.</EmptyState>
     }
     else
     {
@@ -215,7 +215,14 @@
             @{ var calls = _deliveries.Where(d => _callFilter != "problems" || NeedsALook(d)).Take(CallsShown).ToList(); }
             @if (calls.Count == 0)
             {
-                <p class="wh-empty">@(_callFilter == "problems" ? "Nothing that needs a look." : "No calls yet.")</p>
+                @if (_callFilter == "problems")
+                {
+                    <EmptyState Size="compact" Icon="DatasetIcons.Yes" Title="Nothing that needs a look">Every call in the list was taken as sent.</EmptyState>
+                }
+                else
+                {
+                    <EmptyState Size="compact" Icon="DatasetIcons.Webhooks" Title="No calls yet">The sender's first call shows here, with what it changed.</EmptyState>
+                }
             }
             else
             {

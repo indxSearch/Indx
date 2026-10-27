@@ -50,14 +50,10 @@
         @* The first visit: nothing watched, nothing found. No tabs to an empty list; what happens
            once a dataset is on, in the shape of the console's other empty pages, and the datasets
            right here to switch on. *@
-        <div class="tov-empty">
-            <span class="tov-empty-icon"><Observr Size="70" Color="var(--lv4)" /></span>
-            <div class="tov-empty-title">Observr is not watching anything here yet</div>
-            <div class="tov-empty-detail">
-                Switch it on for a dataset and it reads that dataset's week every morning. What is worth your attention lands on
-                the dataset's Status page, each with a proposal you say yes or no to.@if (!_canEdit) { <text> An editor of this team switches it on.</text> }
-            </div>
-        </div>
+        <EmptyState Icon="DatasetIcons.Observr" Title="Observr is not watching anything here yet">
+            Switch it on for a dataset and it reads that dataset's week every morning. What is worth your attention lands on
+            the dataset's Status page, each with a proposal you say yes or no to.@if (!_canEdit) { <text> An editor of this team switches it on.</text> }
+        </EmptyState>
         <ObservrDatasetsTable Team="Team" Role="@Role" OnChanged="LoadAsync" />
     }
     else

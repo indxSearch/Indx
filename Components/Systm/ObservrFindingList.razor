@@ -8,7 +8,9 @@
 
 @if (Findings.Count == 0)
 {
-    <p class="ofl-empty">@Empty</p>
+    @* The caller's sentence: its first as the title, the rest under it. *@
+    var dot = Empty.IndexOf(". ", StringComparison.Ordinal);
+    <EmptyState Size="compact" Icon="DatasetIcons.Observr" Title="@(dot > 0 ? Empty[..dot] : Empty.TrimEnd('.'))">@(dot > 0 ? Empty[(dot + 2)..] : null)</EmptyState>
 }
 else
 {

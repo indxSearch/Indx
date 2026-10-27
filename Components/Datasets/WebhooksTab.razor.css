@@ -1,6 +1,5 @@
 .wh-tab { margin-top: 16px; }
 .wh-intro { color: var(--lv5); font: var(--text-sm); margin: 0 0 12px; max-width: 72ch; }
-.wh-empty { color: var(--lv4); font: var(--text-sm); margin: 8px 0 12px; }
 .wh-error { color: var(--CSignal); font: var(--text-sm); margin: 0; }
 
 .wh-num { text-align: right; white-space: nowrap; width: 1%; }

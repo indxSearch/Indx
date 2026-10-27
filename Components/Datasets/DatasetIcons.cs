@@ -73,6 +73,9 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> Browsing = Of<Icons.InternetBrowser>();
         public static readonly RenderFragment<int> Changes = Of<Icons.Update>();
         public static readonly RenderFragment<int> Mail = Of<Icons.Mail>();
+        public static readonly RenderFragment<int> Bell = Of<Icons.Bell>();
+        public static readonly RenderFragment<int> User = Of<Icons.User>();
+        public static readonly RenderFragment<int> Team = Of<Icons.UserGroup>();
         public static readonly RenderFragment<int> Key = Of<Icons.Key>();
         public static readonly RenderFragment<int> AskedAgain = Of<Icons.Loop>();
         public static readonly RenderFragment<int> FuzzySelected = Of<Icons.ClickSelect>();

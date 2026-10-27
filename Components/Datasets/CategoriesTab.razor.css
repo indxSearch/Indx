@@ -90,10 +90,6 @@
 /* The empty state, in the datasets page's first-visit shape: a large icon, a line, a detail,
    then the two shapes the tree reads, each with the tree it makes. */
 .browse-empty { margin: 0 auto; max-width: 1040px; }
-.browse-empty-message { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 48px 24px 40px; }
-.browse-empty-icon { display: flex; margin-bottom: 10px; }
-.browse-empty-title { font: var(--text-lg); color: var(--lv7); }
-.browse-empty-detail { font: var(--text-sm); color: var(--lv5); max-width: 60ch; }
 .browse-empty-shapes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .browse-empty-shape { display: flex; flex-direction: column; gap: 8px; padding: 18px 20px; background: var(--lv1); border-radius: var(--radius); min-width: 0; }
 .browse-empty-shape-title { margin: 0; font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }

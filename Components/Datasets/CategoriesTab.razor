@@ -33,13 +33,9 @@
            datasets page's first visit. The two shapes the tree reads, each drawn as the tree it
            would make, and the step to Field configuration for an editor. *@
         <div class="browse-empty">
-            <div class="browse-empty-message">
-                <span class="browse-empty-icon"><NodeTree Size="70" Color="var(--lv4)" /></span>
-                <div class="browse-empty-title">No hierarchy to browse</div>
-                <div class="browse-empty-detail">
-                    The tree is drawn from a facetable field whose values are paths, or from fields that each hold a level. This dataset has neither marked Facetable yet.
-                </div>
-            </div>
+            <EmptyState Icon="DatasetIcons.Categories" Title="No hierarchy to browse">
+                The tree is drawn from a facetable field whose values are paths, or from fields that each hold a level. This dataset has neither marked Facetable yet.
+            </EmptyState>
             <div class="browse-empty-shapes">
                 <div class="browse-empty-shape">
                     <h4 class="browse-empty-shape-title">A path in one field</h4>

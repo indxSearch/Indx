@@ -40,7 +40,7 @@
 
         @if (_notifications.Count == 0)
         {
-            <p class="notif-empty">No notifications yet.</p>
+            <EmptyState Size="compact" Icon="DatasetIcons.Bell" Title="No notifications yet">Expiring keys, ended boost rules, failed backups and new releases land here.</EmptyState>
         }
         else
         {

@@ -7,7 +7,3 @@
 .tov-bar { margin-bottom: 16px; }
 
 /* The first visit, in the shape of the console's other empty pages: icon, a line, a detail. */
-.tov-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; padding: 48px 24px 40px; }
-.tov-empty-icon { display: flex; margin-bottom: 10px; }
-.tov-empty-title { font: var(--text-lg); color: var(--lv7); }
-.tov-empty-detail { font: var(--text-sm); color: var(--lv5); max-width: 60ch; }
