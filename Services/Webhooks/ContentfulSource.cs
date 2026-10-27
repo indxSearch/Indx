@@ -274,6 +274,8 @@ namespace IndxServer.Services.Webhooks
             ContentfulEntries.ToEvent(call, ContentfulSettings.From(SourceSettings.Parse(hook.SourceConfig))
                 ?? throw new FormatException("The webhook's Contentful settings are unreadable."), hook.IdField);
 
+        public Task<SourceResolution> ResolveAsync(Webhook hook, string events, CancellationToken ct = default) => SourceResolution.AsIs(events);
+
         public bool LeavesOut(string id) => false;
 
         public Task<string> FetchAllAsync(JsonObject config, CancellationToken ct = default) =>

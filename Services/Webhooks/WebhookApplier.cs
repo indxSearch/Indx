@@ -39,9 +39,21 @@ namespace IndxServer.Services.Webhooks
             var state = engine.Status.SystemState;
             if (state is SystemState.Loading or SystemState.Indexing) return WebhookOutcome.Retry;
 
+            // The source's view of the call: Sanity's documents as they are now, and those that refer
+            // to them. A held batch was resolved when it was held, and is applied as it stands.
+            string? note = null;
+            if (!pastBrake)
+            {
+                var resolution = await sources.For(hook).ResolveAsync(hook, body);
+                body = resolution.Events;
+                note = resolution.Note;
+                if (resolution.NeedsFullSync && !store.SyncWaiting(hook.Id)) store.Enqueue(hook.Id, "", WebhookKinds.Sync);
+            }
+
             var plan = WebhookPlanner.Plan(body, hook, new EngineDataset(engine),
                 ids => store.Keys(hook.TeamId, hook.DatasetName, ids),
                 key => store.KeyTaken(hook.TeamId, hook.DatasetName, key));
+            if (note != null) plan.Notes.Insert(0, note);
             if (plan.Error != null)
             {
                 Log(hook, receivedUtc, plan, "refused", plan.Error);
@@ -193,7 +205,8 @@ namespace IndxServer.Services.Webhooks
             {
                 using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(plan.Json));
                 summary = await Task.Run(() => IndxServerInternalApi.Manager.RunReplaceFromJson(hook.DatasetName, hook.TeamId, stream,
-                    fields => StartingRoles(fields, hook.IdField, plan.KeyField)));
+                    fields => StartingRoles(fields, hook.IdField, plan.KeyField,
+                        (JsonNode.Parse(plan.Json) as JsonArray)?.OfType<JsonObject>().ToList())));
             }
             catch (ShadowBusyException) { return WebhookOutcome.Retry; }
             catch (Exception ex)
@@ -220,11 +233,13 @@ namespace IndxServer.Services.Webhooks
         }
 
         /// <summary>
-        /// The roles a webhook's first sync starts a dataset with, so it searches at once: text
-        /// fields searchable, numbers and true/false filterable and sortable. Ids, the key and
-        /// Sanity's system fields (_type, _rev, _createdAt...) get nothing. The console refines it.
+        /// The roles a webhook's first sync starts a dataset with, so it searches at once, read from
+        /// the documents themselves: text searchable; text whose values repeat (a brand, a category,
+        /// a colour, tags) filterable and facetable as well; dates sortable rather than searched;
+        /// numbers and true/false filterable and sortable. Ids, the key and system fields (_type,
+        /// _rev, _createdAt...) get nothing. The console refines it.
         /// </summary>
-        public static FieldProxy[] StartingRoles(FieldProxy[] fields, string idField, string keyField)
+        public static FieldProxy[] StartingRoles(FieldProxy[] fields, string idField, string keyField, IReadOnlyList<JsonObject>? documents = null)
         {
             var roles = new List<FieldProxy>();
             foreach (var f in fields)
@@ -232,7 +247,15 @@ namespace IndxServer.Services.Webhooks
                 if (f.FieldName == idField || f.FieldName == keyField || f.FieldName.StartsWith('_')) continue;
                 var type = f.FieldType ?? "";
                 if (type.Equals(nameof(JsonValueKind.String), StringComparison.OrdinalIgnoreCase))
-                    roles.Add(new FieldProxy { FieldName = f.FieldName, Searchable = true });
+                {
+                    var values = documents == null ? null : TextValues(documents, f.FieldName);
+                    if (values is { Count: > 0 } && values.All(LooksLikeDate))
+                        roles.Add(new FieldProxy { FieldName = f.FieldName, Sortable = f.IsArray != true });
+                    else if (values is { Count: > 0 } && Repeats(values))
+                        roles.Add(new FieldProxy { FieldName = f.FieldName, Searchable = true, Filterable = true, Facetable = true });
+                    else
+                        roles.Add(new FieldProxy { FieldName = f.FieldName, Searchable = true });
+                }
                 else if (type.Equals(nameof(JsonValueKind.Number), StringComparison.OrdinalIgnoreCase)
                          || type.Equals(nameof(JsonValueKind.True), StringComparison.OrdinalIgnoreCase)
                          || type.Equals("Boolean", StringComparison.OrdinalIgnoreCase))
@@ -240,6 +263,33 @@ namespace IndxServer.Services.Webhooks
             }
             return [.. roles];
         }
+
+        /// <summary>A field's text values across the documents, array elements one by one.</summary>
+        private static List<string> TextValues(IReadOnlyList<JsonObject> documents, string field)
+        {
+            var values = new List<string>();
+            foreach (var doc in documents)
+            {
+                switch (doc[field])
+                {
+                    case JsonValue v when v.TryGetValue<string>(out var text): values.Add(text); break;
+                    case JsonArray a: values.AddRange(a.OfType<JsonValue>().Select(i => i.TryGetValue<string>(out var t) ? t : null).OfType<string>()); break;
+                }
+            }
+            return values;
+        }
+
+        /// <summary>A label rather than prose: short values, few of them, each used again and again.</summary>
+        private static bool Repeats(List<string> values)
+        {
+            var distinct = values.Distinct(StringComparer.OrdinalIgnoreCase).Count();
+            return values.Count >= 10 && distinct <= Math.Max(2, values.Count / 5) && distinct <= 500 && values.Average(v => v.Length) <= 40;
+        }
+
+        /// <summary>An ISO date or date and time: 2019-12-10, 2026-10-27T07:14:21Z.</summary>
+        private static bool LooksLikeDate(string value) =>
+            value.Length is >= 10 and <= 40 && char.IsAsciiDigit(value[0]) && value[4] == '-' && value[7] == '-'
+            && DateTimeOffset.TryParse(value, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AssumeUniversal, out _);
 
         private void LogSync(Webhook hook, DateTime receivedUtc, int documents, int refused, string outcome, string? detail) =>
             store.Log(new WebhookDelivery(0, hook.Id, receivedUtc, documents, outcome == "synced" ? documents : 0, 0, 0, 0, refused, 0,

@@ -265,6 +265,25 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
             return Convert.ToInt32(cmd.ExecuteScalar()) > 0;
         }
 
+        /// <summary>Changes what an admin may change after the webhook is made: everything but its
+        /// source, its id field and its secret. Null when the webhook is gone.</summary>
+        public Webhook? Update(string id, string name, string? versionField, double brakeShare, string? sourceConfig)
+        {
+            if (!Ensure()) return null;
+            using (var conn = Open())
+            using (var cmd = conn.CreateCommand())
+            {
+                cmd.CommandText = "UPDATE Webhooks SET Name = $n, VersionField = $vf, BrakeShare = $b, SourceConfig = $cfg WHERE Id = $id";
+                cmd.Parameters.AddWithValue("$n", name);
+                cmd.Parameters.AddWithValue("$vf", (object?)versionField ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$b", brakeShare);
+                cmd.Parameters.AddWithValue("$cfg", (object?)sourceConfig ?? DBNull.Value);
+                cmd.Parameters.AddWithValue("$id", id);
+                if (cmd.ExecuteNonQuery() != 1) return null;
+            }
+            return Get(id);
+        }
+
         /// <summary>A new secret; the old one stops working at once.</summary>
         public string? RotateSecret(string id, string? secret = null)
         {

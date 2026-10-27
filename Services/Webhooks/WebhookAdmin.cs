@@ -32,6 +32,50 @@ namespace IndxServer.Services.Webhooks
             return (hook, null);
         }
 
+        /// <summary>
+        /// Changes a webhook's name, version field, brake and source settings. A secret setting sent
+        /// empty keeps the one set, so a form need never show it. When the settings change what Indx
+        /// fetches, a full sync follows. The source, the id field and the secret stay: changing the
+        /// first two would make every document a new one, and the secret has its own action.
+        /// </summary>
+        public (Webhook? Hook, string? Problem) Update(Webhook hook, NewWebhook request)
+        {
+            var name = request.Name?.Trim();
+            if (string.IsNullOrEmpty(name) || name.Length > 80) return (null, "Give the webhook a name of 1 to 80 characters.");
+            var share = request.BrakeShare ?? hook.BrakeShare;
+            if (share is <= 0 or > 1) return (null, "The brake is a share of the dataset, above 0 and at most 1 (a percent above 0 and at most 100).");
+            var source = sources.For(hook);
+            var stored = SourceSettings.Parse(hook.SourceConfig);
+            string? config = hook.SourceConfig;
+            if (source.Settings.Count > 0 && request.Settings is { } settings)
+            {
+                var merged = (System.Text.Json.Nodes.JsonObject)settings.DeepClone();
+                foreach (var secret in source.Settings.Where(s => s.Secret))
+                    if (SourceSettings.Text(merged, secret.Key) == null && SourceSettings.Text(stored, secret.Key) is { } kept)
+                        merged[secret.Key] = kept;
+                if (source.Settings.FirstOrDefault(s => s.Required && s.Default == null && SourceSettings.Text(merged, s.Key) == null) is { } missing)
+                    return (null, $"{missing.Label} is needed.");
+                var (configured, problem) = source.Configure(merged);
+                if (problem != null) return (null, problem);
+                config = configured?.ToJsonString();
+            }
+            var updated = store.Update(hook.Id, name, string.IsNullOrWhiteSpace(request.VersionField) ? null : request.VersionField.Trim(), share, config);
+            if (updated == null) return (null, "The webhook is gone.");
+            if (source.Pulls && !SameFetch(hook.SourceConfig, config)) RequestSync(updated);
+            return (updated, null);
+        }
+
+        /// <summary>Whether two settings fetch the same set: everything but the schedule alike.</summary>
+        private static bool SameFetch(string? before, string? after)
+        {
+            var a = SourceSettings.Parse(before);
+            var b = SourceSettings.Parse(after);
+            if (a == null || b == null) return a == b;
+            a.Remove(SourceSettings.SyncEveryHoursKey);
+            b.Remove(SourceSettings.SyncEveryHoursKey);
+            return System.Text.Json.Nodes.JsonNode.DeepEquals(a, b);
+        }
+
         /// <summary>A new secret in the source's form; the old one stops working at once. Null when the webhook is gone.</summary>
         public string? RotateSecret(Webhook hook) => store.RotateSecret(hook.Id, sources.For(hook).NewSecret());
 

@@ -83,6 +83,26 @@ namespace IndxServer.Controllers
             return Ok(store.List(ctx.OwnerKey, dataSetName).Select(Info).ToArray());
         }
 
+        /// <summary>The settings an admin may change once a webhook is made.</summary>
+        public sealed record UpdateWebhookRequest(string? Name, string? VersionField = null, double? BrakeShare = null,
+            System.Text.Json.Nodes.JsonObject? Settings = null);
+
+        /// <summary>
+        /// Changes a webhook's name, version field, brake and source settings. A secret setting left
+        /// out keeps the one set. Settings that change what Indx fetches start a full sync. The source,
+        /// the id field and the secret stay as they are.
+        /// </summary>
+        [HttpPut(Route + "/{webhookId}")]
+        public ActionResult<WebhookInfo> Update(string teamName, string dataSetName, string webhookId, [FromBody] UpdateWebhookRequest request)
+        {
+            var ctx = ResolveTeam(teamName, out var error, write: true, admin: true);
+            if (ctx == null) return error!;
+            if (Owned(ctx, dataSetName, webhookId) is not { } hook) return WebhookNotFound(webhookId);
+            if (request == null) return ApiProblems.InvalidArgument("Send { name, versionField?, brakeShare?, settings? }.");
+            var (updated, problem) = admin.Update(hook, new WebhookAdmin.NewWebhook(request.Name, null, request.VersionField, request.BrakeShare, null, request.Settings));
+            return updated == null ? ApiProblems.InvalidArgument(problem!) : Ok(Info(updated));
+        }
+
         [HttpDelete(Route + "/{webhookId}")]
         public IActionResult Delete(string teamName, string dataSetName, string webhookId)
         {

@@ -176,6 +176,7 @@
                     <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Restore" Loading="@(sel.Waiting > 0 && _syncAsked == hook.Id)"
                             @onclick="@(() => RequestSync(hook))">Fetch the full set now</Button>
                 }
+                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Sliders" @onclick="@(() => OpenEdit(hook))">Edit settings</Button>
                 <ConfirmButton Label="New secret" Icon="DatasetIcons.Key" Prompt="The old secret stops working at once, so the sender must get the new one."
                                ConfirmLabel="Make a new secret" Variant="primary" OnConfirm="@(() => RotateSecret(hook))" />
                 <ConfirmButton Label="Delete webhook" Icon="DatasetIcons.Delete" Prompt="Calls to its address are refused from now on. The documents stay."
@@ -220,8 +221,8 @@
     }
 
     @{ var chosen = Sources.Get(_source) ?? Sources.All[0]; }
-    <Modal @bind-Open="_newOpen" Title="@(chosen.Id == WebhookSources.Indx ? "New generic webhook" : $"New {chosen.Label} webhook")"
-           Description="@chosen.Description">
+    <Modal @bind-Open="_newOpen" Title="@(_editing != null ? $"Edit {_editing.Name}" : chosen.Id == WebhookSources.Indx ? "New generic webhook" : $"New {chosen.Label} webhook")"
+           Description="@(_editing != null ? null : chosen.Description)">
         <div class="indx-modal-form wh-form">
             <InputField Label="Name" placeholder="Shop, Price feed, Product catalogue" @bind-Value="_name" />
             @foreach (var field in _settings)
@@ -240,7 +241,7 @@
                     }
                     else if (setting.Secret)
                     {
-                        <InputField Label="@setting.Label" type="password" autocomplete="off" placeholder="@setting.Placeholder" @bind-Value="field.Value" />
+                        <InputField Label="@setting.Label" type="password" autocomplete="off" placeholder="@(_editing != null ? "Set. Leave empty to keep it." : setting.Placeholder)" @bind-Value="field.Value" />
                     }
                     else
                     {
@@ -252,10 +253,17 @@
                     }
                 </div>
             }
-            <div>
-                <InputField Label="Id field" placeholder="@chosen.DefaultIdField" @bind-Value="_idField" />
-                <span class="wh-hint">The field holding the sender's own id. Empty for @chosen.DefaultIdField.</span>
-            </div>
+            @if (_editing == null)
+            {
+                <div>
+                    <InputField Label="Id field" placeholder="@chosen.DefaultIdField" @bind-Value="_idField" />
+                    <span class="wh-hint">The field holding the sender's own id. Empty for @chosen.DefaultIdField.</span>
+                </div>
+            }
+            else
+            {
+                <p class="wh-hint">Id field <code>@_editing.IdField</code> stays: changing it would make every document a new one.</p>
+            }
             <div>
                 <InputField Label="Version field" placeholder="updatedAt" @bind-Value="_versionField" />
                 <span class="wh-hint">Optional. A date or number that grows with each version, so a change arriving late is left alone.</span>
@@ -269,7 +277,7 @@
                 <p class="wh-error">@_formError</p>
             }
             <div class="indx-form-actions">
-                <Button Variant="primary" Size="micro" @onclick="Create">Create</Button>
+                <Button Variant="primary" Size="micro" @onclick="Create">@(_editing != null ? "Save" : "Create")</Button>
                 <Button Variant="secondary" Size="micro" @onclick="@(() => _newOpen = false)">Cancel</Button>
             </div>
         </div>
@@ -335,6 +343,7 @@
     private bool _newOpen;
     private string? _name, _source = WebhookSources.Indx, _idField, _versionField, _brake, _formError;
     private List<FormSetting> _settings = [];
+    private Webhook? _editing;
 
     // The secret, shown once after Create or a new secret.
     private bool _secretOpen, _secretIsNew;
@@ -423,6 +432,29 @@
         _name = source.Id == WebhookSources.Indx ? null : source.Label;
         _idField = _versionField = _formError = null;
         _brake = "10";
+        _editing = null;
+        _newOpen = true;
+    }
+
+    /// <summary>The same form, filled in from the webhook. Secret settings start empty: left so,
+    /// the one set is kept.</summary>
+    private void OpenEdit(Webhook hook)
+    {
+        var source = Sources.For(hook);
+        var config = SourceSettings.Parse(hook.SourceConfig);
+        _source = source.Id;
+        _settings = source.Settings.Select(s => new FormSetting(s)
+        {
+            Value = s.Secret ? null
+                : s.Key == SourceSettings.SyncEveryHoursKey ? (config == null ? s.Default : SourceSettings.Hours(config)?.ToString())
+                : SourceSettings.Text(config, s.Key) ?? s.Default,
+        }).ToList();
+        _name = hook.Name;
+        _idField = hook.IdField;
+        _versionField = hook.VersionField;
+        _brake = (hook.BrakeShare * 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+        _formError = null;
+        _editing = hook;
         _newOpen = true;
     }
 
@@ -439,6 +471,16 @@
             foreach (var f in _settings)
                 if (!string.IsNullOrWhiteSpace(f.Value)) settings[f.Setting.Key] = f.Value.Trim();
                 else if (f.Setting.Key == SourceSettings.SyncEveryHoursKey) settings[f.Setting.Key] = null;
+        }
+        if (_editing != null)
+        {
+            var (updated, updateProblem) = Admin.Update(_editing, new WebhookAdmin.NewWebhook(_name, null, _versionField, share, null, settings));
+            if (updated == null) { _formError = updateProblem; return; }
+            _newOpen = false;
+            _editing = null;
+            Toasts.Show($"Saved {updated.Name}.", DatasetIcons.Save);
+            Load();
+            return;
         }
         var (hook, problem) = Admin.Create(Ctx.TeamId, Ctx.Name, new WebhookAdmin.NewWebhook(_name, _idField, _versionField, share, _source, settings));
         if (hook == null) { _formError = problem; return; }

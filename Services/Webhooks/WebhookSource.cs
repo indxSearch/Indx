@@ -37,6 +37,14 @@ namespace IndxServer.Services.Webhooks
         /// <summary>The call as the planner's events (one object or a list), or null when it holds
         /// nothing to index (a draft, an asset). Throws <see cref="FormatException"/> for a body it cannot read.</summary>
         string? ToEvents(SourceCall call, Webhook hook);
+        /// <summary>
+        /// The call's events as the source holds them now, and what follows from them, before they
+        /// are planned: Sanity's documents read fresh from its API, and the ones that refer to a
+        /// changed document (a product whose category was renamed). A source with nothing to add
+        /// returns the events as they came. Called by the queue's worker, never in the request.
+        /// </summary>
+        Task<SourceResolution> ResolveAsync(Webhook hook, string events, CancellationToken ct = default);
+
         /// <summary>A document in a full set that is not published (a Sanity draft): left out.</summary>
         bool LeavesOut(string id);
         /// <summary>The full set as a JSON list of documents. Throws <see cref="InvalidOperationException"/>
@@ -44,6 +52,13 @@ namespace IndxServer.Services.Webhooks
         Task<string> FetchAllAsync(JsonObject config, CancellationToken ct = default);
         /// <summary>What to set up on the source's side once the webhook is made.</summary>
         SetupGuide Setup(JsonObject? config);
+    }
+
+    /// <summary>What <see cref="IWebhookSource.ResolveAsync"/> made of a call: the events to plan, a
+    /// note for the delivery log, and whether so much follows from it that a full sync is the way.</summary>
+    public sealed record SourceResolution(string Events, string? Note = null, bool NeedsFullSync = false)
+    {
+        public static Task<SourceResolution> AsIs(string events) => Task.FromResult(new SourceResolution(events));
     }
 
     /// <summary>One setting of a source, as the console's form shows it and the API takes it (by <see cref="Key"/>).</summary>
@@ -157,6 +172,7 @@ namespace IndxServer.Services.Webhooks
             WebhookSignature.Check(secret, call.Header(WebhookSignature.Header.ToLowerInvariant()), call.Body, now);
 
         public string? ToEvents(SourceCall call, Webhook hook) => call.Body;
+        public Task<SourceResolution> ResolveAsync(Webhook hook, string events, CancellationToken ct = default) => SourceResolution.AsIs(events);
         public bool LeavesOut(string id) => false;
 
         public Task<string> FetchAllAsync(JsonObject config, CancellationToken ct = default) =>

@@ -132,6 +132,26 @@ namespace IndxServer.Services.Webhooks
     {
         public const string HttpClientName = "sanity";
 
+        /// <summary>Runs a query with params against the published documents; its result.</summary>
+        public async Task<JsonNode?> QueryAsync(SanitySource source, string query, JsonObject parameters, CancellationToken ct = default)
+        {
+            var client = http.CreateClient(HttpClientName);
+            var url = $"https://{source.ProjectId}.api.sanity.io/{source.ApiVersion}/data/query/{source.Dataset}?perspective=published";
+            using var request = new HttpRequestMessage(HttpMethod.Post, url)
+            {
+                Content = new StringContent(new JsonObject { ["query"] = query, ["params"] = parameters }.ToJsonString(), Encoding.UTF8, "application/json"),
+            };
+            if (!string.IsNullOrEmpty(source.Token)) request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", source.Token);
+            using var response = await client.SendAsync(request, ct);
+            var text = await response.Content.ReadAsStringAsync(ct);
+            JsonNode? root;
+            try { root = JsonNode.Parse(text); }
+            catch (JsonException) { throw new InvalidOperationException($"Sanity answered {(int)response.StatusCode} with something other than JSON."); }
+            if (!response.IsSuccessStatusCode)
+                throw new InvalidOperationException($"Sanity answered {(int)response.StatusCode}: {root?["error"]?["description"]?.ToString() ?? root?["message"]?.ToString() ?? "no reason given"}");
+            return root?["result"];
+        }
+
         /// <summary>The query's result as a JSON array of documents. Throws with Sanity's own
         /// message when the query fails, so the delivery log says what to fix.</summary>
         public async Task<string> FetchAllAsync(SanitySource source, CancellationToken ct = default)
@@ -205,6 +225,101 @@ namespace IndxServer.Services.Webhooks
         public string? ToEvents(SourceCall call, Webhook hook) =>
             SanitySignature.ToEvent(call.Body, call.Header(SanitySignature.OperationHeader), call.Header(SanitySignature.DocumentIdHeader), hook.IdField);
 
+        /// <summary>The most documents a change may bring along before a full sync is the better way.</summary>
+        public const int MaxFollowing = 500;
+
+        /// <summary>
+        /// Reads the delivered documents fresh, through the webhook's own query, and adds the ones
+        /// that refer to them: a renamed category reaches its products at once, when Sanity's
+        /// webhook also covers categories. A delivered document the query does not cover (the
+        /// category itself) is not indexed. When Sanity cannot be asked, the call goes as delivered.
+        /// </summary>
+        public async Task<SourceResolution> ResolveAsync(Webhook hook, string events, CancellationToken ct = default)
+        {
+            if (SanitySource.From(SourceSettings.Parse(hook.SourceConfig)) is not { } source) return new(events);
+            List<JsonObject> delivered;
+            try { delivered = WebhookPlanner.Events(JsonNode.Parse(events)); }
+            catch (Exception ex) when (ex is JsonException or FormatException) { return new(events); }
+            var ids = delivered.Select(e => e[hook.IdField]?.ToString()).OfType<string>().Where(i => i.Length > 0).Distinct().ToList();
+            if (ids.Count == 0) return new(events);
+
+            JsonNode? current;
+            try
+            {
+                current = await client.QueryAsync(source, FollowQuery(source.Query, MaxFollowing), new JsonObject { ["ids"] = new JsonArray(ids.Select(i => (JsonNode?)i).ToArray()) }, ct);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException)
+            {
+                return new(events, $"Sanity could not be asked for the documents as they are now ({ex.Message}); applied as delivered.");
+            }
+            return Follow(delivered, current as JsonObject, hook.IdField);
+        }
+
+        /// <summary>The query that reads the delivered ids through the webhook's query ("self"), says
+        /// which of them exist at all ("exists"), and finds the documents of the query that refer to
+        /// them ("following", with their count). Built into the query's own filter when it has the
+        /// usual shape, so Sanity filters before it projects; wrapped around it otherwise.</summary>
+        public static string FollowQuery(string query, int max)
+        {
+            var (filter, projection) = SplitQuery(query);
+            string self, following, followingCount;
+            if (filter != null)
+            {
+                self = $"*[({filter}) && _id in $ids]{projection}";
+                following = $"*[({filter}) && references($ids) && !(_id in $ids)]";
+                followingCount = $"count({following})";
+                following = $"{following}[0...{max}]{projection}";
+            }
+            else
+            {
+                self = $"({query})[_id in $ids]";
+                following = $"({query})[!(_id in $ids) && _id in *[references($ids)]._id]";
+                followingCount = $"count({following})";
+                following = $"{following}[0...{max}]";
+            }
+            return $"{{\"self\": {self}, \"exists\": *[_id in $ids]._id, \"following\": {following}, \"followingCount\": {followingCount}}}";
+        }
+
+        /// <summary>
+        /// The events to plan, from what was delivered and what Sanity holds now. A delivered
+        /// document the query covers is its current version. One that exists but the query does not
+        /// cover (a category; a product moved out of the filter) is removed, which does nothing when
+        /// it was never indexed. One that does not exist was deleted or unpublished, unless it came
+        /// as a change, which Sanity may not show yet: that one goes as delivered. Then the
+        /// documents that refer to them, or, when there are too many, a full sync instead.
+        /// </summary>
+        public static SourceResolution Follow(IReadOnlyList<JsonObject> delivered, JsonObject? current, string idField)
+        {
+            var self = (current?["self"] as JsonArray)?.OfType<JsonObject>()
+                .Where(d => d[idField] != null).GroupBy(d => d[idField]!.ToString()).ToDictionary(g => g.Key, g => g.Last()) ?? [];
+            var exists = (current?["exists"] as JsonArray)?.Select(n => n?.ToString()).OfType<string>().ToHashSet() ?? [];
+            var result = new JsonArray();
+            var seen = new HashSet<string>();
+            foreach (var e in delivered)
+            {
+                var id = e[idField]?.ToString();
+                if (string.IsNullOrEmpty(id)) { result.Add(e.DeepClone()); continue; }
+                if (!seen.Add(id)) continue;
+                if (self.TryGetValue(id, out var doc)) result.Add(Event(doc, "upsert"));
+                else if (exists.Contains(id)) result.Add(new JsonObject { [idField] = id, [WebhookPlanner.EventField] = "delete" });
+                else if (e[WebhookPlanner.EventField]?.ToString() == "delete") result.Add(new JsonObject { [idField] = id, [WebhookPlanner.EventField] = "delete" });
+                else result.Add(e.DeepClone());
+            }
+            var count = current?["followingCount"] is JsonValue c && c.TryGetValue<int>(out var n) ? n : 0;
+            if (count > MaxFollowing)
+                return new(result.ToJsonString(), $"{count:N0} documents refer to what changed; a full sync brings them.", NeedsFullSync: true);
+            var following = (current?["following"] as JsonArray)?.OfType<JsonObject>().Where(d => d[idField] is { } i && seen.Add(i.ToString())).ToList() ?? [];
+            foreach (var d in following) result.Add(Event(d, "upsert"));
+            return new(result.ToJsonString(), following.Count > 0 ? $"{following.Count} that refer to it came along." : null);
+        }
+
+        private static JsonObject Event(JsonObject doc, string op)
+        {
+            var e = (JsonObject)doc.DeepClone();
+            e[WebhookPlanner.EventField] = op;
+            return e;
+        }
+
         public bool LeavesOut(string id) => SanitySource.IsUnpublished(id);
 
         public Task<string> FetchAllAsync(JsonObject config, CancellationToken ct = default) =>
@@ -218,6 +333,8 @@ namespace IndxServer.Services.Webhooks
                 new("URL", "the address above"),
                 new("Trigger on", "Create, Update, Delete"),
                 new("Filter", filter ?? "the filter from your query", Code: filter != null),
+                new("Wider filter", "If your query follows references with ->, add the types it follows, such as " +
+                    "_type in [\"product\", \"category\"]: a renamed category then reaches its products at once."),
                 new("Projection", projection ?? "the projection from your query", Code: projection != null),
                 new("HTTP method", "POST"),
                 new("Secret", "the secret above"),
