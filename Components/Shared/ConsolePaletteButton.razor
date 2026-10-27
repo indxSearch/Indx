@@ -1,9 +1,44 @@
-@* The header's search step: opens the command palette (ConsolePalette, in the layout) through
-   ConsolePaletteState. Cmd or Ctrl and K does the same anywhere. *@
+@* The header's way into the command palette, shaped like a search field so it reads as one: the
+   search icon, "Jump to…" and the shortcut in a key cap (⌘K on a Mac, Ctrl K elsewhere, asked of
+   the browser once). It opens the palette (ConsolePalette, in the layout) through
+   ConsolePaletteState. A narrow header keeps the icon alone. *@
+@using Microsoft.JSInterop
 @inject IndxServer.Services.ConsolePaletteState Palette
+@inject IJSRuntime JS
+@implements IAsyncDisposable
 
-<Button Variant="ghost" Size="micro" IconLeft="_iconSearch" title="Jump to (⌘K)" aria-label="Jump to a dataset or page" @onclick="() => Palette.Set(true)" />
+<span class="nav-jump">
+    <Button Variant="secondary" Size="micro" IconLeft="_iconSearch" title="@($"Jump to a dataset or page ({_shortcut})")" aria-label="Jump to a dataset or page" aria-keyshortcuts="@(_mac ? "Meta+K" : "Control+K")" @onclick="() => Palette.Set(true)">
+        <span class="nav-jump-label">Jump to…</span>
+        <kbd class="nav-jump-kbd">@_shortcut</kbd>
+    </Button>
+</span>
 
 @code {
     private static readonly RenderFragment<int> _iconSearch = size => @<Indx.Systm.Blazor.Icons.Search Size="size" Color="currentColor" />;
+
+    private bool _mac = true;
+    private string _shortcut => _mac ? "⌘K" : "Ctrl K";
+    private IJSObjectReference? _module;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Indx.Systm.Blazor/CommandPalette.razor.js");
+            var mac = await _module.InvokeAsync<bool>("isMac");
+            if (mac != _mac) { _mac = mac; StateHasChanged(); }
+        }
+        catch (JSDisconnectedException) { }
+        catch (JSException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_module is null) return;
+        try { await _module.DisposeAsync(); }
+        catch (JSDisconnectedException) { }
+        catch (Exception) { }
+    }
 }

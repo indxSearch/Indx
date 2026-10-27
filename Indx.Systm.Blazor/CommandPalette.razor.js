@@ -79,3 +79,8 @@ function clear(el) {
     el.removeAttribute('data-active');
     el.setAttribute('aria-selected', 'false');
 }
+
+// For a trigger that shows the shortcut: Cmd on a Mac, Ctrl elsewhere.
+export function isMac() {
+    return /Mac|iPhone|iPad|iPod/.test(navigator.platform) || /Mac OS X/.test(navigator.userAgent);
+}
