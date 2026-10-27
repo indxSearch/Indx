@@ -155,22 +155,18 @@
 /* The pictures on the Stat's own face (systm Stat: lv2, lv1 in the dark, its padding and
    radius), so the tiles and the charts read as one set rather than the charts floating on the
    page between them. The rows stretch, so a row of faces ends level. */
-.stats-overview-item,
-.stats-panel {
+.stats-overview-item {
     padding: calc(var(--spacing) * 2);
     background: var(--lv2);
     border-radius: var(--radius);
 }
 
 @media (prefers-color-scheme: dark) {
-    .stats-overview-item,
-    .stats-panel {
+    .stats-overview-item {
         background: var(--lv1);
     }
 }
 
-.stats-panel { margin-top: 10px; }
-.stats-panel .stats-chart-head { margin-top: 0; }
 
 /* On the light face (lv2) the heatmap's empty cells, lv2 themselves, vanished: they take the
    page's tone there, and keep lv2 on the dark face, which is lv1. */
@@ -182,8 +178,31 @@
 .stats-overview-item .stats-chart-head { margin-top: 0; margin-bottom: 0; }
 .stats-overview-item .stats-help { margin-bottom: 6px; }
 
-/* The clock, centred in its third; the busiest hour's tile in the hollow. */
-.stats-clock { display: flex; justify-content: center; }
+/* The pictures are drawn for the page's lv0: their faint lines (the clock's guides, the radar's
+   rings and axes, the chart's midline and its hover band) are lv2, and so are the waffle's empty
+   cells. On the light face, lv2 itself, they vanished, on the dark one, lv1, they all but did.
+   On the face the lines go a step up and the empty cells take the page's tone, as the heatmap's. */
+.stats-overview-item ::deep .indx-radial-guide,
+.stats-overview-item ::deep .indx-radar-ring,
+.stats-overview-item ::deep .indx-radar-axis { stroke: var(--lv3); }
+.stats-overview-item ::deep .indx-radar-rim { stroke: var(--lv4); }
+.stats-overview-item ::deep .indx-waffle-cell { background: var(--lv0); }
+@media (prefers-color-scheme: dark) {
+    .stats-overview-item ::deep .indx-waffle-cell { background: var(--lv2); }
+}
+
+/* A chart on the face drops its own box (lv0 with a line), made to set the plot off the page: on
+   the face it was a box within a box. The plot is the face, as the heatmap's and the clock's are. */
+.stats-overview-item ::deep .indx-chart {
+    background: transparent;
+    border-color: transparent;
+    --chart-column-hover: var(--lv3);
+    --chart-midline: var(--lv3);
+}
+
+/* The clock and the radar, centred in their third; the busiest hour's tile in the clock's hollow. */
+.stats-clock,
+.stats-centred { display: flex; justify-content: center; }
 ::deep .stats-clock-centre { text-align: center; background: transparent; padding: 0; align-items: center; }
 ::deep .stats-clock-centre .indx-stat-value { font: var(--text-lg); font-weight: 300; }
 

@@ -82,13 +82,13 @@ else
         {
             @* The window day by day: searches as an area with the selects on it, against a value
                axis, as a line or as bars. *@
-            <div class="stats-panel">
-                <div class="stats-chart-head">
-                    <span class="stats-chart-title">Per day</span>
-                    <SegmentedControl Items="ChartTypeItems" @bind-Value="_chartType" AriaLabel="Chart type" />
-                </div>
-                <Chart Series="_series" Labels="_labels" Type="@_chartType" Height="180" Markers="Markers" YAxis="right" />
+            @* On the page, not on a face: the window's chart heads the tab, and the faces are for the
+               overview's pictures under the tiles. *@
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">Per day</span>
+                <SegmentedControl Items="ChartTypeItems" @bind-Value="_chartType" AriaLabel="Chart type" />
             </div>
+            <Chart Series="_series" Labels="_labels" Type="@_chartType" Height="180" Markers="Markers" YAxis="right" />
         }
 
         @* The detail sections, one at a time, just above the table they choose: each can carry its
@@ -224,10 +224,10 @@ else
             </div>
         }
 
-            </div>
             @* The search profile: six shares on one scale, and the window before this one as a second
-           shape when the raw rows still reach it, so a change is the shape moving. Last, since its
-           height differs most from its neighbours' and a gap under it is a gap under nothing. *@
+           shape when the raw rows still reach it, so a change is the shape moving. Last in the grid,
+           since its height differs most from its neighbours'. It sat after the grid's end until
+           27 Oct 2026 and took the page's whole width beside the room in the row above. *@
         @if (_profile is { } profile)
         {
             <div class="stats-overview-item">
@@ -235,9 +235,12 @@ else
                 <span class="stats-chart-title">Search profile</span>
             </div>
             <p class="stats-help">@(_profileBefore != null ? $"This window against the {_days} days before it." : "The shape of search in this window: each axis a share of the searches.")</p>
-            <RadarChart Axes="ProfileAxes" Series="ProfileSeries(profile, _profileBefore)" Size="220" Max="1" Format="@(v => $"{v * 100:0}%")" AriaLabel="Search profile" />
+            <div class="stats-centred">
+                <RadarChart Axes="ProfileAxes" Series="ProfileSeries(profile, _profileBefore)" Size="196" Max="1" Format="@(v => $"{v * 100:0}%")" AriaLabel="Search profile" />
+            </div>
             </div>
         }
+            </div>
 
         @if (_weekHour is not { Total: > 0 } && _positions is not { Total: > 0 } && _typing is not { Total: > 0 })
             {
