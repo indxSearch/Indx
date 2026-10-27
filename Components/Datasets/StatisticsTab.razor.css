@@ -141,8 +141,8 @@
 .stats-overview {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 24px;
-    align-items: start;
+    gap: 8px;
+    align-items: stretch;
 }
 
 .stats-overview-item {
@@ -150,7 +150,33 @@
     flex-direction: column;
     gap: 6px;
     min-width: 0;
-    padding-top: 8px;
+}
+
+/* The pictures on the Stat's own face (systm Stat: lv2, lv1 in the dark, its padding and
+   radius), so the tiles and the charts read as one set rather than the charts floating on the
+   page between them. The rows stretch, so a row of faces ends level. */
+.stats-overview-item,
+.stats-panel {
+    padding: calc(var(--spacing) * 2);
+    background: var(--lv2);
+    border-radius: var(--radius);
+}
+
+@media (prefers-color-scheme: dark) {
+    .stats-overview-item,
+    .stats-panel {
+        background: var(--lv1);
+    }
+}
+
+.stats-panel { margin-top: 10px; }
+.stats-panel .stats-chart-head { margin-top: 0; }
+
+/* On the light face (lv2) the heatmap's empty cells, lv2 themselves, vanished: they take the
+   page's tone there, and keep lv2 on the dark face, which is lv1. */
+.stats-overview-item ::deep .indx-heatmap-cell { background: var(--lv0); }
+@media (prefers-color-scheme: dark) {
+    .stats-overview-item ::deep .indx-heatmap-cell { background: var(--lv2); }
 }
 
 .stats-overview-item .stats-chart-head { margin-top: 0; margin-bottom: 0; }
