@@ -867,8 +867,31 @@
         _ => "Results only",
     };
 
-    /// <summary>A pause in typing, as the search page has it: the judge is asked once the text has
-    /// been still for <see cref="PauseMs"/>, and only the newest answer is shown.</summary>
+    /// <summary>The judgement ahead of the pause, as a visitor's page asks it (useSearchOrAsk's
+    /// prefetch): one call out at a time, then the next for what the box holds when it returns. It
+    /// fills the judge's cache and shows nothing; the pause shows it.</summary>
+    private (string Text, Task Done)? _ahead;
+
+    private void JudgeAhead(string text)
+    {
+        if (_ahead != null || text.Length == 0 || _edit.Validate() != null || Ctx.FindEngine() is not { } engine) return;
+        var done = JudgeAheadAsync(engine, text);
+        // A cached text answers at once, and its next has started already.
+        if (!done.IsCompleted) _ahead = (text, done);
+    }
+
+    private async Task JudgeAheadAsync(IServerSearchEngine engine, string text)
+    {
+        try { await Service.IntentAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, CancellationToken.None, trial: _edit, prefetch: true); }
+        catch (Exception) { } // the pause asks for itself
+        _ahead = null;
+        var now = _tryText?.Trim() ?? "";
+        if (now != text) JudgeAhead(now);
+    }
+
+    /// <summary>A pause in typing, as the search page has it: the judge reads ahead while the text
+    /// changes, the offer is shown once it has been still for <see cref="PauseMs"/>, and only the
+    /// newest answer is shown.</summary>
     private async Task OnTryInput()
     {
         _typing?.Cancel();
@@ -880,6 +903,7 @@
         // The hits on every keystroke, as the Search preview searches: milliseconds, no model
         // behind them. Only the judge waits for the pause.
         if (_showResults) _results = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit);
+        JudgeAhead(text);
         _typingNow = true;
         try { await Task.Delay(PauseMs, typing.Token); }
         catch (OperationCanceledException) { return; }
@@ -892,6 +916,9 @@
         IntentOutcome outcome;
         try
         {
+            // The judge is reading this very text ahead: its answer, not a second call.
+            if (_ahead is { } reading && reading.Text == text) await reading.Done;
+            if (typing.IsCancellationRequested) return;
             outcome = await Service.IntentAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, typing.Token,
                 trial: _edit, onState: s => state = s.ToJsonString(Pretty));
         }

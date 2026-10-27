@@ -281,10 +281,16 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>Judges one pause. <c>trial</c> is the console's tester: settings not yet saved,
         /// judged as if on, still limited and counted against the budget, since it costs the same.
-        /// <c>onState</c> receives the state the judge is sent, for the tester to show.</summary>
+        /// <c>onState</c> receives the state the judge is sent, for the tester to show.
+        /// <c>prefetch</c> is a judgement asked while the visitor still types, ahead of the pause
+        /// (27 Oct 2026): it fills the cache, so the pause's own call answers at once, and is not a
+        /// judgement in the statistics, since the visitor may type on before it is shown. It has a
+        /// rate limit of its own beside the pause's, and leaves the day's last fifth of the budget
+        /// to the pauses.</summary>
         public async Task<IntentOutcome> IntentAsync(string teamId, string dataSetName, IServerSearchEngine engine,
             string text, string clientAddress, CancellationToken ct,
-            SearchOrAskSettings? trial = null, Action<JsonObject>? onState = null, SearchOrAskOrigin? origin = null)
+            SearchOrAskSettings? trial = null, Action<JsonObject>? onState = null, SearchOrAskOrigin? origin = null,
+            bool prefetch = false)
         {
             if (!JudgeAvailable) return new IntentOutcome(IntentStatus.Unavailable);
             var settings = trial ?? Settings(teamId, dataSetName);
@@ -309,8 +315,11 @@ namespace IndxServer.Services.SearchOrAsk
                     settings.CutWhileAsking, settings.CutShareOfTop, settings.CutTopFloor, settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping, searchText,
                     settings.RefocusWhileTyping, settings.InviteOnAskPhrase);
                 // A judgement is recorded once the judge or its cache answered for it, a failing
-                // judge included (its reason says so); an identifier never reaches here.
-                if (reason != "identifier" && origin != null && Writer is { } w)
+                // judge included (its reason says so); an identifier never reaches here. A prefetch
+                // is not: the pause that follows is recorded, from the cache it filled.
+                if (prefetch && cost is { } spent)
+                    RecordCost(teamId, dataSetName, settings.DailyCallBudget, spent);
+                if (!prefetch && reason != "identifier" && origin != null && Writer is { } w)
                     w.RecordAskIntent(new AskIntentEventRow(teamId, dataSetName, Blank(origin.QueryId), p, answerable,
                         result.Offer, cached, reason, cost, Blank(origin.Subject), Blank(origin.Session), origin.Source,
                         DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted, askPhrase, focusedHits));
@@ -340,10 +349,10 @@ namespace IndxServer.Services.SearchOrAsk
                     criteria: hit[SearchOrAskRecipes.Criteria]));
             }
 
-            using (var lease = _intentLimiter.AttemptAcquire(clientAddress))
+            using (var lease = _intentLimiter.AttemptAcquire(prefetch ? clientAddress + "\0prefetch" : clientAddress))
                 if (!lease.IsAcquired)
                     return new IntentOutcome(IntentStatus.RateLimited, RetryAfterSeconds: RetryAfter(lease));
-            if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget))
+            if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget, prefetch ? settings.DailyCallBudget / 5 * 4 : null))
                 return new IntentOutcome(IntentStatus.BudgetSpent, RetryAfterSeconds: SecondsToUtcMidnight());
 
             var searchedFor = Search(engine, dataSetName, teamId, searched, fields);
@@ -469,7 +478,10 @@ namespace IndxServer.Services.SearchOrAsk
             },
         };
 
-        private bool TryTakeBudget(string teamId, string dataSetName, int budget)
+        /// <summary>One call off the day's budget. <paramref name="ceiling"/> stops short of it (a
+        /// prefetch, which leaves the rest to the pauses), and a call it turns away is no refusal in
+        /// the statistics: the budget has not run out.</summary>
+        private bool TryTakeBudget(string teamId, string dataSetName, int budget, int? ceiling = null)
         {
             var today = DateOnly.FromDateTime(DateTime.UtcNow);
             var key = $"{teamId}\0{dataSetName}";
@@ -479,7 +491,11 @@ namespace IndxServer.Services.SearchOrAsk
                 // so a restart does not start the day over and let it run past its budget.
                 var current = _budget.GetOrAdd(key, _ => (today, CallsRecorded(teamId, dataSetName, today)));
                 var calls = current.Day == today ? current.Calls : 0;
-                if (calls >= budget) { RecordBudget(teamId, dataSetName, today, budget, refused: true); return false; }
+                if (calls >= (ceiling ?? budget))
+                {
+                    if (ceiling == null) RecordBudget(teamId, dataSetName, today, budget, refused: true);
+                    return false;
+                }
                 if (_budget.TryUpdate(key, (today, calls + 1), current)) { RecordBudget(teamId, dataSetName, today, budget, refused: false); return true; }
             }
         }

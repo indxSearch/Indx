@@ -22,7 +22,9 @@ namespace IndxServer.Controllers
     {
         private const string Route = DataSetRoute + "/search-or-ask";
 
-        public sealed record IntentRequest(string? Text);
+        /// <summary>The text to judge. <c>Prefetch</c>: asked while the visitor still types, ahead
+        /// of the pause; it warms the judge's cache and is not counted as a judgement.</summary>
+        public sealed record IntentRequest(string? Text, bool Prefetch = false);
         public sealed record FiltersRequest(string? Text);
 
         /// <summary>The window's Search or ask statistics. Rates are null where nothing was offered
@@ -131,7 +133,10 @@ namespace IndxServer.Controllers
         /// something an answer would serve, <c>answerable</c>, whether the results could answer it,
         /// and the <c>offer</c> those come to on their own. Call it on a typing pause, beside the
         /// search the page already ran. A judge that is slow or failing answers <c>p</c> 0 with a
-        /// <c>reason</c>; it never fails the call.
+        /// <c>reason</c>; it never fails the call. With <c>prefetch</c> true, call it while the
+        /// visitor types as well, one call in flight at a time: the judge reads the text ahead of
+        /// the pause and keeps its answer, so the pause's own call comes back from that at once.
+        /// Only the pause's call is a judgement in the statistics.
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(Route + "/intent")]
@@ -148,7 +153,7 @@ namespace IndxServer.Controllers
             if (ReadyEngine(dataSetName, ctx.OwnerKey, out var engineError) is not { } engine) return engineError!;
 
             var outcome = await service.IntentAsync(ctx.OwnerKey, dataSetName, engine, text,
-                AuthRateLimiting.ClientIp(HttpContext), HttpContext.RequestAborted, origin: Origin());
+                AuthRateLimiting.ClientIp(HttpContext), HttpContext.RequestAborted, origin: Origin(), prefetch: request?.Prefetch ?? false);
             return Refusal(outcome) ?? (ActionResult<IntentResult>)outcome.Result!;
         }
 
