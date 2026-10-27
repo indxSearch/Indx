@@ -141,7 +141,7 @@ App-side hardening (in `IndxServer/Program.cs`) that must land before going live
 - [ ] Add `app.MapHealthChecks("/health")`.
 - [ ] Wire `AddApplicationInsightsTelemetry()` from `APPLICATIONINSIGHTS_CONNECTION_STRING`.
 - [x] Startup logic auto-fetches the license from the Indx portal when a license token is configured (see `LicenseBootstrapper`), Managed included; the portal writes the token (see above).
-- [ ] Switch EF `EnsureCreated()` to `Database.Migrate()` so schema changes can ship to existing customers.
+- [x] Switch EF `EnsureCreated()` to `Database.Migrate()` so schema changes can ship to existing customers (identity.db migrates at startup; indx.db and stats.db add their tables and columns when missing).
 
 Marketplace-side:
 
@@ -153,13 +153,10 @@ Marketplace-side:
 
 ## Updating an existing customer deployment
 
-Bump the version, recompile, re-upload the zip, then update the application definition. Customers receive an update prompt in their managed application blade.
+Azure never updates an installed Managed App, and a new package version or an updated definition
+reaches new installs only. Updates are ours to deliver: the licence portal deploys a release into
+the install, which then runs it from its own copy (`WEBSITE_RUN_FROM_PACKAGE=1`), and the customer
+starts it from Admin > Settings > Version. `deploy/managed-release.sh` publishes and offers a
+release. The whole design, and why it is built this way, is in `Notes/managed-upgrades.md`.
 
-```bash
-az managedapp definition update \
-  --name "IndxServer" \
-  --resource-group "indx-marketplace-rg" \
-  --package-file-uri "https://<your-storage>.blob.core.windows.net/packages/indxcloud-managed-app-1.1.0.zip"
-```
-
-Schema changes between versions must be backward-compatible during the rolling update window.
+A release must keep the previous one able to read the databases, so an install can go back.
