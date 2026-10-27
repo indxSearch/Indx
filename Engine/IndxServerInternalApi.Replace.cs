@@ -46,10 +46,10 @@ namespace IndxServer.Engine
         /// Replaces all documents in the dataset with the contents of <paramref name="jsonStream"/>.
         /// Returns the schema-change summary. The old dataset keeps serving until the swap; on any
         /// build failure the old dataset is left untouched (nothing is swapped in).
+        /// <paramref name="startingRoles"/> is for a dataset that has never had a field configuration
+        /// (a webhook's first sync): the roles to start with, given the analyzed fields. Without it a
+        /// first replace has nothing searchable and its load is refused.
         /// </summary>
-        /// <param name="startingRoles">For a dataset that has never had a field configuration (a
-        /// webhook's first sync): the roles to start with, given the analyzed fields. Without one a
-        /// first replace has nothing searchable and its load is refused.</param>
         internal ReplaceSchemaChange RunReplaceFromJson(string dataSetName, string teamId, Stream jsonStream,
             Func<FieldProxy[], FieldProxy[]>? startingRoles = null)
         {
