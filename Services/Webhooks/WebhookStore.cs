@@ -538,10 +538,13 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
             return cmd.ExecuteNonQuery() == 1;
         }
 
-        public WebhookHeldBatch Hold(string webhookId, string reason, int events, string body, string kind = WebhookKinds.Events)
+        /// <param name="heldUtc">When it was first held: a batch held again (its dataset was busy)
+        /// keeps its place in the order.</param>
+        public WebhookHeldBatch Hold(string webhookId, string reason, int events, string body, string kind = WebhookKinds.Events,
+            DateTime? heldUtc = null)
         {
             var held = new WebhookHeldBatch("hb_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(6)).ToLowerInvariant(),
-                webhookId, DateTime.UtcNow, reason, events, body, kind);
+                webhookId, heldUtc ?? DateTime.UtcNow, reason, events, body, kind);
             using var conn = Open();
             using var cmd = conn.CreateCommand();
             cmd.Parameters.AddWithValue("$k", kind);

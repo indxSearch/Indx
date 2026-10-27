@@ -27,6 +27,7 @@ code { font-family: var(--font-mono); }
 
 .wh-actions, .wh-held-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .wh-held-actions { margin-top: 8px; }
+.wh-row-actions { text-align: right; white-space: nowrap; width: 1%; }
 
 .wh-call-detail { white-space: pre-wrap; color: var(--lv5); font: var(--text-xs); max-width: 48ch; }
 .wh-call-detail--bad { color: var(--CSignal); }

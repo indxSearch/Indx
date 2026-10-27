@@ -157,6 +157,32 @@ namespace IndxServer.Controllers
             return Accepted();
         }
 
+        /// <summary>Applies every held batch, oldest first. A busy dataset stops it (409); the
+        /// batches not yet applied stay held, in their order.</summary>
+        [HttpPost(Route + "/{webhookId}/held/apply")]
+        public async Task<IActionResult> ApplyAllHeld(string teamName, string dataSetName, string webhookId)
+        {
+            var ctx = ResolveTeam(teamName, out var error, write: true, admin: true);
+            if (ctx == null) return error!;
+            if (Owned(ctx, dataSetName, webhookId) is not { } hook) return WebhookNotFound(webhookId);
+            var (_, busy) = await admin.ApplyAllHeldAsync(hook);
+            return busy
+                ? ApiProblems.Problem(StatusCodes.Status409Conflict, "datasetBusy", "The dataset is busy",
+                    "The dataset is loading or being rebuilt; the batches not yet applied stay held. Try in a moment.")
+                : NoContent();
+        }
+
+        /// <summary>Discards every held batch: nothing in them is applied.</summary>
+        [HttpDelete(Route + "/{webhookId}/held")]
+        public IActionResult DiscardAllHeld(string teamName, string dataSetName, string webhookId)
+        {
+            var ctx = ResolveTeam(teamName, out var error, write: true, admin: true);
+            if (ctx == null) return error!;
+            if (Owned(ctx, dataSetName, webhookId) is not { } hook) return WebhookNotFound(webhookId);
+            admin.DiscardAllHeld(hook);
+            return NoContent();
+        }
+
         /// <summary>Discards a held batch: nothing in it is applied.</summary>
         [HttpDelete(Route + "/{webhookId}/held/{heldId}")]
         public IActionResult DiscardHeld(string teamName, string dataSetName, string webhookId, string heldId)

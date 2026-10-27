@@ -55,8 +55,25 @@ namespace IndxServer.Services.Webhooks
                 ? await applier.ApplySyncAsync(hook, held.Body, held.HeldUtc, pastBrake: true)
                 : await applier.ApplyAsync(hook, held.Body, held.HeldUtc, pastBrake: true);
             if (outcome != WebhookOutcome.Retry) return HeldResult.Applied;
-            store.Hold(hook.Id, held.Reason, held.Events, held.Body, held.Kind);
+            store.Hold(hook.Id, held.Reason, held.Events, held.Body, held.Kind, held.HeldUtc);
             return HeldResult.Busy;
         }
+
+        /// <summary>Applies every held batch, in the order they were held. Stops at a busy dataset,
+        /// leaving the rest held in their places. Returns how many were applied.</summary>
+        public async Task<(int Applied, bool Busy)> ApplyAllHeldAsync(Webhook hook)
+        {
+            var applied = 0;
+            foreach (var held in store.Held(hook.Id))
+            {
+                var result = await ApplyHeldAsync(hook, held.Id);
+                if (result == HeldResult.Busy) return (applied, true);
+                if (result == HeldResult.Applied) applied++;
+            }
+            return (applied, false);
+        }
+
+        /// <summary>Discards every held batch: nothing in them is applied. Returns how many.</summary>
+        public int DiscardAllHeld(Webhook hook) => store.Held(hook.Id).Count(h => store.Release(hook.Id, h.Id) != null);
     }
 }

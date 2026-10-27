@@ -79,10 +79,11 @@
         <section class="wh-detail">
             <h3 class="wh-title">@hook.Name</h3>
 
-            @foreach (var held in _held)
+            @if (_held.Count == 1)
             {
+                var held = _held[0];
                 <Alert Variant="warning" Class="wh-held">
-                    <Title>@(held.Kind == WebhookKinds.Sync ? "A full sync is held" : $"A batch of {held.Events:N0} changes is held")</Title>
+                    <Title>@HeldTitle(held)</Title>
                     <Description>
                         <p>@held.Reason Held <TimeAgo Value="held.HeldUtc" />.</p>
                         <div class="wh-held-actions">
@@ -92,6 +93,45 @@
                         </div>
                     </Description>
                 </Alert>
+            }
+            else if (_held.Count > 1)
+            {
+                @* Several held batches (one became full, a held full sync beside held changes, or
+                   batches from before calls joined): one warning and one decision, the batches
+                   themselves behind a disclosure, each still to apply or discard on its own. *@
+                <Alert Variant="warning" Class="wh-held">
+                    <Title>@_held.Count batches are held, @_held.Sum(h => h.Events).ToString("N0") changes in all</Title>
+                    <Description>
+                        <p>The first was held <TimeAgo Value="_held[0].HeldUtc" />: @_held[0].Reason Apply all runs them in the order they came.</p>
+                        <div class="wh-held-actions">
+                            <Button Variant="primary" Size="micro" Loading="@(_busy == AllHeld)" @onclick="ApplyAllHeldAsync">Apply all</Button>
+                            <ConfirmButton Label="Discard all" Icon="DatasetIcons.Delete" Prompt="@($"Discard all {_held.Count} batches? Nothing in them is applied.")"
+                                           ConfirmLabel="Discard all" Variant="primary" OnConfirm="DiscardAllHeld" />
+                        </div>
+                    </Description>
+                </Alert>
+                <Disclosure Class="wh-held-list">
+                    <Summary>The @_held.Count batches</Summary>
+                    <ChildContent>
+                        <table class="indx-table">
+                            <thead><tr><th>Held</th><th>What</th><th class="wh-num">Changes</th><th></th></tr></thead>
+                            <tbody>
+                                @foreach (var held in _held)
+                                {
+                                    <tr>
+                                        <td><TimeAgo Value="held.HeldUtc" TooltipPosition="left" /></td>
+                                        <td>@(held.Kind == WebhookKinds.Sync ? "Full sync" : "Changes")</td>
+                                        <td class="wh-num">@held.Events.ToString("N0")</td>
+                                        <td class="wh-row-actions">
+                                            <Button Variant="ghost" Size="micro" Loading="@(_busy == held.Id)" @onclick="@(() => ApplyHeldAsync(held.Id))">Apply</Button>
+                                            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="@(() => DiscardHeld(held.Id))">Discard</Button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </ChildContent>
+                </Disclosure>
             }
 
             <div class="wh-grid">
@@ -458,6 +498,38 @@
             Ctx.RefreshStatus();
             Ctx.NotifyChanged();
         }
+    }
+
+    private const string AllHeld = "*";
+
+    private static string HeldTitle(WebhookHeldBatch held) =>
+        held.Kind == WebhookKinds.Sync ? "A full sync is held" : $"A batch of {held.Events:N0} changes is held";
+
+    private async Task ApplyAllHeldAsync()
+    {
+        if (Selected?.Hook is not { } hook) return;
+        _busy = AllHeld;
+        try
+        {
+            var (applied, busy) = await Admin.ApplyAllHeldAsync(hook);
+            if (busy) Toasts.Error($"Applied {applied}; the dataset is loading or being rebuilt, so the rest stay held. Try in a moment.");
+            else Toasts.Show($"Applied {applied} held batches.", DatasetIcons.Yes);
+        }
+        finally
+        {
+            _busy = null;
+            Load();
+            Ctx.RefreshStatus();
+            Ctx.NotifyChanged();
+        }
+    }
+
+    private void DiscardAllHeld()
+    {
+        if (Selected?.Hook is not { } hook) return;
+        var discarded = Admin.DiscardAllHeld(hook);
+        Toasts.Show($"Discarded {discarded} held batches.", DatasetIcons.Delete);
+        Load();
     }
 
     private void DiscardHeld(string heldId)
