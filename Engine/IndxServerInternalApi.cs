@@ -1713,6 +1713,7 @@ namespace IndxServer.Engine
                 EnableBoost = queryProxy.EnableBoost,
                 EnableBury = queryProxy.EnableBury,
                 EnableCoverage = queryProxy.EnableCoverage,
+                EnableCoverageReport = queryProxy.EnableCoverageReport,
                 EnableFacets = queryProxy.EnableFacets,
                 SortAscending = queryProxy.SortAscending,
                 SortBy = queryProxy.SortBy != null ? engine.DocumentFields.GetField(queryProxy.SortBy) : null,

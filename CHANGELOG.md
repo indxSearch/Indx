@@ -15,6 +15,9 @@ in the AI skill.
 
 ### Changed
 
+- **The Coverage report** (IndxSearchLib 5.1): `enableCoverageReport` on a search returns
+  `coverageReport`, how each query word was met in each returned record and in which field, and
+  per field how many words were met each way. Null unless asked for.
 - **A field is matched by whole words unless it has pattern matching** (IndxSearchLib 5.1,
   `Field.PatternMatching`). `PUT fields/configuration` takes `patternMatching` (true or false) with
   `indexSizes`, `numberOfStartCharacters` and `numberOfStopCharacters`, which are its settings;
