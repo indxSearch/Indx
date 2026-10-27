@@ -1,0 +1,86 @@
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+@* Two panes with a handle between them that the reader drags: a list beside its detail, a canvas
+   beside the records it counts, a page beside a panel. The first pane's share is a percentage,
+   kept between MinSize and MaxSize. The drag happens in the browser (Resizable.razor.js), so it is
+   smooth with no round trip; the arrow keys on the focused handle move it a step, Home and End to
+   the limits. With a StorageKey the viewer's size is kept. The line is the only mark; WithHandle
+   adds a grip on it. Port of the React Resizable in indx-systm. *@
+<div class="indx-resizable indx-resizable-@Direction @Class" @ref="_root" style="--indx-resizable-size: @(_size.ToString(System.Globalization.CultureInfo.InvariantCulture))%">
+    <div class="indx-resizable-pane indx-resizable-first">@First</div>
+    <div class="indx-resizable-handle" role="separator" tabindex="0" aria-label="@AriaLabel"
+         aria-orientation="@(Direction == "horizontal" ? "vertical" : "horizontal")"
+         aria-valuemin="@((int)MinSize)" aria-valuemax="@((int)MaxSize)" aria-valuenow="@((int)Math.Round(_size))">
+        @if (WithHandle) { <span class="indx-resizable-grip" aria-hidden="true"></span> }
+    </div>
+    <div class="indx-resizable-pane indx-resizable-second">@Second</div>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? First { get; set; }
+    [Parameter] public RenderFragment? Second { get; set; }
+    /// <summary>"horizontal" (side by side, the default) or "vertical" (one over the other).</summary>
+    [Parameter] public string Direction { get; set; } = "horizontal";
+    /// <summary>The first pane's share at the start, in percent.</summary>
+    [Parameter] public double DefaultSize { get; set; } = 50;
+    [Parameter] public double MinSize { get; set; } = 10;
+    [Parameter] public double MaxSize { get; set; } = 90;
+    /// <summary>Where the viewer's size is kept (localStorage); null keeps nothing.</summary>
+    [Parameter] public string? StorageKey { get; set; }
+    /// <summary>Told once a drag or a key has settled, with the first pane's share.</summary>
+    [Parameter] public EventCallback<double> SizeChanged { get; set; }
+    /// <summary>A grip on the line, for a handle that should be found at a glance.</summary>
+    [Parameter] public bool WithHandle { get; set; }
+    [Parameter] public string AriaLabel { get; set; } = "Resize";
+    [Parameter] public string? Class { get; set; }
+
+    private double _size;
+    private bool _sized;
+    private ElementReference _root;
+    private IJSObjectReference? _module;
+    private DotNetObjectReference<Resizable>? _self;
+    private bool _disposed;
+
+    protected override void OnParametersSet()
+    {
+        if (!_sized) { _size = Math.Clamp(DefaultSize, MinSize, MaxSize); _sized = true; }
+    }
+
+    /// <summary>From the browser, once the size has settled: kept here, so a render does not undo it.</summary>
+    [JSInvokable]
+    public Task Settled(double size) => InvokeAsync(async () =>
+    {
+        _size = size;
+        if (SizeChanged.HasDelegate) await SizeChanged.InvokeAsync(size);
+    });
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+        try
+        {
+            var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Indx.Systm.Blazor/Resizable.razor.js");
+            if (_disposed) { await module.DisposeAsync(); return; }
+            _module = module;
+            _self = DotNetObjectReference.Create(this);
+            var kept = await _module.InvokeAsync<double?>("init", _root, _self, Direction, MinSize, MaxSize, StorageKey);
+            if (kept is { } k && Math.Abs(k - _size) > 0.01) { _size = k; StateHasChanged(); }
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (JSException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (_module is not null)
+        {
+            try { await _module.InvokeVoidAsync("dispose", _root); await _module.DisposeAsync(); }
+            catch (JSDisconnectedException) { }
+            catch (Exception) { }
+        }
+        _self?.Dispose();
+    }
+}

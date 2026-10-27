@@ -1,0 +1,53 @@
+@using Indx.Systm.Blazor.Icons
+@* What an assistant thought before it answered, kept out of the answer's way. While it thinks
+   (Streaming) the row says "Thinking…" with the spinner StreamStatus has and the thinking shows
+   under it as it comes; once the answer begins the row folds to "Thought for 4s" and opens again
+   on a press. A reader who opened or closed it keeps their choice. Port of the React Reasoning in
+   indx-systm. *@
+<div class="indx-reasoning @Class" data-state="@(Streaming ? "thinking" : "done")">
+    <button type="button" class="indx-reasoning-row" aria-expanded="@(_open ? "true" : "false")"
+            aria-controls="@(_open ? _id : null)" @onclick="Toggle">
+        <span class="indx-reasoning-icon" aria-hidden="true">
+            @if (Streaming) { <Spinner Size="14" /> }
+            else if (_open) { <ChevronDown Size="14" Color="currentColor" /> }
+            else { <ChevronRight Size="14" Color="currentColor" /> }
+        </span>
+        <span>@Label</span>
+        @if (Streaming)
+        {
+            <span class="indx-reasoning-chevron" aria-hidden="true">
+                @if (_open) { <ChevronDown Size="14" Color="currentColor" /> } else { <ChevronRight Size="14" Color="currentColor" /> }
+            </span>
+        }
+    </button>
+    @if (_open && ChildContent != null)
+    {
+        <div id="@_id" class="indx-reasoning-body">@ChildContent</div>
+    }
+</div>
+
+@code {
+    /// <summary>The thinking, as text or markup.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Still thinking: the row says so, with the spinner, and the thinking shows.</summary>
+    [Parameter] public bool Streaming { get; set; }
+    /// <summary>How long it thought, for "Thought for 4s"; left out, "Thought".</summary>
+    [Parameter] public int? Seconds { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private readonly string _id = $"indx-reasoning-{Guid.NewGuid():N}";
+    private bool _open;
+    private bool? _chosen;          // the reader's own open or closed, which outlasts Streaming
+
+    private string Label => Streaming ? "Thinking…"
+        : Seconds is { } s ? (s < 1 ? "Thought for a moment" : $"Thought for {s}s") : "Thought";
+
+    // Open while it thinks, folded once it is done, unless the reader chose.
+    protected override void OnParametersSet() => _open = _chosen ?? Streaming;
+
+    private void Toggle()
+    {
+        _open = !_open;
+        _chosen = _open;
+    }
+}
