@@ -87,6 +87,11 @@ namespace IndxServer.Services
         /// <para>Azure sets <c>HOME</c> on both, so that is what decides. A path the caller has
         /// already made absolute is left alone.</para>
         /// </summary>
+        /// <summary>Whether App Service runs the app from a package, its app folder then read-only.
+        /// "0" or empty is off, as App Service reads it.</summary>
+        public static bool RunsFromPackage() =>
+            Environment.GetEnvironmentVariable("WEBSITE_RUN_FROM_PACKAGE") is { Length: > 0 } v && v != "0";
+
         public static string ResolveLogPath(string logFileName)
         {
             if (string.IsNullOrEmpty(logFileName) || Path.IsPathRooted(logFileName))
@@ -97,8 +102,13 @@ namespace IndxServer.Services
                 return logFileName;
 
             var home = Environment.GetEnvironmentVariable("HOME");
-            return string.IsNullOrEmpty(home)
-                ? logFileName
+            if (string.IsNullOrEmpty(home)) return logFileName;
+            // Run from a package (WEBSITE_RUN_FROM_PACKAGE, how the Managed App takes an update), the
+            // app folder is the package itself, read-only: the file goes to App Service's own log
+            // folder, where NLog can write it. NLog fails without a word otherwise, and there would
+            // simply be no log.
+            return RunsFromPackage()
+                ? Path.Combine(home, "LogFiles", logFileName)
                 : Path.Combine(home, "site", "wwwroot", logFileName);
         }
     }
