@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Indx.Api;
 using IndxServer.Data;
 using IndxServer.Engine;
@@ -48,18 +49,43 @@ namespace IndxServer.Services.Webhooks
                 return WebhookOutcome.Refused;
             }
 
-            if (!pastBrake && plan.Destructive > 0)
+            if (!pastBrake)
             {
-                var recent = store.DestructiveSince(hook.TeamId, hook.DatasetName, DateTime.UtcNow.AddHours(-1));
-                var limit = Math.Max(BrakeFloor, (int)Math.Ceiling(hook.BrakeShare * Math.Max(1, engine.Status.DocumentCount)));
-                if (recent + plan.Destructive > limit)
+                // While a batch is held the webhook waits: a later call joins it, so an admin decides
+                // once for a bulk unpublish that came one document a call (Sanity, Contentful), and
+                // nothing overtakes what waits (a delete held, then the same document republished).
+                if (store.OpenHold(hook.Id) is { } open)
                 {
-                    var reason = $"{plan.Destructive} deletes or destructive updates in this call, {recent} in the past hour; " +
-                                 $"the brake allows {limit} an hour ({hook.BrakeShare:P0} of {engine.Status.DocumentCount:N0} documents).";
-                    var held = store.Hold(hook.Id, reason, plan.Events, body);
-                    Log(hook, receivedUtc, plan, "held", $"{reason} Held as {held.Id}: apply or discard it.");
-                    await NotifyAsync(hook, "held", reason, always: true);
-                    return WebhookOutcome.Held;
+                    if (open.Events + plan.Events > WebhookPlanner.MaxEvents)
+                    {
+                        var next = store.Hold(hook.Id, $"Waits behind the held batch {open.Id}, which holds as many changes as one call may.", plan.Events, body);
+                        Log(hook, receivedUtc, plan, "held", $"Held as {next.Id}, behind {open.Id}.");
+                        return WebhookOutcome.Held;
+                    }
+                    if (JoinHeld(open, body, plan.Events))
+                    {
+                        Log(hook, receivedUtc, plan, "held", $"Waits in the held batch {open.Id}, behind the changes held before it.");
+                        return WebhookOutcome.Held;
+                    }
+                    // Gone: an admin applied or discarded it a moment ago. The call goes on as usual.
+                }
+                if (plan.Destructive > 0)
+                {
+                    var hourAgo = DateTime.UtcNow.AddHours(-1);
+                    var recent = store.DestructiveSince(hook.TeamId, hook.DatasetName, hourAgo);
+                    // Measured against the dataset as it was an hour ago, so the allowance does not
+                    // shrink as the deletes it allows go through.
+                    var size = Math.Max(1, engine.Status.DocumentCount + Math.Max(0, store.NetRemovedSince(hook.TeamId, hook.DatasetName, hourAgo)));
+                    var limit = Math.Max(BrakeFloor, (int)Math.Ceiling(hook.BrakeShare * size));
+                    if (recent + plan.Destructive > limit)
+                    {
+                        var reason = $"This call would bring the deletes and field-emptying updates within an hour to {recent + plan.Destructive:N0}; " +
+                                     $"the brake allows {limit:N0} ({hook.BrakeShare:P0} of {size:N0} documents). Later calls wait with it.";
+                        var held = store.Hold(hook.Id, reason, plan.Events, body);
+                        Log(hook, receivedUtc, plan, "held", $"{reason} Held as {held.Id}: apply or discard it.");
+                        await NotifyAsync(hook, "held", reason, always: true);
+                        return WebhookOutcome.Held;
+                    }
                 }
             }
 
@@ -92,6 +118,15 @@ namespace IndxServer.Services.Webhooks
             if (plan.Refusals.Count > 0)
                 await NotifyAsync(hook, "refused", $"{plan.Refusals.Count} of {plan.Events} events refused, the first: {plan.Refusals[0]}");
             return WebhookOutcome.Applied;
+        }
+
+        /// <summary>Adds a call's changes to a held batch, after its own. False when the batch is gone.</summary>
+        private bool JoinHeld(WebhookHeldBatch open, string body, int events)
+        {
+            var merged = new JsonArray();
+            foreach (var e in WebhookPlanner.Events(JsonNode.Parse(open.Body))) merged.Add(e.DeepClone());
+            foreach (var e in WebhookPlanner.Events(JsonNode.Parse(body))) merged.Add(e.DeepClone());
+            return store.Join(open.Id, merged.ToJsonString(), open.Events + events);
         }
 
         /// <summary>

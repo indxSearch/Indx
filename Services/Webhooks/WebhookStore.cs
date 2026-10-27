@@ -503,7 +503,40 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
             return Convert.ToInt32(cmd.ExecuteScalar());
         }
 
+        /// <summary>Documents the dataset's webhooks removed, less those they added, since a time: added
+        /// to today's count, roughly the size the dataset had then, which the brake measures against.</summary>
+        public int NetRemovedSince(string teamId, string datasetName, DateTime sinceUtc)
+        {
+            if (!Ensure()) return 0;
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"SELECT COALESCE(SUM(d.Deleted), 0) - COALESCE(SUM(d.Inserted), 0) FROM WebhookDeliveries d JOIN Webhooks w ON w.Id = d.WebhookId
+                                WHERE w.TeamId = $t AND w.DatasetName = $d AND d.ReceivedUtc >= $since AND d.Outcome = 'applied'";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", datasetName);
+            cmd.Parameters.AddWithValue("$since", sinceUtc.ToString("O"));
+            return Convert.ToInt32(cmd.ExecuteScalar());
+        }
+
         // ── Held batches ─────────────────────────────────────────────────────────────────
+
+        /// <summary>The webhook's latest held batch of changes, which later calls join while it waits.</summary>
+        public WebhookHeldBatch? OpenHold(string webhookId) =>
+            Held(webhookId).LastOrDefault(h => h.Kind == WebhookKinds.Events);
+
+        /// <summary>Replaces a held batch's changes with a longer list (a later call joined it). False
+        /// when the batch is gone: an admin applied or discarded it in the meantime.</summary>
+        public bool Join(string heldId, string body, int events)
+        {
+            if (!Ensure()) return false;
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE WebhookHeld SET Body = $b, Events = $e WHERE Id = $id";
+            cmd.Parameters.AddWithValue("$b", body);
+            cmd.Parameters.AddWithValue("$e", events);
+            cmd.Parameters.AddWithValue("$id", heldId);
+            return cmd.ExecuteNonQuery() == 1;
+        }
 
         public WebhookHeldBatch Hold(string webhookId, string reason, int events, string body, string kind = WebhookKinds.Events)
         {

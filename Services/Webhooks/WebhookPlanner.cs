@@ -148,6 +148,20 @@ namespace IndxServer.Services.Webhooks
                 }
                 planned[key] = json;
             }
+
+            // One write per document, for its last state: the writes run as inserts, updates, then
+            // deletes, so a delete followed by the same document published again (in one call, or
+            // in a held batch later calls joined) would otherwise end deleted.
+            plan.Inserts.Clear();
+            plan.Updates.Clear();
+            plan.Deletes.Clear();
+            foreach (var (key, json) in planned)
+            {
+                var existed = dataset.Document(key) != null;
+                if (json == null) { if (existed) plan.Deletes.Add(key); }
+                else if (existed) plan.Updates.Add((key, json));
+                else plan.Inserts.Add((key, json));
+            }
             foreach (var name in NewFields(plan, dataset.FieldTypes)) plan.Notes.Add($"a field the dataset does not have yet: {name}");
             return plan;
         }
@@ -216,7 +230,7 @@ namespace IndxServer.Services.Webhooks
             return plan;
         }
 
-        private static List<JsonObject> Events(JsonNode? root)
+        internal static List<JsonObject> Events(JsonNode? root)
         {
             var list = root switch
             {
