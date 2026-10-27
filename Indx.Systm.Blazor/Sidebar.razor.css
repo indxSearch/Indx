@@ -1,0 +1,80 @@
+.indx-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    width: var(--sidebar-width, 220px);
+    height: 100%;
+    min-height: 0;
+    box-sizing: border-box;
+    padding: 16px 10px;
+}
+.indx-sidebar-header { padding: 0 10px; min-width: 0; }
+.indx-sidebar-body { display: flex; flex-direction: column; gap: 18px; flex: 1; min-height: 0; overflow-y: auto; }
+.indx-sidebar-group { display: flex; flex-direction: column; gap: 2px; }
+.indx-sidebar-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 10px 4px;
+    font: var(--text-2xs);
+    font-weight: var(--med);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: var(--lv4);
+}
+.indx-sidebar-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.indx-sidebar-title--toggle { width: 100%; margin: 0; background: none; border: none; text-align: left; cursor: pointer; }
+button.indx-sidebar-title--toggle:hover { color: var(--lv6); }
+.indx-sidebar-title-chevron { display: inline-flex; margin-left: auto; }
+.indx-sidebar-items { display: flex; flex-direction: column; gap: 2px; }
+.indx-sidebar-items--shut { display: none; }
+
+/* Items are systm Buttons in a Tooltip that speaks only in the rail; styled from here, since a
+   class passed to the component replaces its own. */
+.indx-sidebar-item ::deep .indx-tooltip-wrapper { display: flex; width: 100%; }
+.indx-sidebar-item ::deep .indx-btn { width: 100%; justify-content: flex-start; }
+.indx-sidebar:not(.indx-sidebar--rail) ::deep .indx-tooltip { display: none; }
+.indx-sidebar-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.indx-sidebar-badge { margin-left: auto; padding: 0 5px; font: var(--text-2xs); font-weight: var(--med); border-radius: 3px; background: var(--lv3); color: var(--lv7); }
+.indx-sidebar-badge--signal { background: var(--CSignal); color: var(--lv0); }
+
+.indx-sidebar-footer { display: flex; flex-direction: column; gap: 8px; }
+.indx-sidebar-footer-content { min-width: 0; }
+
+/* The rail: icons only, 30px buttons in a 50px column. Group titles give way to a line between
+   groups, a closed group shows its items (there is no title to open it by), a badge is a dot, and
+   the body lets the tooltips out. */
+@media (min-width: 769px) {
+    .indx-sidebar--rail { width: 50px; }
+    .indx-sidebar--rail .indx-sidebar-header,
+    .indx-sidebar--rail .indx-sidebar-footer-content,
+    .indx-sidebar--rail .indx-sidebar-title,
+    .indx-sidebar--rail .indx-sidebar-label { display: none; }
+    .indx-sidebar--rail .indx-sidebar-body { gap: 8px; overflow: visible; }
+    .indx-sidebar--rail .indx-sidebar-group + .indx-sidebar-group { padding-top: 8px; border-top: 1px solid var(--lv2); }
+    .indx-sidebar--rail .indx-sidebar-items--shut { display: flex; }
+    .indx-sidebar--rail .indx-sidebar-item ::deep .indx-btn { position: relative; width: 30px; padding: 0 7px; justify-content: center; }
+    .indx-sidebar--rail .indx-sidebar-badge { position: absolute; top: 5px; right: 5px; width: 6px; height: 6px; padding: 0; font-size: 0; border-radius: 50%; background: var(--lv6); }
+    .indx-sidebar--rail .indx-sidebar-badge--signal { background: var(--CSignal); }
+    .indx-sidebar-overlay { display: none; }
+}
+
+/* Narrow: a drawer over the page at the left edge, with a scrim beside it. The rail and its
+   button do not apply; the host's trigger opens it. */
+@media (max-width: 768px) {
+    .indx-sidebar {
+        display: none;
+        position: fixed;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        z-index: 1000;
+        width: min(280px, 85vw);
+        height: auto;
+        background: var(--lv1);
+        border-right: 1px solid var(--lv2);
+    }
+    .indx-sidebar--open { display: flex; }
+    .indx-sidebar-fold { display: none; }
+    .indx-sidebar-overlay { position: fixed; inset: 0; z-index: 999; background: rgba(0, 0, 0, 0.5); }
+}
