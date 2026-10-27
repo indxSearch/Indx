@@ -50,7 +50,21 @@ namespace IndxServer.Services.Webhooks
                 if (resolution.NeedsFullSync && !store.SyncWaiting(hook.Id)) store.Enqueue(hook.Id, "", WebhookKinds.Sync);
             }
 
-            var plan = WebhookPlanner.Plan(body, hook, new EngineDataset(engine),
+            // Changes are written by the engine, which keys them by its own key field: if that is not
+            // the declared one (a load from the store lost it), writing would put the documents under
+            // the wrong keys. Refused instead; a full sync puts the declared key field back.
+            var declared = IndxServerInternalApi.Manager.GetDeclaredKeyField(hook.DatasetName, hook.TeamId);
+            if (declared.Length > 0 && engine.DocumentFields?.NameOfDocumentKeyField is { } live && live != declared)
+            {
+                var problem = $"The dataset reads its keys from \"{live}\" while its key field is \"{declared}\", so changes cannot be applied. " +
+                              "A full sync puts it right.";
+                Log(hook, receivedUtc, null, "refused", problem);
+                await NotifyAsync(hook, "refused", problem);
+                if (sources.For(hook).Pulls && !store.SyncWaiting(hook.Id)) store.Enqueue(hook.Id, "", WebhookKinds.Sync);
+                return WebhookOutcome.Refused;
+            }
+
+            var plan = WebhookPlanner.Plan(body, hook, new EngineDataset(engine, declared),
                 ids => store.Keys(hook.TeamId, hook.DatasetName, ids),
                 key => store.KeyTaken(hook.TeamId, hook.DatasetName, key));
             if (note != null) plan.Notes.Insert(0, note);
@@ -175,7 +189,7 @@ namespace IndxServer.Services.Webhooks
                 }
             }
 
-            var plan = WebhookPlanner.PlanSync(body, hook, new EngineDataset(engine),
+            var plan = WebhookPlanner.PlanSync(body, hook, new EngineDataset(engine, IndxServerInternalApi.Manager.GetDeclaredKeyField(hook.DatasetName, hook.TeamId)),
                 ids => store.Keys(hook.TeamId, hook.DatasetName, ids),
                 key => store.KeyTaken(hook.TeamId, hook.DatasetName, key), source.LeavesOut);
             if (plan.Error == null && plan.Count == 0)
@@ -351,9 +365,13 @@ namespace IndxServer.Services.Webhooks
         }
 
         /// <summary>The engine as the planner reads it.</summary>
-        private sealed class EngineDataset(IServerSearchEngine engine) : IWebhookDataset
+        /// <summary>The engine as the planner reads it. The key field is the dataset's declared one
+        /// when it has one: an engine loaded back from the store stands on the default "id" (the
+        /// stored field configuration does not carry the name, Notes/Jens/key-field-lost-on-store-load),
+        /// and a sync that went by the engine wrote the numbers into "id", over a sender's own ids.</summary>
+        private sealed class EngineDataset(IServerSearchEngine engine, string declaredKeyField) : IWebhookDataset
         {
-            public string KeyField => engine.DocumentFields?.NameOfDocumentKeyField ?? "";
+            public string KeyField => declaredKeyField.Length > 0 ? declaredKeyField : engine.DocumentFields?.NameOfDocumentKeyField ?? "";
             public IReadOnlyDictionary<string, JsonValueKind> FieldTypes { get; } =
                 engine.DocumentFields == null ? new Dictionary<string, JsonValueKind>()
                 : engine.GetFieldList().GroupBy(f => f.Name).ToDictionary(g => g.Key, g => g.First().Type);
