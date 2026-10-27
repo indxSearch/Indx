@@ -26,7 +26,7 @@
 }
 else if (_all.Count == 0)
 {
-    <p style="color:var(--lv5);">No notifications yet.</p>
+    <EmptyState Size="compact" Icon="_iconBell" Title="No notifications yet">Expiring API keys, ended boost rules, failed backups and new releases are listed here, as you choose on the Account page.</EmptyState>
 }
 else
 {
@@ -56,6 +56,7 @@ else
 }
 
 @code {
+    private static readonly RenderFragment<int> _iconBell = size => @<Indx.Systm.Blazor.Icons.Bell Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconCheck => size => @<Check Size="size" />;
 
     private List<Notification> _all = [];

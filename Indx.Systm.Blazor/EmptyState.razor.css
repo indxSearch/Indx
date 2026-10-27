@@ -1,0 +1,10 @@
+.indx-empty { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 6px; }
+.indx-empty-default { padding: 56px 24px 64px; }
+.indx-empty-compact { padding: 32px 16px 40px; }
+.indx-empty-icon { display: flex; margin-bottom: 10px; color: var(--lv4); }
+.indx-empty-compact .indx-empty-icon { margin-bottom: 6px; }
+.indx-empty-title { font: var(--text-lg); color: var(--lv7); }
+.indx-empty-compact .indx-empty-title { font: var(--text-base); }
+.indx-empty-detail { font: var(--text-sm); color: var(--lv5); max-width: 60ch; }
+.indx-empty-detail ::deep code { font-family: var(--font-mono); font-size: 0.92em; }
+.indx-empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin-top: 14px; }

@@ -49,7 +49,7 @@
 
     @if (_list == null || _list.Entries.Count == 0)
     {
-        <p class="syn-empty">No synonyms on this dataset yet.</p>
+        <EmptyState Size="compact" Icon="DatasetIcons.Synonym" Title="No synonyms yet">A synonym lets a search for one word find records that use another, as sofa and couch.</EmptyState>
     }
     else
     {

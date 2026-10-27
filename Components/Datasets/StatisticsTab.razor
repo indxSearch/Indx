@@ -55,7 +55,7 @@ else
     }
     else if (Empty)
     {
-        <p class="stats-empty">@(_source == null ? $"No statistics in the last {_days} days." : $"No searches from {_source} in the last {_days} days.")</p>
+        <EmptyState Size="compact" Icon="DatasetIcons.Statistics" Title="@(_source == null ? $"No statistics in the last {_days} days" : $"No searches from {_source} in the last {_days} days")" />
     }
     else
     {

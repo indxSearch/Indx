@@ -37,7 +37,7 @@
         </div>
         @if (_rules.Count == 0)
         {
-            <p class="boost-empty">No boost rules yet.</p>
+            <EmptyState Size="compact" Icon="DatasetIcons.Boost" Title="No boost rules yet">A rule lifts the records it matches, on every search or between two dates.</EmptyState>
         }
         else
         {

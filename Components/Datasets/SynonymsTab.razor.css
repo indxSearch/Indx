@@ -8,7 +8,6 @@
 }
 .syn-intro p { color: var(--lv5); font: var(--text-sm); margin: 0; flex: 1; }
 
-.syn-empty { color: var(--lv4); font: var(--text-sm); margin: 8px 0 12px; }
 .syn-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .syn-chip { cursor: pointer; }
 .syn-row-actions { text-align: right; white-space: nowrap; width: 1%; }

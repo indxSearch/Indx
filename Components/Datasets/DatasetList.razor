@@ -29,14 +29,8 @@
        three steps from nothing to a search, each with the action it takes, the first of them the
        only thing to do right now. The skill for a developer whose LLM does the setting up. *@
     <div class="indx-empty-state">
-        @* The opening, in the shape of intrface's result messages: a large icon, a line, a detail. *@
-        <div class="indx-empty-message">
-            <span class="indx-empty-message-icon"><Empty Size="70" Color="var(--lv4)" /></span>
-            <div class="indx-empty-message-title">Nothing here yet</div>
-            <div class="indx-empty-message-detail">
-                @(CanCreate ? "Three steps to your first search." : "An editor of this team creates the first dataset.")
-            </div>
-        </div>
+        @* The opening, in the shape of intrface's result messages: a large icon, a line, a detail (systm EmptyState). *@
+        <EmptyState Icon="_iconEmpty" Title="Nothing here yet">@(CanCreate ? "Three steps to your first search." : "An editor of this team creates the first dataset.")</EmptyState>
         <ol class="indx-empty-steps">
             <li class="indx-empty-step">
                 <span class="indx-empty-step-number">1</span>
@@ -202,6 +196,7 @@ else
 </Modal>
 
 @code {
+    private static readonly RenderFragment<int> _iconEmpty = size => @<Empty Size="size" Color="currentColor" />;
     [Parameter, EditorRequired] public string TeamId { get; set; } = "";
     [Parameter, EditorRequired] public string TeamName { get; set; } = "";
     [Parameter] public string? Role { get; set; }
