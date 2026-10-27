@@ -107,6 +107,8 @@ else
                neighbour: the grid aligns to the top and masonry is not shipped. *@
             @* The window's figures, as the Search or ask section opens with its own: the tiles sit
                with the pictures they summarise rather than above every section. *@
+            @* Tiles, strip and pictures one block, an 8px gap throughout as inside the grid. *@
+            <div class="stats-overview-block">
             <StatGroup Columns="@(HasConversions ? 5 : 4)" Class="stats-overview-tiles">
                 <Stat Label="Searches" LabelIcon="DatasetIcons.Search" Hint="Every search with text in the window, keystrokes collapsed."><ValueContent>@N(_overview.Searches)</ValueContent></Stat>
                 <Stat Label="Fuzzy finds" LabelIcon="DatasetIcons.FuzzySearch" Hint="Searches with typos too large for an exact match, where the visitor still chose a result fuzzy search found."><ValueContent>@N(_overview.UncoveredChosen)</ValueContent></Stat>
@@ -171,7 +173,8 @@ else
         }
 
         @* Which result is chosen: the clicks by the position of what was clicked. Most on the first
-           says the ranking puts the right thing on top; many from far down, that it can do better. *@
+           says the ranking puts the right thing on top; many from far down, that it can do better. A rose,
+           a wedge a position, its radius the clicks there (27 Oct 2026; a full-width bar before). *@
         @if (_positions is { Total: > 0 } positions)
         {
             <div class="stats-overview-item">
@@ -179,7 +182,9 @@ else
                 <span class="stats-chart-title">Which result is chosen</span>
             </div>
             <p class="stats-help">The chosen result sits at position @AvgPos() on average. The first result in @Pct(positions.First, positions.Total) of @N(positions.Total) clicks@(positions.BelowTen > 0 ? $", and one below the tenth in {Pct(positions.BelowTen, positions.Total)}" : "").</p>
-            <BarMeter Segments="PositionSegments(positions)" Labels="legend" Format="@(v => Pct((long)v, positions.Total))" />
+            <div class="stats-centred">
+                <RadialChart Groups="PositionGroups(positions)" Size="240" Hollow="0.18" Format="@((v, i) => Pct((long)v, positions.Total))" AriaLabel="Clicks by the position of the chosen result" />
+            </div>
             </div>
         }
 
@@ -192,7 +197,9 @@ else
                 <span class="stats-chart-title">Languages</span>
             </div>
             <p class="stats-help">The language of the page the search was typed on, as the page reports it; a cell is a percent. A flag where the page names its country too.</p>
-            <Waffle Segments="LocaleSegments(_locales)" Format="@((f, v) => Pct((long)v, _locales.Sum(l => l.Searches)))" AriaLabel="Searches by language" />
+            <div class="stats-waffle">
+                <Waffle Segments="LocaleSegments(_locales)" Cell="9" Format="@((f, v) => Pct((long)v, _locales.Sum(l => l.Searches)))" AriaLabel="Searches by language" />
+            </div>
             </div>
         }
 
@@ -240,6 +247,7 @@ else
             </div>
             </div>
         }
+            </div>
             </div>
 
         @if (_weekHour is not { Total: > 0 } && _positions is not { Total: > 0 } && _typing is not { Total: > 0 })
@@ -950,7 +958,7 @@ else
         return $"Busiest on {WeekdayNames[bestDay]}s from {bestHour:00}:00. {Pct(night, week.Total)} of searches are between 00:00 and 06:00, {Pct(weekend, week.Total)} at the weekend.";
     }
 
-    private static IReadOnlyList<BarMeter.Segment> PositionSegments(PositionStat p) =>
+    private static IReadOnlyList<RadialChart.Group> PositionGroups(PositionStat p) =>
     [
         new("1st", p.First), new("2nd", p.Second), new("3rd", p.Third), new("4th to 10th", p.FourToTen), new("Below 10th", p.BelowTen),
     ];

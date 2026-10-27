@@ -90,9 +90,10 @@
     border-right-color: var(--lv3);
 }
 
-/* Show on hover and keyboard focus */
+/* Show on hover and keyboard focus. :focus-visible, not :focus-within: a click leaves its button
+   focused, and the tooltip stayed until a press elsewhere (Radix, the React side, closes on it). */
 .indx-tooltip-wrapper:hover .indx-tooltip,
-.indx-tooltip-wrapper:focus-within .indx-tooltip {
+.indx-tooltip-wrapper:has(:focus-visible) .indx-tooltip {
     display: block;
     opacity: 1;
     transition-delay: 80ms;
@@ -101,7 +102,7 @@
 /* The fade-in from display: none needs a starting point. */
 @starting-style {
     .indx-tooltip-wrapper:hover .indx-tooltip,
-    .indx-tooltip-wrapper:focus-within .indx-tooltip {
+    .indx-tooltip-wrapper:has(:focus-visible) .indx-tooltip {
         opacity: 0;
     }
 }
