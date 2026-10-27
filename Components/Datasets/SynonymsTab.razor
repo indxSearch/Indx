@@ -6,6 +6,7 @@
 @using Indx.Api
 @using IndxServer.Models
 @inherits DatasetTabBase
+@inject ToastService Toasts
 @inject BrowserFiles Files
 @inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
 @inject IndxServer.Services.Observr.ObservrSubscription ObservrSubscription
@@ -294,7 +295,10 @@
         try
         {
             if (await PushAsync())
+            {
                 _modalOpen = false;
+                Toasts.Show(_modalTarget == null ? "Synonym entry added." : "Synonym entry saved.", DatasetIcons.Synonym);
+            }
             else
                 _modalError = "Failed to save.";
         }

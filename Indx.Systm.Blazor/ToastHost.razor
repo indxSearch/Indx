@@ -1,0 +1,91 @@
+@using Indx.Systm.Blazor.Icons
+@implements IDisposable
+@inject ToastService Toasts
+@* Where the notices of ToastService show: a stack at the window's lower right, the newest at the
+   bottom, each with a close step and its action when it has one. A notice goes after its time
+   unless the pointer is on it; leaving it starts the time again. Announced politely, a failure at
+   once. Place it once, in the layout, inside an interactive island. Port of the React Toaster. *@
+
+<div class="indx-toasts" role="region" aria-label="Notices">
+    @foreach (var t in Toasts.Toasts)
+    {
+        <div class="indx-toast @(t.Kind == "error" ? "indx-toast-error" : "")" @key="t.Id" role="@(t.Kind == "error" ? "alert" : "status")"
+             @onmouseenter="() => Hold(t.Id)" @onmouseleave="() => Release(t)">
+            @if (t.Kind == "error")
+            {
+                <span class="indx-toast-icon"><Warning Size="14" Color="currentColor" /></span>
+            }
+            else if (t.Icon != null)
+            {
+                <span class="indx-toast-icon">@t.Icon(14)</span>
+            }
+            <span class="indx-toast-message">@t.Message</span>
+            @if (t.ActionLabel != null && t.OnAction != null)
+            {
+                <Button Variant="ghost" Size="micro" @onclick="() => Act(t)">@t.ActionLabel</Button>
+            }
+            <button type="button" class="indx-toast-close" aria-label="Dismiss" title="Dismiss" @onclick="() => Toasts.Dismiss(t.Id)"><XOrError Size="7" Color="currentColor" /></button>
+        </div>
+    }
+</div>
+
+@code {
+    private readonly Dictionary<int, CancellationTokenSource> _timers = new();
+
+    protected override void OnInitialized()
+    {
+        Toasts.Changed += OnChanged;
+        StartTimers();
+    }
+
+    private void OnChanged() => _ = InvokeAsync(() => { StartTimers(); StateHasChanged(); });
+
+    // A timer for each notice that has none; the timers of notices gone are dropped.
+    private void StartTimers()
+    {
+        foreach (var t in Toasts.Toasts)
+            if (!_timers.ContainsKey(t.Id)) Start(t);
+        foreach (var id in _timers.Keys.Where(id => Toasts.Toasts.All(t => t.Id != id)).ToList())
+            Stop(id);
+    }
+
+    private void Start(ToastService.Toast t)
+    {
+        var cts = new CancellationTokenSource();
+        _timers[t.Id] = cts;
+        _ = Task.Delay(t.Duration, cts.Token).ContinueWith(task =>
+        {
+            if (!task.IsCanceled) _ = InvokeAsync(() => Toasts.Dismiss(t.Id));
+        }, TaskScheduler.Default);
+    }
+
+    private void Stop(int id)
+    {
+        if (_timers.Remove(id, out var cts)) { cts.Cancel(); cts.Dispose(); }
+    }
+
+    private void Hold(int id)
+    {
+        if (_timers.TryGetValue(id, out var cts)) { cts.Cancel(); cts.Dispose(); _timers[id] = new CancellationTokenSource(); }
+    }
+
+    private void Release(ToastService.Toast t)
+    {
+        if (Toasts.Toasts.All(x => x.Id != t.Id)) return;
+        Stop(t.Id);
+        Start(t);
+    }
+
+    private async Task Act(ToastService.Toast t)
+    {
+        Toasts.Dismiss(t.Id);
+        if (t.OnAction != null) await t.OnAction();
+    }
+
+    public void Dispose()
+    {
+        Toasts.Changed -= OnChanged;
+        foreach (var cts in _timers.Values) { cts.Cancel(); cts.Dispose(); }
+        _timers.Clear();
+    }
+}

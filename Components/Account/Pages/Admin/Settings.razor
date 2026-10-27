@@ -1,6 +1,7 @@
 @page "/admin/settings"
 @page "/admin/settings/{Section}"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject ToastService Toasts
 @using Microsoft.AspNetCore.Authorization
 @using IndxServer.Services
 @using IndxServer.Services.SearchOrAsk
@@ -25,10 +26,6 @@
         <h2>@SectionTitle</h2>
         <p style="color: var(--lv5); margin-bottom: 32px;">@SectionLead</p>
 
-        @if (!string.IsNullOrEmpty(_successMessage))
-        {
-            <div style="margin-bottom: 24px;"><Alert Variant="success">@_successMessage</Alert></div>
-        }
         @if (!string.IsNullOrEmpty(_errorMessage))
         {
             <div style="margin-bottom: 24px;"><Alert Variant="destructive">@_errorMessage</Alert></div>
@@ -503,7 +500,7 @@
     private string _originsText = "";
     // What the field showed on load: an untouched field leaves the configuration in force.
     private string _originsLoaded = "";
-    private string? _successMessage;
+    private static readonly RenderFragment<int> _iconSaved = size => @<Check Size="size" Color="currentColor" />;
     private string? _errorMessage;
 
     private static readonly IEnumerable<SelectField.SelectOption> _modeOptions =
@@ -526,7 +523,6 @@
     protected override void OnParametersSet()
     {
         _section = Section?.ToLowerInvariant() is { } s && _menu[0].Items.Any(i => i.Key == s) ? s : "general";
-        _successMessage = null;
         if (!_loaded)
         {
             _loaded = true;
@@ -546,7 +542,6 @@
 
     private void Cancel()
     {
-        _successMessage = null;
         _errorMessage = null;
         LoadFromSettings();
     }
@@ -582,13 +577,11 @@
     private void OnModeChanged(string? value)
     {
         _registrationMode = value ?? "Open";
-        _successMessage = null;
         _errorMessage = null;
     }
 
     private async Task Save()
     {
-        _successMessage = null;
         _errorMessage = null;
 
         try
@@ -634,7 +627,7 @@
             SearchOrAsk.InstanceSettingsChanged();
             _saved = Current;
             _checked = null;
-            _successMessage = "Settings saved.";
+            Toasts.Show("Settings saved.", _iconSaved);
             if (listChanged && _section == "search-or-ask") await LoadModelsAsync();
         }
         catch (Exception ex)

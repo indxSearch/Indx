@@ -1,0 +1,85 @@
+/* The stack at the window's lower right, newest at the bottom; it takes no pointer itself, so the
+   page under its empty area stays usable. */
+.indx-toasts {
+    position: fixed;
+    /* Clear of the window's edges, as Sonner keeps them: 32px, 16px on a phone. */
+    right: 32px;
+    bottom: 32px;
+    z-index: 1200;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+    max-width: calc(100vw - 64px);
+    pointer-events: none;
+}
+
+/* A notice: the raised tone with a hairline, plain ink; no shadow and no motion. */
+.indx-toast {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 240px;
+    max-width: 420px;
+    min-height: 40px;
+    padding: 6px 8px 6px 12px;
+    box-sizing: border-box;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    background: var(--lv1);
+    color: var(--lv8);
+    font: var(--text-sm);
+    pointer-events: auto;
+}
+
+/* A failure: the signal colour on the border and the icon; the words stay readable in the ink. */
+.indx-toast-error {
+    border-color: var(--CSignal);
+}
+
+.indx-toast-error .indx-toast-icon {
+    color: var(--CSignal);
+}
+
+.indx-toast-icon {
+    display: inline-flex;
+    flex: none;
+    color: var(--lv6);
+}
+
+.indx-toast-message {
+    flex: 1;
+    min-width: 0;
+}
+
+.indx-toast-close {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--lv5);
+    cursor: pointer;
+    line-height: 0;
+}
+
+.indx-toast-close ::deep svg {
+    display: block;
+}
+
+.indx-toast-close:hover,
+.indx-toast-close:focus-visible {
+    background: var(--lv2);
+    color: var(--lv8);
+    outline: none;
+}
+
+@media (max-width: 560px) {
+    .indx-toasts { left: 16px; right: 16px; bottom: 16px; max-width: none; align-items: stretch; }
+    .indx-toast { min-width: 0; max-width: none; }
+}

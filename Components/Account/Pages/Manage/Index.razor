@@ -1,5 +1,6 @@
 @page "/account/manage"
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject ToastService Toasts
 @using Microsoft.EntityFrameworkCore
 @inject IndxServer.Data.ApplicationDbContext Db
 @using Microsoft.AspNetCore.Authorization
@@ -108,10 +109,6 @@
                     }
                 </tbody>
             </table>
-            @if (!string.IsNullOrEmpty(_emailPrefMessage))
-            {
-                <p style="font:var(--text-xs); color:var(--CTeal); margin:10px 0 0;">@_emailPrefMessage</p>
-            }
         </div>
     </div>
 
@@ -146,7 +143,7 @@ else
     private bool isResending = false;
     private bool emailResendSuccess = false;
     private string? emailResendError = null;
-    private string? _emailPrefMessage;
+    private static readonly RenderFragment<int> _iconSaved = size => @<Check Size="size" Color="currentColor" />;
 
     // Per-type notification channel state shown in the matrix.
     private sealed class ChannelState { public bool InApp; public bool Email; }
@@ -262,10 +259,6 @@ else
         user.NotificationPreferences = NotificationPreferences.Serialize(map);
         await UserManager.UpdateAsync(user);
 
-        _emailPrefMessage = "Notification preferences saved.";
-        StateHasChanged();
-        await Task.Delay(2000);
-        _emailPrefMessage = null;
-        StateHasChanged();
+        Toasts.Show("Notification preferences saved.", _iconSaved);
     }
 }
