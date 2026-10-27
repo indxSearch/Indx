@@ -144,6 +144,7 @@ internal static class StartupServices
         builder.Services.AddHttpClient(IndxServer.Services.Webhooks.SanityClient.HttpClientName, c => c.Timeout = TimeSpan.FromMinutes(5));
         builder.Services.AddSingleton<IndxServer.Services.Webhooks.SanityClient>();
         builder.Services.AddSingleton<IndxServer.Services.Webhooks.WebhookWorker>();
+        builder.Services.AddSingleton<IndxServer.Services.Webhooks.WebhookAdmin>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.Webhooks.WebhookWorker>());
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskService>();
 

@@ -1,0 +1,40 @@
+.wh-tab { margin-top: 16px; }
+.wh-intro { color: var(--lv5); font: var(--text-sm); margin: 0 0 12px; max-width: 72ch; }
+.wh-empty { color: var(--lv4); font: var(--text-sm); margin: 8px 0 12px; }
+.wh-error { color: var(--CSignal); font: var(--text-sm); margin: 0; }
+
+.wh-num { text-align: right; white-space: nowrap; width: 1%; }
+.wh-row { cursor: pointer; }
+.wh-row:hover td { background: var(--lv1); }
+.wh-row--selected td { background: var(--lv2); }
+.wh-held-count { display: inline-flex; align-items: center; gap: 4px; }
+
+.wh-detail { margin-top: 24px; display: flex; flex-direction: column; gap: 16px; }
+.wh-title { font: var(--text-lg); margin: 0; }
+.wh-subtitle { font: var(--text-md); margin: 8px 0 0; }
+
+.wh-grid {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 8px 16px;
+    align-items: center;
+    font: var(--text-sm);
+}
+.wh-label { color: var(--lv5); font: var(--text-xs); }
+.wh-hint { color: var(--lv4); font: var(--text-xs); display: block; margin-top: 4px; }
+.wh-query { white-space: pre-wrap; word-break: break-word; }
+code { font-family: var(--font-mono); }
+
+.wh-actions, .wh-held-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.wh-held-actions { margin-top: 8px; }
+
+.wh-call-detail { white-space: pre-wrap; color: var(--lv5); font: var(--text-xs); max-width: 48ch; }
+.wh-call-detail--bad { color: var(--CSignal); }
+
+.wh-form { min-width: 420px; }
+
+@media (max-width: 640px) {
+    .wh-grid { grid-template-columns: minmax(0, 1fr); gap: 2px 0; }
+    .wh-grid .wh-label { margin-top: 8px; }
+    .wh-form { min-width: 0; }
+}

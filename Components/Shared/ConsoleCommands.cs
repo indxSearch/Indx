@@ -29,6 +29,7 @@ namespace IndxServer.Components.Shared
             ("status", "Status", Components.Datasets.DatasetIcons.Status, null, "state overview"),
             ("fields", "Field configuration", Components.Datasets.DatasetIcons.Fields, null, "fields searchable filterable facetable schema"),
             ("categories", "Categories", Components.Datasets.DatasetIcons.Categories, null, "tree hierarchy taxonomy"),
+            ("webhooks", "Webhooks", Components.Datasets.DatasetIcons.Webhooks, Services.TeamRoles.Admin, "webhook sync sanity optimizely cms"),
             ("query-parameters", "Query parameters", Components.Datasets.DatasetIcons.QueryParameters, Services.TeamRoles.Editor, "coverage depth relevance"),
             ("search", "Search preview", Components.Datasets.DatasetIcons.Search, null, "try test query"),
             ("statistics", "Statistics", Components.Datasets.DatasetIcons.Statistics, null, "analytics searches clicks"),

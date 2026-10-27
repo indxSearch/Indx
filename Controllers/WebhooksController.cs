@@ -14,7 +14,7 @@ namespace IndxServer.Controllers
     /// something changes, and the documents follow without code of the customer's own. Team admins
     /// manage them; the call itself is signed with the webhook's secret instead of a key.
     /// </summary>
-    public class WebhooksController(TeamContextResolver resolver, WebhookStore store, WebhookApplier applier, WebhookWorker worker)
+    public class WebhooksController(TeamContextResolver resolver, WebhookStore store, WebhookAdmin admin)
         : DatasetApiController(resolver)
     {
         private const string Route = DataSetRoute + "/webhooks";
@@ -27,6 +27,7 @@ namespace IndxServer.Controllers
         /// reach within an hour before a batch is held for an admin. Default 0.1.</param>
         /// <param name="Source">"indx" (default): the sender signs the Indx way. "sanity": a Sanity GROQ
         /// webhook calls it, and Indx fetches the full set from Sanity with <paramref name="Sanity"/>.</param>
+        /// <param name="Sanity">The Sanity project, dataset and GROQ query, for a "sanity" webhook.</param>
         public sealed record CreateWebhookRequest(string? Name, string? IdField = null, string? VersionField = null, double? BrakeShare = null,
             string? Source = null, SanitySource? Sanity = null);
 
@@ -53,30 +54,10 @@ namespace IndxServer.Controllers
             if (!FileNameValidity.IsValid(dataSetName)) return ApiProblems.InvalidDatasetName(dataSetName);
             if (IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) is not { } engine)
                 return ApiProblems.DatasetNotFound(dataSetName);
-            var name = request?.Name?.Trim();
-            if (string.IsNullOrEmpty(name) || name.Length > 80) return ApiProblems.InvalidArgument("Send { name } of 1 to 80 characters.");
-            var source = string.IsNullOrWhiteSpace(request!.Source) ? WebhookSources.Indx : request.Source.Trim().ToLowerInvariant();
-            if (!WebhookSources.IsKnown(source)) return ApiProblems.InvalidArgument("source is \"indx\" or \"sanity\".");
-            string? sourceConfig = null;
-            if (source == WebhookSources.Sanity)
-            {
-                if (request.Sanity is not { } sanity)
-                    return ApiProblems.InvalidArgument("A Sanity webhook needs { sanity: { projectId, dataset, query } }.");
-                sanity = sanity with { ApiVersion = string.IsNullOrWhiteSpace(sanity.ApiVersion) ? SanitySource.DefaultApiVersion : sanity.ApiVersion.Trim(),
-                                       Token = string.IsNullOrWhiteSpace(sanity.Token) ? null : sanity.Token.Trim() };
-                if (sanity.Problem() is { } problem) return ApiProblems.InvalidArgument(problem);
-                sourceConfig = sanity.Serialize();
-            }
-            var idField = string.IsNullOrWhiteSpace(request.IdField) ? (source == WebhookSources.Sanity ? "_id" : "id") : request.IdField.Trim();
-            var share = request.BrakeShare ?? 0.1;
-            if (share is <= 0 or > 1) return ApiProblems.InvalidArgument("brakeShare is a share of the dataset, above 0 and at most 1.");
-            var hook = store.Create(ctx.OwnerKey, dataSetName, name, idField, string.IsNullOrWhiteSpace(request.VersionField) ? null : request.VersionField.Trim(),
-                share, source, sourceConfig);
-            if (sourceConfig != null)
-            {
-                store.Enqueue(hook.Id, "", WebhookKinds.Sync);
-                worker.Wake();
-            }
+            if (request == null) return ApiProblems.InvalidArgument("Send { name } of 1 to 80 characters.");
+            var (hook, problem) = admin.Create(ctx.OwnerKey, dataSetName, new WebhookAdmin.NewWebhook(request.Name, request.IdField,
+                request.VersionField, request.BrakeShare, request.Source, request.Sanity));
+            if (hook == null) return ApiProblems.InvalidArgument(problem!);
             return Ok(new CreatedWebhook(Info(hook), hook.Secret));
         }
 
@@ -139,17 +120,12 @@ namespace IndxServer.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true, admin: true);
             if (ctx == null) return error!;
             if (Owned(ctx, dataSetName, webhookId) is not { } hook) return WebhookNotFound(webhookId);
-            if (store.Release(webhookId, heldId) is not { } held)
+            var result = await admin.ApplyHeldAsync(hook, heldId);
+            if (result == WebhookAdmin.HeldResult.NotFound)
                 return ApiProblems.Problem(StatusCodes.Status404NotFound, "heldBatchNotFound", "No such held batch", $"No held batch {heldId}.");
-            var outcome = held.Kind == WebhookKinds.Sync
-                ? await applier.ApplySyncAsync(hook, held.Body, held.HeldUtc, pastBrake: true)
-                : await applier.ApplyAsync(hook, held.Body, held.HeldUtc, pastBrake: true);
-            if (outcome == WebhookOutcome.Retry)
-            {
-                store.Hold(webhookId, held.Reason, held.Events, held.Body, held.Kind);
+            if (result == WebhookAdmin.HeldResult.Busy)
                 return ApiProblems.Problem(StatusCodes.Status409Conflict, "datasetBusy", "The dataset is busy",
                     "The dataset is loading or being rebuilt; the batch is held again. Try in a moment.");
-            }
             return NoContent();
         }
 
@@ -163,10 +139,8 @@ namespace IndxServer.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true, admin: true);
             if (ctx == null) return error!;
             if (Owned(ctx, dataSetName, webhookId) is not { } hook) return WebhookNotFound(webhookId);
-            if (hook.SourceConfig == null)
+            if (!admin.RequestSync(hook))
                 return ApiProblems.InvalidArgument($"This webhook's sender sends the full set itself, signed, to {HookUrl(hook)}/sync.");
-            if (!store.SyncWaiting(hook.Id)) store.Enqueue(hook.Id, "", WebhookKinds.Sync);
-            worker.Wake();
             return Accepted();
         }
 

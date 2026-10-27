@@ -47,6 +47,7 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> Boost = Of<Icons.Boost>();
         public static readonly RenderFragment<int> Statistics = Of<Icons.Graph>();
         public static readonly RenderFragment<int> Synonym = Of<Icons.Synonym>();
+        public static readonly RenderFragment<int> Webhooks = Of<Icons.Webhooks>();
         public static readonly RenderFragment<int> QueryParameters = Of<Icons.Coverage>();
         public static readonly RenderFragment<int> SearchOrAsk = Of<Icons.SearchOrAsk>();
         public static readonly RenderFragment<int> Observr = Of<Icons.Observr>();

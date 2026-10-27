@@ -14,6 +14,7 @@
 @inject NavigationManager Nav
 @inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
 @inject IndxServer.Services.SideMenuState Menu
+@inject IndxServer.Services.Webhooks.WebhookStore Webhooks
 
 @* The header slot (the console's breadcrumb row, with DatasetStatus in its actions) sits
    outside the Surface so it lands at exactly the same spot as on the team page — the
@@ -53,6 +54,7 @@
                     var asleep = Ctx.HasStatus && Visible && !showNav;
                     var sleepTab = !asleep ? tab
                         : Ctx.IsHibernated && tab is "options" or "statistics" ? tab
+                        : tab == "webhooks" && Ctx.IsAdmin ? tab
                         : Ctx.IsHibernated ? "status" : null;
                     if (!Ctx.HasStatus || !Visible) PublishMenu(null, tab);
                     else if (showNav) PublishMenu(NavItems(isReady, pending), tab);
@@ -71,6 +73,7 @@
                 <QueryParametersTab Active="@(tab == "query-parameters")" />
                 <SearchOrAskTab Active="@(tab == "search-or-ask")" />
                 <StatisticsTab Active="@(sleepTab == "statistics")" />
+                <WebhooksTab Active="@(sleepTab == "webhooks")" />
 
             </CascadingValue>
         </Surface>
@@ -184,7 +187,7 @@
         var layout = new (string Title, string[] Keys)[]
         {
             ("Overview", ["status", "statistics"]),
-            ("Data", ["fields", "categories"]),
+            ("Data", ["fields", "categories", "webhooks"]),
             ("Relevance", ["query-parameters", "boosts", "synonyms"]),
             ("Try it", ["search", "search-or-ask"]),
             ("Settings", ["options"]),
@@ -244,6 +247,7 @@
         var reason = Ctx.IsHibernated ? Asleep : NotYet;
         return NavItems(isReady: false, pending: true)
             .Select(i => Ctx.IsHibernated && i.Value is "status" or "options" or "statistics"
+                || i.Value == "webhooks"
                 ? i with { Disabled = false, Title = null, Badge = null, BadgeTitle = null }
                 : i with { Disabled = true, Title = reason, Badge = null, BadgeTitle = null })
             .ToList();
@@ -281,6 +285,14 @@
                 expired > 0 ? $"{expired} expired boost rule(s), no longer applying" : null));
             items.Add(Tab("synonyms", "Synonyms", DatasetIcons.Synonym, isReady));
         }
+        // Needs no built index: a webhook's first full sync is how an empty dataset gets its documents.
+        if (Ctx.IsAdmin)
+        {
+            var held = HeldWebhookBatches();
+            items.Add(Tab("webhooks", "Webhooks", DatasetIcons.Webhooks, true,
+                held > 0 ? held.ToString() : null,
+                held > 0 ? $"{held} webhook batch(es) held by the brake, waiting for you" : null));
+        }
         if (Ctx.IsAdmin) items.Add(Tab("options", "Options", DatasetIcons.Sliders, true));
         return items;
     }
@@ -292,6 +304,9 @@
         var today = DateOnly.FromDateTime(DateTime.Today);
         return BoostStore.Load(Ctx.TeamId, Ctx.Name).Count(r => r.Enabled && r.ActiveUntil is { } u && u < today);
     }
+
+    /// <summary>Batches the webhooks' brake holds for an admin: the badge says they wait.</summary>
+    private int HeldWebhookBatches() => Webhooks.List(Ctx.TeamId, Ctx.Name).Sum(h => Webhooks.Held(h.Id).Count);
 
     /// <summary>While the engine loads or indexes in the background (a load started from the API,
     /// or a page reopened mid-operation), refresh the status once a second until it settles, and

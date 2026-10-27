@@ -1,0 +1,472 @@
+@* The dataset's incoming webhooks (Notes/indx_webhooks.md): make one, read what its calls did,
+   apply or discard what the brake holds, fetch a Sanity set now, give it a new secret. The same
+   operations as the admin API, through WebhookAdmin and WebhookStore. Every action saves at once,
+   so there is no Save bar. Team admins only, like the API. *@
+@using System.Text.RegularExpressions
+@using IndxServer.Services.Webhooks
+@inherits DatasetTabBase
+@inject WebhookStore Store
+@inject WebhookAdmin Admin
+@inject ToastService Toasts
+@inject NavigationManager Nav
+
+@if (!Active) { return; }
+
+<div class="wh-tab">
+    <p class="wh-intro">
+        A webhook keeps this dataset in step with the system that changes it, such as a shop or a CMS.
+        The sender calls it when something changes, signed with the webhook's secret, and the documents follow.
+        A batch that would delete more than the brake allows waits here until you apply or discard it.
+    </p>
+
+    <div class="indx-list-toolbar">
+        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNew">New webhook</Button>
+        @if (_hooks.Count > 0)
+        {
+            <span class="indx-list-toolbar-end">@_hooks.Count @(_hooks.Count == 1 ? "webhook" : "webhooks")</span>
+        }
+    </div>
+
+    @if (_hooks.Count == 0)
+    {
+        <p class="wh-empty">No webhooks on this dataset yet.</p>
+    }
+    else
+    {
+        <table class="indx-table wh-list">
+            <thead>
+                <tr><th>Name</th><th>Source</th><th>Last call</th><th>Last full sync</th><th class="wh-num">Waiting</th><th class="wh-num">Held</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _hooks)
+                {
+                    var hook = row.Hook;
+                    <tr class="wh-row @(hook.Id == _selectedId ? "wh-row--selected" : "")" @onclick="@(() => Select(hook.Id))">
+                        <td>@hook.Name</td>
+                        <td><Chip>@SourceLabel(hook.Source)</Chip></td>
+                        <td><TimeAgo Value="hook.LastEventUtc" Empty="Never" /></td>
+                        <td><TimeAgo Value="hook.LastSyncUtc" Empty="Never" /></td>
+                        <td class="wh-num">@row.Waiting</td>
+                        <td class="wh-num">
+                            @if (row.Held > 0)
+                            {
+                                <span class="wh-held-count">@DatasetIcons.Warning(14) @row.Held</span>
+                            }
+                            else
+                            {
+                                <span>0</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    @if (Selected is { } sel)
+    {
+        var hook = sel.Hook;
+        var sanity = SanitySource.Parse(hook.SourceConfig);
+        <section class="wh-detail">
+            <h3 class="wh-title">@hook.Name</h3>
+
+            @foreach (var held in _held)
+            {
+                <Alert Variant="warning" Class="wh-held">
+                    <Title>@(held.Kind == WebhookKinds.Sync ? "A full sync is held" : $"A batch of {held.Events:N0} changes is held")</Title>
+                    <Description>
+                        <p>@held.Reason Held <TimeAgo Value="held.HeldUtc" />.</p>
+                        <div class="wh-held-actions">
+                            <Button Variant="primary" Size="micro" Loading="@(_busy == held.Id)" @onclick="@(() => ApplyHeldAsync(held.Id))">Apply</Button>
+                            <ConfirmButton Label="Discard" Icon="DatasetIcons.Delete" Prompt="Discard the batch? Nothing in it is applied."
+                                           ConfirmLabel="Discard" Variant="primary" OnConfirm="@(() => DiscardHeld(held.Id))" />
+                        </div>
+                    </Description>
+                </Alert>
+            }
+
+            <div class="wh-grid">
+                <span class="wh-label">Address for changes</span>
+                <CodeCopy Code="@HookUrl(hook)" />
+                @if (sanity == null)
+                {
+                    <span class="wh-label">Address for the full set</span>
+                    <CodeCopy Code="@(HookUrl(hook) + "/sync")" />
+                }
+                <span class="wh-label">Id field</span>
+                <span><code>@hook.IdField</code></span>
+                @if (hook.VersionField != null)
+                {
+                    <span class="wh-label">Version field</span>
+                    <span><code>@hook.VersionField</code></span>
+                }
+                <span class="wh-label">Brake</span>
+                <span>Holds a batch that would delete or replace more than @Percent(hook.BrakeShare) of the documents (at least 20) within an hour</span>
+                <span class="wh-label">Made</span>
+                <span><TimeAgo Value="hook.CreatedUtc" /></span>
+                @if (sanity != null)
+                {
+                    <span class="wh-label">Sanity project</span>
+                    <span><code>@sanity.ProjectId</code> · <code>@sanity.Dataset</code></span>
+                    <span class="wh-label">Query</span>
+                    <span><code class="wh-query">@sanity.Query</code></span>
+                    <span class="wh-label">Fetches the full set</span>
+                    <span>@(sanity.SyncEveryHours is { } h ? (h == 1 ? "Every hour" : $"Every {h} hours") : "Only when asked")@(string.IsNullOrEmpty(sanity.Token) ? "" : ", with a read token")</span>
+                }
+            </div>
+
+            <div class="wh-actions">
+                @if (sanity != null)
+                {
+                    <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Restore" Loading="@(sel.Waiting > 0 && _syncAsked == hook.Id)"
+                            @onclick="@(() => RequestSync(hook))">Fetch the full set now</Button>
+                }
+                <ConfirmButton Label="New secret" Icon="DatasetIcons.Key" Prompt="The old secret stops working at once, so the sender must get the new one."
+                               ConfirmLabel="Make a new secret" Variant="primary" OnConfirm="@(() => RotateSecret(hook))" />
+                <ConfirmButton Label="Delete webhook" Icon="DatasetIcons.Delete" Prompt="Calls to its address are refused from now on. The documents stay."
+                               ConfirmLabel="Delete" Variant="primary" OnConfirm="@(() => DeleteHook(hook))" />
+            </div>
+
+            <h4 class="wh-subtitle">Latest calls</h4>
+            @if (_deliveries.Count == 0)
+            {
+                <p class="wh-empty">No calls yet.</p>
+            }
+            else
+            {
+                <div class="indx-table-wrap">
+                    <table class="indx-table wh-calls">
+                        <thead>
+                            <tr>
+                                <th>Received</th><th>Outcome</th><th class="wh-num">Events</th><th class="wh-num">Added</th>
+                                <th class="wh-num">Updated</th><th class="wh-num">Deleted</th><th class="wh-num">Ignored</th><th class="wh-num">Refused</th><th>Detail</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var d in _deliveries)
+                            {
+                                <tr>
+                                    <td><TimeAgo Value="d.ReceivedUtc" TooltipPosition="left" /></td>
+                                    <td>@OutcomeLabel(d.Outcome)</td>
+                                    <td class="wh-num">@d.Events.ToString("N0")</td>
+                                    <td class="wh-num">@d.Inserted.ToString("N0")</td>
+                                    <td class="wh-num">@d.Updated.ToString("N0")</td>
+                                    <td class="wh-num">@d.Deleted.ToString("N0")</td>
+                                    <td class="wh-num">@d.Ignored.ToString("N0")</td>
+                                    <td class="wh-num">@d.Refused.ToString("N0")</td>
+                                    <td class="wh-call-detail @(d.Outcome is "refused" or "failed" ? "wh-call-detail--bad" : "")">@d.Detail</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+
+    <Modal @bind-Open="_newOpen" Title="New webhook">
+        <div class="indx-modal-form wh-form">
+            <InputField Label="Name" placeholder="Shop, Sanity, Price feed" @bind-Value="_name" />
+            <div>
+                <span class="wh-label">Who calls it</span>
+                <SelectField Size="micro" Options="SourceOptions" Value="@_source" ValueChanged="@(v => _source = v ?? WebhookSources.Indx)" />
+                <span class="wh-hint">
+                    @(_source == WebhookSources.Sanity
+                        ? "A Sanity webhook calls it, and Indx fetches the full set from Sanity itself. No code needed."
+                        : "Your own code, or an add-on such as Indx.Optimizely, signs each call with the secret.")
+                </span>
+            </div>
+            @if (_source == WebhookSources.Sanity)
+            {
+                <InputField Label="Sanity project id" placeholder="abc123de" @bind-Value="_projectId" />
+                <InputField Label="Sanity dataset" placeholder="production" @bind-Value="_sanityDataset" />
+                <Textarea Label="GROQ query" Rows="3" placeholder="*[_type == &quot;product&quot;]{_id, title, price}" @bind-Value="_query" />
+                <InputField Label="Read token (only for a private dataset)" type="password" autocomplete="off" @bind-Value="_token" />
+                <InputField Label="Fetch the full set every (hours, empty for never)" @bind-Value="_syncHours" />
+            }
+            <InputField Label="Id field" placeholder="@(_source == WebhookSources.Sanity ? "_id" : "id")" @bind-Value="_idField" />
+            <InputField Label="Version field (optional: a date or number that orders a document's versions)" @bind-Value="_versionField" />
+            <InputField Label="Brake (percent of the dataset per hour)" @bind-Value="_brake" />
+            @if (!string.IsNullOrEmpty(_formError))
+            {
+                <p class="wh-error">@_formError</p>
+            }
+            <div class="indx-form-actions">
+                <Button Variant="primary" Size="micro" @onclick="Create">Create</Button>
+                <Button Variant="secondary" Size="micro" @onclick="@(() => _newOpen = false)">Cancel</Button>
+            </div>
+        </div>
+    </Modal>
+
+    <Modal @bind-Open="_secretOpen" Title="@(_secretIsNew ? "Webhook made" : "New secret")">
+        @if (_secretHook is { } sh)
+        {
+            var sanity = SanitySource.Parse(sh.SourceConfig);
+            <div class="indx-modal-form wh-form">
+                <p class="wh-hint">The secret is shown only now. Keep it where the sender can read it.</p>
+                <span class="wh-label">Address</span>
+                <CodeCopy Code="@HookUrl(sh)" />
+                <span class="wh-label">Secret</span>
+                <CodeCopy Code="@_secret" />
+                @if (sanity != null && _secretIsNew)
+                {
+                    var (filter, projection) = SplitQuery(sanity.Query);
+                    <p class="wh-hint">In Sanity, under API and Webhooks, add a webhook with these settings. Indx is fetching the full set now.</p>
+                    <div class="wh-grid">
+                        <span class="wh-label">URL</span><span>the address above</span>
+                        <span class="wh-label">Trigger on</span><span>Create, Update, Delete</span>
+                        <span class="wh-label">Filter</span><span><code>@(filter ?? "the filter from your query")</code></span>
+                        <span class="wh-label">Projection</span><span><code>@(projection ?? "the projection from your query")</code></span>
+                        <span class="wh-label">HTTP method</span><span>POST</span>
+                        <span class="wh-label">Secret</span><span>the secret above</span>
+                    </div>
+                }
+                else if (_secretIsNew)
+                {
+                    <p class="wh-hint">
+                        Sign each call: <code>X-Indx-Signature: t=&lt;unix seconds&gt;,sha256=&lt;hex HMAC-SHA256 of "t.body"&gt;</code>.
+                        Send changes to the address, and the full set to the address followed by <code>/sync</code>.
+                    </p>
+                }
+                <div class="indx-form-actions">
+                    <Button Variant="primary" Size="micro" @onclick="@(() => _secretOpen = false)">Done</Button>
+                </div>
+            </div>
+        }
+    </Modal>
+</div>
+
+@code {
+    private sealed record Row(Webhook Hook, int Waiting, int Held);
+
+    private static readonly IEnumerable<SelectField.SelectOption> SourceOptions =
+        [new("Your code or an add-on", WebhookSources.Indx), new("Sanity", WebhookSources.Sanity)];
+
+    private List<Row> _hooks = [];
+    private string? _selectedId;
+    private List<WebhookHeldBatch> _held = [];
+    private List<WebhookDelivery> _deliveries = [];
+    private bool _loaded;
+    private string? _busy;
+    private string? _syncAsked;
+    private CancellationTokenSource? _pollCts;
+
+    // The new-webhook form.
+    private bool _newOpen;
+    private string? _name, _source = WebhookSources.Indx, _projectId, _sanityDataset, _query, _token, _syncHours,
+        _idField, _versionField, _brake, _formError;
+
+    // The secret, shown once after Create or a new secret.
+    private bool _secretOpen, _secretIsNew;
+    private Webhook? _secretHook;
+    private string _secret = "";
+
+    private Row? Selected => _hooks.FirstOrDefault(r => r.Hook.Id == _selectedId);
+
+    protected override void OnParametersSet()
+    {
+        if (Active && !_loaded) { _loaded = true; Load(); }
+        if (!Active) StopPolling();
+    }
+
+    private void Load()
+    {
+        Refresh();
+        if (_hooks.Any(r => r.Waiting > 0)) StartPolling();
+    }
+
+    private void Refresh()
+    {
+        _hooks = Store.List(Ctx.TeamId, Ctx.Name)
+            .Select(h => new Row(h, Store.WaitingCount(h.Id), Store.Held(h.Id).Count)).ToList();
+        if (Selected == null)
+            _selectedId = (_hooks.FirstOrDefault(r => r.Held > 0) ?? _hooks.FirstOrDefault())?.Hook.Id;
+        LoadSelected();
+    }
+
+    private void LoadSelected()
+    {
+        _held = _selectedId == null ? [] : Store.Held(_selectedId);
+        _deliveries = _selectedId == null ? [] : Store.Deliveries(_selectedId, 50);
+    }
+
+    private void Select(string id)
+    {
+        _selectedId = id;
+        LoadSelected();
+    }
+
+    /// <summary>While calls wait to be applied (a fetch from Sanity, a burst of changes), read the
+    /// list again every two seconds, so the outcome shows without a reload.</summary>
+    private void StartPolling()
+    {
+        if (_pollCts != null) return;
+        var cts = _pollCts = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var waiting = true;
+                while (waiting)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(2), cts.Token);
+                    await InvokeAsync(() =>
+                    {
+                        Refresh();
+                        waiting = _hooks.Any(r => r.Waiting > 0);
+                        if (!waiting) _syncAsked = null;
+                        StateHasChanged();
+                    });
+                }
+            }
+            catch (OperationCanceledException) { }
+            finally
+            {
+                if (ReferenceEquals(_pollCts, cts)) _pollCts = null;
+                cts.Dispose();
+            }
+        });
+    }
+
+    private void StopPolling()
+    {
+        _pollCts?.Cancel();
+        _pollCts = null;
+    }
+
+    private void OpenNew()
+    {
+        _name = _projectId = _sanityDataset = _query = _token = _idField = _versionField = _formError = null;
+        _source = WebhookSources.Indx;
+        _syncHours = "24";
+        _brake = "10";
+        _newOpen = true;
+    }
+
+    private void Create()
+    {
+        _formError = null;
+        if (!TryPercent(_brake, out var share)) { _formError = "The brake is a percent above 0 and at most 100."; return; }
+        SanitySource? sanity = null;
+        if (_source == WebhookSources.Sanity)
+        {
+            int? hours = null;
+            if (!string.IsNullOrWhiteSpace(_syncHours))
+            {
+                if (!int.TryParse(_syncHours.Trim(), out var h)) { _formError = "Hours is a whole number from 1 to 168, or empty for never."; return; }
+                hours = h;
+            }
+            sanity = new SanitySource(_projectId?.Trim() ?? "", _sanityDataset?.Trim() ?? "", _query?.Trim() ?? "", _token, SyncEveryHours: hours);
+        }
+        var (hook, problem) = Admin.Create(Ctx.TeamId, Ctx.Name, new WebhookAdmin.NewWebhook(_name, _idField, _versionField, share, _source, sanity));
+        if (hook == null) { _formError = Friendly(problem); return; }
+        _newOpen = false;
+        _selectedId = hook.Id;
+        if (sanity != null) _syncAsked = hook.Id;
+        ShowSecret(hook, hook.Secret, isNew: true);
+        Load();
+    }
+
+    private void RotateSecret(Webhook hook)
+    {
+        if (Store.RotateSecret(hook.Id) is not { } secret) { Toasts.Error("The webhook is gone."); Load(); return; }
+        ShowSecret(hook, secret, isNew: false);
+    }
+
+    private void ShowSecret(Webhook hook, string secret, bool isNew)
+    {
+        _secretHook = hook;
+        _secret = secret;
+        _secretIsNew = isNew;
+        _secretOpen = true;
+    }
+
+    private void DeleteHook(Webhook hook)
+    {
+        Store.Delete(hook.Id);
+        _selectedId = null;
+        Toasts.Show($"Deleted the webhook {hook.Name}.", DatasetIcons.Delete);
+        Load();
+    }
+
+    private void RequestSync(Webhook hook)
+    {
+        if (!Admin.RequestSync(hook)) return;
+        _syncAsked = hook.Id;
+        Toasts.Show("Fetching the full set from Sanity.", DatasetIcons.Restore);
+        Load();
+    }
+
+    private async Task ApplyHeldAsync(string heldId)
+    {
+        if (Selected?.Hook is not { } hook) return;
+        _busy = heldId;
+        try
+        {
+            var result = await Admin.ApplyHeldAsync(hook, heldId);
+            if (result == WebhookAdmin.HeldResult.Busy)
+                Toasts.Error("The dataset is loading or being rebuilt, so the batch is held again. Try in a moment.");
+            else if (result == WebhookAdmin.HeldResult.Applied)
+                Toasts.Show("Applied the held batch.", DatasetIcons.Yes);
+        }
+        finally
+        {
+            _busy = null;
+            Load();
+            Ctx.RefreshStatus();
+            Ctx.NotifyChanged();
+        }
+    }
+
+    private void DiscardHeld(string heldId)
+    {
+        if (_selectedId == null) return;
+        if (Store.Release(_selectedId, heldId) != null) Toasts.Show("Discarded the held batch.", DatasetIcons.Delete);
+        Load();
+    }
+
+    private string HookUrl(Webhook hook) => $"{Nav.BaseUri.TrimEnd('/')}/hooks/{hook.Id}";
+
+    private static string SourceLabel(string source) => source == WebhookSources.Sanity ? "Sanity" : "Signed calls";
+
+    private static string OutcomeLabel(string outcome) => outcome switch
+    {
+        "applied" => "Applied",
+        "synced" => "Full sync",
+        "held" => "Held",
+        "refused" => "Refused",
+        "failed" => "Failed",
+        _ => outcome,
+    };
+
+    private static string Percent(double share) => (share * 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " %";
+
+    private static bool TryPercent(string? text, out double share)
+    {
+        share = 0;
+        if (!double.TryParse((text ?? "").Trim().TrimEnd('%').Trim(), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var percent)) return false;
+        share = percent / 100;
+        return share is > 0 and <= 1;
+    }
+
+    /// <summary>The API's messages name JSON properties; the form names its own fields.</summary>
+    private static string? Friendly(string? problem) => problem?
+        .Replace("Send { name } of 1 to 80 characters.", "Give it a name of 1 to 80 characters.")
+        .Replace("sanity.projectId", "The project id").Replace("sanity.dataset", "The Sanity dataset")
+        .Replace("sanity.query", "The query").Replace("sanity.syncEveryHours", "Hours");
+
+    /// <summary>A query of the usual shape, <c>*[filter]{projection}</c>, split into the two
+    /// settings Sanity's webhook form asks for; nulls when it has another shape.</summary>
+    internal static (string? Filter, string? Projection) SplitQuery(string query)
+    {
+        var m = Regex.Match(query.Trim(), @"^\*\s*\[(?<f>.*)\]\s*(?<p>\{.*\})$", RegexOptions.Singleline);
+        return m.Success ? (m.Groups["f"].Value.Trim(), m.Groups["p"].Value.Trim()) : (null, null);
+    }
+
+    public override void Dispose()
+    {
+        StopPolling();
+        base.Dispose();
+    }
+}
