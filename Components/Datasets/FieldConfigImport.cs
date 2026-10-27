@@ -64,7 +64,6 @@ namespace IndxServer.Components.Datasets
                 existing.WordIndexing = imp.WordIndexing;
                 existing.Embeddable = imp.Embeddable;
                 existing.PreloadFilters = imp.PreloadFilters;
-                existing.HighResolution = imp.HighResolution;
                 existing.Weight = imp.Weight;
                 existing.BM25b = imp.BM25b;
                 existing.BM25k1 = imp.BM25k1;
@@ -88,7 +87,6 @@ namespace IndxServer.Components.Datasets
             f.WordIndexing = false;
             f.Embeddable = false;
             f.PreloadFilters = false;
-            f.HighResolution = false;
         }
 
         /// <summary>The message shown beside the import button, or null when there is nothing to

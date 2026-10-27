@@ -24,7 +24,6 @@
                     <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Enables word-level matching. Useful for categories, tags, and enum values.">WordIndexing</span></th>
                     <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
                     <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
-                    <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Sharper matching for run-together or split-word queries. Coverage already matches these; high resolution improves precision — recommended only for key fields such as titles.">HighResolution</span></th>
                 }
                 <th class="@(ShowAdvanced ? "indx-col-num" : "indx-col-weight")"><span class="indx-th-tip" data-tooltip="Relevance weight for this field (recommended range 0.5–3.0). Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0.">Weight</span></th>
                 @if (ShowAdvanced)
@@ -220,7 +219,6 @@
         new("WordIndexing", true, f => f.WordIndexing, (f, v) => f.WordIndexing = v, NotOnAVector: true),
         new("Embeddable", true, f => f.Embeddable, (f, v) => f.Embeddable = v, IsEmbeddable: true),
         new("PreloadFilters", true, f => f.PreloadFilters, (f, v) => f.PreloadFilters = v, NotOnAVector: true),
-        new("HighResolution", true, f => f.HighResolution, (f, v) => f.HighResolution = v),
     ];
 
     /// <summary>Why this box cannot be ticked for this field, or null when it can. The same
@@ -468,7 +466,7 @@
     [Parameter] public ScoringSetup Scoring { get; set; } = ScoringSetup.Default;
     /// <summary>Also list fields with no capability ticked.</summary>
     [Parameter] public bool ShowUnused { get; set; }
-    /// <summary>Show the WordIndexing / Embeddable / PreloadFilters / HighResolution / BM25 columns
+    /// <summary>Show the WordIndexing / Embeddable / PreloadFilters / BM25 columns
     /// and switch the weight control from slider to number input.</summary>
     [Parameter] public bool ShowAdvanced { get; set; }
     /// <summary>Set once the user has touched a Searchable box — the owner uses it to decide
@@ -489,7 +487,7 @@
     public static bool IsUnused(FieldProxy f) =>
         f.Searchable != true && f.Filterable != true && f.Facetable != true &&
         f.Sortable != true && f.WordIndexing != true && f.Embeddable != true &&
-        f.PreloadFilters != true && f.HighResolution != true;
+        f.PreloadFilters != true;
 
     /// <summary>Parses a numeric cell, clamping to the range the scoring can represent. The
     /// <c>min</c>/<c>max</c> attributes on <c>input type="number"</c> only constrain the steppers

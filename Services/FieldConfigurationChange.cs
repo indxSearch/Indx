@@ -101,7 +101,6 @@ namespace IndxServer.Services
                 Flag(wanted.WordIndexing, field.WordIndexing, "word indexed");
                 Flag(wanted.Embeddable, field.Embeddable, "embeddable");
                 Flag(wanted.PreloadFilters, field.PreloadFilters, "preloaded");
-                Flag(wanted.HighResolution, field.HighResolution, "high resolution");
                 Flag(wanted.CaseSensitive, field.CaseSensitive, "case-sensitive");
 
                 Number(wanted.Weight, field.Weight, "weight");

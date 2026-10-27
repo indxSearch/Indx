@@ -97,7 +97,7 @@
 /* Every column but the first has a set width, so the first one takes whatever is left. Without
    this the automatic table layout shares the width out by content, and the whole table shifts
    whenever the rows change: toggling unused fields, typing in the filter, or a long nested name
-   scrolling into the list. The widths fit the longest header (HighResolution) and the controls:
+   scrolling into the list. The widths fit the longest header (PreloadFilters) and the controls:
    a checkbox, the weight slider with its value, a number box. */
 .indx-col-check {
     width: 130px;

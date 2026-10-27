@@ -150,7 +150,6 @@ namespace IndxServer.Components.Datasets
                     if ((o.WordIndexing ?? false) != (e.WordIndexing ?? false)) return true;
                     if ((o.Embeddable ?? false) != (e.Embeddable ?? false)) return true;
                     if ((o.PreloadFilters ?? false) != (e.PreloadFilters ?? false)) return true;
-                    if ((o.HighResolution ?? false) != (e.HighResolution ?? false)) return true;
                     if (o.Weight != e.Weight) return true;
                     if (o.BM25b != e.BM25b) return true;
                     if (o.BM25k1 != e.BM25k1) return true;
@@ -180,7 +179,6 @@ namespace IndxServer.Components.Datasets
             WordIndexing = f.WordIndexing ?? false,
             Embeddable = f.Embeddable ?? false,
             PreloadFilters = f.PreloadFilters ?? false,
-            HighResolution = f.HighResolution ?? false,
             Weight = f.Weight,
             BM25b = f.BM25b,
             BM25k1 = f.BM25k1,
