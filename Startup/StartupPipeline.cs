@@ -336,6 +336,7 @@ internal static class StartupPipeline
             var conversations = app.Services.GetRequiredService<IndxServer.Services.Observr.ObservrConversationStore>();
             conversations.EnsureTable();
             IndxServerInternalApi.Manager.AttachObservrConversations(conversations);
+            IndxServerInternalApi.Manager.AttachWebhookStore(app.Services.GetRequiredService<IndxServer.Services.Webhooks.WebhookStore>());
 
             // Detect license file for summary
             if (!string.IsNullOrWhiteSpace(licensePath) && File.Exists(licensePath))

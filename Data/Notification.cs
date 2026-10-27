@@ -18,6 +18,7 @@ namespace IndxServer.Data
         RepeatedApiErrors   = 10,
         UpdateAvailable     = 11,
         SecurityUpdate      = 12,
+        WebhookAttention    = 13,
     }
 
     public class Notification

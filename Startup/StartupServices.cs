@@ -137,6 +137,12 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskSetupProvider>();
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.ISearchOrAskModels, IndxServer.Services.SearchOrAsk.SearchOrAskModelClients>();
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskModelLists>();
+        // Incoming webhooks: the store (tables in indx.db), the applier, and the queue's worker,
+        // one instance so the receiving route can wake it.
+        builder.Services.AddSingleton<IndxServer.Services.Webhooks.WebhookStore>();
+        builder.Services.AddSingleton<IndxServer.Services.Webhooks.WebhookApplier>();
+        builder.Services.AddSingleton<IndxServer.Services.Webhooks.WebhookWorker>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.Webhooks.WebhookWorker>());
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskService>();
 
         // Indx Observr (Notes/Anders/observr-plan.md): the instance reaches out with its licence
@@ -154,6 +160,7 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrChat>();
         builder.Services.AddScoped<IndxServer.Services.Observr.AgentPanelState>();
         builder.Services.AddScoped<IndxServer.Services.ConsolePaletteState>();
+        builder.Services.AddScoped<Indx.Systm.Blazor.ToastService>();
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrDigestJob>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.Observr.ObservrDigestJob>());
 

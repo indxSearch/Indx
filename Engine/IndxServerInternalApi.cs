@@ -811,6 +811,7 @@ namespace IndxServer.Engine
             _searchOrAskStore?.Delete(teamId, dataSetName);
             _observrStore?.Delete(teamId, dataSetName);
             _observrConversations?.Delete(teamId, dataSetName);
+            _webhookStore?.DeleteDataset(teamId, dataSetName);
             // Statistics survive a delete by design, so the history says where the gap came from.
             ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Delete);
             return true;
@@ -1040,6 +1041,7 @@ namespace IndxServer.Engine
             _searchOrAskStore?.Rename(teamId, dataSetName, newName);
             _observrStore?.Rename(teamId, dataSetName, newName);
             _observrConversations?.Rename(teamId, dataSetName, newName);
+            _webhookStore?.Rename(teamId, dataSetName, newName);
             MoveSavedEmbeddings(dataSetName, teamId, newName, teamId);
             _logger.LogInformation("{Prefix}renamed to '{NewName}'", MakeLogPrefix(teamId, dataSetName), newName);
 
@@ -1086,6 +1088,7 @@ namespace IndxServer.Engine
             _searchOrAskStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _observrStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _observrConversations?.Transfer(currentTeamId, newTeamId, dataSetName);
+            _webhookStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             MoveSavedEmbeddings(dataSetName, currentTeamId, dataSetName, newTeamId);
 
             // Warm up the engine for the new owning team, same as InitializeSystem does on startup.
@@ -1451,6 +1454,9 @@ namespace IndxServer.Engine
         internal void AttachObservrStore(Services.Observr.ObservrFindingStore store) => _observrStore = store;
         private Services.Observr.ObservrConversationStore? _observrConversations;
         internal void AttachObservrConversations(Services.Observr.ObservrConversationStore store) => _observrConversations = store;
+        // A dataset's webhooks and their key registry, likewise.
+        private Services.Webhooks.WebhookStore? _webhookStore;
+        internal void AttachWebhookStore(Services.Webhooks.WebhookStore store) => _webhookStore = store;
 
         /// <summary>
         /// Applies the dataset's server-declared key field to the engine's <see cref="DocumentFields"/>
