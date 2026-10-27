@@ -3,3 +3,10 @@
     align-items: center;
     gap: 8px;
 }
+.indx-dataset-chip { display: inline-flex; }
+
+/* A phone: the chip is its icon. The label is a text node of the Chip's own, so it goes by its
+   size; the icon keeps its pixel size. */
+@media (max-width: 768px) {
+    .indx-dataset-chip ::deep .indx-chip { font-size: 0; gap: 0; padding: 3px 6px; }
+}

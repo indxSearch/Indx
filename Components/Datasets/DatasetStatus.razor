@@ -1,7 +1,8 @@
 @* The dataset's state when it needs attention: Created (upload flow), Loading, Indexing,
    Error, Hibernated, and "Shadow indexing" while a field-config rebuild runs. A plain Ready
    engine shows nothing here — that is the normal case, reported on the Status tab instead.
-   Sits right after the breadcrumb trail so the state is visible without a row of its own. Subscribes to the context itself: it is rendered through a RenderFragment whose
+   Sits right after the breadcrumb trail so the state is visible without a row of its own. On a
+   phone each chip is its icon alone, its name on hover, so the dataset's name keeps the room. Subscribes to the context itself: it is rendered through a RenderFragment whose
    parameter (the context) never changes, so the panel's re-render alone would not reach it. *@
 @using Indx.Api
 @implements IDisposable
@@ -15,20 +16,20 @@
         <div class="indx-dataset-status">
             @if (Ctx.IsCancellingWake)
             {
-                <Chip Size="large" Color="@DatasetStateChip.Hibernated.Color" TextColor="@DatasetStateChip.Hibernated.TextColor" Icon="DatasetIcons.Hibernate">Hibernating</Chip>
+                <span class="indx-dataset-chip" title="Hibernating"><Chip Size="large" Color="@DatasetStateChip.Hibernated.Color" TextColor="@DatasetStateChip.Hibernated.TextColor" Icon="DatasetIcons.Hibernate">Hibernating</Chip></span>
             }
             else if (Ctx.IsHibernated)
             {
-                <Chip Size="large" Color="@DatasetStateChip.Hibernated.Color" TextColor="@DatasetStateChip.Hibernated.TextColor" Icon="DatasetIcons.Hibernate">Hibernated</Chip>
+                <span class="indx-dataset-chip" title="Hibernated"><Chip Size="large" Color="@DatasetStateChip.Hibernated.Color" TextColor="@DatasetStateChip.Hibernated.TextColor" Icon="DatasetIcons.Hibernate">Hibernated</Chip></span>
             }
             else if (!ready)
             {
                 var chip = DatasetStateChip.For(state);
-                <Chip Size="large" Color="@chip.Color" TextColor="@chip.TextColor" Icon="@chip.Icon">@state</Chip>
+                <span class="indx-dataset-chip" title="@state"><Chip Size="large" Color="@chip.Color" TextColor="@chip.TextColor" Icon="@chip.Icon">@state</Chip></span>
             }
             @if (Ctx.IsSaving && ready)
             {
-                <Chip Size="large" Color="var(--lv8)" TextColor="var(--lv0)" Icon="DatasetIcons.ShadowIndexing">Shadow indexing</Chip>
+                <span class="indx-dataset-chip" title="Shadow indexing"><Chip Size="large" Color="var(--lv8)" TextColor="var(--lv0)" Icon="DatasetIcons.ShadowIndexing">Shadow indexing</Chip></span>
             }
         </div>
     }

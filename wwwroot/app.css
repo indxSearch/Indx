@@ -374,15 +374,40 @@ a.btn-danger:hover {
     flex: none;
 }
 
-/* The side column, where a page has sections of its own; it sticks under the header. */
+/* The side column, where a page has sections: the systm Sidebar, as wide as it is (the column's
+   width, or its rail of icons) and the window's height under the header, sticking as the page
+   scrolls. It does not scroll itself: the Sidebar's own body does, so the rail's tooltips can
+   reach out over the page. */
 .shell-side {
-    width: var(--side-width);
+    --sidebar-width: var(--side-width);
     flex: none;
     position: sticky;
     top: 0;
     align-self: flex-start;
-    max-height: calc(100vh - var(--header-height));
-    overflow-y: auto;
+    height: calc(100vh - var(--header-height));
+}
+
+/* The line between the column and the page, inside the column's own width, so the trail above
+   still starts where the content does. */
+@media (min-width: 769px) {
+    .shell-side .indx-sidebar {
+        border-right: 1px solid var(--lv2);
+    }
+}
+
+/* The rail (Cmd or Ctrl and B): the header's brand cell narrows with the column to the mark
+   alone, centred over the rail's icons, so the trail still starts where the content does. */
+@media (min-width: 769px) {
+    :root:has(.shell-side .indx-sidebar--rail) {
+        --side-now: 50px;
+    }
+    :root:has(.shell-side .indx-sidebar--rail) .nav-instance,
+    :root:has(.shell-side .indx-sidebar--rail) .nav .nav-brand .indx-chip {
+        display: none;
+    }
+    :root:has(.shell-side .indx-sidebar--rail) .nav-brand {
+        padding-left: 12px;
+    }
 }
 
 /* How wide the page gets before it stops growing and centres. One value for the header and the
@@ -444,10 +469,15 @@ a.btn-danger:hover {
    mark sits over the menu's icons and the trail starts at the content's edge. */
 .nav {
     display: grid;
-    grid-template-columns: var(--side-width) minmax(0, 1fr);
+    grid-template-columns: var(--side-now, var(--side-width)) minmax(0, 1fr);
     align-items: center;
     width: 100%;
     min-height: 30px;
+}
+
+/* The way into the side column's drawer: on a phone only, before the mark. */
+.nav-sections {
+    display: none;
 }
 
 /* 18px: with the link's own 2px the mark starts at 20px, on the side menu's icon line (the
@@ -520,14 +550,6 @@ a.btn-danger:hover {
     background: var(--lv1);
 }
 
-/* Between the team switcher and the account's controls. */
-.nav-right-divider {
-    width: 1px;
-    height: 18px;
-    background: var(--lv3);
-    margin: 0 6px;
-}
-
 /* Header dropdowns (Instance, personal): trigger + right-anchored Surface of ghost buttons. */
 .nav-dropdown { display: flex; align-items: center; }
 .nav-dropdown-menu { min-width: 200px; }
@@ -577,8 +599,7 @@ a.btn-danger:hover {
 }
 
 /* Narrower still: the account's controls keep their icons and lose their words (Admin, the
-   name, Agent), so the dataset's name keeps its. The team's name stays: it is the one word in
-   the cluster that says where you are. */
+   name, Agent), so the dataset's name keeps its. */
 @media (max-width: 1000px) {
     .nav-jump .indx-btn.indx-btn-secondary { min-width: 0; }
     .nav-jump-label,
@@ -590,15 +611,12 @@ a.btn-danger:hover {
     }
 }
 
-/* Narrow: the header is two rows. The first is the mark and, at the right, the team switcher with
-   its name and the account's icons; the second, only where a page has one, the trail. The
-   standing chip goes, and the trail's earlier steps keep their icon as the way back and lose
-   their text and switcher, so the dataset's name has the room. */
+/* Narrow: one row. The Sections button and the mark, the trail's last step, the account's icons.
+   The standing chip goes, so the dataset's name has the room. */
 @media (max-width: 768px) {
     /* Narrow: one row, the header's own height, everything centred on it. The mark on the
-       content's gutter (15px: the logo sits 2px into its link), the trail beside it, the team's
-       icon and the account's controls at the right. The team's name and the divider go, and the
-       trail's earlier steps keep their icon as the way back, so the dataset's name has the room. */
+       content's gutter (15px: the logo sits 2px into its link), or after the Sections button
+       where there is a column, the trail beside it and the account's controls at the right. */
     .nav {
         grid-template-columns: auto minmax(0, 1fr) auto;
         gap: 4px;
@@ -607,6 +625,15 @@ a.btn-danger:hover {
 
     .nav-brand {
         padding-left: calc(var(--spacing) * 3 - 2px);
+    }
+
+    /* The button's icon on the gutter, as the mark's would be: the gutter less its 10px padding. */
+    .nav-sections {
+        display: inline-flex;
+    }
+    .nav-brand:has(.nav-sections) {
+        padding-left: calc(var(--spacing) * 3 - 10px);
+        gap: 2px;
     }
 
     /* Three classes: the chip's own scoped rule has two, and is loaded after this file. */
@@ -628,8 +655,10 @@ a.btn-danger:hover {
         padding-left: 0;
     }
 
-    .nav-crumbs .indx-breadcrumbs-item:not(:last-child) .indx-breadcrumbs-text,
-    .nav-crumbs .indx-breadcrumbs-item:not(:last-child) .indx-breadcrumbs-trigger {
+    /* The trail is its last step: the mark beside it leads to the team's page, and the team's
+       step beside the Sections button left the dataset's name four letters. */
+    .nav-crumbs .indx-breadcrumbs-item:not(:last-child),
+    .nav-crumbs .indx-breadcrumbs-item:last-child .indx-breadcrumbs-separator {
         display: none;
     }
 
@@ -642,22 +671,9 @@ a.btn-danger:hover {
         transform: none;
     }
 
-    .nav-team .indx-breadcrumbs-text,
-    .nav-right-divider {
-        display: none;
-    }
-
-    /* With its name gone the team's crumb is its icon and caret: the truncating trail's room for
-       six characters of name (Breadcrumbs' --text-min) would leave a gap after it. Four classes:
-       that rule is scoped, so it carries an attribute too. */
-    .nav .nav-team .indx-breadcrumbs-item.indx-breadcrumbs-item {
-        min-width: 0;
-    }
-
-    /* Room for the dataset's name: the trails lose their box's side padding (the header has its
+    /* Room for the dataset's name: the trail loses its box's side padding (the header has its
        own) and the account menu its caret; the icon still opens it. */
-    .nav .nav-crumbs .indx-breadcrumbs.indx-breadcrumbs,
-    .nav .nav-team .indx-breadcrumbs.indx-breadcrumbs {
+    .nav .nav-crumbs .indx-breadcrumbs.indx-breadcrumbs {
         padding-inline: 0;
     }
 
@@ -683,23 +699,10 @@ a.btn-danger:hover {
         .shell-agent--open { width: 100%; border-left: none; }
     }
 
-    /* The column becomes a row above the content, scrolling sideways. */
-    .shell {
-        flex-direction: column;
-    }
-
-    /* The row is the screen's width and the menu scrolls inside it. The wide rule's
-       align-self: flex-start made it as wide as its content here (971px on a phone), so the
-       whole page scrolled sideways with it. */
+    /* The column is the Sidebar's drawer over the page, opened by the header's Sections button:
+       it takes no room of its own here. */
     .shell-side {
-        width: auto;
-        align-self: stretch;
-        min-width: 0;
-        overflow: visible;
-        position: static;
-        max-height: none;
-        border-bottom: 1px solid var(--lv2);
-        padding: 6px 12px;
+        display: contents;
     }
 
     .nav-instance {

@@ -35,8 +35,11 @@ export function stop(nav) {
     started.delete(nav);
 }
 
+// Kept twice: in localStorage, read here, and in a cookie of the same name, which a server-rendered
+// page can read to draw the rail from its first frame (the console's MainLayout does).
 export function keep(storageKey, rail) {
     try { localStorage.setItem(storageKey, rail ? 'rail' : 'full'); } catch { }
+    try { document.cookie = `${encodeURIComponent(storageKey)}=${rail ? 'rail' : 'full'}; path=/; max-age=31536000; samesite=lax`; } catch { }
 }
 
 // The drawer opened: focus its open item, or its first.

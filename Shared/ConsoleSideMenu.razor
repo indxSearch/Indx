@@ -1,33 +1,77 @@
-@* The side column (Notes/Anders/console-shell-plan-2026-10-13.md, stages 1 and 2): a SideMenu
-   drawn for a page with sections of its own. One that sets them through SideMenuState (the
-   dataset page), or an area whose sections are read off the URL (admin, account). The team page
-   has no column; its pages are buttons on the page itself. *@
+@* The side column (Notes/Anders/console-shell-plan-2026-10-13.md, stages 1 and 2), as the systm
+   Sidebar (mockup: indx-react/apps/components, "Console with Sidebar"). Its groups come from a
+   page with sections of its own, which sets them through SideMenuState (the dataset page), or are
+   read off the URL: the team's pages (Datasets, Observr, API keys, Manage team), the admin
+   sections, the account pages. Cmd or Ctrl and B folds it to a rail of icons, kept per viewer;
+   on a phone it is a drawer the header's Sections button opens (SideMenuState.DrawerOpen). The
+   admin area's version and a newer release are the Sidebar's footer. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Security.Claims
+@using IndxServer.Services.Observr
 @implements IDisposable
 @inject NavigationManager NavigationManager
 @inject IndxServer.Services.SideMenuState Menu
 @inject InstanceSettingsService Settings
 @inject IEditionService Edition
+@inject ActiveTeamState ActiveTeam
+@inject ObservrSubscription Observr
+@inject ObservrFindingStore Findings
+@inject AuthenticationStateProvider AuthState
 
-@if (_groups.Count > 0)
+@* Drawn wherever the area has a column, even before its sections are known: a dataset page
+   publishes them only once its context is built, and removing the column in that gap let the page
+   jump to the window's edge and back. *@
+@if (_column)
 {
 <aside class="shell-side">
-    <SideMenu Groups="_groups" Active="@_active" OnSelect="Menu.OnSelect" />
+    <Sidebar Groups="_sidebar" Active="@_active" OnSelect="Choose" StorageKey="@StorageKey" AriaLabel="Sections"
+             DefaultCollapsed="Rail" Open="Menu.DrawerOpen" OpenChanged="Menu.SetDrawer">
+        <Footer>
+            @if (_note != null || _update != null)
+            {
+                <div class="side-foot">
+                    @if (_note != null) { <div class="side-foot-note" title="@_note">@_note</div> }
+                    @if (_update is { } update)
+                    {
+                        <div class="side-foot-update @(update.Security ? "side-foot-update-security" : "")">
+                            <Button Variant="ghost" Size="micro" IconLeft="IndxServer.Components.Datasets.DatasetIcons.Changes" Href="@update.Href"
+                                    target="_blank" rel="noopener" title="@update.Title">@update.Text</Button>
+                        </div>
+                    }
+                </div>
+            }
+        </Footer>
+    </Sidebar>
 </aside>
 }
 
 @code {
+    /// <summary>Where the viewer's rail is kept (localStorage and a cookie, MainLayout reads it).</summary>
+    public const string StorageKey = "indx-console-sidebar";
+
+    /// <summary>The rail from the cookie, so the column draws as one from its first frame.</summary>
+    [Parameter] public bool Rail { get; set; }
+
+    private bool _column;
     private IReadOnlyList<SideMenuGroup> _groups = [];
+    private IReadOnlyList<Sidebar.Group> _sidebar = [];
     private string? _active;
+    private string? _note;
+    private SideMenuUpdate? _update;
 
     private static readonly RenderFragment<int> _iconUser = size => @<UserId Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconKey = size => @<Key Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconBell = size => @<Bell Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconLock = size => @<Lock Size="size" Color="currentColor" />;
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         NavigationManager.LocationChanged += OnLocationChanged;
         Menu.Changed += OnMenuChanged;
+        // The team's pages need the user's teams for the role and the team's id.
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        var userId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+        if (userId.Length > 0) await ActiveTeam.EnsureInitializedAsync(userId);
+        ActiveTeam.OnChange += OnMenuChanged;
         Resolve();
     }
 
@@ -38,6 +82,14 @@
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
         Menu.Changed -= OnMenuChanged;
+        ActiveTeam.OnChange -= OnMenuChanged;
+    }
+
+    /// <summary>A section chosen: a page that owns the menu handles it (the dataset page's tabs);
+    /// an item with an address has already navigated.</summary>
+    private void Choose(Sidebar.Item item)
+    {
+        if (Menu.OnSelect != null && Menu.Groups != null) Menu.OnSelect(item.Key);
     }
 
     private void Resolve()
@@ -46,11 +98,87 @@
         {
             _groups = Menu.Groups;
             _active = Menu.Active;
-            return;
         }
-        (_groups, _active) = ForUrl(NavigationManager.Uri);
-        if (_groups.Count > 0 && _groups[0].Title == "Admin" && UpdateNotice.Pending(Settings.Load(), ReleaseVersion.Current) is { } pending)
-            _groups = [_groups[0] with { Update = UpdateLine(pending, Edition.Edition == IndxEdition.Managed) }, .. _groups.Skip(1)];
+        else
+        {
+            var drawn = _groups;
+            (_groups, _active) = ForUrl(NavigationManager.Uri);
+            if (_groups.Count == 0) (_groups, _active) = ForTeam(NavigationManager.Uri);
+            // A dataset page publishes its sections once its context is built: until then the
+            // column keeps what it shows rather than going blank, so it changes once, not twice.
+            if (_groups.Count == 0 && drawn.Count > 0 && HasColumn(NavigationManager.Uri)) _groups = drawn;
+            if (_groups.Count > 0 && _groups[0].Title == "Admin" && UpdateNotice.Pending(Settings.Load(), ReleaseVersion.Current) is { } pending)
+                _groups = [_groups[0] with { Update = UpdateLine(pending, Edition.Edition == IndxEdition.Managed) }, .. _groups.Skip(1)];
+        }
+        _sidebar = ToSidebar(_groups);
+        _column = _groups.Count > 0 || HasColumn(NavigationManager.Uri) || ResolvesToTeam(NavigationManager.Uri);
+        _note = _groups.Select(g => g.Note).FirstOrDefault(n => n != null);
+        _update = _groups.Select(g => g.Update).FirstOrDefault(u => u != null);
+        Menu.SetColumn(_column);
+    }
+
+    /// <summary>The addresses that redirect to a team's page ("/", "/team", the old
+    /// "/datasets/{name}"): for a user with a team the column stays through the hop, where it
+    /// blinked out for a frame on the way back from the logo.</summary>
+    private bool ResolvesToTeam(string uri)
+    {
+        var path = new Uri(uri).AbsolutePath.Trim('/').ToLowerInvariant();
+        return ActiveTeam.Teams.Count > 0 && (path.Length == 0 || path == "team" || path.StartsWith("datasets/"));
+    }
+
+    /// <summary>The areas with a column: a team's pages and its datasets, admin, account.</summary>
+    private static bool HasColumn(string uri)
+    {
+        var path = new Uri(uri).AbsolutePath.Trim('/').ToLowerInvariant();
+        return path.StartsWith("teams/") || path.StartsWith("admin") || path.StartsWith("account");
+    }
+
+    private static readonly RenderFragment<int> _iconLab = size => @<LabExperiment Size="size" Color="currentColor" />;
+
+    /// <summary>The column's groups as the Sidebar draws them: a badge in the signal colour (an
+    /// expired rule, a held batch, both want attention), the lab mark at an experimental
+    /// section's end. The rendering tests draw the column through this too.</summary>
+    public static IReadOnlyList<Sidebar.Group> ToSidebar(IReadOnlyList<SideMenuGroup> groups) =>
+        groups.Select(g => new Sidebar.Group(g.Title, g.Items.Select(i => new Sidebar.Item(
+            i.Key, i.Label, i.Icon, i.Href, i.Badge, i.Title, i.Disabled, Signal: i.Badge != null && !i.Neutral,
+            BadgeTitle: i.BadgeTitle, Trailing: i.Experimental ? _iconLab : null, TrailingTitle: i.Experimental ? "Experimental" : null)).ToList())).ToList();
+
+    private static readonly RenderFragment<int> _iconDatasets = size => @<Database Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconManage = size => @<Users Size="size" Color="currentColor" />;
+
+    /// <summary>The team's own pages: its datasets, Observr where the instance has it (with the
+    /// open findings as a count), the team's API keys for its admins, and Manage team. These were
+    /// buttons beside the datasets' heading until the column took them.</summary>
+    private (IReadOnlyList<SideMenuGroup> Groups, string? Active) ForTeam(string uri)
+    {
+        var path = new Uri(uri).AbsolutePath.Trim('/');
+        var seg = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (seg.Length < 2 || !seg[0].Equals("teams", StringComparison.OrdinalIgnoreCase)) return ([], null);
+        // A dataset's page sets its own sections; until it has, the column waits rather than
+        // showing the team's.
+        if (seg.Length >= 3 && seg[2].Equals("datasets", StringComparison.OrdinalIgnoreCase)) return ([], null);
+        var name = Uri.UnescapeDataString(seg[1]);
+        var found = ActiveTeam.Find(name);
+        if (found == null) return ([], null);
+        var (team, role) = found.Value;
+        var items = new List<SideMenuItem> { new("datasets", "Datasets", _iconDatasets, TeamRoutes.Team(team.Name)) };
+        if (Observr.Visible)
+        {
+            var open = Findings.CountOpen([team.Id.ToString()]);
+            items.Add(new("observr", "Observr", IndxServer.Components.Datasets.DatasetIcons.Observr, TeamRoutes.TeamObservr(team.Name),
+                Badge: open > 0 ? open.ToString() : null, BadgeTitle: open > 0 ? (open == 1 ? "1 open finding" : $"{open} open findings") : null, Neutral: true));
+        }
+        if (TeamRoles.CanAdmin(role))
+            items.Add(new("keys", "API keys", IndxServer.Components.Datasets.DatasetIcons.Key, TeamRoutes.TeamKeys(team.Name)));
+        items.Add(new("manage", "Manage team", _iconManage, TeamRoutes.TeamSettings(team.Name)));
+        var active = seg.Length < 3 ? "datasets" : seg[2].ToLowerInvariant() switch
+        {
+            "observr" => "observr",
+            "keys" => "keys",
+            "settings" => "manage",
+            _ => null,
+        };
+        return ([new SideMenuGroup(team.Name, items)], active);
     }
 
     /// <summary>The newer release, under the version: a link to it, or for a Managed instance an

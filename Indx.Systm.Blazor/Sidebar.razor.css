@@ -37,6 +37,9 @@ button.indx-sidebar-title--toggle:hover { color: var(--lv6); }
 .indx-sidebar-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .indx-sidebar-badge { margin-left: auto; padding: 0 5px; font: var(--text-2xs); font-weight: var(--med); border-radius: 3px; background: var(--lv3); color: var(--lv7); }
 .indx-sidebar-badge--signal { background: var(--CSignal); color: var(--lv0); }
+/* An icon at the item's end (the lab mark), after the badge when it has one. */
+.indx-sidebar-trailing { display: inline-flex; margin-left: auto; color: var(--lv5); }
+.indx-sidebar-badge + .indx-sidebar-trailing { margin-left: 6px; }
 
 .indx-sidebar-footer { display: flex; flex-direction: column; gap: 8px; }
 .indx-sidebar-footer-content { min-width: 0; }
@@ -49,7 +52,8 @@ button.indx-sidebar-title--toggle:hover { color: var(--lv6); }
     .indx-sidebar--rail .indx-sidebar-header,
     .indx-sidebar--rail .indx-sidebar-footer-content,
     .indx-sidebar--rail .indx-sidebar-title,
-    .indx-sidebar--rail .indx-sidebar-label { display: none; }
+    .indx-sidebar--rail .indx-sidebar-label,
+    .indx-sidebar--rail .indx-sidebar-trailing { display: none; }
     .indx-sidebar--rail .indx-sidebar-body { gap: 8px; overflow: visible; }
     .indx-sidebar--rail .indx-sidebar-group + .indx-sidebar-group { padding-top: 8px; border-top: 1px solid var(--lv2); }
     .indx-sidebar--rail .indx-sidebar-items--shut { display: flex; }

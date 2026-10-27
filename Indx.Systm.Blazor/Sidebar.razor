@@ -96,10 +96,13 @@
 @code {
     /// <summary>An entry: its key (what Active and OnSelect speak of), its name, a 14px pixl icon,
     /// where it goes (a link) or nothing (OnSelect), a badge at its end ("3"), a title for the
-    /// pointer, Disabled for an item that is there but not yet usable (its Title says why), and
-    /// Signal for a badge that wants attention (the signal colour; a plain count otherwise).</summary>
+    /// pointer, Disabled for an item that is there but not yet usable (its Title says why),
+    /// Signal for a badge that wants attention (the signal colour; a plain count otherwise) and
+    /// BadgeTitle its own hover text, and a Trailing icon at the end with its TrailingTitle (the
+    /// lab mark of an experimental section).</summary>
     public sealed record Item(string Key, string Label, RenderFragment<int>? Icon = null, string? Href = null,
-        string? Badge = null, string? Title = null, bool Disabled = false, bool Signal = false);
+        string? Badge = null, string? Title = null, bool Disabled = false, bool Signal = false,
+        string? BadgeTitle = null, RenderFragment<int>? Trailing = null, string? TrailingTitle = null);
 
     /// <summary>Items under a title. Collapsible lets the title open and close them.</summary>
     public sealed record Group(string? Title, IReadOnlyList<Item> Items, bool Collapsible = false);
@@ -123,7 +126,9 @@
     [Parameter] public bool Collapsible { get; set; } = true;
     /// <summary>The key that folds it with Cmd or Ctrl; "b" by default, null for none.</summary>
     [Parameter] public string? Shortcut { get; set; } = "b";
-    /// <summary>Where the viewer's own choice of rail or not is kept (localStorage); null keeps nothing.</summary>
+    /// <summary>Where the viewer's own choice of rail or not is kept (localStorage, and a cookie of
+    /// the same name a server can read to pass DefaultCollapsed before the browser has answered);
+    /// null keeps nothing.</summary>
     [Parameter] public string? StorageKey { get; set; }
 
     /// <summary>The drawer, at 768px and narrower: the host's trigger opens it.</summary>
@@ -150,7 +155,7 @@
 
     protected override void OnParametersSet() => _open = Open;
 
-    private RenderFragment ItemLabel(Item it) => @<text><span class="indx-sidebar-label">@it.Label</span>@if (it.Badge is { Length: > 0 } badge) { <span class="indx-sidebar-badge @(it.Signal ? "indx-sidebar-badge--signal" : null)">@badge</span> }</text>;
+    private RenderFragment ItemLabel(Item it) => @<text><span class="indx-sidebar-label">@it.Label</span>@if (it.Badge is { Length: > 0 } badge) { <span class="indx-sidebar-badge @(it.Signal ? "indx-sidebar-badge--signal" : null)" title="@it.BadgeTitle">@badge</span> }@if (it.Trailing != null) { <span class="indx-sidebar-trailing" title="@it.TrailingTitle">@it.Trailing(14)</span> }</text>;
 
     private void ToggleGroup(string title)
     {

@@ -1,10 +1,11 @@
 @* The header (Notes/Anders/console-shell-plan-2026-10-13.md, stage 1). Left, over the side
    column: the Indx mark as the home link, with a chip for the instance's standing as the
    licence portal reports it (Free, Pro, Enterprise; Managed on a managed deployment). Then the
-   trail, at the content's edge: whatever the current page put in HeaderState (the console's
-   dataset or page), else a label derived from the URL. Right: the team switcher (one team at a
-   time, so it is a global control, not the trail's first step), then Admin (for instance admins;
-   it is a page that needs a role, not a personal page), the bell, the personal menu, Observr. *@
+   trail, at the content's edge: whatever the current page put in HeaderState ([team ▾] › [dataset ▾]
+   and the dataset's state chips), else one derived from the URL. On a phone a Sections button
+   before the mark opens the side column's drawer, where there is a column. Right: the way into
+   the command palette, Admin (for instance admins; it is a page that needs a role, not a personal
+   page), the bell, the personal menu, the Agent. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
 @inject NavigationManager NavigationManager
@@ -13,10 +14,18 @@
 @inject IndxServer.Services.HeaderState Header
 @inject IndxServer.Services.Observr.ObservrSubscription Subscription
 @inject AuthenticationStateProvider AuthState
+@inject IndxServer.Services.SideMenuState Menu
+@inject IndxServer.Services.ActiveTeamState ActiveTeam
 
 <nav class="nav">
     <div class="nav-brand">
-        <a href="/" class="nav-home" title="@_instanceName">
+        @if (Menu.HasColumn)
+        {
+            <span class="nav-sections"><Button Variant="ghost" Size="micro" IconLeft="_iconMenu" aria-label="Sections" @onclick="() => Menu.SetDrawer(true)" /></span>
+        }
+        @* Straight to the active team's page: through "/" the console redirected, and the column
+           blinked out for that frame. *@
+        <a href="@(ActiveTeam.ActiveTeamName is { } home ? TeamRoutes.Team(home) : "/")" class="nav-home" title="@_instanceName">
             <IndxLogo Size="21" Color="currentColor" />
             <span class="nav-instance">@_instanceName</span>
         </a>
@@ -42,8 +51,6 @@
         <AuthorizeView>
             <Authorized>
                 <ConsolePaletteButton />
-                <TeamSwitcher />
-                <span class="nav-right-divider" aria-hidden="true"></span>
                 @if (_admin)
                 {
                     <Button Variant="ghost" Size="micro" Href="admin" IconLeft="_iconInstance" title="Admin" aria-label="Admin"><span class="nav-dropdown-label">Admin</span></Button>
@@ -89,6 +96,8 @@
     private RenderFragment<int> _iconApi      => size => @<Api Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconBook     => size => @<Book Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconLogout   => size => @<Logout Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconMenu     => size => @<Indx.Systm.Blazor.Icons.Menu Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconTeam     => size => @<UserGroup Size="size" Color="currentColor" />;
 
     protected override async Task OnInitializedAsync()
     {
@@ -102,6 +111,8 @@
         NavigationManager.LocationChanged += OnLocationChanged;
         Header.Changed += OnHeaderChanged;
         Subscription.Changed += OnHeaderChanged;
+        Menu.Changed += OnHeaderChanged;
+        ActiveTeam.OnChange += OnHeaderChanged;
         _pageCrumb = PageCrumb();
     }
 
@@ -124,6 +135,8 @@
         NavigationManager.LocationChanged -= OnLocationChanged;
         Header.Changed -= OnHeaderChanged;
         Subscription.Changed -= OnHeaderChanged;
+        Menu.Changed -= OnHeaderChanged;
+        ActiveTeam.OnChange -= OnHeaderChanged;
     }
 
     /// <summary>The chip beside the mark: the instance's standing. Nothing until the portal has
@@ -144,24 +157,26 @@
     }
 
     // The fallback trail when no page has set one. For console URLs it is read off the URL —
-    // the dataset or the page, linked but without a switcher — so the hop between console pages
+    // the team and the dataset, linked but without a switcher — so the hop between console pages
     // (the island is rebuilt, and the new page sets its trail only after resolving the team)
-    // shows the right name in the gap rather than a placeholder. Areas with a column (admin,
-    // account) get one unlinked crumb; the team's own pages get none.
+    // shows the right names in the gap rather than a placeholder. The admin and account areas
+    // get one unlinked crumb.
     private List<Breadcrumbs.BreadcrumbItem> PageCrumb()
     {
         var path = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
         var seg = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
         if (seg.Length >= 2 && seg[0] == "teams")
         {
-            var team = Uri.UnescapeDataString(seg[1]);
+            // The path is lower-cased above; the team's own spelling comes from the original.
+            var original = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var team = Uri.UnescapeDataString(original[1]);
+            List<Breadcrumbs.BreadcrumbItem> trail = [new("team", team) { Href = TeamRoutes.Team(team), Icon = _iconTeam }];
             if (seg.Length >= 4 && seg[2] == "datasets")
             {
-                var dataset = Uri.UnescapeDataString(seg[3]);
-                return [new("dataset", dataset) { Href = TeamRoutes.Dataset(team, dataset), Icon = _iconDatabase }];
+                var dataset = Uri.UnescapeDataString(original[3]);
+                trail.Add(new("dataset", dataset) { Href = TeamRoutes.Dataset(team, dataset), Icon = _iconDatabase });
             }
-            // The team's own pages have no column and no step; the switcher at the right names the team.
-            return [];
+            return trail;
         }
         (string label, RenderFragment<int> icon) = path switch
         {

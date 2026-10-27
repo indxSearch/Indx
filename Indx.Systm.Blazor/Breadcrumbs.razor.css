@@ -133,7 +133,9 @@ a.indx-breadcrumbs-label:focus-visible {
     left: 0;
     z-index: 1001;
     min-width: 180px;
-    max-height: 280px;
+    /* As tall as the window allows below the header before it scrolls, as the React switcher
+       (Radix) takes the room available. 280px squeezed a team's twenty datasets into a scroll. */
+    max-height: calc(100vh - 120px);
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -142,6 +144,13 @@ a.indx-breadcrumbs-label:focus-visible {
     background: var(--lv2);
     border-radius: var(--radius);
     font: var(--text-sm);
+}
+
+/* Each row keeps the Button's 30px: in a column with a height limit they shrank to fit, so a long
+   list of datasets packed its rows to 20px and read as a smaller font. */
+.indx-breadcrumbs-menu > ::deep .indx-btn,
+.indx-breadcrumbs-menu > .indx-breadcrumbs-menu-divider {
+    flex-shrink: 0;
 }
 
 .indx-breadcrumbs-menu-divider {

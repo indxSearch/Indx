@@ -206,8 +206,10 @@
         return groups;
     }
 
+    // Search or ask carries the lab mark in the column, as its page carries the Experimental chip.
     private static SideMenuItem ToMenuItem(Tabs.TabItem i) =>
-        new(i.Value, i.Label, i.Icon, Href: null, Disabled: i.Disabled, Title: i.Title, Badge: i.Badge, BadgeTitle: i.BadgeTitle);
+        new(i.Value, i.Label, i.Icon, Href: null, Disabled: i.Disabled, Title: i.Title, Badge: i.Badge, BadgeTitle: i.BadgeTitle,
+            Experimental: i.Value == "search-or-ask");
 
     private const string TabQuery = "tab";
 

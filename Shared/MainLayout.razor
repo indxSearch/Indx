@@ -18,7 +18,7 @@
         </header>
 
         <div class="shell">
-            <ConsoleSideMenu />
+            <ConsoleSideMenu Rail="@Rail" />
             <main class="content">
                 @Body
             </main>
@@ -32,3 +32,11 @@
 <ConsolePalette />
 @* Brief notices at the lower right ("Settings saved."), from any page (systm ToastService). *@
 <ConsoleToasts />
+
+@code {
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    /// <summary>The viewer's rail, from the cookie the Sidebar keeps beside localStorage: the column
+    /// draws as a rail from its first frame instead of folding once the browser has answered.</summary>
+    private bool Rail => HttpContext?.Request.Cookies[ConsoleSideMenu.StorageKey] == "rail";
+}
