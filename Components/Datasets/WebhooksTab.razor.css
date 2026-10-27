@@ -42,3 +42,7 @@ code { font-family: var(--font-mono); }
 
 .wh-calls-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
 .wh-calls-head .wh-subtitle { margin: 0; }
+
+.wh-held-names { font-weight: 500; }
+.wh-details { margin-top: 4px; }
+.wh-details .wh-grid { padding-top: 8px; }
