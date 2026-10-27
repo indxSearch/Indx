@@ -7,8 +7,8 @@
    series' value on it. One shared scale, or a max per axis for dimensions in different units.
    Port of the React RadarChart in indx-systm. *@
 <div class="indx-radar-wrapper @Class">
-    <div class="indx-radar" style="--radar-box: @(Box)px;" @onpointerleave="() => _hover = null">
-        <svg class="indx-radar-svg" viewBox="0 0 @Box @Box" width="@Box" height="@Box" role="img" aria-label="@AriaLabel"
+    <div class="indx-radar" style="--radar-width: @F(BoxWidth)px; --radar-height: @F(BoxHeight)px;" @onpointerleave="() => _hover = null">
+        <svg class="indx-radar-svg" viewBox="0 0 @F(BoxWidth) @F(BoxHeight)" width="@F(BoxWidth)" height="@F(BoxHeight)" role="img" aria-label="@AriaLabel"
              @onpointermove="OnPointer" @onpointerdown="OnPointer">
             @if (Series.Any(s => IsPattern(s.Fill)))
             {
@@ -34,7 +34,7 @@
             @for (int i = 0; i < Axes.Count; i++)
             {
                 var (x, y) = Point(i, Radius);
-                <line class="indx-radar-axis @(_hover == i ? "indx-radar-axis-hovered" : "")" x1="@F(Centre)" y1="@F(Centre)" x2="@F(x)" y2="@F(y)" />
+                <line class="indx-radar-axis @(_hover == i ? "indx-radar-axis-hovered" : "")" x1="@F(CentreX)" y1="@F(CentreY)" x2="@F(x)" y2="@F(y)" />
             }
             @for (int si = 0; si < Series.Count; si++)
             {
@@ -59,7 +59,7 @@
         @if (_hover is { } h && h < Axes.Count)
         {
             var (tx, ty) = Point(h, Radius + 10);
-            <div class="indx-radar-tooltip @(tx > Centre ? "indx-radar-tooltip-left" : "")" style="left: @F(tx)px; top: @F(ty)px;">
+            <div class="indx-radar-tooltip @(tx > CentreX ? "indx-radar-tooltip-left" : "")" style="left: @F(tx)px; top: @F(ty)px;">
                 <span class="indx-radar-tooltip-label">@Axes[h].Label</span>
                 @foreach (var s in Series)
                 {
@@ -122,12 +122,18 @@
 
     private int? _hover;
     private double Radius => Size / 2.0;
-    private double Box => Size + LabelRoom * 2;
-    private double Centre => Box / 2;
+    // Wide enough for a name at either side, but only a line's height above and below: the
+    // names at the top and bottom are centred on their axis, so the side room under and over the
+    // shape was empty, 92px of it each way on the Statistics tab's Search profile.
+    private const double LabelLine = 28;
+    private double BoxWidth => Size + LabelRoom * 2;
+    private double BoxHeight => Size + LabelLine * 2;
+    private double CentreX => BoxWidth / 2;
+    private double CentreY => BoxHeight / 2;
     private double Top => Max ?? Series.SelectMany(s => s.Values).Where(double.IsFinite).DefaultIfEmpty(0).Max();
     private double CeilingOf(int i) => Axes[i].Max ?? Top;
     private double AngleOf(int i) => -Math.PI / 2 + 2 * Math.PI * i / Math.Max(1, Axes.Count);
-    private (double X, double Y) Point(int i, double r) => (Centre + r * Math.Cos(AngleOf(i)), Centre + r * Math.Sin(AngleOf(i)));
+    private (double X, double Y) Point(int i, double r) => (CentreX + r * Math.Cos(AngleOf(i)), CentreY + r * Math.Sin(AngleOf(i)));
     private double RadiusOf(int i, double v)
     {
         double c = CeilingOf(i);
@@ -161,7 +167,7 @@
     private void OnPointer(PointerEventArgs e)
     {
         if (Axes.Count == 0) return;
-        double x = e.OffsetX - Centre, y = e.OffsetY - Centre;
+        double x = e.OffsetX - CentreX, y = e.OffsetY - CentreY;
         int? next = null;
         if (Math.Sqrt(x * x + y * y) <= Radius + LabelRoom)
         {

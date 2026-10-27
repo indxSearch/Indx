@@ -6,8 +6,8 @@
 
 .indx-radar {
     position: relative;
-    width: var(--radar-box, 312px);
-    height: var(--radar-box, 312px);
+    width: var(--radar-width, 312px);
+    height: var(--radar-height, 312px);
 }
 
 .indx-radar-svg {
