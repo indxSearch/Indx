@@ -47,7 +47,11 @@ namespace IndxServer.Engine
         /// Returns the schema-change summary. The old dataset keeps serving until the swap; on any
         /// build failure the old dataset is left untouched (nothing is swapped in).
         /// </summary>
-        internal ReplaceSchemaChange RunReplaceFromJson(string dataSetName, string teamId, Stream jsonStream)
+        /// <param name="startingRoles">For a dataset that has never had a field configuration (a
+        /// webhook's first sync): the roles to start with, given the analyzed fields. Without one a
+        /// first replace has nothing searchable and its load is refused.</param>
+        internal ReplaceSchemaChange RunReplaceFromJson(string dataSetName, string teamId, Stream jsonStream,
+            Func<FieldProxy[], FieldProxy[]>? startingRoles = null)
         {
             var key = MakeKey(dataSetName, teamId);
             ClaimShadowBuild(key, dataSetName);
@@ -68,7 +72,7 @@ namespace IndxServer.Engine
 
                 ReplaceSchemaChange summary;
                 (shadow, summary) = BuildShadowFromJson(dataSetName, teamId, jsonStream, monitor,
-                    progress => _replaceProgress[key] = progress);
+                    progress => _replaceProgress[key] = progress, startingRoles);
 
                 // Atomic install. In-flight searches on the old engine keep working via the
                 // SearchEngineInstance indirection; only the inner pointer flips.
@@ -148,7 +152,7 @@ namespace IndxServer.Engine
         /// </summary>
         private (SearchEngine shadow, ReplaceSchemaChange summary) BuildShadowFromJson(
             string dataSetName, string teamId, Stream jsonStream, ProcessMonitor monitor,
-            Action<ReplaceProgress>? report = null)
+            Action<ReplaceProgress>? report = null, Func<FieldProxy[], FieldProxy[]>? startingRoles = null)
         {
             report ??= _ => { };
             ConfigurationParameters configuration;
@@ -187,6 +191,8 @@ namespace IndxServer.Engine
                 else
                     ApplyDeclaredKeyField(shadow, dataSetName, teamId);
                 var (carry, summary) = ReconcileFieldConfig(oldConfig, shadow.GetFieldConfiguration());
+                if (oldConfig.Length == 0 && startingRoles != null)
+                    carry = startingRoles(shadow.GetFieldConfiguration());
                 summary = summary with { KeyFieldFallback = keyFallback };
                 ApplyCarry(shadow, carry);
 

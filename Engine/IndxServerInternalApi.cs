@@ -1603,6 +1603,19 @@ namespace IndxServer.Engine
         }
 
         /// <summary>
+        /// Declares a key field for a dataset that has none, ahead of a replace whose documents
+        /// carry it: a webhook's full sync writes each document's number into the field before the
+        /// data exists, so <see cref="SetKeyField"/>'s check against the analyzed fields cannot apply.
+        /// The replace's build keys by it (ApplyDeclaredKeyField). False when one is declared already.
+        /// </summary>
+        internal bool DeclareKeyFieldForReplace(string dataSetName, string teamId, string fieldName)
+        {
+            if (_metadataStore == null || GetDeclaredKeyField(dataSetName, teamId).Length > 0) return false;
+            _metadataStore.SaveKeyField(teamId, dataSetName, fieldName);
+            return true;
+        }
+
+        /// <summary>
         /// Declares <paramref name="fieldName"/> (empty = auto-generated) as the dataset's key field:
         /// validates it exists and is numeric (the engine key is a long; a non-numeric key would silently
         /// collide via digit-stripping), persists the choice server-side, and applies it to the live engine.

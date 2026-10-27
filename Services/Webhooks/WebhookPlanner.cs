@@ -35,6 +35,19 @@ namespace IndxServer.Services.Webhooks
         public string? Error { get; set; }
     }
 
+    /// <summary>What a full sync comes to: the whole set as one JSON array, each document with its
+    /// number in <see cref="KeyField"/>; the registry's new entries; the documents refused.</summary>
+    public sealed class WebhookSyncPlan
+    {
+        public string Json { get; set; } = "[]";
+        public int Count { get; set; }
+        public string KeyField { get; set; } = "";
+        public Dictionary<string, long> NewKeys { get; } = new(StringComparer.Ordinal);
+        public List<string> Refusals { get; } = [];
+        public int Skipped { get; set; }
+        public string? Error { get; set; }
+    }
+
     /// <summary>
     /// Turns a webhook call into a <see cref="WebhookPlan"/>, without touching the engine. The body
     /// is an event object, a list of them, or <c>{ "events": [...] }</c>; an event is the document
@@ -46,6 +59,9 @@ namespace IndxServer.Services.Webhooks
     {
         public const int MaxEvents = 1000;
         public const string EventField = "event";
+        /// <summary>The field a full sync writes each document's number into, when the dataset has
+        /// no key field of its own yet: it becomes the dataset's key field.</summary>
+        public const string DefaultKeyField = "indxKey";
 
         private enum Op { Upsert, Insert, Delete }
 
@@ -133,6 +149,69 @@ namespace IndxServer.Services.Webhooks
                 planned[key] = json;
             }
             foreach (var name in NewFields(plan, dataset.FieldTypes)) plan.Notes.Add($"a field the dataset does not have yet: {name}");
+            return plan;
+        }
+
+        /// <summary>
+        /// Plans a full sync: every document the source holds, as <c>[...]</c>, <c>{ "documents": [...] }</c>
+        /// or Sanity's <c>{ "result": [...] }</c>. Documents get their numbers as events do; a document
+        /// refused (no id, text in a number field) is left out of the set, and so are drafts. When an
+        /// id comes twice the last one counts.
+        /// </summary>
+        public static WebhookSyncPlan PlanSync(string body, Webhook hook, IWebhookDataset dataset,
+            Func<IEnumerable<string>, Dictionary<string, long>> registry, Func<long, bool> keyTaken)
+        {
+            var plan = new WebhookSyncPlan { KeyField = string.IsNullOrEmpty(dataset.KeyField) ? DefaultKeyField : dataset.KeyField };
+            JsonArray list;
+            try
+            {
+                list = JsonNode.Parse(body) switch
+                {
+                    JsonArray a => a,
+                    JsonObject o when o["documents"] is JsonArray a => a,
+                    JsonObject o when o["result"] is JsonArray a => a,
+                    _ => throw new FormatException("A sync is a list of documents, or { \"documents\": [...] }."),
+                };
+            }
+            catch (JsonException ex) { plan.Error = $"The body is not JSON: {ex.Message}"; return plan; }
+            catch (FormatException ex) { plan.Error = ex.Message; return plan; }
+
+            var docs = new List<(string Id, JsonObject Doc)>();
+            foreach (var item in list)
+            {
+                if (item is not JsonObject o) { plan.Error = "Every document in a sync must be a JSON object."; return plan; }
+                if (IdOf(o, hook.IdField, out var problem) is not { } id) { plan.Refusals.Add(problem!); continue; }
+                if (hook.Source == WebhookSources.Sanity && SanitySource.IsUnpublished(id)) { plan.Skipped++; continue; }
+                docs.Add((id, o));
+            }
+
+            var direct = plan.KeyField == hook.IdField;
+            var known = registry(docs.Where(d => !(direct && IsKey(d.Id))).Select(d => d.Id).Distinct());
+            var byKey = new Dictionary<long, JsonObject>();
+            var keyOfId = new Dictionary<string, long>(StringComparer.Ordinal);
+            foreach (var (id, o) in docs)
+            {
+                var doc = (JsonObject)o.DeepClone();
+                doc.Remove(EventField);
+                if (TypeProblem(doc, dataset.FieldTypes, hook.IdField, plan.KeyField) is { } typeProblem)
+                {
+                    plan.Refusals.Add($"{id}: {typeProblem}");
+                    continue;
+                }
+                long key;
+                if (keyOfId.TryGetValue(id, out key)) { }
+                else if (direct && IsKey(id)) key = long.Parse(id, CultureInfo.InvariantCulture);
+                else if (!known.TryGetValue(id, out key))
+                {
+                    key = NewKey(id, k => keyTaken(k) || plan.NewKeys.ContainsValue(k));
+                    plan.NewKeys[id] = key;
+                }
+                keyOfId[id] = key;
+                doc[plan.KeyField] = key;
+                byKey[key] = doc;
+            }
+            plan.Count = byKey.Count;
+            plan.Json = new JsonArray(byKey.Values.Select(d => (JsonNode?)d).ToArray()).ToJsonString();
             return plan;
         }
 

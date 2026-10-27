@@ -8,9 +8,28 @@ namespace IndxServer.Services.Webhooks
     /// how its events become documents. <see cref="IdField"/> is the sender's own id (text or a
     /// number); <see cref="VersionField"/>, when named, orders events (an older one is ignored);
     /// <see cref="BrakeShare"/> is the share of the dataset that deletes and destructive updates may
-    /// reach within an hour before a batch is held for an admin.</summary>
+    /// reach within an hour before a batch is held for an admin. <see cref="Source"/> says who calls:
+    /// "indx" (the generic scheme) or "sanity" (Sanity's GROQ webhooks, signed their way), and
+    /// <see cref="SourceConfig"/> holds what Indx needs to fetch the full set from the source itself
+    /// (<see cref="SanitySource"/>).</summary>
     public sealed record Webhook(string Id, string TeamId, string DatasetName, string Name, string IdField, string? VersionField,
-        double BrakeShare, string Secret, DateTime CreatedUtc, DateTime? LastEventUtc);
+        double BrakeShare, string Secret, DateTime CreatedUtc, DateTime? LastEventUtc,
+        string Source = WebhookSources.Indx, string? SourceConfig = null, DateTime? LastSyncUtc = null);
+
+    public static class WebhookSources
+    {
+        public const string Indx = "indx";
+        public const string Sanity = "sanity";
+        public static bool IsKnown(string? s) => s is Indx or Sanity;
+    }
+
+    /// <summary>What a call is: changes ("events") or the whole set ("sync"), which replaces the
+    /// dataset's documents.</summary>
+    public static class WebhookKinds
+    {
+        public const string Events = "events";
+        public const string Sync = "sync";
+    }
 
     /// <summary>One call as it was handled: how many events it held, what became of them, and why
     /// the refused ones were refused (the first few).</summary>
@@ -18,11 +37,12 @@ namespace IndxServer.Services.Webhooks
         int Deleted, int Ignored, int Refused, int Destructive, string Outcome, string? Detail);
 
     /// <summary>A batch the brake stopped: kept whole until an admin applies or discards it.</summary>
-    public sealed record WebhookHeldBatch(string Id, string WebhookId, DateTime HeldUtc, string Reason, int Events, string Body);
+    public sealed record WebhookHeldBatch(string Id, string WebhookId, DateTime HeldUtc, string Reason, int Events, string Body,
+        string Kind = WebhookKinds.Events);
 
     /// <summary>A call waiting to be applied: stored before the sender is answered, so a restart
     /// loses nothing that was accepted.</summary>
-    public sealed record WebhookInboxItem(long Seq, string WebhookId, DateTime ReceivedUtc, string Body);
+    public sealed record WebhookInboxItem(long Seq, string WebhookId, DateTime ReceivedUtc, string Body, string Kind = WebhookKinds.Events);
 
     /// <summary>
     /// The webhooks' tables, in the search database (indx.db) beside the engine's own, like boost
@@ -69,7 +89,10 @@ CREATE TABLE IF NOT EXISTS Webhooks (
     BrakeShare   REAL NOT NULL,
     Secret       TEXT NOT NULL,
     CreatedUtc   TEXT NOT NULL,
-    LastEventUtc TEXT
+    LastEventUtc TEXT,
+    Source       TEXT NOT NULL DEFAULT 'indx',
+    SourceConfig TEXT,
+    LastSyncUtc  TEXT
 );
 CREATE INDEX IF NOT EXISTS IX_Webhooks_Ds ON Webhooks (TeamId, DatasetName);
 CREATE TABLE IF NOT EXISTS WebhookKeys (
@@ -84,7 +107,8 @@ CREATE TABLE IF NOT EXISTS WebhookInbox (
     Seq         INTEGER PRIMARY KEY AUTOINCREMENT,
     WebhookId   TEXT NOT NULL,
     ReceivedUtc TEXT NOT NULL,
-    Body        TEXT NOT NULL
+    Body        TEXT NOT NULL,
+    Kind        TEXT NOT NULL DEFAULT 'events'
 );
 CREATE TABLE IF NOT EXISTS WebhookDeliveries (
     Id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,9 +131,16 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
     HeldUtc   TEXT NOT NULL,
     Reason    TEXT NOT NULL,
     Events    INTEGER NOT NULL,
-    Body      TEXT NOT NULL
+    Body      TEXT NOT NULL,
+    Kind      TEXT NOT NULL DEFAULT 'events'
 );";
                     cmd.ExecuteNonQuery();
+                    // Tables made by the first build (27 Oct 2026) lack the columns added since.
+                    AddColumn(conn, "Webhooks", "Source", "TEXT NOT NULL DEFAULT 'indx'");
+                    AddColumn(conn, "Webhooks", "SourceConfig", "TEXT");
+                    AddColumn(conn, "Webhooks", "LastSyncUtc", "TEXT");
+                    AddColumn(conn, "WebhookInbox", "Kind", "TEXT NOT NULL DEFAULT 'events'");
+                    AddColumn(conn, "WebhookHeld", "Kind", "TEXT NOT NULL DEFAULT 'events'");
                     _ensured = true;
                 }
                 catch (Exception ex)
@@ -120,20 +151,34 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
             return _ensured;
         }
 
+        private static void AddColumn(SqliteConnection conn, string table, string column, string definition)
+        {
+            using var check = conn.CreateCommand();
+            check.CommandText = $"SELECT COUNT(*) FROM pragma_table_info('{table}') WHERE name = '{column}'";
+            if (Convert.ToInt32(check.ExecuteScalar()) > 0) return;
+            using var alter = conn.CreateCommand();
+            alter.CommandText = $"ALTER TABLE {table} ADD COLUMN {column} {definition}";
+            alter.ExecuteNonQuery();
+        }
+
         // ── Webhooks ─────────────────────────────────────────────────────────────────────
 
         public static string NewId() => "wh_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(8)).ToLowerInvariant();
         public static string NewSecret() => "whsec_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
             .TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
-        public Webhook Create(string teamId, string datasetName, string name, string idField, string? versionField, double brakeShare)
+        public Webhook Create(string teamId, string datasetName, string name, string idField, string? versionField, double brakeShare,
+            string source = WebhookSources.Indx, string? sourceConfig = null)
         {
             if (!Ensure()) throw new InvalidOperationException("The search database does not exist yet.");
-            var hook = new Webhook(NewId(), teamId, datasetName, name, idField, versionField, brakeShare, NewSecret(), DateTime.UtcNow, null);
+            var hook = new Webhook(NewId(), teamId, datasetName, name, idField, versionField, brakeShare, NewSecret(), DateTime.UtcNow, null,
+                source, sourceConfig);
             using var conn = Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"INSERT INTO Webhooks (Id, TeamId, DatasetName, Name, IdField, VersionField, BrakeShare, Secret, CreatedUtc)
-                                VALUES ($id, $t, $d, $n, $idf, $vf, $b, $s, $c)";
+            cmd.CommandText = @"INSERT INTO Webhooks (Id, TeamId, DatasetName, Name, IdField, VersionField, BrakeShare, Secret, CreatedUtc, Source, SourceConfig)
+                                VALUES ($id, $t, $d, $n, $idf, $vf, $b, $s, $c, $src, $cfg)";
+            cmd.Parameters.AddWithValue("$src", source);
+            cmd.Parameters.AddWithValue("$cfg", (object?)sourceConfig ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$id", hook.Id);
             cmd.Parameters.AddWithValue("$t", teamId);
             cmd.Parameters.AddWithValue("$d", datasetName);
@@ -178,8 +223,48 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
             r.IsDBNull(r.GetOrdinal("VersionField")) ? null : r.GetString(r.GetOrdinal("VersionField")),
             r.GetDouble(r.GetOrdinal("BrakeShare")), r.GetString(r.GetOrdinal("Secret")),
             DateTime.Parse(r.GetString(r.GetOrdinal("CreatedUtc")), null, System.Globalization.DateTimeStyles.RoundtripKind),
-            r.IsDBNull(r.GetOrdinal("LastEventUtc")) ? null
-                : DateTime.Parse(r.GetString(r.GetOrdinal("LastEventUtc")), null, System.Globalization.DateTimeStyles.RoundtripKind));
+            Time(r, "LastEventUtc"), r.GetString(r.GetOrdinal("Source")),
+            r.IsDBNull(r.GetOrdinal("SourceConfig")) ? null : r.GetString(r.GetOrdinal("SourceConfig")), Time(r, "LastSyncUtc"));
+
+        private static DateTime? Time(SqliteDataReader r, string column) => r.IsDBNull(r.GetOrdinal(column)) ? null
+            : DateTime.Parse(r.GetString(r.GetOrdinal(column)), null, System.Globalization.DateTimeStyles.RoundtripKind);
+
+        /// <summary>Every webhook that fetches its full set from its source, for the scheduled syncs.</summary>
+        public List<Webhook> Pulling()
+        {
+            var list = new List<Webhook>();
+            if (!Ensure()) return list;
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT * FROM Webhooks WHERE SourceConfig IS NOT NULL";
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) list.Add(ReadHook(r));
+            return list;
+        }
+
+        /// <summary>A full sync went in: the next scheduled one counts from now.</summary>
+        public void MarkSynced(string id, DateTime utc)
+        {
+            if (!Ensure()) return;
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "UPDATE Webhooks SET LastSyncUtc = $u WHERE Id = $id";
+            cmd.Parameters.AddWithValue("$u", utc.ToString("O"));
+            cmd.Parameters.AddWithValue("$id", id);
+            cmd.ExecuteNonQuery();
+        }
+
+        /// <summary>Whether a sync waits in the queue already: a scheduled or requested one is not
+        /// queued twice.</summary>
+        public bool SyncWaiting(string webhookId)
+        {
+            if (!Ensure()) return false;
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT COUNT(*) FROM WebhookInbox WHERE WebhookId = $w AND Kind = 'sync'";
+            cmd.Parameters.AddWithValue("$w", webhookId);
+            return Convert.ToInt32(cmd.ExecuteScalar()) > 0;
+        }
 
         /// <summary>A new secret; the old one stops working at once.</summary>
         public string? RotateSecret(string id)
@@ -310,13 +395,15 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
 
         // ── The inbox ────────────────────────────────────────────────────────────────────
 
-        public void Enqueue(string webhookId, string body)
+        public void Enqueue(string webhookId, string body, string kind = WebhookKinds.Events)
         {
             if (!Ensure()) throw new InvalidOperationException("The search database does not exist yet.");
             using var conn = Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "INSERT INTO WebhookInbox (WebhookId, ReceivedUtc, Body) VALUES ($w, $r, $b); " +
-                              "UPDATE Webhooks SET LastEventUtc = $r WHERE Id = $w;";
+            cmd.Parameters.AddWithValue("$k", kind);
+            cmd.CommandText = "INSERT INTO WebhookInbox (WebhookId, ReceivedUtc, Body, Kind) VALUES ($w, $r, $b, $k); " +
+                              // A queued pull (no body) is Indx's own doing, not a call.
+                              (body.Length > 0 ? "UPDATE Webhooks SET LastEventUtc = $r WHERE Id = $w;" : "");
             cmd.Parameters.AddWithValue("$w", webhookId);
             cmd.Parameters.AddWithValue("$r", DateTime.UtcNow.ToString("O"));
             cmd.Parameters.AddWithValue("$b", body);
@@ -330,11 +417,12 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
             if (!Ensure()) return list;
             using var conn = Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT Seq, WebhookId, ReceivedUtc, Body FROM WebhookInbox ORDER BY Seq LIMIT $n";
+            cmd.CommandText = "SELECT Seq, WebhookId, ReceivedUtc, Body, Kind FROM WebhookInbox ORDER BY Seq LIMIT $n";
             cmd.Parameters.AddWithValue("$n", max);
             using var r = cmd.ExecuteReader();
             while (r.Read())
-                list.Add(new(r.GetInt64(0), r.GetString(1), DateTime.Parse(r.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind), r.GetString(3)));
+                list.Add(new(r.GetInt64(0), r.GetString(1), DateTime.Parse(r.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind),
+                    r.GetString(3), r.GetString(4)));
             return list;
         }
 
@@ -418,13 +506,14 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
 
         // ── Held batches ─────────────────────────────────────────────────────────────────
 
-        public WebhookHeldBatch Hold(string webhookId, string reason, int events, string body)
+        public WebhookHeldBatch Hold(string webhookId, string reason, int events, string body, string kind = WebhookKinds.Events)
         {
             var held = new WebhookHeldBatch("hb_" + Convert.ToHexString(RandomNumberGenerator.GetBytes(6)).ToLowerInvariant(),
-                webhookId, DateTime.UtcNow, reason, events, body);
+                webhookId, DateTime.UtcNow, reason, events, body, kind);
             using var conn = Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "INSERT INTO WebhookHeld (Id, WebhookId, HeldUtc, Reason, Events, Body) VALUES ($id, $w, $h, $r, $e, $b)";
+            cmd.Parameters.AddWithValue("$k", kind);
+            cmd.CommandText = "INSERT INTO WebhookHeld (Id, WebhookId, HeldUtc, Reason, Events, Body, Kind) VALUES ($id, $w, $h, $r, $e, $b, $k)";
             cmd.Parameters.AddWithValue("$id", held.Id);
             cmd.Parameters.AddWithValue("$w", webhookId);
             cmd.Parameters.AddWithValue("$h", held.HeldUtc.ToString("O"));
@@ -441,12 +530,12 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
             if (!Ensure()) return list;
             using var conn = Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT Id, WebhookId, HeldUtc, Reason, Events, Body FROM WebhookHeld WHERE WebhookId = $w ORDER BY HeldUtc";
+            cmd.CommandText = "SELECT Id, WebhookId, HeldUtc, Reason, Events, Body, Kind FROM WebhookHeld WHERE WebhookId = $w ORDER BY HeldUtc";
             cmd.Parameters.AddWithValue("$w", webhookId);
             using var r = cmd.ExecuteReader();
             while (r.Read())
                 list.Add(new(r.GetString(0), r.GetString(1), DateTime.Parse(r.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind),
-                    r.GetString(3), r.GetInt32(4), r.GetString(5)));
+                    r.GetString(3), r.GetInt32(4), r.GetString(5), r.GetString(6)));
             return list;
         }
 

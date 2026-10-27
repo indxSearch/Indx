@@ -17,7 +17,7 @@ namespace IndxServer.Services.Webhooks
     /// call is applied to the live engine, as the single-document routes do; a large one on a shadow,
     /// as the bulk routes do, so a search is never held up by it.
     /// </summary>
-    public sealed class WebhookApplier(WebhookStore store, StatisticsService statistics, IServiceProvider services,
+    public sealed class WebhookApplier(WebhookStore store, StatisticsService statistics, SanityClient sanity, IServiceProvider services,
         ILogger<WebhookApplier> logger)
     {
         /// <summary>Calls with more changes than this run on a shadow.</summary>
@@ -93,6 +93,121 @@ namespace IndxServer.Services.Webhooks
                 await NotifyAsync(hook, "refused", $"{plan.Refusals.Count} of {plan.Events} events refused, the first: {plan.Refusals[0]}");
             return WebhookOutcome.Applied;
         }
+
+        /// <summary>
+        /// Applies a full sync: the dataset's documents become the set it holds, on a shadow, so the
+        /// old ones serve until the new are indexed. An empty body means "fetch it from the source"
+        /// (a pulling webhook's requested or scheduled sync). The brake holds a sync that would leave
+        /// the dataset smaller by more than its share, since a broken export looks just like that.
+        /// A dataset with no key field gets the one the sync writes.
+        /// </summary>
+        public async Task<WebhookOutcome> ApplySyncAsync(Webhook hook, string body, DateTime receivedUtc, bool pastBrake = false)
+        {
+            if (IndxServerInternalApi.Manager.ResolveEngine(hook.DatasetName, hook.TeamId) is not { } engine)
+            {
+                LogSync(hook, receivedUtc, 0, 0, "refused", "The dataset does not exist.");
+                return WebhookOutcome.Refused;
+            }
+            if (engine.Status.SystemState is SystemState.Loading or SystemState.Indexing) return WebhookOutcome.Retry;
+
+            if (string.IsNullOrEmpty(body))
+            {
+                if (SanitySource.Parse(hook.SourceConfig) is not { } source)
+                {
+                    LogSync(hook, receivedUtc, 0, 0, "refused", "An empty sync, and no source to fetch the set from.");
+                    return WebhookOutcome.Refused;
+                }
+                try { body = await sanity.FetchAllAsync(source); }
+                catch (Exception ex) when (ex is HttpRequestException or InvalidOperationException or TaskCanceledException)
+                {
+                    LogSync(hook, receivedUtc, 0, 0, "failed", $"Fetching from Sanity: {ex.Message}");
+                    await NotifyAsync(hook, "failed", $"Fetching from Sanity: {ex.Message}");
+                    store.MarkSynced(hook.Id, DateTime.UtcNow); // tried: the schedule counts from here
+                    return WebhookOutcome.Refused;
+                }
+            }
+
+            var plan = WebhookPlanner.PlanSync(body, hook, new EngineDataset(engine),
+                ids => store.Keys(hook.TeamId, hook.DatasetName, ids),
+                key => store.KeyTaken(hook.TeamId, hook.DatasetName, key));
+            if (plan.Error == null && plan.Count == 0)
+                plan.Error = "A sync with no documents: to empty the dataset, delete its documents instead.";
+            if (plan.Error != null)
+            {
+                LogSync(hook, receivedUtc, plan.Count, plan.Refusals.Count, "refused", plan.Error);
+                await NotifyAsync(hook, "refused", plan.Error);
+                return WebhookOutcome.Refused;
+            }
+
+            var before = engine.Status.DocumentCount;
+            var limit = Math.Max(BrakeFloor, (int)Math.Ceiling(hook.BrakeShare * before));
+            if (!pastBrake && before - plan.Count > limit)
+            {
+                var reason = $"A full sync of {plan.Count:N0} documents would leave {before - plan.Count:N0} of {before:N0} out; " +
+                             $"the brake allows {limit:N0} ({hook.BrakeShare:P0}).";
+                var held = store.Hold(hook.Id, reason, plan.Count, body, WebhookKinds.Sync);
+                LogSync(hook, receivedUtc, plan.Count, plan.Refusals.Count, "held", $"{reason} Held as {held.Id}: apply or discard it.");
+                await NotifyAsync(hook, "held", reason, always: true);
+                return WebhookOutcome.Held;
+            }
+
+            IndxServerInternalApi.Manager.DeclareKeyFieldForReplace(hook.DatasetName, hook.TeamId, plan.KeyField);
+            ReplaceSchemaChange summary;
+            try
+            {
+                using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(plan.Json));
+                summary = await Task.Run(() => IndxServerInternalApi.Manager.RunReplaceFromJson(hook.DatasetName, hook.TeamId, stream,
+                    fields => StartingRoles(fields, hook.IdField, plan.KeyField)));
+            }
+            catch (ShadowBusyException) { return WebhookOutcome.Retry; }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Webhook {Hook} could not sync {Team}/{Dataset}", hook.Id, hook.TeamId, hook.DatasetName);
+                LogSync(hook, receivedUtc, plan.Count, plan.Refusals.Count, "failed", ex.Message);
+                await NotifyAsync(hook, "failed", ex.Message);
+                return WebhookOutcome.Refused;
+            }
+
+            store.SaveKeys(hook.TeamId, hook.DatasetName, plan.NewKeys);
+            store.MarkSynced(hook.Id, DateTime.UtcNow);
+            var lines = new List<string> { $"{before:N0} documents before, {plan.Count:N0} now." };
+            if (summary.LostRoles.Count > 0) lines.Add("Fields gone or retyped that had a role: " + string.Join(", ", summary.LostRoles));
+            if (summary.Added.Count > 0) lines.Add("New fields: " + string.Join(", ", summary.Added.Take(20)));
+            if (plan.Skipped > 0) lines.Add($"{plan.Skipped} drafts left out.");
+            lines.AddRange(plan.Refusals.Take(10));
+            LogSync(hook, receivedUtc, plan.Count, plan.Refusals.Count, "synced", string.Join("\n", lines));
+            if (summary.LostRoles.Count > 0)
+                await NotifyAsync(hook, "refused", "The sync dropped or retyped fields with a role: " + string.Join(", ", summary.LostRoles));
+            else if (plan.Refusals.Count > 0)
+                await NotifyAsync(hook, "refused", $"{plan.Refusals.Count} documents left out of the sync, the first: {plan.Refusals[0]}");
+            return WebhookOutcome.Applied;
+        }
+
+        /// <summary>
+        /// The roles a webhook's first sync starts a dataset with, so it searches at once: text
+        /// fields searchable, numbers and true/false filterable and sortable. Ids, the key and
+        /// Sanity's system fields (_type, _rev, _createdAt...) get nothing. The console refines it.
+        /// </summary>
+        public static FieldProxy[] StartingRoles(FieldProxy[] fields, string idField, string keyField)
+        {
+            var roles = new List<FieldProxy>();
+            foreach (var f in fields)
+            {
+                if (f.FieldName == idField || f.FieldName == keyField || f.FieldName.StartsWith('_')) continue;
+                var type = f.FieldType ?? "";
+                if (type.Equals(nameof(JsonValueKind.String), StringComparison.OrdinalIgnoreCase))
+                    roles.Add(new FieldProxy { FieldName = f.FieldName, Searchable = true });
+                else if (type.Equals(nameof(JsonValueKind.Number), StringComparison.OrdinalIgnoreCase)
+                         || type.Equals(nameof(JsonValueKind.True), StringComparison.OrdinalIgnoreCase)
+                         || type.Equals("Boolean", StringComparison.OrdinalIgnoreCase))
+                    roles.Add(new FieldProxy { FieldName = f.FieldName, Filterable = true, Sortable = f.IsArray != true });
+            }
+            return [.. roles];
+        }
+
+        private void LogSync(Webhook hook, DateTime receivedUtc, int documents, int refused, string outcome, string? detail) =>
+            store.Log(new WebhookDelivery(0, hook.Id, receivedUtc, documents, outcome == "synced" ? documents : 0, 0, 0, 0, refused, 0,
+                outcome, detail is { Length: > 2000 } ? detail[..2000] + "…" : detail));
 
         /// <summary>Writes a plan; null when it all went in, else the engine's reason. Inserts on a
         /// dataset with nothing indexed yet load and index it, as the insert route does.</summary>
@@ -182,6 +297,7 @@ namespace IndxServer.Services.Webhooks
             {
                 try
                 {
+                    ScheduleSyncs(DateTime.UtcNow);
                     var retry = await DrainAsync(stoppingToken);
                     await _signal.WaitAsync(retry ? TimeSpan.FromSeconds(2) : TimeSpan.FromSeconds(30), stoppingToken);
                 }
@@ -194,6 +310,22 @@ namespace IndxServer.Services.Webhooks
             }
         }
 
+        /// <summary>Queues a sync for every pulling webhook whose interval has passed (or that has
+        /// never synced), unless one waits already. Returns how many were queued.</summary>
+        public int ScheduleSyncs(DateTime nowUtc)
+        {
+            int queued = 0;
+            foreach (var hook in store.Pulling())
+            {
+                if (SanitySource.Parse(hook.SourceConfig) is not { } source) continue;
+                var due = hook.LastSyncUtc is not { } last || source.SyncEveryHours is { } hours && nowUtc - last >= TimeSpan.FromHours(hours);
+                if (!due || store.SyncWaiting(hook.Id)) continue;
+                store.Enqueue(hook.Id, "", WebhookKinds.Sync);
+                queued++;
+            }
+            return queued;
+        }
+
         /// <summary>Applies what waits; true when something had to wait for its dataset.</summary>
         public async Task<bool> DrainAsync(CancellationToken ct)
         {
@@ -203,7 +335,9 @@ namespace IndxServer.Services.Webhooks
                 ct.ThrowIfCancellationRequested();
                 if (waiting.Contains(item.WebhookId)) continue;
                 if (store.Get(item.WebhookId) is not { } hook) { store.Done(item.Seq); continue; }
-                var outcome = await applier.ApplyAsync(hook, item.Body, item.ReceivedUtc);
+                var outcome = item.Kind == WebhookKinds.Sync
+                    ? await applier.ApplySyncAsync(hook, item.Body, item.ReceivedUtc)
+                    : await applier.ApplyAsync(hook, item.Body, item.ReceivedUtc);
                 if (outcome == WebhookOutcome.Retry) { waiting.Add(hook.Id); continue; }
                 store.Done(item.Seq);
             }

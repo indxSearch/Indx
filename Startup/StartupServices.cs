@@ -141,6 +141,8 @@ internal static class StartupServices
         // one instance so the receiving route can wake it.
         builder.Services.AddSingleton<IndxServer.Services.Webhooks.WebhookStore>();
         builder.Services.AddSingleton<IndxServer.Services.Webhooks.WebhookApplier>();
+        builder.Services.AddHttpClient(IndxServer.Services.Webhooks.SanityClient.HttpClientName, c => c.Timeout = TimeSpan.FromMinutes(5));
+        builder.Services.AddSingleton<IndxServer.Services.Webhooks.SanityClient>();
         builder.Services.AddSingleton<IndxServer.Services.Webhooks.WebhookWorker>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.Webhooks.WebhookWorker>());
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskService>();
