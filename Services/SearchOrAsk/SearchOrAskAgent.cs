@@ -75,35 +75,58 @@ namespace IndxServer.Services.SearchOrAsk
             List<long> shownKeys = [];
             var titleOf = (JsonNode? doc) => doc != null && fields.TitleField != null ? ReadField(doc, fields.TitleField) ?? "" : "";
 
+            // The answer streams once the list is on the page. Text the agent writes before a tool
+            // call is a preamble ("I'll search for schools in Oslo"), which a turn cannot be told
+            // from an answer until it ends, so until show_results a turn is read whole, as before.
+            var listShown = false;
+            var streamed = new StringBuilder();
+            var breakBefore = false;
+            long? firstText = null;
+            async Task Stream(string delta)
+            {
+                firstText ??= Ms();
+                if (breakBefore) { delta = "\n\n" + delta; breakBefore = false; }
+                streamed.Append(delta);
+                await send("text", new { delta });
+            }
+
             await send("status", new { step = "Reading the question" });
             for (var turn = 1; turn <= AgentMaxTurns; turn++)
             {
                 JsonNode message;
                 try
                 {
-                    (message, var c) = await _models.ChatAsync(model, messages, AgentTools, ct);
+                    (message, var c) = await _models.ChatAsync(model, messages, AgentTools, ct, listShown ? Stream : null);
                     cost += c ?? 0;
                 }
                 catch (Exception ex) when (ex is SearchOrAskModelException or HttpRequestException)
                 {
                     _logger.LogWarning("Search or ask agent failed for {Team}/{Dataset}: {Error}", teamId, dataSetName, ex.Message);
                     Refused("answer", ex);
-                    return null;
+                    if (streamed.Length == 0) return null;
+                    // Part of the answer is on the page: a second answer after it would read as one.
+                    await send("error", new { code = ex is SearchOrAskModelException { Status: 429 } ? "upstreamBusy" : "failed", message = "The answer could not be written." });
+                    return new AgentOutcome("failed", shownKeys, firstText, cost);
                 }
                 messages.Add(message.DeepClone());
                 var calls = message["tool_calls"]?.AsArray();
                 if (calls == null || calls.Count == 0)
                 {
                     var answer = message["content"]?.GetValue<string>()?.Trim() ?? "";
-                    if (answer.Length == 0) return null;
-                    var firstText = Ms();
-                    // The answer as a few deltas, so a page renders it as it does a streamed one.
-                    foreach (var part in answer.Split("\n\n"))
-                        await send("text", new { delta = part + "\n\n" });
+                    if (answer.Length == 0 && streamed.Length == 0) return null;
+                    if (!listShown)
+                    {
+                        firstText = Ms();
+                        // The answer as a few deltas, so a page renders it as it does a streamed one.
+                        foreach (var part in answer.Split("\n\n"))
+                            await send("text", new { delta = part + "\n\n" });
+                    }
                     Succeeded("answer");
                     await send("done", new { model, askId, latencyMs = Ms(), turns = turn });
                     return new AgentOutcome("answered", shownKeys, firstText, cost);
                 }
+                // Text streamed in a turn that went on to search again: what comes next is its own paragraph.
+                if (streamed.Length > 0) breakBefore = true;
 
                 foreach (var call in calls)
                 {
@@ -120,6 +143,7 @@ namespace IndxServer.Services.SearchOrAsk
                         shownKeys = keys.Take(CatalogueShown).ToList();
                         var shown = shownKeys.Select((k, i) => new AskSource(i + 1, k, titleOf(Parse(engine.GetJsonDataOfKey(k))))).ToArray();
                         await send("sources", shown);
+                        listShown = true;
                         result = $"The page now shows these {Count(keys)}, in that order.";
                     }
                     else
@@ -153,7 +177,10 @@ namespace IndxServer.Services.SearchOrAsk
                 }
             }
             _logger.LogInformation("Search or ask agent ran out of turns for {Team}/{Dataset}", teamId, dataSetName);
-            return null;
+            if (streamed.Length == 0) return null;
+            Succeeded("answer");
+            await send("done", new { model, askId, latencyMs = Ms(), turns = AgentMaxTurns });
+            return new AgentOutcome("answered", shownKeys, firstText, cost);
         }
 
         /// <summary>The answer's language in the agent's own instructions. The reminder after the
