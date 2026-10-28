@@ -62,22 +62,30 @@ namespace IndxServer.Components.Datasets
         public static IReadOnlyList<long> Uncategorised(ISearchEngine engine, IReadOnlyList<string> fields, IReadOnlySet<long>? scope, int take) =>
             GroupPaths(engine, fields, scope).Where(d => d.Path.Length == 0).Select(d => d.Key).Take(take).ToList();
 
+        // The documents are read by key: the scope's, or every key, from an empty search. A key
+        // deleted since it was read has no JSON and is passed over.
         private static IEnumerable<(long Key, string Path)> GroupPaths(ISearchEngine engine, IReadOnlyList<string> fields, IReadOnlySet<long>? scope)
         {
-            foreach (var doc in engine.GetAllDocuments())
+            foreach (var key in (IEnumerable<long>?)scope ?? AllKeys(engine))
             {
-                if (doc.Deleted) continue;
-                if (scope != null && !scope.Contains(doc.DocumentKey)) continue;
+                var json = engine.GetJsonDataOfKey(key);
+                if (string.IsNullOrEmpty(json)) continue;
                 string path;
                 try
                 {
-                    using var parsed = JsonDocument.Parse(doc.JsonData);
+                    using var parsed = JsonDocument.Parse(json);
                     path = PathOf(parsed.RootElement, fields);
                 }
                 catch { continue; }
-                yield return (doc.DocumentKey, path);
+                yield return (key, path);
             }
         }
+
+        /// <summary>The keys of every live document: an empty search with no filter. The tab is
+        /// only reached with a facetable field, which an empty search needs.</summary>
+        private static IReadOnlyList<long> AllKeys(ISearchEngine engine) =>
+            engine.Search(new Query(string.Empty, Math.Max(1, engine.Status.DocumentCount)) { EnableFacets = true })
+                .Records.Select(r => r.DocumentKey).ToList();
 
         /// <summary>A document's path in a group: its value per level, joined; "" when the first
         /// level is blank or missing.</summary>
@@ -128,7 +136,7 @@ namespace IndxServer.Components.Datasets
         /// as many records as the dataset has. The engine takes an empty search only with facets on.</summary>
         public static IReadOnlySet<long> KeysIn(ISearchEngine engine, Filter filter, int timeoutMs)
         {
-            int all = Math.Max(1, engine.GetAllDocuments().Count);
+            int all = Math.Max(1, engine.Status.DocumentCount);
             var result = engine.Search(new Query(string.Empty, all) { Filter = filter, EnableFacets = true, TimeOutLimitMilliseconds = timeoutMs });
             return result.Records.Select(r => r.DocumentKey).ToHashSet();
         }
