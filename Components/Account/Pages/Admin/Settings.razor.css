@@ -1,7 +1,8 @@
 /* The section's menu is a second column beside the admin menu, built as that one is: from the
    header to the window's bottom, sticking while the section scrolls (the shell scrolls, not the
-   window), its title level with the admin menu's. A hairline
-   between the two menus runs the column's whole height. The layout reaches out over the content's
+   window), its title level with the admin menu's. No hairline of its own: the admin menu's
+   border is the line, and a second one stood mid-window once a wide page centred (28 Oct 2026).
+   The layout reaches out over the content's
    padding on the top, left and bottom for that, and the section takes the padding back. On a
    phone the menu is the scrolling row above the section, as the admin column becomes a bar. */
 .settings-layout {
@@ -15,13 +16,12 @@
     position: sticky;
     top: 0;
     height: calc(100vh - var(--header-height));
-    border-left: 1px solid var(--lv2);
     overflow-y: auto;
 }
-/* The icons start under the header trail's icon, 50px into the column: the menu's inset, the
-   hairline's 1px, and a micro Button's padding beside an icon. Measured, not derived: change one
-   of those and look again. */
-.settings-side ::deep .side-menu { padding-left: 38px; }
+/* The icons start under the header trail's icon, 50px into the column: the menu's inset and a
+   micro Button's padding beside an icon. Measured, not derived: change one of those and look
+   again. (39px since the column lost its 1px hairline.) */
+.settings-side ::deep .side-menu { padding-left: 39px; }
 .settings-main {
     flex: 1;
     min-width: 0;
@@ -35,7 +35,7 @@
 
 @media (max-width: 768px) {
     .settings-layout { flex-direction: column; align-items: stretch; margin: 0; }
-    .settings-side { width: auto; height: auto; position: static; border-left: none; border-bottom: 1px solid var(--lv2); overflow: visible; padding-bottom: 8px; }
+    .settings-side { width: auto; height: auto; position: static; border-bottom: 1px solid var(--lv2); overflow: visible; padding-bottom: 8px; }
     .settings-side ::deep .side-menu { padding-left: 0; }
     .settings-main { padding: 16px 0 0; max-width: none; }
 }
