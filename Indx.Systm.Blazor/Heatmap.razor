@@ -32,7 +32,7 @@
                 int level = LevelOf(v.Value, top);
                 var index = i;
                 <span class="indx-heatmap-cell @(_hover == i ? "indx-heatmap-hovered" : "")" style="@(level > 0 ? $"background: {Levels[level - 1]};" : null)"
-                      @onmouseover="@(Format != null ? () => _hover = index : null)"></span>
+                      @onmouseover="@(Format != null ? EventCallback.Factory.Create<MouseEventArgs>(this, () => _hover = index) : default)"></span>
             }
         </div>
         @* The hovered cell's tooltip, beside it: at the right, or at the left near the far edge. *@

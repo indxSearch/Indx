@@ -18,6 +18,8 @@ namespace IndxServer.Services.Webhooks
         public bool HasSync => SyncDocuments > 0;
         public bool OnlyDeletes => Deletes > 0 && Changes == 0 && !HasSync;
 
+        /// <param name="hook">The webhook the batches were held for.</param>
+        /// <param name="batches">The held batches to summarise.</param>
         /// <param name="keys">The registry: the sender's ids to Indx keys.</param>
         /// <param name="document">An indexed document by key, or null (gone, or the dataset not loaded).</param>
         public static WebhookHeldSummary Of(Webhook hook, IReadOnlyList<WebhookHeldBatch> batches,

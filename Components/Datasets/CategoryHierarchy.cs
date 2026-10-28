@@ -34,6 +34,7 @@ namespace IndxServer.Components.Datasets
         /// <param name="Label">The last segment, clipped.</param>
         /// <param name="Count">Documents whose path passes through this node.</param>
         /// <param name="Own">Documents filed at this node itself, not under a child.</param>
+        /// <param name="Children">The nodes one segment deeper.</param>
         public sealed record Node(string Id, string Label, int Count, int Own, IReadOnlyList<Node> Children);
 
         /// <param name="Roots">The top level, by count descending then name.</param>

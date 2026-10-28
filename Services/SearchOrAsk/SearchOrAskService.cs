@@ -618,7 +618,7 @@ namespace IndxServer.Services.SearchOrAsk
         // ── Ask ─────────────────────────────────────────────────────────────────────────────
 
         /// <summary>Whether an ask may proceed: the same gates as intent, against the ask limit.
-        /// Ask counts against the daily budget too: it is the expensive call.</summary>
+        /// Ask counts against the daily budget too: it is the expensive call.
         /// <c>proactive</c> is an answer the page starts on its own: only in the proactive mode, and
         /// within the day's <see cref="SearchOrAskSettings.DailyProactiveAnswers"/>.</summary>
         public IntentOutcome CanAsk(string teamId, string dataSetName, string clientAddress, SearchOrAskSettings? trial = null,

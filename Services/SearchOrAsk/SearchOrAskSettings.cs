@@ -54,7 +54,7 @@ namespace IndxServer.Services.SearchOrAsk
         /// catalogue), so this is the spend proactive adds.</summary>
         public int DailyProactiveAnswers { get; set; } = 500;
 
-        /// <summary>The offer for one judgement on its own (<see cref="SearchOrAskThresholds.OfferFor"/>),
+        /// <summary>The offer for one judgement on its own (<see cref="SearchOrAskThresholds.OfferFor(double, double?)"/>),
         /// in this mode: strict has no quiet offer.</summary>
         public string OfferFor(double p, double? criteria = null) =>
             Thresholds.OfferFor(p, criteria) is var offer && Mode == ModeStrict && offer == "invite" ? "none" : offer;
