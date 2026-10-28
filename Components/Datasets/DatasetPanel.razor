@@ -110,7 +110,17 @@
         Ctx.DatasetListChanged += () => OnDatasetListChanged.InvokeAsync();
         Ctx.Renamed += newName => OnRenamed.InvokeAsync(newName);
         OnContextCreated?.Invoke(Ctx);
+    }
+
+    // Listened for only in a live circuit: a static render (the tests' HtmlRenderer) has a
+    // NavigationManager that was never initialised, and removing a handler from it throws.
+    private bool _listening;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender) return;
         Nav.LocationChanged += OnLocationChanged;
+        _listening = true;
     }
 
     /// <summary>A jump to another tab of this dataset (the command palette, a link) changes only
@@ -336,7 +346,7 @@
 
     public void Dispose()
     {
-        Nav.LocationChanged -= OnLocationChanged;
+        if (_listening) Nav.LocationChanged -= OnLocationChanged;
         Menu.Clear(this);
         Ctx.Changed -= OnCtxChanged;
         _pollCts?.Cancel();
