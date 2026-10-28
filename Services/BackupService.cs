@@ -1,6 +1,6 @@
-﻿using IndxServer.Data;
+﻿using Indx.Storage;
+using IndxServer.Data;
 using IndxServer.Engine;
-using Microsoft.Data.Sqlite;
 using System.Collections.Concurrent;
 
 namespace IndxServer.Services
@@ -27,9 +27,6 @@ namespace IndxServer.Services
         OperationalAlerts alerts,
         ILogger<BackupService> logger) : BackgroundService
     {
-        /// <summary>One database's outcome of a backup run.</summary>
-        public sealed record BackupResult(string Database, string? CopyPath, long Bytes, TimeSpan Duration, string? Error);
-
         private readonly ConcurrentDictionary<string, DateTimeOffset> _lastSuccess = new();
 
         /// <summary>Last successful backup per database — for the monitor and the admin pages.</summary>
@@ -78,18 +75,14 @@ namespace IndxServer.Services
             var folder = configuration["Backup:Folder"] is { Length: > 0 } f ? f : "./IndxData/backups";
             Directory.CreateDirectory(folder);
 
-            var identity = ServerConnectionStrings.ExtractDbPath(
-                ServerConnectionStrings.GetIdentityConnectionString(configuration));
-            var search = IndxServerInternalApi.SearchDbConnectionString;
-            var stats = statistics.Store?.DbPath;
-
             var results = new List<BackupResult>();
-            foreach (var (name, path) in new[] { ("identity", identity), ("indx", search), ("stats", stats) })
+            foreach (var source in Sources())
             {
-                if (string.IsNullOrEmpty(path) || !File.Exists(path)) continue;
                 ct.ThrowIfCancellationRequested();
-                var result = BackupOne(path, folder, name);
+                // Null: the store does not exist yet (stats.db before the first statistic).
+                if (source.TryBackup(folder) is not { } result) continue;
                 results.Add(result);
+                var name = source.Name;
                 if (result.Error == null)
                 {
                     _lastSuccess[name] = DateTimeOffset.UtcNow;
@@ -147,47 +140,19 @@ namespace IndxServer.Services
         }
 
         /// <summary>
-        /// One database: <c>VACUUM INTO</c> a timestamped copy, then <c>PRAGMA integrity_check</c>
-        /// on the copy — which doubles as early corruption detection on the source: the day to
-        /// learn a database is corrupt is backup day, not restore day. A copy that fails
-        /// verification is deleted; a failed backup must never look like a good one.
+        /// The stores this instance backs up, each copying itself (<see cref="IBackupSource"/>,
+        /// backlog 26): identity.db through <see cref="IdentityBackupSource"/>, indx.db through the
+        /// library's <see cref="SqLiteManager"/>, and stats.db through its store when statistics
+        /// are on. Until Oct 2026 this job copied the three SQLite files itself, the one place
+        /// the server reached past the storage layer.
         /// </summary>
-        internal static BackupResult BackupOne(string sourcePath, string folder, string baseName)
+        private IEnumerable<IBackupSource> Sources()
         {
-            var target = Path.Combine(folder, $"{baseName}-{DateTime.UtcNow:yyyyMMdd-HHmmss-fff}.db");
-            var started = System.Diagnostics.Stopwatch.StartNew();
-            try
-            {
-                using (var conn = new SqliteConnection($"Data Source={sourcePath}"))
-                {
-                    conn.Open();
-                    using var cmd = conn.CreateCommand();
-                    cmd.CommandText = "VACUUM INTO $path";
-                    cmd.Parameters.AddWithValue("$path", target);
-                    cmd.CommandTimeout = 3600; // a gigabyte-class indx.db is a long rewrite
-                    cmd.ExecuteNonQuery();
-                }
-                using (var check = new SqliteConnection($"Data Source={target};Mode=ReadOnly"))
-                {
-                    check.Open();
-                    using var cmd = check.CreateCommand();
-                    cmd.CommandText = "PRAGMA integrity_check";
-                    if (cmd.ExecuteScalar() as string != "ok")
-                    {
-                        SqliteConnection.ClearPool(check);
-                        File.Delete(target);
-                        return new BackupResult(baseName, null, 0, started.Elapsed,
-                            "the copy failed integrity_check — the SOURCE database may be corrupt; " +
-                            "do not restart blindly, investigate first");
-                    }
-                }
-                return new BackupResult(baseName, target, new FileInfo(target).Length, started.Elapsed, null);
-            }
-            catch (SqliteException ex)
-            {
-                try { if (File.Exists(target)) File.Delete(target); } catch (IOException) { }
-                return new BackupResult(baseName, null, 0, started.Elapsed, ex.Message);
-            }
+            yield return new IdentityBackupSource(configuration);
+            if (IndxServerInternalApi.SearchDbConnectionString is { Length: > 0 } search)
+                yield return new SqLiteManager(search) { Name = "indx" };
+            if (statistics.Store is { } stats)
+                yield return stats;
         }
 
         /// <summary>

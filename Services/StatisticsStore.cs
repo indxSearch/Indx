@@ -1,5 +1,6 @@
 ﻿using System.Collections.Concurrent;
 using Indx.Api;
+using Indx.Storage;
 using Microsoft.Data.Sqlite;
 
 namespace IndxServer.Services
@@ -105,7 +106,7 @@ namespace IndxServer.Services
     /// this file. Every access to statistics goes through this class (no SQL in controllers or
     /// pages): that is the N-tier rule from the design note, and it is load-bearing.
     /// </summary>
-    public sealed class StatisticsStore(string dbPath, ILogger<StatisticsStore> logger)
+    public sealed class StatisticsStore(string dbPath, ILogger<StatisticsStore> logger) : IBackupSource
     {
         private readonly string _dbPath = dbPath;
 
@@ -113,6 +114,12 @@ namespace IndxServer.Services
         public const int ClickThroughMinSearches = 5;
 
         public string DbPath => _dbPath;
+
+        /// <summary>Backup copies of stats.db are named "stats" (<see cref="IBackupSource"/>).</summary>
+        public string Name => "stats";
+
+        /// <summary>A verified copy of stats.db (<see cref="SqLiteBackup.Take"/>).</summary>
+        public BackupResult? TryBackup(string folder) => SqLiteBackup.Take(_dbPath, folder, Name);
 
         private SqliteConnection Open()
         {
