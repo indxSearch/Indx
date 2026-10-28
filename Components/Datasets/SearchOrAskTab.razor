@@ -21,7 +21,8 @@
 
 <div class="soa-tab">
     <AskPhrasesModal Open="_phrasesOpen" OpenChanged="@(v => _phrasesOpen = v)" Phrases="_edit.AskPhrases" OnApply="@(p => _edit.AskPhrases = p)" />
-    @* What the tab is, and the chip that says it may still change. *@
+    @* What the tab is, the chip that says it may still change, and Observr's action at the
+       row's right end. *@
     <div class="soa-intro">
         <p class="indx-section-help">
             When a visitor types a question rather than a name, offer to answer it from this dataset's records.
@@ -29,6 +30,7 @@
             when the visitor asks, and only from the records.
         </p>
         <Chip Size="large" Color="var(--CTeal)" TextColor="#080809" Icon="DatasetIcons.Experimental">Experimental</Chip>
+        <ObservrPageAction Label="Help me set this up" OnClick="SetupInAgent" Disabled="@IsDirty" />
     </div>
 
     @if (!Service.Available)
@@ -42,8 +44,6 @@
     }
 
     <ModelRefusalAlert />
-
-    <ObservrPageAction Label="Help me set this up" OnClick="SetupInAgent" Disabled="@IsDirty" OwnRow />
 
 
     @* Two columns: the settings on the left, one under the other; the tester on the right, sticky,
