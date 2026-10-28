@@ -359,20 +359,13 @@
                         <div class="soa-try-scores">
                             <Tooltip Content="@OfferHelp(Seen(j), j.Mode)"><Chip Size="micro" Class="@($"soa-offer soa-offer--{j.Offer}")">@OfferLabel(Seen(j), j.Mode)</Chip></Tooltip>
                             <span class="soa-try-score">
-                                <Tooltip Content="@QuestionHelp">question @Two(j.P)</Tooltip>
-                                @if (j.Criteria is { } c)
-                                {
-                                    <text> · </text><Tooltip Content="@DescriptionHelp">description @Two(c)</Tooltip>
-                                }
-                                @if (j.Finished is { } f)
-                                {
-                                    <text> · </text><Tooltip Content="@FinishedHelp">finished @Two(f)</Tooltip>
-                                }
-                                @if (j.Answerable is { } a)
-                                {
-                                    <text> · </text><Tooltip Content="@AnswerableHelp">answerable @Two(a)</Tooltip>
-                                }
-                                <text> · </text><Tooltip Content="@(j.Cached ? "The judge answered this text before; the cached answer, no call made." : "How long the judge took. A visitor's page waits at most 3 seconds.")">@(j.Cached ? "cached" : $"{j.Ms} ms")</Tooltip>
+                                @* Each score with its thresholds as ticks on a meter: where it stands against
+                                   the lines that decide the offer, not only its number. *@
+                                @Score("question", QuestionHelp, j.P, QuestionMarks(j))
+                                @if (j.Criteria is { } c) { @Score("description", DescriptionHelp, c, [new(j.Thresholds.Strong, "Answer offer")]) }
+                                @if (j.Finished is { } f) { @Score("finished", FinishedHelp, f, [new(j.Thresholds.Finished, "Answers on its own from")]) }
+                                @if (j.Answerable is { } a) { @Score("answerable", AnswerableHelp, a, []) }
+                                <Tooltip Content="@(j.Cached ? "The judge answered this text before; the cached answer, no call made." : "How long the judge took. A visitor's page waits at most 3 seconds.")">@(j.Cached ? "cached" : $"{j.Ms} ms")</Tooltip>
                                 @if (j.Reason is { } why) { <text> · @why</text> }
                             </span>
                             <span class="soa-try-spacer"></span>
@@ -588,19 +581,27 @@
 
     /// <summary>The scale the thresholds cut: lookups at 0, questions at 1, and where each offer
     /// starts. Redrawn as the sliders move.</summary>
+    // The scale above the thresholds, with the lines the tester's question meter has in this mode:
+    // the hint where the mode sweeps, the invitation unless strict, the full offer.
     private RenderFragment Scale() => __builder =>
     {
         var t = _edit.Thresholds;
-        double invite = Math.Clamp(t.Invite, 0, 1), strong = Math.Clamp(Math.Max(t.Strong, t.Invite), 0, 1);
+        double strong = Math.Clamp(Math.Max(t.Strong, t.Invite), 0, 1);
+        double? invite = _edit.Mode == SearchOrAskSettings.ModeStrict ? null : Math.Clamp(t.Invite, 0, 1);
+        double? hint = _edit.Mode is SearchOrAskSettings.ModeInviting or SearchOrAskSettings.ModeProactive
+            ? Math.Clamp(Math.Min(t.Hint ?? SearchOrAskThresholds.HintFor(_edit.Kind), invite ?? strong), 0, 1) : null;
+        double start = hint ?? invite ?? strong;
         <div class="soa-scale" aria-hidden="true">
             <div class="soa-scale-bar">
-                <span class="soa-scale-none" style="@($"width:{Pct(invite)}")"></span>
-                <span class="soa-scale-invite" style="@($"width:{Pct(strong - invite)}")"></span>
+                <span class="soa-scale-none" style="@($"width:{Pct(start)}")"></span>
+                @if (hint is { } h) { <span class="soa-scale-hint" style="@($"width:{Pct((invite ?? strong) - h)}")"></span> }
+                @if (invite is { } inv) { <span class="soa-scale-invite" style="@($"width:{Pct(strong - inv)}")"></span> }
                 <span class="soa-scale-strong" style="@($"width:{Pct(1 - strong)}")"></span>
             </div>
             <div class="soa-scale-ticks">
                 <span>0 · lookup</span>
-                <span class="soa-scale-mark" style="@($"left:{Pct(invite)}")">@Two(invite)</span>
+                @if (hint is { } hm) { <span class="soa-scale-mark" style="@($"left:{Pct(hm)}")">@Two(hm)</span> }
+                @if (invite is { } im) { <span class="soa-scale-mark" style="@($"left:{Pct(im)}")">@Two(im)</span> }
                 <span class="soa-scale-mark" style="@($"left:{Pct(strong)}")">@Two(strong)</span>
                 <span>question · 1</span>
             </div>
@@ -912,6 +913,20 @@
         "or asks for a recommendation of a kind. At the full offer's Show from it earns the offer, since the catalogue answers it with filters and a summary.";
     private const string AnswerableHelp = "Whether the results on the page could answer it: one of them holds what is asked closely enough to write from. " +
         "It does not decide the offer; the statistics use it to show offers the records could not answer.";
+
+    private static RenderFragment Score(string label, string help, double value, IReadOnlyList<ScoreMeter.Mark> marks) => __builder =>
+    {
+        <Tooltip Content="@help"><span class="soa-score" tabindex="0">@label <ScoreMeter Value="value" Marks="marks" AriaLabel="@label" /> @Two(value)</span></Tooltip>
+    };
+
+    /// <summary>The question score's lines in this judgement's mode: the hint where it sweeps, the
+    /// invitation and the full offer.</summary>
+    private static IReadOnlyList<ScoreMeter.Mark> QuestionMarks(IntentResult j) =>
+    [
+        .. Sweeps(j.Mode) && j.Thresholds.Hint is { } h ? new ScoreMeter.Mark[] { new(h, "Hint") } : [],
+        .. j.Mode == SearchOrAskSettings.ModeStrict ? Array.Empty<ScoreMeter.Mark>() : [new(j.Thresholds.Invite, "Invitation")],
+        new(j.Thresholds.Strong, "Answer offer"),
+    ];
 
     private const string FinishedHelp = "Whether the visitor has finished typing it: a whole request, not one that stops on a word still waiting for more (\"what type is\"). " +
         "Proactive answers on its own only from 0.50, so a sure question still being typed waits.";

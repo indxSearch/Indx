@@ -97,7 +97,7 @@
 /* The judge's scores, quiet, with the tester's own tools at the end. */
 .soa-try-scores { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 8px; border-top: 1px solid var(--lv2); }
 .soa-try-spacer { flex: 1; }
-.soa-try-score { font: var(--text-xs); color: var(--lv6); font-variant-numeric: tabular-nums; }
+.soa-try-score { display: inline-flex; flex-wrap: wrap; align-items: center; row-gap: 6px; font: var(--text-xs); color: var(--lv6); font-variant-numeric: tabular-nums; }
 ::deep .soa-offer--strong { background: var(--CPositive); color: var(--lv0); }
 ::deep .soa-offer--invite { background: var(--lv3); color: var(--lv8); }
 ::deep .soa-offer--none { background: var(--lv2); color: var(--lv6); }
@@ -134,6 +134,7 @@
 .soa-scale { margin-top: 12px; }
 .soa-scale-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--lv2); }
 .soa-scale-none { background: var(--lv2); }
+.soa-scale-hint { background: var(--lv3); }
 .soa-scale-invite { background: var(--lv4); }
 .soa-scale-strong { background: var(--CPositive); }
 .soa-scale-ticks { position: relative; display: flex; justify-content: space-between; margin-top: 6px;
@@ -163,3 +164,6 @@
 /* The full width up to its cap, whatever the help under it says: it sized to the text before. */
 .soa-mode { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 520px; }
 .soa-mode-help { margin: 0; font: var(--text-sm); color: var(--lv6); }
+
+/* A judge's score in the tester: its name, the meter with its thresholds, its value, on one line. */
+.soa-score { display: inline-flex; align-items: center; gap: 6px; margin-right: 12px; white-space: nowrap; }
