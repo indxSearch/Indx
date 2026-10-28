@@ -22,6 +22,7 @@
 @if (!Active) { return; }
 
 <div class="soa-tab">
+    <AskPhrasesModal Open="_phrasesOpen" OpenChanged="@(v => _phrasesOpen = v)" Phrases="_edit.AskPhrases" OnApply="@(p => _edit.AskPhrases = p)" />
     @* What the tab is, and the chip that says it may still change. *@
     <div class="soa-intro">
         <p class="indx-section-help">
@@ -210,22 +211,15 @@
             <Table AriaLabel="Ask phrases" Class="soa-table">
                 @Head("Ask phrases")
                 <tbody>
-                    @Row(Icon<Icons.Question>(), "Lead-ins", "How a question starts: \"help me find\", \"i'm looking for\". One per line.",
+                    @* The phrases are edited in a modal of their own, a tab a group with each phrase a field, and a
+                       Try it (AskPhrasesModal); here, what the dataset runs with. *@
+                    @Row(Icon<Icons.Question>(), "Phrases", PhrasesSummary(),
                          _edit.AskPhrases != null,
-                         @<Textarea Rows="4" @bind-Value="LeadInLines" placeholder="@PhraseLines(p => p.LeadIns, SearchOrAskPhrases.Default)" />)
-                    @Row(Icon<Icons.Tag>(), "What is asked for", "The records' names, as visitors say them: \"the movie\", \"the product\".",
-                         _edit.AskPhrases != null,
-                         @<Textarea Rows="3" @bind-Value="FrameLines" placeholder="@PhraseLines(p => p.Frames, SearchOrAskPhrases.Default)" />)
-                    @Row(Icon<Icons.TextCursor>(), "Links", "The word that joins it to the rest: \"about\", \"with\".",
-                         _edit.AskPhrases != null,
-                         @<Textarea Rows="3" @bind-Value="LinkLines" placeholder="@PhraseLines(p => p.Links, SearchOrAskPhrases.Default)" />)
-                    @Row(Icon<Icons.TextSize>(), "Articles", "\"the\", \"a\", \"an\".",
-                         _edit.AskPhrases != null,
-                         @<Textarea Rows="2" @bind-Value="ArticleLines" placeholder="@PhraseLines(p => p.Articles, SearchOrAskPhrases.Default)" />)
+                         @<Button Variant="secondary" Size="micro" @onclick="() => _phrasesOpen = true">Edit Ask phrases</Button>)
                     @Row(Icon<Icons.Search>(), "Refocus the search", "While a question is typed, the list searches what it is about.",
                          !_edit.RefocusWhileTyping,
                          @<ToggleSwitch Label="Search what the question is about" Checked="@_edit.RefocusWhileTyping" CheckedChanged="@(v => _edit.RefocusWhileTyping = v)" />)
-                    @Row(DatasetIcons.SearchOrAsk, "Invite at once", "The quiet \"Ask about this\" as soon as a question takes shape.",
+                    @Row(DatasetIcons.SearchOrAsk, "Invite on an Ask phrase", "The invitation the moment a phrase matches, before the judge has read the text.",
                          !_edit.InviteOnAskPhrase,
                          @<ToggleSwitch Label="Offer to ask on a question's shape" Checked="@_edit.InviteOnAskPhrase" CheckedChanged="@(v => _edit.InviteOnAskPhrase = v)" />)
                 </tbody>
@@ -760,22 +754,14 @@
     private static string Json(SearchOrAskSettings s) => JsonSerializer.Serialize(s, JsonOpts);
 
     /// <summary>One Ask phrase group as lines, of the working copy's own list or (for a placeholder) the defaults.</summary>
-    private string PhraseLines(Func<SearchOrAskPhrases, List<string>> group, SearchOrAskPhrases? of = null) =>
-        string.Join("\n", group(of ?? _edit.AskPhrases ?? new SearchOrAskPhrases()));
+    private bool _phrasesOpen;
 
-    // The four groups as the textareas bind them (Textarea needs a bindable property).
-    private string LeadInLines { get => PhraseLines(p => p.LeadIns); set => SetPhrases((p, l) => p.LeadIns = l, value); }
-    private string FrameLines { get => PhraseLines(p => p.Frames); set => SetPhrases((p, l) => p.Frames = l, value); }
-    private string LinkLines { get => PhraseLines(p => p.Links); set => SetPhrases((p, l) => p.Links = l, value); }
-    private string ArticleLines { get => PhraseLines(p => p.Articles); set => SetPhrases((p, l) => p.Articles = l, value); }
-
-    /// <summary>Sets one group from lines. The first edit makes the dataset's own list, starting from
-    /// the defaults so the other groups keep working; all four empty goes back to the defaults.</summary>
-    private void SetPhrases(Action<SearchOrAskPhrases, List<string>> set, string lines)
+    /// <summary>What the dataset runs with, in a line: its own phrases or the English defaults, and how many.</summary>
+    private string PhrasesSummary()
     {
-        var own = _edit.AskPhrases ?? JsonSerializer.Deserialize<SearchOrAskPhrases>(JsonSerializer.Serialize(SearchOrAskPhrases.Default))!;
-        set(own, lines.Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).ToList());
-        _edit.AskPhrases = own.LeadIns.Count + own.Frames.Count + own.Links.Count + own.Articles.Count == 0 ? null : own;
+        var p = _edit.AskPhrases ?? SearchOrAskPhrases.Default;
+        var counts = $"{p.LeadIns.Count} lead-ins, {p.Frames.Count} asked for, {p.Links.Count} links, {p.Articles.Count} articles";
+        return _edit.AskPhrases == null ? $"The English defaults: {counts}." : $"This dataset's own: {counts}.";
     }
     private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _budgetError != null || _proactiveError != null);
 
@@ -798,12 +784,9 @@
         ["Title"] = "The field that names a result, as the judge and the answers refer to it. Automatic picks the dataset's most title-like field.",
         ["Section"] = "Fields that say where a result belongs, such as a category, a year or a chapter. The judge reads them beside the title; leave them empty when the records have none.",
         ["Snippet"] = "The prose fields the judge reads and the answers are written from: a description, a body text. Not identifiers or links, which tell the model nothing.",
-        ["Lead-ins"] = "Taken off the typed text with what follows them, so the list searches what the question is about: \"help me find the movie about the green ogre\" searches \"green ogre\". Nothing is taken unless the start has a question's shape and a word of substance is left, so a title like \"Help\" searches as typed. With all four boxes empty the dataset uses the English defaults, shown greyed in the boxes; once any box has a phrase, the four are the dataset's own, and an empty box takes nothing of its kind.",
-        ["What is asked for"] = "Taken off after a lead-in (\"which movie has tom hanks\" searches \"tom hanks\"), and off the end of a question when two words come before it: \"show me green ogre movie\" searches \"green ogre\", while \"show me bee movie\" keeps its title. Add the names visitors use for these records.",
-        ["Links"] = "Taken off after what is asked for: \"the movie about a rat in paris\" searches \"rat in paris\". Words such as \"about\", \"with\", \"where\", \"starring\".",
-        ["Articles"] = "Taken off once the start is a question's, before the subject: \"help me find a green ogre\" searches \"green ogre\". They never make a question on their own.",
+        ["Phrases"] = "The words a question is built with, in four groups taken off in order: a lead-in (\"help me find\"), what is asked for (\"the movie\"), the link to the rest (\"about\") and an article. \"help me find the movie about the green ogre\" searches \"green ogre\". Nothing is taken unless the start has a question's shape and a word of substance is left. A dataset without its own runs with the English defaults; Edit Ask phrases opens them all, with a Try it that shows what a question comes to.",
         ["Refocus the search"] = "The phrases above come off the text before it is searched, on every keystroke, and the judge reads those results. Off: the list searches the text as typed, and the judge reads that.",
-        ["Invite at once"] = "Shown on the keystroke a phrase matches, before the judge has read the text. The judge's word on the next pause confirms it, raises it to the full offer, or takes it back. Off: every offer waits for the judge.",
+        ["Invite on an Ask phrase"] = "The invitation, on the keystroke a phrase matches, before the judge has read the text: \"Ask about this\", or in the inviting modes \"For a quick answer, type a bit more\". It only invites: the full offer and an answer that starts on its own still wait for the judge, which confirms or takes it back on the next pause. Strict ignores it. Off: every offer waits for the judge.",
         ["Answer offer"] = "The full offer, \"Ask the assistant\": Enter asks. Shown when the judge's score reaches Show from, and kept while it stays above Keep down to, so it does not blink as the visitor types on.",
         ["Invitation"] = "The quiet \"Ask about this\" under the field, for a score that may be a question. Clicking it asks; Enter still searches.",
         ["The list"] = "While the full offer is up, keep only results scoring at least Share of top of the best result, and show any only when the best scores at least Top at least. A question's words match many records loosely; this keeps the ones that match it. Off keeps the whole list.",

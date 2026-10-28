@@ -1,0 +1,26 @@
+/* Wide enough for a phrase to read in full beside its remove. */
+.askp-root ::deep .askp-modal { max-width: 720px; width: 92vw; max-height: 90vh; display: flex; flex-direction: column; }
+
+.askp { display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+.askp-help { margin: 0; font: var(--text-sm); color: var(--lv5); }
+
+.askp-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-start; justify-content: space-between; }
+.askp-add { display: flex; gap: 8px; align-items: flex-start; flex: 1 1 300px; }
+.askp-add > ::deep :first-child { flex: 1; min-width: 0; }
+.askp-search { flex: 0 1 220px; }
+
+/* The group's phrases, a field each, in a frame of their own that scrolls: the tabs, the add
+   field and Try it stay in view. */
+.askp-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; max-height: 40vh; overflow: auto; }
+.askp-item { display: flex; gap: 6px; align-items: center; }
+.askp-item > ::deep :first-child { flex: 1; min-width: 0; }
+.askp-none { margin: 4px 0; font: var(--text-sm); color: var(--lv5); }
+
+/* Try it: the question, then what comes off and what is searched. */
+.askp-try { display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--lv1); border-radius: var(--radius); }
+.askp-result { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font: var(--text-sm); }
+.askp-result dt { color: var(--lv5); }
+.askp-result dd { margin: 0; color: var(--lv7); }
+.askp-searches { color: var(--lv8); font-weight: var(--med); }
+
+.askp-actions-end { margin-left: auto; }
