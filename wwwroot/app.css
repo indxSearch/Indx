@@ -1095,7 +1095,8 @@ a.btn-danger:hover {
    import on the right. It wraps as two groups, never inside one. */
 /* ── Page action pattern ─────────────────────────────────────────────────────────────────────
    One layout for every page that lists things or edits them:
-     top     .indx-list-toolbar   primary "New …" first, then the filter; the count sits at the end
+     top     .indx-list-toolbar   primary "New …" first, then the filter; the count sits at the end,
+                                  and the page's Observr action (ObservrPageAction) after it, top right
      bottom  <SaveBar>            Save then Cancel, only while there are changes, sticky
      bottom  .indx-file-actions   export, import and whole-list actions, at the end of the row
    Creating happens in a Modal whose buttons are .indx-form-actions: primary first, then Cancel. */
@@ -1107,6 +1108,10 @@ a.btn-danger:hover {
     margin-bottom: 12px;
 }
 .indx-list-toolbar-filter { flex: 0 1 220px; min-width: 140px; }
+/* A page's Observr action (ObservrPageAction): the last thing in the top row, at its right end.
+   After the count it keeps the count's push and sits beside it. */
+.indx-page-action { margin-left: auto; }
+.indx-list-toolbar-end ~ .indx-page-action { margin-left: 12px; }
 .indx-list-toolbar-end {
     margin-left: auto;
     color: var(--lv4);

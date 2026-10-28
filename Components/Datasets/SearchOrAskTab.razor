@@ -14,8 +14,6 @@
 @inject SearchOrAskStore Store
 @inject BrowserFiles Files
 @inject SearchOrAskService Service
-@inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
-@inject IndxServer.Services.Observr.ObservrSubscription ObservrSubscription
 @inject IndxServer.Services.Observr.AgentPanelState Agent
 @inject IServiceProvider Services
 
@@ -45,12 +43,7 @@
 
     <ModelRefusalAlert />
 
-    @if (Ctx.IsEditor && (ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name)))
-    {
-        <div class="indx-list-toolbar">
-            <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Disabled="@IsDirty" @onclick="SetupInAgent">Help me set this up</Button></span>
-        </div>
-    }
+    <ObservrPageAction Label="Help me set this up" OnClick="SetupInAgent" Disabled="@IsDirty" OwnRow />
 
 
     @* Two columns: the settings on the left, one under the other; the tester on the right, sticky,
