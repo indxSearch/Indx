@@ -143,7 +143,7 @@ namespace IndxServer.Components.Datasets
                 for (int i = 0; i < original.Length && i < edited.Length; i++)
                 {
                     var o = original[i]; var e = edited[i];
-                    if ((o.Searchable ?? false) != (e.Searchable ?? false)) return true;
+                    if ((o.WordMatching ?? false) != (e.WordMatching ?? false)) return true;
                     if ((o.Filterable ?? false) != (e.Filterable ?? false)) return true;
                     if ((o.Facetable ?? false) != (e.Facetable ?? false)) return true;
                     if ((o.Sortable ?? false) != (e.Sortable ?? false)) return true;
@@ -161,9 +161,10 @@ namespace IndxServer.Components.Datasets
             }
         }
 
-        /// <summary>True when at least one field is searchable — or when no configuration is
-        /// held yet, in which case the engine's own defaults apply and nothing should be blocked.</summary>
-        public bool HasSearchable => EditedFields == null || EditedFields.Any(f => f.Searchable == true);
+        /// <summary>True when at least one field is searched, by its words or by pattern — or when
+        /// no configuration is held yet, in which case the engine's own defaults apply and nothing
+        /// should be blocked.</summary>
+        public bool HasSearchable => EditedFields == null || EditedFields.Any(f => f.WordMatching == true || f.PatternMatching == true);
 
         public static FieldProxy DeepCopy(FieldProxy f) => new FieldProxy
         {
@@ -172,7 +173,7 @@ namespace IndxServer.Components.Datasets
             IsArray = f.IsArray,
             Optional = f.Optional,
             SampleValue = f.SampleValue,
-            Searchable = f.Searchable ?? false,
+            WordMatching = f.WordMatching ?? false,
             Filterable = f.Filterable ?? false,
             Facetable = f.Facetable ?? false,
             Sortable = f.Sortable ?? false,

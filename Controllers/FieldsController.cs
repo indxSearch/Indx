@@ -70,20 +70,6 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
-        /// GetSearchableFields will return the array of searchable field names.
-        /// </summary>
-        [KeyAccess(ApiKeyLevel.Search)]
-        [HttpGet(DataSetRoute + "/fields/searchable")]
-        public ActionResult<string[]> GetSearchableFields(string teamName, string dataSetName)
-        {
-            var ctx = ResolveTeam(teamName, out var error);
-            if (ctx == null) return error!;
-            if (IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
-                return ApiProblems.DatasetNotFound(dataSetName);
-            return IndxServerInternalApi.Manager.GetFields(dataSetName, ctx.OwnerKey, false, true, false, false, false);
-        }
-
-        /// <summary>
         /// GetSortableFields will return the array of sortable field names.
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
@@ -113,7 +99,7 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
-        /// SetFieldConfiguration sets any combination of field properties (Searchable, Filterable,
+        /// SetFieldConfiguration sets any combination of field properties (WordMatching, Filterable,
         /// Facetable, Sortable, Embeddable, PreloadFilters, Weight, BM25b, BM25k1, PatternMatching,
         /// IndexSizes, NumberOfStartCharacters, NumberOfStopCharacters) in one call. Nullable properties have replace semantics: null = leave untouched,
         /// any value (including false) = overwrite.
@@ -180,7 +166,7 @@ namespace IndxServer.Controllers
             // If any proposed change requires rebuilding the index AND the engine is serving
             // searches, route via the shadow-swap path so live searches are not blocked. The
             // override is applied between Init and Load on the shadow so MakeSearchEngines builds
-            // _indexableFields against the new Searchable set.
+            // _indexableFields against the new set of searched fields.
             // Also for a field getting its first role: see FieldConfigurationChange.
             bool needsReindex = IndxServer.Services.FieldConfigurationChange.NeedsRebuild(df, fields);
             // Before applying: afterwards the old configuration is gone and there is nothing left

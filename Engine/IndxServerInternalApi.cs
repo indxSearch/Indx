@@ -295,7 +295,7 @@ namespace IndxServer.Engine
                 {
                     if (all)
                         returnList.Add(fields[i].Name);
-                    else if (fields[i].Searchable && indexable)
+                    else if ((fields[i].WordMatching || fields[i].PatternMatching != null) && indexable)
                         returnList.Add(fields[i].Name);
                     else if (fields[i].Sortable && sortable)
                         returnList.Add(fields[i].Name);
@@ -1119,7 +1119,7 @@ namespace IndxServer.Engine
                 using var jsonStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(minimalJson));
 
                 tempEngine.Init(jsonStream);
-                tempEngine.GetField("field")!.Searchable = true;
+                tempEngine.GetField("field")!.WordMatching = true;
                 jsonStream.Position = 0;
                 tempEngine.Load(jsonStream);
                 tempEngine.Index();

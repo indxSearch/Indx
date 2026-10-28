@@ -211,7 +211,7 @@
         engine.Init(stream, "key", initMonitor);
         initMonitor.WaitForCompletion();
         foreach (var field in engine.GetFieldList())
-            if (field.Name == "text") field.Searchable = true;
+            if (field.Name == "text") field.WordMatching = true;
         stream.Position = 0;
         var loadMonitor = new ProcessMonitor();
         engine.Load(stream, loadMonitor);

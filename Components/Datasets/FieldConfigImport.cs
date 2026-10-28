@@ -26,9 +26,9 @@ namespace IndxServer.Components.Datasets
                 if (!byName.TryGetValue(imp.FieldName, out var existing)) { unmatched++; continue; }
 
                 // No type means Analyze never read a value: either a container, whose data lives
-                // on its nested fields, or a field that is null in every record. Two of the four
-                // roles still apply to it - Searchable and Facetable never read Field.Type, and
-                // ticking Searchable is what prepares an empty field for records that do carry a
+                // on its nested fields, or a field that is null in every record. Some roles still
+                // apply to it - WordMatching, PatternMatching and Facetable never read Field.Type,
+                // and ticking one of the first two is what prepares an empty field for records that do carry a
                 // value later. Filterable and Sortable do read the type, so the engine refuses them
                 // and they are cleared here rather than carried in to be rejected at save.
                 // Only a file that actually asked for one of those two is worth reporting.
@@ -42,12 +42,13 @@ namespace IndxServer.Components.Datasets
                         ClearCapabilities(existing);
                         continue;
                     }
-                    // A field that was null in every record still takes the two roles that do not
+                    // A field that was null in every record still takes the roles that do not
                     // read Field.Type. That is the console's promise and the engine honours it:
-                    // ticking Searchable prepares the field, and a record inserted later that does
-                    // carry a value is indexed and found. Clearing them here would lose a legitimate
-                    // setting on an export-import round trip.
-                    existing.Searchable = imp.Searchable;
+                    // ticking WordMatching or PatternMatching prepares the field, and a record
+                    // inserted later that does carry a value is indexed and found. Clearing them here
+                    // would lose a legitimate setting on an export-import round trip.
+                    existing.WordMatching = imp.WordMatching;
+                    if (imp.PatternMatching.HasValue) existing.PatternMatching = imp.PatternMatching;
                     existing.Facetable = imp.Facetable;
                     // These two do read the type, so the engine refuses them. Cleared rather than
                     // carried in to be rejected at save, and reported only when the file asked.
@@ -57,7 +58,9 @@ namespace IndxServer.Components.Datasets
                     continue;
                 }
 
-                existing.Searchable = imp.Searchable;
+                // A file exported before 28 Oct 2026 has Searchable, which the library reads into
+                // WordMatching (FieldProxy).
+                existing.WordMatching = imp.WordMatching;
                 existing.Filterable = imp.Filterable;
                 existing.Facetable = imp.Facetable;
                 existing.Sortable = imp.Sortable;
@@ -82,7 +85,8 @@ namespace IndxServer.Components.Datasets
 
         private static void ClearCapabilities(FieldProxy f)
         {
-            f.Searchable = false;
+            f.WordMatching = false;
+            f.PatternMatching = false;
             f.Filterable = false;
             f.Facetable = false;
             f.Sortable = false;

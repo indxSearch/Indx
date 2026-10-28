@@ -15,13 +15,13 @@
         <thead>
             <tr>
                 <th>Field and type</th>
-                <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Included in full-text search. At least one field must be searchable.">Searchable</span></th>
+                <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Matches the field by its whole words: exactly, within a typo or two, and by their start. A field is searched when WordMatching or PatternMatching is on, and at least one field must be.">WordMatching</span></th>
+                <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Matches inside words: a query finds the field by any part of a word. With WordMatching too, the field is matched both ways. Leave it off for codes, identifiers and tags.">PatternMatching</span></th>
                 <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Can be used to filter results by exact value or range.">Filterable</span></th>
                 <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Field values are counted and returned as facets for building filter UI.">Facetable</span></th>
                 <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Results can be sorted by this field's value.">Sortable</span></th>
                 @if (ShowAdvanced)
                 {
-                    <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Matches inside words as well as whole words: a query finds the field by any part of a word. Off, the default, only whole words, within a typo or two and by their start. Leave it off for codes, identifiers and tags.">PatternMatching</span></th>
                     <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
                     <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
                 }
@@ -58,7 +58,7 @@
                                         }
                                         else if (HasNoValue(field))
                                         {
-                                            <span class="indx-field-pop-note">No value read for this field in the dataset, so its type is unknown. Filterable and Sortable need a type and are not offered; Searchable and Facetable are, and ticking them prepares the field for records that do carry a value. Load data that carries one and analyze again to get the rest.</span>
+                                            <span class="indx-field-pop-note">No value read for this field in the dataset, so its type is unknown. Filterable and Sortable need a type and are not offered; WordMatching, PatternMatching and Facetable are, and ticking them prepares the field for records that do carry a value. Load data that carries one and analyze again to get the rest.</span>
                                         }
                                         @if (PopoverFlags(field) is { } flags)
                                         {
@@ -70,7 +70,7 @@
                     @if (row.IsContainer)
                     {
                         @* A container holds no value of its own, so every capability here would be
-                           an inert control. Ticking Searchable on it indexes nothing: the text lives
+                           an inert control. Ticking WordMatching on it indexes nothing: the text lives
                            on the nested fields below, and those are what can be configured. *@
                         <td colspan="@TrailingColumnCount" class="indx-group-note">Configured on the nested fields below</td>
                     }
@@ -212,16 +212,17 @@
 
     private static readonly Cap[] Caps =
     [
-        new("Searchable", false, f => f.Searchable, (f, v) => f.Searchable = v, IsSearchable: true, NotOnAVector: true),
-        new("Filterable", false, f => f.Filterable, (f, v) => f.Filterable = v, NeedsType: true, NotOnAVector: true),
-        new("Facetable", false, f => f.Facetable, (f, v) => f.Facetable = v, NotOnAVector: true),
-        new("Sortable", false, f => f.Sortable, (f, v) => f.Sortable = v, NeedsType: true, NotOnAVector: true),
+        // The two ways a field is searched, each its own box (28 Oct 2026; one Searchable box before).
+        new("WordMatching", false, f => f.WordMatching, (f, v) => f.WordMatching = v, IsSearchable: true, NotOnAVector: true),
         // Off, the index sizes and anchors the field had are not sent: they would apply to nothing.
-        new("PatternMatching", true, f => f.PatternMatching, (f, v) =>
+        new("PatternMatching", false, f => f.PatternMatching, (f, v) =>
         {
             f.PatternMatching = v;
             if (!v) { f.IndexSizes = null; f.NumberOfStartCharacters = null; f.NumberOfStopCharacters = null; }
-        }),
+        }, IsSearchable: true, NotOnAVector: true),
+        new("Filterable", false, f => f.Filterable, (f, v) => f.Filterable = v, NeedsType: true, NotOnAVector: true),
+        new("Facetable", false, f => f.Facetable, (f, v) => f.Facetable = v, NotOnAVector: true),
+        new("Sortable", false, f => f.Sortable, (f, v) => f.Sortable = v, NeedsType: true, NotOnAVector: true),
         new("Embeddable", true, f => f.Embeddable, (f, v) => f.Embeddable = v, IsEmbeddable: true),
         new("PreloadFilters", true, f => f.PreloadFilters, (f, v) => f.PreloadFilters = v, NotOnAVector: true),
     ];
@@ -258,8 +259,8 @@
     /// <summary>A box the engine would refuse is disabled, with the reason as its title
     /// (<see cref="WhyRefused"/>). Filterable and Sortable are the only roles that read Field.Type, and a field that
     /// was null in every analyzed document has none, so the engine refuses them. Disabled per column
-    /// rather than per row: Searchable and Facetable never read the type and stay available, and the
-    /// reason ticking Searchable is still offered is that it prepares the field - a record inserted
+    /// rather than per row: WordMatching, PatternMatching and Facetable never read the type and stay
+    /// available, and the reason ticking them is still offered is that it prepares the field - a record inserted
     /// later that does carry a value is indexed and found. The title sits on a wrapper because a
     /// disabled control does not raise the hover.</summary>
     private RenderFragment CapBox(FieldProxy field, Cap cap) => __builder =>
@@ -448,7 +449,7 @@
     }
 
     /// <summary>Columns after the first, for the container row's spanning cell.</summary>
-    private int TrailingColumnCount => ShowAdvanced ? 11 : 5;
+    private int TrailingColumnCount => ShowAdvanced ? 11 : 6;
 
     /// <summary>The badge icon: the type's own icon, the nested-object icon for a container, and
     /// the stop icon for a field with no value, which has no type and cannot be configured.</summary>
@@ -471,11 +472,11 @@
     [Parameter] public ScoringSetup Scoring { get; set; } = ScoringSetup.Default;
     /// <summary>Also list fields with no capability ticked.</summary>
     [Parameter] public bool ShowUnused { get; set; }
-    /// <summary>Show the PatternMatching / Embeddable / PreloadFilters / BM25 columns
+    /// <summary>Show the Embeddable / PreloadFilters / BM25 columns
     /// and switch the weight control from slider to number input.</summary>
     [Parameter] public bool ShowAdvanced { get; set; }
-    /// <summary>Set once the user has touched a Searchable box — the owner uses it to decide
-    /// when to show the "at least one searchable field" error.</summary>
+    /// <summary>Set once the user has touched a WordMatching or PatternMatching box — the owner
+    /// uses it to decide when to show the "at least one searched field" error.</summary>
     [Parameter] public bool SearchableTouched { get; set; }
     [Parameter] public EventCallback<bool> SearchableTouchedChanged { get; set; }
     /// <summary>Raised after any edit (the FieldProxy objects are mutated in place).</summary>
@@ -490,7 +491,7 @@
     }
 
     public static bool IsUnused(FieldProxy f) =>
-        f.Searchable != true && f.Filterable != true && f.Facetable != true &&
+        f.WordMatching != true && f.PatternMatching != true && f.Filterable != true && f.Facetable != true &&
         f.Sortable != true && f.Embeddable != true &&
         f.PreloadFilters != true;
 

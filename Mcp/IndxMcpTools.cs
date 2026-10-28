@@ -91,7 +91,7 @@ namespace IndxServer.Mcp
             var fieldCfg = engine.GetFieldConfiguration();
             // Configured fields only (those with at least one role) — the queryable surface.
             var configured = fieldCfg
-                .Where(f => (f.Searchable ?? false) || (f.Filterable ?? false) || (f.Facetable ?? false) || (f.Sortable ?? false))
+                .Where(f => (f.WordMatching ?? false) || (f.PatternMatching ?? false) || (f.Filterable ?? false) || (f.Facetable ?? false) || (f.Sortable ?? false))
                 .ToList();
 
             // One match-all faceted search → facet value hints for all facetable fields + a sample doc.
@@ -104,7 +104,8 @@ namespace IndxServer.Mcp
                 {
                     Name = f.FieldName,
                     Type = (f.FieldType ?? "String").ToLowerInvariant(),
-                    Searchable = f.Searchable ?? false,
+                    WordMatching = f.WordMatching ?? false,
+                    PatternMatching = f.PatternMatching ?? false,
                     Filterable = f.Filterable ?? false,
                     Facetable = f.Facetable ?? false,
                     Sortable = f.Sortable ?? false,
@@ -338,14 +339,15 @@ namespace IndxServer.Mcp
                     ["name"] = f.FieldName,
                     ["type"] = f.FieldType,
                     ["isArray"] = f.IsArray,
-                    ["searchable"] = f.Searchable,
+                    ["wordMatching"] = f.WordMatching,
                     ["filterable"] = f.Filterable,
                     ["facetable"] = f.Facetable,
                     ["sortable"] = f.Sortable,
                     ["weight"] = f.Weight,
                     ["bm25b"] = f.BM25b,
                     ["bm25k1"] = f.BM25k1,
-                    // Matched inside words too, with these sizes and anchors; off, by whole words only.
+                    // Matched inside words, with these sizes and anchors; a field is searched with
+                    // either this or wordMatching, or both.
                     ["patternMatching"] = f.PatternMatching,
                     ["indexSizes"] = f.IndexSizes is { } sizes ? new JsonArray(sizes.Select(s => (JsonNode)s).ToArray()) : null,
                     ["startCharacters"] = f.NumberOfStartCharacters,
@@ -360,7 +362,7 @@ namespace IndxServer.Mcp
                 fields.Add(jf);
             }
 
-            var searchable = cfg.Count(f => f.Searchable == true);
+            var searchable = cfg.Count(f => f.WordMatching == true || f.PatternMatching == true);
             return new JsonObject
             {
                 ["dataset"] = dataset,

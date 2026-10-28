@@ -62,7 +62,7 @@ namespace IndxServer.Components.Datasets
             engine.Init(stream, "key", init);
             init.WaitForCompletion();
             foreach (var field in engine.GetFieldList())
-                if (field.Name == "text") field.Searchable = true;
+                if (field.Name == "text") field.WordMatching = true;
             stream.Position = 0;
             var load = new ProcessMonitor();
             engine.Load(stream, load);

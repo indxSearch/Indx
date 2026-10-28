@@ -28,7 +28,7 @@ namespace IndxServer.Services
     ///
     /// What is left is the question, asked of the library, and the one thing the library still
     /// leaves to the caller: Filterable, Facetable and Sortable are plain properties on Field, so
-    /// only a Searchable or Sortable change raises the notification that persists the
+    /// a change to any field's role raises the notification that persists the
     /// configuration. <see cref="ApplyInPlace"/> saves it explicitly.
     ///
     /// Dropping the Facetable rebuild is the one with a number on it: RunFieldConfigurationOnShadow
@@ -94,7 +94,7 @@ namespace IndxServer.Services
                 if (field == null) continue;   // unknown field: SetFieldConfiguration reports it
 
                 // A null on the proxy means "leave this alone", so only a stated value can differ.
-                Flag(wanted.Searchable, field.Searchable, "searchable");
+                Flag(wanted.WordMatching, field.WordMatching, "word matched");
                 Flag(wanted.Filterable, field.Filterable, "filterable");
                 Flag(wanted.Facetable, field.Facetable, "facetable");
                 Flag(wanted.Sortable, field.Sortable, "sortable");
@@ -160,7 +160,7 @@ namespace IndxServer.Services
             current.RequiresReindex(proposed) || current.RequiresReload(proposed);
 
         /// <summary>Applies a change that needs no rebuild to the live engine, and saves it: the
-        /// library only persists by itself when Searchable or Sortable changes. Returns the name of
+        /// library persists by itself only when told of a change. Returns the name of
         /// a field that does not exist, or null.</summary>
         public static string? ApplyInPlace(IServerSearchEngine engine, FieldProxy[] proposed,
                                            string dataSetName, string teamId)

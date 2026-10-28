@@ -282,7 +282,8 @@ namespace IndxServer.Engine
         private static List<string> RoleNames(FieldProxy f)
         {
             var r = new List<string>();
-            if (f.Searchable == true) r.Add("searchable");
+            if (f.WordMatching == true) r.Add("word matched");
+            if (f.PatternMatching == true) r.Add("pattern matched");
             if (f.Filterable == true) r.Add("filterable");
             if (f.Facetable == true) r.Add("facetable");
             if (f.Sortable == true) r.Add("sortable");
@@ -307,7 +308,8 @@ namespace IndxServer.Engine
             var added = newSchema.Where(n => !oldNames.Contains(n.FieldName)).Select(n => n.FieldName).ToList();
             var removed = oldConfig.Where(o => !newByName.ContainsKey(o.FieldName)).Select(o => o.FieldName).ToList();
 
-            if (oldConfig.Any(o => o.Searchable == true) && !carry.Any(f => f.Searchable == true))
+            static bool Searched(FieldProxy f) => f.WordMatching == true || f.PatternMatching == true;
+            if (oldConfig.Any(Searched) && !carry.Any(Searched))
                 throw new InvalidOperationException(
                     "The new data keeps none of this dataset's searchable fields, so it can't be indexed. " +
                     "Replace preserves the existing field configuration — the new JSON must include at least " +

@@ -364,9 +364,10 @@ else
                 .Select(p => new DisplayField(p.Name, p.Value.ToString()))
                 .ToList();
 
-        var ordered = fields.Where(f => f.Searchable == true)
-            .Concat(fields.Where(f => f.Facetable == true && f.Searchable != true))
-            .Concat(fields.Where(f => f.Searchable != true && f.Facetable != true));
+        static bool Searched(FieldProxy f) => f.WordMatching == true || f.PatternMatching == true;
+        var ordered = fields.Where(Searched)
+            .Concat(fields.Where(f => f.Facetable == true && !Searched(f)))
+            .Concat(fields.Where(f => !Searched(f) && f.Facetable != true));
 
         var result = new List<DisplayField>(max);
         foreach (var f in ordered)

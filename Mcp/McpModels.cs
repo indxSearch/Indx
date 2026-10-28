@@ -34,7 +34,8 @@ namespace IndxServer.Mcp
     {
         public string Name { get; set; } = "";
         public string Type { get; set; } = "";
-        public bool Searchable { get; set; }
+        public bool WordMatching { get; set; }
+        public bool PatternMatching { get; set; }
         public bool Filterable { get; set; }
         public bool Facetable { get; set; }
         public bool Sortable { get; set; }
@@ -100,8 +101,11 @@ namespace IndxServer.Mcp
         /// <summary>The field name, exactly as get_field_configuration reports it.</summary>
         public string Field { get; set; } = string.Empty;
 
-        /// <summary>Include this field's text when matching a query.</summary>
-        public bool? Searchable { get; set; }
+        /// <summary>Match this field by its whole words.</summary>
+        public bool? WordMatching { get; set; }
+
+        /// <summary>Match this field inside its words.</summary>
+        public bool? PatternMatching { get; set; }
 
         /// <summary>Allow filters on this field.</summary>
         public bool? Filterable { get; set; }
@@ -124,7 +128,8 @@ namespace IndxServer.Mcp
         internal Indx.Api.FieldProxy ToProxy() => new()
         {
             FieldName = Field,
-            Searchable = Searchable,
+            WordMatching = WordMatching,
+            PatternMatching = PatternMatching,
             Filterable = Filterable,
             Facetable = Facetable,
             Sortable = Sortable,

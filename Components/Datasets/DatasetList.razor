@@ -398,7 +398,7 @@ else
             var fields = engine?.GetFieldConfiguration();
             if (fields is not { Length: > 0 }) return null;
             return new FieldShape(
-                fields.Count(f => f.Searchable == true),
+                fields.Count(f => f.WordMatching == true || f.PatternMatching == true),
                 fields.Count(f => f.Filterable == true),
                 fields.Count(f => f.Facetable == true),
                 fields.Count(f => f.PreloadFilters == true));
