@@ -660,7 +660,7 @@
         foreach (var key in keys.Take(ProductsShown))
         {
             var json = engine.GetJsonDataOfKey(key);
-            list.Add(new Product(key, TitleOf(json, fields) ?? $"#{key}"));
+            list.Add(new Product(key, RecordTitle.Of(json, fields) ?? $"#{key}"));
         }
         return list;
     }
@@ -671,20 +671,6 @@
         if (scope == null) return null;
         return engine.CreateValueFilter(scope.Field, scope.Value, isCaseSensitive: false, out var error)
             ?? throw new InvalidOperationException($"The records could not be limited to {scope.Label}: {error}");
-    }
-
-    /// <summary>The heaviest searchable field's first value: a title, a name.</summary>
-    private static string? TitleOf(string? json, IReadOnlyList<FieldProxy> fields)
-    {
-        if (string.IsNullOrEmpty(json)) return null;
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            var inspected = DocumentInspection.Build(doc.RootElement, fields);
-            var value = inspected.Indexed.FirstOrDefault(f => f.Values.Count > 0 && f.Field.Embeddable != true)?.Values[0];
-            return value == null ? null : value.Length > 80 ? value[..79] + "…" : value;
-        }
-        catch { return null; }
     }
 
     /// <summary>Hands a rule on this category to the Boost rules tab and opens it.</summary>

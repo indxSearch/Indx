@@ -47,13 +47,13 @@ export function attach(canvas, view, grid, pan) {
 export function initial(canvas, zoom) {
     const s = states.get(canvas);
     if (!s) return;
-    const { cw, ch, sw, sh } = sizes(s);
+    const { cw, ch, sw, sh, cl } = sizes(s);
     if (zoom == null) {
         const fit = fitZoom(cw, ch, sw, sh);
         if (fit >= 0.6) { fitInto(s, fit); return; }
     }
     s.z = clamp(zoom ?? 1);
-    s.x = 0;
+    s.x = cl;
     const root = s.view.querySelector('[aria-level="1"]');
     const rootY = root ? (root.parentElement.offsetTop + root.offsetHeight / 2) * s.z : 0;
     s.y = Math.min(0, Math.max(ch - sh * s.z, ch / 3 - rootY));
@@ -70,6 +70,21 @@ export function command(canvas, action) {
     else if (action === 'out') zoomAt(s, s.z / STEP, cx, cy);
     else if (action === 'reset') zoomAt(s, 1, cx, cy);
     else if (action === 'fit') { const { cw, ch, sw, sh } = sizes(s); fitInto(s, fitZoom(cw, ch, sw, sh)); }
+    else if (action === 'fullscreen') toggleFullscreen(canvas);
+}
+
+// The board fills the screen: the element the page marks data-tree-fullscreen (its panel goes
+// along), else the board. The view is fitted again once the size has changed, in and out.
+function toggleFullscreen(canvas) {
+    if (document.fullscreenElement) { document.exitFullscreen?.(); return; }
+    const target = canvas.closest('[data-tree-fullscreen]') ?? canvas;
+    const refit = () => {
+        document.removeEventListener('fullscreenchange', refit);
+        requestAnimationFrame(() => command(canvas, 'fit'));
+        if (document.fullscreenElement) document.addEventListener('fullscreenchange', refit);
+    };
+    document.addEventListener('fullscreenchange', refit);
+    target.requestFullscreen?.().catch(() => document.removeEventListener('fullscreenchange', refit));
 }
 
 // Focus a node without the browser's own scroll, and pan just enough to bring it into view.
@@ -169,9 +184,13 @@ function wire(s) {
     });
 }
 
+// The controls sit on the board's left edge; a fitted tree keeps clear of them (on a phone the
+// tree came under them): cw is the width right of them.
 function sizes(s) {
     const sheet = s.view.firstElementChild;
-    return { cw: s.canvas.clientWidth, ch: s.canvas.clientHeight, sw: sheet?.offsetWidth ?? 0, sh: sheet?.offsetHeight ?? 0 };
+    const controls = s.canvas.querySelector('.indx-tree-controls');
+    const cl = controls ? controls.offsetLeft + controls.offsetWidth : 0;
+    return { cw: s.canvas.clientWidth - cl, ch: s.canvas.clientHeight, sw: sheet?.offsetWidth ?? 0, sh: sheet?.offsetHeight ?? 0, cl };
 }
 
 function fitZoom(cw, ch, sw, sh) {
@@ -180,9 +199,9 @@ function fitZoom(cw, ch, sw, sh) {
 }
 
 function fitInto(s, z) {
-    const { cw, ch, sw, sh } = sizes(s);
+    const { cw, ch, sw, sh, cl } = sizes(s);
     s.z = z;
-    s.x = (cw - sw * z) / 2;
+    s.x = cl + (cw - sw * z) / 2;
     s.y = (ch - sh * z) / 2;
     apply(s);
 }

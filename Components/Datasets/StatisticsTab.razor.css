@@ -255,3 +255,35 @@
 .stats-waffle ::deep .indx-waffle-grid-wrap { align-self: center; }
 .stats-waffle ::deep .indx-waffle-legend { justify-content: center; }
 .stats-overview-item ::deep .indx-heatmap { align-self: center; }
+
+/* The browsing paths: a board of one height, canvas or list filling it, a step from the table
+   under it; full screen fills the screen with it, the panel included. */
+.stats-paths { position: relative; height: 460px; margin: 8px 0 24px; border-radius: var(--radius); overflow: hidden; }
+.stats-paths:fullscreen { height: 100vh; margin: 0; border-radius: 0; background: var(--lv0); }
+.stats-paths ::deep .indx-tree-canvas { height: 100%; }
+.stats-paths ::deep .indx-tree-list-wrap { height: 100%; overflow: auto; box-sizing: border-box; }
+.stats-paths-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+
+/* A step clicked: a panel over the board's right edge, as the categories' is. */
+.stats-paths ::deep .stats-path-panel {
+    position: absolute; top: 12px; right: 12px; width: 320px; max-width: calc(100% - 24px);
+    max-height: calc(100% - 24px); overflow: auto; scrollbar-gutter: stable; display: flex; flex-direction: column; gap: 10px; z-index: 2;
+}
+.stats-path-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.stats-path-panel-title { font: var(--text-sm); color: var(--lv8); }
+.stats-path-panel-route { font: var(--text-xs); color: var(--lv5); margin-top: 2px; }
+.stats-path-panel-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.stats-path-panel-sub { font: var(--text-xs); color: var(--lv5); }
+.stats-path-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font: var(--text-xs); color: var(--lv7); }
+.stats-path-list li { display: flex; justify-content: space-between; gap: 8px; }
+.stats-path-list li > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stats-path-count { color: var(--lv5); font-variant-numeric: tabular-nums; flex: none; }
+.stats-path-note { margin: 0; font: var(--text-xs); color: var(--lv5); }
+
+.stats-paths-total { margin-left: 8px; font: var(--text-xs); color: var(--lv5); }
+
+/* On a phone the panel would cover the board: docked along its bottom instead, as the categories'
+   is, the tree still in sight above it. */
+@media (max-width: 720px) {
+    .stats-paths ::deep .stats-path-panel { left: 12px; right: 12px; width: auto; top: auto; bottom: 12px; max-height: 60%; }
+}

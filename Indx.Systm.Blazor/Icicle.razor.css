@@ -1,0 +1,20 @@
+/* Blocks placed by share; a 1px seam between neighbours and the rows, drawn as space, not a line. */
+.indx-icicle { position: relative; width: 100%; }
+.indx-icicle-cell { position: absolute; box-sizing: border-box; padding-right: 1px; }
+.indx-icicle-block {
+    display: flex;
+    align-items: center;
+    height: 100%;
+    padding: 0 8px;
+    border-radius: 2px;
+    overflow: hidden;
+    font: var(--text-xs);
+    white-space: nowrap;
+}
+.indx-icicle-label { overflow: hidden; text-overflow: ellipsis; }
+/* From the track's tone where all stopped to a strong one where nearly all went on. */
+.indx-icicle-tone-0 { background: var(--lv2); color: var(--lv6); }
+.indx-icicle-tone-1 { background: var(--lv3); color: var(--lv7); }
+.indx-icicle-tone-2 { background: var(--lv4); color: var(--lv8); }
+.indx-icicle-tone-3 { background: var(--lv5); color: var(--lv0); }
+.indx-icicle-tone-4 { background: var(--lv6); color: var(--lv0); }

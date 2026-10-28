@@ -41,6 +41,35 @@ namespace IndxServer.Services
             }
         }
 
+        /// <summary>A range operand with its bounds, read in the key's culture (empty: invariant).</summary>
+        public readonly record struct RangeOperand(string Field, double Min, double Max);
+
+        /// <summary>The range operands of a key, with their bounds, for the browsing paths' bands. A
+        /// range whose bounds do not read as numbers is skipped, as anything unrecognised is.</summary>
+        public static IEnumerable<RangeOperand> ParseRanges(string? key)
+        {
+            if (string.IsNullOrEmpty(key)) yield break;
+            int i = 0;
+            while (i < key.Length)
+            {
+                if (IsStructural(key[i])) { i++; continue; }
+                int start = i;
+                while (i < key.Length && !IsStructural(key[i])) i++;
+                if (start > 0 && key[start - 1] == '!') continue;
+                var parts = key[start..i].Split(';');
+                if (parts.Length < 4 || parts[0] != "RF") continue;
+                var culture = System.Globalization.CultureInfo.InvariantCulture;
+                if (parts.Length > 4 && parts[4].Length > 0)
+                {
+                    try { culture = System.Globalization.CultureInfo.GetCultureInfo(Unescape(parts[4])); }
+                    catch (System.Globalization.CultureNotFoundException) { continue; }
+                }
+                if (double.TryParse(Unescape(parts[2]), System.Globalization.NumberStyles.Float, culture, out var min)
+                    && double.TryParse(Unescape(parts[3]), System.Globalization.NumberStyles.Float, culture, out var max))
+                    yield return new RangeOperand(Unescape(parts[1]), Math.Min(min, max), Math.Max(min, max));
+            }
+        }
+
         private static bool IsStructural(char c) => c is '\0' or '\u0001' or '&' or '|' or '!';
 
         /// <summary>A copy of <c>Indx.Json.FilterKey.Unescape</c>, which is internal to the

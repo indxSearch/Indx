@@ -113,10 +113,15 @@ else
         @if (Pan)
         {
             <div class="indx-tree-controls" role="toolbar" aria-label="Zoom">
-                <Button Variant="ghost" Size="micro" IconLeft="PlusIcon" aria-label="Zoom in" title="Zoom in (+)" data-tree-action="in" />
-                <Button Variant="ghost" Size="micro" IconLeft="MinusIcon" aria-label="Zoom out" title="Zoom out (-)" data-tree-action="out" />
-                <Button Variant="ghost" Size="micro" IconLeft="FitIcon" aria-label="Fit the tree in view" title="Fit in view (0)" data-tree-action="fit" />
-                <Button Variant="ghost" Size="micro" aria-label="Zoom to 100%" title="Zoom to 100%" data-tree-action="reset"><span class="indx-tree-zoom-label" data-tree-zoom-label></span></Button>
+                @* Each named in a systm Tooltip to its right, the board being to the right of them. *@
+                <Tooltip Content="Zoom in (+)" Position="right"><Button Variant="ghost" Size="micro" IconLeft="PlusIcon" aria-label="Zoom in" data-tree-action="in" /></Tooltip>
+                <Tooltip Content="Zoom out (-)" Position="right"><Button Variant="ghost" Size="micro" IconLeft="MinusIcon" aria-label="Zoom out" data-tree-action="out" /></Tooltip>
+                <Tooltip Content="Fit in view (0)" Position="right"><Button Variant="ghost" Size="micro" IconLeft="FitIcon" aria-label="Fit the tree in view" data-tree-action="fit" /></Tooltip>
+                @if (Fullscreen)
+                {
+                    <Tooltip Content="Full screen (Esc to leave)" Position="right"><Button Variant="ghost" Size="micro" IconLeft="FullscreenIcon" aria-label="Full screen" data-tree-action="fullscreen" /></Tooltip>
+                }
+                <Tooltip Content="Zoom to 100%" Position="right"><Button Variant="ghost" Size="micro" aria-label="Zoom to 100%" data-tree-action="reset"><span class="indx-tree-zoom-label" data-tree-zoom-label></span></Button></Tooltip>
             </div>
         }
     </div>
@@ -136,6 +141,7 @@ else
     private static readonly RenderFragment<int> PlusIcon = size => @<Plus Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> MinusIcon = size => @<Minus Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> FitIcon = size => @<Marquee Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> FullscreenIcon = size => @<Maximize Size="size" Color="currentColor" />;
 
     [Parameter, EditorRequired] public IReadOnlyList<Node> Roots { get; set; } = Array.Empty<Node>();
     /// <summary>The chosen node's id; the path to it is lit.</summary>
@@ -162,6 +168,10 @@ else
     /// the arrows, + - and 0 on it, and the zoom controls in its corner; on by default. Off, the tree is
     /// a still picture at <see cref="Zoom"/> or fitted, for an example inside a page that scrolls.</summary>
     [Parameter] public bool Pan { get; set; } = true;
+    /// <summary>A control to fill the screen with the board: the nearest element the page marks
+    /// <c>data-tree-fullscreen</c> (so a panel beside the board goes along), else the board; Esc
+    /// leaves. On by default where the board pans.</summary>
+    [Parameter] public bool Fullscreen { get; set; } = true;
     /// <summary>A systm pattern behind the tree, faint, moving with it: "grid-12", "grid-24", "grid-6",
     /// "checkerboard", "checkerboard-spaced-4" (6, 8, 10). None by default.</summary>
     [Parameter] public string? Pattern { get; set; }

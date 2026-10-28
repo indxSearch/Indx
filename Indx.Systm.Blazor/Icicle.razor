@@ -1,0 +1,65 @@
+@* A tree as nested blocks, read top to bottom: the root across the top, each node's children in
+   the row under it, a block as wide as its share of the root. A block is toned by how much of it
+   goes on to its children, from the track's tone where all stopped to a strong tone where nearly
+   all went on, and the space a parent leaves under it is the part that stopped there. Made for
+   browsing paths (how visitors narrow a catalogue), and for any tree whose values add up. The
+   block's own text on hover. Port of the React Icicle in indx-systm. *@
+@using System.Globalization
+<div class="indx-icicle @Class" role="img" aria-label="@AriaLabel" style="height: @(Rows * RowHeight)px;">
+    @foreach (var c in Layout())
+    {
+        <div class="indx-icicle-cell" style="@($"left:{P(c.X)}%;width:{P(c.W)}%;top:{c.Depth * RowHeight}px;height:{RowHeight - 2}px;")"
+             title="@(Title?.Invoke(c.Node) ?? $"{c.Node.Label}: {c.Node.Value.ToString("N0", CultureInfo.CurrentCulture)}")">
+            <span class="indx-icicle-block indx-icicle-tone-@Tone(c.Node)"><span class="indx-icicle-label">@c.Node.Label</span></span>
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>A node: its label, its value (itself and everything under it), and its children.</summary>
+    public sealed record Node(string Label, double Value, IReadOnlyList<Node>? Children = null);
+
+    [Parameter, EditorRequired] public Node Root { get; set; } = new("", 0);
+    /// <summary>The height of a row in pixels; 30 by default.</summary>
+    [Parameter] public int RowHeight { get; set; } = 30;
+    /// <summary>The rows drawn, the root's included; deeper nodes are left out.</summary>
+    [Parameter] public int MaxDepth { get; set; } = 6;
+    /// <summary>A block's text on hover; its label and value by default.</summary>
+    [Parameter] public Func<Node, string>? Title { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private readonly record struct Cell(Node Node, int Depth, double X, double W);
+    private int Rows => Math.Min(MaxDepth, DepthOf(Root));
+
+    private static int DepthOf(Node n) => 1 + (n.Children is { Count: > 0 } k ? k.Max(DepthOf) : 0);
+
+    private List<Cell> Layout()
+    {
+        var cells = new List<Cell>();
+        void Place(Node n, int depth, double x, double w)
+        {
+            if (depth >= MaxDepth || w <= 0) return;
+            cells.Add(new Cell(n, depth, x, w));
+            double at = x;
+            foreach (var child in n.Children ?? [])
+            {
+                double cw = Root.Value <= 0 ? 0 : child.Value / Root.Value;
+                Place(child, depth + 1, at, cw);
+                at += cw;
+            }
+        }
+        Place(Root, 0, 0, Root.Value > 0 ? 1 : 0);
+        return cells;
+    }
+
+    // 0 where every one stopped, 4 where nearly all went on to the children.
+    private static int Tone(Node n)
+    {
+        if (n.Value <= 0 || n.Children is not { Count: > 0 } k) return 0;
+        var on = Math.Clamp(k.Sum(c => c.Value) / n.Value, 0, 1);
+        return (int)Math.Round(on * 4);
+    }
+
+    private static string P(double v) => (v * 100).ToString("0.###", CultureInfo.InvariantCulture);
+}

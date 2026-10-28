@@ -628,6 +628,90 @@ else
 
         @if (_section == "browsing")
         {
+            @* Browsing paths (28 Oct 2026): the routes people take through the filters, as a tree by
+               containment of the searches' filters (StatisticsStore.BrowsingPaths), no session and no
+               visitor, so it works whatever the client sends. Read once a period, on opening. *@
+            var paths = Paths();
+            @if (paths.Searches > 0)
+            {
+                <div class="stats-chart-head stats-paths-head">
+                    <span class="stats-chart-title">Paths <span class="stats-paths-total">@N(paths.Searches) filtered @(paths.Searches == 1 ? "search" : "searches")</span></span>
+                    <SegmentedControl Size="micro" Items="PathViews" Value="@_pathView" ValueChanged="@(v => _pathView = v)" AriaLabel="View" />
+                </div>
+                <p class="stats-help">What people filter by, and in what order: each step a field, with the searches that came that way, its ways on to the right, most taken first. Open a step for where people went next; click one for its values and what it finds. Drag or zoom the board. From the single searches, kept @(Stats.RetentionDays) days.</p>
+                @* A board of one height, canvas or list; the frame is what full screen fills, so the panel goes along. *@
+                <div class="stats-paths" data-tree-fullscreen>
+                    <TreeCanvas Roots="PathRoots()" View="@_pathView" Selected="@_pathSelected" SelectedChanged="SelectPath" OpenDepth="2" Pattern="grid-12"
+                                Format="@(n => N(n))" AriaLabel="Browsing paths" />
+                    @if (_pathSelected != null && _pathInfo.TryGetValue(_pathSelected, out var sel))
+                    {
+                        <Surface Class="stats-path-panel">
+                            <div class="stats-path-panel-head">
+                                <div>
+                                    <div class="stats-path-panel-title">@sel.Path[^1]</div>
+                                    @if (sel.Path.Count > 1) { <div class="stats-path-panel-route">@string.Join(" › ", sel.Path)</div> }
+                                </div>
+                                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.No" AriaLabel="Close" @onclick="@(() => { _pathSelected = null; _pathResults = null; })" />
+                            </div>
+                            <div class="stats-path-panel-stats">
+                                <Stat Label="Searches" Value="@N(sel.Node.Searches)" />
+                                <Stat Label="Went on" Value="@Pct(sel.Node.Searches - sel.Node.Here, sel.Node.Searches)" />
+                                <Stat Label="Stopped here" Value="@N(sel.Node.Here)" />
+                            </div>
+                            @if (sel.Node.Empty > 0)
+                            {
+                                <p class="stats-path-note">@N(sel.Node.Empty) of these searches found nothing.</p>
+                            }
+                            @* The step's values, a summary: the most used, the rest counted. *@
+                            @if (sel.Node.Values is { Count: > 1 } values)
+                            {
+                                <div class="stats-path-panel-sub">Values used</div>
+                                <ul class="stats-path-list">
+                                    @foreach (var v in values.Take(5)) { <li><span>@v.Label</span><span class="stats-path-count">@N(v.Count)</span></li> }
+                                </ul>
+                                @if (values.Count > 5)
+                                {
+                                    <p class="stats-path-note">and @(values.Count - 5) more, @N(values.Skip(5).Sum(v => v.Count)) searches between them.</p>
+                                }
+                            }
+                            @if (sel.Node.Children.Count > 0)
+                            {
+                                <div class="stats-path-panel-sub">Where people went next</div>
+                                <ul class="stats-path-list">
+                                    @foreach (var c in sel.Node.Children.Take(5))
+                                    {
+                                        <li><span>@c.Step</span><span class="stats-path-count">@N(c.Searches)</span></li>
+                                    }
+                                </ul>
+                            }
+                            <div class="stats-path-panel-sub">What it finds now</div>
+                            @if (sel.Node.Key == null)
+                            {
+                                <p class="stats-path-note">Several steps folded together; click one of them to see what it finds.</p>
+                            }
+                            else if (_pathResults == null)
+                            {
+                                <p class="stats-path-note">Reading…</p>
+                            }
+                            else if (_pathResults.Value.Error is { } problem)
+                            {
+                                <p class="stats-path-note">@problem</p>
+                            }
+                            else if (_pathResults.Value.Records is not { Count: > 0 } records)
+                            {
+                                <p class="stats-path-note">No records match it now: a value in it may have left the data since.</p>
+                            }
+                            else
+                            {
+                                <ul class="stats-path-list">
+                                    @foreach (var (key, title) in records) { <li><span>@title</span><span class="stats-path-count">#@key</span></li> }
+                                </ul>
+                                <p class="stats-path-note">The first @records.Count, with the filter people used most at this step@(sel.Node.Values is { Count: > 1 } ? $" ({sel.Node.Values[0].Label})" : "").</p>
+                            }
+                        </Surface>
+                    }
+                </div>
+            }
             <p class="stats-help">What people narrowed the catalogue by, with or without typing, and how often it left them nothing.</p>
             @if (_topFilters.Count == 0) { <p class="stats-empty">No filters were used in this period, or Browsing is switched off on the Options tab.</p> }
             else {
@@ -816,6 +900,94 @@ else
     ];
     private List<DocumentStat> _topDocuments = [];
     private List<FilterStat> _topFilters = [];
+    // The browsing paths, read on opening Browsing and kept for the period: they walk every
+    // filtered search in it.
+    private PathNode? _paths;
+    // The canvas's tree, made once with the paths: a new tree on every render had TreeCanvas lay
+    // out and open it afresh after its first view was fitted, and the view showed an edge of it.
+    private IReadOnlyList<TreeCanvas.Node>? _pathRoots;
+    private PathNode Paths()
+    {
+        if (_paths != null) return _paths;
+        var store = Stats.Store;
+        _paths = store == null ? new PathNode("", 0, 0, []) : store.BrowsingPaths(Ctx.TeamId, Ctx.Name, _fromDay, _toDay, _source);
+        _pathInfo.Clear();
+        // No root: it is one block with the total, which the heading says; the first steps are the roots.
+        _pathRoots = _paths.Children.Select(c => PathTree(c, "paths")).ToList();
+        return _paths;
+    }
+    private IReadOnlyList<TreeCanvas.Node> PathRoots() => _pathRoots ?? [];
+
+    private string _pathView = "tree";
+    // The categories' own switch, its labels and icons, so the two boards read alike.
+    private static readonly IReadOnlyList<SegmentedControl.Item> PathViews = [new("tree", "Tree", DatasetIcons.TreeView), new("list", "List", DatasetIcons.ListView)];
+    // The step clicked, every step by its canvas id with its route, and what the step's filter finds.
+    private string? _pathSelected;
+    private readonly Dictionary<string, (PathNode Node, IReadOnlyList<string> Path)> _pathInfo = new();
+    private (string? Error, IReadOnlyList<(long Key, string Title)>? Records)? _pathResults;
+    private int _pathRead;
+    private const int PathResultsShown = 10;
+    private const int PathReadTimeoutMs = 2000;
+
+    /// <summary>A step clicked: its numbers at once, what its filter finds once read, off the page's
+    /// thread; a newer click wins over an older read.</summary>
+    private async Task SelectPath(string id)
+    {
+        _pathSelected = id;
+        _pathResults = null;
+        var read = ++_pathRead;
+        if (!_pathInfo.TryGetValue(id, out var info) || info.Node.Key is not { } key) return;
+        var found = await Task.Run(() => ReadPathResults(key));
+        if (read != _pathRead) return;
+        _pathResults = found;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// What a stored filter finds now. Its fields may have been removed, renamed or made
+    /// unfilterable since it was searched, and its values may have left the data, so each is a
+    /// message, never a failure: the engine's own resolution first (GetFilterFromKey is total and
+    /// answers null for a key it cannot honour, CLAUDE.md "the token IS the filter"), a time limit
+    /// on the search, and anything that still goes wrong said in the panel.
+    /// </summary>
+    private (string? Error, IReadOnlyList<(long Key, string Title)>? Records) ReadPathResults(string key)
+    {
+        try
+        {
+            var engine = Ctx.FindEngine();
+            if (engine == null) return ("The dataset is not loaded, so its records cannot be read now.", null);
+            var filter = engine.GetFilterFromKey(key);
+            if (filter == null) return ("This filter no longer applies: a field in it has been removed, renamed or is no longer Filterable.", null);
+            var query = new global::Indx.Http.QueryProxy
+            {
+                // Facets on, as the categories' read has them: with no text it is the facet pass that
+                // lists the filter's records.
+                Text = string.Empty, MaxNumberOfRecordsToReturn = PathResultsShown, EnableFacets = true,
+                Filter = new global::Indx.Http.FilterProxy(filter.SerializedKey), TimeOutLimitMilliseconds = PathReadTimeoutMs,
+            };
+            var fields = Ctx.SavedFields ?? Array.Empty<global::Indx.Api.FieldProxy>();
+            var records = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId).Records
+                .Take(PathResultsShown)
+                .Select(r => (r.DocumentKey, RecordTitle.Of(engine.GetJsonDataOfKey(r.DocumentKey), fields) ?? $"#{r.DocumentKey}"))
+                .ToList();
+            return (null, records);
+        }
+        catch (Exception ex)
+        {
+            return ($"The records could not be read: {ex.Message}", null);
+        }
+    }
+
+    /// <summary>A path step as a pill of the canvas: its step, its searches; the folds ("Other", the
+    /// "…" past the depth) dimmed, since they are not a step.</summary>
+    private TreeCanvas.Node PathTree(PathNode n, string parentId, IReadOnlyList<string>? route = null)
+    {
+        var id = $"{parentId}/{n.Step}";
+        IReadOnlyList<string> path = [.. route ?? [], n.Step];
+        _pathInfo[id] = (n, path);
+        return new TreeCanvas.Node(id, n.Step, (int)Math.Min(n.Searches, int.MaxValue),
+            n.Children.Select(c => PathTree(c, id, path)).ToList(), Muted: n.Step is "Other" or "…");
+    }
     private List<ChangeStat> _changes = [];
     private (long Inserted, long Updated, long Deleted) _documentTotals;
     private IReadOnlyList<Chart.ChartSeries> _series = [];
@@ -1013,6 +1185,10 @@ else
             LoadSearchOrAsk(store, team, ds, fromDay, toDay, source);
             LoadLists(store);
             _topFilters = store.TopFilters(team, ds, fromDay, toDay, 10, source);
+            _paths = null;
+            _pathRoots = null;
+            _pathSelected = null;
+            _pathResults = null;
             _changes = store.Changes(team, ds, fromDay, toDay);
             if (_changeKind != null && !_changes.Any(c => c.Kind == _changeKind)) _changeKind = null;
             var documentDays = store.DocumentChanges(team, ds, fromDay, toDay);
