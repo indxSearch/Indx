@@ -211,6 +211,7 @@
                     {
                         <SelectField Label="Answer model" Options="ModelOptions(_answerModel, _defaults.Answer)" Value="@_answerModel" ValueChanged="@(v => _answerModel = v ?? "")" />
                         <SelectField Label="Fast answer model" Options="ModelOptions(_fastModel, _defaults.Fast)" Value="@_fastModel" ValueChanged="@(v => _fastModel = v ?? "")" />
+                        @MoreModels(@<SelectField Label="Offer another model" Options="MoreModelOptions" Value="@("")" ValueChanged="@(v => AddMoreModel(v))" />)
                         <SelectField Label="Filter model" Options="ModelOptions(_filterModel, _defaults.Filter)" Value="@_filterModel" ValueChanged="@(v => _filterModel = v ?? "")" />
                         <p class="settings-note">
                             The models the provider offers@(_provider == "openrouter" && _euRouting ? " in the EU" : ""), read from its own list.
@@ -225,6 +226,10 @@
                         @* No list to choose from (no key yet, or an endpoint without one): the names are typed. *@
                         <InputField Label="Answer model" @bind-Value="_answerModel" placeholder="@_defaults.Answer" />
                         <InputField Label="Fast answer model" @bind-Value="_fastModel" placeholder="@_defaults.Fast" />
+                        @MoreModels(@<div class="settings-add-model">
+                            <InputField Label="Offer another model" @bind-Value="_moreModelText" />
+                            <Button Variant="secondary" Size="micro" Disabled="@string.IsNullOrWhiteSpace(_moreModelText)" @onclick="() => { AddMoreModel(_moreModelText); _moreModelText = string.Empty; }">Add</Button>
+                        </div>)
                         <InputField Label="Filter model" @bind-Value="_filterModel" placeholder="@_defaults.Filter" />
                         <p class="settings-note">
                             @(_modelsProblem ?? "The provider gave no list of models.") The model names are typed; left empty, the provider's default in grey is used.
@@ -347,6 +352,8 @@
     private string _judgeProvider = "openrouter";
     private string _answerSpeed = "standard";
     private string _answerModel = "", _fastModel = "", _filterModel = "";
+    private List<string> _moreModels = [];
+    private string _moreModelText = "";
     private IReadOnlyList<ModelOption>? _models;
     private string? _modelsProblem;
     private bool _modelsLoading;
@@ -393,6 +400,34 @@
 
     /// <summary>The provider's models for one role: the default first (an empty value), then the
     /// list; a saved name the list does not hold stays choosable, marked, rather than vanishing.</summary>
+    /// <summary>The models offered to the datasets beside the answer and fast answer models, each
+    /// removable, then the field that adds one. A dataset owner chooses among all of them.</summary>
+    private RenderFragment MoreModels(RenderFragment add) => __builder =>
+    {
+        <div class="settings-more-models">
+            @foreach (var m in _moreModels)
+            {
+                <div class="settings-more-model">
+                    <span class="settings-mono">@m</span>
+                    <Button Variant="ghost" Size="micro" IconLeft="IndxServer.Components.Datasets.DatasetIcons.Delete" aria-label="@($"Stop offering {m}")" @onclick="() => _moreModels.Remove(m)" />
+                </div>
+            }
+            @add
+            <p class="settings-note">Dataset owners choose which model writes their answers: the two above, or one offered here. A model taken off this list moves its datasets back to the answer or fast answer model.</p>
+        </div>
+    };
+
+    private IEnumerable<SelectField.SelectOption> MoreModelOptions =>
+        new[] { new SelectField.SelectOption("Choose a model", "") }
+            .Concat(_models!.Where(m => !_moreModels.Contains(m.Id))
+                .Select(m => new SelectField.SelectOption(m.Price is { } p ? $"{m.Id} · {p}" : m.Id, m.Id)));
+
+    private void AddMoreModel(string? model)
+    {
+        model = model?.Trim();
+        if (!string.IsNullOrEmpty(model) && !_moreModels.Contains(model)) _moreModels.Add(model);
+    }
+
     private IEnumerable<SelectField.SelectOption> ModelOptions(string current, string fallback)
     {
         var options = new List<SelectField.SelectOption>
@@ -538,7 +573,7 @@
     private (string, bool, bool, bool, bool, string, string, string) _saved;
     private (string, bool, bool, bool, bool, string, string, string) Current =>
         (_instanceName, _requireEmailVerification, _allowUserSelfDeletion, _mcpEnabled, _searchOrAskShown, _registrationMode, _allowedDomainsText,
-         string.Join('\n', _provider, _baseUrl, _euRouting, _judgeProvider, _answerSpeed, _answerModel, _fastModel, _filterModel, _originsText));
+         string.Join('\n', _provider, _baseUrl, _euRouting, _judgeProvider, _answerSpeed, _answerModel, _fastModel, _filterModel, string.Join(',', _moreModels), _originsText));
     private bool IsDirty => Current != _saved;
 
     private bool _loaded;
@@ -589,6 +624,7 @@
         _answerModel = settings.SearchOrAskAnswerModel ?? "";
         _fastModel = settings.SearchOrAskFastAnswerModel ?? "";
         _filterModel = settings.SearchOrAskFilterModel ?? "";
+        _moreModels = settings.SearchOrAskMoreAnswerModels?.ToList() ?? [];
         _registrationMode = settings.RegistrationMode.ToString();
         _allowedDomainsText = string.Join("\n", settings.AllowedDomains);
         // Until an admin saves a list, the configuration's (Cors:AllowedOrigins) is the one in force.
@@ -641,6 +677,7 @@
             settings.SearchOrAskAnswerModel = string.IsNullOrWhiteSpace(_answerModel) ? null : _answerModel.Trim();
             settings.SearchOrAskFastAnswerModel = string.IsNullOrWhiteSpace(_fastModel) ? null : _fastModel.Trim();
             settings.SearchOrAskFilterModel = string.IsNullOrWhiteSpace(_filterModel) ? null : _filterModel.Trim();
+            settings.SearchOrAskMoreAnswerModels = _moreModels.Count > 0 ? [.. _moreModels] : null;
             settings.RegistrationMode = mode;
             settings.AllowedDomains = domains;
             if (settings.AllowedOrigins is not null || _originsText != _originsLoaded)

@@ -84,7 +84,7 @@ namespace IndxServer.Services.SearchOrAsk
     /// 26 Oct 2026, read as the keys of the providers they were saved for.</remarks>
     public sealed record SearchOrAskProviderSettings(string? Provider = null, string? ApiKey = null, string? BaseUrl = null, bool EuRouting = false,
         string? JudgeProvider = null, string? JudgeApiKey = null, string? AnswerModel = null, string? FastAnswerModel = null, string? FilterModel = null,
-        IReadOnlyDictionary<string, string>? Keys = null, string? AnswerSpeed = null)
+        IReadOnlyDictionary<string, string>? Keys = null, string? AnswerSpeed = null, IReadOnlyList<string>? MoreAnswerModels = null)
     {
         /// <summary>The console's keys by provider, the two older single keys among them.</summary>
         public Dictionary<string, string> AllKeys()
@@ -108,7 +108,8 @@ namespace IndxServer.Services.SearchOrAsk
         string Provider, string? AnswerKey, string AnswerBaseUrl,
         string JudgeProvider, string? JudgeKey, string JudgeEndpoint, string JudgeModel,
         string AnswerModel, string FastAnswerModel, string FilterModel,
-        bool EuRouting, IReadOnlyDictionary<string, string>? Keys = null, string? AnswerSpeed = null)
+        bool EuRouting, IReadOnlyDictionary<string, string>? Keys = null, string? AnswerSpeed = null,
+        IReadOnlyList<string>? MoreAnswerModels = null)
     {
         /// <summary>A provider's key, wherever it came from, or null.</summary>
         public string? KeyFor(string provider) => Keys != null && Keys.TryGetValue(provider, out var k) ? k : null;
@@ -146,6 +147,18 @@ namespace IndxServer.Services.SearchOrAsk
         }
 
         public string AnswerModelFor(string answers) => answers == SearchOrAskSettings.FastAnswers ? FastAnswerModel : AnswerModel;
+
+        /// <summary>The models a dataset may write its answers with: the answer model, the fast one,
+        /// then the others the admin offers, each once.</summary>
+        public IReadOnlyList<string> OfferedModels =>
+            new[] { AnswerModel, FastAnswerModel }.Concat(MoreAnswerModels ?? [])
+                .Where(m => !string.IsNullOrWhiteSpace(m)).Distinct(StringComparer.Ordinal).ToList();
+
+        /// <summary>The model a dataset's answers are written with: the one it chose while the
+        /// instance still offers it, else the one <c>answers</c> names. An admin who withdraws a
+        /// model moves its datasets back to their preset rather than failing their answers.</summary>
+        public string ModelFor(SearchOrAskSettings settings) =>
+            settings.AnswerModel is { } chosen && OfferedModels.Contains(chosen) ? chosen : AnswerModelFor(settings.Answers);
 
         /// <summary>The keys the configuration holds, by provider: <c>Keys:OpenRouter</c> and the rest,
         /// and the older single <c>ApiKey</c> and <c>JudgeApiKey</c> for the providers they serve.
@@ -214,11 +227,14 @@ namespace IndxServer.Services.SearchOrAsk
                 ? SearchOrAskProviders.Ultrafast : null;
 
             var (answer, fast, filter) = ModelDefaults.For(provider);
+            var more = (provider == SearchOrAskProviders.OpenRouter && o.MoreAnswerModels is { Length: > 0 } configured
+                    ? configured : c.MoreAnswerModels ?? [])
+                .Where(m => !string.IsNullOrWhiteSpace(m)).Select(m => m.Trim()).Distinct(StringComparer.Ordinal).ToList();
             return new SearchOrAskSetup(provider, answerKey, answerBase, judgeProvider, judgeKey, judgeEndpoint, judgeModel,
                 Pick(provider == SearchOrAskProviders.OpenRouter ? o.AnswerModel : null, c.AnswerModel, answer),
                 Pick(provider == SearchOrAskProviders.OpenRouter ? o.FastAnswerModel : null, c.FastAnswerModel, fast),
                 Pick(provider == SearchOrAskProviders.OpenRouter ? o.FilterModel : null, c.FilterModel, filter),
-                eu, keys, speed);
+                eu, keys, speed, more);
         }
     }
 

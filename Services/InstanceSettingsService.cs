@@ -73,6 +73,8 @@ internal class InstanceSettings
     public string? SearchOrAskAnswerSpeed { get; set; }
     public string? SearchOrAskAnswerModel { get; set; }
     public string? SearchOrAskFastAnswerModel { get; set; }
+    /// <summary>Models offered to the datasets beside the answer and fast answer models.</summary>
+    public List<string>? SearchOrAskMoreAnswerModels { get; set; }
     public string? SearchOrAskFilterModel { get; set; }
 
     /// <summary>True once the first-run onboarding (admin account + team + instance settings)

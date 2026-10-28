@@ -50,6 +50,10 @@ namespace IndxServer.Services.SearchOrAsk
         public string? AnswerModel { get; set; }
         public string? FastAnswerModel { get; set; }
         public string? FilterModel { get; set; }
+        /// <summary>Models offered to the datasets beside the two above, which a dataset owner may
+        /// choose to write its answers (<see cref="SearchOrAskSettings.AnswerModel"/>). Null: the
+        /// console's list.</summary>
+        public string[]? MoreAnswerModels { get; set; }
 
 
         /// <summary>A judgement later than this is no use to a visitor who has typed on; the

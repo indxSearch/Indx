@@ -59,7 +59,7 @@ namespace IndxServer.Services.SearchOrAsk
         public static SearchOrAskProviderSettings ProvidersOf(InstanceSettings s) =>
             new(s.SearchOrAskProvider, s.SearchOrAskApiKey, s.SearchOrAskBaseUrl, s.SearchOrAskEuRouting,
                 s.SearchOrAskJudgeProvider, s.SearchOrAskJudgeApiKey, s.SearchOrAskAnswerModel, s.SearchOrAskFastAnswerModel, s.SearchOrAskFilterModel,
-                s.SearchOrAskKeys, s.SearchOrAskAnswerSpeed);
+                s.SearchOrAskKeys, s.SearchOrAskAnswerSpeed, s.SearchOrAskMoreAnswerModels);
     }
 
     /// <summary>An earlier question and its answer in the same conversation, for a follow-up.</summary>
@@ -675,7 +675,7 @@ namespace IndxServer.Services.SearchOrAsk
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             var settings = trial ?? Settings(teamId, dataSetName);
             var fields = Fields(settings, engine.GetFieldList());
-            var model = Setup.AnswerModelFor(settings.Answers);
+            var model = Setup.ModelFor(settings);
             var outcome = "stopped";
             long? firstText = null;
             var usage = new AnswerUsage();
@@ -695,10 +695,10 @@ namespace IndxServer.Services.SearchOrAsk
             {
                 // A catalogue's description is answered with what it finds; a question about one item
                 // (no filter asked for) goes on to the ordinary answer below.
-                // With answers: best, a catalogue's question goes to the agent, which searches until it has
+                // With searches: several, a catalogue's question goes to the agent, which searches until it has
                 // the answer and puts the list on the page; it falls back to the quick summary below.
                 if (settings.Kind == SearchOrAskRecipes.Catalogue
-                    && settings.Answers == SearchOrAskSettings.BestAnswers
+                    && settings.SearchesResolved() == SearchOrAskSettings.SeveralSearches
                     && await AgentAnswerAsync(teamId, dataSetName, engine, settings, fields, question, history, model, askId, send, started, ct)
                         is { } agent)
                 {

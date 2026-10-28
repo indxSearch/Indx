@@ -186,8 +186,14 @@
                              @if (_knowledgeError != null) { <span class="soa-error">@_knowledgeError</span> }
                          </div>)
                     @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
-                         _edit.Answers != SearchOrAskSettings.BestAnswers,
-                         @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
+                         _edit.AnswerModel != null || _edit.Answers != SearchOrAskSettings.BestAnswers,
+                         @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@Service.Setup.ModelFor(_edit)" ValueChanged="ChooseModel" /></div>)
+                    @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                    {
+                        @Row(Icon<Icons.Loop>(), "Searches", "Several, as an agent, or one.",
+                             _edit.Searches != null,
+                             @<div class="soa-select"><SelectField Size="micro" Options="SearchesOptions" Value="@_edit.SearchesResolved()" ValueChanged="@(v => _edit.Searches = v)" /></div>)
+                    }
                     @Row(Icon<Icons.Paragraph>(), "Answer instructions", "The answers' voice and house rules.",
                          !string.IsNullOrWhiteSpace(_edit.AnswerInstructions),
                          @<Textarea Rows="3" @bind-Value="_edit.AnswerInstructions" placeholder="Formal. Say du. Never recommend another shop." />)
@@ -506,11 +512,35 @@
         _ => "A quiet invitation early, the full offer once the judge is sure.",
     };
 
-    private IEnumerable<SelectField.SelectOption> AnswerOptions =>
+    /// <summary>The models the instance offers, each with its median time to first words on this
+    /// dataset over the last 30 days where it has answered: what a model was here, not a promise.</summary>
+    private IEnumerable<SelectField.SelectOption> AnswerOptions => Service.Setup.OfferedModels.Select(m =>
+    {
+        var label = ModelName(m);
+        if (m == Service.Setup.AnswerModel) label += ", best quality";
+        else if (m == Service.Setup.FastAnswerModel) label += ", fast";
+        if (_firstText.TryGetValue(m, out var t))
+            label += $" · first words {t.MedianMs / 1000.0:0.0} s here ({t.Answers:N0} {(t.Answers == 1 ? "answer" : "answers")})";
+        return new SelectField.SelectOption(label, m);
+    });
+
+    /// <summary>The instance's answer and fast models are the presets (<c>answers</c>); any other
+    /// is named. Choosing a preset clears the name, so the dataset follows the admin's choice.</summary>
+    private void ChooseModel(string? model)
+    {
+        if (model == null) return;
+        if (model == Service.Setup.AnswerModel) (_edit.Answers, _edit.AnswerModel) = (SearchOrAskSettings.BestAnswers, null);
+        else if (model == Service.Setup.FastAnswerModel) (_edit.Answers, _edit.AnswerModel) = (SearchOrAskSettings.FastAnswers, null);
+        else (_edit.Answers, _edit.AnswerModel) = (SearchOrAskSettings.BestAnswers, model);
+    }
+
+    private static readonly SelectField.SelectOption[] SearchesOptions =
     [
-        new($"Best quality ({ModelName(Service.Setup.AnswerModel)}), first words in 3 to 5 s", SearchOrAskSettings.BestAnswers),
-        new($"Fast ({ModelName(Service.Setup.FastAnswerModel)}), first words in about 1 s", SearchOrAskSettings.FastAnswers),
+        new("Several, as an agent", SearchOrAskSettings.SeveralSearches),
+        new("One search", SearchOrAskSettings.OneSearch),
     ];
+
+    private Dictionary<string, (long MedianMs, int Answers)> _firstText = [];
 
     /// <summary>"anthropic/claude-sonnet-5.5" as "claude-sonnet-5.5": the provider adds nothing here.</summary>
     private static string ModelName(string model) => model[(model.IndexOf('/') + 1)..];
@@ -743,6 +773,11 @@
         _effective = new SearchOrAskEffective(_effectiveSite, fields.TitleField, fields.SectionFields, fields.SnippetFields,
             _edit.AskPhrases ?? SearchOrAskPhrases.Default);
         _callsToday = Service.CallsToday(Ctx.TeamId, Ctx.Name);
+        if (Services.GetService(typeof(IndxServer.Services.StatisticsService)) is IndxServer.Services.StatisticsService { Store: { } store })
+        {
+            var today = store.Today(Ctx.TeamId, Ctx.Name);
+            _firstText = store.FirstTextByModel(Ctx.TeamId, Ctx.Name, today - 29, today);
+        }
     }
 
     private static string Json(SearchOrAskSettings s) => JsonSerializer.Serialize(s, JsonOpts);
@@ -769,7 +804,8 @@
         ["About the site"] = "One or two sentences the judge and the answer model read with every request, such as \"A furniture shop's catalogue for customers in Norway.\" It helps the judge tell a question from a lookup on this site, and gives the answers their frame.",
         ["About the fields"] = "For turning a description into filters. Each line names a value and what it means on this site, such as \"barneskole: grades 1 to 7\" or \"friskole: private school\", so \"schools for young children\" can become the filter barneskole.",
         ["Knowledge"] = "Facts about the site for the answers, such as what the set covers, what a rating means, that prices include VAT, delivery times, or what is not sold. An answer may state them, saying the site says so; a record still decides about itself. Not read by the judge. It goes to the answer model with every question, so keep it short and leave out anything confidential. How to answer belongs in Answer instructions, what a value means in About the fields.",
-        ["Answers"] = "Best: the stronger model. On a catalogue it can search several times, sort and filter until it has the answer. Fast: the quicker model, answering from one search. Both answer from the records only.",
+        ["Answers"] = "The model that writes the answers, from the ones this instance offers. Best quality and fast are the instance's own choices and follow them if an admin changes them; the others are named. Where a model has answered here, its median time to the first words over the last 30 days is beside it. Every model answers from the records only.",
+        ["Searches"] = "How a question is answered on a catalogue. Several: an agent that searches, sorts and filters as often as it needs, then answers; the best answers, about 10 seconds. One: one search turned into filters, then a summary of what it found; quicker and cheaper, and it misses what a single search cannot see. Follows the model choice until set: several with best quality, one with fast.",
         ["Answer instructions"] = "How the answers should speak: voice, house rules, what to say when nothing is found, such as \"Formal. Say du. Never recommend another shop.\" They shape the wording; what an answer may claim stays bound to the records.",
         ["Answer language"] = "By default an answer is written in the language the question is asked in. Choose a language to write every answer in it, whatever the visitor writes.",
         ["Mode"] = "How forward the offer is. Strict: only the full offer, for a site where a wrong offer costs more than a missed one. Soft: the quiet \"Ask about this\" early and the full offer when sure. Open: an Ask button whenever something is typed, and Enter asks; the judge decides only how strong it looks. Inviting: Open, with \"For a quick answer, type a bit more\" sweeping as soon as the judge reads a question starting (Hint, below), but no answer until the visitor asks; meant to teach visitors that the field answers. Proactive: Inviting, and the answer starts by itself once the judge is sure, reads the question as finished, and the visitor has stopped typing for a second, as Notion's search does. The thresholds below apply in all five.",

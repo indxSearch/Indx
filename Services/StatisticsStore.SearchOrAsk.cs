@@ -464,6 +464,29 @@ SELECT
             return new AskOverviewStat(L(0), L(1), L(2), L(3), L(4), L(5), L(6), L(7), L(8), L(9), sums[10], median, L(11));
         }
 
+        /// <summary>The median time to an answer's first words per model, and how many answers it is
+        /// read from, so an owner choosing a model sees what it was on this dataset. Counted answers
+        /// only, from the raw rows (within retention).</summary>
+        public Dictionary<string, (long MedianMs, int Answers)> FirstTextByModel(string teamId, string dataSet, long fromDay, long toDay)
+        {
+            var tz = ZoneOf(teamId, dataSet);
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"SELECT Model, FirstTextMs FROM AskEvents a
+                WHERE a.TeamId = $t AND a.DataSet = $d AND a.Timestamp >= $from AND a.Timestamp < $to AND a.Counted = 1
+                  AND a.FirstTextMs IS NOT NULL ORDER BY Model, FirstTextMs";
+            AddWindow(cmd, teamId, dataSet, StatisticsDays.Start(tz, fromDay), StatisticsDays.Start(tz, toDay + 1), null);
+            var byModel = new Dictionary<string, List<long>>(StringComparer.Ordinal);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+            {
+                var model = r.GetString(0);
+                if (!byModel.TryGetValue(model, out var all)) byModel[model] = all = [];
+                all.Add(r.GetInt64(1));
+            }
+            return byModel.ToDictionary(m => m.Key, m => (m.Value[m.Value.Count / 2], m.Value.Count), StringComparer.Ordinal);
+        }
+
         /// <summary>The questions asked in the window, the ones the content did not answer first,
         /// then the most asked. From the raw rows: a question list is within retention.</summary>
         public List<AskQuestionStat> TopQuestions(string teamId, string dataSet, long fromDay, long toDay,

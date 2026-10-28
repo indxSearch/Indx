@@ -129,8 +129,28 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>Which answer model writes: <c>best</c> (the default; quality first) or <c>fast</c>
         /// (first words sooner, a third of the cost). The models are the instance's
-        /// (<see cref="SearchOrAskOptions.AnswerModel"/>, <see cref="SearchOrAskOptions.FastAnswerModel"/>).</summary>
+        /// (<see cref="SearchOrAskOptions.AnswerModel"/>, <see cref="SearchOrAskOptions.FastAnswerModel"/>).
+        /// <see cref="AnswerModel"/>, when set, names the model instead.</summary>
         public string Answers { get; set; } = BestAnswers;
+
+        /// <summary>A model the instance offers, by its id, to write the answers with (28 Oct 2026).
+        /// Null: the one <see cref="Answers"/> names. One the instance stops offering falls back to
+        /// that too (<see cref="SearchOrAskSetup.ModelFor"/>).</summary>
+        public string? AnswerModel { get; set; }
+
+        public const int MaxAnswerModel = 200;
+
+        /// <summary>On a catalogue, how a question is answered: <c>several</c>, an agent that searches,
+        /// sorts and filters until it has the answer, or <c>one</c>, a single search and a summary of
+        /// what it found. Null follows <see cref="Answers"/>, as before the two were apart (28 Oct
+        /// 2026): <c>best</c> several, <c>fast</c> one. Apart, a stronger model can answer from one
+        /// search, or a quicker one search several times.</summary>
+        public string? Searches { get; set; }
+        public const string SeveralSearches = "several";
+        public const string OneSearch = "one";
+
+        /// <summary><see cref="Searches"/> resolved.</summary>
+        public string SearchesResolved() => Searches ?? (Answers == FastAnswers ? OneSearch : SeveralSearches);
 
         /// <summary>The words a question is built with, taken off its start so the list searches what
         /// it is about while the visitor types (<see cref="SearchOrAskPhrases"/>). Null: the default
@@ -162,6 +182,10 @@ namespace IndxServer.Services.SearchOrAsk
                 return $"siteDescription is at most {MaxSiteDescription} characters.";
             if (Answers is not (BestAnswers or FastAnswers))
                 return $"answers must be {BestAnswers} or {FastAnswers}.";
+            if (Searches is not (null or SeveralSearches or OneSearch))
+                return $"searches must be {SeveralSearches} or {OneSearch}.";
+            if (AnswerModel is { Length: > MaxAnswerModel })
+                return $"answerModel is at most {MaxAnswerModel} characters.";
             if (FiltersWhileTyping is not (FiltersOff or FiltersFromFacets or FiltersWithModel))
                 return $"filtersWhileTyping must be {FiltersOff}, {FiltersFromFacets} or {FiltersWithModel}.";
             foreach (var (name, v) in new[] { ("cutShareOfTop", CutShareOfTop), ("cutTopFloor", CutTopFloor) })
@@ -262,6 +286,10 @@ namespace IndxServer.Services.SearchOrAsk
         [property: JsonPropertyName("effective")] SearchOrAskEffective Effective,
         bool Available);
 
+    /// <param name="AnswerModel">The model the answers are written with.</param>
+    /// <param name="Searches">How a catalogue's question is answered: several or one.</param>
+    /// <param name="AnswerModels">The models the instance offers for <c>answerModel</c>.</param>
     public sealed record SearchOrAskEffective(string SiteDescription, string? TitleField,
-        IReadOnlyList<string> SectionFields, IReadOnlyList<string> SnippetFields, SearchOrAskPhrases AskPhrases);
+        IReadOnlyList<string> SectionFields, IReadOnlyList<string> SnippetFields, SearchOrAskPhrases AskPhrases,
+        string? AnswerModel = null, string? Searches = null, IReadOnlyList<string>? AnswerModels = null);
 }

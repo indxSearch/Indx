@@ -75,7 +75,8 @@ namespace IndxServer.Controllers
             var fields = SearchOrAskService.Fields(settings, engine?.DocumentFields == null ? null : engine.GetFieldList());
             return new SearchOrAskSettingsResponse(settings,
                 new SearchOrAskEffective(service.SiteDescription(ctx.OwnerKey, dataSetName, settings),
-                    fields.TitleField, fields.SectionFields, fields.SnippetFields, settings.AskPhrases ?? SearchOrAskPhrases.Default),
+                    fields.TitleField, fields.SectionFields, fields.SnippetFields, settings.AskPhrases ?? SearchOrAskPhrases.Default,
+                    service.Setup.ModelFor(settings), settings.SearchesResolved(), service.Setup.OfferedModels),
                 service.Available);
         }
 
@@ -93,6 +94,9 @@ namespace IndxServer.Controllers
                 return ApiProblems.InvalidArgument("A body with the settings is required.");
             if (settings.Validate() is { } invalid)
                 return ApiProblems.InvalidArgument(invalid);
+            settings.AnswerModel = string.IsNullOrWhiteSpace(settings.AnswerModel) ? null : settings.AnswerModel.Trim();
+            if (settings.AnswerModel is { } chosen && !service.Setup.OfferedModels.Contains(chosen))
+                return ApiProblems.InvalidArgument($"answerModel must be one the instance offers: {string.Join(", ", service.Setup.OfferedModels)}.");
             // Whether the dataset has the feature is a team admin's (PUT shown), not an editor's.
             settings.Shown = store.Load(ctx.OwnerKey, dataSetName)?.Shown ?? false;
             store.Save(ctx.OwnerKey, dataSetName, settings);

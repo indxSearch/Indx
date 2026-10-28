@@ -45,6 +45,10 @@
 .settings-note { font: var(--text-xs); color: var(--lv4); margin: 0; }
 .settings-indent { margin: 4px 0 0 48px; }
 .settings-mono { color: var(--lv6); font-family: var(--font-mono); }
+.settings-more-models { display: flex; flex-direction: column; gap: 8px; }
+.settings-more-model { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.settings-add-model { display: flex; align-items: flex-end; gap: 8px; }
+.settings-add-model > :first-child { flex: 1; }
 .settings-try { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 
 /* The keys: one row a provider, its name, whether its key works, and the steps for it. */
