@@ -1712,7 +1712,8 @@ namespace IndxServer.Engine
                 MeasureFit = queryProxy.MeasureFit,
                 EnableBoost = queryProxy.EnableBoost,
                 EnableBury = queryProxy.EnableBury,
-                EnableCoverage = queryProxy.EnableCoverage,
+                // The wire keeps EnableCoverage until the proxy takes the mode (fastpath step 6, backlog 70).
+                Mode = queryProxy.EnableCoverage ? SearchMode.Coverage : SearchMode.Bm25f,
                 EnableCoverageReport = queryProxy.EnableCoverageReport,
                 EnableFacets = queryProxy.EnableFacets,
                 SortAscending = queryProxy.SortAscending,
