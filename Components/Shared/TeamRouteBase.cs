@@ -84,6 +84,9 @@ namespace IndxServer.Components.Shared
             var wasTeam = Team?.Id;
             Team = entry.Value.Team;
             Role = entry.Value.Role;
+            // The page is checked for NoTeam before TeamResolved, and the same instance lives on
+            // when the welcome screen creates the user's first team and navigates to it.
+            NoTeam = false;
             // SwitchAsync raises OnChange; that handler must not run its own load concurrently
             // with OnTeamResolvedAsync on the same scoped DbContext.
             _resolving = true;

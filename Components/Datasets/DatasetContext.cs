@@ -259,6 +259,12 @@ namespace IndxServer.Components.Datasets
         // ── UI state shared between tabs ──────────────────────────────────────
         public string ActiveTab { get; set; } = "fields";
 
+        /// <summary>A tab the address asked for that a sleeping dataset cannot open (Boost rules
+        /// on a hibernated one, say, from the command palette). The page shows the wake view, and
+        /// the panel opens this tab once the dataset is Ready, so Wake up leads where the link
+        /// was going. Cleared when the user picks a tab.</summary>
+        public string? WakeTab { get; set; }
+
         /// <summary>A rule the Categories tab asks the Boost rules tab to start: a value condition per
         /// level of the category (one for a path field, one per field of a group). The Boost rules
         /// tab takes it when it next renders and clears it; nothing is saved until the editor saves.</summary>

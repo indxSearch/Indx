@@ -48,19 +48,19 @@ else if (TeamResolved)
        view stays up, which is what was on screen anyway. *@
     @switch (_view)
     {
-        case View.Dataset when Dataset != null:
+        case ConsoleView.Dataset when Dataset != null:
             <DatasetView TeamName="@Team!.Name" TeamId="@TeamId" Role="@Role" Dataset="@Dataset" />
             break;
-        case View.Settings:
+        case ConsoleView.Settings:
             <TeamSettingsView Team="@(Team!)" Role="@Role" UserId="@UserId" />
             break;
-        case View.Observr:
+        case ConsoleView.Observr:
             <TeamObservrView Team="@(Team!)" Role="@Role" />
             break;
-        case View.ObservrDatasets:
+        case ConsoleView.ObservrDatasets:
             <TeamObservrDatasetsView Team="@(Team!)" Role="@Role" />
             break;
-        case View.Keys:
+        case ConsoleView.Keys:
             <TeamKeysView Team="@(Team!)" Role="@Role" UserId="@UserId" />
             break;
         default:
@@ -95,8 +95,7 @@ else if (TeamResolved)
     /// <summary>The open dataset. Under /datasets/{x} (legacy) it is forwarded to the team.</summary>
     [Parameter] public string? Dataset { get; set; }
 
-    private enum View { Team, Settings, Observr, ObservrDatasets, Keys, Dataset }
-    private View _view;
+    private ConsoleView _view;
 
     protected override void OnInitialized()
     {
@@ -114,16 +113,8 @@ else if (TeamResolved)
         InvokeAsync(StateHasChanged);
     }
 
-    private View ViewFromUri()
-    {
-        var path = NavigationManager.ToBaseRelativePath(NavigationManager.Uri).TrimEnd('/');
-        if (path.EndsWith("/settings", StringComparison.OrdinalIgnoreCase)) return View.Settings;
-        if (path.EndsWith("/observr", StringComparison.OrdinalIgnoreCase)) return View.Observr;
-        if (path.EndsWith("/observr/datasets", StringComparison.OrdinalIgnoreCase)) return View.ObservrDatasets;
-        if (path.EndsWith("/keys", StringComparison.OrdinalIgnoreCase)) return View.Keys;
-        if (path.Contains("/datasets/", StringComparison.OrdinalIgnoreCase)) return View.Dataset;
-        return View.Team;
-    }
+    private ConsoleView ViewFromUri() =>
+        TeamRoutes.ViewFromPath(NavigationManager.ToBaseRelativePath(NavigationManager.Uri));
 
     protected override void OnParametersSet() => _view = ViewFromUri();
 
