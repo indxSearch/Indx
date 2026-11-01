@@ -107,10 +107,12 @@ Most settings can be changed through the UI without restarting the app.
 
 Everything is organized around teams:
 
-- Every user gets a **personal team** on signup, and your datasets live there by default.
+- A user who signs up on their own gets a **personal team**, and their datasets live there by default.
 - Create more teams to share datasets with colleagues. Members are invited with a
   per-team role: **Admin** (manage members, delete datasets), **Editor** (load,
-  index, configure), or **Viewer** (search and read).
+  index, configure), or **Viewer** (search and read). Someone invited to a team
+  who has no account yet gets an email to register, and joins that team when they do,
+  without a personal team. An invitation works in every registration mode and lasts 14 days.
 - Datasets can be **renamed**, or **transferred** to another team you administer. Deleting a
   team deletes its datasets with it (the dashboard asks you to type the team's name).
 - The HTTP API is team-scoped: every dataset route is

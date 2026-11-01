@@ -23,6 +23,7 @@
 @inject RegistrationValidator RegistrationValidator
 @inject IndxServer.Services.InstanceSettingsService InstanceSettingsService
 @inject IndxServer.Services.UserProvisioningService UserProvisioning
+@inject IndxServer.Services.InviteService Invites
 
 
 <PageTitle>Register</PageTitle>
@@ -30,7 +31,29 @@
 <h3>Create a new account</h3>
 
 <StatusMessage Message="@Message" />
-@if (RegistrationValidator.GetCurrentMode() == RegistrationMode.Closed)
+@if (_invite != null)
+{
+    @* The link from an invite email: who it is for, and where they land. *@
+    <div style="margin: 0 0 20px;">
+        <Alert>
+            @if (_invite.Team != null)
+            {
+                <text>You're invited to join the team <strong>@_invite.Team.Name</strong> on @InstanceSettingsService.Load().InstanceName, as @(_invite.Role?.ToLowerInvariant() ?? "viewer"). Create your account with <strong>@_invite.Email</strong> to accept.</text>
+            }
+            else
+            {
+                <text>You're invited to @InstanceSettingsService.Load().InstanceName. Create your account with <strong>@_invite.Email</strong> to accept.</text>
+            }
+        </Alert>
+    </div>
+}
+else if (_inviteGone)
+{
+    <div style="margin: 0 0 20px;">
+        <Alert>This invitation has expired or was withdrawn. Ask whoever invited you for a new one.</Alert>
+    </div>
+}
+@if (RegistrationValidator.GetCurrentMode() == RegistrationMode.Closed && _invite == null)
 {
     <div style="padding: 20px; border: 1px solid var(--CWarning); border-radius: var(--radius); background: rgba(255, 193, 7, 0.1); margin: 20px 0;">
         <strong>Registration Closed</strong><br />
@@ -69,12 +92,16 @@ else
             Passwords must have at least one non alphanumeric character, one digit ('0'-'9'), and one uppercase ('A'-'Z').
         </p>
 
-        <div style="margin-bottom: 10px;">
-            <InputField @bind-Value="Input.TeamName" placeholder="Team name (optional)" id="teamName" />
-            <p style="font: var(--text-xs); color: var(--lv5); margin-top: 4px;">
-                Your datasets are owned by a team. Leave blank to use a personal team named after your email.
-            </p>
-        </div>
+        @* Invited to a team, they join it and get none of their own. *@
+        @if (_invite?.TeamId == null)
+        {
+            <div style="margin-bottom: 10px;">
+                <InputField @bind-Value="Input.TeamName" placeholder="Team name (optional)" id="teamName" />
+                <p style="font: var(--text-xs); color: var(--lv5); margin-top: 4px;">
+                    Your datasets are owned by a team. Leave blank to use a personal team named after your email.
+                </p>
+            </div>
+        }
 
         <Button Type="submit" Variant="secondary">Register</Button>
 
@@ -93,7 +120,14 @@ else
     [SupplyParameterFromQuery]
     private string? ReturnUrl { get; set; }
 
-    protected override void OnInitialized()
+    /// <summary>The token of an invite email's link (InviteService.TokenParameter).</summary>
+    [SupplyParameterFromQuery(Name = "invite")]
+    private string? InviteToken { get; set; }
+
+    private IndxServer.Data.Invite? _invite;
+    private bool _inviteGone;
+
+    protected override async Task OnInitializedAsync()
     {
         // First run: the very first account is the administrator and is created through the
         // dedicated setup flow (account + team + instance), not this bare form.
@@ -101,6 +135,9 @@ else
         {
             RedirectManager.RedirectTo("account/setup");
         }
+        _invite = await Invites.FindByTokenAsync(InviteToken);
+        _inviteGone = !string.IsNullOrWhiteSpace(InviteToken) && _invite == null;
+        if (_invite != null && string.IsNullOrWhiteSpace(Input.Email)) Input.Email = _invite.Email;
     }
 
     private string? Message
@@ -127,7 +164,7 @@ else
 
         if (!isFirstUser)
         {
-            var allowedResult = RegistrationValidator.ValidateRegistrationAllowed();
+            var allowedResult = RegistrationValidator.ValidateRegistrationAllowed(Input.Email);
             if (!allowedResult.IsValid)
             {
                 identityErrors = new[] { new IdentityError { Description = allowedResult.ErrorMessage ?? "Registration not allowed" } };

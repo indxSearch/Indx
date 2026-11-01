@@ -48,6 +48,9 @@
 
             case "registration":
                 <SelectField Label="Registration mode" Value="@_registrationMode" ValueChanged="OnModeChanged" Options="_modeOptions" />
+                <p class="settings-note" style="margin-top: 6px;">
+                    Who may register without an invite. An invited address can register in every mode; invite people on <a href="/admin/users">Users</a>, or from a team's settings.
+                </p>
                 @if (_registrationMode == "EmailDomain")
                 {
                     <div style="margin-top: 20px;">
@@ -55,6 +58,13 @@
                         <p class="settings-note" style="margin-top: 6px;">One per line, such as <code>yourcompany.com</code>.</p>
                     </div>
                 }
+                <div style="margin-top: 20px;">
+                    <ToggleSwitch Label="Team admins can invite new users" @bind-Checked="_teamAdminsCanInvite" />
+                    <p class="settings-note settings-indent">
+                        A team's admins may invite someone who has no account here, and that person registers into their team.
+                        Off, only this instance's admins can; team admins can still add people who have an account.
+                    </p>
+                </div>
                 break;
 
             case "websites":
@@ -337,6 +347,7 @@
     private string _instanceName = "Indx";
     private bool _requireEmailVerification;
     private bool _allowUserSelfDeletion = true;
+    private bool _teamAdminsCanInvite = true;
     private bool _mcpEnabled = true;
     private bool _searchOrAskShown;
     private HashSet<string> _savedKeys = [];
@@ -565,15 +576,15 @@
     [
         new("Open: anyone can register", "Open"),
         new("Email domain: specific domains only", "EmailDomain"),
-        new("Invite: specific email addresses only", "Invite"),
-        new("Closed: no new registrations", "Closed"),
+        new("Invite: invited addresses only", "Invite"),
+        new("Closed: invited addresses only, the sign-up page says closed", "Closed"),
     ];
 
     // What the page last loaded or saved, to tell whether there is anything to save.
-    private (string, bool, bool, bool, bool, string, string, string) _saved;
-    private (string, bool, bool, bool, bool, string, string, string) Current =>
+    private (string, bool, bool, bool, bool, string, string, string, bool) _saved;
+    private (string, bool, bool, bool, bool, string, string, string, bool) Current =>
         (_instanceName, _requireEmailVerification, _allowUserSelfDeletion, _mcpEnabled, _searchOrAskShown, _registrationMode, _allowedDomainsText,
-         string.Join('\n', _provider, _baseUrl, _euRouting, _judgeProvider, _answerSpeed, _answerModel, _fastModel, _filterModel, string.Join(',', _moreModels), _originsText));
+         string.Join('\n', _provider, _baseUrl, _euRouting, _judgeProvider, _answerSpeed, _answerModel, _fastModel, _filterModel, string.Join(',', _moreModels), _originsText), _teamAdminsCanInvite);
     private bool IsDirty => Current != _saved;
 
     private bool _loaded;
@@ -610,6 +621,7 @@
         _instanceName = settings.InstanceName;
         _requireEmailVerification = settings.RequireEmailVerification;
         _allowUserSelfDeletion = settings.AllowUserSelfDeletion;
+        _teamAdminsCanInvite = settings.TeamAdminsCanInvite;
         _mcpEnabled = settings.McpEnabled;
         _searchOrAskShown = settings.SearchOrAskShown;
         // What is in force, the configuration's choices included, so the form shows what runs.
@@ -659,7 +671,7 @@
             }
 
             // Mutate the loaded settings in place — never construct a fresh InstanceSettings,
-            // or fields this page doesn't edit (SetupComplete, LicenseToken, Plan, AllowedEmails,
+            // or fields this page doesn't edit (SetupComplete, LicenseToken, Plan,
             // the Search or ask keys) get silently wiped to their defaults.
             var settings = SettingsService.Load();
             var listChanged = settings.SearchOrAskProvider != _provider || settings.SearchOrAskEuRouting != _euRouting
@@ -667,6 +679,7 @@
             settings.InstanceName = _instanceName.Trim();
             settings.RequireEmailVerification = _requireEmailVerification;
             settings.AllowUserSelfDeletion = _allowUserSelfDeletion;
+            settings.TeamAdminsCanInvite = _teamAdminsCanInvite;
             settings.McpEnabled = _mcpEnabled;
             settings.SearchOrAskShown = _searchOrAskShown;
             settings.SearchOrAskProvider = _provider;

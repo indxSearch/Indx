@@ -8,17 +8,20 @@ internal class RegistrationValidator
     private readonly InstanceSettingsService _settingsService;
     private readonly IEditionService _edition;
     private readonly UserManager<ApplicationUser> _userManager;
+    private readonly InviteService _invites;
     private readonly ILogger<RegistrationValidator> _logger;
 
     public RegistrationValidator(
         InstanceSettingsService settingsService,
         IEditionService edition,
         UserManager<ApplicationUser> userManager,
+        InviteService invites,
         ILogger<RegistrationValidator> logger)
     {
         _settingsService = settingsService;
         _edition = edition;
         _userManager = userManager;
+        _invites = invites;
         _logger = logger;
     }
 
@@ -32,13 +35,19 @@ internal class RegistrationValidator
     private bool SingleUserLimitReached =>
         !_edition.IsEnabled(EditionFeature.MultipleUsers) && _userManager.Users.Any();
 
-    public RegistrationValidationResult ValidateRegistrationAllowed()
+    /// <summary>Whether anyone may register now. An invited <paramref name="email"/> may in every
+    /// mode, Closed included: the mode governs who may register without an invite (Nov 2026;
+    /// before, invites worked in Invite mode only, so Closed could let nobody in).</summary>
+    public RegistrationValidationResult ValidateRegistrationAllowed(string? email = null)
     {
         if (SingleUserLimitReached)
         {
             _logger.LogWarning("Registration blocked - single-user plan already has an account");
             return RegistrationValidationResult.Failure(SingleUserPlanMessage);
         }
+
+        if (_invites.IsInvited(email))
+            return RegistrationValidationResult.Success();
 
         var settings = _settingsService.Load();
 
@@ -59,6 +68,10 @@ internal class RegistrationValidator
 
         if (string.IsNullOrWhiteSpace(email))
             return RegistrationValidationResult.Failure("Email is required.");
+
+        // An invite admits its address whatever the mode (ValidateRegistrationAllowed).
+        if (_invites.IsInvited(email))
+            return RegistrationValidationResult.Success();
 
         var settings = _settingsService.Load();
 
@@ -91,12 +104,9 @@ internal class RegistrationValidator
 
         if (settings.RegistrationMode == RegistrationMode.Invite)
         {
-            if (!settings.AllowedEmails.Any(e => e.Equals(email, StringComparison.OrdinalIgnoreCase)))
-            {
-                _logger.LogWarning("Registration blocked for {Email} - not on invite list", email);
-                return RegistrationValidationResult.Failure(
-                    "You have not been invited to register. Please contact the administrator.");
-            }
+            _logger.LogWarning("Registration blocked for {Email} - not invited", email);
+            return RegistrationValidationResult.Failure(
+                "You have not been invited to register. Please contact the administrator.");
         }
 
         return RegistrationValidationResult.Success();
@@ -115,7 +125,7 @@ internal class RegistrationValidator
             RegistrationMode.Closed => "Registration is currently closed. Please contact the administrator for access.",
             RegistrationMode.EmailDomain when settings.AllowedDomains.Count > 0 =>
                 $"Registration is restricted to: {string.Join(", ", settings.AllowedDomains)}",
-            RegistrationMode.Invite => $"Registration by invite only. {settings.AllowedEmails.Count} invite(s) pending.",
+            RegistrationMode.Invite => $"Registration by invite only. {_invites.CountPending()} invite(s) pending.",
             _ => "Open registration — anyone can create an account."
         };
     }

@@ -185,6 +185,7 @@ internal static class StartupServices
         builder.Services.AddScoped<IndxServer.Services.NotificationService>();
         builder.Services.AddScoped<IndxServer.Services.TeamService>();
         builder.Services.AddScoped<IndxServer.Services.UserProvisioningService>();
+        builder.Services.AddScoped<IndxServer.Services.InviteService>();
         builder.Services.AddScoped<IndxServer.Services.ActiveTeamState>();
         builder.Services.AddScoped<IndxServer.Services.HeaderState>();
         builder.Services.AddScoped<IndxServer.Services.SideMenuState>();

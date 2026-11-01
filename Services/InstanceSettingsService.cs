@@ -19,7 +19,15 @@ internal class InstanceSettings
 {
     public RegistrationMode RegistrationMode { get; set; } = RegistrationMode.Open;
     public List<string> AllowedDomains { get; set; } = [];
+    /// <summary>The invite list before Nov 2026, moved into the Invites table at startup
+    /// (<see cref="InviteService.MoveSettingsListAsync"/>) and empty after. Kept so a settings
+    /// file written before still reads.</summary>
     public List<string> AllowedEmails { get; set; } = [];
+
+    /// <summary>Whether a team's admins may invite someone who has no account on the instance
+    /// (<see cref="InviteService"/>). On by default; off, only instance admins can, and team
+    /// admins can still add people who have an account.</summary>
+    public bool TeamAdminsCanInvite { get; set; } = true;
 
     /// <summary>The web origins whose browser apps may call the API (CORS), set on the instance
     /// settings page. Null until an admin saves a list: until then Cors:AllowedOrigins applies.

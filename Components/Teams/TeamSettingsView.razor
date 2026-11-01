@@ -9,6 +9,8 @@
 @inject InstanceSettingsService InstanceSettingsService
 @inject HeaderState Header
 @inject NavigationManager NavigationManager
+@inject InviteService Invites
+@inject Indx.Systm.Blazor.ToastService Toasts
 @implements IDisposable
 
 <PageTitle>Manage @Team.Name</PageTitle>
@@ -23,7 +25,7 @@
     <h2 class="indx-section-heading indx-section-heading--first">Manage team</h2>
     <p class="indx-section-help">Who can access this team's datasets, and the team itself.</p>
 
-    @if (!string.IsNullOrEmpty(_error) && !_showAddMember)
+    @if (!string.IsNullOrEmpty(_error) && !_showAddMember && !_showInvite)
     {
         <div style="margin-bottom:12px;"><Alert Variant="destructive">@_error</Alert></div>
     }
@@ -32,9 +34,16 @@
     <h3 class="indx-section-heading">Members</h3>
     @* The page action pattern (app.css): the primary add on top of the list it adds to. *@
     <div class="indx-list-toolbar">
+        @* Invite by email covers everyone: someone with an account is added at once, someone
+           without is invited to register into the team. Picking from every account on the
+           instance is for its admins only, since the list shows who is on the server. *@
         @if (_canAddMembers)
         {
-            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenAddMember">Add member</Button>
+            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenInvite">Invite member</Button>
+            @if (_isInstanceAdmin)
+            {
+                <Button Variant="secondary" Size="micro" @onclick="OpenAddMember">Add existing user</Button>
+            }
         }
         <span class="indx-list-toolbar-end">@_members.Count member@(_members.Count == 1 ? "" : "s")</span>
     </div>
@@ -80,8 +89,62 @@
         </tbody>
     </table>
 
-    @* ── Add member (Editor and above) ── *@
-    <Modal @bind-Open="_showAddMember" Title="Add member" Description="@($"Anyone with an account on this instance can be added to {Team.Name}.")">
+    @* ── Pending invites: people asked to join who have not registered yet ── *@
+    @if (_canAddMembers && _pending.Count > 0)
+    {
+        <h3 class="indx-section-heading">Pending invites</h3>
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead>
+                <tr style="border-bottom:1px solid var(--lv3); color:var(--lv5);">
+                    <th style="text-align:left; padding:6px 12px; font-weight:500;">Email</th>
+                    <th style="text-align:left; padding:6px 12px; font-weight:500;">Role</th>
+                    <th style="text-align:left; padding:6px 12px; font-weight:500;">Invited by</th>
+                    <th style="text-align:left; padding:6px 12px; font-weight:500;">Lasts until</th>
+                    <th style="padding:6px 12px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var i in _pending)
+                {
+                    <tr style="border-bottom:1px solid var(--lv2);">
+                        <td style="padding:8px 12px;">@i.Email</td>
+                        <td style="padding:8px 12px;"><Chip Color="var(--lv2)" TextColor="var(--lv6)">@i.Role</Chip></td>
+                        <td style="padding:8px 12px; color:var(--lv5);">@(i.InvitedBy ?? "—")</td>
+                        <td style="padding:8px 12px; color:@(i.Expired ? "var(--CSignal)" : "var(--lv5)");">
+                            @if (i.Expired) { <text>Expired </text> }<TimeAgo Value="i.ExpiresAt" />
+                        </td>
+                        <td style="padding:8px 12px; text-align:right;">
+                            <div class="ts-row-actions">
+                                <Button Variant="ghost" Size="micro" Loading="@(_busy == "resend:" + i.Id)" @onclick="() => OnResend(i.Id)">Resend</Button>
+                                <ConfirmButton Label="Revoke" Prompt="The link in their email stops working." ConfirmLabel="Revoke invite" OnConfirm="() => OnRevoke(i.Id)" />
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    @* ── Invite member (Editor and above) ── *@
+    <Modal Open="_showInvite" OpenChanged="@(open => { if (!open && _busy != "invite") _showInvite = false; })" Title="Invite member"
+           Description="@InviteDescription">
+        <div class="indx-modal-form">
+            <InputField Label="Email address" placeholder="name@example.com" @bind-Value="_inviteEmail"
+                        @oninput="@(e => _inviteEmail = e.Value?.ToString() ?? string.Empty)" />
+            <SelectField Size="micro" Label="Role" @bind-Value="_addRole" Options="_addRoleOptions" />
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <Alert Variant="destructive">@_error</Alert>
+            }
+            <div class="indx-form-actions">
+                <Button Variant="primary" Size="micro" Disabled="@string.IsNullOrWhiteSpace(_inviteEmail)" Loading="@(_busy == "invite")" @onclick="OnInvite">Send invite</Button>
+                <Button Variant="secondary" Size="micro" Disabled="@(_busy == "invite")" @onclick="() => _showInvite = false">Cancel</Button>
+            </div>
+        </div>
+    </Modal>
+
+    @* ── Add an existing user (instance admins) ── *@
+    <Modal @bind-Open="_showAddMember" Title="Add existing user" Description="@($"Anyone with an account on this instance can be added to {Team.Name}.")">
         <div class="indx-modal-form">
             @if (_addableUsers.Count == 0)
             {
@@ -144,6 +207,11 @@
     private Guid? _loadedFor;
     private bool _canAdmin;
     private bool _canAddMembers;
+    private bool _isInstanceAdmin;
+    private bool _canInviteNew;
+    private List<InviteService.Pending> _pending = new();
+    private bool _showInvite;
+    private string _inviteEmail = "";
 
     private List<MemberRow> _members = new();
     private List<UserRow> _addableUsers = new();
@@ -201,8 +269,14 @@
         }
         _members = rows.OrderByDescending(r => TeamRoles.Rank(r.Role)).ThenBy(r => r.Email).ToList();
 
+        var me = await UserManager.FindByIdAsync(UserId);
+        _isInstanceAdmin = me != null && await UserManager.IsInRoleAsync(me, "Admin");
+        _canInviteNew = await Invites.CanInviteNewUsersAsync(UserId, Team.Id);
+        _pending = _canAddMembers ? await Invites.ForTeamAsync(Team.Id) : new();
+
         var memberIds = members.Select(m => m.UserId).ToHashSet();
-        var others = UserManager.Users.Where(u => !memberIds.Contains(u.Id)).OrderBy(u => u.Email).ToList();
+        // Everyone on the instance, for its admins only (Add existing user).
+        var others = _isInstanceAdmin ? UserManager.Users.Where(u => !memberIds.Contains(u.Id)).OrderBy(u => u.Email).ToList() : [];
         _addableUsers = others.Select(u => new UserRow(u.Id, u.Email ?? "")).ToList();
         _userOptions = _addableUsers.Select(u => new SelectField.SelectOption(u.Email, u.Id)).ToList();
         _addRoleOptions = new List<SelectField.SelectOption>
@@ -229,8 +303,64 @@
 
     private bool _showAddMember;
 
+    private string InviteDescription => _canInviteNew
+        ? $"Someone with an account here is added to {Team.Name} at once. Someone without one gets an email to register, and joins {Team.Name} when they do. The invite lasts {(int)InviteService.Lifetime.TotalDays} days."
+        : $"Someone with an account here is added to {Team.Name} at once. Only {(_canAdmin ? "the instance's admins" : "a team admin")} can invite someone who has no account yet.";
+
+    private void OpenInvite()
+    {
+        _error = null;
+        _inviteEmail = "";
+        _addRole = TeamRoles.Viewer;
+        _showInvite = true;
+    }
+
+    private Task OnInvite() => RunBusy("invite", async () =>
+    {
+        _error = null;
+        InviteService.Result result;
+        try
+        {
+            result = await Invites.InviteAsync(_inviteEmail, Team.Id, _addRole, UserId, RegisterUrl);
+        }
+        catch (InviteService.InviteException ex) { _error = ex.Message; return; }
+        var email = _inviteEmail.Trim();
+        Toasts.Show(result.Outcome switch
+        {
+            InviteService.Outcome.AddedToTeam => $"{email} was added to {Team.Name}.",
+            _ when !result.EmailSent => $"{email} is invited, but the email could not be sent. Try Resend.",
+            InviteService.Outcome.Renewed => $"Invite to {email} sent again.",
+            _ => $"Invite sent to {email}.",
+        });
+        _showInvite = false;
+        await LoadAsync();
+    });
+
+    private Task OnResend(Guid id) => RunBusy("resend:" + id, async () =>
+    {
+        _error = null;
+        try
+        {
+            var sent = await Invites.ResendAsync(id, UserId, RegisterUrl);
+            Toasts.Show(sent ? "Invite sent again." : "The invite was renewed, but the email could not be sent.");
+        }
+        catch (InviteService.InviteException ex) { _error = ex.Message; }
+        await LoadAsync();
+    });
+
+    private Task OnRevoke(Guid id) => RunBusy("revoke:" + id, async () =>
+    {
+        _error = null;
+        try { await Invites.RevokeAsync(id, UserId); }
+        catch (InviteService.InviteException ex) { _error = ex.Message; }
+        await LoadAsync();
+    });
+
+    private string RegisterUrl => NavigationManager.ToAbsoluteUri("/account/register").ToString();
+
     private void OpenAddMember()
     {
+        if (!_isInstanceAdmin) return;
         _error = null;
         _addUserId = "";
         _showAddMember = true;
@@ -240,7 +370,7 @@
 
     private async Task AddMemberAsync()
     {
-        if (string.IsNullOrEmpty(_addUserId)) return;
+        if (string.IsNullOrEmpty(_addUserId) || !_isInstanceAdmin) return;
         _error = null;
         try
         {

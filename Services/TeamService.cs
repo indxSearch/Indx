@@ -199,6 +199,7 @@ namespace IndxServer.Services
             if (statistics.Enabled)
                 statistics.Store!.PurgeTeam(owner);
 
+            db.Invites.RemoveRange(db.Invites.Where(i => i.TeamId == team.Id));
             db.Teams.Remove(team);
             await db.SaveChangesAsync();
             return deleted;

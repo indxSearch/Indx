@@ -315,6 +315,10 @@ public class Program
         // Only seed an admin user when Identity:AdminEmail is explicitly configured
         // (e.g. Azure Managed App deployment via ARM template). In dev/self-hosted
         // deployments the first registered user is promoted to Admin automatically.
+        // The invite list of settings.json, before invites were records (Nov 2026).
+        var moved = await services.GetRequiredService<InviteService>().MoveSettingsListAsync();
+        if (moved > 0) logger.LogInformation("Moved {Count} pending invite(s) from settings.json into the database.", moved);
+
         var adminEmail = configuration["Identity:AdminEmail"];
         if (string.IsNullOrWhiteSpace(adminEmail))
         {

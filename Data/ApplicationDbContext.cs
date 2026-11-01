@@ -15,6 +15,7 @@ namespace IndxServer.Data
         public DbSet<Notification> Notifications => Set<Notification>();
         public DbSet<Team> Teams => Set<Team>();
         public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
+        public DbSet<Invite> Invites => Set<Invite>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -54,6 +55,17 @@ namespace IndxServer.Data
             builder.Entity<ApplicationUser>()
                 .Property(u => u.EmailNotificationsEnabled)
                 .HasDefaultValue(true);
+            // An invite goes with its team: a deleted team leaves no invitations to it.
+            builder.Entity<Invite>()
+                .HasOne(i => i.Team)
+                .WithMany()
+                .HasForeignKey(i => i.TeamId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.Entity<Invite>()
+                .HasIndex(i => i.NormalizedEmail);
+            builder.Entity<Invite>()
+                .HasIndex(i => i.TokenHash)
+                .IsUnique();
         }
     }
 #pragma warning restore 1591
