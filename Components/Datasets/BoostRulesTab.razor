@@ -29,7 +29,10 @@
     {
         @* A new rule lands at the top of the list, next to the button that made it. *@
         <div class="indx-list-toolbar">
-            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="AddRule">New boost rule</Button>
+            @if (Ctx.IsEditor)
+            {
+                <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="AddRule">New boost rule</Button>
+            }
             @if (_rules.Count > 0)
             {
                 <span class="indx-list-toolbar-end">@_rules.Count rule@(_rules.Count == 1 ? "" : "s")</span>
@@ -57,6 +60,7 @@
             }
         }
 
+        <ReadOnlyArea Editable="@Ctx.IsEditor">
         <div class="boost-rules">
             @foreach (var rule in _rules)
             {
@@ -142,6 +146,8 @@
             }
         </div>
 
+        </ReadOnlyArea>
+
         @if (!string.IsNullOrEmpty(_importNote))
         {
             <p class="boost-note">@_importNote</p>
@@ -152,7 +158,7 @@
             <p class="boost-error">@_error</p>
         }
 
-        <SaveBar Visible="@IsDirty" Message="Unsaved changes">
+        <SaveBar Visible="@(IsDirty && Ctx.IsEditor)" Message="Unsaved changes">
             <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save</Button>
             <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
         </SaveBar>
@@ -161,8 +167,11 @@
             {
                 <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="ExportAsync">Export as json</Button>
             }
-            <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
-            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)">Import from json</Button>
+            @if (Ctx.IsEditor)
+            {
+                <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
+                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)">Import from json</Button>
+            }
         </div>
     }
 </div>
@@ -268,6 +277,7 @@
 
     private void AddRule()
     {
+        if (!Ctx.IsEditor) return;
         _error = null;
         var first = FilterableFieldNames().FirstOrDefault() ?? "";
         _rules.Insert(0, new BoostRule { Name = "New rule", Conditions = new() { NewCondition(first) } });
@@ -302,6 +312,7 @@
 
     private async Task SaveAsync()
     {
+        if (!Ctx.IsEditor) return;
         if (_saving) return;
         _error = null;
         foreach (var r in _rules)
@@ -351,6 +362,7 @@
 
     private async Task ImportAsync(InputFileChangeEventArgs e)
     {
+        if (!Ctx.IsEditor) return;
         _error = null;
         _importNote = null;
         try

@@ -20,6 +20,7 @@
     @* Each table has one column: a setting's name and help, and its control on the last line
        under them. Matching and Result list sit side by side where there is room for both, one
        under the other where there is not. *@
+    <ReadOnlyArea Editable="@Ctx.IsEditor">
     <div class="qp-groups">
         <Table AriaLabel="Matching" Class="qp-table">
             @Head("Matching")
@@ -36,6 +37,7 @@
             </tbody>
         </Table>
     </div>
+    </ReadOnlyArea>
 
     <div class="qp-advanced">
         <Button Variant="ghost" Size="micro" IconRight="@(ShowAdvanced ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)"
@@ -43,12 +45,14 @@
     </div>
     @if (ShowAdvanced)
     {
+        <ReadOnlyArea Editable="@Ctx.IsEditor">
         <Table AriaLabel="Advanced" Class="qp-table">
             @Head("Advanced")
             <tbody>
                 @foreach (var p in AdvancedParams) { @IntRow(p) }
             </tbody>
         </Table>
+        </ReadOnlyArea>
     }
 
     @if (!string.IsNullOrEmpty(_error))
@@ -63,11 +67,11 @@
             <Description>You have unsaved changes here. Save keeps yours; Cancel shows the ones Observr applied.</Description>
         </Alert>
     }
-    <SaveBar Visible="@IsDirty" Message="Unsaved changes">
+    <SaveBar Visible="@(IsDirty && Ctx.IsEditor)" Message="Unsaved changes">
         <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save</Button>
         <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
     </SaveBar>
-    @if (AnySet)
+    @if (AnySet && Ctx.IsEditor)
     {
         <div class="indx-file-actions">
             <Button Variant="ghost" Size="micro" @onclick="ClearAll">Use engine defaults for all</Button>
@@ -310,6 +314,7 @@
 
     private void ClearAll()
     {
+        if (!Ctx.IsEditor) return;
         _edit = new() { CoverageSetup = new() };
         _text.Clear();
         _textErrors.Clear();
@@ -318,6 +323,7 @@
 
     private async Task SaveAsync()
     {
+        if (!Ctx.IsEditor) return;
         if (_saving) return;
         _error = null;
         if (_textErrors.Count > 0) { _error = "Fix the values marked above, or clear them to use the default."; return; }

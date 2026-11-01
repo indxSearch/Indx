@@ -1,0 +1,7 @@
+/* The fieldset carries the disabled state only: no frame, no spacing of its own. */
+.indx-readonly-area {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}

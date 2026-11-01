@@ -30,7 +30,10 @@
             when the visitor asks, and only from the records.
         </p>
         <Chip Size="large" Color="var(--CTeal)" TextColor="#080809" Icon="DatasetIcons.Experimental">Experimental</Chip>
-        <ObservrPageAction Label="Help me set this up" OnClick="SetupInAgent" Disabled="@IsDirty" />
+        @if (Ctx.IsEditor)
+        {
+            <ObservrPageAction Label="Help me set this up" OnClick="SetupInAgent" Disabled="@IsDirty" />
+        }
     </div>
 
     @if (!Service.Available)
@@ -51,6 +54,9 @@
        narrow window the tester comes first, then the settings. *@
     <div class="soa-layout">
         <div class="soa-settings">
+        @* The settings, read-only below Editor; the tester beside them stays open to everyone,
+           as Search preview is. *@
+        <ReadOnlyArea Editable="@Ctx.IsEditor">
         <div class="soa-groups">
             @* In the order an owner decides (27 Oct 2026): what it does (on, mode, the site), when it
                offers and what the list does while asking; then the answers' content, the
@@ -258,6 +264,7 @@
             </Table>
             </div>
         </div>
+        </ReadOnlyArea>
         </div>
         <aside class="soa-preview" aria-label="Try it">
         @if (_edit.Enabled)
@@ -462,7 +469,7 @@
             <Description>You have unsaved changes here. Save keeps yours; Cancel shows the ones Observr applied.</Description>
         </Alert>
     }
-    <SaveBar Visible="@IsDirty" Message="Unsaved changes">
+    <SaveBar Visible="@(IsDirty && Ctx.IsEditor)" Message="Unsaved changes">
         <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save</Button>
         <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
     </SaveBar>
@@ -730,6 +737,7 @@
 
     private async Task UploadKnowledgeAsync(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
     {
+        if (!Ctx.IsEditor) return;
         _knowledgeError = null;
         try
         {
@@ -881,6 +889,7 @@
 
     private async Task SaveAsync()
     {
+        if (!Ctx.IsEditor) return;
         if (_saving) return;
         _error = null;
         if (_budgetError != null || _proactiveError != null) { _error = "Fix the values marked above, or clear them to use the default."; return; }

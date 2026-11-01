@@ -30,7 +30,10 @@
     }
 
     <div class="indx-list-toolbar">
-        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="@(() => OpenModal(null))">New synonym</Button>
+        @if (Ctx.IsEditor)
+        {
+            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="@(() => OpenModal(null))">New synonym</Button>
+        }
         @if (_list != null && _list.Entries.Count > 0)
         {
             <div class="indx-list-toolbar-filter">
@@ -39,7 +42,10 @@
             </div>
             <span class="indx-list-toolbar-end">@matched.Count of @_list.Entries.Count entries</span>
         }
-        <ObservrPageAction Label="Suggest synonyms" OnClick="SuggestInAgent" />
+        @if (Ctx.IsEditor)
+        {
+            <ObservrPageAction Label="Suggest synonyms" OnClick="SuggestInAgent" />
+        }
     </div>
 
     @if (_list == null || _list.Entries.Count == 0)
@@ -48,6 +54,7 @@
     }
     else
     {
+        <ReadOnlyArea Editable="@Ctx.IsEditor">
         <table class="indx-table">
             <tbody>
                 @foreach (var entry in visible)
@@ -59,11 +66,11 @@
                             <div class="syn-chips">
                                 @if (entry.Direction == SynonymDirection.OneWay)
                                 {
-                                    <span class="syn-chip" @onclick="@(() => OpenModal(entry))"><Chip>@entry.Source</Chip></span>
+                                    <span class="syn-chip @ChipClass" @onclick="@(() => OpenModal(entry))"><Chip>@entry.Source</Chip></span>
                                     <ArrowRight Size="14" Color="var(--lv5)" />
                                     @foreach (var term in entry.Terms)
                                     {
-                                        <span class="syn-chip" @onclick="@(() => OpenModal(entry))"><Chip>@term</Chip></span>
+                                        <span class="syn-chip @ChipClass" @onclick="@(() => OpenModal(entry))"><Chip>@term</Chip></span>
                                     }
                                 }
                                 else
@@ -77,7 +84,7 @@
                                         {
                                             <ResizeEw Size="14" Color="var(--lv5)" />
                                         }
-                                        <span class="syn-chip" @onclick="@(() => OpenModal(entry))"><Chip>@term</Chip></span>
+                                        <span class="syn-chip @ChipClass" @onclick="@(() => OpenModal(entry))"><Chip>@term</Chip></span>
                                     }
                                 }
                             </div>
@@ -89,6 +96,7 @@
                 }
             </tbody>
         </table>
+        </ReadOnlyArea>
         @if (matched.Count > RenderCap)
         {
             <p class="syn-cap-note">Showing the first @RenderCap of @matched.Count — refine the filter to narrow it down.</p>
@@ -102,16 +110,25 @@
 
     @* Whole-list actions close the page, where field configuration and boost rules keep theirs. *@
     <div class="indx-file-actions">
-        <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
-        <ConfirmModal @bind-Open="_importOpen" Title="Replace the synonym list?" Consequences="ImportConsequences"
-                      ConfirmLabel="Replace list" ConfirmIcon="DatasetIcons.DynamicJson" OnConfirm="ConfirmImportAsync" />
+        @if (Ctx.IsEditor)
+        {
+            <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
+            <ConfirmModal @bind-Open="_importOpen" Title="Replace the synonym list?" Consequences="ImportConsequences"
+                          ConfirmLabel="Replace list" ConfirmIcon="DatasetIcons.DynamicJson" OnConfirm="ConfirmImportAsync" />
+        }
         @if (_list != null)
         {
-            <ConfirmButton Label="Remove list" Icon="DatasetIcons.Delete" Prompt="Remove the whole list?"
-                           ConfirmLabel="Remove" Variant="primary" OnConfirm="RemoveListAsync" />
+            @if (Ctx.IsEditor)
+            {
+                <ConfirmButton Label="Remove list" Icon="DatasetIcons.Delete" Prompt="Remove the whole list?"
+                               ConfirmLabel="Remove" Variant="primary" OnConfirm="RemoveListAsync" />
+            }
             <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="ExportAsync">Export as json</Button>
         }
-        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)">Import from json</Button>
+        @if (Ctx.IsEditor)
+        {
+            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)">Import from json</Button>
+        }
     </div>
 
     <Modal @bind-Open="_modalOpen" Title="@(_modalTarget == null ? "New synonym entry" : "Edit synonym entry")">
@@ -153,6 +170,9 @@
         [new("Two-way", "TwoWay"), new("One-way", "OneWay")];
 
     private string ImportInputId => $"synonyms-import-{Ctx.Name}";
+
+    // A chip opens its entry's editor, for those who may edit; for anyone else it is only a label.
+    private string ChipClass => Ctx.IsEditor ? "" : "syn-chip--static";
 
     private bool _loaded;
     private SynonymList? _list;
@@ -257,6 +277,7 @@
 
     private void OpenModal(SynonymEntry? entry)
     {
+        if (!Ctx.IsEditor) return;
         _error = null;
         _modalError = null;
         _modalTarget = entry;
@@ -273,6 +294,7 @@
 
     private async Task SaveModalAsync()
     {
+        if (!Ctx.IsEditor) return;
         if (_saving) return;
         _modalError = null;
         var terms = _modalTerms.Select(t => t.Trim()).Where(t => t.Length > 0).ToArray();
@@ -302,6 +324,7 @@
 
     private async Task DeleteEntryAsync(SynonymEntry entry)
     {
+        if (!Ctx.IsEditor) return;
         _error = null;
         _list?.Entries.Remove(entry);
         if (!await PushAsync()) _error = "Failed to save.";
@@ -309,6 +332,7 @@
 
     private async Task RemoveListAsync()
     {
+        if (!Ctx.IsEditor) return;
         _error = null;
         _list = null;
         if (!await PushAsync()) _error = "Failed to remove the list.";
@@ -326,6 +350,7 @@
 
     private async Task ImportAsync(InputFileChangeEventArgs e)
     {
+        if (!Ctx.IsEditor) return;
         _error = null;
         try
         {
@@ -361,6 +386,7 @@
     /// <summary>Null on success, else the reason, shown in the modal.</summary>
     private async Task<string?> ConfirmImportAsync()
     {
+        if (!Ctx.IsEditor) return null;
         if (_pendingImport == null) return null;
         var previous = _list;
         _list = _pendingImport;

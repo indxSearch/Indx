@@ -10,6 +10,7 @@
 
 .syn-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .syn-chip { cursor: pointer; }
+.syn-chip--static { cursor: default; }
 .syn-row-actions { text-align: right; white-space: nowrap; width: 1%; }
 .syn-cap-note { color: var(--lv4); font: var(--text-xs); margin-top: 8px; }
 .syn-error { color: var(--CSignal); font: var(--text-sm); margin-top: 10px; }

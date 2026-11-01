@@ -61,6 +61,15 @@
                     else PublishMenu(SleepingItems(), sleepTab);
                 }
 
+                @* Below Editor these are shown read-only: say so once, above them. Categories is not
+                   among them: a viewer browses it fully, and its editing parts are simply absent. *@
+                @if (!Ctx.IsEditor && !asleep && tab is "fields" or "boosts" or "synonyms" or "query-parameters" or "search-or-ask")
+                {
+                    <div class="indx-readonly-note">
+                        <Alert>You can view this as a @(Ctx.Role?.ToLowerInvariant() ?? "viewer"). An editor or admin of the team changes it.</Alert>
+                    </div>
+                }
+
                 @* ── Tabs. All stay mounted so edit state survives switching; only the active one renders. ── *@
                 <UploadFlow Active="@(asleep ? sleepTab is null or "status" : tab == "fields")" />
                 <FieldConfigTab Active="@(tab == "fields" && isReady)" />
@@ -352,21 +361,22 @@
         items.Add(Tab("fields", "Field configuration", DatasetIcons.Fields, true));
         // The categories of a catalogue, read from a facet: needs the built index.
         if (isReady || pending) items.Add(Tab("categories", "Categories", DatasetIcons.Categories, isReady));
-        // Configuration only, read on every search: needs no built index.
-        if ((isReady || pending) && Ctx.IsEditor)
+        // Configuration only, read on every search: needs no built index. Every role sees it;
+        // below Editor read-only (ReadOnlyArea), as boost rules, synonyms and Search or ask.
+        if (isReady || pending)
             items.Add(Tab("query-parameters", "Query parameters", DatasetIcons.QueryParameters, true));
         // Settings need no built index; the tester inside the tab says when it needs one. Only
         // while the instance shows the experimental feature (admin settings) and a team admin has
         // switched it on for this dataset (Options).
-        if ((isReady || pending) && Ctx.IsEditor && SearchOrAsk.ShownFor(Ctx.TeamId, Ctx.Name))
+        if ((isReady || pending) && SearchOrAsk.ShownFor(Ctx.TeamId, Ctx.Name))
             items.Add(Tab("search-or-ask", "Search or ask", DatasetIcons.SearchOrAsk, true));
         if (isReady || pending) items.Add(Tab("search", "Search preview", DatasetIcons.Search, isReady));
         // Statistics live in their own store, so the tab works even for a hibernated dataset -
         // it reads no engine (titles fall back to keys) and must never wake one.
         if (Statistics.Enabled) items.Add(Tab("statistics", "Statistics", DatasetIcons.Statistics, true));
-        if ((isReady || pending) && Ctx.IsEditor)
+        if (isReady || pending)
         {
-            var expired = isReady ? ExpiredBoostRules() : 0;
+            var expired = isReady && Ctx.IsEditor ? ExpiredBoostRules() : 0;
             items.Add(Tab("boosts", "Boost rules", DatasetIcons.Boost, isReady,
                 expired > 0 ? expired.ToString() : null,
                 expired > 0 ? $"{expired} expired boost rule(s), no longer applying" : null));

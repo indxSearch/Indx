@@ -1,0 +1,15 @@
+@* A tab's editing controls, shown to every role and editable only by those who may: for anyone
+   else the area is a disabled fieldset, so the browser disables every input, select and button
+   in it, the systm components' included, while the values stay readable. The actions outside it
+   (New, Import, Save) are left out by the tab itself, and its save methods refuse on their own
+   too. A Viewer reads a dataset's boost rules, synonyms, query parameters and Search or ask
+   settings this way (Nov 2026; before, those tabs were hidden from viewers, though the API let
+   them read every one). *@
+<fieldset class="indx-readonly-area" disabled="@(!Editable)">
+    @ChildContent
+</fieldset>
+
+@code {
+    [Parameter] public bool Editable { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}
