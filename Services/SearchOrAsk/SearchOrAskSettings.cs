@@ -286,6 +286,12 @@ namespace IndxServer.Services.SearchOrAsk
         [property: JsonPropertyName("effective")] SearchOrAskEffective Effective,
         bool Available);
 
+    /// <param name="SiteDescription">What the judge reads about the site: the setting, else the
+    /// dataset's description, else a sentence naming the dataset.</param>
+    /// <param name="TitleField">The field a result is titled by for the judge (<see cref="SearchOrAskFields"/>).</param>
+    /// <param name="SectionFields">The fields a result's section is read from.</param>
+    /// <param name="SnippetFields">The fields a result's snippet is read from.</param>
+    /// <param name="AskPhrases">The Ask phrases in force: the dataset's, else the defaults.</param>
     /// <param name="AnswerModel">The model the answers are written with.</param>
     /// <param name="Searches">How a catalogue's question is answered: several or one.</param>
     /// <param name="AnswerModels">The models the instance offers for <c>answerModel</c>.</param>

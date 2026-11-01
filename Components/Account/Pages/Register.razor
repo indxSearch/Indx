@@ -92,13 +92,18 @@ else
             Passwords must have at least one non alphanumeric character, one digit ('0'-'9'), and one uppercase ('A'-'Z').
         </p>
 
-        @* Invited to a team, they join it and get none of their own. *@
-        @if (_invite?.TeamId == null)
+        @* Invited to a team, they join it and get none of their own, so the name is asked only
+           where it may be used (AskTeamName). *@
+        @if (AskTeamName)
         {
             <div style="margin-bottom: 10px;">
                 <InputField @bind-Value="Input.TeamName" placeholder="Team name (optional)" id="teamName" />
                 <p style="font: var(--text-xs); color: var(--lv5); margin-top: 4px;">
                     Your datasets are owned by a team. Leave blank to use a personal team named after your email.
+                    @if (_invite == null)
+                    {
+                        <text> If you were invited to a team, you join that team instead.</text>
+                    }
                 </p>
             </div>
         }
@@ -126,6 +131,23 @@ else
 
     private IndxServer.Data.Invite? _invite;
     private bool _inviteGone;
+
+    /// <summary>
+    /// Whether the team name may be used. From the invite link the page knows: not for an invite
+    /// to a team, which is joined instead, yes for one to the instance alone. Without the link,
+    /// Invite and Closed mode admit only invited addresses, so the name is not asked (an invite
+    /// to the instance alone gets the team named after the email, which can be renamed); Open
+    /// and Email domain ask, saying a team invite takes its place. Until Nov 2026 it was asked
+    /// of everyone without the link, including people invited to a team.
+    /// </summary>
+    private bool AskTeamName => _invite != null
+        ? _invite.TeamId == null
+        : RegistrationValidator.GetCurrentMode() is RegistrationMode.Open or RegistrationMode.EmailDomain;
+
+    /// <summary>Registered through the invite's link with the invited address: the email reached
+    /// them, so the address is confirmed and no verification email is sent.</summary>
+    private bool ConfirmedByInvite =>
+        _invite != null && string.Equals(_invite.Email, Input.Email?.Trim(), StringComparison.OrdinalIgnoreCase);
 
     protected override async Task OnInitializedAsync()
     {
@@ -180,6 +202,7 @@ else
         }
 
         var user = CreateUser();
+        user.EmailConfirmed = ConfirmedByInvite;
 
         await UserStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
         var emailStore = GetEmailStore();
@@ -204,14 +227,14 @@ else
         var callbackUrl = NavigationManager.GetUriWithQueryParameters(
             NavigationManager.ToAbsoluteUri("account/confirm-email").AbsoluteUri,
             new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code, ["returnUrl"] = ReturnUrl });
-        if (user.Email != null)
+        if (user.Email != null && !user.EmailConfirmed)
         {
             var instanceName = InstanceSettingsService.Load().InstanceName;
             await EmailSender.SendEmailAsync(user.Email, IndxServer.Services.EmailTemplates.Subject(instanceName, "Please verify your email"),
                 IndxServer.Services.EmailTemplates.VerifyEmail(instanceName, callbackUrl));
         }
 
-        if (InstanceSettingsService.Load().RequireEmailVerification)
+        if (InstanceSettingsService.Load().RequireEmailVerification && !user.EmailConfirmed)
         {
             RedirectManager.RedirectTo(
                 "account/register-confirmation",
