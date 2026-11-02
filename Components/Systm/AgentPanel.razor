@@ -20,6 +20,7 @@
 @inject ObservrConversationStore Conversations
 @inject ObservrChat Chat
 @inject ObservrClient Observr
+@inject StatisticsService Statistics
 @inject AuthenticationStateProvider AuthState
 @inject IJSRuntime JS
 
@@ -436,9 +437,8 @@
         ? $"I watch {_ctx.DataSetName}: what visitors search for, how the fields are set up, and what changed. Ask me about any of it."
         : $"I watch the datasets of {_ctx.TeamName}. Open one to ask about it, or ask me about the team's.";
 
-    private List<string> Suggested() => _ctx!.HasDataset
-        ? ["What did visitors search for this week?", "Which searches found nothing?", "Is my field setup sensible?"]
-        : ["Which datasets are hibernated?", "What did you find this week?"];
+    /// <summary>Questions drawn from the page the owner is on (ObservrSuggestions).</summary>
+    private List<string> Suggested() => ObservrSuggestions.For(_ctx!, Statistics);
 
     private string Link(ObservrFinding f) => $"{TeamRoutes.Dataset(TeamNameOf(f.TeamId), f.DataSetName)}?tab={f.Tab}";
 
