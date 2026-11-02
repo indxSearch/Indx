@@ -1286,4 +1286,7 @@ a.btn-danger:hover {
     .indx-sidebar--rail .side-support-label { display: none; }
     .indx-sidebar--rail .side-support .indx-btn { width: 30px; padding: 0; justify-content: center; position: relative; }
     .indx-sidebar--rail .side-support-badge { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; padding: 0; font-size: 0; }
+    /* Get started's card is footer content too, shown again above: in the rail its own button
+       (the Sidebar's RailFooter) stands for it, so the card is hidden there. */
+    .indx-sidebar--rail .indx-sidebar-footer-content .getstarted { display: none; }
 }
