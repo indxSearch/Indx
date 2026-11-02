@@ -1115,6 +1115,7 @@
 
     private async Task AskAsync()
     {
+        MarkStep("soa-try");
         var engine = Ctx.FindEngine();
         var question = _tryText?.Trim();
         if (engine == null || string.IsNullOrEmpty(question) || _asking) return;

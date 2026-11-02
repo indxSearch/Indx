@@ -26,11 +26,15 @@
    jump to the window's edge and back. *@
 @if (_column)
 {
-<aside class="shell-side">
+<aside class="shell-side" data-tour="column">
     <Sidebar Groups="_sidebar" Active="@_active" OnSelect="Choose" StorageKey="@StorageKey" AriaLabel="Sections"
              DefaultCollapsed="Rail" Open="Menu.DrawerOpen" OpenChanged="Menu.SetDrawer">
-        <Header><ConsolePaletteButton InColumn /></Header>
+        <Header><span data-tour="jump"><ConsolePaletteButton InColumn /></span></Header>
+        @* Folded, the rail shows Get started's ring in place of the footer, which it hides. *@
+        <RailFooter><GetStarted Rail /></RailFooter>
         <Footer>
+            @* Get started, on a team's pages and its datasets, for an account that has it. *@
+            <GetStarted />
             @if (_note != null || _update != null)
             {
                 <div class="side-foot">

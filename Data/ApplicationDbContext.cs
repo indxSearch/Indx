@@ -16,6 +16,7 @@ namespace IndxServer.Data
         public DbSet<Team> Teams => Set<Team>();
         public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
         public DbSet<Invite> Invites => Set<Invite>();
+        public DbSet<Onboarding> Onboardings => Set<Onboarding>();
 
         protected override void OnModelCreating(ModelBuilder builder)
         {
@@ -65,6 +66,15 @@ namespace IndxServer.Data
                 .HasIndex(i => i.NormalizedEmail);
             builder.Entity<Invite>()
                 .HasIndex(i => i.TokenHash)
+                .IsUnique();
+            // Get started goes with its team, and there is one per user and team.
+            builder.Entity<Onboarding>()
+                .HasOne(o => o.Team)
+                .WithMany()
+                .HasForeignKey(o => o.TeamId)
+                .OnDelete(DeleteBehavior.Cascade);
+            builder.Entity<Onboarding>()
+                .HasIndex(o => new { o.UserId, o.TeamId })
                 .IsUnique();
         }
     }

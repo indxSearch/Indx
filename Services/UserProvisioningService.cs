@@ -14,6 +14,7 @@ namespace IndxServer.Services
         TeamService teamService,
         InviteService invites,
         NotificationService notifications,
+        OnboardingService onboarding,
         ILogger<UserProvisioningService> logger)
     {
         /// <summary>
@@ -38,11 +39,18 @@ namespace IndxServer.Services
             // team named after their email). They can still make one with New team.
             var joined = await invites.AcceptAsync(user, email);
             if (joined != null)
+            {
                 await teamService.SetLastTeamAsync(user.Id, joined.Id);
+                // Get started finds their way around the team they joined (OnboardingService).
+                await onboarding.StartAsync(user.Id, joined.Id, Onboarding.KindInvited);
+            }
             else
+            {
                 // A personal team, so the dashboard has a team context immediately. Blank name
-                // falls back to the email prefix.
-                await teamService.CreatePersonalTeamAsync(user, requestedTeamName);
+                // falls back to the email prefix. Get started sets search up on it.
+                var own = await teamService.CreatePersonalTeamAsync(user, requestedTeamName);
+                await onboarding.StartAsync(user.Id, own.Id, Onboarding.KindFirst);
+            }
 
             if (!isFirstUser)
             {

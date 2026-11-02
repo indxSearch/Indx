@@ -119,6 +119,7 @@ internal static class StartupServices
         builder.Services.AddSingleton<ITeamDatasets>(sp => sp.GetRequiredService<IDatasetEngines>());
         builder.Services.AddSingleton<IndxServer.Services.BoostRuleStore>();
         builder.Services.AddSingleton<IndxServer.Services.DatasetMetadataStore>();
+        builder.Services.AddSingleton<IndxServer.Services.DemoDatasets>();
         builder.Services.AddSingleton<IndxServer.Services.QueryParameterStore>();
 
         // Search or ask (Notes/search-or-ask-server.md): off unless a key is set (configuration or
@@ -197,6 +198,7 @@ internal static class StartupServices
         builder.Services.AddScoped<IndxServer.Services.TeamService>();
         builder.Services.AddScoped<IndxServer.Services.UserProvisioningService>();
         builder.Services.AddScoped<IndxServer.Services.InviteService>();
+        builder.Services.AddScoped<IndxServer.Services.OnboardingService>();
         builder.Services.AddScoped<IndxServer.Services.ActiveTeamState>();
         builder.Services.AddScoped<IndxServer.Services.HeaderState>();
         builder.Services.AddScoped<IndxServer.Services.SideMenuState>();

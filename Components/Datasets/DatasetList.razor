@@ -4,6 +4,7 @@
    wake every timed dataset of the team just to list it. *@
 @using Indx.Api
 @inject IDatasetEngines Engines
+@inject IndxServer.Services.DemoDatasets Demos
 @inject NavigationManager NavigationManager
 @inject ILogger<DatasetList> Logger
 @inject StatisticsService Stats
@@ -28,7 +29,7 @@
     @* The first visit: no dataset yet, so the page is the guide. What a dataset is, then the
        three steps from nothing to a search, each with the action it takes, the first of them the
        only thing to do right now. The skill for a developer whose LLM does the setting up. *@
-    <div class="indx-empty-state">
+    <div class="indx-empty-state" data-tour="datasets">
         @* The opening, in the shape of intrface's result messages: a large icon, a line, a detail (systm EmptyState). *@
         <EmptyState Icon="_iconEmpty" Title="Nothing here yet">@(CanCreate ? "Three steps to your first search." : "An editor of this team creates the first dataset.")</EmptyState>
         <ol class="indx-empty-steps">
@@ -40,7 +41,18 @@
                 {
                     <div class="indx-empty-step-actions">
                         <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset">New dataset</Button>
+                        @* Or try Indx first on 25,000 films from Wikidata (CC0), set up and indexed in seconds (DemoDatasets). *@
+                        @if (DemoDatasets.FilmsAvailable)
+                        {
+                            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Disk" Disabled="_demoRunning" @onclick="StartDemoAsync">
+                                @(_demoRunning ? "Setting up the films…" : "Start from a demo")
+                            </Button>
+                        }
                     </div>
+                    @if (_demoError != null)
+                    {
+                        <Alert Variant="destructive"><Description>@_demoError</Description></Alert>
+                    }
                 }
             </li>
             <li class="indx-empty-step">
@@ -70,7 +82,7 @@
 }
 else
 {
-    <div class="indx-dataset-grid">
+    <div class="indx-dataset-grid" data-tour="datasets">
         @foreach (var row in _rows)
         {
             <a class="indx-dataset-card" href="@TeamRoutes.Dataset(TeamName, row.Name)">
@@ -462,6 +474,30 @@ else
     private async Task OnNewDatasetKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter") await CreateDataset();
+    }
+
+    private bool _demoRunning;
+    private string? _demoError;
+
+    /// <summary>The films demo in this team, then its page: a dataset ready to search in a few
+    /// seconds, for someone who wants to see Indx before bringing their own data.</summary>
+    private async Task StartDemoAsync()
+    {
+        _demoRunning = true;
+        _demoError = null;
+        try
+        {
+            var name = await Demos.CreateFilmsAsync(TeamId);
+            NavigationManager.NavigateTo(IndxServer.Services.TeamRoutes.Dataset(TeamName, name));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _demoError = ex.Message;
+        }
+        finally
+        {
+            _demoRunning = false;
+        }
     }
 
     private void OpenNewDataset()

@@ -266,6 +266,7 @@ else
             return;
         }
         var hits = await Task.Run(() => Search(text));
+        MarkStep("try");
         if (!_searches.IsCurrent(ticket)) return; // a newer keystroke, Clear or Replace overtook this one
         if (hits != null)
         {

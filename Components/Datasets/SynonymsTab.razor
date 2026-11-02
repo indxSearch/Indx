@@ -294,6 +294,7 @@
 
     private async Task SaveModalAsync()
     {
+        MarkStep("tune");
         if (!Ctx.IsEditor) return;
         if (_saving) return;
         _modalError = null;

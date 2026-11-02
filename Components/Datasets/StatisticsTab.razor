@@ -1243,6 +1243,7 @@ else
 
     private async Task LoadAsync()
     {
+        MarkStep("stats");
         var store = Stats.Store;
         if (store == null) return;
         _loaded = false;

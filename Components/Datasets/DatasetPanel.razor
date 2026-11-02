@@ -10,6 +10,7 @@
 @implements IDisposable
 @inject IndxServer.Services.StatisticsService Statistics
 @inject IDatasetEngines Engines
+@inject IServiceProvider PanelServices
 @inject BoostRuleStore BoostStore
 @inject NavigationManager Nav
 @inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
@@ -130,6 +131,9 @@
         if (!firstRender) return;
         Nav.LocationChanged += OnLocationChanged;
         _listening = true;
+        // Get started's Open a dataset, for whoever is signed in (a live circuit only, as here).
+        if (PanelServices.GetService(typeof(IndxServer.Services.OnboardingService)) is IndxServer.Services.OnboardingService onboarding)
+            _ = onboarding.MarkAsync(TeamId, "open");
     }
 
     /// <summary>A jump to another tab of this dataset (the command palette, a link) changes only

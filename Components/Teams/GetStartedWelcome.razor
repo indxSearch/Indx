@@ -1,0 +1,65 @@
+@using System.Security.Claims
+@using IndxServer.Services
+@implements IDisposable
+@inject OnboardingService Onboarding
+@inject ActiveTeamState ActiveTeam
+@inject AuthenticationStateProvider AuthState
+@* The welcome on the team page for someone invited to it (Get started, Nov 2026): the team, the
+   role and what it lets them do, and the way into the tour. Gone once the tour has run or been
+   skipped, or Get started is hidden. *@
+@if (_show)
+{
+    <div class="welcome">
+        <Alert Variant="info">
+            <Title>Welcome to @TeamName</Title>
+            <Description>
+                You joined as @Article(Role): @What(Role)
+                <button type="button" class="welcome-link" @onclick="Onboarding.RequestTour">Show me around</button>
+            </Description>
+        </Alert>
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public string TeamName { get; set; } = "";
+    [Parameter] public string? Role { get; set; }
+
+    private bool _show;
+    private string _userId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = (await AuthState.GetAuthenticationStateAsync()).User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+        Onboarding.Changed += OnChanged;
+        await LoadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private void OnChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+
+    private async Task LoadAsync()
+    {
+        _show = false;
+        if (_userId.Length == 0 || ActiveTeam.Find(TeamName) is not { } team) return;
+        var view = await Onboarding.GetAsync(_userId, team.Team, team.Role);
+        _show = view is { Hidden: false } v && v.Kind == IndxServer.Data.Onboarding.KindInvited
+                && v.Steps.Any(s => s.Key == OnboardingService.Tour && !s.Done);
+    }
+
+    private static string Article(string? role) => role?.ToLowerInvariant() switch
+    {
+        "admin" => "an admin",
+        "editor" => "an editor",
+        _ => "a viewer",
+    };
+
+    private static string What(string? role) => role?.ToLowerInvariant() switch
+    {
+        "admin" => "you manage the team, its keys and its datasets.",
+        "editor" => "you tune search and its data, and do not manage keys or members.",
+        _ => "you can see everything here, and change nothing.",
+    };
+
+    public void Dispose() => Onboarding.Changed -= OnChanged;
+}

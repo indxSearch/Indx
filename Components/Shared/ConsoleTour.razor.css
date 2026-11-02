@@ -1,0 +1,10 @@
+.tour { position: fixed; inset: 0; z-index: 900; outline: none; }
+.tour-dim { position: fixed; background: rgba(8, 8, 9, 0.72); }
+.tour-outline { position: fixed; border: 1px solid var(--lv8); border-radius: var(--radius); pointer-events: none; }
+.tour-callout { position: fixed; display: flex; flex-direction: column; gap: 10px; padding: 14px; background: var(--lv1); border: 1px solid var(--lv3); border-radius: var(--radius); }
+.tour-head { display: flex; align-items: center; gap: 8px; }
+.tour-title { font: var(--text-base); font-weight: var(--med); color: var(--lv8); }
+.tour-count { font: var(--text-xs); color: var(--lv5); font-variant-numeric: tabular-nums; }
+.tour-text { margin: 0; font: var(--text-sm); color: var(--lv6); }
+.tour-actions { display: flex; align-items: center; gap: 6px; }
+.tour-spacer { flex: 1; }

@@ -1,0 +1,193 @@
+@using System.Security.Claims
+@using IndxServer.Services
+@implements IDisposable
+@inject OnboardingService Onboarding
+@inject ActiveTeamState ActiveTeam
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Navigation
+@* Get started at the foot of the side column (Nov 2026; mockup: indx-react/apps/components, "Get
+   started"; the steps: OnboardingService). A card with the progress as a row of cells opens the
+   panel of steps in their groups, the next one marked; folded to a rail, the card is a ring. The
+   team is the page's, else the active one. Nothing shows where the account has no Get started on
+   the team, or has hidden it. *@
+@if (_view is { Hidden: false } view)
+{
+    <Popover @bind-Open="_open" Side="right" Align="end" SideOffset="8" AriaLabel="Get started" Class="getstarted-popover">
+        <Trigger>
+            <button type="button" class="getstarted-trigger" data-tour="@(Rail ? null : "getstarted")"
+                    aria-label="@($"Get started, {view.Done} of {view.Total} done")">
+                @if (Rail)
+                {
+                    <span class="getstarted-ring" title="@($"Get started: {view.Done} of {view.Total} done")">
+                        <BarMeter Shape="ring" Size="48" Value="view.Done" Max="view.Total" Format="@(v => $"{v:0}/{view.Total}")" />
+                    </span>
+                }
+                else
+                {
+                    <span class="getstarted-card">
+                        <span class="getstarted-card-head">
+                            <Rocket Size="16" Color="var(--lv8)" />
+                            <span class="getstarted-card-title">@(view.Finished ? "You are set up" : "Get started")</span>
+                            <span class="getstarted-count">@view.Done of @view.Total</span>
+                        </span>
+                        <ScoreMeter Value="@((double)view.Done / view.Total)" Cells="@(view.Total * 4)" Cell="4" AriaLabel="@($"{view.Done} of {view.Total} done")" />
+                    </span>
+                }
+            </button>
+        </Trigger>
+        <ChildContent>
+            <div class="getstarted-panel">
+                <div class="getstarted-head">
+                    <span class="getstarted-title">Get started</span>
+                    <span class="getstarted-count">@view.Done of @view.Total done</span>
+                </div>
+                <p class="getstarted-line">
+                    @(view.Kind == IndxServer.Data.Onboarding.KindFirst ? "From your data to search on your site." : $"Your way around {view.TeamName}.")
+                    @if (view.Kind == IndxServer.Data.Onboarding.KindFirst)
+                    {
+                        <text> </text><button type="button" class="getstarted-link" @onclick="StartTour">Show me around</button>
+                    }
+                </p>
+                <BarMeter Value="view.Done" Max="view.Total" Zones="Zones(view)" Format="@(v => $"{v:0} done")" MaxLabel="@($"of {view.Total}")" />
+                @if (view.Finished)
+                {
+                    <EmptyState Size="compact" Icon="_iconFlag" Title="You are set up">
+                        <ChildContent>Everything here is done. Get started and the tour stay under your account menu.</ChildContent>
+                        <Actions><Button Variant="secondary" Size="micro" @onclick="HideAsync">Hide Get started</Button></Actions>
+                    </EmptyState>
+                }
+                @foreach (var group in view.Groups)
+                {
+                    var done = group.Steps.Count(s => s.Done);
+                    <div class="getstarted-group">
+                        <div class="getstarted-group-head">
+                            <span>@group.Title</span>
+                            <ScoreMeter Value="@((double)done / group.Steps.Count)" Cells="@(group.Steps.Count * 3)" Cell="5" AriaLabel="@($"{done} of {group.Steps.Count}")" />
+                        </div>
+                        @foreach (var step in group.Steps)
+                        {
+                            var s = step;
+                            var next = s.Key == view.Next;
+                            <button type="button" class="getstarted-step @(s.Done ? "getstarted-step--done" : "")" @onclick="() => Go(s)">
+                                <span class="getstarted-mark @(s.Done ? "getstarted-mark--done" : "")">
+                                    @if (s.Done) { <Check Size="14" Color="var(--lv0)" /> }
+                                    else { <Circle Size="14" Color="@(next ? "var(--lv8)" : "var(--lv4)")" /> }
+                                </span>
+                                <span class="getstarted-step-text">
+                                    <span class="getstarted-step-title">
+                                        @s.Title
+                                        @if (next) { <Chip Color="var(--lv8)" TextColor="var(--lv0)">Next</Chip> }
+                                        @if (s.Pro) { <Chip>Pro</Chip> }
+                                    </span>
+                                    <span class="getstarted-step-line">@s.Line</span>
+                                </span>
+                                <ChevronRight Size="14" Color="var(--lv5)" />
+                            </button>
+                        }
+                    </div>
+                }
+                @if (view.Teaser)
+                {
+                    @* The one place Get started shows what Pro adds: a card at the end, not a step. *@
+                    <div class="getstarted-teaser">
+                        <span class="getstarted-teaser-icon"><Observr Size="20" Color="var(--lv8)" /></span>
+                        <span class="getstarted-teaser-text">
+                            <span class="getstarted-step-title">Add Pro to get Observr <Chip>Pro</Chip></span>
+                            <span class="getstarted-step-line">
+                                Observr looks at your search every week and tells you what visitors could not find, and what to change.
+                                Pro also brings Search or ask@(view.TeaserTeam ? ", your whole team, and no cap on documents" : "").
+                            </span>
+                            <span><Button Variant="secondary" Size="micro" Href="@ProHref" target="_blank" rel="noopener">See Pro</Button></span>
+                        </span>
+                    </div>
+                }
+                @if (!view.Finished)
+                {
+                    <div class="getstarted-foot">
+                        <Button Variant="ghost" Size="micro" @onclick="HideAsync">Hide for now</Button>
+                    </div>
+                }
+            </div>
+        </ChildContent>
+    </Popover>
+}
+
+@code {
+    /// <summary>The rail's ring instead of the card.</summary>
+    [Parameter] public bool Rail { get; set; }
+
+    private OnboardingView? _view;
+    private bool _open;
+    private string _userId = "";
+
+    private static readonly RenderFragment<int> _iconFlag = size => @<FinishFlag Size="size" Color="currentColor" />;
+
+    /// <summary>Where See Pro goes: the plans on indx.co.</summary>
+    private const string ProHref = "https://indx.co/#pricing";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = (await AuthState.GetAuthenticationStateAsync()).User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+        Onboarding.Changed += OnChanged;
+        Navigation.LocationChanged += OnLocation;
+        ActiveTeam.OnChange += OnChanged;
+        await LoadAsync();
+    }
+
+    private void OnChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+    private void OnLocation(object? sender, LocationChangedEventArgs e) => OnChanged();
+
+    private async Task LoadAsync()
+    {
+        if (_userId.Length == 0 || Team() is not { } found) { _view = null; return; }
+        _view = await Onboarding.GetAsync(_userId, found.Team, found.Role);
+    }
+
+    /// <summary>The page's team (/teams/{name}/…), else the active one.</summary>
+    private (IndxServer.Data.Team Team, string Role)? Team()
+    {
+        var seg = new Uri(Navigation.Uri).AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var name = seg.Length >= 2 && seg[0].Equals("teams", StringComparison.OrdinalIgnoreCase) ? Uri.UnescapeDataString(seg[1]) : ActiveTeam.ActiveTeamName;
+        return ActiveTeam.Find(name);
+    }
+
+    /// <summary>A tick where each group after the first starts: the bar shows the parts before
+    /// either is reached.</summary>
+    private static IReadOnlyList<BarMeter.Zone> Zones(OnboardingView view)
+    {
+        var zones = new List<BarMeter.Zone> { new(0, "var(--lv8)") };
+        var at = 0;
+        foreach (var group in view.Groups.Take(view.Groups.Count - 1))
+        {
+            at += group.Steps.Count;
+            zones.Add(new((double)at / view.Total, "var(--lv8)"));
+        }
+        return zones;
+    }
+
+    private void Go(OnboardingStep step)
+    {
+        _open = false;
+        if (step.Key == OnboardingService.Tour) { Onboarding.RequestTour(); return; }
+        if (step.Href != null) Navigation.NavigateTo(step.Href);
+    }
+
+    private void StartTour()
+    {
+        _open = false;
+        Onboarding.RequestTour();
+    }
+
+    private async Task HideAsync()
+    {
+        _open = false;
+        if (_view != null) await Onboarding.HideAsync(_userId, _view.TeamId);
+    }
+
+    public void Dispose()
+    {
+        Onboarding.Changed -= OnChanged;
+        Navigation.LocationChanged -= OnLocation;
+        ActiveTeam.OnChange -= OnChanged;
+    }
+}

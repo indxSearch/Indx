@@ -112,6 +112,12 @@
 		<EmbeddedResource Include="Indx.Systm.Blazor\Icons\*.razor" LogicalName="pixl/%(Filename)%(Extension)" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<!-- The demo films (Services/DemoDatasets.cs): Wikidata, CC0, built by
+		     tools/demo-data/build-films.py. Embedded, so a published server carries them. -->
+		<EmbeddedResource Include="Demo\films.json.gz" LogicalName="IndxServer.Demo.films.json.gz" Condition="Exists('Demo/films.json.gz')" />
+	</ItemGroup>
+
 	<!-- ===== Indx engine reference selection =====
 	     Three modes, resolved into $(IndxReferenceMode):
 	       Source  - ProjectReference to ..\Indx (full IndxSolutions checkout). Default for us.

@@ -1,0 +1,36 @@
+/* The card at the foot of the column: a surface a shade up, the panel's trigger. */
+.getstarted-trigger { all: unset; display: block; width: 100%; cursor: pointer; }
+.getstarted-trigger:focus-visible .getstarted-card, .getstarted-trigger:focus-visible .getstarted-ring { outline: 1px solid var(--lv6); outline-offset: 1px; }
+.getstarted-card { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; background: var(--lv1); border: 1px solid var(--lv2); border-radius: var(--radius); }
+.getstarted-trigger:hover .getstarted-card { border-color: var(--lv3); }
+.getstarted-card-head { display: flex; align-items: center; gap: 8px; }
+.getstarted-card-title { font: var(--text-sm); color: var(--lv8); flex: 1; }
+.getstarted-count { font: var(--text-xs); color: var(--lv5); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.getstarted-ring { display: flex; justify-content: center; }
+
+/* The panel. */
+::deep .getstarted-popover { padding: 0; }
+.getstarted-panel { width: 380px; max-width: calc(100vw - 32px); display: flex; flex-direction: column; gap: 14px; padding: 16px; }
+.getstarted-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.getstarted-title { font: var(--text-base); font-weight: var(--med); color: var(--lv8); }
+.getstarted-line { margin: -8px 0 0; font: var(--text-sm); color: var(--lv5); }
+.getstarted-link { all: unset; cursor: pointer; color: var(--lv8); text-decoration: underline; text-underline-offset: 2px; }
+.getstarted-link:focus-visible { outline: 1px solid var(--lv6); }
+.getstarted-group { display: flex; flex-direction: column; gap: 2px; }
+.getstarted-group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0 6px; font: var(--text-xs); color: var(--lv5); }
+.getstarted-step { all: unset; box-sizing: border-box; display: flex; align-items: flex-start; gap: 12px; padding: 8px; margin: 0 -8px; border-radius: var(--radius); cursor: pointer; }
+.getstarted-step:hover { background: var(--lv2); }
+.getstarted-step:focus-visible { outline: 1px solid var(--lv6); }
+.getstarted-step > :last-child { margin-top: 4px; flex: none; }
+.getstarted-mark { flex: none; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; }
+.getstarted-mark--done { background: var(--lv8); }
+.getstarted-step-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.getstarted-step-title { display: flex; align-items: center; gap: 8px; font: var(--text-sm); color: var(--lv8); }
+.getstarted-step-line { font: var(--text-xs); color: var(--lv5); }
+.getstarted-step--done .getstarted-step-title { color: var(--lv5); }
+.getstarted-foot { display: flex; justify-content: flex-end; }
+
+/* The Pro teaser: a surface a step down, the last thing in the first user's list. */
+.getstarted-teaser { display: flex; gap: 12px; padding: 12px; border: 1px solid var(--lv3); border-radius: var(--radius); background: var(--lv0); }
+.getstarted-teaser-icon { flex: none; padding-top: 1px; }
+.getstarted-teaser-text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }

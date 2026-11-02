@@ -312,6 +312,7 @@
 
     private async Task SaveAsync()
     {
+        MarkStep("tune");
         if (!Ctx.IsEditor) return;
         if (_saving) return;
         _error = null;
