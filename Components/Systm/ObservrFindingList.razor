@@ -58,6 +58,11 @@ else
                                         @foreach (var n in names) { <Chip>@n</Chip> }
                                         @after
                                     </span>
+                                    @if (p.Ticket is { } ticket)
+                                    {
+                                        @* The ticket as it will go, read before the Yes sends it. *@
+                                        <span class="ofl-ticket">@ticket.Body</span>
+                                    }
                                     @if (!string.IsNullOrWhiteSpace(p.Reason) && p.Reason != f.Answer) { <span class="ofl-why">@p.Reason</span> }
                                 </div>
                             </div>

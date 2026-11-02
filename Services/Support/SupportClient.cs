@@ -64,12 +64,22 @@ namespace IndxServer.Services.Support
         public Task<SupportResult<SupportTicket>> GetAsync(int id, bool seen, CancellationToken ct = default) =>
             SendAsync<SupportTicket>(HttpMethod.Get, $"tickets/{id}{(seen ? "?seen=true" : "")}", null, ct);
 
-        /// <summary>A new ticket. <paramref name="kind"/> is support, feature or feedback.</summary>
+        /// <summary>A new ticket from the console. <paramref name="kind"/> is support, feature or feedback.</summary>
         public Task<SupportResult<SupportTicket>> CreateAsync(string kind, string subject, string body, ClaimsPrincipal author, ApplicationUser? user,
             JsonNode? diagnostics, CancellationToken ct = default) =>
             SendAsync<SupportTicket>(HttpMethod.Post, "tickets", new
             {
-                kind, subject, body, author = Author(author, user), instanceVersion = IndxServer.Shared.AdminNav.VersionLine, diagnostics,
+                kind, subject, body, author = Author(author, user), instanceVersion = IndxServer.Shared.AdminNav.VersionLine, diagnostics, source = "console",
+            }, ct);
+
+        /// <summary>A new ticket written by someone other than a signed-in person: Observr's draft,
+        /// sent by an owner's Yes (<paramref name="source"/> "observr").</summary>
+        public Task<SupportResult<SupportTicket>> CreateAsync(string kind, string subject, string body, string authorName, string? authorEmail,
+            JsonNode? diagnostics, string source, CancellationToken ct = default) =>
+            SendAsync<SupportTicket>(HttpMethod.Post, "tickets", new
+            {
+                kind, subject, body, author = new { name = authorName, email = authorEmail }, instanceVersion = IndxServer.Shared.AdminNav.VersionLine,
+                diagnostics, source,
             }, ct);
 
         public Task<SupportResult<SupportTicket>> ReplyAsync(int id, string body, ClaimsPrincipal author, ApplicationUser? user, CancellationToken ct = default) =>

@@ -131,11 +131,16 @@ namespace IndxServer.Services.Observr
         }
     }
 
+    /// <summary>A support ticket Observr drafted for the owner to send to Indx: support, feature or
+    /// feedback, a subject and the text. Sent by the Yes, through the console's support client.</summary>
+    public sealed record ObservrTicketDraft(string Kind, string Subject, string Body);
+
     /// <summary>A proposal Observr made, which this instance can carry out after a yes: a synonym
     /// (<see cref="Terms"/>), a field change (<see cref="Field"/>), Search or ask settings
-    /// (<see cref="SearchOrAsk"/>) or query parameters (<see cref="QueryParameters"/>).</summary>
+    /// (<see cref="SearchOrAsk"/>), query parameters (<see cref="QueryParameters"/>) or a support
+    /// ticket to send to Indx (<see cref="Ticket"/>).</summary>
     public sealed record ObservrProposal(string Kind, string[] Terms, string Direction, string Reason, ObservrFieldChange? Field = null,
-        ObservrSearchOrAskChange? SearchOrAsk = null, ObservrQueryParametersChange? QueryParameters = null)
+        ObservrSearchOrAskChange? SearchOrAsk = null, ObservrQueryParametersChange? QueryParameters = null, ObservrTicketDraft? Ticket = null)
     {
         /// <summary>What this server can carry out, sent to Observr as <see cref="AcceptsHeader"/> on
         /// every request: the kinds, and as <c>kind.part</c> each part added to a kind after it first
@@ -143,6 +148,11 @@ namespace IndxServer.Services.Observr
         /// to this list. A part added here must be applied in the same change, or Observr sends it
         /// and a yes leaves it out.</summary>
         public static readonly string[] Accepted = [Synonym, FieldKind, SearchOrAskKind, QueryParametersKind, "searchOrAsk.askPhrases"];
+
+        /// <summary>What this server can carry out right now: <see cref="Accepted"/>, and a support
+        /// ticket while support is on (it is sent through the Portal, which an instance with support
+        /// switched off never calls).</summary>
+        public static IEnumerable<string> AcceptedWith(bool support) => support ? [.. Accepted, SupportTicketKind] : Accepted;
         public const string AcceptsHeader = "X-Indx-Observr-Accepts";
 
         /// <summary>Whether a yes would change something. Reading drops JSON this server does not
@@ -156,6 +166,7 @@ namespace IndxServer.Services.Observr
             FieldKind => Field != null,
             SearchOrAskKind => SearchOrAsk?.Parts.Any() == true,
             QueryParametersKind => QueryParameters?.Parts.Any() == true,
+            SupportTicketKind => Ticket is { Subject.Length: > 0, Body.Length: > 0 },
             _ => false,
         };
 
@@ -191,6 +202,9 @@ namespace IndxServer.Services.Observr
                         return ("Change Search or ask:", SearchOrAsk.Parts.ToList(), "");
                     case QueryParametersKind when QueryParameters != null:
                         return ("Change the query parameters:", QueryParameters.Parts.ToList(), "");
+                    case SupportTicketKind when Ticket != null:
+                        return (Ticket.Kind switch { "feature" => "Send Indx a feature request:", "feedback" => "Send Indx feedback:", _ => "Send Indx a support request:" },
+                            [Ticket.Subject], "");
                     default:
                         return (Label, [], "");
                 }
@@ -212,6 +226,7 @@ namespace IndxServer.Services.Observr
         public const string FieldKind = "field";
         public const string SearchOrAskKind = "searchOrAsk";
         public const string QueryParametersKind = "queryParameters";
+        public const string SupportTicketKind = "supportTicket";
 
         /// <summary>What the proposal is, as a label, for a panel that is not a synonym's or a field's.</summary>
         [JsonIgnore]
@@ -221,6 +236,7 @@ namespace IndxServer.Services.Observr
             FieldKind => "Field",
             SearchOrAskKind => "Search or ask",
             QueryParametersKind => "Query parameters",
+            SupportTicketKind => "Send to Indx",
             _ => Kind,
         };
 
@@ -231,6 +247,7 @@ namespace IndxServer.Services.Observr
             FieldKind when Field != null => [Field.Name + ": " + Field.Summary],
             SearchOrAskKind when SearchOrAsk != null => SearchOrAsk.Parts,
             QueryParametersKind when QueryParameters != null => QueryParameters.Parts,
+            SupportTicketKind when Ticket != null => [Ticket.Subject],
             _ => [],
         };
     }
@@ -370,7 +387,8 @@ namespace IndxServer.Services.Observr
     internal sealed class ObservrClient(IHttpClientFactory http, ObservrOptions options, InstanceSettingsService settings,
         IConfiguration configuration, IDatasetEngines engines, DatasetMetadataStore metadata, StatisticsService statistics,
         ObservrFindingStore findings, ObservrSummaryBuilder summaries, SearchOrAsk.SearchOrAskStore searchOrAsk,
-        SearchOrAsk.SearchOrAskService searchOrAskService, QueryParameterStore queryParameters, ILogger<ObservrClient> logger)
+        SearchOrAsk.SearchOrAskService searchOrAskService, QueryParameterStore queryParameters, ILogger<ObservrClient> logger,
+        Support.SupportOptions supportOptions, Support.SupportClient support, Support.SupportState supportState)
     {
         public const string HttpClientName = "Observr";
         public const string ZeroHitKind = "zeroHitQuery";
@@ -636,7 +654,7 @@ namespace IndxServer.Services.Observr
             var (instanceId, instanceName) = Instance();
             request.Headers.TryAddWithoutValidation("X-Indx-Instance", instanceId);
             request.Headers.TryAddWithoutValidation("X-Indx-Instance-Name", instanceName);
-            request.Headers.TryAddWithoutValidation(ObservrProposal.AcceptsHeader, string.Join(',', ObservrProposal.Accepted));
+            request.Headers.TryAddWithoutValidation(ObservrProposal.AcceptsHeader, string.Join(',', ObservrProposal.AcceptedWith(supportOptions.Enabled)));
             // Which release asked, for Observr's support and for knowing when an old one is gone;
             // what it can carry out is the accepts list above, never inferred from this.
             request.Headers.TryAddWithoutValidation("X-Indx-Server-Version", ServerVersion);
@@ -992,6 +1010,11 @@ namespace IndxServer.Services.Observr
                 if (!undo.HasQueryParameters) { undo.HasQueryParameters = true; undo.QueryParametersBefore = before == null ? null : JsonSerializer.Serialize(before, UndoJson); }
                 done.Add(ObservrProposal.QueryParametersKind);
             }
+            foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.SupportTicketKind && p.Ticket != null))
+            {
+                if (SendTicket(f, p.Ticket!) is { } whyNot) return whyNot;
+                done.Add(ObservrProposal.SupportTicketKind);
+            }
             var changes = chosen.Where(p => p.Kind == ObservrProposal.FieldKind && p.Field != null).Select(p => p.Field!).ToList();
             if (changes.Count > 0)
             {
@@ -1005,6 +1028,25 @@ namespace IndxServer.Services.Observr
                 undo.FieldsBefore.AddRange(before);
                 done.Add(ObservrProposal.FieldKind);
             }
+            return null;
+        }
+
+        /// <summary>Sends a ticket Observr drafted, on the owner's Yes, through the support client: to
+        /// the Portal, marked as Observr's. Decide runs off the request thread, so waiting is fine.
+        /// A ticket cannot be taken back, so Undo leaves it. Returns why not, or null.</summary>
+        private string? SendTicket(ObservrFinding f, ObservrTicketDraft draft)
+        {
+            if (!supportOptions.Enabled) return "Support is switched off on this instance.";
+            var where = f.DataSetName.Length > 0 ? $"the dataset {f.DataSetName}" : "the team";
+            var result = support.CreateAsync(draft.Kind, draft.Subject, $"{draft.Body}\n\n(Drafted by Observr about {where}, sent by an owner's Yes.)",
+                "Observr", null, null, source: "observr").GetAwaiter().GetResult();
+            if (!result.Ok) return result.Problem switch
+            {
+                Support.SupportProblem.NoToken or Support.SupportProblem.Unauthorized => "The ticket needs this instance's licence token, set under Admin, License.",
+                Support.SupportProblem.Unreachable => $"Indx's support could not be reached. Try again, or write to {supportOptions.Email}.",
+                _ => result.Message ?? "The ticket could not be sent.",
+            };
+            _ = supportState.RefreshAsync();
             return null;
         }
 
