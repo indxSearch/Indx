@@ -11,11 +11,12 @@
         <textarea id="@_id"
                   name="@NameAttributeValue"
                   rows="@Rows"
-                  value="@CurrentValueAsString"
+                  @key="_live.Key"
+                  value="@_rendered"
                   @onchange="OnChange"
                   aria-invalid="@(HasError ? "true" : "false")"
                   aria-describedby="@(HasError && !string.IsNullOrEmpty(Error) ? $"{_id}-error" : null)"
-                  @attributes="AdditionalAttributes"
+                  @attributes="_attributes"
                   class="@_textareaClass"></textarea>
         @if (!string.IsNullOrEmpty(Error))
         {
@@ -28,10 +29,11 @@ else
     <textarea id="@_id"
               name="@NameAttributeValue"
               rows="@Rows"
-              value="@CurrentValueAsString"
+              @key="_live.Key"
+              value="@_rendered"
               @onchange="OnChange"
               aria-invalid="@(HasError ? "true" : "false")"
-              @attributes="AdditionalAttributes"
+              @attributes="_attributes"
               class="@_textareaClass"></textarea>
 }
 
@@ -42,6 +44,10 @@ else
     [Parameter] public string? Id { get; set; }
     [Parameter] public bool Required { get; set; }
     [Parameter] public int Rows { get; set; } = 4;
+    /// <summary>Update the bound value on every keystroke rather than when the field is left, as
+    /// InputField's Immediate does: for a form whose Send enables as soon as there is text. The box
+    /// is not rewritten with the echo of what was typed (see <see cref="LiveInputState"/>).</summary>
+    [Parameter] public bool Immediate { get; set; }
 
     // An EditForm's validation counts too: a field the form rejected is styled as one. The
     // caller's own class is kept beside the system's (it is rendered after the splat, so it wins).
@@ -69,6 +75,34 @@ else
         result = value;
         validationErrorMessage = string.Empty;
         return true;
+    }
+
+    // Without Immediate the box shows the value as before. With it, the rendered value holds
+    // still while text arrives from typing, and only an outside change (a reset) is written.
+    private readonly LiveInputState _live = new();
+    private string? _rendered => Immediate ? _live.Rendered : CurrentValueAsString;
+
+    protected override void OnParametersSet()
+    {
+        if (Immediate) _live.Set(CurrentValueAsString);
+    }
+
+    // The input handler is added only with Immediate, so other text areas send nothing per keystroke.
+    private IReadOnlyDictionary<string, object>? _attributes
+    {
+        get
+        {
+            if (!Immediate) return AdditionalAttributes;
+            var all = AdditionalAttributes is null ? new Dictionary<string, object>() : new Dictionary<string, object>(AdditionalAttributes);
+            all["oninput"] = EventCallback.Factory.Create<ChangeEventArgs>(this, OnInput);
+            return all;
+        }
+    }
+
+    private void OnInput(ChangeEventArgs e)
+    {
+        _live.Typed(e.Value?.ToString());
+        CurrentValueAsString = e.Value?.ToString();
     }
 
     private void OnChange(ChangeEventArgs e)
