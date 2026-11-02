@@ -75,13 +75,15 @@
     @if (Footer != null || RailFooter != null || Collapsible)
     {
         <div class="indx-sidebar-footer">
-            @if (Footer != null)
-            {
-                <div class="indx-sidebar-footer-content">@Footer</div>
-            }
+            @* The rail's footer first: where it stands for something in the footer, it keeps that
+               thing's place at the top of the foot, folded or not. *@
             @if (RailFooter != null)
             {
                 <div class="indx-sidebar-rail-footer">@RailFooter</div>
+            }
+            @if (Footer != null)
+            {
+                <div class="indx-sidebar-footer-content">@Footer</div>
             }
             @if (Collapsible)
             {
