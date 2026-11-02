@@ -19,6 +19,7 @@ namespace IndxServer.Data
         UpdateAvailable     = 11,
         SecurityUpdate      = 12,
         WebhookAttention    = 13,
+        SupportReply        = 14,
     }
 
     public class Notification

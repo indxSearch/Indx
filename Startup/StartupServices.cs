@@ -162,6 +162,16 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrDigestJob>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.Observr.ObservrDigestJob>());
 
+        // Support tickets (Notes/support-tickets-design.md): written and read in the console, held
+        // and answered in Indx's Portal, reached with the licence token. The instance only calls out.
+        builder.Services.AddSingleton(builder.Configuration.GetSection(IndxServer.Services.Support.SupportOptions.Section)
+            .Get<IndxServer.Services.Support.SupportOptions>() ?? new());
+        builder.Services.AddHttpClient(IndxServer.Services.Support.SupportClient.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(20));
+        builder.Services.AddSingleton<IndxServer.Services.Support.SupportClient>();
+        builder.Services.AddSingleton<IndxServer.Services.Support.SupportState>();
+        builder.Services.AddSingleton<IndxServer.Services.Support.SupportDiagnostics>();
+        builder.Services.AddHostedService<IndxServer.Services.Support.SupportPollJob>();
+
         // MCP server: read-only retrieval tools over /mcp (Streamable HTTP), behind JWT auth.
         builder.Services.AddHttpContextAccessor();
         // ServerInstructions is sent once at the initialization handshake, so the workflow and the
@@ -183,6 +193,7 @@ internal static class StartupServices
                 new System.Text.Json.JsonSerializerOptions(ModelContextProtocol.McpJsonUtilities.DefaultOptions));
 
         builder.Services.AddScoped<IndxServer.Services.NotificationService>();
+        builder.Services.AddSingleton<IndxServer.Services.NotificationSignal>();
         builder.Services.AddScoped<IndxServer.Services.TeamService>();
         builder.Services.AddScoped<IndxServer.Services.UserProvisioningService>();
         builder.Services.AddScoped<IndxServer.Services.InviteService>();

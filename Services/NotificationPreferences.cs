@@ -41,6 +41,7 @@ internal static class NotificationPreferences
         new(NotificationType.UpdateAvailable,    "Update available",      "A newer Indx release is out: once per release, with how this instance gets it. In the console; email only if you turn it on.", AdminOnly: true, EmailByDefault: false),
         new(NotificationType.SecurityUpdate,     "Security update",       "A newer Indx release fixes a security issue: once per release, with how this instance gets it.", AdminOnly: true),
         new(NotificationType.WebhookAttention,   "Webhook needs attention", "A dataset's webhook had a batch held by its brake, refused events, or could not write.", AdminOnly: true),
+        new(NotificationType.SupportReply,       "Support reply",         "Indx answered a support ticket: to whoever wrote it, else to the instance's admins.", AdminOnly: false),
         new(NotificationType.RepeatedApiErrors,  "Repeated API errors",   "More unhandled API errors than the configured threshold within the window. Each error is in the server log with its trace id.", AdminOnly: true),
     ];
 

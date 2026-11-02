@@ -1,6 +1,8 @@
 @inject IndxServer.Services.NotificationService NotificationService
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager NavigationManager
+@inject IndxServer.Services.NotificationSignal Signal
+@implements IDisposable
 
 @* The bell and its panel, a systm Popover: a press outside, Escape or a navigation closes it. *@
 <div class="notif-wrapper">
@@ -86,7 +88,23 @@
         _userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (_userId != null)
             _unreadCount = await NotificationService.GetUnreadCountAsync(_userId);
+        Signal.Created += OnCreated;
     }
+
+    // A notification for this user was stored elsewhere (a background job, another tab): the
+    // count, and the list when it is open, now rather than at the next reload.
+    private void OnCreated(string userId)
+    {
+        if (userId != _userId) return;
+        _ = InvokeAsync(async () =>
+        {
+            _unreadCount = await NotificationService.GetUnreadCountAsync(userId);
+            if (_open) _notifications = await NotificationService.GetRecentAsync(userId, 10);
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose() => Signal.Created -= OnCreated;
 
     private async Task OnOpenChanged(bool open)
     {

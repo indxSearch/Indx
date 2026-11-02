@@ -18,6 +18,8 @@
 @inject ObservrSubscription Observr
 @inject ObservrFindingStore Findings
 @inject AuthenticationStateProvider AuthState
+@inject IndxServer.Services.Support.SupportState Support
+@inject IndxServer.Services.Support.SupportOptions SupportOptions
 
 @* Drawn wherever the area has a column, even before its sections are known: a dataset page
    publishes them only once its context is built, and removing the column in that gap let the page
@@ -42,6 +44,21 @@
                     }
                 </div>
             }
+            @* Support at the foot, above Collapse, for whoever may write to Indx (SupportAccess):
+               the instance's admins and the editors and admins of a team. *@
+            @if (_support)
+            {
+                var unread = Support.Unread;
+                <span class="side-support">
+                    <Tooltip Content="@(unread > 0 ? $"Support: {unread} new {(unread == 1 ? "reply" : "replies")}" : "Support")" Position="right">
+                        <Button Variant="@(_onSupport ? "primary" : "ghost")" Size="micro" IconLeft="_iconSupport" Href="/support" aria-current="@(_onSupport ? "page" : null)"
+                                aria-label="@(unread > 0 ? $"Support, {unread} new" : "Support")">
+                            <span class="side-support-label">Support</span>
+                            @if (unread > 0) { <span class="side-support-badge" title="@(unread == 1 ? "1 new reply from Indx" : $"{unread} new replies from Indx")">@unread</span> }
+                        </Button>
+                    </Tooltip>
+                </span>
+            }
         </Footer>
     </Sidebar>
 </aside>
@@ -65,26 +82,37 @@
     private static readonly RenderFragment<int> _iconKey = size => @<Key Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconBell = size => @<Bell Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconLock = size => @<Lock Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconSupport = size => @<Indx.Systm.Blazor.Icons.Support Size="size" Color="currentColor" />;
+
+    private bool _support;
+    private bool _onSupport;
+    private System.Security.Claims.ClaimsPrincipal _user = new();
     protected override async Task OnInitializedAsync()
     {
         NavigationManager.LocationChanged += OnLocationChanged;
         Menu.Changed += OnMenuChanged;
         // The team's pages need the user's teams for the role and the team's id.
         var auth = await AuthState.GetAuthenticationStateAsync();
+        _user = auth.User;
         var userId = auth.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
         if (userId.Length > 0) await ActiveTeam.EnsureInitializedAsync(userId);
         ActiveTeam.OnChange += OnMenuChanged;
+        Support.Changed += OnSupportChanged;
         Resolve();
+        // The badge needs the list once; after that the background check keeps it.
+        if (_support && Support.CheckedUtc == null) _ = Support.RefreshAsync();
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e) { Resolve(); InvokeAsync(StateHasChanged); }
     private void OnMenuChanged() { Resolve(); _ = InvokeAsync(StateHasChanged); }
+    private void OnSupportChanged() => _ = InvokeAsync(StateHasChanged);
 
     public void Dispose()
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
         Menu.Changed -= OnMenuChanged;
         ActiveTeam.OnChange -= OnMenuChanged;
+        Support.Changed -= OnSupportChanged;
     }
 
     /// <summary>A section chosen: a page that owns the menu handles it (the dataset page's tabs);
@@ -96,6 +124,8 @@
 
     private void Resolve()
     {
+        _support = SupportOptions.Enabled && IndxServer.Services.Support.SupportAccess.CanUse(_user, ActiveTeam.Teams);
+        _onSupport = IsSupport(NavigationManager.Uri);
         if (Menu.Groups != null)
         {
             _groups = Menu.Groups;
@@ -106,6 +136,7 @@
             var drawn = _groups;
             (_groups, _active) = ForUrl(NavigationManager.Uri);
             if (_groups.Count == 0) (_groups, _active) = ForTeam(NavigationManager.Uri);
+            if (_groups.Count == 0 && _onSupport) (_groups, _active) = ForSupport();
             // A dataset page publishes its sections once its context is built: until then the
             // column keeps what it shows rather than going blank, so it changes once, not twice.
             if (_groups.Count == 0 && drawn.Count > 0 && HasColumn(NavigationManager.Uri)) _groups = drawn;
@@ -128,11 +159,28 @@
         return ActiveTeam.Teams.Count > 0 && (path.Length == 0 || path == "team" || path.StartsWith("datasets/"));
     }
 
-    /// <summary>The areas with a column: a team's pages and its datasets, admin, account.</summary>
+    /// <summary>The areas with a column: a team's pages and its datasets, admin, account, support.</summary>
     private static bool HasColumn(string uri)
     {
         var path = new Uri(uri).AbsolutePath.Trim('/').ToLowerInvariant();
-        return path.StartsWith("teams/") || path.StartsWith("admin") || path.StartsWith("account");
+        return path.StartsWith("teams/") || path.StartsWith("admin") || path.StartsWith("account") || IsSupport(uri);
+    }
+
+    private static bool IsSupport(string uri)
+    {
+        var path = new Uri(uri).AbsolutePath.Trim('/').ToLowerInvariant();
+        return path == "support" || path.StartsWith("support/");
+    }
+
+    /// <summary>The column on /support, which belongs to no area: the active team's sections, none
+    /// of them open, or the admin sections for an instance admin without a team.</summary>
+    private (IReadOnlyList<SideMenuGroup> Groups, string? Active) ForSupport()
+    {
+        if (ActiveTeam.ActiveTeamName is { } team)
+            return (ForTeam(new Uri(new Uri(NavigationManager.BaseUri), TeamRoutes.Team(team).TrimStart('/')).ToString()).Groups, null);
+        if (_user.IsInRole("Admin"))
+            return (ForUrl(new Uri(new Uri(NavigationManager.BaseUri), "admin").ToString()).Groups, null);
+        return ([], null);
     }
 
     private static readonly RenderFragment<int> _iconLab = size => @<LabExperiment Size="size" Color="currentColor" />;
