@@ -11,7 +11,19 @@ namespace IndxServer.Services.Observr
     public sealed record ObservrSummaryTotals(long Searches, long ZeroHits, long ClickedSearches, long Uncovered);
     public sealed record ObservrSummaryAsk(long Judged, long Offers, long Asks, long Answered, long NothingFound, long Unanswered, List<string> UnansweredQuestions,
         List<string>? LeadIns = null, List<ObservrSummaryLeadIn>? LeadInCandidates = null, List<ObservrSummaryRefocusMiss>? RefocusedNothing = null,
-        long AskedAgain = 0, List<ObservrSummaryRephrasing>? AskedAgainAs = null);
+        long AskedAgain = 0, List<ObservrSummaryRephrasing>? AskedAgainAs = null, long Failed = 0, ObservrSummaryProvider? Provider = null);
+    /// <summary>
+    /// How the AI provider behind Search or ask is doing on the instance (Nov 2026), so the digest can
+    /// say when answers are being refused and why, and warn before a key's limit runs out. The
+    /// refusal is the latest that has not been followed by a call of its kind that worked: which call
+    /// (judge, answer, filters), the status, its kind (credit, keyLimit, inFlight, key, refused,
+    /// failed), the provider's own words, when, and the server's advice. Offers are paused while
+    /// answers are refused for good. The key's limit and what is left are OpenRouter's, the only
+    /// provider that reports them; null elsewhere.
+    /// </summary>
+    public sealed record ObservrSummaryProvider(string Name, string? RefusedCall = null, int? Status = null, string? Kind = null,
+        string? Reason = null, DateTime? RefusedAtUtc = null, string? Advice = null, DateTime? OffersPausedUntilUtc = null,
+        double? KeyLimit = null, double? KeyRemaining = null, string? KeyReset = null);
     /// <summary>A question asked again in other words soon after, in the same visit: the first
     /// wording, the second, how often, and how often the second answer had a source opened.</summary>
     public sealed record ObservrSummaryRephrasing(string First, string Again, long Times, long AgainOpened);
@@ -43,7 +55,7 @@ namespace IndxServer.Services.Observr
     /// dataset is loaded, its engine. Never loads a dataset: a summary of a sleeping one has no field
     /// list, which is also a fact about it.</summary>
     internal sealed class ObservrSummaryBuilder(StatisticsService statistics, DatasetMetadataStore metadata, IDatasetEngines engines,
-        ObservrFindingStore findings, SearchOrAsk.SearchOrAskStore searchOrAskStore)
+        ObservrFindingStore findings, SearchOrAsk.SearchOrAskStore searchOrAskStore, SearchOrAsk.SearchOrAskService searchOrAsk)
     {
         private const int TopQueries = 20;
         private const int ZeroHits = 15;
@@ -54,6 +66,19 @@ namespace IndxServer.Services.Observr
         private const int Unanswered = 10;
         private const int Rephrased = 10;
         private const int Findings = 15;
+
+        /// <summary>The provider's state for the summary: the refusal standing now, the offer pause, and
+        /// the key's limit as last read (never read here: a summary makes no call to the provider).</summary>
+        private ObservrSummaryProvider Provider()
+        {
+            var setup = searchOrAsk.Setup;
+            var refusal = searchOrAsk.CallHealth().Select(h => h.Refusal).Where(r => r != null).OrderByDescending(r => r!.At).FirstOrDefault();
+            var limit = searchOrAsk.CachedKeyLimit;
+            return new ObservrSummaryProvider(SearchOrAsk.SearchOrAskProviders.Label(setup.Provider), refusal?.Call, refusal?.Status,
+                refusal == null ? null : SearchOrAsk.SearchOrAskService.RefusalKind(refusal.Status, refusal.LimitSource),
+                refusal?.Reason, refusal?.At, refusal?.Advice, searchOrAsk.OffersPaused ? searchOrAsk.OffersPausedUntil : null,
+                limit?.Limit, limit?.Remaining, limit?.Reset);
+        }
 
         /// <summary>Null when the instance keeps no statistics: there is nothing to summarise.</summary>
         public ObservrSummary? Build(string teamId, string dataSetName)
@@ -84,7 +109,8 @@ namespace IndxServer.Services.Observr
                 [.. (askSettings?.AskPhrases ?? SearchOrAsk.SearchOrAskPhrases.Default).LeadIns],
                 store.LeadInCandidates(teamId, dataSetName, from, to).Select(c => new ObservrSummaryLeadIn(c.Words, c.Searches, c.Example)).ToList(),
                 store.RefocusMisses(teamId, dataSetName, from, to).Select(m => new ObservrSummaryRefocusMiss(m.Phrase, m.Searched, m.Times)).ToList(),
-                again.AskedAgain, rephrased.Select(r => new ObservrSummaryRephrasing(r.First, r.Again, r.Times, r.AgainOpened)).ToList());
+                again.AskedAgain, rephrased.Select(r => new ObservrSummaryRephrasing(r.First, r.Again, r.Times, r.AgainOpened)).ToList(),
+                ask.Failed, Provider());
 
             var site = metadata.Load(teamId, dataSetName);
             return new ObservrSummary(ObservrSummary.CurrentVersion, ObservrClient.DigestKind, teamId, dataSetName,

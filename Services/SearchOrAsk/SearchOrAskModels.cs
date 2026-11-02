@@ -29,7 +29,17 @@ namespace IndxServer.Services.SearchOrAsk
         /// <paramref name="usage"/> once the stream ends.</summary>
         IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, IReadOnlyList<AskTurn> history,
             AnswerUsage usage, CancellationToken ct);
+
+        /// <summary>What the provider says is left on the key, where it says (OpenRouter's
+        /// <c>/api/v1/key</c>, with the key the instance already holds); null from a provider that does
+        /// not report it, or when it could not be read.</summary>
+        Task<ProviderKeyLimit?> KeyLimitAsync(CancellationToken ct) => Task.FromResult<ProviderKeyLimit?>(null);
     }
+
+    /// <summary>A key's spending as its provider reports it, in USD: what it may spend (null: no
+    /// limit), what is left of that, how the limit resets (<c>daily</c>, <c>weekly</c>,
+    /// <c>monthly</c>, or null for never), and what it has spent in all.</summary>
+    public sealed record ProviderKeyLimit(string Provider, double? Limit, double? Remaining, string? Reset, double Usage);
 
     /// <summary>A judgement: the probability each question came back with (absent when the judge
     /// left one out), and what it cost when the provider says.</summary>
@@ -46,9 +56,22 @@ namespace IndxServer.Services.SearchOrAsk
 
     /// <summary>A model call that failed, with the provider's status, so the caller can say why
     /// without guessing (402 is out of credits, 429 is rate limited).</summary>
-    public sealed class SearchOrAskModelException(int status, string message) : Exception(message)
+    public sealed class SearchOrAskModelException(int status, string message, string? limitSource = null) : Exception(message)
     {
         public int Status { get; } = status;
+
+        /// <summary>Which limit a 402 hit, as OpenRouter names it in <c>error.metadata.limit_source</c>
+        /// (<see cref="SearchOrAskLimits"/>); null from any other provider, or when it says none.</summary>
+        public string? LimitSource { get; } = limitSource;
+    }
+
+    /// <summary>The limits OpenRouter names when it answers 402 (Nov 2026): only the body tells a key
+    /// whose cap is spent from an account that is empty from too much running at once.</summary>
+    public static class SearchOrAskLimits
+    {
+        public const string KeyLimit = "openrouter_key_limit";
+        public const string Credits = "openrouter_credits";
+        public const string InFlight = "openrouter_in_flight_budget";
     }
 
     /// <summary>The resolved setup, read at most every five seconds (the judge asks on every typing
@@ -86,6 +109,25 @@ namespace IndxServer.Services.SearchOrAsk
         : ISearchOrAskModels
     {
         public const string HttpClientName = "SearchOrAsk";
+
+        /// <summary>OpenRouter's account of the key: limit, what is left, reset, usage
+        /// (openrouter.ai/docs, "Get current API key"). Only OpenRouter reports this with an ordinary
+        /// key; OpenAI's and Anthropic's need an admin key the instance does not hold.</summary>
+        public async Task<ProviderKeyLimit?> KeyLimitAsync(CancellationToken ct)
+        {
+            if (setup.Current.KeyFor(SearchOrAskProviders.OpenRouter) is not { Length: > 0 } key) return null;
+            try
+            {
+                using var response = await Client(key).GetAsync("https://openrouter.ai/api/v1/key", ct);
+                if (!response.IsSuccessStatusCode) return null;
+                var data = JsonNode.Parse(await response.Content.ReadAsStringAsync(ct))?["data"];
+                if (data == null) return null;
+                static double? Number(JsonNode? n) => n is JsonValue v && v.TryGetValue<double>(out var d) ? d : null;
+                return new ProviderKeyLimit(SearchOrAskProviders.OpenRouter, Number(data["limit"]), Number(data["limit_remaining"]),
+                    data["limit_reset"] is JsonValue r && r.TryGetValue<string>(out var reset) ? reset : null, Number(data["usage"]) ?? 0);
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException) { return null; }
+        }
 
         private HttpClient Client(string? key, bool anthropic = false)
         {
@@ -244,13 +286,30 @@ namespace IndxServer.Services.SearchOrAsk
         private static async Task FailAsync(HttpResponseMessage response, string what, CancellationToken ct)
         {
             string reason;
-            try { reason = Reason(await response.Content.ReadAsStringAsync(ct)); }
+            string? source = null;
+            try
+            {
+                var body = await response.Content.ReadAsStringAsync(ct);
+                reason = Reason(body);
+                source = LimitSource(body);
+            }
             catch (Exception) { reason = ""; }
-            throw new SearchOrAskModelException((int)response.StatusCode, $"{what} answered {(int)response.StatusCode}{(reason.Length > 0 ? ": " + reason : "")}");
+            throw new SearchOrAskModelException((int)response.StatusCode, $"{what} answered {(int)response.StatusCode}{(reason.Length > 0 ? ": " + reason : "")}", source);
         }
 
         /// <summary>The provider's message out of an error body (OpenAI's and OpenRouter's
         /// <c>error.message</c>, Anthropic's too), else the body itself; short, since it is logged.</summary>
+        /// <summary>The limit a refusal names (<c>error.metadata.limit_source</c>), or null.</summary>
+        public static string? LimitSource(string body)
+        {
+            try
+            {
+                return JsonNode.Parse(body.Trim())?["error"]?["metadata"]?["limit_source"] is JsonValue v && v.TryGetValue<string>(out var source)
+                    ? source : null;
+            }
+            catch (Exception) { return null; }
+        }
+
         public static string Reason(string body)
         {
             var text = body.Trim();
@@ -529,7 +588,7 @@ namespace IndxServer.Services.SearchOrAsk
                 var text = await response.Content.ReadAsStringAsync(ct);
                 response.Dispose();
                 if (attempt == 0 && RefusesReasoning((int)response.StatusCode, text) && body.Remove("reasoning")) continue;
-                throw new SearchOrAskModelException((int)response.StatusCode, $"{what} answered {(int)response.StatusCode}: {Reason(text)}");
+                throw new SearchOrAskModelException((int)response.StatusCode, $"{what} answered {(int)response.StatusCode}: {Reason(text)}", LimitSource(text));
             }
         }
 
@@ -554,7 +613,7 @@ namespace IndxServer.Services.SearchOrAsk
                 var text = await response.Content.ReadAsStringAsync(ct);
                 if (response.IsSuccessStatusCode) return JsonNode.Parse(text);
                 if (attempt == 0 && RefusesReasoning((int)response.StatusCode, text) && body.Remove("reasoning")) continue;
-                throw new SearchOrAskModelException((int)response.StatusCode, $"Model answered {(int)response.StatusCode}: {Reason(text)}");
+                throw new SearchOrAskModelException((int)response.StatusCode, $"Model answered {(int)response.StatusCode}: {Reason(text)}", LimitSource(text));
             }
         }
 

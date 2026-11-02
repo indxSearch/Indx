@@ -569,6 +569,8 @@ namespace IndxServer.Services.Observr
         public async Task<ObservrDigestOutcome> SendDigestAsync(string teamId, string dataSetName, CancellationToken ct)
         {
             if (Refused(out var token) is { } refused) return new ObservrDigestOutcome(refused);
+            // The key's limit, read now (at most every five minutes), so the summary can warn before it runs out.
+            await searchOrAskService.KeyLimitAsync(ct);
             var summary = summaries.Build(teamId, dataSetName);
             if (summary == null) return new ObservrDigestOutcome(ObservrStatus.Failed, "noStatistics");
             var (status, body, reason) = await PostAsync(token, "/api/summary", summary, teamId, dataSetName, ct);
