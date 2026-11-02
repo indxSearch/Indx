@@ -24,7 +24,7 @@
                     @* Folded: a 30px button like the rail's others, the progress as a short row of cells under the icon. *@
                     <span class="getstarted-railbutton">
                         <Rocket Size="16" Color="var(--lv8)" />
-                        <ScoreMeter Value="@((double)view.Done / view.Total)" Cells="view.Total" Cell="3" AriaLabel="@($"{view.Done} of {view.Total} done")" />
+                        <span class="getstarted-railsteps"><StepProgress Parts="Parts(view)" Weighted="false" Height="2" /></span>
                     </span>
                 }
                 else
@@ -35,7 +35,7 @@
                             <span class="getstarted-card-title">@(view.Finished ? "You are set up" : "Get started")</span>
                             <span class="getstarted-count">@view.Done of @view.Total</span>
                         </span>
-                        <ScoreMeter Value="@((double)view.Done / view.Total)" Cells="@(view.Total * 4)" Cell="4" AriaLabel="@($"{view.Done} of {view.Total} done")" />
+                        <StepProgress Parts="Parts(view)" />
                     </span>
                 }
             </button>
@@ -49,7 +49,8 @@
                 <p class="getstarted-line">
                     @(view.Kind == IndxServer.Data.Onboarding.KindFirst ? "From your data to search on your site." : $"Your way around {view.TeamName}.")
                 </p>
-                <BarMeter Value="view.Done" Max="view.Total" Zones="Zones(view)" Format="@(v => $"{v:0} done")" MaxLabel="@($"of {view.Total}")" />
+                @* Nested: a bar per group, as wide as its steps and filled by its own done. *@
+                <StepProgress Parts="Parts(view)" Labels />
                 @if (view.Finished)
                 {
                     <EmptyState Size="compact" Icon="_iconFlag" Title="You are set up">
@@ -59,12 +60,8 @@
                 }
                 @foreach (var group in view.Groups)
                 {
-                    var done = group.Steps.Count(s => s.Done);
                     <div class="getstarted-group">
-                        <div class="getstarted-group-head">
-                            <span>@group.Title</span>
-                            <ScoreMeter Value="@((double)done / group.Steps.Count)" Cells="@(group.Steps.Count * 3)" Cell="5" AriaLabel="@($"{done} of {group.Steps.Count}")" />
-                        </div>
+                        <div class="getstarted-group-head">@group.Title</div>
                         @foreach (var step in group.Steps)
                         {
                             var s = step;
@@ -153,19 +150,9 @@
         return ActiveTeam.Find(name);
     }
 
-    /// <summary>A tick where each group after the first starts: the bar shows the parts before
-    /// either is reached.</summary>
-    private static IReadOnlyList<BarMeter.Zone> Zones(OnboardingView view)
-    {
-        var zones = new List<BarMeter.Zone> { new(0, "var(--lv8)") };
-        var at = 0;
-        foreach (var group in view.Groups.Take(view.Groups.Count - 1))
-        {
-            at += group.Steps.Count;
-            zones.Add(new((double)at / view.Total, "var(--lv8)"));
-        }
-        return zones;
-    }
+    /// <summary>The groups as StepProgress parts: each its steps, filled by its own done.</summary>
+    private static IReadOnlyList<StepProgress.Part> Parts(OnboardingView view) =>
+        view.Groups.Select(g => new StepProgress.Part(g.Title, g.Steps.Count(s => s.Done), g.Steps.Count)).ToList();
 
     private void Go(OnboardingStep step)
     {

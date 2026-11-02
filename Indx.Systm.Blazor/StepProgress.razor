@@ -1,0 +1,45 @@
+@* Port of indx-systm StepProgress: progress through steps in parts, one thin bar per part side by
+   side, each as wide as its share of the steps and filled by how many of its own are done. The
+   row says how far along the whole is, each bar how far along its part. A part of one step is a
+   plain stepper (the first-run setup's "two more steps"). Where ProgressBar is one quantity on its
+   way to done and BarMeter a level that goes up and down, this is a checklist's state. *@
+<div class="indx-steps @Class" style="@Style" role="progressbar" aria-valuemin="0" aria-valuemax="@Total" aria-valuenow="@Done"
+     aria-label="@(AriaLabel ?? $"{Done} of {Total} done")">
+    @foreach (var part in Parts)
+    {
+        var max = Math.Max(1, part.Max);
+        var value = Math.Clamp(part.Value, 0, max);
+        <div class="indx-steps-part" style="flex: @(Weighted ? max : 1)">
+            <div class="indx-steps-track"><div class="indx-steps-fill" style="@($"width: {(100.0 * value / max).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}%")"></div></div>
+            @if (Labels)
+            {
+                <div class="indx-steps-label">
+                    <span class="indx-steps-name">@part.Label</span>
+                    <span class="indx-steps-count">@value/@max</span>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    /// <summary>A part: its name (shown with <see cref="Labels"/>), its steps done and its steps;
+    /// a part of one step is a plain stepper's step.</summary>
+    public sealed record Part(string? Label, int Value, int Max = 1);
+
+    [Parameter, EditorRequired] public IReadOnlyList<Part> Parts { get; set; } = [];
+    /// <summary>Each bar as wide as its share of all the steps (default), or all as wide.</summary>
+    [Parameter] public bool Weighted { get; set; } = true;
+    /// <summary>The part names and their counts under the bars.</summary>
+    [Parameter] public bool Labels { get; set; }
+    /// <summary>The filled colour; the ink by default.</summary>
+    [Parameter] public string? Color { get; set; }
+    /// <summary>The bars' height in pixels; 3 by default.</summary>
+    [Parameter] public int Height { get; set; } = 3;
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private int Done => Parts.Sum(p => Math.Clamp(p.Value, 0, Math.Max(1, p.Max)));
+    private int Total => Parts.Sum(p => Math.Max(1, p.Max));
+    private string Style => $"--step-height: {Height}px;" + (Color != null ? $" --step-fill: {Color};" : "");
+}

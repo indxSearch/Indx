@@ -14,6 +14,7 @@
 .getstarted--rail ::deep .indx-popover-anchor, .getstarted--rail ::deep .indx-popover-trigger { width: auto; }
 .getstarted-railbutton { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 30px; padding: 6px 0; border-radius: var(--radius); }
 .getstarted-trigger:hover .getstarted-railbutton { background: var(--lv2); }
+.getstarted-railsteps { display: block; width: 20px; }
 
 /* The panel. */
 ::deep .getstarted-popover { padding: 0; }
@@ -22,7 +23,7 @@
 .getstarted-title { font: var(--text-base); font-weight: var(--med); color: var(--lv8); }
 .getstarted-line { margin: -8px 0 0; font: var(--text-sm); color: var(--lv5); }
 .getstarted-group { display: flex; flex-direction: column; gap: 2px; }
-.getstarted-group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0 6px; font: var(--text-xs); color: var(--lv5); }
+.getstarted-group-head { padding: 4px 0 6px; font: var(--text-xs); color: var(--lv5); }
 .getstarted-step { all: unset; box-sizing: border-box; display: flex; align-items: flex-start; gap: 12px; padding: 8px; margin: 0 -8px; border-radius: var(--radius); cursor: pointer; }
 .getstarted-step:hover { background: var(--lv2); }
 .getstarted-step:focus-visible { outline: 1px solid var(--lv6); }

@@ -1,0 +1,7 @@
+.indx-steps { display: flex; gap: 4px; width: 100%; min-width: 0; }
+.indx-steps-part { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.indx-steps-track { height: var(--step-height, 3px); border-radius: 1px; background: var(--lv3); overflow: hidden; }
+.indx-steps-fill { height: 100%; background: var(--step-fill, var(--lv8)); }
+.indx-steps-label { display: flex; justify-content: space-between; gap: 6px; font: var(--text-2xs); color: var(--lv5); min-width: 0; }
+.indx-steps-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.indx-steps-count { font-variant-numeric: tabular-nums; white-space: nowrap; }
