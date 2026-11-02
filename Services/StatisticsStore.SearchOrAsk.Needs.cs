@@ -214,6 +214,32 @@ namespace IndxServer.Services
         }
 
         /// <summary>
+        /// The window's visits that asked something (a thread: a visit's question with its rewordings
+        /// and double submits), and how many asked a need some earlier visit had already asked, in any
+        /// wording, grouped as the needs are. "Earlier" reaches back over all the raw rows retention
+        /// keeps, not just the window, so a one-day view does not call every need new.
+        /// </summary>
+        public (long Visits, long Repeated) AskRepeats(string teamId, string dataSet, long fromDay, long toDay, string? source = null)
+        {
+            var tz = ZoneOf(teamId, dataSet);
+            long from = StatisticsDays.Start(tz, fromDay), to = StatisticsDays.Start(tz, toDay + 1);
+            using var conn = Open();
+            var (asks, threads, groups) = NeedThreads(conn, teamId, dataSet, 0, to, source);
+            var asked = new HashSet<string>(StringComparer.Ordinal);
+            long visits = 0, repeated = 0;
+            // Threads are in the order their first ask came.
+            foreach (var thread in threads)
+            {
+                var first = asks[thread[0]];
+                var before = !asked.Add(groups.Find(first.Key));
+                if (first.Ts < from) continue;
+                visits++;
+                if (before) repeated++;
+            }
+            return (visits, repeated);
+        }
+
+        /// <summary>
         /// Why each wording is in its need: the link that reaches it from the title, walking out from
         /// the title over the links between the need's own wordings, the strongest first. A wording
         /// joined only through a text outside the window is left unexplained rather than given a link

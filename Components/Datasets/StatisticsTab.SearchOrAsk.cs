@@ -18,6 +18,7 @@ namespace IndxServer.Components.Datasets
         private AskedAgainStat _askedAgain;
         private List<AskRephrasingStat> _rephrased = [];
         private List<AskNeedStat> _needs = [];
+        private (long Visits, long Repeated) _askRepeats;
         private AskNeedStat? _need;
 
         /// <summary>Why a wording is in its need, in words: how it joined which other wording. The
@@ -147,6 +148,7 @@ namespace IndxServer.Components.Datasets
             (_askedAgain, _rephrased) = HasSearchOrAsk ? store.AskedAgain(team, ds, fromDay, toDay, 25, source) : (default, []);
             _needs = HasSearchOrAsk ? store.AskNeeds(team, ds, fromDay, toDay, 25, source) : [];
             _needDenials = HasSearchOrAsk ? store.SameNeedDenials(team, ds) : [];
+            _askRepeats = HasSearchOrAsk ? store.AskRepeats(team, ds, fromDay, toDay, source) : default;
             _askOffers = HasSearchOrAsk ? store.TopOffers(team, ds, fromDay, toDay, 25, source) : [];
             (_askFromDay, _askToDay) = (fromDay, toDay);
             _askDays = HasSearchOrAsk ? store.AsksByDay(team, ds, fromDay, toDay, source) : [];

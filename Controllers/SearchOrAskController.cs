@@ -34,7 +34,9 @@ namespace IndxServer.Controllers
         /// wordings, how its visits ended and the records its answers landed on. Cost is in USD as
         /// OpenRouter reports it, judge and answers together. Asks are the questions visitors chose to
         /// ask; ProactiveAnswers the answers the proactive mode wrote on its own, which the outcomes,
-        /// opened sources and cost include.</summary>
+        /// opened sources and cost include. NeedVisits are the visits that asked something (a question
+        /// with its rewordings); RepeatedVisits the ones that asked a need an earlier visit had asked,
+        /// in any wording, looking back over all the raw rows retention keeps.</summary>
         public sealed record SearchOrAskStatisticsResponse(
             long Judged, long Offers, long StrongOffers, long Asks, double? TakeRate,
             long Answered, long NothingFound, long Failed, long Stopped, long Unanswered, double? UnansweredRate,
@@ -42,7 +44,7 @@ namespace IndxServer.Controllers
             AskQuestionStat[] Questions, AskOfferStat[] Offered,
             long Calls = 0, long CallsRefused = 0, int DaysBudgetRanOut = 0,
             long AskedAgain = 0, double? AskedAgainRate = null, AskRephrasingStat[]? Rephrased = null, AskNeedStat[]? Needs = null,
-            long ProactiveAnswers = 0);
+            long ProactiveAnswers = 0, long NeedVisits = 0, long RepeatedVisits = 0, double? RepeatedRate = null);
         /// <summary>A question, and for a follow-up the conversation so far (the last three turns are used).
         /// <c>Proactive</c>: the page started this answer on its own, in the proactive mode, rather
         /// than the visitor asking; it counts against the day's proactive answers.</summary>
@@ -279,6 +281,7 @@ namespace IndxServer.Controllers
             var o = s.AskOverview(ctx.OwnerKey, dataSetName, fromDay, today, src);
             var budget = s.AskBudget(ctx.OwnerKey, dataSetName, fromDay, today);
             var (again, rephrased) = s.AskedAgain(ctx.OwnerKey, dataSetName, fromDay, today, limit, src);
+            var repeats = s.AskRepeats(ctx.OwnerKey, dataSetName, fromDay, today, src);
             static double? Rate(double n, double d) => d == 0 ? null : n / d;
             return new SearchOrAskStatisticsResponse(o.Judged, o.Offers, o.StrongOffers, o.Asks, Rate(o.Asks, o.Offers),
                 o.Answered, o.NothingFound, o.Failed, o.Stopped, o.Unanswered, Rate(o.Unanswered, o.Asks + o.ProactiveAnswers),
@@ -290,6 +293,7 @@ namespace IndxServer.Controllers
                 AskedAgain = again.AskedAgain, AskedAgainRate = Rate(again.AskedAgain, again.Asks), Rephrased = rephrased.ToArray(),
                 Needs = s.AskNeeds(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray(),
                 ProactiveAnswers = o.ProactiveAnswers,
+                NeedVisits = repeats.Visits, RepeatedVisits = repeats.Repeated, RepeatedRate = Rate(repeats.Repeated, repeats.Visits),
             };
         }
 
