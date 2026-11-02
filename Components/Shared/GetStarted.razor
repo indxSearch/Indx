@@ -95,7 +95,7 @@
                                 Observr looks at your search every week and tells you what visitors could not find, and what to change.
                                 Pro also brings Search or ask@(view.TeaserTeam ? ", your whole team, and no cap on documents" : "").
                             </span>
-                            <span><Button Variant="secondary" Size="micro" Href="@ProHref" target="_blank" rel="noopener">See Pro</Button></span>
+                            <span><Button Variant="secondary" Size="micro" Href="@ProHref" target="_blank" rel="noopener">Get Pro</Button></span>
                         </span>
                     </div>
                 }
@@ -121,8 +121,9 @@
 
     private static readonly RenderFragment<int> _iconFlag = size => @<FinishFlag Size="size" Color="currentColor" />;
 
-    /// <summary>Where See Pro goes: the plans on indx.co.</summary>
-    private const string ProHref = "https://indx.co/#pricing";
+    /// <summary>Where See Pro goes: the upgrade page on the license portal, which says what Pro
+    /// adds and takes the subscription (it asks the visitor to sign in first).</summary>
+    private const string ProHref = "https://license.indx.co/Account/Subscription/Manage";
 
     protected override async Task OnInitializedAsync()
     {
