@@ -17,9 +17,8 @@
 .getstarted-railsteps { display: block; width: 20px; }
 
 /* The panel. */
-/* A step darker than the systm popover's lv2, which is the column's and the dataset cards' tone, and
-   a line round it, so the panel stands apart from the page behind it. */
-.getstarted ::deep .getstarted-popover { padding: 0; background: var(--lv1); border: 1px solid var(--lv3); }
+/* The panel on lv2 with a line round it, so it stands apart from the page behind it. */
+.getstarted ::deep .getstarted-popover { padding: 0; background: var(--lv2); border: 1px solid var(--lv3); }
 .getstarted-panel { width: 380px; max-width: calc(100vw - 32px); display: flex; flex-direction: column; gap: 14px; padding: 16px; }
 .getstarted-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .getstarted-title { font: var(--text-base); font-weight: var(--med); color: var(--lv8); }
