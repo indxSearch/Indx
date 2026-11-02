@@ -41,6 +41,15 @@ namespace IndxServer.Components.Datasets
             return _needs.FirstOrDefault(n => n.Wordings.Any(w => SearchOrAskRephrasing.Normalise(w.Text) == key));
         }
 
+        private List<(string A, string B, string DeniedBy, long Timestamp)> _needDenials = [];
+
+        private async Task UndoDenyNeedLinkAsync(string a, string b)
+        {
+            if (!Ctx.IsEditor || Stats.Store is not { } store) return;
+            store.UndoDenySameNeed(Ctx.TeamId, Ctx.Name, a, b);
+            await LoadAsync();
+        }
+
         private void OpenNeed(AskNeedStat need)
         {
             _askView = "needs";
@@ -137,6 +146,7 @@ namespace IndxServer.Components.Datasets
             _askQuestions = HasSearchOrAsk ? store.TopQuestions(team, ds, fromDay, toDay, 25, source) : [];
             (_askedAgain, _rephrased) = HasSearchOrAsk ? store.AskedAgain(team, ds, fromDay, toDay, 25, source) : (default, []);
             _needs = HasSearchOrAsk ? store.AskNeeds(team, ds, fromDay, toDay, 25, source) : [];
+            _needDenials = HasSearchOrAsk ? store.SameNeedDenials(team, ds) : [];
             _askOffers = HasSearchOrAsk ? store.TopOffers(team, ds, fromDay, toDay, 25, source) : [];
             (_askFromDay, _askToDay) = (fromDay, toDay);
             _askDays = HasSearchOrAsk ? store.AsksByDay(team, ds, fromDay, toDay, source) : [];

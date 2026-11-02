@@ -531,6 +531,29 @@ else
                     </tbody>
                 </Table>
                 }
+                @if (_needDenials.Count > 0)
+                {
+                    @* What editors took back, readable by everyone and undone by an editor: the grouping
+                       is the judge's, and so is every correction of it on show. *@
+                    <h3 class="stats-subhead">Taken back</h3>
+                    <p class="stats-help">Pairs an editor said are not the same. They are kept apart whatever the judge says; undo one to let the judge's word count again.</p>
+                    <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Links taken back" Class="stats-table">
+                        <thead><tr><th>Asked as</th><th>Not the same as</th><th>By</th><th>When</th>@if (Ctx.IsEditor) {<th></th>}</tr></thead>
+                        <tbody>
+                            @foreach (var d in _needDenials)
+                            {
+                                var denial = d;
+                                <tr>
+                                    <td>@d.A</td>
+                                    <td>@d.B</td>
+                                    <td>@d.DeniedBy</td>
+                                    <td><TimeAgo Value="@DateTimeOffset.FromUnixTimeMilliseconds(d.Timestamp).UtcDateTime" TooltipPosition="left" /></td>
+                                    @if (Ctx.IsEditor) { <td><Button Variant="ghost" Size="micro" @onclick="() => UndoDenyNeedLinkAsync(denial.A, denial.B)">Undo</Button></td> }
+                                </tr>
+                            }
+                        </tbody>
+                    </Table>
+                }
                 <Modal Open="@(_need != null)" OpenChanged="@(v => { if (!v) _need = null; })" Title="@_need?.Title"
                        Description="@(_need is { } d ? $"{N(d.Visits)} {(d.Visits == 1 ? "visit" : "visits")}, {d.Wordings.Count} {(d.Wordings.Count == 1 ? "wording" : "wordings")}" : null)">
                     @if (_need is { } need)
@@ -569,7 +592,7 @@ else
                             </Table>
                             @if (Ctx.IsEditor && need.Wordings.Any(x => x.LinkedTo != null))
                             {
-                                <p class="stats-help">"Not the same" takes back that one link. The need splits where the link held it together; the others stand.</p>
+                                <p class="stats-help">"Not the same" takes back that one link. The need splits where the link held it together; the others stand. It can be undone under Taken back.</p>
                             }
                             @if (need.LandedOn.Count > 0)
                             {

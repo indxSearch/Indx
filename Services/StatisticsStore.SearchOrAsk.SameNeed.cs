@@ -175,6 +175,35 @@ CREATE TABLE IF NOT EXISTS AskNeedTexts (
             return set;
         }
 
+        /// <summary>The links editors took back, the latest first: who said "not the same" and when,
+        /// shown under the needs so a denial can be read and undone.</summary>
+        public List<(string A, string B, string DeniedBy, long Timestamp)> SameNeedDenials(string teamId, string dataSet)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT A, B, DeniedBy, Timestamp FROM AskNeedDenied WHERE TeamId = $t AND DataSet = $d ORDER BY Timestamp DESC";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            var list = new List<(string, string, string, long)>();
+            using var r = cmd.ExecuteReader();
+            while (r.Read()) list.Add((r.GetString(0), r.GetString(1), r.GetString(2), r.GetInt64(3)));
+            return list;
+        }
+
+        /// <summary>Undoes a "not the same": the judge's word on the pair holds again.</summary>
+        public void UndoDenySameNeed(string teamId, string dataSet, string x, string y)
+        {
+            var (a, b) = PairKey(SearchOrAskRephrasing.Normalise(x), SearchOrAskRephrasing.Normalise(y));
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM AskNeedDenied WHERE TeamId = $t AND DataSet = $d AND A = $a AND B = $b";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$a", a);
+            cmd.Parameters.AddWithValue("$b", b);
+            cmd.ExecuteNonQuery();
+        }
+
         private static bool IsDenied(HashSet<(string A, string B)> denied, string x, string y) => denied.Contains(PairKey(x, y));
     }
 }
