@@ -3,8 +3,9 @@
    page with sections of its own, which sets them through SideMenuState (the dataset page), or are
    read off the URL: the team's pages (Datasets, Observr, API keys, Manage team), the admin
    sections, the account pages. Cmd or Ctrl and B folds it to a rail of icons, kept per viewer;
-   on a phone it is a drawer the header's Sections button opens (SideMenuState.DrawerOpen). The
-   admin area's version and a newer release are the Sidebar's footer. *@
+   on a phone it is a drawer the header's Sections button opens (SideMenuState.DrawerOpen). Its
+   header is the way into the command palette ("Jump to…", moved from the page header on 2 Nov
+   2026); the admin area's version and a newer release are its footer. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using System.Security.Claims
 @using IndxServer.Services.Observr
@@ -26,6 +27,7 @@
 <aside class="shell-side">
     <Sidebar Groups="_sidebar" Active="@_active" OnSelect="Choose" StorageKey="@StorageKey" AriaLabel="Sections"
              DefaultCollapsed="Rail" Open="Menu.DrawerOpen" OpenChanged="Menu.SetDrawer">
+        <Header><ConsolePaletteButton InColumn /></Header>
         <Footer>
             @if (_note != null || _update != null)
             {

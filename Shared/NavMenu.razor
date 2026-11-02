@@ -50,7 +50,8 @@
     <div class="nav-right">
         <AuthorizeView>
             <Authorized>
-                <ConsolePaletteButton />
+                @* With a column the palette's button is at its top; the header keeps one only on a phone. *@
+                <ConsolePaletteButton PhoneOnly="Menu.HasColumn" />
                 @if (_admin)
                 {
                     <Button Variant="ghost" Size="micro" Href="admin" IconLeft="_iconInstance" title="Admin" aria-label="Admin"><span class="nav-dropdown-label">Admin</span></Button>

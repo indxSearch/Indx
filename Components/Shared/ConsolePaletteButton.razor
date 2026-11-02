@@ -1,20 +1,39 @@
-@* The header's way into the command palette, shaped like a search field so it reads as one: the
-   search icon, "Jump to…" and the shortcut in a key cap (⌘K on a Mac, Ctrl K elsewhere, asked of
-   the browser once). It opens the palette (ConsolePalette, in the layout) through
-   ConsolePaletteState. A narrow header keeps the icon alone. *@
+@* The way into the command palette, shaped like a search field so it reads as one: the search
+   icon, "Jump to…" and the shortcut in a key cap (⌘K on a Mac, Ctrl K elsewhere, asked of the
+   browser once). It opens the palette (ConsolePalette, in the layout) through ConsolePaletteState.
+   Two places (2 Nov 2026): at the top of the side column (InColumn), the full width, the icon
+   alone in the rail with its name in a tooltip; and in the header, where there is no column (a
+   user without a team yet) and on a phone, where the column is a drawer (PhoneOnly). A narrow
+   header keeps the icon alone. *@
 @using Microsoft.JSInterop
 @inject IndxServer.Services.ConsolePaletteState Palette
 @inject IJSRuntime JS
 @implements IAsyncDisposable
 
-<span class="nav-jump">
-    <Button Variant="secondary" Size="micro" IconLeft="_iconSearch" title="@($"Jump to a dataset or page ({_shortcut})")" aria-label="Jump to a dataset or page" aria-keyshortcuts="@(_mac ? "Meta+K" : "Control+K")" @onclick="() => Palette.Set(true)">
-        <span class="nav-jump-label">Jump to…</span>
-        <Kbd Class="nav-jump-kbd" Keys="@_shortcut" />
-    </Button>
-</span>
+@if (InColumn)
+{
+    @* The Tooltip speaks only in the rail (the Sidebar hides it otherwise), where the words are gone. *@
+    <span class="side-jump">
+        <Tooltip Content="@($"Jump to ({_shortcut})")" Position="right">@JumpButton(null)</Tooltip>
+    </span>
+}
+else
+{
+    <span class="nav-jump @(PhoneOnly ? "nav-jump--phone-only" : null)">@JumpButton($"Jump to a dataset or page ({_shortcut})")</span>
+}
 
 @code {
+    /// <summary>At the top of the side column rather than in the header.</summary>
+    [Parameter] public bool InColumn { get; set; }
+    /// <summary>In the header only on a phone, where the column is a drawer and its button out of sight.</summary>
+    [Parameter] public bool PhoneOnly { get; set; }
+
+    private RenderFragment JumpButton(string? title) =>
+        @<Button Variant="secondary" Size="micro" IconLeft="_iconSearch" title="@title" aria-label="Jump to a dataset or page" aria-keyshortcuts="@(_mac ? "Meta+K" : "Control+K")" @onclick="() => Palette.Set(true)">
+            <span class="nav-jump-label">Jump to…</span>
+            <Kbd Class="nav-jump-kbd" Keys="@_shortcut" />
+        </Button>;
+
     private static readonly RenderFragment<int> _iconSearch = size => @<Indx.Systm.Blazor.Icons.Search Size="size" Color="currentColor" />;
 
     private bool _mac = true;
