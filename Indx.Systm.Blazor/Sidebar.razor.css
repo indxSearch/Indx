@@ -43,6 +43,7 @@ button.indx-sidebar-title--toggle:hover { color: var(--lv6); }
 
 .indx-sidebar-footer { display: flex; flex-direction: column; gap: 8px; }
 .indx-sidebar-footer-content { min-width: 0; }
+.indx-sidebar-rail-footer { display: none; }
 
 /* The rail: icons only, 30px buttons in a 50px column. Group titles give way to a line between
    groups, a closed group shows its items (there is no title to open it by), a badge is a dot, and
@@ -54,6 +55,7 @@ button.indx-sidebar-title--toggle:hover { color: var(--lv6); }
     .indx-sidebar--rail .indx-sidebar-title,
     .indx-sidebar--rail .indx-sidebar-label,
     .indx-sidebar--rail .indx-sidebar-trailing { display: none; }
+    .indx-sidebar--rail .indx-sidebar-rail-footer { display: flex; justify-content: center; }
     .indx-sidebar--rail .indx-sidebar-body { gap: 8px; overflow: visible; }
     .indx-sidebar--rail .indx-sidebar-group + .indx-sidebar-group { padding-top: 8px; border-top: 1px solid var(--lv2); }
     .indx-sidebar--rail .indx-sidebar-items--shut { display: flex; }
