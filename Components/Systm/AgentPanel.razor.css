@@ -39,7 +39,7 @@
 .agent-spacer { flex: 1; }
 .agent-error { margin: 0; font: var(--text-xs); color: var(--CSignal); }
 .agent-allowance { margin: 0; font: var(--text-xs); color: var(--lv5); }
-.agent-decided { font: var(--text-xs); color: var(--lv5); }
+.agent-decided { display: inline-flex; align-items: center; gap: 6px; font: var(--text-xs); color: var(--lv5); }
 
 /* History: every turn before the exchange under way, a tone back. */
 ::deep .agent-past { opacity: 0.55; }

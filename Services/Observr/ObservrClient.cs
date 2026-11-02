@@ -235,6 +235,19 @@ namespace IndxServer.Services.Observr
         };
     }
 
+    /// <summary>What a Yes replaced (ObservrClient.Undo): the synonyms it added, the Search or ask
+    /// settings and query parameters as they were (null when there were none), each changed field's
+    /// roles as they were.</summary>
+    public sealed class ObservrUndo
+    {
+        public List<string[]> AddedSynonyms { get; set; } = [];
+        public bool HasSearchOrAsk { get; set; }
+        public string? SearchOrAskBefore { get; set; }
+        public bool HasQueryParameters { get; set; }
+        public string? QueryParametersBefore { get; set; }
+        public List<ObservrFieldChange> FieldsBefore { get; set; } = [];
+    }
+
     /// <summary>A finding's proposals were carried out: the dataset, and the kinds of change.</summary>
     public sealed record ObservrApplied(string TeamId, string DataSetName, IReadOnlySet<string> Kinds);
 
@@ -927,7 +940,10 @@ namespace IndxServer.Services.Observr
             // The store keeps only what can be carried out; this holds for a finding kept before it did.
             if (chosen.Any(p => !p.CanApply)) return "This suggestion needs a newer Indx Server. Nothing was changed.";
             var done = new HashSet<string>();
-            var why = Apply(f, chosen, done);
+            // What the Yes replaces, kept for Undo; a second Yes after a partial one adds to it.
+            var undo = findings.GetUndo(findingId) is { } kept ? JsonSerializer.Deserialize<ObservrUndo>(kept.Json, UndoJson) ?? new() : new ObservrUndo();
+            var why = Apply(f, chosen, done, undo);
+            if (done.Count > 0) findings.SetUndo(findingId, JsonSerializer.Serialize(undo, UndoJson));
             if (why == null) findings.Decide(findingId, ObservrFinding.Accepted);
             // The tabs reload what changed, also when the yes stopped part way: what was done is saved.
             if (done.Count > 0)
@@ -953,30 +969,127 @@ namespace IndxServer.Services.Observr
         /// <summary>The chosen proposals, synonyms first and field changes (the slow one) after the
         /// settings that cannot fail on their own. Each kind is added to <paramref name="done"/> once
         /// carried out. Returns why it stopped, or null.</summary>
-        private string? Apply(ObservrFinding f, List<ObservrProposal> chosen, HashSet<string> done)
+        private string? Apply(ObservrFinding f, List<ObservrProposal> chosen, HashSet<string> done, ObservrUndo undo)
         {
             foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.Synonym))
             {
+                var had = HasSynonym(f.TeamId, f.DataSetName, p.Terms);
                 if (!ApplySynonym(f.TeamId, f.DataSetName, p.Terms)) return "The synonym could not be stored.";
+                if (!had) undo.AddedSynonyms.Add(p.Terms);
                 done.Add(ObservrProposal.Synonym);
             }
             foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.SearchOrAskKind && p.SearchOrAsk != null))
             {
+                var before = searchOrAsk.Load(f.TeamId, f.DataSetName);
                 if (ApplySearchOrAsk(f.TeamId, f.DataSetName, p.SearchOrAsk!) is { } whyNot) return whyNot;
+                if (!undo.HasSearchOrAsk) { undo.HasSearchOrAsk = true; undo.SearchOrAskBefore = before == null ? null : JsonSerializer.Serialize(before, UndoJson); }
                 done.Add(ObservrProposal.SearchOrAskKind);
             }
             foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.QueryParametersKind && p.QueryParameters != null))
             {
+                var before = queryParameters.Load(f.TeamId, f.DataSetName);
                 ApplyQueryParameters(f.TeamId, f.DataSetName, p.QueryParameters!);
+                if (!undo.HasQueryParameters) { undo.HasQueryParameters = true; undo.QueryParametersBefore = before == null ? null : JsonSerializer.Serialize(before, UndoJson); }
                 done.Add(ObservrProposal.QueryParametersKind);
             }
             var changes = chosen.Where(p => p.Kind == ObservrProposal.FieldKind && p.Field != null).Select(p => p.Field!).ToList();
             if (changes.Count > 0)
             {
+                // Each changed field's roles as they were, read before the change.
+                var fields = engines.FindSearchEngine(f.DataSetName, f.TeamId)?.GetFieldList() ?? [];
+                var before = changes.Select(c => c.Name).Distinct()
+                    .Select(n => fields.FirstOrDefault(x => x.Name == n))
+                    .Where(x => x != null && !undo.FieldsBefore.Any(b => b.Name == x.Name))
+                    .Select(x => new ObservrFieldChange(x!.Name, x.Searchable, x.Filterable, x.Facetable, x.Sortable, x.Weight)).ToList();
                 if (ApplyFields(f.TeamId, f.DataSetName, changes) is { } why) return why;
+                undo.FieldsBefore.AddRange(before);
                 done.Add(ObservrProposal.FieldKind);
             }
             return null;
+        }
+
+        private static readonly JsonSerializerOptions UndoJson = new(JsonSerializerDefaults.Web);
+
+        /// <summary>How long after a Yes it can be undone.</summary>
+        public static readonly TimeSpan UndoWindow = TimeSpan.FromHours(1);
+
+        /// <summary>Whether a finding's Yes can still be undone: carried out within <see cref="UndoWindow"/>,
+        /// with what it replaced on record.</summary>
+        public bool CanUndo(ObservrFinding f) =>
+            f.Status == ObservrFinding.Accepted && findings.GetUndo(f.Id) is { } u && DateTime.UtcNow - u.CreatedUtc < UndoWindow;
+
+        /// <summary>
+        /// Undoes a Yes (Notes/observr-agent-plan.md): the synonyms it added go, the Search or ask
+        /// settings and query parameters go back to what they were, and each changed field gets its
+        /// roles back (a rebuild, as the change was). The finding then counts as declined and is
+        /// kept as a note, so Observr does not propose it again. Returns why not, or null.
+        /// </summary>
+        public string? Undo(long findingId)
+        {
+            lock (_deciding)
+                if (!_deciding.Add(findingId)) return "This suggestion is already being carried out.";
+            try
+            {
+                var f = findings.Get(findingId);
+                if (f == null || !CanUndo(f) || findings.GetUndo(findingId) is not { } kept) return "This can no longer be undone.";
+                var undo = JsonSerializer.Deserialize<ObservrUndo>(kept.Json, UndoJson) ?? new();
+                var done = new HashSet<string>();
+                foreach (var terms in undo.AddedSynonyms)
+                {
+                    RemoveSynonym(f.TeamId, f.DataSetName, terms);
+                    done.Add(ObservrProposal.Synonym);
+                }
+                if (undo.HasSearchOrAsk)
+                {
+                    if (undo.SearchOrAskBefore is { } json && JsonSerializer.Deserialize<SearchOrAsk.SearchOrAskSettings>(json, UndoJson) is { } s) searchOrAsk.Save(f.TeamId, f.DataSetName, s);
+                    else searchOrAsk.Delete(f.TeamId, f.DataSetName);
+                    done.Add(ObservrProposal.SearchOrAskKind);
+                }
+                if (undo.HasQueryParameters)
+                {
+                    if (undo.QueryParametersBefore is { } json && JsonSerializer.Deserialize<DatasetQueryParameters>(json, UndoJson) is { } p) queryParameters.Save(f.TeamId, f.DataSetName, p);
+                    else queryParameters.Delete(f.TeamId, f.DataSetName);
+                    done.Add(ObservrProposal.QueryParametersKind);
+                }
+                string? why = null;
+                if (undo.FieldsBefore.Count > 0)
+                {
+                    why = ApplyFields(f.TeamId, f.DataSetName, undo.FieldsBefore);
+                    if (why == null) done.Add(ObservrProposal.FieldKind);
+                }
+                if (why == null)
+                {
+                    findings.ClearUndo(findingId);
+                    findings.Decide(findingId, ObservrFinding.Declined);
+                    foreach (var p in f.Proposals)
+                        if (p.SentenceText is { Length: > 0 } text && f.DataSetName.Length > 0)
+                            findings.AddNote(f.TeamId, f.DataSetName, "Undone after a Yes: " + text, ObservrNote.Declined);
+                }
+                if (done.Count > 0)
+                    foreach (var listener in Applied?.GetInvocationList() ?? [])
+                        try { ((Action<ObservrApplied>)listener)(new ObservrApplied(f.TeamId, f.DataSetName, done)); }
+                        catch (Exception ex) { logger.LogWarning(ex, "An Observr applied listener failed"); }
+                return why == null ? null : $"{why} The fields keep the change; the rest was undone.";
+            }
+            finally { lock (_deciding) _deciding.Remove(findingId); }
+        }
+
+        private static bool SameTerms(SynonymEntry e, string[] terms)
+        {
+            var clean = terms.Select(t => t.Trim()).Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            return clean.Count > 0 && clean.All(t => e.Terms.Contains(t, StringComparer.OrdinalIgnoreCase));
+        }
+
+        private bool HasSynonym(string teamId, string dataSetName, string[] terms) =>
+            engines.GetSynonyms(dataSetName, teamId)?.Entries.Any(e => SameTerms(e, terms)) == true;
+
+        private void RemoveSynonym(string teamId, string dataSetName, string[] terms)
+        {
+            if (engines.GetSynonyms(dataSetName, teamId) is not { } list) return;
+            var gone = list.Entries.RemoveAll(e => SameTerms(e, terms) && e.Terms.Length == terms.Select(t => t.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            if (gone == 0) return;
+            list.Invalidate();
+            engines.SetSynonyms(dataSetName, teamId, list);
         }
 
         public bool ApplySynonym(string teamId, string dataSetName, string[] terms)

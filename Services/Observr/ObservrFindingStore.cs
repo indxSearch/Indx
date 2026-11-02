@@ -78,6 +78,7 @@ namespace IndxServer.Services.Observr
         private const string Table = "ObservrFindings";
         private const string Datasets = "ObservrDatasets";
         private const string Notes = "ObservrNotes";
+        private const string Undos = "ObservrUndos";
         /// <summary>Notes kept per dataset, the oldest going first, and the longest a note may be.</summary>
         public const int MaxNotes = 50;
         public const int MaxNoteLength = 500;
@@ -106,7 +107,8 @@ namespace IndxServer.Services.Observr
                     Report TEXT NOT NULL DEFAULT 'daily', Buttons INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (TeamId, DatasetName));
                     CREATE TABLE IF NOT EXISTS {Notes} (Id INTEGER PRIMARY KEY AUTOINCREMENT, TeamId TEXT NOT NULL, DatasetName TEXT NOT NULL,
                     Text TEXT NOT NULL, Source TEXT NOT NULL, CreatedUtc TEXT NOT NULL);
-                    CREATE INDEX IF NOT EXISTS IX_ObservrNotes_Dataset ON {Notes} (TeamId, DatasetName);";
+                    CREATE INDEX IF NOT EXISTS IX_ObservrNotes_Dataset ON {Notes} (TeamId, DatasetName);
+                    CREATE TABLE IF NOT EXISTS {Undos} (FindingId INTEGER PRIMARY KEY, Json TEXT NOT NULL, CreatedUtc TEXT NOT NULL);";
                 cmd.ExecuteNonQuery();
                 // The two columns that came after the table (12 Oct 2026): added to a table that lacks them.
                 foreach (var add in new[] { $"ALTER TABLE {Datasets} ADD COLUMN Report TEXT NOT NULL DEFAULT 'daily'", $"ALTER TABLE {Datasets} ADD COLUMN Buttons INTEGER NOT NULL DEFAULT 1" })
@@ -367,6 +369,34 @@ namespace IndxServer.Services.Observr
             return id;
         }
 
+        /// <summary>What a Yes replaced, kept so it can be undone (ObservrClient.Undo): JSON of
+        /// ObservrUndo, and when it was kept. Null when there is nothing to undo.</summary>
+        public (string Json, DateTime CreatedUtc)? GetUndo(long findingId)
+        {
+            if (!DbExists()) return null;
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT Json, CreatedUtc FROM {Undos} WHERE FindingId = $f";
+                cmd.Parameters.AddWithValue("$f", findingId);
+                using var r = cmd.ExecuteReader();
+                return r.Read() ? (r.GetString(0), DateTime.Parse(r.GetString(1), null, System.Globalization.DateTimeStyles.RoundtripKind)) : null;
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { return null; }
+        }
+
+        public void SetUndo(long findingId, string json)
+        {
+            EnsureTable();
+            Execute($"INSERT OR REPLACE INTO {Undos} (FindingId, Json, CreatedUtc) VALUES ($f, $j, $c)",
+                c => { c.Parameters.AddWithValue("$f", findingId); c.Parameters.AddWithValue("$j", json); c.Parameters.AddWithValue("$c", DateTime.UtcNow.ToString("o")); });
+        }
+
+        public void ClearUndo(long findingId) =>
+            Execute($"DELETE FROM {Undos} WHERE FindingId = $f", c => c.Parameters.AddWithValue("$f", findingId));
+
         /// <summary>Forgets a note, only the dataset's own (an id from another is a no-op).</summary>
         public void ForgetNote(long id, string teamId, string dataSetName)
         {
@@ -377,7 +407,7 @@ namespace IndxServer.Services.Observr
 
         public void Delete(string teamId, string dataSetName)
         {
-            Execute($"DELETE FROM {Table} WHERE TeamId = $t AND DatasetName = $d; DELETE FROM {Datasets} WHERE TeamId = $t AND DatasetName = $d; DELETE FROM {Notes} WHERE TeamId = $t AND DatasetName = $d",
+            Execute($"DELETE FROM {Undos} WHERE FindingId IN (SELECT Id FROM {Table} WHERE TeamId = $t AND DatasetName = $d); DELETE FROM {Table} WHERE TeamId = $t AND DatasetName = $d; DELETE FROM {Datasets} WHERE TeamId = $t AND DatasetName = $d; DELETE FROM {Notes} WHERE TeamId = $t AND DatasetName = $d",
                 c => { c.Parameters.AddWithValue("$t", teamId); c.Parameters.AddWithValue("$d", dataSetName); });
             Changed?.Invoke();
         }
