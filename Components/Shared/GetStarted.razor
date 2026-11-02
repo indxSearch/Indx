@@ -61,8 +61,9 @@
                             var s = step;
                             var next = s.Key == view.Next;
                             <button type="button" class="getstarted-step @(s.Done ? "getstarted-step--done" : "")" @onclick="() => Go(s)">
-                                <span class="getstarted-mark @(s.Done ? "getstarted-mark--done" : "")">
-                                    @if (s.Done) { <Check Size="14" Color="var(--lv0)" /> }
+                                @* The pixl check, quiet, for done; the circle for open, in the ink for the next. *@
+                                <span class="getstarted-mark">
+                                    @if (s.Done) { <Check Size="14" Color="var(--lv5)" /> }
                                     else { <Circle Size="14" Color="@(next ? "var(--lv8)" : "var(--lv4)")" /> }
                                 </span>
                                 <span class="getstarted-step-text">

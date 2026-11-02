@@ -17,7 +17,9 @@
 .getstarted-railsteps { display: block; width: 20px; }
 
 /* The panel. */
-::deep .getstarted-popover { padding: 0; }
+/* A step darker than the systm popover's lv2, which is the column's and the dataset cards' tone, and
+   a line round it, so the panel stands apart from the page behind it. */
+.getstarted ::deep .getstarted-popover { padding: 0; background: var(--lv1); border: 1px solid var(--lv3); }
 .getstarted-panel { width: 380px; max-width: calc(100vw - 32px); display: flex; flex-direction: column; gap: 14px; padding: 16px; }
 .getstarted-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .getstarted-title { font: var(--text-base); font-weight: var(--med); color: var(--lv8); }
@@ -28,8 +30,7 @@
 .getstarted-step:hover { background: var(--lv2); }
 .getstarted-step:focus-visible { outline: 1px solid var(--lv6); }
 .getstarted-step > :last-child { margin-top: 4px; flex: none; }
-.getstarted-mark { flex: none; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; }
-.getstarted-mark--done { background: var(--lv8); }
+.getstarted-mark { flex: none; width: 16px; height: 18px; display: grid; place-items: center; }
 .getstarted-step-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .getstarted-step-title { display: flex; align-items: center; gap: 8px; font: var(--text-sm); color: var(--lv8); }
 .getstarted-step-line { font: var(--text-xs); color: var(--lv5); }
