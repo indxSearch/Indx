@@ -165,6 +165,15 @@ namespace IndxServer.Components.Datasets
         /// <summary>How the asks ended, as shares of one bar: answered in the ink, the rest down
         /// the ladder, failed in the signal red. "Sources could not answer" is the unanswered less
         /// the ones that found nothing, which are their own segment.</summary>
+        /// <summary>The window's visits that asked something: new needs, and needs an earlier visit asked.</summary>
+        private IReadOnlyList<BarMeter.Segment> AskRepeatSegments()
+        {
+            var segments = new List<BarMeter.Segment>();
+            if (_askRepeats.Repeated > 0) segments.Add(new("Repeated", _askRepeats.Repeated));
+            if (_askRepeats.Visits - _askRepeats.Repeated > 0) segments.Add(new("New", _askRepeats.Visits - _askRepeats.Repeated, "var(--lv5)"));
+            return segments;
+        }
+
         private IReadOnlyList<BarMeter.Segment> AskOutcomeSegments()
         {
             var segments = new List<BarMeter.Segment>();
