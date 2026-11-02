@@ -37,7 +37,7 @@
     </div>
 
     <div class="nav-main">
-    <div class="nav-crumbs" data-tour="trail">
+    <div class="nav-crumbs">
         @if (Header.Breadcrumb != null)
         {
             @Header.Breadcrumb
@@ -57,16 +57,15 @@
                 {
                     <Button Variant="ghost" Size="micro" Href="admin" IconLeft="_iconInstance" title="Admin" aria-label="Admin"><span class="nav-dropdown-label">Admin</span></Button>
                 }
-                <span data-tour="bell"><NotificationPanel /></span>
+                <NotificationPanel />
                 <NavDropdown Label="@ShortName(_name)" Title="@_name" Icon="_iconUser">
                     <Button Variant="ghost" Size="micro" Href="account/manage" IconLeft="_iconUser">Account</Button>
                     <Button Variant="ghost" Size="micro" Href="account/api-key" IconLeft="_iconKey">API keys</Button>
                     <PopoverDivider />
-                    @* Get started back, and the tour again (OnboardingService). *@
+                    @* Get started back (OnboardingService). *@
                     @if (ActiveTeam.ActiveTeamId != null)
                     {
                         <Button Variant="ghost" Size="micro" IconLeft="_iconRocket" @onclick="ShowGetStartedAsync">Get started</Button>
-                        <Button Variant="ghost" Size="micro" IconLeft="_iconRocket" @onclick="Onboarding.RequestTour">Show me around</Button>
                         <PopoverDivider />
                     }
                     <Button Variant="ghost" Size="micro" Href="https://docs.indx.co" IconLeft="_iconBook">Docs ↗</Button>
@@ -78,7 +77,7 @@
                         <Button Type="submit" Variant="ghost" Size="micro" IconLeft="_iconLogout">Log out</Button>
                     </form>
                 </NavDropdown>
-                <span data-tour="agent"><AgentButton /></span>
+                <AgentButton />
             </Authorized>
             <NotAuthorized>
                 <Button Href="account/register" Variant="secondary" Size="micro">Register</Button>

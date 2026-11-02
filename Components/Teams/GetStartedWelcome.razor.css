@@ -1,3 +1,1 @@
 .welcome { margin-bottom: 16px; }
-.welcome-link { all: unset; cursor: pointer; color: var(--lv8); text-decoration: underline; text-underline-offset: 2px; }
-.welcome-link:focus-visible { outline: 1px solid var(--lv6); }

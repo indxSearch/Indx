@@ -1,12 +1,19 @@
-/* The card at the foot of the column: a surface a shade up, the panel's trigger. */
-.getstarted-trigger { all: unset; display: block; width: 100%; cursor: pointer; }
-.getstarted-trigger:focus-visible .getstarted-card, .getstarted-trigger:focus-visible .getstarted-ring { outline: 1px solid var(--lv6); outline-offset: 1px; }
+/* The card at the foot of the column: a surface a shade up, the panel's trigger, as wide as the
+   column. The Popover's anchor and trigger are inline spans: here they take the full width. */
+.getstarted { display: block; width: 100%; }
+.getstarted ::deep .indx-popover-anchor, .getstarted ::deep .indx-popover-trigger { display: block; width: 100%; }
+.getstarted-trigger { all: unset; box-sizing: border-box; display: block; width: 100%; cursor: pointer; }
+.getstarted-trigger:focus-visible .getstarted-card, .getstarted-trigger:focus-visible .getstarted-railbutton { outline: 1px solid var(--lv6); outline-offset: 1px; }
 .getstarted-card { display: flex; flex-direction: column; gap: 10px; padding: 10px 12px 12px; background: var(--lv1); border: 1px solid var(--lv2); border-radius: var(--radius); }
 .getstarted-trigger:hover .getstarted-card { border-color: var(--lv3); }
 .getstarted-card-head { display: flex; align-items: center; gap: 8px; }
 .getstarted-card-title { font: var(--text-sm); color: var(--lv8); flex: 1; }
 .getstarted-count { font: var(--text-xs); color: var(--lv5); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.getstarted-ring { display: flex; justify-content: center; }
+/* Folded to the rail: a 30px button like the rail's items, the icon over a short row of cells. */
+.getstarted--rail { width: auto; }
+.getstarted--rail ::deep .indx-popover-anchor, .getstarted--rail ::deep .indx-popover-trigger { width: auto; }
+.getstarted-railbutton { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; width: 30px; padding: 6px 0; border-radius: var(--radius); }
+.getstarted-trigger:hover .getstarted-railbutton { background: var(--lv2); }
 
 /* The panel. */
 ::deep .getstarted-popover { padding: 0; }
@@ -14,8 +21,6 @@
 .getstarted-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .getstarted-title { font: var(--text-base); font-weight: var(--med); color: var(--lv8); }
 .getstarted-line { margin: -8px 0 0; font: var(--text-sm); color: var(--lv5); }
-.getstarted-link { all: unset; cursor: pointer; color: var(--lv8); text-decoration: underline; text-underline-offset: 2px; }
-.getstarted-link:focus-visible { outline: 1px solid var(--lv6); }
 .getstarted-group { display: flex; flex-direction: column; gap: 2px; }
 .getstarted-group-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 4px 0 6px; font: var(--text-xs); color: var(--lv5); }
 .getstarted-step { all: unset; box-sizing: border-box; display: flex; align-items: flex-start; gap: 12px; padding: 8px; margin: 0 -8px; border-radius: var(--radius); cursor: pointer; }

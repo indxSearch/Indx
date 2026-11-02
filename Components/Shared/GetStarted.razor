@@ -12,14 +12,19 @@
    the team, or has hidden it. *@
 @if (_view is { Hidden: false } view)
 {
+    @* A block of its own: the Popover's anchor and trigger are inline spans, which shrank the card
+       to its content instead of the column's width. *@
+    <div class="getstarted @(Rail ? "getstarted--rail" : "")">
     <Popover @bind-Open="_open" Side="right" Align="end" SideOffset="8" AriaLabel="Get started" Class="getstarted-popover">
         <Trigger>
-            <button type="button" class="getstarted-trigger" data-tour="@(Rail ? null : "getstarted")"
-                    aria-label="@($"Get started, {view.Done} of {view.Total} done")">
+            <button type="button" class="getstarted-trigger"
+                    aria-label="@($"Get started, {view.Done} of {view.Total} done")" title="@(Rail ? $"Get started: {view.Done} of {view.Total} done" : null)">
                 @if (Rail)
                 {
-                    <span class="getstarted-ring" title="@($"Get started: {view.Done} of {view.Total} done")">
-                        <BarMeter Shape="ring" Size="48" Value="view.Done" Max="view.Total" Format="@(v => $"{v:0}/{view.Total}")" />
+                    @* Folded: a 30px button like the rail's others, the progress as a short row of cells under the icon. *@
+                    <span class="getstarted-railbutton">
+                        <Rocket Size="16" Color="var(--lv8)" />
+                        <ScoreMeter Value="@((double)view.Done / view.Total)" Cells="view.Total" Cell="3" AriaLabel="@($"{view.Done} of {view.Total} done")" />
                     </span>
                 }
                 else
@@ -43,16 +48,12 @@
                 </div>
                 <p class="getstarted-line">
                     @(view.Kind == IndxServer.Data.Onboarding.KindFirst ? "From your data to search on your site." : $"Your way around {view.TeamName}.")
-                    @if (view.Kind == IndxServer.Data.Onboarding.KindFirst)
-                    {
-                        <text> </text><button type="button" class="getstarted-link" @onclick="StartTour">Show me around</button>
-                    }
                 </p>
                 <BarMeter Value="view.Done" Max="view.Total" Zones="Zones(view)" Format="@(v => $"{v:0} done")" MaxLabel="@($"of {view.Total}")" />
                 @if (view.Finished)
                 {
                     <EmptyState Size="compact" Icon="_iconFlag" Title="You are set up">
-                        <ChildContent>Everything here is done. Get started and the tour stay under your account menu.</ChildContent>
+                        <ChildContent>Everything here is done. Get started stays under your account menu.</ChildContent>
                         <Actions><Button Variant="secondary" Size="micro" @onclick="HideAsync">Hide Get started</Button></Actions>
                     </EmptyState>
                 }
@@ -110,6 +111,7 @@
             </div>
         </ChildContent>
     </Popover>
+    </div>
 }
 
 @code {
@@ -168,14 +170,7 @@
     private void Go(OnboardingStep step)
     {
         _open = false;
-        if (step.Key == OnboardingService.Tour) { Onboarding.RequestTour(); return; }
         if (step.Href != null) Navigation.NavigateTo(step.Href);
-    }
-
-    private void StartTour()
-    {
-        _open = false;
-        Onboarding.RequestTour();
     }
 
     private async Task HideAsync()

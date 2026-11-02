@@ -10,7 +10,7 @@ namespace IndxServer.Data
     /// on a new server or empty team gets the list that sets search up (<see cref="KindFirst"/>),
     /// someone invited to a team the list that finds their way (<see cref="KindInvited"/>). Most
     /// steps are read from what exists (a dataset, a key, a search from a site); the ones nothing
-    /// else records are <see cref="Marks"/>: the tour, a dataset opened, the preview tried.
+    /// else records are <see cref="Marks"/>: a dataset opened, the preview tried.
     /// </summary>
     public class Onboarding
     {

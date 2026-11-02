@@ -5,16 +5,14 @@
 @inject ActiveTeamState ActiveTeam
 @inject AuthenticationStateProvider AuthState
 @* The welcome on the team page for someone invited to it (Get started, Nov 2026): the team, the
-   role and what it lets them do, and the way into the tour. Gone once the tour has run or been
-   skipped, or Get started is hidden. *@
+   role and what it lets them do. Gone once they have opened a dataset, or hidden Get started. *@
 @if (_show)
 {
     <div class="welcome">
         <Alert Variant="info">
             <Title>Welcome to @TeamName</Title>
             <Description>
-                You joined as @Article(Role): @What(Role)
-                <button type="button" class="welcome-link" @onclick="Onboarding.RequestTour">Show me around</button>
+                You joined as @Article(Role): @What(Role) Get started, at the foot of the column, shows the way.
             </Description>
         </Alert>
     </div>
@@ -44,7 +42,7 @@
         if (_userId.Length == 0 || ActiveTeam.Find(TeamName) is not { } team) return;
         var view = await Onboarding.GetAsync(_userId, team.Team, team.Role);
         _show = view is { Hidden: false } v && v.Kind == IndxServer.Data.Onboarding.KindInvited
-                && v.Steps.Any(s => s.Key == OnboardingService.Tour && !s.Done);
+                && v.Steps.Any(s => s.Key == "open" && !s.Done);
     }
 
     private static string Article(string? role) => role?.ToLowerInvariant() switch

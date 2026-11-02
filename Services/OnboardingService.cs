@@ -6,8 +6,8 @@ using Microsoft.EntityFrameworkCore;
 
 namespace IndxServer.Services
 {
-    /// <summary>One step of Get started: what it is, whether it is done, where it takes you
-    /// (null for the tour, which starts instead), and whether it is a Pro feature.</summary>
+    /// <summary>One step of Get started: what it is, whether it is done, where it takes you, and
+    /// whether it is a Pro feature.</summary>
     public sealed record OnboardingStep(string Key, string Title, string Line, bool Done, string? Href, bool Pro = false);
 
     public sealed record OnboardingGroup(string Title, IReadOnlyList<OnboardingStep> Steps);
@@ -33,11 +33,12 @@ namespace IndxServer.Services
     /// new server or empty team sets search up, someone invited to a team finds their way, by role.
     /// A step is done by what has happened, read here each time: the team has a dataset, a dataset
     /// with records, a search from outside the console, another member, Search or ask or Observr
-    /// on. What nothing records (the tour, a dataset opened, the preview tried, a statistics page
+    /// on. What nothing records (a dataset opened, the preview tried, a statistics page
     /// read, a synonym or boost saved, a question tried) is a mark the page sets as it happens.
     /// Search or ask and Observr are Pro: steps where the instance has them, and without Observr
     /// the first user's list ends in a teaser for it. Scoped per circuit, so the column's card and
-    /// the tour, two islands, hear the same events.
+    /// the team page's welcome, two islands, hear the same events. A tour of the console ("Show me
+    /// around") was built and removed the same day (2 Nov 2026): not worth the time it took.
     /// </summary>
     internal sealed class OnboardingService(
         ApplicationDbContext db,
@@ -52,15 +53,8 @@ namespace IndxServer.Services
         Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider auth,
         ILogger<OnboardingService> logger)
     {
-        public const string Tour = "tour";
-
         /// <summary>A step was marked, a list hidden or shown: the card redraws.</summary>
         public event Action? Changed;
-
-        /// <summary>Show me around was asked for, from the card, the welcome or the account menu.</summary>
-        public event Action? TourRequested;
-
-        public void RequestTour() => TourRequested?.Invoke();
 
         /// <summary>Gives a new account its Get started on the team it landed on. Once per user
         /// and team; a later call leaves the first in place.</summary>
@@ -73,7 +67,7 @@ namespace IndxServer.Services
 
         private readonly HashSet<string> _marked = new(StringComparer.Ordinal);
 
-        /// <summary>Marks a step done by a visit (tour, open, try, stats, tune, soa-try). Cheap to
+        /// <summary>Marks a step done by a visit (open, try, stats, tune, soa-try). Cheap to
         /// call on every search: once marked in this circuit it is not written again.</summary>
         public async Task MarkAsync(string userId, string teamId, string key)
         {
@@ -178,7 +172,6 @@ namespace IndxServer.Services
             var groups = new List<OnboardingGroup>
             {
                 new("Find your way", [
-                    new(Tour, "Show me around", "Where everything is, in seven stops.", marks.Contains(Tour), null),
                     new("open", "Open a dataset", "Status, statistics and settings, one dataset at a time.", marks.Contains("open"), TeamRoutes.Team(team.Name)),
                     new("try", "Try a search", "See what visitors see, in the preview.", marks.Contains("try"), Tab(team, names, "search")),
                 ]),
