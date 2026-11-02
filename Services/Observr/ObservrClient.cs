@@ -197,6 +197,17 @@ namespace IndxServer.Services.Observr
             }
         }
 
+        /// <summary>The sentence as plain text, for a note: "Treat as the same word: tv, telly".</summary>
+        [JsonIgnore]
+        public string SentenceText
+        {
+            get
+            {
+                var (before, names, after) = Sentence;
+                return string.Join(" ", new[] { before, string.Join(", ", names), after }.Where(p => p.Length > 0));
+            }
+        }
+
         public const string Synonym = "synonym";
         public const string FieldKind = "field";
         public const string SearchOrAskKind = "searchOrAsk";
@@ -907,9 +918,12 @@ namespace IndxServer.Services.Observr
             if (!yes)
             {
                 findings.Decide(findingId, ObservrFinding.Declined);
+                RememberDeclined(f, f.Proposals);
                 return null;
             }
             var chosen = f.Proposals.Where((p, i) => onlyProposals == null || onlyProposals.Contains(i)).ToList();
+            // The ones left out of a partial yes are declined with it, and remembered as such.
+            RememberDeclined(f, f.Proposals.Where((p, i) => onlyProposals != null && !onlyProposals.Contains(i)));
             // The store keeps only what can be carried out; this holds for a finding kept before it did.
             if (chosen.Any(p => !p.CanApply)) return "This suggestion needs a newer Indx Server. Nothing was changed.";
             var done = new HashSet<string>();
@@ -925,6 +939,15 @@ namespace IndxServer.Services.Observr
             if (done.Count == 0) return why + " Nothing was changed.";
             var labels = f.Proposals.Where(p => done.Contains(p.Kind)).Select(p => p.Label.ToLowerInvariant()).Distinct();
             return $"{why} The {string.Join(" and ", labels)} change{(done.Count == 1 ? " was" : "s were")} carried out; the rest was not.";
+        }
+
+        /// <summary>A No is kept as a note on the dataset (Notes/observr-agent-plan.md, step 2), so
+        /// Observr does not propose the same change again in the next conversation.</summary>
+        private void RememberDeclined(ObservrFinding f, IEnumerable<ObservrProposal> declined)
+        {
+            if (f.DataSetName.Length == 0) return;
+            foreach (var p in declined)
+                if (p.SentenceText is { Length: > 0 } text) findings.AddNote(f.TeamId, f.DataSetName, "Declined: " + text, ObservrNote.Declined);
         }
 
         /// <summary>The chosen proposals, synonyms first and field changes (the slow one) after the

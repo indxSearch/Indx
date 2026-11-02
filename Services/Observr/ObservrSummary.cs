@@ -45,7 +45,8 @@ namespace IndxServer.Services.Observr
         ObservrSummaryTotals Totals, ObservrSummaryTotals Previous,
         List<ObservrSummaryQuery> TopQueries, List<ObservrSummaryQuery> ZeroHitQueries, List<ObservrSummaryQuery> LowClickThrough,
         List<ObservrSummaryQuery> FuzzyFinds, List<ObservrSummaryDocument> TopDocuments, List<ObservrSummaryChange> Changes,
-        ObservrSummaryAsk? SearchOrAsk, List<ObservrSummaryField> Fields, List<string> RecentFindings)
+        ObservrSummaryAsk? SearchOrAsk, List<ObservrSummaryField> Fields, List<string> RecentFindings,
+        List<string>? OwnerNotes = null)
     {
         public const int CurrentVersion = 1;
         public const int Days = 7;
@@ -127,7 +128,10 @@ namespace IndxServer.Services.Observr
                 searchOrAsk,
                 loaded ? engine!.GetFieldList().Select(f => new ObservrSummaryField(f.Name, ObservrClient.TypeName(f.Type), f.Searchable, f.Filterable, f.Facetable, f.Sortable, f.Weight)).ToList() : [],
                 // What Observr has said about this dataset lately, so a digest does not say it again.
-                findings.ListForDataset(teamId, dataSetName, Findings).Select(f => $"{f.Kind}: {(f.Query.Length > 0 ? f.Query + ": " : "")}{f.Answer} ({f.Status})").ToList());
+                findings.ListForDataset(teamId, dataSetName, Findings).Select(f => $"{f.Kind}: {(f.Query.Length > 0 ? f.Query + ": " : "")}{f.Answer} ({f.Status})").ToList(),
+                // What the owner told Observr and declined (Notes/observr-agent-plan.md): a digest
+                // does not propose again what they turned down.
+                findings.NotesFor(teamId, dataSetName).Select(n => n.Text).ToList());
         }
     }
 }

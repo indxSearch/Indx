@@ -37,12 +37,17 @@
                     <Button Variant="ghost" Size="micro" aria-label="Back to the conversation" IconLeft="_iconBack" @onclick="() => _history = false" />
                     <span class="agent-title">Conversations</span>
                 }
+                else if (_memory)
+                {
+                    <Button Variant="ghost" Size="micro" aria-label="Back to the conversation" IconLeft="_iconBack" @onclick="() => _memory = false" />
+                    <span class="agent-title" title="What Observr knows about @_ctx.DataSetName"><span class="agent-title-text">What Observr knows about @_ctx.DataSetName</span></span>
+                }
                 else
                 {
                     <span class="agent-title" title="@Title()"><Observr Size="14" Color="currentColor" /><span class="agent-title-text">@Title()</span></span>
                 }
                 <span class="agent-spacer"></span>
-                @if (!_history)
+                @if (!_history && !_memory)
                 {
                     <Tooltip Content="History" Position="bottom"><Button Variant="ghost" Size="micro" aria-label="History" IconLeft="_iconHistory" @onclick="OpenHistory" Disabled="@_running" /></Tooltip>
                 }
@@ -54,7 +59,35 @@
             </div>
         </Header>
         <ChildContent>
-            @if (_history)
+            @if (_memory && _ctx.HasDataset)
+            {
+                @* The notes Observr keeps about the dataset: read with every question about it, so a No
+                   holds beyond its conversation. The owner adds and forgets them here. *@
+                var notes = Findings.NotesFor(_ctx.TeamId, _ctx.DatasetKey);
+                <p class="agent-note">Observr reads these with every question about @_ctx.DataSetName, so it does not propose what you turned down. Forget what is no longer true.</p>
+                <div class="agent-notes">
+                    @foreach (var n in notes)
+                    {
+                        <div class="agent-note-row">
+                            <div class="agent-note-text">@n.Text
+                                <span class="agent-history-meta">@(n.Source == ObservrNote.Declined ? "Your No" : "You said") · <TimeAgo Value="n.CreatedUtc" TooltipPosition="left" /></span>
+                            </div>
+                            @if (_canDecide)
+                            {
+                                <Button Variant="ghost" Size="micro" aria-label="Forget this" IconLeft="_iconForget" @onclick="() => ForgetNote(n.Id)" />
+                            }
+                        </div>
+                    }
+                </div>
+                @if (_canDecide)
+                {
+                    <div class="agent-note-add">
+                        <InputField placeholder="Tell Observr something to keep in mind" Immediate @bind-Value="_note" maxlength="@ObservrFindingStore.MaxNoteLength" />
+                        <Button Variant="secondary" Size="micro" Disabled="@string.IsNullOrWhiteSpace(_note)" @onclick="KeepNote">Keep</Button>
+                    </div>
+                }
+            }
+            else if (_history)
             {
                 @* The History: the user's conversations, newest first, each where it began; one opens to read and continue. *@
                 var all = Conversations.Conversations(_userId);
@@ -81,7 +114,7 @@
                 <Suggestions Items="Suggested()" OnPick="SendAsync" />
             }
             @{ var current = _turns.FindLastIndex(t => t.Role == ObservrTurn.User); }
-            @foreach (var (t, i) in _turns.Select((t, i) => (t, i)).Where(_ => !_history))
+            @foreach (var (t, i) in _turns.Select((t, i) => (t, i)).Where(_ => !_history && !_memory))
             {
                 @if (i == _rememberedFrom && i > 0)
                 {
@@ -118,7 +151,7 @@
                     </AssistantMessage>
                 }
             }
-            @if (_running && !_history)
+            @if (_running && !_history && !_memory)
             {
                 @* Observr's answer on its way, as its own message: the step it is on, then a few
                    skeleton lines where the answer will land. Writing gets the grow spinner. *@
@@ -158,13 +191,21 @@
             <div @ref="_end"></div>
         </ChildContent>
         <Composer>
-            @if (!_history)
+            @if (!_history && !_memory)
             {
-                @* Where the question is about, once, at the input: a turn asked elsewhere says so itself. *@
+                @* Where the question is about, once, at the input: a turn asked elsewhere says so itself.
+                   On a dataset, the notes Observr keeps about it, a click away. *@
                 <div class="agent-compose">
-                    <span class="agent-context-chip" title="@(_ctx.HasDataset ? $"About the dataset {_ctx.DataSetName}" : $"About the team {_ctx.TeamName}")">
-                        <Chip Icon="@(_ctx.HasDataset ? _iconFields : _iconTeam)">About @(_ctx.HasDataset ? _ctx.DataSetName : _ctx.TeamName)</Chip>
-                    </span>
+                    <div class="agent-compose-head">
+                        <span class="agent-context-chip" title="@(_ctx.HasDataset ? $"About the dataset {_ctx.DataSetName}" : $"About the team {_ctx.TeamName}")">
+                            <Chip Icon="@(_ctx.HasDataset ? _iconFields : _iconTeam)">About @(_ctx.HasDataset ? _ctx.DataSetName : _ctx.TeamName)</Chip>
+                        </span>
+                        @if (_ctx.HasDataset)
+                        {
+                            var count = Findings.NotesFor(_ctx.TeamId, _ctx.DatasetKey).Count;
+                            <span class="agent-notes-link"><Button Variant="ghost" Size="micro" @onclick="() => _memory = true">@(count == 0 ? "Notes" : count == 1 ? "1 note" : $"{count} notes")</Button></span>
+                        }
+                    </div>
                     <Composer Value="@_draft" ValueChanged="v => _draft = v" OnSend="SendAsync" Streaming="@_running" Disabled="@(!_canAsk)" MaxLength="ObservrChat.MaxQuestion"
                               Placeholder="@(_canAsk ? (_ctx.HasDataset ? $"Ask about {_ctx.DataSetName}…" : $"Ask about {_ctx.TeamName}…") : "Editors can ask")" Icon="_iconComposer" />
                 </div>
@@ -194,6 +235,8 @@
     /// <summary>The first turn Observr reads (ObservrConversationStore.RememberedFrom); the line goes above it.</summary>
     private int _rememberedFrom;
     private bool _history;
+    private bool _memory;
+    private string? _note;
     private sealed record Step(string Text, string Done, string? Tool) { public bool Finished { get; set; } }
     private string? _error;
     private long _busy;
@@ -212,6 +255,7 @@
     private static readonly RenderFragment<int> _iconHistory = size => @<Clock Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconNew = size => @<Plus Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconBack = size => @<ArrowLeft Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconForget = size => @<Trash Size="size" Color="currentColor" />;
 
     /// <summary>A step's icon by its tool; the rest have the step's check.</summary>
     private static RenderFragment<int>? StepIcon(string? tool) => tool switch
@@ -327,7 +371,19 @@
     /// <summary>Where a conversation began, for the History: the dataset, or the team.</summary>
     private string Where(string teamId, string dataset) => dataset.Length > 0 ? dataset : $"team {TeamNameOf(teamId)}";
 
-    private void OpenHistory() { _history = true; _error = null; }
+    private void OpenHistory() { _history = true; _memory = false; _error = null; }
+
+    private void KeepNote()
+    {
+        if (_ctx is not { HasDataset: true } || string.IsNullOrWhiteSpace(_note)) return;
+        Findings.AddNote(_ctx.TeamId, _ctx.DatasetKey, _note, ObservrNote.Owner);
+        _note = null;
+    }
+
+    private void ForgetNote(long id)
+    {
+        if (_ctx is { HasDataset: true }) Findings.ForgetNote(id, _ctx.TeamId, _ctx.DatasetKey);
+    }
 
     /// <summary>Opens a conversation from the History to read and continue.</summary>
     private void Open(long id)
