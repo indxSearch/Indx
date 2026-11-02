@@ -249,6 +249,9 @@
 .stats-need { display: flex; flex-direction: column; gap: 16px; }
 .stats-need-visits { display: inline-flex; align-items: center; gap: 8px; }
 .stats-need-count { font-variant-numeric: tabular-nums; color: var(--lv6); }
+.stats-need-why { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.stats-need-score { font-variant-numeric: tabular-nums; color: var(--lv6); white-space: nowrap; }
+.stats-need-more { margin-left: 6px; }
 
 /* The languages waffle in the middle of its face, as the clock and the radar: the grid and its
    legend each centred, the legend's rows too. */

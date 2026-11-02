@@ -537,20 +537,40 @@ else
                     {
                         <div class="stats-need">
                             <BarMeter Segments="NeedSegments(need)" Labels="legend" Format="@(v => Pct((long)v, need.Visits))" />
+                            @* Why each wording is here, and who said so: the grouping is the judge's, so the page
+                               shows its every link and lets an editor take one back (Nov 2026). *@
                             <Table AriaLabel="How it was asked" Class="stats-table">
-                                <thead><tr><th>How it was asked</th><th class="stats-num">Times</th><th class="stats-num">Asked again</th><th class="stats-num">Landed</th></tr></thead>
+                                <thead><tr><th>How it was asked</th><th class="stats-num">Times</th><th class="stats-num">Asked again</th><th class="stats-num">Landed</th><th>Why it is here</th></tr></thead>
                                 <tbody>
                                     @foreach (var w in need.Wordings)
                                     {
+                                        var wording = w;
                                         <tr>
                                             <td>@w.Text</td>
                                             <td class="stats-num">@N(w.Asked)</td>
                                             <td class="stats-num">@(w.Reworded > 0 ? N(w.Reworded) : "–")</td>
                                             <td class="stats-num">@(w.Landed > 0 ? N(w.Landed) : "–")</td>
+                                            <td>
+                                                <span class="stats-need-why">
+                                                    <span>@NeedWhy(need, w)</span>
+                                                    @if (w.P is { } p)
+                                                    {
+                                                        <Tooltip Content="@NeedJudged(w)" Position="left"><span class="stats-need-score">Jev @p.ToString("0.00")</span></Tooltip>
+                                                    }
+                                                    @if (w.LinkedTo != null && Ctx.IsEditor)
+                                                    {
+                                                        <Button Variant="ghost" Size="micro" @onclick="() => DenyNeedLinkAsync(wording)">Not the same</Button>
+                                                    }
+                                                </span>
+                                            </td>
                                         </tr>
                                     }
                                 </tbody>
                             </Table>
+                            @if (Ctx.IsEditor && need.Wordings.Any(x => x.LinkedTo != null))
+                            {
+                                <p class="stats-help">"Not the same" takes back that one link. The need splits where the link held it together; the others stand.</p>
+                            }
                             @if (need.LandedOn.Count > 0)
                             {
                                 <p class="stats-help">Landed on @string.Join(", ", need.LandedOn.Select(r => TitleOf(r.DocumentKey))).</p>
@@ -570,7 +590,25 @@ else
                         @foreach (var q in _askQuestions)
                         {
                             <tr>
-                                <td>@q.Question</td>
+                                <td>
+                                    @q.Question
+                                    @if (q.OtherWordings is { Count: > 0 } others)
+                                    {
+                                        @* The need's other wordings are counted in: say so, and open the need. *@
+                                        var need = NeedOf(q);
+                                        var label = others.Count == 1 ? "+1 way" : $"+{others.Count} ways";
+                                        <Tooltip Content="@($"Also asked as: {string.Join("; ", others)}")">
+                                            @if (need != null)
+                                            {
+                                                <span class="stats-need-more"><Button Variant="ghost" Size="micro" @onclick="() => OpenNeed(need)">@label</Button></span>
+                                            }
+                                            else
+                                            {
+                                                <span class="stats-need-more stats-need-score">@label</span>
+                                            }
+                                        </Tooltip>
+                                    }
+                                </td>
                                 <td class="stats-num">@N(q.Asks)</td>
                                 <td>@QuestionOutcome(q)</td>
                                 <td class="stats-num">@Score(q.Answerability)</td>

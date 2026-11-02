@@ -20,6 +20,50 @@ namespace IndxServer.Components.Datasets
         private List<AskNeedStat> _needs = [];
         private AskNeedStat? _need;
 
+        /// <summary>Why a wording is in its need, in words: how it joined which other wording. The
+        /// title is the one the others are traced back to.</summary>
+        private static string NeedWhy(AskNeedStat need, AskNeedWording w) => w.Link switch
+        {
+            AskNeedLink.AskedAgain => $"Asked again after \"{w.LinkedTo}\" in the same visit",
+            AskNeedLink.SameNeed => $"The same as \"{w.LinkedTo}\", asked in another visit",
+            _ when w.Text == need.Title => need.Wordings.Any(x => x.Landed > 0) ? "Named after it: it landed most" : "Named after it: it was asked most",
+            _ => "Through a question asked outside this period",
+        };
+
+        /// <summary>What the judge said of the link, for its tooltip.</summary>
+        private static string NeedJudged(AskNeedWording w) =>
+            $"The judge (Jev) gave {w.P:0.00} that the two ask for the same thing. From 0.50 up, they are one need.";
+
+        /// <summary>The need a question of the Questions list is, when it is one on the Needs list.</summary>
+        private AskNeedStat? NeedOf(AskQuestionStat q)
+        {
+            var key = SearchOrAskRephrasing.Normalise(q.Question);
+            return _needs.FirstOrDefault(n => n.Wordings.Any(w => SearchOrAskRephrasing.Normalise(w.Text) == key));
+        }
+
+        private void OpenNeed(AskNeedStat need)
+        {
+            _askView = "needs";
+            _need = need;
+        }
+
+        /// <summary>
+        /// An editor's "not the same" on one link of a need: that pair stops holding the need
+        /// together, the rest stand. The page reloads; the need opens again if it is still one.
+        /// </summary>
+        private async Task DenyNeedLinkAsync(AskNeedWording w)
+        {
+            if (!Ctx.IsEditor || w.LinkedTo is not { } other || Stats.Store is not { } store) return;
+            // Resolved here, not injected: the tab also renders where no one is signed in (its tests).
+            var auth = Services.GetService(typeof(Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider))
+                as Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider;
+            var user = (auth == null ? null : (await auth.GetAuthenticationStateAsync()).User.Identity?.Name) ?? "unknown";
+            var title = _need?.Title;
+            store.DenySameNeed(Ctx.TeamId, Ctx.Name, w.Text, other, user);
+            await LoadAsync();
+            _need = _needs.FirstOrDefault(n => n.Title == title || n.Wordings.Any(x => x.Text == title));
+        }
+
         /// <summary>At most this many cells in a need's row: a need asked in more visits shows its
         /// shares across them, so a busy need does not widen the table.</summary>
         private const int NeedCells = 24;

@@ -1749,7 +1749,7 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
              // Deleting the statistics deletes their explanation too: starting the numbers over
              // starts the history of what moved them over (decided 1 Oct 2026).
              "DatasetChanges", "DailyDocumentChanges",
-             "AskIntentEvents", "AskEvents", "DailyAskStats", "AskBudgetDays", "AskNeedLinks", "AskNeedTexts"];
+             "AskIntentEvents", "AskEvents", "DailyAskStats", "AskBudgetDays", "AskNeedLinks", "AskNeedTexts", "AskNeedDenied"];
 
         private int ExecutePerTable(string where, string a, string? b)
         {
