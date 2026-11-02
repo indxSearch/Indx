@@ -1,11 +1,12 @@
-@* The Agent panel (Notes/Anders/console-shell-plan-2026-10-13.md, stage 5): Observr as a
-   conversation, in a column at the right. One thread per user (15 Oct 2026): the context, on a
-   dataset page that dataset, elsewhere the active team, is what the agent looks at, shown in the
-   head, not a key that swaps the transcript. The findings are not here: a dataset's wait on its
-   Status page, a team's on its Observr page, each with Yes and No; Discuss there brings one into
-   this thread. The conversation, newest at the bottom, then the composer. The tabs' buttons
-   (Review my setup, Ask about this query, …) run their ask here, as a turn of the same thread. An
-   island of its own: the layout renders statically. *@
+@* The Agent panel (Notes/Anders/console-shell-plan-2026-10-13.md, stage 5; Notes/observr-agent-plan.md):
+   Observr as conversations, in a column at the right. What it shows is what Observr remembers
+   (2 Nov 2026): one current conversation, read whole by the model, with a line where its memory
+   starts if it outgrows it; New conversation instead of Clear, the earlier ones in History; each
+   answer with what it looked at. The context, on a dataset page that dataset, elsewhere the active
+   team, is a chip at the input, not a key that swaps the transcript. The findings are not here: a
+   dataset's wait on its Status page, a team's on its Observr page, each with Yes and No; Discuss
+   there brings one into this conversation. The tabs' buttons (Review my setup, Ask about this
+   query, …) run their ask here, as a turn. An island of its own: the layout renders statically. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
 @using System.Security.Claims
@@ -31,21 +32,48 @@
     <ChatPanel Class="agent-chat" Hints="false">
         <Header>
             <div class="agent-head">
-                <span class="agent-title"><Observr Size="14" Color="currentColor" /> Agent</span>
-                <span class="agent-context" title="@(_ctx.HasDataset ? $"About the dataset {_ctx.DataSetName}" : $"About the team {_ctx.TeamName}")">
-                    @if (_ctx.HasDataset) { <Database Size="14" Color="currentColor" /> } else { <UserGroup Size="14" Color="currentColor" /> }
-                    @(_ctx.HasDataset ? _ctx.DataSetName : _ctx.TeamName)
-                </span>
-                <span class="agent-spacer"></span>
-                @if (_turns.Count > 0)
+                @if (_history)
                 {
-                    <Button Variant="ghost" Size="micro" title="Start over" @onclick="ClearAsync" Disabled="@_running">Clear</Button>
+                    <Button Variant="ghost" Size="micro" aria-label="Back to the conversation" IconLeft="_iconBack" @onclick="() => _history = false" />
+                    <span class="agent-title">Conversations</span>
+                }
+                else
+                {
+                    <span class="agent-title" title="@Title()"><Observr Size="14" Color="currentColor" /><span class="agent-title-text">@Title()</span></span>
+                }
+                <span class="agent-spacer"></span>
+                @if (!_history)
+                {
+                    <Tooltip Content="History" Position="bottom"><Button Variant="ghost" Size="micro" aria-label="History" IconLeft="_iconHistory" @onclick="OpenHistory" Disabled="@_running" /></Tooltip>
+                }
+                @if (_turns.Count > 0 || _history)
+                {
+                    <Tooltip Content="New conversation" Position="bottom"><Button Variant="ghost" Size="micro" aria-label="New conversation" IconLeft="_iconNew" @onclick="NewConversation" Disabled="@_running" /></Tooltip>
                 }
                 <Button Variant="ghost" Size="micro" aria-label="Close" IconLeft="_iconClose" @onclick="Agent.Close" />
             </div>
         </Header>
         <ChildContent>
-            @if (_turns.Count == 0)
+            @if (_history)
+            {
+                @* The History: the user's conversations, newest first, each where it began; one opens to read and continue. *@
+                var all = Conversations.Conversations(_userId);
+                @if (all.Count == 0)
+                {
+                    <p class="agent-note">No conversations yet.</p>
+                }
+                <div class="agent-history">
+                    @foreach (var c in all)
+                    {
+                        <button type="button" class="agent-history-row @(c.Id == _conversationId ? "agent-history-row--current" : null)" @onclick="() => Open(c.Id)">
+                            <span class="agent-history-title">@c.Title</span>
+                            <span class="agent-history-meta">@Where(c.TeamId, c.DatasetName) · <TimeAgo Value="c.LastUtc" TooltipPosition="left" /> · @c.Turns turns@(c.Id == _conversationId ? " · current" : "")</span>
+                        </button>
+                    }
+                </div>
+                <p class="agent-note">A conversation stays current until you start a new one, or after four quiet hours. Open any of these to continue it.</p>
+            }
+            else if (_turns.Count == 0)
             {
                 <AssistantMessage Label="Observr" Icon="_iconObservr">
                     <p>@Intro()</p>
@@ -53,8 +81,13 @@
                 <Suggestions Items="Suggested()" OnPick="SendAsync" />
             }
             @{ var current = _turns.FindLastIndex(t => t.Role == ObservrTurn.User); }
-            @foreach (var (t, i) in _turns.Select((t, i) => (t, i)))
+            @foreach (var (t, i) in _turns.Select((t, i) => (t, i)).Where(_ => !_history))
             {
+                @if (i == _rememberedFrom && i > 0)
+                {
+                    @* Honest about memory: the turns above this line are past what Observr reads. *@
+                    <p class="agent-forgotten">Observr no longer reads the turns above. A new conversation keeps it focused.</p>
+                }
                 @* The exchange under way reads as the present; what came before it is history and
                    steps back a tone, since the thread is one and has no other break. *@
                 var past = i < current ? "agent-past" : null;
@@ -66,11 +99,11 @@
                 else
                 {
                     <AssistantMessage Label="Observr" Icon="_iconObservr" Class="@past">
-                        @if (t.Id != 0 && t.Id == _stepsFor && _answerSteps.Count > 0)
+                        @if (t.LookedAt() is { Count: > 0 } looked)
                         {
-                            @* What Observr read for its newest answer, for as long as the panel lives. *@
-                            <ToolSteps Summary="@(_answerSteps.Count == 1 ? "1 step" : $"{_answerSteps.Count} steps")">
-                                @foreach (var step in _answerSteps) { <ToolStep Icon="@StepIcon(step.Tool)">@step.Done</ToolStep> }
+                            @* What the answer looked at, kept with it: Observr reads it again with the answer. *@
+                            <ToolSteps Summary="@(looked.Count == 1 ? "Looked at 1 thing" : $"Looked at {looked.Count} things")">
+                                @foreach (var step in looked) { <ToolStep Icon="@StepIcon(step.Tool)">@step.Done</ToolStep> }
                             </ToolSteps>
                         }
                         @ChatMarkdown.Render(t.Text)
@@ -85,7 +118,7 @@
                     </AssistantMessage>
                 }
             }
-            @if (_running)
+            @if (_running && !_history)
             {
                 @* Observr's answer on its way, as its own message: the step it is on, then a few
                    skeleton lines where the answer will land. Writing gets the grow spinner. *@
@@ -125,8 +158,17 @@
             <div @ref="_end"></div>
         </ChildContent>
         <Composer>
-            <Composer Value="@_draft" ValueChanged="v => _draft = v" OnSend="SendAsync" Streaming="@_running" Disabled="@(!_canAsk)" MaxLength="ObservrChat.MaxQuestion"
-                      Placeholder="@(_canAsk ? (_ctx.HasDataset ? $"Ask about {_ctx.DataSetName}…" : $"Ask about {_ctx.TeamName}…") : "Editors can ask")" Icon="_iconComposer" />
+            @if (!_history)
+            {
+                @* Where the question is about, once, at the input: a turn asked elsewhere says so itself. *@
+                <div class="agent-compose">
+                    <span class="agent-context-chip" title="@(_ctx.HasDataset ? $"About the dataset {_ctx.DataSetName}" : $"About the team {_ctx.TeamName}")">
+                        <Chip Icon="@(_ctx.HasDataset ? _iconFields : _iconTeam)">About @(_ctx.HasDataset ? _ctx.DataSetName : _ctx.TeamName)</Chip>
+                    </span>
+                    <Composer Value="@_draft" ValueChanged="v => _draft = v" OnSend="SendAsync" Streaming="@_running" Disabled="@(!_canAsk)" MaxLength="ObservrChat.MaxQuestion"
+                              Placeholder="@(_canAsk ? (_ctx.HasDataset ? $"Ask about {_ctx.DataSetName}…" : $"Ask about {_ctx.TeamName}…") : "Editors can ask")" Icon="_iconComposer" />
+                </div>
+            }
         </Composer>
     </ChatPanel>
 }
@@ -145,9 +187,13 @@
     private string _status = "";
     /// <summary>The tools run for the question under way; the last unfinished one is running.</summary>
     private readonly List<Step> _steps = [];
-    /// <summary>The steps of the newest answer, shown on it (the turn with id _stepsFor).</summary>
-    private List<Step> _answerSteps = [];
-    private long _stepsFor;
+    /// <summary>The conversation shown and asked in; null for a new one, numbered by its first question.</summary>
+    private long? _conversationId;
+    /// <summary>A New conversation was asked for: the next load does not pick the current one back up.</summary>
+    private bool _fresh;
+    /// <summary>The first turn Observr reads (ObservrConversationStore.RememberedFrom); the line goes above it.</summary>
+    private int _rememberedFrom;
+    private bool _history;
     private sealed record Step(string Text, string Done, string? Tool) { public bool Finished { get; set; } }
     private string? _error;
     private long _busy;
@@ -162,6 +208,10 @@
     private static readonly RenderFragment<int> _iconSearch = size => @<Search Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconFields = size => @<Database Size="size" Color="currentColor" />;
     private static readonly RenderFragment<int> _iconDocs = size => @<Book Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconTeam = size => @<UserGroup Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconHistory = size => @<Clock Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconNew = size => @<Plus Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconBack = size => @<ArrowLeft Size="size" Color="currentColor" />;
 
     /// <summary>A step's icon by its tool; the rest have the step's check.</summary>
     private static RenderFragment<int>? StepIcon(string? tool) => tool switch
@@ -248,7 +298,9 @@
 
     private void Load()
     {
-        _turns = Conversations.List(_userId);
+        if (!_fresh) _conversationId ??= Conversations.Current(_userId, DateTime.UtcNow);
+        _turns = _conversationId is { } conversation ? Conversations.Turns(_userId, conversation) : [];
+        _rememberedFrom = ObservrConversationStore.RememberedFrom(_turns);
         _byId = [];
         foreach (var id in _turns.Where(t => t.FindingId != null).Select(t => t.FindingId!.Value).Distinct())
             if (Findings.Get(id) is { } f) _byId[f.Id] = f;
@@ -263,6 +315,47 @@
         if (_ctx == null || (t.TeamId == _ctx.TeamId && t.DatasetName == _ctx.DatasetKey)) return null;
         if (t.DatasetName.Length > 0) return t.DatasetName;
         return ActiveTeam.Teams.FirstOrDefault(x => x.Team.Id.ToString() == t.TeamId).Team?.Name ?? "another team";
+    }
+
+    /// <summary>The conversation's title: its first question, or "New conversation".</summary>
+    private string Title()
+    {
+        var first = _turns.FirstOrDefault(t => t.Role == ObservrTurn.User)?.Text.Trim().ReplaceLineEndings(" ");
+        return string.IsNullOrEmpty(first) ? "New conversation" : first.Length > 60 ? first[..60] + "…" : first;
+    }
+
+    /// <summary>Where a conversation began, for the History: the dataset, or the team.</summary>
+    private string Where(string teamId, string dataset) => dataset.Length > 0 ? dataset : $"team {TeamNameOf(teamId)}";
+
+    private void OpenHistory() { _history = true; _error = null; }
+
+    /// <summary>Opens a conversation from the History to read and continue.</summary>
+    private void Open(long id)
+    {
+        _conversationId = id;
+        _fresh = false;
+        _history = false;
+        _error = null;
+        Load();
+    }
+
+    /// <summary>Starts over without losing anything: the current conversation goes to the History.</summary>
+    private void NewConversation()
+    {
+        _conversationId = null;
+        _fresh = true;
+        _history = false;
+        _error = null;
+        Load();
+    }
+
+    /// <summary>The conversation a question goes into: the one shown, or a new one.</summary>
+    private long Conversation()
+    {
+        var id = _conversationId ?? Conversations.Next(_userId);
+        _conversationId = id;
+        _fresh = false;
+        return id;
     }
 
     private string TeamNameOf(string teamId) =>
@@ -286,15 +379,13 @@
         _status = "Reading the question";   // until Observr reports its first step, never a bare "…"
         _error = null;
         _steps.Clear();
-        _answerSteps = [];
+        var conversation = Conversation();
         // Asked here, so it carries where: without it the turn read as asked on another team.
         _turns.Add(new ObservrTurn(0, ObservrTurn.User, text.Trim(), null, DateTime.UtcNow, _ctx.TeamId, _ctx.DatasetKey));
         StateHasChanged();
-        var answered = false;
         try
         {
-            var outcome = await Chat.AskAsync(_ctx, _userId, text, s => InvokeAsync(() => { OnStatus(s); StateHasChanged(); }), CancellationToken.None);
-            answered = outcome.Status == ObservrStatus.Ok;
+            var outcome = await Chat.AskAsync(_ctx, _userId, text, s => InvokeAsync(() => { OnStatus(s); StateHasChanged(); }), CancellationToken.None, conversation);
             if (outcome.Status != ObservrStatus.Ok)
             {
                 // A refusal is not a turn of the thread: it shows here, and the question goes back
@@ -308,12 +399,6 @@
         {
             _running = false;
             Load();
-            if (answered && _steps.Count > 0)
-            {
-                foreach (var step in _steps) step.Finished = true;
-                _answerSteps = [.. _steps];
-                _stepsFor = _turns.LastOrDefault(t => t.Role == ObservrTurn.Assistant)?.Id ?? 0;
-            }
             _steps.Clear();
             StateHasChanged();
         }
@@ -326,6 +411,7 @@
         _running = true;
         _status = "Observr is looking";
         _error = null;
+        var conversation = Conversation();
         _turns.Add(new ObservrTurn(0, ObservrTurn.User, action.Label, null, DateTime.UtcNow, _ctx.TeamId, _ctx.DatasetKey));
         StateHasChanged();
         try
@@ -335,8 +421,9 @@
             {
                 // The exchange goes into the thread only once it exists; a refusal shows here and
                 // leaves the button to press again.
-                Conversations.Add(_userId, _ctx.TeamId, _ctx.DatasetKey, ObservrTurn.User, action.Label);
-                Conversations.Add(_userId, _ctx.TeamId, _ctx.DatasetKey, ObservrTurn.Assistant, outcome.Answer.Answer, outcome.FindingId > 0 ? outcome.FindingId : null);
+                Conversations.Add(_userId, _ctx.TeamId, _ctx.DatasetKey, ObservrTurn.User, action.Label, conversationId: conversation);
+                Conversations.Add(_userId, _ctx.TeamId, _ctx.DatasetKey, ObservrTurn.Assistant, outcome.Answer.Answer, outcome.FindingId > 0 ? outcome.FindingId : null,
+                    conversation);
                 if (outcome.FindingId > 0 && (action.OnApplied != null || action.OnApplying != null)) _actions[outcome.FindingId] = action;
             }
             else _error = ObservrText.Refusal(outcome, "to look at");
@@ -368,13 +455,5 @@
             _busy = 0;
             Load();
         }
-    }
-
-    private Task ClearAsync()
-    {
-        Conversations.Clear(_userId);
-        _error = null;
-        Load();
-        return Task.CompletedTask;
     }
 }

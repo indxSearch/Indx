@@ -5,8 +5,25 @@
 .agent-head { display: flex; align-items: center; gap: 8px; height: var(--header-height); box-sizing: border-box; padding: 0 0 0 4px; border-bottom: 1px solid var(--lv2); }
 ::deep .agent-chat .indx-chat-header { padding-top: 0; }
 ::deep .agent-chat .indx-chat-thread { overscroll-behavior: contain; }
-.agent-title { display: inline-flex; align-items: center; gap: 7px; font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
-.agent-context { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; font: var(--text-2xs); color: var(--lv5); background: var(--lv2); border-radius: 3px; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The title is the conversation's first question, cut to the head's width. */
+.agent-title { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
+.agent-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The input with where it is about above it: one chip, quiet. */
+.agent-compose { display: flex; flex-direction: column; gap: 6px; }
+.agent-context-chip { display: inline-flex; max-width: 100%; }
+
+/* Where Observr's memory of a long conversation starts. */
+.agent-forgotten { margin: 4px 0; padding: 6px 0; border-top: 1px dashed var(--lv3); font: var(--text-2xs); color: var(--lv5); }
+
+/* The History: one row a conversation, the current one on the raised tone. */
+.agent-history { display: flex; flex-direction: column; }
+.agent-history-row { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 9px 10px; border: 0; border-radius: var(--radius);
+    background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.agent-history-row:hover, .agent-history-row--current { background: var(--lv1); }
+.agent-history-title { font: var(--text-sm); color: var(--lv8); overflow-wrap: anywhere; }
+.agent-history-meta { font: var(--text-2xs); color: var(--lv5); }
+.agent-note { margin: 8px 0 0; font: var(--text-xs); color: var(--lv5); }
 .agent-spacer { flex: 1; }
 .agent-error { margin: 0; font: var(--text-xs); color: var(--CSignal); }
 .agent-allowance { margin: 0; font: var(--text-xs); color: var(--lv5); }
