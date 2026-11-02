@@ -592,6 +592,10 @@ internal static class StartupServices
         {
             options.JsonSerializerOptions.IncludeFields = true;
             options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+            // Enums by name on the wire (6.0, Jens 2 Nov 2026): "mode": "Coverage", "tolerance":
+            // "OneEdit". A name says what it is and survives a value added in the middle; a number
+            // in a request is still read.
+            options.JsonSerializerOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
         })
         // A request that does not bind gets the API's error shape, with its code (ApiProblems).
         .ConfigureApiBehaviorOptions(options =>

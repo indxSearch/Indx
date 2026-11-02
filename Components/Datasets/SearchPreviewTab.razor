@@ -287,9 +287,9 @@ else
     {
         var engine = Ctx.FindEngine();
         if (engine == null) return null;
-        // EnableBoost so the preview reflects this dataset's saved boost rules (applied
-        // server-side in FromQueryProxy), matching what real searches return.
-        var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = PreviewHits, EnableBoost = true };
+        // The dataset's saved boost rules are applied server-side in FromQueryProxy, as in every
+        // search, so the preview matches what real searches return.
+        var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = PreviewHits };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         var hits = new List<PreviewHit>();
         foreach (var record in result.Records)

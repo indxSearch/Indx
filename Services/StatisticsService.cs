@@ -55,11 +55,12 @@ namespace IndxServer.Services
             return string.IsNullOrEmpty(s) ? null : s.Length <= 40 ? s : s[..40];
         }
 
-        /// <summary>Whether coverage confirmed any result: the truncation index marks where the
-        /// confirmed results end, and -1 is none, so what was shown came from fuzzy matching
-        /// alone. Null with coverage off, where the index is always 0 and says nothing.</summary>
+        /// <summary>Whether the search counted any result: a document holding every query word
+        /// within the tolerance (<see cref="Indx.Api.Result.CountedTolerance"/>); false when what
+        /// was shown is the fallback, the most words and pattern matches. Null in BM25F alone,
+        /// which counts nothing. Until 6.0 read from Result.TruncationIndex, -1 for none.</summary>
         public static bool? CoverageConfirmed(Indx.Http.QueryProxy query, Indx.Api.Result result) =>
-            query.EnableCoverage ? result.TruncationIndex >= 0 : null;
+            query.Mode != Indx.Api.SearchMode.Bm25f ? result.CountedTolerance != null : null;
 
         /// <summary>The filter key to store with a search: the key of the filter it ran with
         /// (<paramref name="resolvedKey"/>, its token and filter expression ANDed - a key IS the

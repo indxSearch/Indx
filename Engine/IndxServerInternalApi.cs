@@ -870,7 +870,7 @@ namespace IndxServer.Engine
                     FilterExpression = query.FilterExpression,
                     FilterParameters = query.FilterParameters,
                     TimeOutLimitMilliseconds = query.TimeOutLimitMilliseconds,
-                    EnableCoverage = false,
+                    Mode = SearchMode.Bm25f,
                     RemoveDuplicates = true
                 };
                 Query textQuery = FromQueryProxy(queryProxy, engine, teamId, dataSetName);
@@ -1705,40 +1705,48 @@ namespace IndxServer.Engine
         {
             Query query = new Query(queryProxy.Text, queryProxy.MaxNumberOfRecordsToReturn)
             {
-                CoverageSetup = queryProxy.CoverageSetup,
                 LogPrefix = queryProxy.LogPrefix,
-                CoverageDepth = queryProxy.CoverageDepth,
                 RemoveDuplicates = queryProxy.RemoveDuplicates,
                 MeasureFit = queryProxy.MeasureFit,
-                EnableBoost = queryProxy.EnableBoost,
-                EnableBury = queryProxy.EnableBury,
-                // The wire keeps EnableCoverage until the proxy takes the mode (fastpath step 6, backlog 70).
-                Mode = queryProxy.EnableCoverage ? SearchMode.Coverage : SearchMode.Bm25f,
+                Mode = queryProxy.Mode,
                 EnableCoverageReport = queryProxy.EnableCoverageReport,
                 EnableFacets = queryProxy.EnableFacets,
                 SortAscending = queryProxy.SortAscending,
                 SortBy = queryProxy.SortBy != null ? engine.DocumentFields.GetField(queryProxy.SortBy) : null,
                 TimeOutLimitMilliseconds = queryProxy.TimeOutLimitMilliseconds
             };
-            if (queryProxy.FieldBoosts != null)
-                query.FieldBoosts = queryProxy.FieldBoosts;
+            if (queryProxy.Match != null)
+                query.Match = queryProxy.Match;
+            if (queryProxy.Candidates != null)
+                query.Candidates = queryProxy.Candidates;
+            var ranking = queryProxy.Ranking;
+            if (ranking != null)
+                query.Ranking = new RankingSetup
+                {
+                    Share = ranking.Share,
+                    TypingShift = ranking.TypingShift,
+                    LongFieldFrom = ranking.LongFieldFrom,
+                    LongFieldWeightFloor = ranking.LongFieldWeightFloor,
+                    WholeQueryFloor = ranking.WholeQueryFloor,
+                    FieldWeights = ranking.FieldWeights ?? [],
+                    FieldBoosts = ranking.FieldBoosts ?? [],
+                };
             query.Filter = ResolveRequestFilter(engine, queryProxy.Filter, queryProxy.FilterExpression, queryProxy.FilterParameters);
 
-            // Client-supplied boosts (kept verbatim for backward compat) merged with the dataset's
-            // stored, currently-active boost rules. Rules only apply when the query opts in via
-            // EnableBoost — same flag the client already uses.
+            // The client's boosts merged with the dataset's stored, currently active boost rules,
+            // which apply to every search (6.0: until then only with the client's EnableBoost).
             var merged = new List<Boost>();
-            if (queryProxy.Boosts != null)
-                for (int i = 0; i < queryProxy.Boosts.Length; i++)
+            if (ranking?.Boosts != null)
+                for (int i = 0; i < ranking.Boosts.Length; i++)
                 {
-                    var b = queryProxy.Boosts[i];
+                    var b = ranking.Boosts[i];
                     if (b?.FilterProxy == null)
                         throw new ArgumentException($"boosts[{i}] needs a filterProxy with a hashString.");
                     merged.Add(engine.CreateBoost(ResolveFilterOrThrow(engine, b.FilterProxy), b.BoostStrength, out var boostError)
                         ?? throw new ArgumentException($"boosts[{i}]: {boostError}"));
                 }
 
-            if (queryProxy.EnableBoost && _boostStore != null)
+            if (_boostStore != null)
             {
                 var today = DateOnly.FromDateTime(DateTime.UtcNow);
                 var ruleBoosts = _boostStore.BuildActiveBoosts(engine, teamId, dataSetName, today)
@@ -1757,21 +1765,21 @@ namespace IndxServer.Engine
             }
 
             if (merged.Count > 0)
-                query.Boosts = merged.ToArray();
+                query.Ranking.Boosts = merged.ToArray();
 
             // The buries the same way (25 Oct 2026): the client's, then the dataset's active bury
-            // rules under EnableBury, up to the bury ceiling.
+            // rules, up to the bury ceiling.
             var buries = new List<Bury>();
-            if (queryProxy.Buries != null)
-                for (int i = 0; i < queryProxy.Buries.Length; i++)
+            if (ranking?.Buries != null)
+                for (int i = 0; i < ranking.Buries.Length; i++)
                 {
-                    var b = queryProxy.Buries[i];
+                    var b = ranking.Buries[i];
                     if (b?.FilterProxy == null)
                         throw new ArgumentException($"buries[{i}] needs a filterProxy with a hashString.");
                     buries.Add(engine.CreateBury(ResolveFilterOrThrow(engine, b.FilterProxy), b.BuryStrength, out var buryError)
                         ?? throw new ArgumentException($"buries[{i}]: {buryError}"));
                 }
-            if (queryProxy.EnableBury && _buryStore != null)
+            if (_buryStore != null)
             {
                 var today = DateOnly.FromDateTime(DateTime.UtcNow);
                 var sum = buries.Sum(b => (int)b.BuryStrength);
@@ -1783,7 +1791,7 @@ namespace IndxServer.Engine
                 }
             }
             if (buries.Count > 0)
-                query.Buries = buries.ToArray();
+                query.Ranking.Buries = buries.ToArray();
 
             return query;
         }
