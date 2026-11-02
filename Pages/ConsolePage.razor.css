@@ -1,0 +1,3 @@
+/* The no-team page's one action: the name and its button on a line, centred under the empty state. */
+.noteam-create { display: flex; align-items: flex-start; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.noteam-name { display: block; width: 240px; max-width: 100%; }

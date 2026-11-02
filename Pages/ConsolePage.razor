@@ -28,17 +28,23 @@
     @* Without a team the breadcrumb is never rendered, and the breadcrumb is where "New team…"
        lives — so this page was a dead end for anyone who left or was removed from their last
        team. Offer the same action here. *@
-    <h1>Welcome</h1>
-    <p style="color: var(--lv5); margin-top: 24px;">
-        You don't belong to a team yet. Create one, or ask a team admin to add you to theirs.
-    </p>
-    <div style="display:flex; align-items:center; gap:8px; margin-top:16px;">
-        <InputField Label="Team name" @bind-Value="_newTeamName"
-                    @oninput="e => _newTeamName = e.Value?.ToString() ?? string.Empty"
-                    @onkeydown="OnNewTeamKeyDown" Error="@_newTeamError" IsValid="@(_newTeamError == null)" />
-        <Button Variant="primary" Size="micro" @onclick="CreateTeam"
-                disabled="@string.IsNullOrWhiteSpace(_newTeamName)">Create team</Button>
-    </div>
+    @* An empty state, as every page with nothing in it yet (systm EmptyState): the field and its
+       button on one line, the field labelled for readers rather than above, which pushed it out of
+       line with the button. *@
+    <EmptyState Icon="_iconTeam" Title="You don't have a team yet">
+        <ChildContent>Datasets belong to a team. Create one, or ask a team admin to add you to theirs.</ChildContent>
+        <Actions>
+            <div class="noteam-create">
+                <span class="noteam-name">
+                    <InputField @bind-Value="_newTeamName" placeholder="Team name" aria-label="Team name"
+                                @oninput="e => _newTeamName = e.Value?.ToString() ?? string.Empty"
+                                @onkeydown="OnNewTeamKeyDown" Error="@_newTeamError" IsValid="@(_newTeamError == null)" />
+                </span>
+                <Button Variant="primary" Size="micro" @onclick="CreateTeam"
+                        disabled="@string.IsNullOrWhiteSpace(_newTeamName)">Create team</Button>
+            </div>
+        </Actions>
+    </EmptyState>
 }
 else if (TeamResolved)
 {
@@ -72,6 +78,7 @@ else if (TeamResolved)
 @code {
     // ── Create the first team (see the NoTeam branch above) ──────────────────
     private string _newTeamName = "";
+    private static readonly RenderFragment<int> _iconTeam = size => @<Users Size="size" Color="currentColor" />;
     private string? _newTeamError;
 
     private async Task OnNewTeamKeyDown(KeyboardEventArgs e)
