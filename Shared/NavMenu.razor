@@ -63,7 +63,7 @@
                     <Button Variant="ghost" Size="micro" Href="account/api-key" IconLeft="_iconKey">API keys</Button>
                     <PopoverDivider />
                     @* Get started back (OnboardingService). *@
-                    @if (ActiveTeam.ActiveTeamId != null)
+                    @if (ActiveTeam.ActiveTeamId != null && _getStartedLeft)
                     {
                         <Button Variant="ghost" Size="micro" IconLeft="_iconRocket" @onclick="ShowGetStartedAsync">Get started</Button>
                         <PopoverDivider />
@@ -107,6 +107,21 @@
 
     /// <summary>Get started back on the active team: shown again, or made for an account from
     /// before it shipped, as the list that fits the team.</summary>
+    /// <summary>Whether Get started has steps left on the active team (or the account has none
+    /// yet): once every step is done the card is gone, and so is the item.</summary>
+    private bool _getStartedLeft;
+
+    private async Task LoadGetStartedAsync()
+    {
+        _getStartedLeft = false;
+        var user = (await AuthState.GetAuthenticationStateAsync()).User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (user == null || ActiveTeam.Find(ActiveTeam.ActiveTeamName) is not { } team) return;
+        var view = await Onboarding.GetAsync(user, team.Team, team.Role);
+        _getStartedLeft = view is not { Finished: true };
+    }
+
+    private void OnGetStartedChanged() => _ = InvokeAsync(async () => { await LoadGetStartedAsync(); StateHasChanged(); });
+
     private async Task ShowGetStartedAsync()
     {
         var user = (await AuthState.GetAuthenticationStateAsync()).User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
@@ -131,7 +146,10 @@
         Subscription.Changed += OnHeaderChanged;
         Menu.Changed += OnHeaderChanged;
         ActiveTeam.OnChange += OnHeaderChanged;
+        ActiveTeam.OnChange += OnGetStartedChanged;
+        Onboarding.Changed += OnGetStartedChanged;
         _pageCrumb = PageCrumb();
+        await LoadGetStartedAsync();
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
@@ -155,6 +173,8 @@
         Subscription.Changed -= OnHeaderChanged;
         Menu.Changed -= OnHeaderChanged;
         ActiveTeam.OnChange -= OnHeaderChanged;
+        ActiveTeam.OnChange -= OnGetStartedChanged;
+        Onboarding.Changed -= OnGetStartedChanged;
     }
 
     /// <summary>The chip beside the mark: the instance's standing. Nothing until the portal has

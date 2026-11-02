@@ -56,6 +56,9 @@ namespace IndxServer.Services
         /// <summary>A step was marked, a list hidden or shown: the card redraws.</summary>
         public event Action? Changed;
 
+        /// <summary>Get started under the account menu: the card opens its panel.</summary>
+        public event Action? OpenRequested;
+
         /// <summary>Gives a new account its Get started on the team it landed on. Once per user
         /// and team; a later call leaves the first in place.</summary>
         public async Task StartAsync(string userId, Guid teamId, string kind)
@@ -106,6 +109,10 @@ namespace IndxServer.Services
             if (!await db.Onboardings.AnyAsync(o => o.UserId == userId && o.TeamId == teamId))
                 await StartAsync(userId, teamId, teamHasDatasets ? Onboarding.KindInvited : Onboarding.KindFirst);
             await SetHiddenAsync(userId, teamId, null);
+            // Whether or not anything changed, the card loads it and opens: the menu asked to see it.
+            // Until Nov 2026 nothing was raised when the list was already shown, so the item did nothing.
+            Changed?.Invoke();
+            OpenRequested?.Invoke();
         }
 
         private async Task SetHiddenAsync(string userId, Guid teamId, DateTime? at)

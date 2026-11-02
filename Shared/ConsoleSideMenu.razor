@@ -28,13 +28,13 @@
 {
 <aside class="shell-side">
     <Sidebar Groups="_sidebar" Active="@_active" OnSelect="Choose" StorageKey="@StorageKey" AriaLabel="Sections"
-             DefaultCollapsed="Rail" Open="Menu.DrawerOpen" OpenChanged="Menu.SetDrawer">
+             DefaultCollapsed="Rail" Open="Menu.DrawerOpen" OpenChanged="Menu.SetDrawer" CollapsedChanged="v => _rail = v">
         <Header><ConsolePaletteButton InColumn /></Header>
         @* Folded, the rail shows Get started's button in place of the footer, which it hides. *@
-        <RailFooter><GetStarted Rail /></RailFooter>
+        <RailFooter><GetStarted Rail Shown="_rail" /></RailFooter>
         <Footer>
             @* Get started, on a team's pages and its datasets, for an account that has it. *@
-            <GetStarted />
+            <GetStarted Shown="!_rail" />
             @if (_note != null || _update != null)
             {
                 <div class="side-foot">
@@ -76,6 +76,9 @@
     [Parameter] public bool Rail { get; set; }
 
     private bool _column;
+
+    /// <summary>Folded to the rail now: which Get started is on show (the card or the rail's button).</summary>
+    private bool _rail;
     private IReadOnlyList<SideMenuGroup> _groups = [];
     private IReadOnlyList<Sidebar.Group> _sidebar = [];
     private string? _active;
@@ -93,6 +96,7 @@
     private System.Security.Claims.ClaimsPrincipal _user = new();
     protected override async Task OnInitializedAsync()
     {
+        _rail = Rail;
         NavigationManager.LocationChanged += OnLocationChanged;
         Menu.Changed += OnMenuChanged;
         // The team's pages need the user's teams for the role and the team's id.

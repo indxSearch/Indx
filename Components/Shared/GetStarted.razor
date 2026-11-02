@@ -104,8 +104,12 @@
 }
 
 @code {
-    /// <summary>The rail's ring instead of the card.</summary>
+    /// <summary>The rail's button instead of the card.</summary>
     [Parameter] public bool Rail { get; set; }
+
+    /// <summary>Whether this is the one on show (the card unfolded, the button folded): the one
+    /// that opens when the account menu asks for Get started.</summary>
+    [Parameter] public bool Shown { get; set; } = true;
 
     private OnboardingView? _view;
     private bool _open;
@@ -119,12 +123,21 @@
     {
         _userId = (await AuthState.GetAuthenticationStateAsync()).User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
         Onboarding.Changed += OnChanged;
+        Onboarding.OpenRequested += OnOpenRequested;
         Navigation.LocationChanged += OnLocation;
         ActiveTeam.OnChange += OnChanged;
         await LoadAsync();
     }
 
     private void OnChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+
+    private void OnOpenRequested() => _ = InvokeAsync(async () =>
+    {
+        if (!Shown) return;
+        await LoadAsync();
+        _open = _view is { Hidden: false, Finished: false };
+        StateHasChanged();
+    });
     private void OnLocation(object? sender, LocationChangedEventArgs e) => OnChanged();
 
     private async Task LoadAsync()
@@ -160,6 +173,7 @@
     public void Dispose()
     {
         Onboarding.Changed -= OnChanged;
+        Onboarding.OpenRequested -= OnOpenRequested;
         Navigation.LocationChanged -= OnLocation;
         ActiveTeam.OnChange -= OnChanged;
     }
