@@ -119,8 +119,16 @@
             {
                 @if (i == _rememberedFrom && i > 0)
                 {
-                    @* Honest about memory: the turns above this line are past what Observr reads. *@
-                    <p class="agent-forgotten">Observr no longer reads the turns above. A new conversation keeps it focused.</p>
+                    @* Honest about memory: the turns above are past what Observr reads; what it keeps of
+                       them is its summary, shown here, or nothing, said plainly. *@
+                    @if (_summary is { } summary)
+                    {
+                        <div class="agent-summary"><span class="agent-summary-head">Earlier in this conversation, as Observr remembers it</span>@summary</div>
+                    }
+                    else
+                    {
+                        <p class="agent-forgotten">Observr no longer reads the turns above. A new conversation keeps it focused.</p>
+                    }
                 }
                 @* The exchange under way reads as the present; what came before it is history and
                    steps back a tone, since the thread is one and has no other break. *@
@@ -241,6 +249,8 @@
     private bool _fresh;
     /// <summary>The first turn Observr reads (ObservrConversationStore.RememberedFrom); the line goes above it.</summary>
     private int _rememberedFrom;
+    /// <summary>The summary of the turns before _rememberedFrom, when Observr has written one.</summary>
+    private string? _summary;
     private bool _history;
     private bool _memory;
     private string? _note;
@@ -352,6 +362,7 @@
         if (!_fresh) _conversationId ??= Conversations.Current(_userId, DateTime.UtcNow);
         _turns = _conversationId is { } conversation ? Conversations.Turns(_userId, conversation) : [];
         _rememberedFrom = ObservrConversationStore.RememberedFrom(_turns);
+        _summary = _rememberedFrom > 0 && _conversationId is { } current ? Conversations.Summary(_userId, current)?.Text : null;
         _byId = [];
         foreach (var id in _turns.Where(t => t.FindingId != null).Select(t => t.FindingId!.Value).Distinct())
             if (Findings.Get(id) is { } f) _byId[f.Id] = f;

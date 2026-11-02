@@ -455,6 +455,19 @@ namespace IndxServer.Services.Observr
             return reply == null ? (ObservrStatus.Failed, null, "badAnswer") : (ObservrStatus.Ok, reply, null);
         }
 
+        /// <summary>A long conversation's earlier part as a summary, written by Observr (the previous
+        /// summary folded in). Null when it could not be had: a service from before summaries answers
+        /// 404, and the panel then keeps its plain line.</summary>
+        public async Task<string?> SummarizeAsync(string teamId, string teamName, string? previous, IReadOnlyList<ObservrTurn> turns, CancellationToken ct)
+        {
+            if (Refused(out var token) is not null) return null;
+            var payload = new { team = teamName, previous, turns = turns.Select(t => new { role = t.Role, text = t.Text }).ToList() };
+            var (status, body, _) = await PostAsync(token, "/api/chat/summary", payload, teamId, "", ct);
+            if (status != HttpStatusCode.OK) return null;
+            try { return JsonDocument.Parse(body).RootElement.GetProperty("summary").GetString() is { Length: > 0 } s ? s.Trim() : null; }
+            catch (Exception) { return null; }
+        }
+
         /// <summary>Why nothing may be sent, or null with the token to send: an admin's "Observr on this
         /// instance" is the promise that nothing of Observr leaves while it is off, so every call
         /// passes here, whichever button or job made it.</summary>

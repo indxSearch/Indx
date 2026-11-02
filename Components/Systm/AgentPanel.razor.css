@@ -13,7 +13,12 @@
 .agent-compose { display: flex; flex-direction: column; gap: 6px; }
 .agent-context-chip { display: inline-flex; max-width: 100%; }
 
-/* Where Observr's memory of a long conversation starts. */
+/* What Observr keeps of a long conversation's earlier part: its summary, where the turns end for it. */
+.agent-summary { margin: 4px 0 8px; padding: 10px 12px; border: 1px dashed var(--lv3); border-radius: var(--radius); font: var(--text-xs); color: var(--lv6);
+    display: flex; flex-direction: column; gap: 4px; white-space: pre-wrap; }
+.agent-summary-head { color: var(--lv5); font-weight: var(--med); }
+
+/* Where Observr's memory of a long conversation starts, when it has no summary of what is above. */
 .agent-forgotten { margin: 4px 0; padding: 6px 0; border-top: 1px dashed var(--lv3); font: var(--text-2xs); color: var(--lv5); }
 
 /* The History: one row a conversation, the current one on the raised tone. */

@@ -47,6 +47,7 @@ namespace IndxServer.Services.Observr
     public class ObservrConversationStore(ILogger<ObservrConversationStore> logger, string? dbPath = null)
     {
         private const string Table = "ObservrConversations";
+        private const string Summaries = "ObservrConversationSummaries";
         /// <summary>Conversations kept per user; older ones go, turns and all.</summary>
         public const int KeptConversations = 30;
         /// <summary>A conversation with no turn for this long is no longer current: the next question starts a new one.</summary>
@@ -91,7 +92,9 @@ namespace IndxServer.Services.Observr
                     alter.ExecuteNonQuery();
                 }
                 using var index = conn.CreateCommand();
-                index.CommandText = $"CREATE INDEX IF NOT EXISTS IX_ObservrConversations_Conversation ON {Table} (UserId, ConversationId)";
+                index.CommandText = $@"CREATE INDEX IF NOT EXISTS IX_ObservrConversations_Conversation ON {Table} (UserId, ConversationId);
+                    CREATE TABLE IF NOT EXISTS {Summaries} (UserId TEXT NOT NULL, ConversationId INTEGER NOT NULL, UpToId INTEGER NOT NULL,
+                    Text TEXT NOT NULL, CreatedUtc TEXT NOT NULL, PRIMARY KEY (UserId, ConversationId));";
                 index.ExecuteNonQuery();
                 _ensured = true;
             }
@@ -135,17 +138,49 @@ namespace IndxServer.Services.Observr
 
         /// <summary>Where the model starts reading a conversation: the index of the oldest turn it
         /// reads, counted back from the newest within <see cref="RememberTurns"/> and
-        /// <see cref="RememberChars"/>. 0 when it reads all of it. The panel draws its line here.</summary>
+        /// <see cref="RememberChars"/>, moved on to a question so the reading starts with one. 0 when
+        /// it reads all of it. The panel draws its line, or the summary, here.</summary>
         public static int RememberedFrom(IReadOnlyList<ObservrTurn> turns)
         {
             var chars = 0;
             for (var i = turns.Count - 1; i >= 0; i--)
             {
                 chars += turns[i].Text.Length + (turns[i].Looked?.Length ?? 0);
-                if (turns.Count - i > RememberTurns || chars > RememberChars) return i + 1;
+                if (turns.Count - i > RememberTurns || chars > RememberChars)
+                {
+                    var from = i + 1;
+                    while (from < turns.Count - 1 && turns[from].Role != ObservrTurn.User) from++;
+                    return from;
+                }
             }
             return 0;
         }
+
+        /// <summary>The summary of a conversation's earlier part: the newest turn it covers, and the text.</summary>
+        public (long UpToId, string Text)? Summary(string userId, long conversationId)
+        {
+            if (!DbExists()) return null;
+            try
+            {
+                EnsureTable();
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT UpToId, Text FROM {Summaries} WHERE UserId = $u AND ConversationId = $c";
+                cmd.Parameters.AddWithValue("$u", userId);
+                cmd.Parameters.AddWithValue("$c", conversationId);
+                using var r = cmd.ExecuteReader();
+                return r.Read() ? (r.GetInt64(0), r.GetString(1)) : null;
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { return null; }
+        }
+
+        public void SetSummary(string userId, long conversationId, long upToId, string text) =>
+            Execute($"INSERT OR REPLACE INTO {Summaries} (UserId, ConversationId, UpToId, Text, CreatedUtc) VALUES ($u, $c, $up, $t, $at)", cmd =>
+            {
+                cmd.Parameters.AddWithValue("$u", userId); cmd.Parameters.AddWithValue("$c", conversationId);
+                cmd.Parameters.AddWithValue("$up", upToId); cmd.Parameters.AddWithValue("$t", text); cmd.Parameters.AddWithValue("$at", DateTime.UtcNow.ToString("o"));
+            });
 
         private List<ObservrTurn> Read(string sql, Action<SqliteCommand> bind)
         {
@@ -201,12 +236,16 @@ namespace IndxServer.Services.Observr
             trim.Parameters.AddWithValue("$u", userId);
             trim.Parameters.AddWithValue("$n", KeptConversations);
             trim.ExecuteNonQuery();
+            using var trimSummaries = conn.CreateCommand();
+            trimSummaries.CommandText = $"DELETE FROM {Summaries} WHERE UserId = $u AND ConversationId NOT IN (SELECT ConversationId FROM {Table} WHERE UserId = $u)";
+            trimSummaries.Parameters.AddWithValue("$u", userId);
+            trimSummaries.ExecuteNonQuery();
             return id;
         }
 
         /// <summary>Every conversation of the user gone (a deleted account; the panel's New conversation keeps them).</summary>
         public void Clear(string userId) =>
-            Execute($"DELETE FROM {Table} WHERE UserId = $u", cmd => cmd.Parameters.AddWithValue("$u", userId));
+            Execute($"DELETE FROM {Table} WHERE UserId = $u; DELETE FROM {Summaries} WHERE UserId = $u", cmd => cmd.Parameters.AddWithValue("$u", userId));
 
         public void Delete(string teamId, string dataSetName) =>
             Execute($"DELETE FROM {Table} WHERE TeamId = $t AND DatasetName = $d",

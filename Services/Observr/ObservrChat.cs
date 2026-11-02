@@ -72,9 +72,18 @@ namespace IndxServer.Services.Observr
             // answered a turn: a refusal (the service down, the licence refused) is shown in the
             // panel and leaves no trace, which the model would otherwise read as conversation.
             var history = conversations.Turns(userId, conversation);
+            var from = ObservrConversationStore.RememberedFrom(history);
+            // The part past the memory, kept as a summary Observr writes (the earlier summary folded
+            // in), made once per turn that falls out; without one the panel's line says it is gone.
+            var summary = from > 0 ? await SummaryAsync(ctx, userId, conversation, history, from, status, ct) : null;
             var messages = new List<Turn>();
-            foreach (var t in history.Skip(ObservrConversationStore.RememberedFrom(history)))
-                if (t.Text.Length > 0) messages.Add(new Turn(t.Role, t.Role == ObservrTurn.User ? Placed(t, ctx) : Recalled(t)));
+            foreach (var t in history.Skip(from))
+                if (t.Text.Length > 0)
+                {
+                    var text = t.Role == ObservrTurn.User ? Placed(t, ctx) : Recalled(t);
+                    if (messages.Count == 0 && summary != null) text = $"[Earlier in this conversation, summarised]\n{summary}\n\n[The conversation goes on]\n{text}";
+                    messages.Add(new Turn(t.Role, text));
+                }
             messages.Add(new Turn(ObservrTurn.User, question));
             var looked = new List<ObservrLooked>();
             var kept = false;
@@ -149,6 +158,30 @@ namespace IndxServer.Services.Observr
             conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.Assistant, "I read more than I could put together into an answer. Ask it in a smaller piece.",
                 conversationId: conversation);
             return new ObservrChatOutcome(ObservrStatus.Failed, Reason: "turns");
+        }
+
+        /// <summary>The summary of the turns before <paramref name="from"/>: the kept one while it covers
+        /// them all, else a new one written by Observr from the kept one and the turns since. Null
+        /// when none could be had.</summary>
+        private async Task<string?> SummaryAsync(ObservrChatContext ctx, string userId, long conversation, List<ObservrTurn> history, int from,
+            Func<ObservrChatStatus, Task> status, CancellationToken ct)
+        {
+            var kept = conversations.Summary(userId, conversation);
+            var lastOut = history[from - 1].Id;
+            if (kept is { } k && k.UpToId >= lastOut) return k.Text;
+            var fallen = history.Take(from).Where(t => kept == null || t.Id > kept.Value.UpToId).Where(t => t.Text.Length > 0).ToList();
+            if (fallen.Count == 0) return kept?.Text;
+            await status(new ObservrChatStatus("Remembering the earlier part"));
+            try
+            {
+                if (await client.SummarizeAsync(ctx.TeamId, ctx.TeamName, kept?.Text, fallen, ct) is { } written)
+                {
+                    conversations.SetSummary(userId, conversation, lastOut, written);
+                    return written;
+                }
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested) { logger.LogWarning(ex, "The Agent could not summarise a long conversation"); }
+            return kept?.Text;
         }
 
         /// <summary>A tool call as the owner reads it: while it runs, and once it has.</summary>
