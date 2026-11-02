@@ -122,6 +122,26 @@ namespace IndxServer.Services.SearchOrAsk
                 "these\", \"and the cheapest?\", \"tell me more\"), which means the answer served them."),
         };
 
+        /// <summary>Whether two questions from different visits ask for the same thing (2 Nov 2026):
+        /// what joins them into one need on the statistics page. Measured on
+        /// JevProbe/search-or-ask/same-need.tsv, 52 of 52, the lowest same 0.76 and the highest other
+        /// 0.11. <see cref="Rephrased"/> is about a visitor trying again after a missed answer, which
+        /// two visits are not.</summary>
+        public const string SameNeed = "sameNeed";
+
+        public static Dictionary<string, JsonObject> SameNeedQuestions() => new()
+        {
+            [SameNeed] = Noul(
+                "`first` and `second` are two questions that different visitors asked at different times in the search " +
+                "field of `site`. Do they ask for the same thing, so that one good answer would serve both visitors?",
+                "Both ask for the same thing about the same subject: the same question in other words or another word " +
+                "order, in another language, with or without punctuation or capitals, with a typo or a name spelled " +
+                "another way, or as a few keywords instead of a sentence.",
+                "They ask for different things: another item, name or place, even in the same sentence (\"who wrote X\" " +
+                "and \"who wrote Y\"); another fact about the same item (who made it, what it costs, what it is about); " +
+                "a narrower or wider list; or one of them is too vague to say what it wants."),
+        };
+
         /// <summary>A yes/no question answered with a probability ("noul" in Jev's API).</summary>
         private static JsonObject Noul(string instructions, string whenTrue, string whenFalse) => new()
         {

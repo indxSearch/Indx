@@ -25,7 +25,8 @@ namespace IndxServer.Services
         /// The window's needs (Notes/search-or-ask-server.md, "Needs"). A thread is a visit's
         /// question and the rewordings the judge linked to it (<see cref="SearchOrAskRecipes.Rephrased"/>);
         /// a follow-up builds on its answer and is no wording of it. Wordings that are the same text,
-        /// or that a thread linked, are one need, across visits. A need of one wording asked once is
+        /// that a thread linked, or that the judge said ask for the same thing
+        /// (<see cref="SearchOrAskRecipes.SameNeed"/>, any two visits) are one need. A need of one wording asked once is
         /// a question, not a need, and is left to the Questions list. Those given up most come first:
         /// they are what to fix. From the raw rows, which retention keeps for the console's windows.
         /// </summary>
@@ -108,6 +109,8 @@ namespace IndxServer.Services
                 parent.TryAdd(first, first);
                 foreach (var i in thread.Skip(1)) Union(first, SearchOrAskRephrasing.Normalise(asks[i].Question));
             }
+            // And the texts the judge said ask for the same thing, from any two visits (sameNeed).
+            foreach (var (a, b) in SameNeedLinks(teamId, dataSet)) Union(a, b);
 
             var needs = new Dictionary<string, (List<List<int>> Threads, Dictionary<string, (string Text, long Asked, long Reworded, long Landed)> Wordings, Dictionary<long, long> Records, long Last)>();
             foreach (var thread in threads)

@@ -821,6 +821,8 @@ namespace IndxServer.Services.SearchOrAsk
                         DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted, FollowUp: history.Count > 0, Proactive: origin.Proactive));
                     if (askId != null && outcome != "stopped")
                         CompareWithLastAsk(teamId, dataSetName, settings, askId, question, history.Count > 0, origin);
+                    if (askId != null && outcome != "stopped" && origin.Counted && history.Count == 0)
+                        CompareWithEarlierNeeds(teamId, dataSetName, settings, question);
                 }
             }
         }
@@ -904,6 +906,112 @@ namespace IndxServer.Services.SearchOrAsk
                 if (await RephrasedAsync(site, last.Question, question) is { } p)
                     w.RecordAskRephrase(new AskRephraseRow(askId, teamId, dataSetName, last.AskId, p));
             });
+        }
+
+        /// <summary>The datasets whose question texts are being compared, so one comparison runs at a time.</summary>
+        private readonly ConcurrentDictionary<(string, string), byte> _comparingNeeds = new();
+
+        /// <summary>The texts each dataset was asked lately, by when: a run reads the texts from the
+        /// statistics, where the writer's queue may not have put the latest yet.</summary>
+        private readonly ConcurrentDictionary<(string, string), ConcurrentDictionary<string, long>> _recentNeedTexts = new();
+
+        /// <summary>How many earlier texts a new one is put to the judge against: the closest Indx finds.</summary>
+        public const int SameNeedCandidates = 3;
+
+        /// <summary>Texts compared per run, so a dataset with a backlog catches up a little per question.</summary>
+        public const int SameNeedTextsPerRun = 20;
+
+        /// <summary>The texts a run searches among, the most recently asked.</summary>
+        public const int SameNeedTextsSearched = 5000;
+
+        /// <summary>
+        /// After a question is recorded: each question text not yet compared (this one first, then any
+        /// left from before, oldest first) is put to the judge against the texts Indx finds closest,
+        /// whether the two ask for the same thing (<see cref="SearchOrAskRecipes.SameNeed"/>); the needs
+        /// join on its word. Off the visitor's path, once per pair, with no more than half the day's
+        /// budget, which stays for the visitors. A text is marked compared only when all its pairs were
+        /// judged, so one the budget or a failing judge cut short is taken up again next time. One run
+        /// per dataset at a time; a question asked during it makes it go round again.
+        /// </summary>
+        private void CompareWithEarlierNeeds(string teamId, string dataSetName, SearchOrAskSettings settings, string question)
+        {
+            if (!JudgeAvailable || _statistics?.Store is not { } store) return;
+            var key = (teamId, dataSetName);
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var recent = _recentNeedTexts.GetOrAdd(key, _ => new(StringComparer.Ordinal));
+            var asked = SearchOrAskRephrasing.Normalise(question);
+            if (asked.Length > 0) recent[asked] = now;
+            foreach (var old in recent.Where(e => now - e.Value > 60_000).Select(e => e.Key).ToList()) recent.TryRemove(old, out _);
+            if (!_comparingNeeds.TryAdd(key, 0)) return;
+            var site = SiteDescription(teamId, dataSetName, settings);
+            _ = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    var started = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    try
+                    {
+                        await CompareNeedsOnceAsync(store, teamId, dataSetName, settings, site, recent);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Comparing Search or ask's questions failed for {Team}/{Dataset}", teamId, dataSetName);
+                    }
+                    _comparingNeeds.TryRemove(key, out _);
+                    if (!recent.Values.Any(at => at >= started) || !_comparingNeeds.TryAdd(key, 0)) return;
+                }
+            });
+        }
+
+        private async Task CompareNeedsOnceAsync(StatisticsStore store, string teamId, string dataSetName, SearchOrAskSettings settings,
+            string site, ConcurrentDictionary<string, long> recent)
+        {
+            var texts = store.AskTexts(teamId, dataSetName, SameNeedTextsSearched);
+            var latest = recent.OrderByDescending(e => e.Value).Select(e => e.Key).ToList();
+            foreach (var text in latest.Where(t => !texts.Contains(t)).Reverse()) texts.Insert(0, text);
+            var compared = store.SameNeedCompared(teamId, dataSetName);
+            // What was asked lately first, then what is left from before, oldest first.
+            var pending = texts.Where(t => !compared.Contains(t)).Reverse()
+                .OrderBy(t => latest.Contains(t) ? 0 : 1).Take(SameNeedTextsPerRun).ToList();
+            if (pending.Count == 0) return;
+            if (texts.Count < 2)
+            {
+                foreach (var text in pending) store.MarkSameNeedCompared(teamId, dataSetName, text);
+                return;
+            }
+            using var engine = IndxServer.Components.Shared.MicroIndex.Build(texts);
+            foreach (var text in pending)
+            {
+                bool whole = true;
+                // Without coverage: it keeps the texts that hold the words, and a paraphrase may hold few.
+                var found = engine.Search(new Query { Text = text, MaxNumberOfRecordsToReturn = SameNeedCandidates + 1, EnableCoverage = false });
+                var candidates = found.Records.Where(r => r.Score > 0 && r.DocumentKey >= 0 && r.DocumentKey < texts.Count)
+                    .Select(r => texts[(int)r.DocumentKey]).Where(c => c != text).Take(SameNeedCandidates).ToList();
+                foreach (var other in candidates)
+                {
+                    if (store.SameNeedJudged(teamId, dataSetName, text, other)) continue;
+                    if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget, settings.DailyCallBudget / 2)) return;
+                    if (await SameNeedAsync(site, other, text) is { } p) store.SaveSameNeed(teamId, dataSetName, text, other, p);
+                    else whole = false;
+                }
+                if (whole) store.MarkSameNeedCompared(teamId, dataSetName, text);
+            }
+        }
+
+        /// <summary>The judge's word on two questions from different visits: the probability they ask
+        /// for the same thing, or null when the judge failed or took too long.</summary>
+        public async Task<double?> SameNeedAsync(string site, string first, string second)
+        {
+            using var timeout = new CancellationTokenSource(_options.JudgeTimeoutMs * 2);
+            try
+            {
+                var state = new JsonObject { ["site"] = site, ["first"] = first, ["second"] = second };
+                return (await _models.JudgeAsync(state, SearchOrAskRecipes.SameNeedQuestions(), timeout.Token))[SearchOrAskRecipes.SameNeed];
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or SearchOrAskModelException or HttpRequestException)
+            {
+                return null;
+            }
         }
 
         /// <summary>The judge's word on two questions in a row: the probability the second asks the
