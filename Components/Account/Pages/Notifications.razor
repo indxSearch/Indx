@@ -6,6 +6,8 @@
 @attribute [Authorize]
 @inject NotificationService NotificationService
 @inject AuthenticationStateProvider AuthState
+@inject IndxServer.Services.NotificationLinks Links
+@inject NavigationManager Navigation
 
 <PageTitle>Notifications</PageTitle>
 
@@ -34,7 +36,7 @@ else
         @foreach (var n in _all)
         {
             <div style="display:flex; gap:12px; padding:14px 16px; border-bottom:1px solid var(--lv2); background:@(n.IsRead ? "transparent" : "var(--lv1)"); cursor:pointer;"
-                 @onclick="() => MarkRead(n)">
+                 @onclick="() => OpenAsync(n)" title="@(_links.ContainsKey(n.Id) ? "Open" : null)">
                 <div style="width:8px; display:flex; align-items:flex-start; padding-top:5px; flex-shrink:0;">
                     @if (!n.IsRead)
                     {
@@ -69,7 +71,17 @@ else
         _userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (_userId != null)
             _all = await NotificationService.GetAllAsync(_userId);
+            _links = await Links.ForAsync(_all);
         _loading = false;
+    }
+
+    private Dictionary<int, string> _links = [];
+
+    /// <summary>Opening one marks it read and goes where it is about (NotificationLinks).</summary>
+    private async Task OpenAsync(Notification n)
+    {
+        await MarkRead(n);
+        if (_links.TryGetValue(n.Id, out var href)) Navigation.NavigateTo(href);
     }
 
     private async Task MarkRead(Notification n)

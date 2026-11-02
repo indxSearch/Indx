@@ -66,7 +66,7 @@ namespace IndxServer.Services
                             $"Boost rule \"{rule.Name}\" on {dataSetName} has expired",
                             $"The rule \"{rule.Name}\" on dataset {dataSetName} (team {team.Name}) ended on {rule.ActiveUntil:yyyy-MM-dd} and no longer boosts results. " +
                             "Extend its dates, switch it off, or delete it under Boost rules.",
-                            metadata: $"/datasets/{Uri.EscapeDataString(dataSetName)}",
+                            metadata: $"{TeamRoutes.Dataset(team.Name, dataSetName)}?tab=boosts",
                             sourceId: sourceId);
                     }
                     logger.LogInformation("Sent BoostRuleExpired for {Dataset}/{Rule} to {Count} member(s)", dataSetName, rule.Name, recipients.Count);

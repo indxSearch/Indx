@@ -355,8 +355,13 @@ namespace IndxServer.Services.Webhooks
             try
             {
                 using var scope = services.CreateScope();
+                // To the dataset's Webhooks, where a held batch is applied or discarded.
+                var team = Guid.TryParse(hook.TeamId, out var teamId)
+                    ? await scope.ServiceProvider.GetRequiredService<IndxServer.Data.ApplicationDbContext>().Teams.FindAsync(teamId)
+                    : null;
                 await scope.ServiceProvider.GetRequiredService<NotificationService>()
-                    .CreateForAdminsAsync(NotificationType.WebhookAttention, title, body);
+                    .CreateForAdminsAsync(NotificationType.WebhookAttention, title, body,
+                        team == null ? null : $"{TeamRoutes.Dataset(team.Name, hook.DatasetName)}?tab=webhooks");
             }
             catch (Exception ex)
             {
