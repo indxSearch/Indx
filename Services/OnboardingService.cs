@@ -35,8 +35,8 @@ namespace IndxServer.Services
     /// with records, a search from outside the console, another member, Search or ask or Observr
     /// on. What nothing records (a dataset opened, the preview tried, a statistics page
     /// read, a synonym or boost saved, a question tried) is a mark the page sets as it happens.
-    /// Search or ask and Observr are Pro: steps where the instance has them, and without Observr
-    /// the first user's list ends in a teaser for it. Scoped per circuit, so the column's card and
+    /// Search or ask is a step where the instance shows it, on any plan; Observr is Pro, a step
+    /// where the instance has it, and without it the first user's list ends in a teaser for it. Scoped per circuit, so the column's card and
     /// the team page's welcome, two islands, hear the same events. A tour of the console ("Show me
     /// around") was built and removed the same day (2 Nov 2026): not worth the time it took.
     /// </summary>
@@ -159,7 +159,7 @@ namespace IndxServer.Services
             var pro = new List<OnboardingStep>();
             if (searchOrAsk.Shown)
                 pro.Add(new("soa", "Answer questions", "Search or ask writes answers from your records when a visitor asks.",
-                    names.Any(n => searchOrAskStore.Load(teamId, n)?.Enabled == true), Tab(team, names, "search-or-ask"), Pro: true));
+                    names.Any(n => searchOrAskStore.Load(teamId, n)?.Enabled == true), Tab(team, names, "search-or-ask")));
             if (observr.Visible)
                 pro.Add(new("observr", "Let Observr watch", "A weekly look at what visitors could not find, and what to change.",
                     names.Any(n => findings.IsEnabled(teamId, n)), TeamRoutes.TeamObservr(team.Name), Pro: true));
@@ -185,7 +185,7 @@ namespace IndxServer.Services
                 };
                 if (searchOrAsk.Shown && names.Any(n => searchOrAsk.ShownFor(team.Id.ToString(), n)))
                     better.Add(new("soa-try", "Ask a question", "Try Search or ask on a dataset, as a visitor would.", marks.Contains("soa-try"),
-                        Tab(team, names, "search-or-ask"), Pro: true));
+                        Tab(team, names, "search-or-ask")));
                 groups.Add(new("Make it better", better));
             }
             else

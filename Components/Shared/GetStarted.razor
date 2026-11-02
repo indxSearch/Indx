@@ -10,7 +10,8 @@
    panel of steps in their groups, the next one marked; folded to a rail, the card is a ring. The
    team is the page's, else the active one. Nothing shows where the account has no Get started on
    the team, or has hidden it. *@
-@if (_view is { Hidden: false } view)
+@* Gone once every step is done, as when hidden: there is nothing left to show the way to. *@
+@if (_view is { Hidden: false, Finished: false } view)
 {
     @* A block of its own: the Popover's anchor and trigger are inline spans, which shrank the card
        to its content instead of the column's width. *@
@@ -32,7 +33,7 @@
                     <span class="getstarted-card">
                         <span class="getstarted-card-head">
                             <Rocket Size="16" Color="var(--lv8)" />
-                            <span class="getstarted-card-title">@(view.Finished ? "You are set up" : "Get started")</span>
+                            <span class="getstarted-card-title">Get started</span>
                             <span class="getstarted-count">@view.Done of @view.Total</span>
                         </span>
                         <StepProgress Parts="Parts(view)" />
@@ -51,13 +52,6 @@
                 </p>
                 @* Nested: a bar per group, as wide as its steps and filled by its own done. *@
                 <StepProgress Parts="Parts(view)" Labels />
-                @if (view.Finished)
-                {
-                    <EmptyState Size="compact" Icon="_iconFlag" Title="You are set up">
-                        <ChildContent>Everything here is done. Get started stays under your account menu.</ChildContent>
-                        <Actions><Button Variant="secondary" Size="micro" @onclick="HideAsync">Hide Get started</Button></Actions>
-                    </EmptyState>
-                }
                 @foreach (var group in view.Groups)
                 {
                     <div class="getstarted-group">
@@ -93,18 +87,15 @@
                             <span class="getstarted-step-title">Add Pro to get Observr <Chip>Pro</Chip></span>
                             <span class="getstarted-step-line">
                                 Observr looks at your search every week and tells you what visitors could not find, and what to change.
-                                Pro also brings Search or ask@(view.TeaserTeam ? ", your whole team, and no cap on documents" : "").
+                                @(view.TeaserTeam ? "Pro also brings your whole team, and no cap on documents." : "")
                             </span>
                             <span><Button Variant="secondary" Size="micro" Href="@ProHref" target="_blank" rel="noopener">Get Pro</Button></span>
                         </span>
                     </div>
                 }
-                @if (!view.Finished)
-                {
-                    <div class="getstarted-foot">
-                        <Button Variant="ghost" Size="micro" @onclick="HideAsync">Hide for now</Button>
-                    </div>
-                }
+                <div class="getstarted-foot">
+                    <Button Variant="ghost" Size="micro" @onclick="HideAsync">Hide for now</Button>
+                </div>
             </div>
         </ChildContent>
     </Popover>
@@ -118,8 +109,6 @@
     private OnboardingView? _view;
     private bool _open;
     private string _userId = "";
-
-    private static readonly RenderFragment<int> _iconFlag = size => @<FinishFlag Size="size" Color="currentColor" />;
 
     /// <summary>Where See Pro goes: the upgrade page on the license portal, which says what Pro
     /// adds and takes the subscription (it asks the visitor to sign in first).</summary>
