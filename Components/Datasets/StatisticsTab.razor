@@ -554,7 +554,7 @@ else
                         </tbody>
                     </Table>
                 }
-                <Modal Open="@(_need != null)" OpenChanged="@(v => { if (!v) _need = null; })" Title="@_need?.Title"
+                <Modal Open="@(_need != null)" OpenChanged="@(v => { if (!v) _need = null; })" Title="@_need?.Title" Class="stats-need-modal"
                        Description="@(_need is { } d ? $"{N(d.Visits)} {(d.Visits == 1 ? "visit" : "visits")}, {d.Wordings.Count} {(d.Wordings.Count == 1 ? "wording" : "wordings")}" : null)">
                     @if (_need is { } need)
                     {
@@ -563,7 +563,7 @@ else
                             @* Why each wording is here, and who said so: the grouping is the judge's, so the page
                                shows its every link and lets an editor take one back (Nov 2026). *@
                             <Table AriaLabel="How it was asked" Class="stats-table">
-                                <thead><tr><th>How it was asked</th><th class="stats-num">Times</th><th class="stats-num">Asked again</th><th class="stats-num">Landed</th><th>Why it is here</th></tr></thead>
+                                <thead><tr><th>How it was asked</th><th class="stats-num">Times</th><th class="stats-num">Asked again</th><th class="stats-num">Landed</th>@if (need.Wordings.Count > 1) {<th>Why it is here</th>}</tr></thead>
                                 <tbody>
                                     @foreach (var w in need.Wordings)
                                     {
@@ -573,6 +573,8 @@ else
                                             <td class="stats-num">@N(w.Asked)</td>
                                             <td class="stats-num">@(w.Reworded > 0 ? N(w.Reworded) : "–")</td>
                                             <td class="stats-num">@(w.Landed > 0 ? N(w.Landed) : "–")</td>
+                                            @if (need.Wordings.Count > 1)
+                                            {
                                             <td>
                                                 <span class="stats-need-why">
                                                     <span>@NeedWhy(need, w)</span>
@@ -586,6 +588,7 @@ else
                                                     }
                                                 </span>
                                             </td>
+                                            }
                                         </tr>
                                     }
                                 </tbody>

@@ -246,6 +246,9 @@
 /* Needs: a list in the tables' style, the title a ghost Button that opens the need in a Modal:
    how its visits ended, how it was asked, where it landed. */
 .stats-need-open ::deep .indx-btn { justify-content: flex-start; max-width: 100%; text-align: left; }
+/* A need's modal holds a table of five columns, the last a sentence: the systm modal's 480px
+   squeezed it into a column of words. */
+::deep .stats-need-modal { max-width: 1040px; width: 92vw; }
 .stats-need { display: flex; flex-direction: column; gap: 16px; }
 .stats-need-visits { display: inline-flex; align-items: center; gap: 8px; }
 .stats-need-count { font-variant-numeric: tabular-nums; color: var(--lv6); }
