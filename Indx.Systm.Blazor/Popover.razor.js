@@ -1,16 +1,17 @@
-// Popover's browser half: places the panel by its trigger and dismisses it. The panel is fixed to
-// the viewport, so no scrolling or clipping parent cuts it off; it takes the asked side and flips
-// to the other when that side has no room, and is kept inside the window. The React Popover gets
-// the same from Radix.
+// Popover's browser half: raises the panel into the top layer, places it by its trigger
+// (float.js) and dismisses it. Nothing it sits in can clip it, and it takes the asked side and
+// flips to the other when that side has no room. The React Popover gets the same from Radix.
 
-const MARGIN = 8;   // the panel never comes closer than this to the window's edge
+import { place as placePanel, raise, lower } from './float.js';
+
 const open = new Map();   // content element -> its listeners, while open
 
 export function show(anchor, content, side, align, offset, role, dotnet) {
     if (!anchor || !content) return;
     hide(content);
     const trigger = anchor.querySelector('.indx-popover-trigger');
-    const place = () => position(trigger, content, side, align, offset);
+    const place = () => placePanel(trigger, content, side, align, offset);
+    raise(content);
     place();
 
     const dismiss = (refocus) => {
@@ -65,6 +66,7 @@ export function hide(content) {
     window.removeEventListener('resize', l.place);
     window.removeEventListener('scroll', l.place, true);
     setExpanded(l.trigger, false, null);
+    lower(content);
     open.delete(content);
 }
 
@@ -73,42 +75,6 @@ export function closed(anchor) {
     for (const [content, l] of open) if (anchor?.contains(l.trigger)) hide(content);
     const trigger = anchor?.querySelector('.indx-popover-trigger');
     if (trigger) setExpanded(trigger, false, null);
-}
-
-function position(trigger, content, side, align, offset) {
-    const t = trigger.getBoundingClientRect();
-    const w = content.offsetWidth, h = content.offsetHeight;
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const vertical = side === 'top' || side === 'bottom';
-    // The side, flipped when it has no room and the other side has more.
-    let s = side;
-    if (s === 'bottom' && t.bottom + offset + h > vh - MARGIN && t.top - offset - h >= MARGIN) s = 'top';
-    else if (s === 'top' && t.top - offset - h < MARGIN && t.bottom + offset + h <= vh - MARGIN) s = 'bottom';
-    else if (s === 'right' && t.right + offset + w > vw - MARGIN && t.left - offset - w >= MARGIN) s = 'left';
-    else if (s === 'left' && t.left - offset - w < MARGIN && t.right + offset + w <= vw - MARGIN) s = 'right';
-
-    let x, y;
-    if (vertical) {
-        y = s === 'bottom' ? t.bottom + offset : t.top - offset - h;
-        x = align === 'start' ? t.left : align === 'center' ? t.left + (t.width - w) / 2 : t.right - w;
-    } else {
-        x = s === 'right' ? t.right + offset : t.left - offset - w;
-        y = align === 'start' ? t.top : align === 'center' ? t.top + (t.height - h) / 2 : t.bottom - h;
-    }
-    x = Math.max(MARGIN, Math.min(x, vw - MARGIN - w));
-    y = Math.max(MARGIN, Math.min(y, vh - MARGIN - h));
-    content.style.left = `${Math.round(x)}px`;
-    content.style.top = `${Math.round(y)}px`;
-    // An ancestor with a transform, filter or backdrop-filter (the console's header has one) makes
-    // a fixed element place itself against that ancestor instead of the window: measure where it
-    // landed and move it by the difference.
-    const r = content.getBoundingClientRect();
-    if (Math.abs(r.left - x) > 0.5 || Math.abs(r.top - y) > 0.5) {
-        content.style.left = `${Math.round(2 * x - r.left)}px`;
-        content.style.top = `${Math.round(2 * y - r.top)}px`;
-    }
-    content.dataset.side = s;
-    content.dataset.placed = '';
 }
 
 function focusTrigger(trigger) {

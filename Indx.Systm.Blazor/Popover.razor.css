@@ -7,11 +7,16 @@
     display: inline-flex;
 }
 
-/* The panel: the raised surface tone, fixed to the window and placed by the module; hidden until
-   placed, so it never shows a frame at the corner. No shadow and no motion: it is simply there. */
+/* The panel: the raised surface tone, in the top layer and placed by the module; hidden until
+   placed, so it never shows a frame at the corner. No shadow and no motion: it is simply there.
+   The browser's own [popover] look (centred by inset and margin, a border, its own colours and
+   scrolling) is undone here; the top layer needs no z-index. */
 .indx-popover {
     position: fixed;
-    z-index: 1000;
+    inset: auto;
+    margin: 0;
+    border: 0;
+    overflow: visible;
     box-sizing: border-box;
     min-width: 180px;
     max-width: calc(100vw - 16px);

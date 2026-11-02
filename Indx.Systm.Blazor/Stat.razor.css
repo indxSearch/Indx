@@ -112,22 +112,3 @@
     min-width: 0;
 }
 
-/* The hint spans the stat rather than centring on its label. Labels sit at the start, so a
-   centred bubble on a phone ran off the left edge in the first column and off the right in the
-   second (the Statistics tiles, Oct 2026); the stat is always on screen, so a bubble its width
-   is too. React's Tooltip finds room by itself. */
-.indx-stat ::deep .indx-tooltip-wrapper {
-    position: static;
-}
-
-.indx-stat ::deep .indx-tooltip {
-    left: 0;
-    right: 0;
-    width: auto;
-    max-width: none;
-    transform: none;
-}
-
-.indx-stat ::deep .indx-tooltip::after {
-    left: 24px;
-}
