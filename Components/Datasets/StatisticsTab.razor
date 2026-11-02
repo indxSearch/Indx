@@ -424,8 +424,8 @@ else
             @if (_askView == "overview")
             {
                 @* The Overview view: the section's pictures, in the overview's grid. How the asks ended,
-                   offers and asks against the day's budget, today against the budget, when people ask,
-                   and what it cost day by day where the provider reports it. *@
+                   new and repeated, offers and asks against the day's budget, when people ask, what it
+                   cost day by day where the provider reports it, and when the budget goes. *@
                 <div class="stats-overview stats-ask-panels">
                     @if (_ask.Asks > 0)
                     {
@@ -437,7 +437,8 @@ else
                     }
                     @* New and repeated: different visitors asking what an earlier one asked, in any
                        wording, as the needs group them. Not "Asked again", which is one visitor
-                       trying again after an answer missed. *@
+                       trying again after an answer missed. A ring, the repeated share of the visits
+                       (2 Nov 2026; a full-width bar before, then briefly a rose, too much for two). *@
                     @if (_askRepeats.Visits > 0)
                     {
                         <div class="stats-overview-item">
@@ -446,7 +447,10 @@ else
                                 <Button Variant="ghost" Size="micro" @onclick="@(() => _askView = "needs")">Needs</Button>
                             </div>
                             <p class="stats-help">@Pct(_askRepeats.Repeated, _askRepeats.Visits) of @N(_askRepeats.Visits) visits asked something an earlier visitor had asked, in any wording, over the last @Stats.RetentionDays days. A better answer to those pays off again and again.</p>
-                            <BarMeter Segments="AskRepeatSegments()" Labels="legend" Format="@(v => Pct((long)v, _askRepeats.Visits))" />
+                            <div class="stats-centred">
+                                <BarMeter Shape="ring" Size="120" Label="Repeated" Value="_askRepeats.Repeated" Max="_askRepeats.Visits"
+                                          Format="@(v => Pct((long)v, _askRepeats.Visits))" MaxLabel="@($"of {N(_askRepeats.Visits)} visits")" />
+                            </div>
                         </div>
                     }
                     @if (_askDays.Count > 0)
@@ -463,15 +467,6 @@ else
                                        new("Calls", budget.Calls, "var(--lv5)", Step: true),
                                    })"
                                    References="@(budget.Budget > 0 ? new List<Chart.ChartReference> { new(budget.Budget, "budget", "var(--CSignal)", Signal: true) } : null)" />
-                        </div>
-                    }
-                    @if (_askBudgetToday > 0)
-                    {
-                        <div class="stats-overview-item">
-                            <div class="stats-chart-head"><span class="stats-chart-title">Today against the budget</span></div>
-                            <p class="stats-help">Calls so far today, UTC, of the daily budget set under Options. Past it, visitors see no offers until midnight.</p>
-                            <BarMeter Value="_askCallsToday" Max="_askBudgetToday" Format="@(v => N((long)v))" MaxLabel="@($"of {N(_askBudgetToday)} calls")"
-                                      Color="@(_askCallsToday >= _askBudgetToday * 0.85 ? "var(--CSignal)" : null)" />
                         </div>
                     }
                     @if (_askWeekHour is { Total: > 0 } askWeek)

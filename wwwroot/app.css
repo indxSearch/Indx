@@ -346,6 +346,11 @@ a.btn-danger:hover {
     width: 100%;
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* Room for the scrollbar whether or not the page scrolls. Where scrollbars take space (a
+       mouse on macOS, Windows, VS Code's browser), a page that grows past the window when its
+       data lands (Statistics, from its skeleton) otherwise narrows by the bar's width, and the
+       whole page shifts sideways. Overlay scrollbars take none, so nothing changes there. */
+    scrollbar-gutter: stable;
 }
 
 /* The Agent panel (stage 5): the window's full height at the right, beside the page. Closed it has
@@ -1218,6 +1223,9 @@ a.btn-danger:hover {
 }
 
 /* The bar over a tab's content (Statistics, Status): what belongs to everything below, on one
-   line, on a phone too. The end cluster holds the controls at the right. */
-.indx-context-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+   line, on a phone too. The end cluster holds the controls at the right. As tall as its tallest
+   control (a micro SelectField, 30px) whether or not it is there: Statistics shows its surface
+   picker only once the numbers name a second surface, and the bar growing then moved everything
+   under it. */
+.indx-context-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; min-height: 30px; }
 .indx-context-bar-end { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; min-width: 0; margin-left: auto; }

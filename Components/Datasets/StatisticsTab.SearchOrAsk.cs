@@ -105,11 +105,9 @@ namespace IndxServer.Components.Datasets
         private List<AskQuestionStat> _askQuestions = [];
         private List<AskOfferStat> _askOffers = [];
         private string _askView = "overview";
-        // The section's pictures: the window day by day, the budget day by day and today's, and
-        // when people ask.
+        // The section's pictures: the window day by day, the budget day by day, and when people ask.
         private List<AskDayStat> _askDays = [];
         private List<AskBudgetDayStat> _askBudgetDays = [];
-        private long _askCallsToday;
         private int _askBudgetToday;
         private WeekHourStat? _askWeekHour;
         private (long[] Calls, long[] Spent)? _askHours;
@@ -155,9 +153,7 @@ namespace IndxServer.Components.Datasets
             _askBudgetDays = HasSearchOrAsk ? store.BudgetByDay(team, ds, fromDay, toDay) : [];
             _askHours = HasSearchOrAsk ? store.BudgetCallsByHour(team, ds, Math.Max(fromDay, toDay - Stats.RetentionDays + 1), toDay) : null;
             _askWeekHour = HasSearchOrAsk ? store.AsksByWeekHour(team, ds, Math.Max(fromDay, toDay - Stats.RetentionDays + 1), toDay, source) : null;
-            // Today against its budget: the budget's day is UTC, as the service counts it.
-            long todayUtc = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-            _askCallsToday = HasSearchOrAsk ? store.BudgetCalls(team, ds, todayUtc) : 0;
+            // The budget set now: the per-day chart's line where the window recorded none.
             _askBudgetToday = SearchOrAsk.Settings(team, ds).DailyCallBudget;
             if (!HasSearchOrAsk && _section == "search-or-ask") _section = "queries";
         }
@@ -165,15 +161,6 @@ namespace IndxServer.Components.Datasets
         /// <summary>How the asks ended, as shares of one bar: answered in the ink, the rest down
         /// the ladder, failed in the signal red. "Sources could not answer" is the unanswered less
         /// the ones that found nothing, which are their own segment.</summary>
-        /// <summary>The window's visits that asked something: new needs, and needs an earlier visit asked.</summary>
-        private IReadOnlyList<BarMeter.Segment> AskRepeatSegments()
-        {
-            var segments = new List<BarMeter.Segment>();
-            if (_askRepeats.Repeated > 0) segments.Add(new("Repeated", _askRepeats.Repeated));
-            if (_askRepeats.Visits - _askRepeats.Repeated > 0) segments.Add(new("New", _askRepeats.Visits - _askRepeats.Repeated, "var(--lv5)"));
-            return segments;
-        }
-
         private IReadOnlyList<BarMeter.Segment> AskOutcomeSegments()
         {
             var segments = new List<BarMeter.Segment>();
