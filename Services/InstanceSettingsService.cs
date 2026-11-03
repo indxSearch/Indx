@@ -42,6 +42,11 @@ internal class InstanceSettings
     /// token used by several installations is seen as such. Not a secret, not shown to users.</summary>
     public string? InstanceId { get; set; }
 
+    /// <summary>The team people who sign in with Entra ID join, in the role Entra gives them
+    /// (<see cref="EntraSignIn"/>). Set by the first such sign-in: the instance's oldest team, or
+    /// a new one named after the organisation when there is none.</summary>
+    public Guid? EntraTeamId { get; set; }
+
     /// <summary>Master switch for the MCP server (/mcp). On by default (frictionless self-host);
     /// admins can disable the agent-facing surface. Enforced at runtime, so it takes effect without
     /// a restart.</summary>

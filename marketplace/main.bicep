@@ -90,6 +90,17 @@ param microsoftClientId string = ''
 @secure()
 param microsoftClientSecret string = ''
 
+@description('Sign-in with Microsoft Entra ID from the directory this app is deployed in. Indx: through Indx\'s own app registration, nothing to set up beyond a consent and role assignments in Entra. Own: through an app registration the customer made (entraClientId). Off: no Entra sign-in.')
+@allowed([
+  'Indx'
+  'Own'
+  'Off'
+])
+param entraSignIn string = 'Indx'
+
+@description('The application (client) ID of the customer\'s own Entra app registration, when entraSignIn is Own. It needs the redirect address https://<app>.azurewebsites.net/signin-oidc, ID tokens, and the app roles Indx.Admin, Indx.Editor and Indx.Viewer.')
+param entraClientId string = ''
+
 @description('Subscription tier this package represents. Set per marketplace plan (Free / Professional public plans, Enterprise private plan) — NOT a customer input, so it is not collected in createUiDefinition. The release pipeline builds one package per plan with the matching value.')
 @allowed([
   'Free'
@@ -210,6 +221,13 @@ resource microsoftSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = if (!e
   }
 }
 
+// ---------- Entra ID ----------
+
+// Indx's multi-tenant app registration "Indx Entra ID" in azure.indx.co, the one people sign in
+// through when entraSignIn is Indx (Notes/entra-id-sign-in.md). An app id is not a secret.
+var indxEntraClientId = '21519321-8408-4864-bb0a-7fcd8fb81fb0'
+var entraClient = entraSignIn == 'Own' ? entraClientId : (entraSignIn == 'Indx' ? indxEntraClientId : '')
+
 // ---------- App Service Plan + Web App ----------
 
 resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
@@ -297,6 +315,11 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     Authentication__Google__ClientSecret: empty(googleClientSecret) ? '' : '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=GoogleClientSecret)'
     Authentication__Microsoft__ClientId: microsoftClientId
     Authentication__Microsoft__ClientSecret: empty(microsoftClientSecret) ? '' : '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=MicrosoftClientSecret)'
+
+    // Entra ID: the directory of the subscription this is deployed in, so the customer's own and
+    // nobody else's. On when both are set.
+    Entra__TenantId: empty(entraClient) ? '' : subscription().tenantId
+    Entra__ClientId: entraClient
 
     // Edition + plan. Managed = Azure Marketplace deployment: per-instance licensing is hidden,
     // features are gated by the purchased plan (set above, fixed per marketplace plan).

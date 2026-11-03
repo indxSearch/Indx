@@ -181,15 +181,42 @@
       },
       {
         "name": "oauth",
-        "label": "External sign-in",
+        "label": "Sign-in",
         "elements": [
+          {
+            "name": "entraSignIn",
+            "type": "Microsoft.Common.OptionsGroup",
+            "label": "Microsoft Entra ID",
+            "defaultValue": "Sign in with this directory",
+            "toolTip": "People in this directory sign in with their work account. After the deployment, an Entra admin consents once and assigns people or groups to Indx Admin, Editor or Viewer under Enterprise applications.",
+            "constraints": {
+              "allowedValues": [
+                { "label": "Sign in with this directory", "value": "Indx" },
+                { "label": "Use our own app registration", "value": "Own" },
+                { "label": "Off", "value": "Off" }
+              ],
+              "required": true
+            }
+          },
+          {
+            "name": "entraClientId",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Application (client) ID",
+            "toolTip": "Your app registration in this directory: redirect address https://<app name>.azurewebsites.net/signin-oidc, ID tokens on, and the app roles Indx.Admin, Indx.Editor and Indx.Viewer.",
+            "visible": "[equals(steps('oauth').entraSignIn, 'Own')]",
+            "constraints": {
+              "required": true,
+              "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+              "validationMessage": "An application (client) ID is a GUID."
+            }
+          },
           {
             "name": "oauthInfo",
             "type": "Microsoft.Common.InfoBox",
             "visible": true,
             "options": {
               "icon": "Info",
-              "text": "All fields here are optional. Skip this step to allow only username/password sign-in. OAuth providers can be added later via Key Vault."
+              "text": "Optional: personal Google and Microsoft accounts. Skip these to sign in with Entra ID and the admin account only."
             }
           },
           {
@@ -288,6 +315,8 @@
       "acsConnectionString": "[coalesce(steps('email').acsConnectionString, '')]",
       "acsFromAddress": "[coalesce(steps('email').acsFromAddress, '')]",
       "emailFromName": "[coalesce(steps('email').emailFromName, 'Indx Authentication')]",
+      "entraSignIn": "[steps('oauth').entraSignIn]",
+      "entraClientId": "[coalesce(steps('oauth').entraClientId, '')]",
       "googleClientId": "[coalesce(steps('oauth').googleClientId, '')]",
       "googleClientSecret": "[coalesce(steps('oauth').googleClientSecret, '')]",
       "microsoftClientId": "[coalesce(steps('oauth').microsoftClientId, '')]",

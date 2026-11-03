@@ -197,6 +197,7 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.NotificationSignal>();
         builder.Services.AddScoped<IndxServer.Services.TeamService>();
         builder.Services.AddScoped<IndxServer.Services.UserProvisioningService>();
+        builder.Services.AddScoped<IndxServer.Services.EntraSignIn>();
         builder.Services.AddScoped<IndxServer.Services.InviteService>();
         builder.Services.AddScoped<IndxServer.Services.OnboardingService>();
         builder.Services.AddScoped<IndxServer.Services.NotificationLinks>();
@@ -582,6 +583,39 @@ internal static class StartupServices
         else
         {
             Console.WriteLine("ℹ Microsoft authentication not configured (optional)");
+        }
+
+        // Microsoft Entra ID, the customer's own directory (Notes/entra-id-sign-in.md). Off until
+        // Entra:TenantId and Entra:ClientId are set; a Managed App's template sets both. Only an ID
+        // token is asked for, so there is no client secret to keep or to expire, and only the one
+        // directory's issuer is accepted.
+        var entra = EntraOptions.From(builder.Configuration);
+        if (entra.Enabled)
+        {
+            authBuilder.AddOpenIdConnect(EntraSignIn.Scheme, EntraSignIn.DisplayName, options =>
+            {
+                options.SignInScheme = IdentityConstants.ExternalScheme;
+                options.Authority = entra.Issuer;
+                options.ClientId = entra.ClientId;
+                options.CallbackPath = EntraSignIn.CallbackPath;
+                options.ResponseType = Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectResponseType.IdToken;
+                options.ResponseMode = Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectResponseMode.FormPost;
+                options.Scope.Add("email");
+                options.MapInboundClaims = false;
+                options.TokenValidationParameters.ValidIssuer = entra.Issuer;
+                options.Events.OnRedirectToIdentityProvider = context =>
+                {
+                    // The account picker, as for Microsoft above: people often have several.
+                    context.ProtocolMessage.Prompt = "select_account";
+                    return Task.CompletedTask;
+                };
+                options.Events.OnTokenValidated = context =>
+                {
+                    if (context.Principal != null) EntraSignIn.Normalize(context.Principal);
+                    return Task.CompletedTask;
+                };
+            });
+            Console.WriteLine("✓ Microsoft Entra ID sign-in configured");
         }
     }
 
