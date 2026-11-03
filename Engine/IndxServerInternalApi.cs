@@ -1710,7 +1710,7 @@ namespace IndxServer.Engine
                 RemoveDuplicates = queryProxy.RemoveDuplicates,
                 MeasureFit = queryProxy.MeasureFit,
                 Mode = queryProxy.Mode,
-                EnableCoverageReport = queryProxy.EnableCoverageReport,
+                EnableRerankReport = queryProxy.EnableRerankReport,
                 EnableFacets = queryProxy.EnableFacets,
                 SortAscending = queryProxy.SortAscending,
                 SortBy = queryProxy.SortBy != null ? engine.DocumentFields.GetField(queryProxy.SortBy) : null,
