@@ -28,7 +28,9 @@ namespace IndxServer.Services.Support
         bool DiagnosticsSent, bool Unread, IReadOnlyList<SupportMessage> Messages);
 
     /// <summary>Why a call to the Portal gave nothing: the page says each in its own words.</summary>
-    public enum SupportProblem { None, Off, NoToken, Unreachable, Unauthorized, NotFound, TooMany, Invalid, ClosedTooLong }
+    /// <summary>Why a call to Indx's support did not go through. NotAllowed: the licence account may
+    /// not write (blocked, or a free account whose email is not confirmed), with the Portal's words.</summary>
+    public enum SupportProblem { None, Off, NoToken, Unreachable, Unauthorized, NotFound, TooMany, Invalid, ClosedTooLong, NotAllowed }
 
     public sealed record SupportResult<T>(T? Value, SupportProblem Problem = SupportProblem.None, string? Message = null)
     {
@@ -121,6 +123,7 @@ namespace IndxServer.Services.Support
                     HttpStatusCode.NotFound => new(default, SupportProblem.NotFound),
                     HttpStatusCode.TooManyRequests => new(default, SupportProblem.TooMany, message),
                     HttpStatusCode.Conflict => new(default, SupportProblem.ClosedTooLong, message),
+                    HttpStatusCode.Forbidden => new(default, SupportProblem.NotAllowed, message ?? "This license account may not write to support."),
                     HttpStatusCode.BadRequest or HttpStatusCode.RequestEntityTooLarge => new(default, SupportProblem.Invalid, message ?? "The Portal refused it as too large."),
                     _ => new(default, SupportProblem.Unreachable, $"The Portal answered {(int)response.StatusCode}."),
                 };
