@@ -871,6 +871,7 @@ namespace IndxServer.Engine
                     FilterParameters = query.FilterParameters,
                     TimeOutLimitMilliseconds = query.TimeOutLimitMilliseconds,
                     Mode = SearchMode.Bm25f,
+                    Ranking = new RankingProxy { Rerank = false },
                     RemoveDuplicates = true
                 };
                 Query textQuery = FromQueryProxy(queryProxy, engine, teamId, dataSetName);
@@ -1723,6 +1724,7 @@ namespace IndxServer.Engine
             if (ranking != null)
                 query.Ranking = new RankingSetup
                 {
+                    Rerank = ranking.Rerank,
                     Share = ranking.Share,
                     TypingShift = ranking.TypingShift,
                     LongFieldFrom = ranking.LongFieldFrom,

@@ -173,7 +173,7 @@ namespace IndxServer.Mcp
             {
                 Text = query ?? "",
                 MaxNumberOfRecordsToReturn = Math.Clamp(limit, 1, 100),
-                Mode = SearchMode.Coverage,
+                Mode = SearchMode.EditDistance,
                 Candidates = new CandidateSetup { Fallback = broaden },
                 EnableFacets = facets || isBrowse,
             };
@@ -470,7 +470,7 @@ namespace IndxServer.Mcp
                 SortBy = sortable,
                 SortAscending = true,
                 EnableFacets = withFacets,
-                Mode = SearchMode.Coverage,
+                Mode = SearchMode.EditDistance,
             };
             return IndxServerInternalApi.Manager.Search(q, dataset, ownerKey);
         }
