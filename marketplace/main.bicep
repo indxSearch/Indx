@@ -6,8 +6,9 @@
 // Compile to ARM JSON before packaging:
 //   az bicep build --file main.bicep
 //
-// The resulting main.json goes into the marketplace .zip alongside
-// createUiDefinition.json and viewDefinition.json.
+// The resulting main.json goes into the marketplace .zip as mainTemplate.json, alongside
+// createUiDefinition.json, viewDefinition.json and app.zip (IndxServer itself). Build the whole
+// package with deploy/marketplace-package.sh, never by hand.
 
 // ---------- Parameters ----------
 
@@ -21,6 +22,7 @@ param location string = resourceGroup().location
 
 @description('App Service plan SKU. P1v3 recommended for production.')
 @allowed([
+  'B1'
   'B2'
   'B3'
   'P0v3'
@@ -53,6 +55,9 @@ param registrationMode string = 'Closed'
 
 @description('Comma-separated list of allowed email domains when registrationMode = EmailDomain.')
 param allowedEmailDomains string = ''
+
+@description('Comma-separated web origins whose browser apps may call the API (CORS), e.g. https://shop.example.com. The instance\'s admins can change them later in the app.')
+param allowedOrigins string = ''
 
 @description('Email provider for transactional mail.')
 @allowed([
@@ -93,16 +98,28 @@ param microsoftClientSecret string = ''
 ])
 param plan string = 'Free'
 
+// Where Azure staged the package's own files, app.zip among them. Azure Marketplace fills both;
+// the defaults are what the template test toolkit requires.
+@description('Location of the package\'s files. Set by Azure; leave the default.')
+param _artifactsLocation string = deployment().properties.templateLink.uri
+
+@description('Access token for the package\'s files. Set by Azure; leave the default.')
+@secure()
+param _artifactsLocationSasToken string = ''
+
 // ---------- Variables ----------
 
 var uniqueSuffix = uniqueString(resourceGroup().id, appName)
 var planName = '${appName}-plan'
 var siteName = appName
 var keyVaultName = 'kv-${take(uniqueSuffix, 16)}'
-var storageName = 'st${take(uniqueSuffix, 20)}'
 var workspaceName = '${appName}-logs'
 var insightsName = '${appName}-ai'
-var fileShareName = 'indxdata'
+
+// The wizard takes the allowed email domains as one comma-separated line; the server reads a list
+// (Registration:AllowedDomains), which app settings spell as numbered keys.
+var allowedDomainList = filter(map(split(allowedEmailDomains, ','), d => trim(d)), d => !empty(d))
+var allowedDomainSettings = toObject(range(0, length(allowedDomainList)), i => 'Registration__AllowedDomains__${i}', i => allowedDomainList[i])
 
 // Built-in role IDs
 var keyVaultSecretsUserRoleId = '4633458b-17de-408a-b874-0445c86b69e6'
@@ -127,36 +144,6 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   properties: {
     Application_Type: 'web'
     WorkspaceResourceId: workspace.id
-  }
-}
-
-// ---------- Storage Account (license file + future backups) ----------
-
-resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
-  name: storageName
-  location: location
-  sku: {
-    name: 'Standard_LRS'
-  }
-  kind: 'StorageV2'
-  properties: {
-    minimumTlsVersion: 'TLS1_2'
-    allowBlobPublicAccess: false
-    supportsHttpsTrafficOnly: true
-  }
-}
-
-resource fileService 'Microsoft.Storage/storageAccounts/fileServices@2023-05-01' = {
-  parent: storage
-  name: 'default'
-}
-
-resource fileShare 'Microsoft.Storage/storageAccounts/fileServices/shares@2023-05-01' = {
-  parent: fileService
-  name: fileShareName
-  properties: {
-    accessTier: 'TransactionOptimized'
-    shareQuota: 50
   }
 }
 
@@ -231,16 +218,17 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-12-01' = {
   sku: {
     name: skuName
   }
-  kind: 'linux'
-  properties: {
-    reserved: true
-  }
+  // Windows, as cloud.indx.co: the setup that has run IndxServer in production, with its data
+  // in the app's own storage (D:\home) and covered by App Service's snapshots. Linux has never
+  // run it (Notes/linux-and-containers-plan.md), and it would put the SQLite files on a mounted
+  // Azure Files share, where file locking is not reliable.
+  kind: 'app'
 }
 
 resource webApp 'Microsoft.Web/sites@2023-12-01' = {
   name: siteName
   location: location
-  kind: 'app,linux'
+  kind: 'app'
   identity: {
     type: 'SystemAssigned'
   }
@@ -248,7 +236,8 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
     serverFarmId: appServicePlan.id
     httpsOnly: true
     siteConfig: {
-      linuxFxVersion: 'DOTNETCORE|10.0'
+      netFrameworkVersion: 'v10.0'
+      use32BitWorkerProcess: false
       alwaysOn: true
       // The dashboard is Blazor Server over SignalR; without WebSockets it falls back to long
       // polling (slow, and a 90 s GET /_blazor in every log line).
@@ -257,15 +246,6 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
       http20Enabled: true
       minTlsVersion: '1.2'
       healthCheckPath: '/health'
-      azureStorageAccounts: {
-        indxdata: {
-          type: 'AzureFiles'
-          accountName: storage.name
-          shareName: fileShareName
-          mountPath: '/home/data'
-          accessKey: storage.listKeys().keys[0].value
-        }
-      }
     }
   }
 }
@@ -274,7 +254,7 @@ resource webApp 'Microsoft.Web/sites@2023-12-01' = {
 resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
   parent: webApp
   name: 'appsettings'
-  properties: {
+  properties: union({
     ASPNETCORE_ENVIRONMENT: 'Production'
     // App Service fronts the app with a proxy; this makes RemoteIpAddress the real client, which
     // the per-IP auth rate limit and the request logs depend on.
@@ -284,11 +264,11 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     RateLimits__Api__Enabled: 'true'
     RateLimits__Api__RequestsPerSecond: '50'
     RateLimits__Api__Burst: '200'
-    WEBSITES_ENABLE_APP_SERVICE_STORAGE: 'true'
 
-    // Persistent SQLite paths (overrides ServerConnectionStrings default detection)
-    ConnectionStrings__IdentityConnection: 'Data Source=/home/data/identity.db'
-    ConnectionStrings__SearchDataConnection: '/home/data/indx.db'
+    // All data in D:\home\data, the app's persistent storage outside wwwroot, which an update
+    // replaces: the databases, statistics, embeddings, instance settings, licence and backups
+    // (IndxServer DataPaths). The shipped connection strings are relative, so they follow it.
+    Indx__DataDirectory: 'D:\\home\\data'
 
     // JWT - sourced from Key Vault
     Jwt__Key: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=JwtKey)'
@@ -298,7 +278,10 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
 
     // Identity / registration
     Registration__Mode: registrationMode
-    Registration__AllowedEmailDomains: allowedEmailDomains
+
+    // CORS: the wizard's origins, until an admin saves a list under Admin > Settings. The
+    // customer cannot change app settings on a managed resource group, so the app holds the rest.
+    Cors__AllowedOrigins: allowedOrigins
     Identity__RequireConfirmedEmail: emailProvider == 'AzureCommunicationServices' ? 'true' : 'false'
     Identity__AdminEmail: adminEmail
     Identity__AdminInitialPassword: '@Microsoft.KeyVault(VaultName=${keyVault.name};SecretName=AdminInitialPassword)'
@@ -324,7 +307,7 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
     APPLICATIONINSIGHTS_CONNECTION_STRING: appInsights.properties.ConnectionString
     ApplicationInsightsAgent_EXTENSION_VERSION: '~3'
     XDT_MicrosoftApplicationInsights_Mode: 'Recommended'
-  }
+  }, allowedDomainSettings)
   dependsOn: [
     keyVaultRoleAssignment
     jwtSecret
@@ -333,6 +316,27 @@ resource webAppSettings 'Microsoft.Web/sites/config@2023-12-01' = {
 }
 
 // Grant the Web App's managed identity read access to Key Vault secrets
+// ---------- IndxServer itself ----------
+
+// The app comes in the package (app.zip, built against the published IndxSearchLib), so the
+// version a customer installs is the version the package was certified with, and nothing of ours
+// has to stay downloadable. Copied into wwwroot once, after the settings, so the first start
+// already sees the data folder, Key Vault and the edition. The data lives outside wwwroot.
+// ZipDeploy is the extension Microsoft documents for a plain zip by URL (Kudu; the Functions ARM
+// samples); Bicep's types list only MSDeploy, which expects a Web Deploy package, and onedeploy.
+resource appCode 'Microsoft.Web/sites/extensions@2023-12-01' = {
+  parent: webApp
+  #disable-next-line BCP088
+  name: 'ZipDeploy'
+  properties: {
+    packageUri: uri(_artifactsLocation, 'app.zip${_artifactsLocationSasToken}')
+    appOffline: true
+  }
+  dependsOn: [
+    webAppSettings
+  ]
+}
+
 resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: keyVault
   name: guid(keyVault.id, webApp.id, keyVaultSecretsUserRoleId)
@@ -384,4 +388,3 @@ output healthUrl string = 'https://${webApp.properties.defaultHostName}/health'
 output adminEmail string = adminEmail
 output keyVaultName string = keyVault.name
 output applicationInsightsName string = appInsights.name
-output storageAccountName string = storage.name

@@ -9,6 +9,7 @@
 @inherits DatasetTabBase
 @inject StatisticsService Stats
 @inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
+@inject IndxServer.Services.Observr.ObservrSubscription ObservrSubscription
 @inject IndxServer.Services.Observr.AgentPanelState Agent
 @inject IServiceProvider Services
 
@@ -25,6 +26,7 @@ else
        belongs to everything below, the tiles and the chart included, the surface and the period.
        The detail sections are tabs just above their table, further down. *@
     <div class="indx-context-bar">
+        <SegmentedControl Items="WindowItems" Value="@_days.ToString()" ValueChanged="@(v => SetWindow(v))" AriaLabel="Period" />
         <div class="indx-context-bar-end">
             @* Shown once any search named its surface (?source=, intrface's source prop): the
                numbers below for one surface alone. The changes are the owners', not a surface's,
@@ -33,19 +35,7 @@ else
             {
                 <SelectField Size="micro" Variant="ghost" Options="SourceOptions" Value="@(_source ?? "")" ValueChanged="SetSource" aria-label="Search surface" />
             }
-            <Tabs Items="WindowItems" Active="@_days.ToString()" ActiveChanged="@(v => SetWindow(v))"
-                  Size="micro" Variant="button" AriaLabel="Period" />
         </div>
-    </div>
-
-    @* The Synonyms tab's pattern: what the tab is, and the chip that says it may still change. *@
-    <div class="stats-intro">
-        <p>
-            Searches with text are counted by the server; clicks and conversions arrive when your storefront
-            sends them to <code>events/select</code> and <code>events/convert</code>.
-            Experimental: the numbers and their definitions may change.
-        </p>
-        <Chip Size="large" Color="var(--CTeal)" TextColor="#080809" Icon="DatasetIcons.Experimental">Experimental</Chip>
     </div>
 
     @if (!_loaded)
@@ -54,16 +44,6 @@ else
            nothing jumps when the numbers land. Skeleton waits 0.15s before it shows, so a quick
            load (most of them) never flashes it. *@
         <div class="stats-loading" role="status" aria-busy="true" aria-label="Loading statistics">
-            <StatGroup Columns="5">
-                @for (var i = 0; i < 5; i++)
-                {
-                    var delay = i * 0.05;
-                    <Stat>
-                        <LabelContent><Skeleton Level="3" Width="60%" Delay="delay" /></LabelContent>
-                        <ValueContent><Skeleton Level="3" Height="24px" Width="40%" Delay="delay" /></ValueContent>
-                    </Stat>
-                }
-            </StatGroup>
             <Skeleton Height="180px" Delay="0.1" />
             <div class="stats-loading-rows">
                 @foreach (var (width, i) in LoadingRowWidths.Select((w, i) => (w, i)))
@@ -75,7 +55,7 @@ else
     }
     else if (Empty)
     {
-        <p class="stats-empty">@(_source == null ? $"No statistics in the last {_days} days." : $"No searches from {_source} in the last {_days} days.")</p>
+        <EmptyState Size="compact" Icon="DatasetIcons.Statistics" Title="@(_source == null ? $"No statistics in the last {_days} days" : $"No searches from {_source} in the last {_days} days")" />
     }
     else
     {
@@ -86,31 +66,205 @@ else
                 @if (Stats.RetentionDays < _days) { <text>One surface is read from the last @Stats.RetentionDays days, as far back as single searches are kept.</text> }
             </p>
         }
-        <StatGroup Columns="5">
-            <Stat Label="Searches" Hint="Every search with text in the window, keystrokes collapsed."><ValueContent>@N(_overview.Searches)</ValueContent></Stat>
-            <Stat Label="Fuzzy finds" Hint="Searches with typos too large for an exact match, where the visitor still chose a result fuzzy search found."><ValueContent>@N(_overview.UncoveredChosen)</ValueContent></Stat>
-            <Stat Label="Click-through" Hint="Share of searches that ended in a chosen result."><ValueContent>@Pct(_overview.ClickedSearches, _overview.Searches)</ValueContent></Stat>
-            <Stat Label="Avg. click position" Hint="Mean position of the chosen result. Lower means the right hit is nearer the top."><ValueContent>@AvgPos()</ValueContent></Stat>
-            <Stat Label="Conversions" Hint="Conversions the storefront reported for results found here."><ValueContent>@N(_overview.Converts)</ValueContent></Stat>
-        </StatGroup>
-
-        <Chart Series="_series" Labels="_labels" Type="line" Height="180" Markers="Markers" />
+        @if (_dayHour is { } dayHour)
+        {
+            @* Seven days are seven points as a line, so the week is shown hour by hour instead: a
+               group a day, a bar an hour, the day's searches above it and today in the teal. 30
+               and 90 days keep the line, where a day is a point worth having. *@
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">Per hour</span>
+            </div>
+            <GroupedBars Groups="dayHour" Labels="HourNames" Height="150"
+                         Format="@((v, g, i) => $"{N((long)v)} {(v == 1 ? "search" : "searches")}")"
+                         AriaLabel="Searches by hour, the last 7 days" />
+        }
+        else
+        {
+            @* The window day by day: searches as an area with the selects on it, against a value
+               axis, as a line or as bars. *@
+            @* On the page, not on a face: the window's chart heads the tab, and the faces are for the
+               overview's pictures under the tiles. *@
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">Per day</span>
+                <SegmentedControl Items="ChartTypeItems" @bind-Value="_chartType" AriaLabel="Chart type" />
+            </div>
+            <Chart Series="_series" Labels="_labels" Type="@_chartType" Height="180" Markers="Markers" YAxis="right" />
+        }
 
         @* The detail sections, one at a time, just above the table they choose: each can carry its
            own view settings, and a phone shows one table rather than five. *@
         <div class="stats-sections">
-            <Tabs Items="SectionItems" Active="@_section" ActiveChanged="@(v => _section = v ?? "queries")"
+            <Tabs Items="SectionItems" Active="@_section" ActiveChanged="@(v => _section = v ?? "overview")"
                   Scrollable AriaLabel="Statistics sections" />
         </div>
+
+        @if (_section == "overview")
+        {
+            @* A third each, as the stat tiles above: stretched across the page the heatmap and the
+               row looked lost. Each on the Stat's face, as the tiles are (27 Oct 2026): bare on
+               the page the row floated.
+               The typing panel, the tallest, comes last, so it never leaves a gap under a short
+               neighbour: the grid aligns to the top and masonry is not shipped. *@
+            @* The window's figures, as the Search or ask section opens with its own: the tiles sit
+               with the pictures they summarise rather than above every section. *@
+            @* Tiles, strip and pictures one block, an 8px gap throughout as inside the grid. *@
+            <div class="stats-overview-block">
+            <StatGroup Columns="@(HasConversions ? 5 : 4)" Class="stats-overview-tiles">
+                <Stat Label="Searches" LabelIcon="DatasetIcons.Search" Hint="Every search with text in the window, keystrokes collapsed."><ValueContent>@N(_overview.Searches)</ValueContent></Stat>
+                <Stat Label="Fuzzy finds" LabelIcon="DatasetIcons.FuzzySearch" Hint="Searches with typos too large for an exact match, where the visitor still chose a result fuzzy search found."><ValueContent>@N(_overview.UncoveredChosen)</ValueContent></Stat>
+                <Stat Label="Click-through" LabelIcon="DatasetIcons.ClickThrough" Hint="Share of searches that ended in a chosen result."><ValueContent>@Pct(_overview.ClickedSearches, _overview.Searches)</ValueContent></Stat>
+                <Stat Label="Avg. click position" LabelIcon="DatasetIcons.ClickPosition" Hint="Mean position of the chosen result. Lower means the right hit is nearer the top."><ValueContent>@AvgPos()</ValueContent></Stat>
+                @if (HasConversions)
+                {
+                    <Stat Label="Conversions" LabelIcon="DatasetIcons.Conversions" Hint="Conversions the storefront reported for results found here."><ValueContent>@N(_overview.Converts)</ValueContent></Stat>
+                }
+            </StatGroup>
+            <div class="stats-overview">
+        @* When people search: the week by hour in the dataset's own time zone, a day per row and
+           an hour per column, a cell's tone its searches. Nights, weekends and the evening peak
+           show at a glance (25 Oct 2026; the Overview section, first, in the place searches by surface had: the
+           surface select above narrows this as it does the rest). *@
+        @if (_weekHour is { Total: > 0 } week)
+        {
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">When people search</span>
+            </div>
+            <p class="stats-help">@WeekHourSummary(week)@(Stats.RetentionDays < _days ? $" From the last {Stats.RetentionDays} days, as far back as single searches are kept." : "")</p>
+            <Heatmap Values="WeekHourCells(week)" Rows="7" ColumnLabels="HourLabels" RowLabels="WeekdayLabels"
+                     Format="@((v, i) => $"{WeekdayNames[i % 7]} {i / 7:00}:00-{(i / 7 + 1) % 24:00}:00: {N((long)v)} {(v == 1 ? "search" : "searches")}")"
+                     AriaLabel="Searches by weekday and hour" Cell="9" />
+            </div>
+        }
+
+        @* The day's rhythm: the window's searches by hour of the day round a clock, the selects
+           laid over them, the busiest hour in the centre. The heatmap says which day and hour; the
+           clock says the shape of a day at a glance. *@
+        @if (_weekHour is { Total: > 0 } clockWeek)
+        {
+            var hours = HourTotals(clockWeek);
+            int busiest = Array.IndexOf(hours, hours.Max());
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">The day's rhythm</span>
+            </div>
+            <p class="stats-help">Searches by hour of the day round the clock, selections over them.</p>
+            <div class="stats-clock">
+                <RadialChart SeriesList="@(new List<RadialChart.Series> { new("Searches", hours.Select(h => (double)h).ToArray()), new("Selects", (_hourSelects ?? new long[24]).Select(h => (double)h).ToArray(), "var(--CTeal)") })"
+                             Labels="ClockLabels" Size="220" Format="@((v, i) => v.ToString("N0"))" AriaLabel="Searches and selections by hour of the day">
+                    <Centre><Stat Label="Busiest" Value="@($"{busiest:00}:00")" Class="stats-clock-centre" /></Centre>
+                </RadialChart>
+            </div>
+            </div>
+        }
+
+        @* Searches by surface, the window day by day stacked by the surface that sent them: the
+           named ones in the ink and the patterns, the unnamed rest dim. Only for the whole dataset
+           (one surface chosen above leaves nothing to split) and once there is more than one. *@
+        @if (_source == null && _bySurface.Count > 1)
+        {
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">Searches by surface</span>
+            </div>
+            <p class="stats-help">Where the searches came from, day by day: the surface each page names with <code>source</code>.</p>
+            <Chart Series="_bySurface" Labels="_labels" Type="bar" Stacked="true" Height="140" />
+            </div>
+        }
+
+        @* Which result is chosen: the clicks by the position of what was clicked. Most on the first
+           says the ranking puts the right thing on top; many from far down, that it can do better. A rose,
+           a wedge a position, its radius the clicks there (27 Oct 2026; a full-width bar before). *@
+        @if (_positions is { Total: > 0 } positions)
+        {
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">Which result is chosen</span>
+            </div>
+            <p class="stats-help">The chosen result sits at position @AvgPos() on average. The first result in @Pct(positions.First, positions.Total) of @N(positions.Total) clicks@(positions.BelowTen > 0 ? $", and one below the tenth in {Pct(positions.BelowTen, positions.Total)}" : "").</p>
+            <div class="stats-centred">
+                <RadialChart Groups="PositionGroups(positions)" Size="240" Hollow="0.18" Format="@((v, i) => Pct((long)v, positions.Total))" AriaLabel="Clicks by the position of the chosen result" />
+            </div>
+            </div>
+        }
+
+        @* Languages: the language of the page each search came from, as the storefront reports
+           it, the searches that named none as the unnamed rest. *@
+        @if (_locales.Count > 0 && _locales.Any(l => l.Locale != null))
+        {
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">Languages</span>
+            </div>
+            <p class="stats-help">The language of the page the search was typed on, as the page reports it; a cell is a percent. A flag where the page names its country too.</p>
+            <div class="stats-waffle">
+                <Waffle Segments="LocaleSegments(_locales)" Cell="9" Format="@((f, v) => Pct((long)v, _locales.Sum(l => l.Searches)))" AriaLabel="Searches by language" />
+            </div>
+            </div>
+        }
+
+        @* How people type: the searches by their word count as a small bar chart, whose shape says
+           it (a catalogue is a tall first bar, a help site a hump at three), and four figures: the
+           median length, the share with a filter, the share that settled on a partial word (search
+           as you type paying off) and the median keystrokes before a settled search. A word is what
+           a space separates. *@
+        @if (_typing is { Total: > 0 } typing)
+        {
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">How people type</span>
+            </div>
+            <p class="stats-help">Words per search, a word being what a space separates.</p>
+            <Chart Type="bar" Labels="WordLabels" Height="110" ShowLegend="false"
+                   Series="@(new List<Chart.ChartSeries> { new("Searches", typing.Words.Select(w => (double)w).ToArray()) })" />
+            <div class="stats-typing-figures">
+                <Stat Label="Median length" Value="@($"{typing.MedianLength} chars")" />
+                <Stat Label="With a filter" Value="@Pct(typing.WithFilter, typing.Total)" />
+                <Stat Label="Settled mid-word" Hint="Searches that stopped on a partial word, pika for pikachu, because the results were already right: search as you type paying off. Counted where someone else went on to type the whole word, so a lower bound. Not measured past 50,000 searches in the window." Value="@(typing.DetailMeasured ? Pct(typing.MidWord, typing.Total) : "–")">
+                    @if (!typing.DetailMeasured) { <text>not measured at this volume</text> }
+                </Stat>
+                <Stat Label="Keystrokes" Hint="The searches a visitor's typing sent before the one that settled, in the middle; over the searches that carried a session, which the console and plain API calls do not. Not measured past 50,000 searches in the window." Value="@(typing.DetailMeasured && typing.WithSession > 0 ? N(typing.Keystrokes) : "–")">
+                    @if (!typing.DetailMeasured) { <text>not measured at this volume</text> }
+                    else if (typing.WithSession > 0) { <text>of @N(typing.WithSession) with a session</text> }
+                </Stat>
+            </div>
+            </div>
+        }
+
+            @* The search profile: six shares on one scale, and the window before this one as a second
+           shape when the raw rows still reach it, so a change is the shape moving. Last in the grid,
+           since its height differs most from its neighbours'. It sat after the grid's end until
+           27 Oct 2026 and took the page's whole width beside the room in the row above. *@
+        @if (_profile is { } profile)
+        {
+            <div class="stats-overview-item">
+            <div class="stats-chart-head">
+                <span class="stats-chart-title">Search profile</span>
+            </div>
+            <p class="stats-help">@(_profileBefore != null ? $"This window against the {_days} days before it." : "The shape of search in this window: each axis a share of the searches.")</p>
+            <div class="stats-centred">
+                <RadarChart Axes="ProfileAxes" Series="ProfileSeries(profile, _profileBefore)" Size="196" Max="1" Format="@(v => $"{v * 100:0}%")" AriaLabel="Search profile" />
+            </div>
+            </div>
+        }
+            </div>
+            </div>
+
+        @if (_weekHour is not { Total: > 0 } && _positions is not { Total: > 0 } && _typing is not { Total: > 0 })
+            {
+                <p class="stats-empty">No searches with text in this period.</p>
+            }
+        }
 
         @if (_section == "queries")
         {
             <div class="stats-view">
                 <div class="stats-view-select"><SelectField Size="micro" Options="QueryOrderOptions" Value="@(_zeroHits ? ZeroHitsView : _queryOrder.ToString())" ValueChanged="SetQueryOrder" aria-label="Order" /></div>
+                @if (_listsLoading) { <span class="stats-view-busy" aria-live="polite"><Spinner Size="14" /> Loading…</span> }
             </div>
             @if (_zeroHits)
             {
-                <p class="stats-help">Searches that found nothing, most often first.@(ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name) ? " Ask Observr what went wrong and what to do about it." : "")</p>
+                <p class="stats-help">Searches that found nothing, most often first.@((ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name)) ? " Ask Observr what went wrong and what to do about it." : "")</p>
             }
             else if (_queryOrder != QueryOrder.Searches)
             {
@@ -129,7 +283,7 @@ else
                             <td>@QueryLabel(q.QueryText)</td>
                             <td class="stats-num">@N(q.ZeroHits)</td>
                             <td class="stats-action">
-                                @if (Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
+                                @if (Ctx.IsEditor && (ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name)))
                                 {
                                     var zero = q;
                                     <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" @onclick="() => AskZeroHit(zero)">Why nothing?</Button></span>
@@ -142,7 +296,7 @@ else
             }
             else
             {
-            var lowClick = _queryOrder == QueryOrder.LowestClickThrough && Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name);
+            var lowClick = _queryOrder == QueryOrder.LowestClickThrough && Ctx.IsEditor && (ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name));
             <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Top queries" Class="stats-table">
                 <thead><tr><th>Query</th><th class="stats-num">Searches</th><th class="stats-num">Click-through</th><th class="stats-num">Avg. position</th>@if (lowClick) { <th></th> }</tr></thead>
                 <tbody>
@@ -168,7 +322,7 @@ else
             @if (_moreQueries)
             {
                 <div class="stats-more">
-                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.ShowMore" @onclick="ShowMoreQueries">Show @QueryPage more</Button>
+                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.ShowMore" Loading="@_listsLoading" @onclick="ShowMoreQueries">Show @QueryPage more</Button>
                 </div>
             }
             }
@@ -180,11 +334,12 @@ else
                the visitor chose a result anyway. One of the things Indx does that others do not, so
                the section leads with the finds; "All" adds the searches nothing was chosen from. *@
             <div class="stats-view">
-                <Tabs Items="FuzzyItems" Active="@(_fuzzyAll ? "all" : "selected")" ActiveChanged="SetFuzzyView" Size="micro" Variant="button" AriaLabel="Fuzzy searches shown" />
+                <SegmentedControl Items="FuzzyItems" Value="@(_fuzzyAll ? "all" : "selected")" ValueChanged="SetFuzzyView" AriaLabel="Fuzzy searches shown" />
+                @if (_listsLoading) { <span class="stats-view-busy" aria-live="polite"><Spinner Size="14" /> Loading…</span> }
             </div>
             <p class="stats-help">
                 @if (_fuzzyAll) { <text>Every search with typos too large for an exact match, the ones nothing was chosen from included.</text> }
-                else { <text>Searches with typos too large for an exact match, where fuzzy search still found what the visitor was looking for.</text> }
+                else { <text>Searches with typos too large for an exact match, where fuzzy search still found what the visitor was looking for: @N(_overview.UncoveredChosen) of @N(_overview.Uncovered) such searches in this period.</text> }
             </p>
             @if (_fuzzy.Count == 0)
             {
@@ -211,20 +366,24 @@ else
         @if (_section == "documents")
         {
             <div class="stats-view">
+                @if (HasConversions)
+                {
                 <div class="stats-view-select"><SelectField Size="micro" Options="DocumentOrderOptions" Value="@(_documentsByConverts ? "converts" : "selects")" ValueChanged="SetDocumentOrder" aria-label="Order" /></div>
+                }
+                @if (_listsLoading) { <span class="stats-view-busy" aria-live="polite"><Spinner Size="14" /> Loading…</span> }
             </div>
             @if (_topDocuments.Count == 0 && _documentsByConverts) { <p class="stats-empty">No conversions in this period. They arrive when the storefront sends them to <code>events/convert</code>.</p> }
             else if (_topDocuments.Count == 0) { <p class="stats-empty">No results were chosen in this period. Clicks arrive when the storefront sends them to <code>events/select</code>.</p> }
             else {
             <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Top documents" Class="stats-table">
-                <thead><tr><th>Document</th><th class="stats-num">Selects</th><th class="stats-num">Conversions</th></tr></thead>
+                <thead><tr><th>Document</th><th class="stats-num">Selects</th>@if (HasConversions) { <th class="stats-num">Conversions</th> }</tr></thead>
                 <tbody>
                     @foreach (var d in _topDocuments)
                     {
                         <tr>
                             <td>@TitleOf(d.DocumentKey)</td>
                             <td class="stats-num">@N(d.Selects)</td>
-                            <td class="stats-num">@N(d.Converts)</td>
+                            @if (HasConversions) { <td class="stats-num">@N(d.Converts)</td> }
                         </tr>
                     }
                 </tbody>
@@ -237,23 +396,176 @@ else
             @* Search or ask (Notes/search-or-ask-server.md). The questions the content did not
                answer lead: they are what to write next. Offers lists the texts an offer was shown
                beside, so a false one can be found. Code in StatisticsTab.SearchOrAsk.cs. *@
-            <StatGroup Columns="5">
-                <Stat Label="Offers shown" Hint="Searches an offer to ask was shown beside, each once however many pauses judged it."><ValueContent>@N(_ask.Offers)</ValueContent></Stat>
-                <Stat Label="Questions asked" Hint="Questions asked, and how many per offer shown."><ValueContent>@N(_ask.Asks) <span class="stats-tile-sub">@Pct(_ask.Asks, _ask.Offers)</span></ValueContent></Stat>
-                <Stat Label="Not answered" Hint="Questions the search found nothing for, or whose sources the judge doubted could answer them."><ValueContent>@N(_ask.Unanswered) <span class="stats-tile-sub">@Pct(_ask.Unanswered, _ask.Asks)</span></ValueContent></Stat>
-                <Stat Label="Sources opened" Hint="Cited sources opened from an answer."><ValueContent>@N(_ask.SourcesOpened)</ValueContent></Stat>
-                <Stat Label="Cost" Hint="What the judge and the answers cost: as OpenRouter reports it, or estimated from the tokens at list prices on another provider. Median time to an answer's first words beside it."><ValueContent>@Usd(_ask.Cost) <span class="stats-tile-sub">@Seconds(_ask.MedianFirstTextMs)</span></ValueContent></Stat>
+            <StatGroup Columns="@((CitesSources ? 7 : 6) + (_ask.ProactiveAnswers > 0 ? 1 : 0))">
+                <Stat Label="Offers shown" LabelIcon="DatasetIcons.AskOffers" Hint="Searches an offer to ask was shown beside, each once however many pauses judged it."><ValueContent>@N(_ask.Offers)</ValueContent></Stat>
+                <Stat Label="Questions asked" LabelIcon="DatasetIcons.AskQuestions" Hint="Questions asked, and how many per offer shown."><ValueContent>@N(_ask.Asks) <span class="stats-tile-sub">@Pct(_ask.Asks, _ask.Offers)</span></ValueContent></Stat>
+                @* Only once the proactive mode has written one: the answers no visitor asked for. *@
+                @if (_ask.ProactiveAnswers > 0)
+                {
+                    <Stat Label="Proactive answers" LabelIcon="DatasetIcons.AskProactive" Hint="Answers the proactive mode wrote on its own, without a click, once the judge was sure. Not in Questions asked: no visitor chose them. Not answered, sources opened and cost include them."><ValueContent>@N(_ask.ProactiveAnswers)</ValueContent></Stat>
+                }
+                <Stat Label="Not answered" LabelIcon="DatasetIcons.NotAnswered" Hint="Questions the search found nothing for, or whose sources the judge doubted could answer them."><ValueContent>@N(_ask.Unanswered) <span class="stats-tile-sub">@Pct(_ask.Unanswered, _ask.Asks + _ask.ProactiveAnswers)</span></ValueContent></Stat>
+                <Stat Label="Asked again" LabelIcon="DatasetIcons.AskedAgain" Hint="Answers the visitor followed within five minutes with the same question in other words, as the judge reads the two: the quiet sign an answer missed, where Not answered is the content missing. Counted over the questions that carried a session; the same text again and a follow-up to the answer are not counted. The pairs are under Questions."><ValueContent>@N(_askedAgain.AskedAgain) <span class="stats-tile-sub">@Pct(_askedAgain.AskedAgain, _askedAgain.Asks)</span></ValueContent></Stat>
+                @if (CitesSources)
+                {
+                    <Stat Label="Sources opened" LabelIcon="DatasetIcons.SourcesOpened" Hint="Cited sources opened from an answer."><ValueContent>@N(_ask.SourcesOpened)</ValueContent></Stat>
+                }
+                @{ var setup = SearchOrAsk.Setup; }
+                <Stat Label="Cost" LabelIcon="DatasetIcons.Cost" Hint="@(setup.CostsReported
+                    ? "What the AI behind Search or ask cost: the judge, the answers, and the filters the model makes while visitors type, as OpenRouter reports it for each call. An answer a visitor leaves before it is written has no cost reported and is not counted. Median time to an answer's first words beside it."
+                    : $"{string.Join(" and ", setup.UnpricedProviders)} {(setup.UnpricedProviders.Count == 1 ? "does" : "do")} not report what a call costs, only its tokens, so no cost is shown here rather than an estimate that may be wrong. Your bill is in that provider's own console. Median time to an answer's first words beside it.")"><ValueContent>@(setup.CostsReported ? Usd(_ask.Cost + _askBudget.Cost) : "—") <span class="stats-tile-sub">@Seconds(_ask.MedianFirstTextMs)</span></ValueContent></Stat>
+                <Stat Label="Calls" LabelIcon="DatasetIcons.Calls" Hint="Calls against the daily budget: each judgement, each question asked and each filter the model made while typing, the console's tester included. On a day the budget ran out, the calls after it were turned away, and visitors saw no offers until midnight UTC."><ValueContent>@N(_askBudget.Calls) <span class="stats-tile-sub">@BudgetLine</span></ValueContent></Stat>
             </StatGroup>
             <div class="stats-view">
-                <Tabs Items="AskViewItems" Active="@_askView" ActiveChanged="@(v => _askView = v ?? "questions")" Size="micro" Variant="button" AriaLabel="Search or ask view" />
+                <SegmentedControl Items="AskViewItems" Value="@_askView" ValueChanged="@(v => _askView = v ?? "overview")" AriaLabel="Search or ask view" />
             </div>
-            @if (_askView == "questions")
+            @if (_askView == "overview")
+            {
+                @* The Overview view: the section's pictures, in the overview's grid. How the asks ended,
+                   offers and asks against the day's budget, today against the budget, when people ask,
+                   and what it cost day by day where the provider reports it. *@
+                <div class="stats-overview stats-ask-panels">
+                    @if (_ask.Asks > 0)
+                    {
+                        <div class="stats-overview-item">
+                            <div class="stats-chart-head"><span class="stats-chart-title">How the asks ended</span></div>
+                            <p class="stats-help">Answered in @Pct(_ask.Answered, _ask.Asks) of @N(_ask.Asks) asks.</p>
+                            <BarMeter Segments="AskOutcomeSegments()" Labels="legend" Format="@(v => Pct((long)v, _ask.Asks))" />
+                        </div>
+                    }
+                    @if (_askDays.Count > 0)
+                    {
+                        var days = AskDaySeries();
+                        var budget = AskBudgetSeries();
+                        <div class="stats-overview-item">
+                            <div class="stats-chart-head"><span class="stats-chart-title">Offers and asks per day</span></div>
+                            <p class="stats-help">Searches an offer was shown beside, and the questions asked. The calls against the day's budget beside them: past the budget the rest of the day's visitors saw no offers.</p>
+                            <Chart Type="line" Labels="days.Labels" Height="150" YAxis="right"
+                                   Series="@(new List<Chart.ChartSeries> {
+                                       new("Offers", days.Offers, Fill: "solid"),
+                                       new("Asks", days.Asks, "var(--CTeal)"),
+                                       new("Calls", budget.Calls, "var(--lv5)", Step: true),
+                                   })"
+                                   References="@(budget.Budget > 0 ? new List<Chart.ChartReference> { new(budget.Budget, "budget", "var(--CSignal)", Signal: true) } : null)" />
+                        </div>
+                    }
+                    @if (_askBudgetToday > 0)
+                    {
+                        <div class="stats-overview-item">
+                            <div class="stats-chart-head"><span class="stats-chart-title">Today against the budget</span></div>
+                            <p class="stats-help">Calls so far today, UTC, of the daily budget set under Options. Past it, visitors see no offers until midnight.</p>
+                            <BarMeter Value="_askCallsToday" Max="_askBudgetToday" Format="@(v => N((long)v))" MaxLabel="@($"of {N(_askBudgetToday)} calls")"
+                                      Color="@(_askCallsToday >= _askBudgetToday * 0.85 ? "var(--CSignal)" : null)" />
+                        </div>
+                    }
+                    @if (_askWeekHour is { Total: > 0 } askWeek)
+                    {
+                        <div class="stats-overview-item">
+                            <div class="stats-chart-head"><span class="stats-chart-title">When people ask</span></div>
+                            <p class="stats-help">The week by hour in the dataset's time zone: whether questions come when nobody is there to answer them.</p>
+                            <Heatmap Values="WeekHourCells(askWeek)" Rows="7" ColumnLabels="HourLabels" RowLabels="WeekdayLabels"
+                                     Format="@((v, i) => $"{WeekdayNames[i % 7]} {i / 7:00}:00-{(i / 7 + 1) % 24:00}:00: {N((long)v)} {(v == 1 ? "ask" : "asks")}")"
+                                     AriaLabel="Asks by weekday and hour" Cell="9" />
+                        </div>
+                    }
+                    @if (SearchOrAsk.Setup.CostsReported && _askDays.Any(d => d.Cost > 0))
+                    {
+                        var days = AskDaySeries();
+                        <div class="stats-overview-item">
+                            <div class="stats-chart-head"><span class="stats-chart-title">Cost per day</span></div>
+                            <p class="stats-help">What the judge, the answers and the filters cost each day, as the provider reports it.</p>
+                            <Chart Type="bar" Labels="days.Labels" Height="120" ShowLegend="false" YAxis="right" YFormat="@(v => v < 0.01 && v > 0 ? "< $0.01" : v.ToString("$0.00"))"
+                                   Series="@(new List<Chart.ChartSeries> { new("Cost", days.Cost) })" />
+                        </div>
+                    }
+                    @* When the budget goes: the calls by hour of the day round a clock, and over them
+                       the hours a day's budget ran out, in the signal red. In UTC, as the budget's day
+                       is: a budget that runs out at the same hour most days is one to raise, or not. *@
+                    @if (_askHours is { } askHours && askHours.Calls.Sum() > 0)
+                    {
+                        int busiest = Array.IndexOf(askHours.Calls, askHours.Calls.Max());
+                        long ranOut = askHours.Spent.Sum();
+                        <div class="stats-overview-item">
+                            <div class="stats-chart-head"><span class="stats-chart-title">When the budget goes</span></div>
+                            <p class="stats-help">Calls by hour of the day, UTC@(ranOut > 0 ? $", and the hour the budget ran out on the {N(ranOut)} day{(ranOut == 1 ? "" : "s")} it did" : "").</p>
+                            <div class="stats-clock">
+                                <RadialChart SeriesList="@(ranOut > 0
+                                                 ? new List<RadialChart.Series> { new("Calls", askHours.Calls.Select(h => (double)h).ToArray()), new("Budget ran out", askHours.Spent.Select(h => (double)h).ToArray(), "var(--CSignal)") }
+                                                 : new List<RadialChart.Series> { new("Calls", askHours.Calls.Select(h => (double)h).ToArray()) })"
+                                             Labels="ClockLabels" Size="220" Format="@((v, i) => v.ToString("N0"))" AriaLabel="Calls by hour of the day, and the hours the budget ran out">
+                                    <Centre><Stat Label="Busiest" Value="@($"{busiest:00}:00")" Class="stats-clock-centre" /></Centre>
+                                </RadialChart>
+                            </div>
+                        </div>
+                    }
+                </div>
+            }
+            else if (_askView == "needs")
+            {
+                @* A need: one thing visitors wanted, in all the ways they put it. The list says how
+                   often it was given up; a need opens to its wordings, how its visits ended and the
+                   records it landed on (Notes/search-or-ask-server.md, "Needs"). *@
+                <p class="stats-help">What visitors wanted, in all the ways they asked it. The ones given up most come first; open one to see how it was asked and where it landed.</p>
+                @if (_needs.Count == 0) { <p class="stats-empty">No question was asked in more than one visit or in more than one way in this period.</p> }
+                else {
+                <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Needs" Class="stats-table">
+                    <thead><tr><th>Need</th><th class="stats-num">Asked as</th><th>Visits</th><th>Last asked</th></tr></thead>
+                    <tbody>
+                        @foreach (var need in _needs)
+                        {
+                            var n = need;
+                            <tr>
+                                <td><span class="stats-need-open"><Button Variant="ghost" Size="micro" @onclick="() => _need = n">@n.Title</Button></span></td>
+                                <td class="stats-num">@(n.Wordings.Count == 1 ? "1 way" : $"{n.Wordings.Count} ways")</td>
+                                <td>
+                                    @* A cell a visit, coloured by how it ended; hovering names it. *@
+                                    <span class="stats-need-visits">
+                                        <Waffle Segments="NeedWaffle(n)" Columns="@Math.Min((int)n.Visits, NeedCells)" Rows="1" Cell="6" Legend="false"
+                                                Format="@((f, v) => $"{v:N0} of {n.Visits:N0}")" AriaLabel="@($"How the {n.Visits} visits ended")" />
+                                        <span class="stats-need-count">@N(n.Visits)</span>
+                                    </span>
+                                </td>
+                                <td><TimeAgo Value="@DateTimeOffset.FromUnixTimeMilliseconds(n.LastAsked).UtcDateTime" TooltipPosition="left" /></td>
+                            </tr>
+                        }
+                    </tbody>
+                </Table>
+                }
+                <Modal Open="@(_need != null)" OpenChanged="@(v => { if (!v) _need = null; })" Title="@_need?.Title"
+                       Description="@(_need is { } d ? $"{N(d.Visits)} {(d.Visits == 1 ? "visit" : "visits")}, {d.Wordings.Count} {(d.Wordings.Count == 1 ? "wording" : "wordings")}" : null)">
+                    @if (_need is { } need)
+                    {
+                        <div class="stats-need">
+                            <BarMeter Segments="NeedSegments(need)" Labels="legend" Format="@(v => Pct((long)v, need.Visits))" />
+                            <Table AriaLabel="How it was asked" Class="stats-table">
+                                <thead><tr><th>How it was asked</th><th class="stats-num">Times</th><th class="stats-num">Asked again</th><th class="stats-num">Landed</th></tr></thead>
+                                <tbody>
+                                    @foreach (var w in need.Wordings)
+                                    {
+                                        <tr>
+                                            <td>@w.Text</td>
+                                            <td class="stats-num">@N(w.Asked)</td>
+                                            <td class="stats-num">@(w.Reworded > 0 ? N(w.Reworded) : "–")</td>
+                                            <td class="stats-num">@(w.Landed > 0 ? N(w.Landed) : "–")</td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </Table>
+                            @if (need.LandedOn.Count > 0)
+                            {
+                                <p class="stats-help">Landed on @string.Join(", ", need.LandedOn.Select(r => TitleOf(r.DocumentKey))).</p>
+                            }
+                        </div>
+                    }
+                </Modal>
+            }
+            else if (_askView == "questions")
             {
                 <p class="stats-help">The questions visitors asked. The ones the content did not answer come first: they are what to write next.</p>
                 @if (_askQuestions.Count == 0) { <p class="stats-empty">No questions asked in this period.</p> }
                 else {
                 <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Questions asked" Class="stats-table">
-                    <thead><tr><th>Question</th><th class="stats-num">Asked</th><th>Outcome</th><th class="stats-num">Answerable</th><th class="stats-num">Sources opened</th></tr></thead>
+                    <thead><tr><th>Question</th><th class="stats-num">Asked</th><th>Outcome</th><th class="stats-num">Answerable</th>@if (CitesSources) {<th class="stats-num">Sources opened</th>}</tr></thead>
                     <tbody>
                         @foreach (var q in _askQuestions)
                         {
@@ -262,11 +574,32 @@ else
                                 <td class="stats-num">@N(q.Asks)</td>
                                 <td>@QuestionOutcome(q)</td>
                                 <td class="stats-num">@Score(q.Answerability)</td>
-                                <td class="stats-num">@(q.SourcesOpened > 0 ? N(q.SourcesOpened) : "–")</td>
+                                @if (CitesSources) { <td class="stats-num">@(q.SourcesOpened > 0 ? N(q.SourcesOpened) : "–")</td> }
                             </tr>
                         }
                     </tbody>
                 </Table>
+                }
+                @if (_rephrased.Count > 0)
+                {
+                    @* The visitor's own correction: how the question was meant, which is what to write for. *@
+                    <h3 class="stats-subhead">Asked again in other words</h3>
+                    <p class="stats-help">A question followed within five minutes by the same one in other words, in the same visit. The second wording says how it was meant; when its answer had a source opened, it landed where the first did not.</p>
+                    <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Questions asked again" Class="stats-table">
+                        <thead><tr><th>First asked</th><th>Asked again as</th><th class="stats-num">Times</th>@if (CitesSources) {<th class="stats-num">Then opened</th>}<th>Last</th></tr></thead>
+                        <tbody>
+                            @foreach (var r in _rephrased)
+                            {
+                                <tr>
+                                    <td>@r.First</td>
+                                    <td>@r.Again</td>
+                                    <td class="stats-num">@N(r.Times)</td>
+                                    @if (CitesSources) { <td class="stats-num">@(r.AgainOpened > 0 ? N(r.AgainOpened) : "–")</td> }
+                                    <td><TimeAgo Value="@DateTimeOffset.FromUnixTimeMilliseconds(r.LastAsked).UtcDateTime" TooltipPosition="left" /></td>
+                                </tr>
+                            }
+                        </tbody>
+                    </Table>
                 }
             }
             else
@@ -295,6 +628,90 @@ else
 
         @if (_section == "browsing")
         {
+            @* Browsing paths (28 Oct 2026): the routes people take through the filters, as a tree by
+               containment of the searches' filters (StatisticsStore.BrowsingPaths), no session and no
+               visitor, so it works whatever the client sends. Read once a period, on opening. *@
+            var paths = Paths();
+            @if (paths.Searches > 0)
+            {
+                <div class="stats-chart-head stats-paths-head">
+                    <span class="stats-chart-title">Paths <span class="stats-paths-total">@N(paths.Searches) filtered @(paths.Searches == 1 ? "search" : "searches")</span></span>
+                    <SegmentedControl Size="micro" Items="PathViews" Value="@_pathView" ValueChanged="@(v => _pathView = v)" AriaLabel="View" />
+                </div>
+                <p class="stats-help">What people filter by, and in what order: each step a field, with the searches that came that way, its ways on to the right, most taken first. Open a step for where people went next; click one for its values and what it finds. Drag or zoom the board. From the single searches, kept @(Stats.RetentionDays) days.</p>
+                @* A board of one height, canvas or list; the frame is what full screen fills, so the panel goes along. *@
+                <div class="stats-paths" data-tree-fullscreen>
+                    <TreeCanvas Roots="PathRoots()" View="@_pathView" Selected="@_pathSelected" SelectedChanged="SelectPath" OpenDepth="2" Pattern="grid-12"
+                                Format="@(n => N(n))" AriaLabel="Browsing paths" />
+                    @if (_pathSelected != null && _pathInfo.TryGetValue(_pathSelected, out var sel))
+                    {
+                        <Surface Class="stats-path-panel">
+                            <div class="stats-path-panel-head">
+                                <div>
+                                    <div class="stats-path-panel-title">@sel.Path[^1]</div>
+                                    @if (sel.Path.Count > 1) { <div class="stats-path-panel-route">@string.Join(" › ", sel.Path)</div> }
+                                </div>
+                                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.No" AriaLabel="Close" @onclick="@(() => { _pathSelected = null; _pathResults = null; })" />
+                            </div>
+                            <div class="stats-path-panel-stats">
+                                <Stat Label="Searches" Value="@N(sel.Node.Searches)" />
+                                <Stat Label="Went on" Value="@Pct(sel.Node.Searches - sel.Node.Here, sel.Node.Searches)" />
+                                <Stat Label="Stopped here" Value="@N(sel.Node.Here)" />
+                            </div>
+                            @if (sel.Node.Empty > 0)
+                            {
+                                <p class="stats-path-note">@N(sel.Node.Empty) of these searches found nothing.</p>
+                            }
+                            @* The step's values, a summary: the most used, the rest counted. *@
+                            @if (sel.Node.Values is { Count: > 1 } values)
+                            {
+                                <div class="stats-path-panel-sub">Values used</div>
+                                <ul class="stats-path-list">
+                                    @foreach (var v in values.Take(5)) { <li><span>@v.Label</span><span class="stats-path-count">@N(v.Count)</span></li> }
+                                </ul>
+                                @if (values.Count > 5)
+                                {
+                                    <p class="stats-path-note">and @(values.Count - 5) more, @N(values.Skip(5).Sum(v => v.Count)) searches between them.</p>
+                                }
+                            }
+                            @if (sel.Node.Children.Count > 0)
+                            {
+                                <div class="stats-path-panel-sub">Where people went next</div>
+                                <ul class="stats-path-list">
+                                    @foreach (var c in sel.Node.Children.Take(5))
+                                    {
+                                        <li><span>@c.Step</span><span class="stats-path-count">@N(c.Searches)</span></li>
+                                    }
+                                </ul>
+                            }
+                            <div class="stats-path-panel-sub">What it finds now</div>
+                            @if (sel.Node.Key == null)
+                            {
+                                <p class="stats-path-note">Several steps folded together; click one of them to see what it finds.</p>
+                            }
+                            else if (_pathResults == null)
+                            {
+                                <p class="stats-path-note">Reading…</p>
+                            }
+                            else if (_pathResults.Value.Error is { } problem)
+                            {
+                                <p class="stats-path-note">@problem</p>
+                            }
+                            else if (_pathResults.Value.Records is not { Count: > 0 } records)
+                            {
+                                <p class="stats-path-note">No records match it now: a value in it may have left the data since.</p>
+                            }
+                            else
+                            {
+                                <ul class="stats-path-list">
+                                    @foreach (var (key, title) in records) { <li><span>@title</span><span class="stats-path-count">#@key</span></li> }
+                                </ul>
+                                <p class="stats-path-note">The first @records.Count, with the filter people used most at this step@(sel.Node.Values is { Count: > 1 } ? $" ({sel.Node.Values[0].Label})" : "").</p>
+                            }
+                        </Surface>
+                    }
+                </div>
+            }
             <p class="stats-help">What people narrowed the catalogue by, with or without typing, and how often it left them nothing.</p>
             @if (_topFilters.Count == 0) { <p class="stats-empty">No filters were used in this period, or Browsing is switched off on the Options tab.</p> }
             else {
@@ -330,7 +747,7 @@ else
             @if (_changes.Count == 0) { <p class="stats-empty">No changes were made to the dataset in this period.</p> }
             @if (_changes.Count > 0)
             {
-                var askChange = Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name);
+                var askChange = Ctx.IsEditor && (ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name));
                 <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Changes" Class="stats-table">
                     <thead><tr><th>When</th><th>What</th>@if (askChange) { <th></th> }</tr></thead>
                     <tbody>
@@ -376,7 +793,7 @@ else
     private OverviewStat _overview;
     private List<QueryStat> _topQueries = [];
     private List<QueryStat> _fuzzy = [];
-    private string _section = "queries";
+    private string _section = "overview";
     private long _fromDay, _toDay;
 
     // Each section's view settings. They live as long as the tab does; a new window keeps them.
@@ -386,6 +803,10 @@ else
     private bool _moreQueries;
     private bool _fuzzyAll;
     private bool _documentsByConverts;
+
+    /// <summary>Most datasets never send a conversion; until one has, in this window, nothing
+    /// about them is shown: the tile, the documents' order, the column.</summary>
+    private bool HasConversions => _overview.Converts > 0;
     private string? _changeKind;
     // The surface the numbers are for (?source=), null for every surface.
     private string? _source;
@@ -411,8 +832,8 @@ else
         ct => Observr().AskLowClickAsync(Ctx.TeamId, Ctx.Name, q, _fromDay, _toDay, ct), () => InvokeAsync(LoadAsync)));
     private void AskChange(ChangeStat c) => Agent.Run(new IndxServer.Services.Observr.AgentAction($"Did this help: {ChangeDescriptions.Describe(c.Kind, c.Summary)}?",
         ct => Observr().AskChangeAsync(Ctx.TeamId, Ctx.Name, c, ct)));
-    private static readonly List<Tabs.TabItem> FuzzyItems =
-        [new("Selected", "selected", DatasetIcons.FuzzySelected), new("All", "all", DatasetIcons.FuzzyAll)];
+    private static readonly List<SegmentedControl.Item> FuzzyItems =
+        [new("selected", "Selected", DatasetIcons.FuzzySelected), new("all", "All", DatasetIcons.FuzzyAll)];
     private static readonly List<SelectField.SelectOption> DocumentOrderOptions =
     [
         new("Most selected", "selects"),
@@ -453,10 +874,13 @@ else
 
     /// <summary>The section to open on: queries, fuzzy, documents, browsing or changes.</summary>
     [Parameter] public string? InitialSection { get; set; }
+    /// <summary>The Search or ask view to open on: overview, questions or offers.</summary>
+    [Parameter] public string? InitialAskView { get; set; }
 
     protected override void OnInitialized()
     {
         if (!string.IsNullOrEmpty(InitialSection)) _section = InitialSection;
+        if (!string.IsNullOrEmpty(InitialAskView)) _askView = InitialAskView;
     }
 
     /// <summary>The detail sections, in the order they matter. Changes carries how many fell in
@@ -464,6 +888,7 @@ else
     /// warning, and the badge and the marks are the same thing. Over 99 it says 99+.</summary>
     private List<Tabs.TabItem> SectionItems =>
     [
+        new("Overview", "overview", DatasetIcons.Statistics),
         new("Top queries", "queries", DatasetIcons.TopQueries),
         new("Fuzzy search", "fuzzy", DatasetIcons.FuzzySearch),
         new("Top documents", "documents", DatasetIcons.TopDocuments),
@@ -475,6 +900,94 @@ else
     ];
     private List<DocumentStat> _topDocuments = [];
     private List<FilterStat> _topFilters = [];
+    // The browsing paths, read on opening Browsing and kept for the period: they walk every
+    // filtered search in it.
+    private PathNode? _paths;
+    // The canvas's tree, made once with the paths: a new tree on every render had TreeCanvas lay
+    // out and open it afresh after its first view was fitted, and the view showed an edge of it.
+    private IReadOnlyList<TreeCanvas.Node>? _pathRoots;
+    private PathNode Paths()
+    {
+        if (_paths != null) return _paths;
+        var store = Stats.Store;
+        _paths = store == null ? new PathNode("", 0, 0, []) : store.BrowsingPaths(Ctx.TeamId, Ctx.Name, _fromDay, _toDay, _source);
+        _pathInfo.Clear();
+        // No root: it is one block with the total, which the heading says; the first steps are the roots.
+        _pathRoots = _paths.Children.Select(c => PathTree(c, "paths")).ToList();
+        return _paths;
+    }
+    private IReadOnlyList<TreeCanvas.Node> PathRoots() => _pathRoots ?? [];
+
+    private string _pathView = "tree";
+    // The categories' own switch, its labels and icons, so the two boards read alike.
+    private static readonly IReadOnlyList<SegmentedControl.Item> PathViews = [new("tree", "Tree", DatasetIcons.TreeView), new("list", "List", DatasetIcons.ListView)];
+    // The step clicked, every step by its canvas id with its route, and what the step's filter finds.
+    private string? _pathSelected;
+    private readonly Dictionary<string, (PathNode Node, IReadOnlyList<string> Path)> _pathInfo = new();
+    private (string? Error, IReadOnlyList<(long Key, string Title)>? Records)? _pathResults;
+    private int _pathRead;
+    private const int PathResultsShown = 10;
+    private const int PathReadTimeoutMs = 2000;
+
+    /// <summary>A step clicked: its numbers at once, what its filter finds once read, off the page's
+    /// thread; a newer click wins over an older read.</summary>
+    private async Task SelectPath(string id)
+    {
+        _pathSelected = id;
+        _pathResults = null;
+        var read = ++_pathRead;
+        if (!_pathInfo.TryGetValue(id, out var info) || info.Node.Key is not { } key) return;
+        var found = await Task.Run(() => ReadPathResults(key));
+        if (read != _pathRead) return;
+        _pathResults = found;
+        StateHasChanged();
+    }
+
+    /// <summary>
+    /// What a stored filter finds now. Its fields may have been removed, renamed or made
+    /// unfilterable since it was searched, and its values may have left the data, so each is a
+    /// message, never a failure: the engine's own resolution first (GetFilterFromKey is total and
+    /// answers null for a key it cannot honour, CLAUDE.md "the token IS the filter"), a time limit
+    /// on the search, and anything that still goes wrong said in the panel.
+    /// </summary>
+    private (string? Error, IReadOnlyList<(long Key, string Title)>? Records) ReadPathResults(string key)
+    {
+        try
+        {
+            var engine = Ctx.FindEngine();
+            if (engine == null) return ("The dataset is not loaded, so its records cannot be read now.", null);
+            var filter = engine.GetFilterFromKey(key);
+            if (filter == null) return ("This filter no longer applies: a field in it has been removed, renamed or is no longer Filterable.", null);
+            var query = new global::Indx.Http.QueryProxy
+            {
+                // Facets on, as the categories' read has them: with no text it is the facet pass that
+                // lists the filter's records.
+                Text = string.Empty, MaxNumberOfRecordsToReturn = PathResultsShown, EnableFacets = true,
+                Filter = new global::Indx.Http.FilterProxy(filter.SerializedKey), TimeOutLimitMilliseconds = PathReadTimeoutMs,
+            };
+            var fields = Ctx.SavedFields ?? Array.Empty<global::Indx.Api.FieldProxy>();
+            var records = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId).Records
+                .Take(PathResultsShown)
+                .Select(r => (r.DocumentKey, RecordTitle.Of(engine.GetJsonDataOfKey(r.DocumentKey), fields) ?? $"#{r.DocumentKey}"))
+                .ToList();
+            return (null, records);
+        }
+        catch (Exception ex)
+        {
+            return ($"The records could not be read: {ex.Message}", null);
+        }
+    }
+
+    /// <summary>A path step as a pill of the canvas: its step, its searches; the folds ("Other", the
+    /// "…" past the depth) dimmed, since they are not a step.</summary>
+    private TreeCanvas.Node PathTree(PathNode n, string parentId, IReadOnlyList<string>? route = null)
+    {
+        var id = $"{parentId}/{n.Step}";
+        IReadOnlyList<string> path = [.. route ?? [], n.Step];
+        _pathInfo[id] = (n, path);
+        return new TreeCanvas.Node(id, n.Step, (int)Math.Min(n.Searches, int.MaxValue),
+            n.Children.Select(c => PathTree(c, id, path)).ToList(), Muted: n.Step is "Other" or "…");
+    }
     private List<ChangeStat> _changes = [];
     private (long Inserted, long Updated, long Deleted) _documentTotals;
     private IReadOnlyList<Chart.ChartSeries> _series = [];
@@ -483,9 +996,148 @@ else
     private TimeZoneInfo _zone = TimeZoneInfo.Utc;
     private bool _wasActive;
 
-    private static readonly List<Tabs.TabItem> WindowItems =
+    private static readonly List<SegmentedControl.Item> WindowItems =
     [
-        new("7 days", "7"), new("30 days", "30"), new("90 days", "90"),
+        new("7", "7 days"), new("30", "30 days"), new("90", "90 days"),
+    ];
+
+    private string _chartType = "line";
+    private static readonly List<SegmentedControl.Item> ChartTypeItems =
+    [
+        new("line", Icon: size => @<Indx.Systm.Blazor.Icons.Graph Size="size" Color="currentColor" />, AriaLabel: "Line"),
+        new("bar", Icon: size => @<Indx.Systm.Blazor.Icons.Analytics Size="size" Color="currentColor" />, AriaLabel: "Bars"),
+    ];
+
+    // The searches per day split by the surface that sent them. The named surfaces are read one
+    // by one (the store filters on a name); the unnamed rest is what is left of the total.
+    private WeekHourStat? _weekHour;
+    private long[]? _hourSelects;
+    private SearchProfile? _profile;
+    private SearchProfile? _profileBefore;   // the window before this one, when the raw rows reach that far
+    private PositionStat? _positions;
+    private TypingStat? _typing;
+    private List<LocaleStat> _locales = [];
+    // The searches per day split by the surface that sent them. The named surfaces are read one
+    // by one (the store filters on a name); the unnamed rest is what is left of the total.
+    private IReadOnlyList<Chart.ChartSeries> _bySurface = [];
+    private static readonly string[] SurfaceFills = ["solid", "hatch", "dots", "checker"];
+
+    private static readonly string[] WordLabels = ["1 word", "2", "3", "4", "5 or more"];
+
+    /// <summary>Most first, as the store orders them; the unnamed rest last and dim; a tag shown as
+    /// its language's own name where the runtime knows it ("norsk bokmål (Norge)"), else as sent,
+    /// with the country's flag where the tag names one (CountryFlag: a language is not a country).</summary>
+    private static IReadOnlyList<Waffle.Segment> LocaleSegments(List<LocaleStat> locales) =>
+        locales.Where(l => l.Searches > 0)
+            .Select(l => l.Locale == null
+                ? new Waffle.Segment("Unnamed", l.Searches, "var(--lv2)")
+                : new Waffle.Segment(LocaleName(l.Locale), l.Searches, Icon: FlagOf(l.Locale)))
+            .ToList();
+
+    private static RenderFragment? FlagOf(string tag) =>
+        CountryFlag.Resolve(tag) is (null, null) ? null : @<CountryFlag Locale="@tag" />;
+
+    private static string LocaleName(string tag)
+    {
+        try { return System.Globalization.CultureInfo.GetCultureInfo(tag).NativeName; }
+        catch (System.Globalization.CultureNotFoundException) { return tag; }
+    }
+
+    /// <summary>One series per surface that named itself, the first solid and the patterns after,
+    /// and the unnamed rest in the dim tone when there is any; empty unless the dataset has more
+    /// than one surface to show.</summary>
+    private List<Chart.ChartSeries> BySurface(StatisticsStore store, string team, string ds, long fromDay, long toDay, int days, double[] total)
+    {
+        var named = _sources.Where(x => x.Source != null && x.Searches > 0).Select(x => x.Source!).ToList();
+        if (named.Count == 0 || (named.Count == 1 && !_sources.Any(x => x.Source == null && x.Searches > 0))) return [];
+        var rest = (double[])total.Clone();
+        var series = new List<Chart.ChartSeries>();
+        for (int n = 0; n < named.Count; n++)
+        {
+            var byDay = store.TimeSeries(team, ds, fromDay, toDay, named[n]).ToDictionary(r => r.Day);
+            var data = new double[days];
+            for (int i = 0; i < days; i++)
+            {
+                data[i] = byDay.GetValueOrDefault(fromDay + i).Searches;
+                rest[i] = Math.Max(0, rest[i] - data[i]);
+            }
+            series.Add(new(named[n], data, Fill: SurfaceFills[n % SurfaceFills.Length]));
+        }
+        if (rest.Any(v => v > 0)) series.Add(new("Unnamed", rest, "var(--lv3)"));
+        return series;
+    }
+
+    // The 7-day window hour by hour, one group a day; null for 30 and 90 days.
+    private IReadOnlyList<GroupedBars.Group>? _dayHour;
+    private static readonly string[] HourNames = Enumerable.Range(0, 24).Select(h => h.ToString("00")).ToArray();
+
+    /// <summary>A group a day, "Mon 19 Oct", the day's searches above it, today highlighted.</summary>
+    private static IReadOnlyList<GroupedBars.Group> DayHourGroups(long[,] grid, long fromDay, long today)
+    {
+        int epoch = DateOnly.Parse("1970-01-01").DayNumber;
+        var groups = new List<GroupedBars.Group>();
+        for (int d = 0; d < grid.GetLength(0); d++)
+        {
+            var values = new double[24];
+            long total = 0;
+            for (int h = 0; h < 24; h++) { values[h] = grid[d, h]; total += grid[d, h]; }
+            var date = DateOnly.FromDayNumber((int)(fromDay + d) + epoch);
+            groups.Add(new GroupedBars.Group(date.ToString("ddd d MMM"), values, N(total), Highlight: fromDay + d == today));
+        }
+        return groups;
+    }
+
+    private static readonly string[] WeekdayNames = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    private static readonly string[] ClockLabels = Enumerable.Range(0, 24).Select(h => h.ToString("00")).ToArray();
+    private static long[] HourTotals(WeekHourStat week)
+    {
+        var hours = new long[24];
+        for (int d = 0; d < 7; d++) for (int h = 0; h < 24; h++) hours[h] += week.Searches[d, h];
+        return hours;
+    }
+    private static readonly IReadOnlyList<RadarChart.Axis> ProfileAxes = SearchProfile.AxisLabels.Select(l => new RadarChart.Axis(l)).ToList();
+    private static List<RadarChart.RadarSeries> ProfileSeries(SearchProfile now, SearchProfile? before)
+    {
+        var list = new List<RadarChart.RadarSeries> { new("This window", now.Values) };
+        if (before != null) list.Add(new("Before", before.Values, "var(--lv4)"));
+        return list;
+    }
+
+    private static readonly IReadOnlyList<Heatmap.Label> HourLabels =
+        [new(0, "00"), new(6, "06"), new(12, "12"), new(18, "18"), new(23, "23")];
+    private static readonly IReadOnlyList<Heatmap.Label> WeekdayLabels =
+        [new(0, "Mon"), new(1, "Tue"), new(2, "Wed"), new(3, "Thu"), new(4, "Fri"), new(5, "Sat"), new(6, "Sun")];
+
+    /// <summary>The grid as the Heatmap reads it: column by column (an hour each), top to bottom
+    /// (Monday to Sunday).</summary>
+    private static IReadOnlyList<double?> WeekHourCells(WeekHourStat week)
+    {
+        var cells = new double?[7 * 24];
+        for (int hour = 0; hour < 24; hour++)
+            for (int day = 0; day < 7; day++)
+                cells[hour * 7 + day] = week.Searches[day, hour];
+        return cells;
+    }
+
+    /// <summary>The busiest hour of the week, and how much of the searching is at night.</summary>
+    private static string WeekHourSummary(WeekHourStat week)
+    {
+        int bestDay = 0, bestHour = 0;
+        long night = 0;
+        for (int day = 0; day < 7; day++)
+            for (int hour = 0; hour < 24; hour++)
+            {
+                if (week.Searches[day, hour] > week.Searches[bestDay, bestHour]) (bestDay, bestHour) = (day, hour);
+                if (hour < 6) night += week.Searches[day, hour];
+            }
+        long weekend = 0;
+        for (int hour = 0; hour < 24; hour++) weekend += week.Searches[5, hour] + week.Searches[6, hour];
+        return $"Busiest on {WeekdayNames[bestDay]}s from {bestHour:00}:00. {Pct(night, week.Total)} of searches are between 00:00 and 06:00, {Pct(weekend, week.Total)} at the weekend.";
+    }
+
+    private static IReadOnlyList<RadialChart.Group> PositionGroups(PositionStat p) =>
+    [
+        new("1st", p.First), new("2nd", p.Second), new("3rd", p.Third), new("4th to 10th", p.FourToTen), new("Below 10th", p.BelowTen),
     ];
 
     private bool Empty => _overview.Searches == 0 && _overview.Selects == 0 && _overview.Converts == 0
@@ -529,15 +1181,25 @@ else
             (_fromDay, _toDay) = (fromDay, toDay);
             _sources = store.Sources(team, ds, fromDay, toDay);
             _overview = store.Overview(team, ds, fromDay, toDay, source);
+            if (_overview.Converts == 0) _documentsByConverts = false;
             LoadSearchOrAsk(store, team, ds, fromDay, toDay, source);
             LoadLists(store);
             _topFilters = store.TopFilters(team, ds, fromDay, toDay, 10, source);
+            _paths = null;
+            _pathRoots = null;
+            _pathSelected = null;
+            _pathResults = null;
             _changes = store.Changes(team, ds, fromDay, toDay);
             if (_changeKind != null && !_changes.Any(c => c.Kind == _changeKind)) _changeKind = null;
             var documentDays = store.DocumentChanges(team, ds, fromDay, toDay);
             _documentTotals = (documentDays.Sum(d => d.Inserted), documentDays.Sum(d => d.Updated), documentDays.Sum(d => d.Deleted));
 
             var byDay = store.TimeSeries(team, ds, fromDay, toDay, source).ToDictionary(r => r.Day);
+            // Search or ask's calls beside the searches, while the dataset has it: shown here and
+            // switched on, or with calls in the window. A dataset without it gets no empty line.
+            var askCalls = SearchOrAsk.ShownFor(team, ds) ? store.BudgetCallsByDay(team, ds, fromDay, toDay) : [];
+            var withCalls = askCalls.Count > 0 || (SearchOrAsk.ShownFor(team, ds) && SearchOrAsk.Settings(team, ds).Enabled);
+            var calls = new double[days];
             var searches = new double[days];
             var selects = new double[days];
             var labels = new string[days];
@@ -547,13 +1209,36 @@ else
                 var row = byDay.GetValueOrDefault(day);
                 searches[i] = row.Searches;
                 selects[i] = row.Selects;
+                calls[i] = askCalls.GetValueOrDefault(day);
                 labels[i] = DateOnly.FromDayNumber((int)day + DateOnly.Parse("1970-01-01").DayNumber).ToString("d MMM");
             }
             _series = new List<Chart.ChartSeries>
             {
-                new("Searches", searches),
+                new("Searches", searches, Fill: "solid"),
                 new("Selects", selects, "var(--CTeal)"),
             };
+            // Raw rows only, so no further back than they are kept.
+            long rawFrom = Math.Max(fromDay, toDay - Stats.RetentionDays + 1);
+            _weekHour = store.SearchesByWeekHour(team, ds, rawFrom, toDay, source);
+            _hourSelects = store.SelectsByHour(team, ds, rawFrom, toDay, source);
+            _positions = store.SelectPositions(team, ds, rawFrom, toDay, source);
+            _typing = store.Typing(team, ds, rawFrom, toDay, source);
+            _profile = SearchProfile.Build(_overview, _typing, _positions);
+            // The window before this one, the same length, for the radar's second shape: only while
+            // the raw rows (typing, positions) still reach it.
+            _profileBefore = null;
+            if (_profile != null && days * 2 <= Stats.RetentionDays)
+            {
+                long beforeFrom = fromDay - days, beforeTo = fromDay - 1;
+                _profileBefore = SearchProfile.Build(store.Overview(team, ds, beforeFrom, beforeTo, source),
+                    store.Typing(team, ds, beforeFrom, beforeTo, source), store.SelectPositions(team, ds, beforeFrom, beforeTo, source));
+            }
+            _locales = store.Locales(team, ds, rawFrom, toDay, source);
+            _dayHour = days == 7 ? DayHourGroups(store.SearchesByDayHour(team, ds, fromDay, toDay, source), fromDay, toDay) : null;
+            _bySurface = source == null ? BySurface(store, team, ds, fromDay, toDay, days, searches) : [];
+            // One step stronger than the searches' grey (--lv4), not a colour: it is a count beside
+            // them, and the blue drew the eye from the searches the chart is about.
+            if (withCalls) _series = [.. _series, new("Search or ask calls", calls, "var(--lv5)")];
             _labels = labels;
         });
         _label = null;   // the label field may have changed on the Options tab
@@ -574,11 +1259,18 @@ else
         _topDocuments = store.TopDocuments(team, ds, _fromDay, _toDay, 10, byConverts: _documentsByConverts, source: source);
     }
 
+    // The lists keep their rows while they reload (re-ordering, "Show more", the fuzzy view) and
+    // say so beside their controls: on a busy dataset over 90 days the queries take a while.
+    private bool _listsLoading;
+
     private async Task ReloadListsAsync()
     {
         var store = Stats.Store;
         if (store == null || !_loaded) return;
-        await Task.Run(() => LoadLists(store));
+        _listsLoading = true;
+        await Render();
+        try { await Task.Run(() => LoadLists(store)); }
+        finally { _listsLoading = false; }
         await Render();
     }
 

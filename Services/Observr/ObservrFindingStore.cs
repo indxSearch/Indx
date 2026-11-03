@@ -6,7 +6,7 @@ using Microsoft.Data.Sqlite;
 namespace IndxServer.Services.Observr
 {
     /// <summary>One thing Observr found, with the proposal it carries and what the owners made of
-    /// it. Lives in the Observr menu until decided; the history keeps it after.</summary>
+    /// it. Waits on the dataset's Status page until decided; the archive there keeps it after.</summary>
     public sealed record ObservrFinding(long Id, string TeamId, string DataSetName, string Kind, string Query, string Outcome,
         string Answer, List<ObservrProposal> Proposals, string Status, int AskId, DateTime CreatedUtc, DateTime? DecidedUtc)
     {
@@ -15,11 +15,17 @@ namespace IndxServer.Services.Observr
         public const string Declined = "declined";
 
         /// <summary>The dataset tab a finding points into: a digest item's kind names it
-        /// (<c>digest/fields</c>), a field review goes to the fields, the rest to the statistics.</summary>
+        /// (<c>digest/fields</c>), a field review goes to the fields, a chat proposal to the page of
+        /// what it proposes, the rest to the statistics.</summary>
         public string Tab => Kind == ObservrClient.FieldReviewKind ? "fields"
             : Kind == ObservrClient.SynonymsKind ? "synonyms"
             : Kind == ObservrClient.SetupKind ? "search-or-ask"
-            : Kind.StartsWith(ObservrClient.DigestKind + "/") ? Kind[(ObservrClient.DigestKind.Length + 1)..] : "statistics";
+            : Kind.StartsWith(ObservrClient.DigestKind + "/") ? Kind[(ObservrClient.DigestKind.Length + 1)..]
+            : Kind == ObservrChat.Kind && Proposals.Count > 0 && Proposals.All(p => p.Kind == ObservrProposal.SearchOrAskKind) ? "search-or-ask"
+            : Kind == ObservrChat.Kind && Proposals.Count > 0 && Proposals.All(p => p.Kind == ObservrProposal.QueryParametersKind) ? "query-parameters"
+            : Kind == ObservrChat.Kind && Proposals.Count > 0 && Proposals.All(p => p.Kind == ObservrProposal.FieldKind) ? "fields"
+            : Kind == ObservrChat.Kind && Proposals.Count > 0 && Proposals.All(p => p.Kind == ObservrProposal.Synonym) ? "synonyms"
+            : "statistics";
 
         /// <summary>What the menu shows it as: the query in quotes, a review by name, a digest item or
         /// a change by its title.</summary>
@@ -150,6 +156,9 @@ namespace IndxServer.Services.Observr
         /// inline, with no proposal).</summary>
         public long Add(string teamId, string dataSetName, string kind, string query, ObservrAnswer answer, bool unread = false)
         {
+            // Every answer from Observr is kept through here, so this is where a proposal this server
+            // cannot carry out is left behind (ObservrProposal.CanApply): never shown, never a yes.
+            answer = answer with { Proposals = answer.Proposals.Where(p => p.CanApply).ToList() };
             new SqLiteManager(DbPath, createOrOpenDatabase: true);
             EnsureTable();
             using var conn = Connection();
@@ -187,6 +196,15 @@ namespace IndxServer.Services.Observr
             Changed?.Invoke();
         }
 
+        /// <summary>Takes a finding off the dataset's page for good: an owner's Hide. An open one
+        /// goes undecided; Observr is not told, since a finding it hears nothing about is one it
+        /// may raise again if the data still says so.</summary>
+        public void Remove(long id)
+        {
+            Execute($"DELETE FROM {Table} WHERE Id = $id", cmd => cmd.Parameters.AddWithValue("$id", id));
+            Changed?.Invoke();
+        }
+
         public ObservrFinding? Get(long id) => Query($"WHERE Id = $id", cmd => cmd.Parameters.AddWithValue("$id", id), 1).FirstOrDefault();
 
         /// <summary>The open findings of these teams, newest first.</summary>
@@ -207,6 +225,28 @@ namespace IndxServer.Services.Observr
             }
             catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { return 0; }
         }
+
+        /// <summary>How many findings wait for a decision on each of a team's datasets (datasets
+        /// with none are absent): the dataset cards and the Status item in the side menu.</summary>
+        public Dictionary<string, int> CountOpenByDataset(string teamId)
+        {
+            var counts = new Dictionary<string, int>();
+            if (!DbExists()) return counts;
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT DatasetName, COUNT(*) FROM {Table} WHERE Status = 'open' AND TeamId = $t GROUP BY DatasetName";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                using var r = cmd.ExecuteReader();
+                while (r.Read()) counts[r.GetString(0)] = r.GetInt32(1);
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { }
+            return counts;
+        }
+
+        public int CountOpen(string teamId, string dataSetName) => CountOpenByDataset(teamId).GetValueOrDefault(dataSetName);
 
         /// <summary>A dataset's latest findings, whatever their status: what Observr has said about it.</summary>
         public List<ObservrFinding> ListForDataset(string teamId, string dataSetName, int limit = 20) =>

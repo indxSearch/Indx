@@ -37,6 +37,13 @@
             {
                 <div class="side-menu-note" title="@group.Note">@group.Note</div>
             }
+            @if (group.Update is { } update)
+            {
+                <div class="side-menu-update @(update.Security ? "side-menu-update-security" : "")">
+                    <Button Variant="ghost" Size="micro" IconLeft="IndxServer.Components.Datasets.DatasetIcons.Changes" Href="@update.Href"
+                            target="_blank" rel="noopener" title="@update.Title">@update.Text</Button>
+                </div>
+            }
         </div>
     }
 </nav>
@@ -64,10 +71,10 @@
         }
         if (item.Experimental)
         {
-            builder.OpenElement(5, "span");
-            builder.AddAttribute(6, "class", "side-menu-experimental");
-            builder.AddAttribute(7, "title", "Experimental");
-            builder.AddContent(8, _iconLab(14));
+            builder.OpenElement(6, "span");
+            builder.AddAttribute(7, "class", "side-menu-experimental");
+            builder.AddAttribute(8, "title", "Experimental");
+            builder.AddContent(9, _iconLab(14));
             builder.CloseElement();
         }
     };

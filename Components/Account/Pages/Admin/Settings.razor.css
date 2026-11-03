@@ -1,5 +1,70 @@
+/* The section's menu is a second column beside the admin menu, built as that one is: from the
+   header to the window's bottom, sticking while the section scrolls (the shell scrolls, not the
+   window), its title level with the admin menu's. No hairline of its own: the admin menu's
+   border is the line, and a second one stood mid-window once a wide page centred (28 Oct 2026).
+   The layout reaches out over the content's
+   padding on the top, left and bottom for that, and the section takes the padding back. On a
+   phone the menu is the scrolling row above the section, as the admin column becomes a bar. */
+.settings-layout {
+    display: flex;
+    align-items: flex-start;
+    margin: calc(var(--spacing) * -4) 0 calc(var(--page-gutter) * -1) calc(var(--page-gutter) * -1);
+}
+.settings-side {
+    width: 200px;
+    flex: none;
+    position: sticky;
+    top: 0;
+    height: calc(100vh - var(--header-height));
+    overflow-y: auto;
+}
+/* The icons start under the header trail's icon, 50px into the column: the menu's inset and a
+   micro Button's padding beside an icon. Measured, not derived: change one of those and look
+   again. (39px since the column lost its 1px hairline.) */
+.settings-side ::deep .side-menu { padding-left: 39px; }
+.settings-main {
+    flex: 1;
+    min-width: 0;
+    max-width: calc(600px + var(--page-gutter) * 2);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: calc(var(--spacing) * 4) var(--page-gutter) var(--page-gutter);
+}
+.settings-main > h2 { margin: 0; }
 
-/* Search or ask's provider block: one column of fields under the switch, the model names in a row. */
-.soa-admin { margin: 16px 0 0 48px; display: flex; flex-direction: column; gap: 10px; max-width: 560px; }
-.soa-admin-models { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
-.soa-admin-head { font: var(--text-sm); font-weight: var(--med); color: var(--lv7); margin: 6px 0 -2px; }
+@media (max-width: 768px) {
+    .settings-layout { flex-direction: column; align-items: stretch; margin: 0; }
+    .settings-side { width: auto; height: auto; position: static; border-bottom: 1px solid var(--lv2); overflow: visible; padding-bottom: 8px; }
+    .settings-side ::deep .side-menu { padding-left: 0; }
+    .settings-main { padding: 16px 0 0; max-width: none; }
+}
+
+.settings-stack { display: flex; flex-direction: column; gap: 16px; }
+.settings-head { font: var(--text-sm); font-weight: var(--med); color: var(--lv7); margin: 20px 0 0; }
+.settings-note { font: var(--text-xs); color: var(--lv4); margin: 0; }
+.settings-indent { margin: 4px 0 0 48px; }
+.settings-mono { color: var(--lv6); font-family: var(--font-mono); }
+.settings-more-models { display: flex; flex-direction: column; gap: 8px; }
+.settings-more-model { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.settings-add-model { display: flex; align-items: flex-end; gap: 8px; }
+.settings-add-model > :first-child { flex: 1; }
+.settings-try { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+
+/* The keys: one row a provider, its name, whether its key works, and the steps for it. */
+.soa-keys { display: flex; flex-direction: column; border: 1px solid var(--lv2); border-radius: var(--radius); }
+.soa-key { display: grid; grid-template-columns: 120px 1fr auto; align-items: center; gap: 12px; padding: 10px 12px; border-bottom: 1px solid var(--lv2); }
+.soa-key:last-child { border-bottom: none; }
+.soa-key-name { font: var(--text-sm); color: var(--lv8); }
+.soa-key-state { display: flex; flex-direction: column; gap: 2px; min-width: 0; font: var(--text-xs); }
+.soa-key-ok { display: inline-flex; align-items: center; gap: 6px; color: var(--lv8); }
+.soa-key-bad { color: var(--CSignal); overflow-wrap: anywhere; }
+.soa-key-dim { color: var(--lv5); }
+.soa-key-actions { display: flex; gap: 4px; }
+
+@media (max-width: 560px) {
+    .soa-key { grid-template-columns: 1fr auto; }
+    .soa-key-state { grid-column: 1 / -1; grid-row: 2; }
+}
+
+.settings-problem { color: var(--CSignal); }

@@ -11,6 +11,7 @@ namespace IndxServer.Services
 
         public static string TeamSettings(string teamName) => $"/teams/{teamName}/settings";
         public static string TeamObservr(string teamName) => $"/teams/{teamName}/observr";
+        public static string TeamObservrDatasets(string teamName) => $"/teams/{teamName}/observr/datasets";
         public static string TeamKeys(string teamName) => $"/teams/{teamName}/keys";
 
         public static string Dataset(string teamName, string dataset) =>

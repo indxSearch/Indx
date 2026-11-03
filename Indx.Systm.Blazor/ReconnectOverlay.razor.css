@@ -1,0 +1,74 @@
+/* Hidden until Blazor adds one of its state classes to the element; the classes land on the
+   element this file is scoped to, so the rules hold. */
+.indx-reconnect {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: color-mix(in srgb, var(--lv0) 82%, transparent);
+    backdrop-filter: blur(2px);
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+.indx-reconnect.components-reconnect-show,
+.indx-reconnect.components-reconnect-failed,
+.indx-reconnect.components-reconnect-paused,
+.indx-reconnect.components-reconnect-resume-failed,
+.indx-reconnect.components-reconnect-rejected {
+    display: flex;
+}
+.indx-reconnect-panel {
+    width: min(420px, 100%);
+    background: var(--lv1);
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    padding: 20px 22px;
+}
+.indx-reconnect-title {
+    margin: 0 0 6px;
+    font: var(--text-base);
+    font-weight: var(--med);
+    color: var(--lv8);
+}
+.indx-reconnect-body {
+    margin: 0;
+    font: var(--text-sm);
+    color: var(--lv5);
+}
+.indx-reconnect-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+}
+
+/* Plain buttons: the Button component's own stylesheet does not reach these, and the overlay must
+   work without a circuit, so they are the systm's micro primary and secondary restated. */
+.indx-reconnect-btn {
+    display: inline-flex; align-items: center; cursor: pointer; margin: 0;
+    border: none; border-radius: var(--radius); box-sizing: border-box;
+    -webkit-appearance: none; appearance: none;
+    font: var(--text-xs); font-weight: var(--med); height: 30px; padding: 0 10px; gap: 7px;
+}
+.indx-reconnect-btn--primary { background: var(--lv7); color: var(--lv1); }
+.indx-reconnect-btn--primary:hover { opacity: 0.8; }
+.indx-reconnect-btn--secondary { background: transparent; border: 1px solid var(--lv3); color: var(--lv6); }
+.indx-reconnect-btn--secondary:hover { border-color: var(--lv4); }
+
+/* State to message: each span is hidden unless its state is on the element. */
+.indx-reconnect-reconnecting, .indx-reconnect-failed, .indx-reconnect-paused,
+.indx-reconnect-resume-failed, .indx-reconnect-rejected { display: none; }
+.components-reconnect-show .indx-reconnect-reconnecting { display: inline; }
+.components-reconnect-failed .indx-reconnect-failed { display: inline; }
+.components-reconnect-paused .indx-reconnect-paused { display: inline; }
+.components-reconnect-resume-failed .indx-reconnect-resume-failed { display: inline; }
+.components-reconnect-rejected .indx-reconnect-rejected { display: inline; }
+.components-reconnect-failed .indx-reconnect-actions .indx-reconnect-failed,
+.components-reconnect-resume-failed .indx-reconnect-actions .indx-reconnect-resume-failed,
+.components-reconnect-rejected .indx-reconnect-actions .indx-reconnect-rejected { display: inline-flex; }
+
+::deep .indx-reconnect-icon {
+    vertical-align: -2px;
+    margin-right: 8px;
+    color: var(--lv8);
+}

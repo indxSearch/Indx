@@ -7,13 +7,15 @@
 
 .indx-datasets-heading h2 {
     margin: 0;
-    flex: 1;
 }
+
+.indx-datasets-heading-spacer { flex: 1; }
 
 /* Narrow: the title on its own line, the actions on a row under it, so no button wraps inside itself. */
 @media (max-width: 768px) {
     .indx-datasets-heading { flex-wrap: wrap; gap: 10px 8px; }
     .indx-datasets-heading h2 { flex: 1 1 100%; }
+    .indx-datasets-heading-spacer { display: none; }
     .indx-datasets-heading ::deep .indx-btn { white-space: nowrap; }
 }
 
@@ -22,9 +24,65 @@
     margin: 0;
 }
 
+/* The guide a team sees before its first dataset: an opening in the shape of intrface's result
+   messages, the three steps as cards, the skill. Centred on the page, since it is the page. */
 .indx-empty-state {
-    margin-top: 40px;
-    max-width: 520px;
+    margin: 0 auto;
+    max-width: 1040px;
+}
+
+/* The opening, as intrface's SearchResultsMessage: icon, title, detail, centred, with air. */
+
+.indx-empty-steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.indx-empty-step {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 18px 20px;
+    background: var(--lv1);
+    border-radius: var(--radius);
+    min-width: 0;
+}
+
+.indx-empty-step-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--lv7);
+    color: var(--lv0);
+    font: var(--text-xs);
+    font-weight: var(--med);
+    font-variant-numeric: tabular-nums;
+}
+
+.indx-empty-step-title { margin: 2px 0 0; font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
+.indx-empty-step-text { margin: 0; font: var(--text-sm); line-height: 1.55; color: var(--lv6); }
+.indx-empty-step-code {
+    margin: 4px 0 0;
+    padding: 10px 12px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--lv6);
+    background: var(--lv2);
+    border-radius: var(--radius);
+    overflow-x: auto;
+}
+.indx-empty-step-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: auto; padding-top: 6px; }
+
+@media (max-width: 900px) {
+    .indx-empty-steps { grid-template-columns: minmax(0, 1fr); }
 }
 
 .indx-empty-intro {
@@ -37,7 +95,8 @@
 }
 
 .indx-empty-skill {
-    margin-top: 24px;
+    margin-top: 28px;
+    text-align: center;
 }
 
 /* 260px rather than 220px puts five cards on a row where six used to fit. Six left the footer too
@@ -75,6 +134,22 @@
     gap: 8px;
     min-width: 0;
     color: var(--lv7);
+}
+
+/* Observr's count at the head's end: the icon and the number, quiet until hovered for the title. */
+.indx-dataset-card-observr {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: auto;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: var(--lv2);
+    font: var(--text-2xs);
+    font-weight: var(--med);
+    font-variant-numeric: tabular-nums;
+    color: var(--lv7);
+    flex: none;
 }
 
 .indx-dataset-card-name {

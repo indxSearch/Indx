@@ -1,0 +1,41 @@
+@* The steps an assistant took, ToolStep under ToolStep, close together inside a message. With a
+   Summary ("3 steps") they fold into one quiet row that opens to show them, for a finished
+   answer whose steps are worth keeping but not worth the space. Port of the React ToolSteps in
+   indx-systm. *@
+@using Indx.Systm.Blazor.Icons
+
+<div class="indx-tool-steps @Class" role="group" aria-label="@AriaLabel">
+    @if (Summary != null)
+    {
+        <button type="button" class="indx-tool-steps-summary" aria-expanded="@(_open ? "true" : "false")"
+                aria-controls="@(_open ? _listId : null)" @onclick="() => _open = !_open">
+            <span class="indx-tool-steps-chevron" aria-hidden="true">
+                @if (_open) { <ChevronDown Size="14" Color="currentColor" /> } else { <ChevronRight Size="14" Color="currentColor" /> }
+            </span>
+            <span>@Summary</span>
+        </button>
+        @if (_open)
+        {
+            <div id="@_listId" class="indx-tool-steps-list">@ChildContent</div>
+        }
+    }
+    else
+    {
+        @ChildContent
+    }
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Folds the steps into one row that says this, "3 steps"; left out, they show.</summary>
+    [Parameter] public string? Summary { get; set; }
+    /// <summary>With a Summary, open from the start.</summary>
+    [Parameter] public bool DefaultOpen { get; set; }
+    [Parameter] public string AriaLabel { get; set; } = "Steps";
+    [Parameter] public string? Class { get; set; }
+
+    private readonly string _listId = $"indx-tool-steps-{Guid.NewGuid():N}";
+    private bool _open;
+
+    protected override void OnInitialized() => _open = DefaultOpen;
+}

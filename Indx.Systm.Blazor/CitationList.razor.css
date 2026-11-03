@@ -1,0 +1,8 @@
+.indx-chat-sources { display: flex; flex-direction: column; gap: 6px; }
+.indx-chat-label { font: var(--text-2xs); font-weight: var(--med); color: var(--lv5); letter-spacing: 0.02em; text-transform: uppercase; }
+.indx-chat-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+.indx-chat-source { display: inline-flex; text-decoration: none; color: inherit; background: none; border: none; padding: 0; margin: 0; font: inherit; cursor: pointer; }
+.indx-chat-source:hover { text-decoration: none; }
+.indx-chat-source:hover ::deep .indx-chip { background: var(--lv3); }
+.indx-chat-source ::deep .indx-chip { cursor: pointer; }
+.indx-chat-source-n { color: var(--lv5); margin-right: 2px; }

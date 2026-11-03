@@ -97,7 +97,7 @@ internal static class StartupPipeline
         // placed first means UseCors never runs on a rejection and the response carries no
         // Access-Control-Allow-Origin. A browser then reports an opaque network error, and the
         // rateLimited code and retryAfterSeconds the client was given to read are unreachable.
-        app.UseCors("NewPolicy");
+        app.UseCors(IndxServer.Services.InstanceCorsPolicyProvider.PolicyName);
 
         // Resolve the bearer token once, before the limiter, so the limiter can ask whether the
         // caller is real rather than whether a header is present. Without it, Authorization:
@@ -248,7 +248,7 @@ internal static class StartupPipeline
         });
     }
 
-    public static void InitializeIndxSearchSystem(this WebApplication app, IndxEdition edition)
+    public static void InitializeIndxSearchSystem(this WebApplication app)
     {
         // ============================================
         // INTERNAL API INITIALIZATION
@@ -280,8 +280,8 @@ internal static class StartupPipeline
         int userCount = 0;
 
         // Bootstrap license from the Indx portal if a token is configured (no-op otherwise).
-        // Skipped in Managed mode, where licensing is irrelevant.
-        if (edition == Services.IndxEdition.SelfHost)
+        // Managed too: the portal writes a Managed instance's token into its app settings
+        // (Indx__LicenseToken) once Azure reports the deployment, which lifts the document cap.
         {
             using var bootstrapScope = app.Services.CreateScope();
             var bootstrapper = bootstrapScope.ServiceProvider
@@ -361,6 +361,7 @@ internal static class StartupPipeline
             var conversations = app.Services.GetRequiredService<IndxServer.Services.Observr.ObservrConversationStore>();
             conversations.EnsureTable();
             IndxServerInternalApi.Manager.AttachObservrConversations(conversations);
+            IndxServerInternalApi.Manager.AttachWebhookStore(app.Services.GetRequiredService<IndxServer.Services.Webhooks.WebhookStore>());
 
             // Detect license file for summary
             if (!string.IsNullOrWhiteSpace(licensePath) && File.Exists(licensePath))
@@ -368,9 +369,9 @@ internal static class StartupPipeline
                 detectedLicenseFile = Path.GetFileName(licensePath);
                 Console.WriteLine($"✓ Using license file: {licensePath}");
             }
-            else if (Directory.Exists("./IndxData"))
+            else if (Directory.Exists(DataPaths.Current))
             {
-                var licenses = Directory.GetFiles("./IndxData", "*.license");
+                var licenses = Directory.GetFiles(DataPaths.Current, "*.license");
                 if (licenses.Length > 0)
                 {
                     // Prefer company licenses over developer licenses (same logic as GetLicensePath)

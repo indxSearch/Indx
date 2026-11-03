@@ -1,0 +1,25 @@
+/* One row of cells with a 1px gap, the unlit in the track's tone; a tick is a 1px line a little
+   taller than the row, at its threshold, between cells. */
+.indx-score-meter {
+    position: relative;
+    display: inline-grid;
+    grid-auto-flow: column;
+    grid-auto-columns: var(--score-cell, 4px);
+    gap: 1px;
+    height: 6px;
+    vertical-align: middle;
+}
+.indx-score-cell { background: var(--lv2); }
+.indx-score-cell--lit { background: var(--lv7); }
+/* Past the ticks, the lit cells strengthen: below them all dim, past some a step up, past every one the full ink. */
+.indx-score-meter--none .indx-score-cell--lit { background: var(--lv4); }
+.indx-score-meter--some .indx-score-cell--lit { background: var(--lv6); }
+.indx-score-meter--all .indx-score-cell--lit { background: var(--lv8); }
+.indx-score-mark {
+    position: absolute;
+    top: -3px;
+    bottom: -3px;
+    width: 1px;
+    margin-left: -1px;
+    background: var(--lv5);
+}

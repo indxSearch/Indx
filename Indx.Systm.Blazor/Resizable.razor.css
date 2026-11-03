@@ -1,0 +1,42 @@
+.indx-resizable { display: flex; width: 100%; height: 100%; min-width: 0; min-height: 0; }
+.indx-resizable-vertical { flex-direction: column; }
+.indx-resizable-pane { min-width: 0; min-height: 0; overflow: auto; }
+.indx-resizable-horizontal > .indx-resizable-first { flex: 0 0 var(--indx-resizable-size, 50%); }
+.indx-resizable-vertical > .indx-resizable-first { flex: 0 0 var(--indx-resizable-size, 50%); }
+.indx-resizable-second { flex: 1 1 0; }
+/* The line between them, with a wider hit area than it shows; the tone steps up under the pointer,
+   while dragging and with the focus, and nothing moves on its own. */
+.indx-resizable-handle {
+    position: relative;
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--lv2);
+    outline: none;
+    touch-action: none;
+}
+.indx-resizable-horizontal > .indx-resizable-handle { width: 1px; }
+.indx-resizable-vertical > .indx-resizable-handle { height: 1px; }
+.indx-resizable-handle::before { content: ''; position: absolute; inset: -4px; }
+.indx-resizable-horizontal > .indx-resizable-handle::before { inset: 0 -4px; }
+.indx-resizable-vertical > .indx-resizable-handle::before { inset: -4px 0; }
+.indx-resizable-handle:hover,
+.indx-resizable[data-dragging] > .indx-resizable-handle,
+.indx-resizable-handle:focus-visible { background: var(--lv4); }
+.indx-resizable[data-dragging] { user-select: none; }
+.indx-resizable-grip { position: relative; z-index: 1; border-radius: 2px; background: var(--lv3); }
+.indx-resizable-horizontal > .indx-resizable-handle > .indx-resizable-grip { width: 6px; height: 21px; }
+.indx-resizable-vertical > .indx-resizable-handle > .indx-resizable-grip { width: 21px; height: 6px; }
+/* The pixl resize cursors (as systm's cursors.css draws them), on the handle and, while
+   dragging, over the whole component; important, so cursors.css's catch-all arrow does not win. */
+.indx-resizable-horizontal > .indx-resizable-handle { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%231A1A21"/></svg>') 10 10, col-resize !important; }
+.indx-resizable-vertical > .indx-resizable-handle { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 12H3V9H18V12ZM15 6H12V3H15V6ZM12 3H9V0H12V3ZM9 6H6V3H9V6ZM15 18H12V15H15V18ZM12 21H9V18H12V21ZM9 18H6V15H9V18Z" fill="%231A1A21"/></svg>') 10 10, row-resize !important; }
+.indx-resizable-horizontal[data-dragging], .indx-resizable-horizontal[data-dragging] ::deep * { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%231A1A21"/></svg>') 10 10, col-resize !important; }
+.indx-resizable-vertical[data-dragging], .indx-resizable-vertical[data-dragging] ::deep * { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 12H3V9H18V12ZM15 6H12V3H15V6ZM12 3H9V0H12V3ZM9 6H6V3H9V6ZM15 18H12V15H15V18ZM12 21H9V18H12V21ZM9 18H6V15H9V18Z" fill="%231A1A21"/></svg>') 10 10, row-resize !important; }
+@media (prefers-color-scheme: dark) {
+    .indx-resizable-horizontal > .indx-resizable-handle { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%23EFEFEF"/></svg>') 10 10, col-resize !important; }
+    .indx-resizable-vertical > .indx-resizable-handle { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 12H3V9H18V12ZM15 6H12V3H15V6ZM12 3H9V0H12V3ZM9 6H6V3H9V6ZM15 18H12V15H15V18ZM12 21H9V18H12V21ZM9 18H6V15H9V18Z" fill="%23EFEFEF"/></svg>') 10 10, row-resize !important; }
+    .indx-resizable-horizontal[data-dragging], .indx-resizable-horizontal[data-dragging] ::deep * { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%23EFEFEF"/></svg>') 10 10, col-resize !important; }
+    .indx-resizable-vertical[data-dragging], .indx-resizable-vertical[data-dragging] ::deep * { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 12H3V9H18V12ZM15 6H12V3H15V6ZM12 3H9V0H12V3ZM9 6H6V3H9V6ZM15 18H12V15H15V18ZM12 21H9V18H12V21ZM9 18H6V15H9V18Z" fill="%23EFEFEF"/></svg>') 10 10, row-resize !important; }
+}

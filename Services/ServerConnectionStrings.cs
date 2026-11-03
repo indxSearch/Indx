@@ -50,6 +50,10 @@ namespace IndxServer.Services
         {
             // Check for explicit override first
             var configuredConnection = configuration.GetConnectionString("IdentityConnection");
+            // A data directory places the database, unless the connection string names an
+            // absolute path of its own (DataPaths): the shipped ./IndxData/identity.db follows it.
+            if (DataPaths.Configured(configuration) is { } dir && (string.IsNullOrWhiteSpace(configuredConnection) || !Path.IsPathRooted(ExtractDbPath(configuredConnection))))
+                return $"Data Source={Path.Combine(dir, identityDbName)}";
             if (!string.IsNullOrWhiteSpace(configuredConnection))
             {
                 // If it's already a full connection string with "Data Source=", return as-is
@@ -74,6 +78,8 @@ namespace IndxServer.Services
         {
             // Check for explicit override first
             var configuredConnection = configuration.GetConnectionString("SearchDataConnection");
+            if (DataPaths.Configured(configuration) is { } dir && (string.IsNullOrWhiteSpace(configuredConnection) || !Path.IsPathRooted(ExtractDbPath(configuredConnection))))
+                return Path.Combine(dir, searchDbName);
             if (!string.IsNullOrWhiteSpace(configuredConnection))
             {
                 return configuredConnection;

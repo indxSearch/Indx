@@ -46,12 +46,26 @@ namespace IndxServer.Services.SearchOrAsk
 
             var (used, keys) = RunFiltered(engine, teamId, dataSetName, suggested, left, sort, CatalogueFound);
             if (used.Count == 0) return null;
-            await send("filters", new { filters = used, text = left, sort, found = keys.Count, more = keys.Count >= CatalogueFound });
-            if (keys.Count == 0)
+            // Nothing matches all of it: try fewer conditions here, as the message used to tell the
+            // visitor to ("bøker for sykepleiere" on a catalogue of books ended in that message,
+            // 19 Oct 2026). The leftover words go first, since a word the search holds nothing of
+            // under the filter is the usual cause; then each filter alone, the one finding most
+            // kept. Still nothing: the ordinary answer, from the plain search.
+            if (keys.Count == 0 && left.Length > 0)
             {
-                await send("error", new { code = "nothingFound", message = "Nothing matches all of that. Try fewer conditions." });
-                return new CatalogueOutcome("nothingFound", keys, null, filterCost);
+                var (u, k) = RunFiltered(engine, teamId, dataSetName, used, "", sort, CatalogueFound);
+                if (k.Count > 0) { used = u; keys = k; left = ""; }
             }
+            if (keys.Count == 0 && used.Count > 1)
+            {
+                foreach (var one in used)
+                {
+                    var (u, k) = RunFiltered(engine, teamId, dataSetName, [one], "", sort, CatalogueFound);
+                    if (k.Count > keys.Count) { used = u; keys = k; left = ""; }
+                }
+            }
+            if (keys.Count == 0) return null;
+            await send("filters", new { filters = used, text = left, sort, found = keys.Count, more = keys.Count >= CatalogueFound });
 
             // Facts from the fields a visitor can filter by: what a summary of a set is made of.
             var docs = keys.Select(k => (Key: k, Doc: Parse(engine.GetJsonDataOfKey(k)))).ToList();
@@ -73,7 +87,7 @@ namespace IndxServer.Services.SearchOrAsk
             user.AppendLine();
             user.AppendLine(keys.Count > CatalogueShown ? $"The first {CatalogueShown}, numbered:" : "Each one, numbered:");
             foreach (var s in shown)
-                user.AppendLine($"[{s.N}] {titleOf(s.Doc)}: {Facts(s.Doc, filterFields)}");
+                user.AppendLine($"[{s.N}] {titleOf(s.Doc)}: {Facts(s.Doc, filterFields, schema.Readable)}");
             user.AppendLine().Append(SearchOrAskRecipes.LanguageReminder(settings));
 
             var usage = new AnswerUsage();
@@ -85,6 +99,7 @@ namespace IndxServer.Services.SearchOrAsk
                 firstText ??= Ms();
                 await send("text", new { delta });
             }
+            Succeeded("answer");
             await send("done", new { model, askId, latencyMs = Ms() });
             return new CatalogueOutcome("answered", shown.Select(s => s.Key).ToList(), firstText,
                 usage.Cost == null && filterCost == null ? null : (usage.Cost ?? 0) + (filterCost ?? 0));
@@ -132,13 +147,17 @@ namespace IndxServer.Services.SearchOrAsk
         private static string Num(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);
 
         /// <summary>One record's facts on the filter fields: a yes/no only when yes, absent ones left out.</summary>
-        private static string Facts(JsonNode? doc, List<FilterField> fields)
+        /// <summary>A record's facts as the models read them: each filter field, then each field read
+        /// though not filtered on. A list (genres, actors) is written out, its first
+        /// <see cref="ListValues"/> and how many more; it used to be left out.</summary>
+        private static string Facts(JsonNode? doc, List<FilterField> fields, IReadOnlyList<string>? readable = null)
         {
             if (doc == null) return "";
             var parts = new List<string>();
             foreach (var f in fields)
             {
                 var v = FieldAt(doc, f.Name);
+                if (v is JsonArray list) { if (ListText(list) is { } t) parts.Add($"{f.Name} {t}"); continue; }
                 if (v is not JsonValue value) continue;
                 if (f.Type == "true/false")
                 {
@@ -146,7 +165,23 @@ namespace IndxServer.Services.SearchOrAsk
                 }
                 else parts.Add($"{f.Name} {value}");
             }
+            foreach (var name in readable ?? [])
+            {
+                var v = FieldAt(doc, name);
+                var text = v is JsonArray list ? ListText(list) : v is JsonValue value && value.ToString() is { Length: > 0 } s ? s : null;
+                if (text != null) parts.Add($"{name} {text}");
+            }
             return string.Join("; ", parts);
+        }
+
+        private const int ListValues = 6;
+
+        private static string? ListText(JsonArray list)
+        {
+            var values = list.OfType<JsonValue>().Select(x => x.ToString()).Where(x => x.Length > 0).ToList();
+            if (values.Count == 0) return null;
+            var shown = string.Join(", ", values.Take(ListValues));
+            return values.Count > ListValues ? $"{shown} and {values.Count - ListValues} more" : shown;
         }
 
         /// <summary>The set as a whole: each number's range and median, each text field's most common

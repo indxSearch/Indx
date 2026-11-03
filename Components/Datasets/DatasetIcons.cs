@@ -21,11 +21,36 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> Agent = Of<Icons.AiAgent>();
         public static readonly RenderFragment<int> PanelAdd = Of<Icons.PanelAdd>();
         public static readonly RenderFragment<int> Fields = Of<Icons.Field>();
+        public static readonly RenderFragment<int> Categories = Of<Icons.NodeTree>();   // the Trees pixl once it is published
+        public static readonly RenderFragment<int> NeverSelected = Of<Icons.Ghost>();
+        public static readonly RenderFragment<int> NeverPurchased = Of<Icons.EmptyBox>();
+        public static readonly RenderFragment<int> Maximize = Of<Icons.Maximize>();
+        public static readonly RenderFragment<int> TreeView = Of<Icons.NodeTree>();
+        // The Status tab's tiles.
+        public static readonly RenderFragment<int> Documents = Of<Icons.DocumentOrFile>();
+        public static readonly RenderFragment<int> Disk = Of<Icons.Database>();
+        public static readonly RenderFragment<int> Calendar = Of<Icons.Calendar>();
+        public static readonly RenderFragment<int> Clock = Of<Icons.Clock>();
+        // The statistics tiles' label icons, and the monitor's.
+        public static readonly RenderFragment<int> Cpu = Of<Icons.Cpu>();
+        public static readonly RenderFragment<int> Ram = Of<Icons.Ram>();
+        public static readonly RenderFragment<int> ClickThrough = Of<Icons.ClickButton>();
+        public static readonly RenderFragment<int> ClickPosition = Of<Icons.ClickSelect>();
+        public static readonly RenderFragment<int> Conversions = Of<Icons.ShoppingCart>();
+        public static readonly RenderFragment<int> NotAnswered = Of<Icons.Empty>();
+        public static readonly RenderFragment<int> SourcesOpened = Of<Icons.ExternalLink>();
+        public static readonly RenderFragment<int> Cost = Of<Icons.Coins>();
+        public static readonly RenderFragment<int> Calls = Of<Icons.Pulse>();
+        public static readonly RenderFragment<int> ListView = Of<Icons.HierarchyList>();
+        public static readonly RenderFragment<int> Minimize = Of<Icons.Minimize>();
         public static readonly RenderFragment<int> Delete = Of<Icons.Stop>();
         public static readonly RenderFragment<int> Boost = Of<Icons.Boost>();
         public static readonly RenderFragment<int> Bury = Of<Icons.ArrowDown>();
         public static readonly RenderFragment<int> Statistics = Of<Icons.Graph>();
         public static readonly RenderFragment<int> Synonym = Of<Icons.Synonym>();
+        public static readonly RenderFragment<int> Webhooks = Of<Icons.Webhooks>();
+        /// <summary>A webhook plugin: a source Indx connects to without code (Sanity, Contentful).</summary>
+        public static readonly RenderFragment<int> Plugin = Of<Icons.PuzzlePiece>();
         public static readonly RenderFragment<int> QueryParameters = Of<Icons.Coverage>();
         public static readonly RenderFragment<int> SearchOrAsk = Of<Icons.SearchOrAsk>();
         public static readonly RenderFragment<int> Observr = Of<Icons.Observr>();
@@ -48,11 +73,27 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> TopDocuments = Of<Icons.SortAscending>();
         public static readonly RenderFragment<int> Browsing = Of<Icons.InternetBrowser>();
         public static readonly RenderFragment<int> Changes = Of<Icons.Update>();
+        public static readonly RenderFragment<int> Mail = Of<Icons.Mail>();
+        public static readonly RenderFragment<int> Bell = Of<Icons.Bell>();
+        public static readonly RenderFragment<int> User = Of<Icons.User>();
+        public static readonly RenderFragment<int> Team = Of<Icons.UserGroup>();
+        public static readonly RenderFragment<int> Key = Of<Icons.Key>();
+        public static readonly RenderFragment<int> AskedAgain = Of<Icons.Loop>();
         public static readonly RenderFragment<int> FuzzySelected = Of<Icons.ClickSelect>();
+        // The Search or ask views: the pictures, the questions asked, the offers shown.
+        public static readonly RenderFragment<int> AskOverview = Of<Icons.Analytics>();
+        public static readonly RenderFragment<int> AskQuestions = Of<Icons.Question>();
+        public static readonly RenderFragment<int> AskNeeds = Of<Icons.Layers>();
+        public static readonly RenderFragment<int> AskOffers = Of<Icons.LightBulb>();
+        public static readonly RenderFragment<int> AskProactive = Of<Icons.Spark>();
         public static readonly RenderFragment<int> FuzzyAll = Of<Icons.SearchAsYouType>();
         public static readonly RenderFragment<int> ShowMore = Of<Icons.Plus>();
         /// <summary>Erasing data, as opposed to <see cref="Delete"/>, which removes the dataset.</summary>
         public static readonly RenderFragment<int> Erase = Of<Icons.Delete>();
+        public static readonly RenderFragment<int> Yes = Of<Icons.Check>();
+        public static readonly RenderFragment<int> No = Of<Icons.XOrError>();
+        public static readonly RenderFragment<int> OpenFinding = Of<Icons.GitIssue>();
+        public static readonly RenderFragment<int> Archive = Of<Icons.Folder>();
 
         /// <summary>The speedometer as a running spinner — the benchmark button swaps to this
         /// while a run is in progress, so the icon itself says "measuring".</summary>

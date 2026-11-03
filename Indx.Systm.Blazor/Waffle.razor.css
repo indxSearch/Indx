@@ -1,0 +1,89 @@
+.indx-waffle {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+/* The cells fill column by column, top to bottom then the next column, so a segment is a block
+   from the left edge; a 2px gap between 4px cells is the pixel pattern's scale. */
+.indx-waffle-grid {
+    display: grid;
+    grid-auto-flow: column;
+    grid-template-rows: repeat(var(--waffle-rows, 5), var(--waffle-cell, 4px));
+    grid-auto-columns: var(--waffle-cell, 4px);
+    gap: 2px;
+    width: max-content;
+}
+
+/* The grid and its tooltip share a box, so the tooltip is placed by the cell's grid position. */
+.indx-waffle-grid-wrap {
+    position: relative;
+    width: max-content;
+}
+
+.indx-waffle-cell {
+    background: var(--lv2);
+}
+
+/* The other segments while one is under the pointer. */
+.indx-waffle-dim {
+    opacity: 0.25;
+}
+
+/* The tooltip: the Heatmap's, beside the cell, centred on it. */
+.indx-waffle-tooltip {
+    position: absolute;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--lv0);
+    border: 1px solid var(--lv2);
+    padding: 4px 8px;
+    font: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.indx-waffle-tooltip-left {
+    transform: translate(-100%, -50%);
+}
+
+.indx-waffle-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+}
+
+.indx-waffle-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.indx-waffle-swatch {
+    width: 4px;
+    height: 4px;
+    flex: none;
+}
+
+.indx-waffle-icon {
+    display: inline-flex;
+    flex: none;
+}
+
+.indx-waffle-name {
+    color: var(--lv7);
+}
+
+.indx-waffle-share {
+    color: var(--lv5);
+}

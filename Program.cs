@@ -101,7 +101,7 @@ public class Program
         // The pipeline, endpoints and search-system startup (Startup/StartupPipeline.cs).
         app.UseIndxHttpPipeline();
         app.MapIndxEndpoints();
-        app.InitializeIndxSearchSystem(edition);
+        app.InitializeIndxSearchSystem();
 
         app.Run();
     }

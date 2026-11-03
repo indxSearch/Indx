@@ -1,0 +1,761 @@
+@* The dataset's incoming webhooks (Notes/indx_webhooks.md): make one, read what its calls did,
+   apply or discard what the brake holds, fetch the full set now, give it a new secret. The same
+   operations as the admin API, through WebhookAdmin and WebhookStore. Every action saves at once,
+   so there is no Save bar. Team admins only, like the API. Each source's settings (IWebhookSource)
+   draw its part of the form and of the details, so a new source needs nothing here. *@
+@using System.Text.Json.Nodes
+@using IndxServer.Services.Webhooks
+@inherits DatasetTabBase
+@inject WebhookStore Store
+@inject WebhookAdmin Admin
+@inject WebhookSourceRegistry Sources
+@inject ToastService Toasts
+@inject NavigationManager Nav
+
+@if (!Active) { return; }
+
+<div class="wh-tab">
+    <p class="wh-intro">
+        A webhook keeps this dataset in step with the system that changes it, such as a shop or a CMS.
+        The sender calls it when something changes, signed with the webhook's secret, and the documents follow.
+        A batch that would delete more than the brake allows waits here until you apply or discard it.
+    </p>
+
+    <div class="indx-list-toolbar">
+        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="@(() => OpenNew(WebhookSources.Indx))">New generic webhook</Button>
+        @* The plugins: a button each, so what Indx connects to without code is in plain sight. *@
+        @foreach (var plugin in Sources.All.Where(s => s.Id != WebhookSources.Indx))
+        {
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Plugin" title="@plugin.Description"
+                    @onclick="@(() => OpenNew(plugin.Id))">New @plugin.Label webhook</Button>
+        }
+        @if (_hooks.Count > 0)
+        {
+            <span class="indx-list-toolbar-end">@_hooks.Count @(_hooks.Count == 1 ? "webhook" : "webhooks")</span>
+        }
+    </div>
+
+    @if (_hooks.Count == 0)
+    {
+        <EmptyState Size="compact" Icon="DatasetIcons.Webhooks" Title="No webhooks yet">Make one above for the system that changes this dataset, and its changes arrive here as they happen.</EmptyState>
+    }
+    else
+    {
+        <table class="indx-table wh-list">
+            <thead>
+                <tr><th>Name</th><th>Source</th><th>Last call</th><th>Last full sync</th><th class="wh-num">Waiting</th><th class="wh-num">Held</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _hooks)
+                {
+                    var hook = row.Hook;
+                    <tr class="wh-row @(hook.Id == _selectedId ? "wh-row--selected" : "")" @onclick="@(() => Select(hook.Id))">
+                        <td>@hook.Name</td>
+                        <td><Chip>@Sources.For(hook).Label</Chip></td>
+                        <td><TimeAgo Value="hook.LastEventUtc" Empty="Never" /></td>
+                        <td><TimeAgo Value="hook.LastSyncUtc" Empty="Never" /></td>
+                        <td class="wh-num">@row.Waiting</td>
+                        <td class="wh-num">
+                            @if (row.Held > 0)
+                            {
+                                <span class="wh-held-count">@DatasetIcons.Warning(14) @row.Held</span>
+                            }
+                            else
+                            {
+                                <span>0</span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    @if (Selected is { } sel)
+    {
+        var hook = sel.Hook;
+        var source = Sources.For(hook);
+        var config = SourceSettings.Parse(hook.SourceConfig);
+        <section class="wh-detail">
+            <h3 class="wh-title">@hook.Name</h3>
+
+            @if (_held.Count > 0)
+            {
+                var sum = HeldSummary(hook);
+                var who = source.Id == WebhookSources.Indx ? "The sender" : source.Label;
+                <Alert Variant="warning" Class="wh-held">
+                    <Title>@HeldHeadline(sum)</Title>
+                    <Description>
+                        <p>@HeldExplanation(sum, hook, who)</p>
+                        @if (sum.Names.Count > 0)
+                        {
+                            <p class="wh-held-names">@string.Join(", ", sum.Names)@(sum.MoreNames > 0 ? $" and {sum.MoreNames:N0} more" : "")</p>
+                        }
+                        <p>@HeldAdvice(sum, who)</p>
+                        <div class="wh-held-actions">
+                            <Button Variant="primary" Size="micro" Loading="@(_busy == AllHeld)" @onclick="ApplyAllHeldAsync">@HeldApplyLabel(sum)</Button>
+                            <ConfirmButton Label="@HeldKeepLabel(sum)" TriggerVariant="secondary" Variant="primary" ConfirmLabel="@HeldKeepLabel(sum)"
+                                           Prompt="@(sum.HasSync ? "Nothing in the full set is applied." : "Nothing that waits is applied, and later changes go through again.")"
+                                           OnConfirm="DiscardAllHeld" />
+                            <span class="wh-hint">Held <TimeAgo Value="_held[0].HeldUtc" /></span>
+                        </div>
+                    </Description>
+                </Alert>
+                @if (_held.Count > 1)
+                {
+                    @* Several batches (one became full, a held full set beside held changes): the
+                       decision above takes them all, in order; each can still be taken alone. *@
+                    <Disclosure Class="wh-held-list">
+                        <Summary>The @_held.Count batches</Summary>
+                        <ChildContent>
+                            <table class="indx-table">
+                                <thead><tr><th>Held</th><th>What</th><th class="wh-num">Changes</th><th></th></tr></thead>
+                                <tbody>
+                                    @foreach (var held in _held)
+                                    {
+                                        <tr>
+                                            <td><TimeAgo Value="held.HeldUtc" TooltipPosition="left" /></td>
+                                            <td>@(held.Kind == WebhookKinds.Sync ? "Full set" : "Changes")</td>
+                                            <td class="wh-num">@held.Events.ToString("N0")</td>
+                                            <td class="wh-row-actions">
+                                                <Button Variant="ghost" Size="micro" Loading="@(_busy == held.Id)" @onclick="@(() => ApplyHeldAsync(held.Id))">Apply</Button>
+                                                <Button Variant="ghost" Size="micro" @onclick="@(() => DiscardHeld(held.Id))">Keep</Button>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </ChildContent>
+                    </Disclosure>
+                }
+            }
+
+            @* What a webhook is set up with is looked up now and then, not read every visit. *@
+            <Disclosure Class="wh-details">
+                <Summary>Address and settings</Summary>
+                <ChildContent>
+            <div class="wh-grid">
+                <span class="wh-label">Address for changes</span>
+                <CodeCopy Code="@HookUrl(hook)" />
+                @if (!source.Pulls)
+                {
+                    <span class="wh-label">Address for the full set</span>
+                    <CodeCopy Code="@(HookUrl(hook) + "/sync")" />
+                }
+                <span class="wh-label">Id field</span>
+                <span><code>@hook.IdField</code></span>
+                @if (hook.VersionField != null)
+                {
+                    <span class="wh-label">Version field</span>
+                    <span><code>@hook.VersionField</code></span>
+                }
+                <span class="wh-label">Brake</span>
+                <span>Holds a batch that would delete or replace more than @Percent(hook.BrakeShare) of the documents (at least 20) within an hour</span>
+                <span class="wh-label">Made</span>
+                <span><TimeAgo Value="hook.CreatedUtc" /></span>
+                @if (config != null)
+                {
+                    @foreach (var (label, value, code) in Facts(source, config))
+                    {
+                        <span class="wh-label">@label</span>
+                        @if (code)
+                        {
+                            <span><code class="wh-query">@value</code></span>
+                        }
+                        else
+                        {
+                            <span>@value</span>
+                        }
+                    }
+                }
+            </div>
+                </ChildContent>
+            </Disclosure>
+
+            <div class="wh-actions">
+                @if (source.Pulls)
+                {
+                    <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Restore" Loading="@(sel.Waiting > 0 && _syncAsked == hook.Id)"
+                            @onclick="@(() => RequestSync(hook))">Fetch the full set now</Button>
+                }
+                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Sliders" @onclick="@(() => OpenEdit(hook))">Edit settings</Button>
+                <ConfirmButton Label="New secret" Icon="DatasetIcons.Key" Prompt="The old secret stops working at once, so the sender must get the new one."
+                               ConfirmLabel="Make a new secret" Variant="primary" OnConfirm="@(() => RotateSecret(hook))" />
+                <ConfirmButton Label="Delete webhook" Icon="DatasetIcons.Delete" Prompt="Calls to its address are refused from now on. The documents stay."
+                               ConfirmLabel="Delete" Variant="primary" OnConfirm="@(() => DeleteHook(hook))" />
+            </div>
+
+            @* The calls: what they did over time from the hourly tally (kept 30 days, however many
+               calls), then the latest few. One-document calls (Sanity) make thousands a day, so
+               the list is short and can show only the ones that need a look. *@
+            <div class="wh-calls-head">
+                <h4 class="wh-subtitle">Calls</h4>
+                <SegmentedControl Items="RangeItems" Value="@_range" ValueChanged="SetRange" AriaLabel="Period" />
+            </div>
+            @{ var activity = Activity(); }
+            <StatGroup Columns="4" Class="wh-stats">
+                <Stat Label="Calls" LabelIcon="DatasetIcons.Calls" Value="@activity.Calls.ToString("N0")" />
+                <Stat Label="Changes" LabelIcon="DatasetIcons.Changes" Hint="Documents added, updated and deleted. Full syncs are counted as syncs, not as documents."
+                      Value="@activity.Changes.ToString("N0")" />
+                <Stat Label="Need a look" LabelIcon="DatasetIcons.Warning" Hint="Calls held by the brake, refused or failed, and documents refused on their own."
+                      Value="@activity.Problems.ToString("N0")" />
+                <Stat Label="Last call" LabelIcon="DatasetIcons.Clock">
+                    <ValueContent><TimeAgo Value="hook.LastEventUtc" Empty="Never" /></ValueContent>
+                </Stat>
+            </StatGroup>
+            @if (activity.Calls > 0)
+            {
+                <Chart Type="bar" Stacked="true" Height="140" YAxis="right" Labels="activity.Labels" Series="activity.Series" Markers="activity.Markers" />
+            }
+
+            <div class="wh-calls-head">
+                <h4 class="wh-subtitle">Latest calls</h4>
+                <SegmentedControl Items="CallFilterItems" Value="@_callFilter" ValueChanged="@(v => _callFilter = v)" AriaLabel="Which calls" />
+            </div>
+            @{ var calls = _deliveries.Where(d => _callFilter != "problems" || NeedsALook(d)).Take(CallsShown).ToList(); }
+            @if (calls.Count == 0)
+            {
+                @if (_callFilter == "problems")
+                {
+                    <EmptyState Size="compact" Icon="DatasetIcons.Yes" Title="Nothing that needs a look">Every call in the list was taken as sent.</EmptyState>
+                }
+                else
+                {
+                    <EmptyState Size="compact" Icon="DatasetIcons.Webhooks" Title="No calls yet">The sender's first call shows here, with what it changed.</EmptyState>
+                }
+            }
+            else
+            {
+                <div class="indx-table-wrap">
+                    <table class="indx-table wh-calls">
+                        <thead>
+                            <tr>
+                                <th>Received</th><th>Outcome</th><th class="wh-num">Added</th><th class="wh-num">Updated</th>
+                                <th class="wh-num">Deleted</th><th class="wh-num">Refused</th><th>Detail</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var d in calls)
+                            {
+                                <tr>
+                                    <td><TimeAgo Value="d.ReceivedUtc" TooltipPosition="left" /></td>
+                                    <td>@OutcomeLabel(d.Outcome)</td>
+                                    <td class="wh-num">@d.Inserted.ToString("N0")</td>
+                                    <td class="wh-num">@d.Updated.ToString("N0")</td>
+                                    <td class="wh-num">@d.Deleted.ToString("N0")</td>
+                                    <td class="wh-num">@d.Refused.ToString("N0")</td>
+                                    <td class="wh-call-detail @(d.Outcome is "refused" or "failed" ? "wh-call-detail--bad" : "")">@d.Detail</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </section>
+    }
+
+    @{ var chosen = Sources.Get(_source) ?? Sources.All[0]; }
+    <Modal @bind-Open="_newOpen" Title="@(_editing != null ? $"Edit {_editing.Name}" : chosen.Id == WebhookSources.Indx ? "New generic webhook" : $"New {chosen.Label} webhook")"
+           Description="@(_editing != null ? null : chosen.Description)">
+        <div class="indx-modal-form wh-form">
+            <InputField Label="Name" placeholder="Shop, Price feed, Product catalogue" @bind-Value="_name" />
+            @foreach (var field in _settings)
+            {
+                var setting = field.Setting;
+                <div>
+                    @if (setting.Options is { } options)
+                    {
+                        <span class="wh-label">@setting.Label</span>
+                        <SelectField Size="micro" Options="@options.Select(o => new SelectField.SelectOption(o.Label, o.Value))"
+                                     Value="@(field.Value ?? setting.Default)" ValueChanged="@(v => field.Value = v)" />
+                    }
+                    else if (setting.Multiline)
+                    {
+                        <Textarea Label="@setting.Label" Rows="3" placeholder="@setting.Placeholder" @bind-Value="field.Value" />
+                    }
+                    else if (setting.Secret)
+                    {
+                        <InputField Label="@setting.Label" type="password" autocomplete="off" placeholder="@(_editing != null ? "Set. Leave empty to keep it." : setting.Placeholder)" @bind-Value="field.Value" />
+                    }
+                    else
+                    {
+                        <InputField Label="@setting.Label" placeholder="@setting.Placeholder" @bind-Value="field.Value" />
+                    }
+                    @if (setting.Hint != null)
+                    {
+                        <span class="wh-hint">@setting.Hint</span>
+                    }
+                </div>
+            }
+            @if (_editing == null)
+            {
+                <div>
+                    <InputField Label="Id field" placeholder="@chosen.DefaultIdField" @bind-Value="_idField" />
+                    <span class="wh-hint">The field holding the sender's own id. Empty for @chosen.DefaultIdField.</span>
+                </div>
+            }
+            else
+            {
+                <p class="wh-hint">Id field <code>@_editing.IdField</code> stays: changing it would make every document a new one.</p>
+            }
+            <div>
+                <InputField Label="Version field" placeholder="updatedAt" @bind-Value="_versionField" />
+                <span class="wh-hint">Optional. A date or number that grows with each version, so a change arriving late is left alone.</span>
+            </div>
+            <div>
+                <InputField Label="Brake" placeholder="10" @bind-Value="_brake" />
+                <span class="wh-hint">Percent of the dataset that deletes may reach within an hour before a batch waits for you.</span>
+            </div>
+            @if (!string.IsNullOrEmpty(_formError))
+            {
+                <p class="wh-error">@_formError</p>
+            }
+            <div class="indx-form-actions">
+                <Button Variant="primary" Size="micro" @onclick="Create">@(_editing != null ? "Save" : "Create")</Button>
+                <Button Variant="secondary" Size="micro" @onclick="@(() => _newOpen = false)">Cancel</Button>
+            </div>
+        </div>
+    </Modal>
+
+    <Modal @bind-Open="_secretOpen" Title="@(_secretIsNew ? "Webhook made" : "New secret")">
+        @if (_secretHook is { } sh)
+        {
+            <div class="indx-modal-form wh-form">
+                <p class="wh-hint">The secret is shown only now. Keep it where the sender can read it.</p>
+                <span class="wh-label">Address</span>
+                <CodeCopy Code="@HookUrl(sh)" />
+                <span class="wh-label">Secret</span>
+                <CodeCopy Code="@_secret" />
+                @if (_secretIsNew)
+                {
+                    var guide = Sources.For(sh).Setup(SourceSettings.Parse(sh.SourceConfig));
+                    <p class="wh-hint">@guide.Intro</p>
+                    <div class="wh-grid">
+                        @foreach (var step in guide.Steps)
+                        {
+                            <span class="wh-label">@step.Label</span>
+                            @if (step.Code)
+                            {
+                                <span><code class="wh-query">@step.Value</code></span>
+                            }
+                            else
+                            {
+                                <span>@step.Value</span>
+                            }
+                        }
+                    </div>
+                }
+                <div class="indx-form-actions">
+                    <Button Variant="primary" Size="micro" @onclick="@(() => _secretOpen = false)">Done</Button>
+                </div>
+            </div>
+        }
+    </Modal>
+</div>
+
+@code {
+    private sealed record Row(Webhook Hook, int Waiting, int Held);
+
+    /// <summary>One of the chosen source's settings as the form holds it, bound by reference.</summary>
+    private sealed class FormSetting(SourceSetting setting)
+    {
+        public SourceSetting Setting { get; } = setting;
+        public string? Value { get; set; } = setting.Default;
+    }
+
+
+    private List<Row> _hooks = [];
+    private string? _selectedId;
+    private List<WebhookHeldBatch> _held = [];
+    private List<WebhookDelivery> _deliveries = [];
+    private List<WebhookHour> _hours = [];
+    private string _range = "48h";
+    private string _callFilter = "all";
+
+    /// <summary>Calls listed at once; the rest are in the chart.</summary>
+    private const int CallsShown = 10;
+
+    private static readonly IReadOnlyList<SegmentedControl.Item> RangeItems = [new("48h", "48 hours"), new("30d", "30 days")];
+    private static readonly IReadOnlyList<SegmentedControl.Item> CallFilterItems = [new("all", "All"), new("problems", "Need a look")];
+
+    private static bool NeedsALook(WebhookDelivery d) => d.Outcome is "held" or "refused" or "failed" || d.Refused > 0;
+
+    private void SetRange(string range)
+    {
+        _range = range;
+        LoadSelected();
+    }
+
+    private sealed record ActivityView(int Calls, int Changes, int Problems, string[] Labels,
+        IReadOnlyList<Chart.ChartSeries> Series, IReadOnlyList<Chart.ChartMarker> Markers);
+
+    /// <summary>The hourly tally as the chart and the tiles show it: hour by hour over 48 hours, day
+    /// by day over 30. The hours are UTC, as the exact times on hover are.</summary>
+    private ActivityView Activity()
+    {
+        var byDay = _range == "30d";
+        var now = DateTime.UtcNow;
+        var start = byDay ? now.Date.AddDays(-29) : new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc).AddHours(-47);
+        var points = byDay ? 30 : 48;
+        var added = new double[points];
+        var updated = new double[points];
+        var deleted = new double[points];
+        var held = new int[points];
+        var failed = new int[points];
+        var synced = new int[points];
+        int calls = 0, problems = 0;
+        foreach (var h in _hours)
+        {
+            var i = byDay ? (int)(h.HourUtc.Date - start).TotalDays : (int)(h.HourUtc - start).TotalHours;
+            if (i < 0 || i >= points) continue;
+            added[i] += h.Inserted; updated[i] += h.Updated; deleted[i] += h.Deleted;
+            held[i] += h.Held; failed[i] += h.Failed; synced[i] += h.Synced;
+            calls += h.Calls;
+            problems += h.Held + h.Failed + h.Refused;
+        }
+        var labels = Enumerable.Range(0, points)
+            .Select(i => byDay ? start.AddDays(i).ToString("d MMM", System.Globalization.CultureInfo.InvariantCulture)
+                               : start.AddHours(i).ToString("d MMM HH:00", System.Globalization.CultureInfo.InvariantCulture))
+            .ToArray();
+        var markers = new List<Chart.ChartMarker>();
+        for (var i = 0; i < points; i++)
+        {
+            if (held[i] > 0) markers.Add(new(i, held[i] == 1 ? "1 call held" : $"{held[i]} calls held"));
+            if (failed[i] > 0) markers.Add(new(i, failed[i] == 1 ? "1 call refused or failed" : $"{failed[i]} calls refused or failed"));
+            if (synced[i] > 0) markers.Add(new(i, synced[i] == 1 ? "Full sync" : $"{synced[i]} full syncs"));
+        }
+        return new(calls, (int)(added.Sum() + updated.Sum() + deleted.Sum()), problems, labels,
+            [new("Added", added, Fill: "solid"), new("Updated", updated, Fill: "hatch"), new("Deleted", deleted, Fill: "dots")], markers);
+    }
+    private bool _loaded;
+    private string? _busy;
+    private string? _syncAsked;
+    private CancellationTokenSource? _pollCts;
+
+    // The new-webhook form.
+    private bool _newOpen;
+    private string? _name, _source = WebhookSources.Indx, _idField, _versionField, _brake, _formError;
+    private List<FormSetting> _settings = [];
+    private Webhook? _editing;
+
+    // The secret, shown once after Create or a new secret.
+    private bool _secretOpen, _secretIsNew;
+    private Webhook? _secretHook;
+    private string _secret = "";
+
+    private Row? Selected => _hooks.FirstOrDefault(r => r.Hook.Id == _selectedId);
+
+    protected override void OnParametersSet()
+    {
+        if (Active && !_loaded) { _loaded = true; Load(); }
+        if (!Active) StopPolling();
+    }
+
+    private void Load()
+    {
+        Refresh();
+        if (_hooks.Any(r => r.Waiting > 0)) StartPolling();
+    }
+
+    private void Refresh()
+    {
+        _hooks = Store.List(Ctx.TeamId, Ctx.Name)
+            .Select(h => new Row(h, Store.WaitingCount(h.Id), Store.Held(h.Id).Count)).ToList();
+        if (Selected == null)
+            _selectedId = (_hooks.FirstOrDefault(r => r.Held > 0) ?? _hooks.FirstOrDefault())?.Hook.Id;
+        LoadSelected();
+    }
+
+    private void LoadSelected()
+    {
+        _held = _selectedId == null ? [] : Store.Held(_selectedId);
+        _deliveries = _selectedId == null ? [] : Store.Deliveries(_selectedId, WebhookStore.DeliveriesKept);
+        _hours = _selectedId == null ? [] : Store.Hours(_selectedId, DateTime.UtcNow.AddDays(_range == "30d" ? -30 : -2).AddHours(-1));
+    }
+
+    private void Select(string id)
+    {
+        _selectedId = id;
+        LoadSelected();
+    }
+
+    /// <summary>While calls wait to be applied (a fetch from Sanity, a burst of changes), read the
+    /// list again every two seconds, so the outcome shows without a reload.</summary>
+    private void StartPolling()
+    {
+        if (_pollCts != null) return;
+        var cts = _pollCts = new CancellationTokenSource();
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var waiting = true;
+                while (waiting)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(2), cts.Token);
+                    await InvokeAsync(() =>
+                    {
+                        Refresh();
+                        waiting = _hooks.Any(r => r.Waiting > 0);
+                        if (!waiting) _syncAsked = null;
+                        StateHasChanged();
+                    });
+                }
+            }
+            catch (OperationCanceledException) { }
+            finally
+            {
+                if (ReferenceEquals(_pollCts, cts)) _pollCts = null;
+                cts.Dispose();
+            }
+        });
+    }
+
+    private void StopPolling()
+    {
+        _pollCts?.Cancel();
+        _pollCts = null;
+    }
+
+    private void OpenNew(string sourceId)
+    {
+        var source = Sources.Get(sourceId) ?? Sources.All[0];
+        _source = source.Id;
+        _settings = source.Settings.Select(s => new FormSetting(s)).ToList();
+        // A plugin's webhook is usually named after it; the generic one after what sends.
+        _name = source.Id == WebhookSources.Indx ? null : source.Label;
+        _idField = _versionField = _formError = null;
+        _brake = "10";
+        _editing = null;
+        _newOpen = true;
+    }
+
+    /// <summary>The same form, filled in from the webhook. Secret settings start empty: left so,
+    /// the one set is kept.</summary>
+    private void OpenEdit(Webhook hook)
+    {
+        var source = Sources.For(hook);
+        var config = SourceSettings.Parse(hook.SourceConfig);
+        _source = source.Id;
+        _settings = source.Settings.Select(s => new FormSetting(s)
+        {
+            Value = s.Secret ? null
+                : s.Key == SourceSettings.SyncEveryHoursKey ? (config == null ? s.Default : SourceSettings.Hours(config)?.ToString())
+                : SourceSettings.Text(config, s.Key) ?? s.Default,
+        }).ToList();
+        _name = hook.Name;
+        _idField = hook.IdField;
+        _versionField = hook.VersionField;
+        _brake = (hook.BrakeShare * 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture);
+        _formError = null;
+        _editing = hook;
+        _newOpen = true;
+    }
+
+    private void Create()
+    {
+        _formError = null;
+        if (!TryPercent(_brake, out var share)) { _formError = "The brake is a percent above 0 and at most 100."; return; }
+        JsonObject? settings = null;
+        if (_settings.Count > 0)
+        {
+            settings = new JsonObject();
+            // An empty field is left out, so the source takes its default, except the schedule,
+            // where empty means never.
+            foreach (var f in _settings)
+                if (!string.IsNullOrWhiteSpace(f.Value)) settings[f.Setting.Key] = f.Value.Trim();
+                else if (f.Setting.Key == SourceSettings.SyncEveryHoursKey) settings[f.Setting.Key] = null;
+        }
+        if (_editing != null)
+        {
+            var (updated, updateProblem) = Admin.Update(_editing, new WebhookAdmin.NewWebhook(_name, null, _versionField, share, null, settings));
+            if (updated == null) { _formError = updateProblem; return; }
+            _newOpen = false;
+            _editing = null;
+            Toasts.Show($"Saved {updated.Name}.", DatasetIcons.Save);
+            Load();
+            return;
+        }
+        var (hook, problem) = Admin.Create(Ctx.TeamId, Ctx.Name, new WebhookAdmin.NewWebhook(_name, _idField, _versionField, share, _source, settings));
+        if (hook == null) { _formError = problem; return; }
+        _newOpen = false;
+        _selectedId = hook.Id;
+        if (Sources.For(hook).Pulls) _syncAsked = hook.Id;
+        ShowSecret(hook, hook.Secret, isNew: true);
+        Load();
+    }
+
+    private void RotateSecret(Webhook hook)
+    {
+        if (Admin.RotateSecret(hook) is not { } secret) { Toasts.Error("The webhook is gone."); Load(); return; }
+        ShowSecret(hook, secret, isNew: false);
+    }
+
+    private void ShowSecret(Webhook hook, string secret, bool isNew)
+    {
+        _secretHook = hook;
+        _secret = secret;
+        _secretIsNew = isNew;
+        _secretOpen = true;
+    }
+
+    private void DeleteHook(Webhook hook)
+    {
+        Store.Delete(hook.Id);
+        _selectedId = null;
+        Toasts.Show($"Deleted the webhook {hook.Name}.", DatasetIcons.Delete);
+        Load();
+    }
+
+    private void RequestSync(Webhook hook)
+    {
+        if (!Admin.RequestSync(hook)) return;
+        _syncAsked = hook.Id;
+        Toasts.Show($"Fetching the full set from {Sources.For(hook).Label}.", DatasetIcons.Restore);
+        Load();
+    }
+
+    private async Task ApplyHeldAsync(string heldId)
+    {
+        if (Selected?.Hook is not { } hook) return;
+        _busy = heldId;
+        try
+        {
+            var result = await Admin.ApplyHeldAsync(hook, heldId);
+            if (result == WebhookAdmin.HeldResult.Busy)
+                Toasts.Error("The dataset is loading or being rebuilt, so the batch is held again. Try in a moment.");
+            else if (result == WebhookAdmin.HeldResult.Applied)
+                Toasts.Show("Applied the held batch.", DatasetIcons.Yes);
+        }
+        finally
+        {
+            _busy = null;
+            Load();
+            Ctx.RefreshStatus();
+            Ctx.NotifyChanged();
+        }
+    }
+
+    private const string AllHeld = "*";
+
+    private WebhookHeldSummary HeldSummary(Webhook hook)
+    {
+        // The documents are read only from an engine that is loaded: the tab never wakes one.
+        var engine = Ctx.FindEngine();
+        return WebhookHeldSummary.Of(hook, _held, ids => Store.Keys(hook.TeamId, hook.DatasetName, ids),
+            key => engine is { IsDisposed: false } e && e.Status.SystemState == Indx.Api.SystemState.Ready && e.GetJsonDataOfKey(key) is { Length: > 0 } json ? json : null);
+    }
+
+    private static string Documents(int n) => n == 1 ? "1 document" : $"{n:N0} documents";
+
+    private static string HeldHeadline(WebhookHeldSummary s) =>
+        s.HasSync && s.Deletes + s.Changes == 0 ? "A full set is waiting"
+        : s.OnlyDeletes ? $"{Documents(s.Deletes)} {(s.Deletes == 1 ? "is" : "are")} waiting to be deleted"
+        : s.Deletes == 0 ? $"{s.Changes:N0} {(s.Changes == 1 ? "change is" : "changes are")} waiting"
+        : $"{s.Deletes + s.Changes:N0} changes are waiting, {s.Deletes:N0} of them deletions";
+
+    private string HeldExplanation(WebhookHeldSummary s, Webhook hook, string who)
+    {
+        var allowance = $"{Percent(hook.BrakeShare)} of this dataset, at least 20";
+        if (s.HasSync && s.Deletes + s.Changes == 0)
+            return $"It holds {Documents(s.SyncDocuments)}, so many fewer than the dataset has that the brake stopped it ({allowance}). " +
+                   "The documents stay as they are until you decide.";
+        var through = Store.DestructiveSince(hook.TeamId, hook.DatasetName, _held[0].HeldUtc.AddHours(-1));
+        return $"{who} deleted more within an hour than the brake lets through ({allowance}). " +
+               (through > 0 ? $"{through:N0} went through. " : "") +
+               $"These wait, and later changes from {who} wait behind them until you decide.";
+    }
+
+    private static string HeldAdvice(WebhookHeldSummary s, string who) =>
+        s.HasSync && s.Deletes + s.Changes == 0 ? $"If the set is right, replace the documents with it. If not, keep them and put it right in {who}."
+        : s.OnlyDeletes ? $"If they were meant to go, delete them. If not, keep them and put it right in {who}."
+        : $"If the changes are right, apply them. If not, keep the documents as they are and put it right in {who}.";
+
+    private static string HeldApplyLabel(WebhookHeldSummary s) =>
+        s.HasSync && s.Deletes + s.Changes == 0 ? "Replace the documents"
+        : s.OnlyDeletes ? $"Delete the {s.Deletes:N0}"
+        : $"Apply the {s.Deletes + s.Changes:N0} changes";
+
+    private static string HeldKeepLabel(WebhookHeldSummary s) => s.OnlyDeletes ? "Keep them" : "Keep the documents as they are";
+
+    private async Task ApplyAllHeldAsync()
+    {
+        if (Selected?.Hook is not { } hook) return;
+        _busy = AllHeld;
+        try
+        {
+            var (applied, busy) = await Admin.ApplyAllHeldAsync(hook);
+            if (busy) Toasts.Error($"Applied {applied}; the dataset is loading or being rebuilt, so the rest stay held. Try in a moment.");
+            else Toasts.Show("Applied what was waiting.", DatasetIcons.Yes);
+        }
+        finally
+        {
+            _busy = null;
+            Load();
+            Ctx.RefreshStatus();
+            Ctx.NotifyChanged();
+        }
+    }
+
+    private void DiscardAllHeld()
+    {
+        if (Selected?.Hook is not { } hook) return;
+        var discarded = Admin.DiscardAllHeld(hook);
+        Toasts.Show(discarded == 0 ? "Nothing was waiting." : "Kept the documents as they were. Later changes go through again.", DatasetIcons.Yes);
+        Load();
+    }
+
+    private void DiscardHeld(string heldId)
+    {
+        if (_selectedId == null) return;
+        if (Store.Release(_selectedId, heldId) != null) Toasts.Show("Discarded the held batch.", DatasetIcons.Delete);
+        Load();
+    }
+
+    private string HookUrl(Webhook hook) => $"{Nav.BaseUri.TrimEnd('/')}/hooks/{hook.Id}";
+
+    /// <summary>A source's settings as the details list them: secret ones only as set, an option by
+    /// its label, the schedule in words, empty ones left out.</summary>
+    private static IEnumerable<(string Label, string Value, bool Code)> Facts(IWebhookSource source, JsonObject config)
+    {
+        foreach (var s in source.Settings)
+        {
+            if (s.Key == SourceSettings.SyncEveryHoursKey)
+            {
+                yield return (s.Label, SourceSettings.Hours(config) is { } h ? (h == 1 ? "Every hour" : $"Every {h} hours") : "Only when asked", false);
+                continue;
+            }
+            if (SourceSettings.Text(config, s.Key) is not { } value) continue;
+            if (s.Secret) yield return (s.Label, "Set", false);
+            else if (s.Options?.FirstOrDefault(o => o.Value == value) is { } option) yield return (s.Label, option.Label, false);
+            else yield return (s.Label, value, true);
+        }
+    }
+
+    private static string OutcomeLabel(string outcome) => outcome switch
+    {
+        "applied" => "Applied",
+        "synced" => "Full sync",
+        "held" => "Held",
+        "refused" => "Refused",
+        "failed" => "Failed",
+        _ => outcome,
+    };
+
+    private static string Percent(double share) => (share * 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture) + " %";
+
+    private static bool TryPercent(string? text, out double share)
+    {
+        share = 0;
+        if (!double.TryParse((text ?? "").Trim().TrimEnd('%').Trim(), System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out var percent)) return false;
+        share = percent / 100;
+        return share is > 0 and <= 1;
+    }
+
+    public override void Dispose()
+    {
+        StopPolling();
+        base.Dispose();
+    }
+}

@@ -57,6 +57,30 @@ namespace IndxServer.Services
             return string.IsNullOrEmpty(s) ? null : s.Length <= 40 ? s : s[..40];
         }
 
+        /// <summary>The page's language as sent (?locale=), a BCP 47 tag: trimmed, the language part
+        /// in lower case and the region in upper (nb-NO), anything past the region dropped, so one
+        /// language is one row however the page spelt it. Null when empty or not shaped like a tag.</summary>
+        /// <summary>The first tag of an Accept-Language header ("nb-NO,nb;q=0.9,en;q=0.8" is nb-NO),
+        /// the one the browser prefers; null when the header is absent or a wildcard.</summary>
+        public static string? FirstAcceptLanguage(Microsoft.Extensions.Primitives.StringValues header)
+        {
+            var first = header.ToString().Split(',', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault();
+            if (first == null) return null;
+            var tag = first.Split(';')[0].Trim();
+            return tag == "*" || tag.Length == 0 ? null : tag;
+        }
+
+        public static string? CleanLocale(string? locale)
+        {
+            var s = locale?.Trim().Replace('_', '-');
+            if (string.IsNullOrEmpty(s) || s.Length > 35) return null;
+            var parts = s.Split('-', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 0 || parts[0].Length is < 2 or > 3 || !parts[0].All(char.IsAsciiLetter)) return null;
+            var language = parts[0].ToLowerInvariant();
+            var region = parts.Skip(1).FirstOrDefault(p => p.Length == 2 && p.All(char.IsAsciiLetter) || p.Length == 3 && p.All(char.IsAsciiDigit));
+            return region == null ? language : $"{language}-{region.ToUpperInvariant()}";
+        }
+
         /// <summary>Whether the search counted any result: a document holding every query word
         /// within the tolerance (<see cref="Indx.Api.Result.CountedTolerance"/>); false when what
         /// was shown is the fallback, the most words and pattern matches. Null in BM25F alone,

@@ -10,7 +10,7 @@ A self-hosted search service built on [Indx Search](https://indx.co). Blazor Ser
 <tr>
 <td width="50%" valign="top">
 <img src="docs/icons/internet-browser.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Dashboard</b><br>
-<sub>Teams, datasets, field configuration with weight sliders, search preview, status, boost rules, synonyms, options; plus an admin panel</sub>
+<sub>Teams, datasets, field configuration with weight sliders, categories as a tree, search preview, status, statistics, boost rules, synonyms, options; plus an admin panel</sub>
 </td>
 <td width="50%" valign="top">
 <img src="docs/icons/user-group.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Teams</b><br>
@@ -159,6 +159,25 @@ Those two do not wait for the build: they answer `202` when it is started. While
 why it failed, or is null. Field roles are written by `PUT …/fields/configuration` only; the
 per-role lists (`GET …/fields/searchable` and the rest) are for reading.
 
+## Categories
+
+A catalogue has a shape, and the **Categories** tab draws it: every category as a node with the
+number of products in it, the subcategories fanned out to the right, the chosen one with its first
+products beside it. The tree is read from the data as it is. A field whose values are paths, the
+way a product feed writes `product_type` ("Furniture > Chairs > Office chairs"), is one source;
+fields that each hold a level, such as `category.department`, `category.section` and
+`category.type`, are the other. Mark them **Facetable** under Field configuration and the tab
+finds them; mark them **Filterable** too and the chosen category lists its products and can be
+boosted from there, which opens Boost rules with the rule drafted.
+
+![Categories: a shop's hierarchy as a tree of nodes with product counts, opened two levels
+deep](docs/images/console-categories.png)
+
+Open the tree to a level, zoom it out to see more of it, filter the categories by name, or read
+the same tree as a list. Full screen is a click away for a wide catalogue. A category no visitor
+has selected or bought from in the last 90 days carries a small mark, for the editor who wants to
+know where the catalogue is thin; the counts behind the marks are in the category's panel.
+
 ## Boost rules
 
 Ranking rules that lift matching documents when a search runs with `enableBoost`. They are
@@ -188,7 +207,9 @@ search, and nothing is re-indexed.
 Two kinds of entries:
 
 - **Two-way**: all terms are equivalent; matching any of them pulls in the whole group.
-  For inflected forms and spelling variants (*geriatri / geriatrisk / geriatriske*).
+  For different words for the same thing (*legemiddel / medisin*). Not for typos, spelling
+  variants or translation: the search matches characters, and a list in two languages is not a
+  translation.
 - **One-way**: only the **From** term expands, into its synonyms. For acronyms: *hms*
   should bring in *helse, miljø og sikkerhet*, but a search for *helse* must not become
   a search for *hms*. Multi-word terms are matched as whole phrases.
@@ -214,11 +235,19 @@ testing in the console's search preview. Your storefront adds the two things the
 see, which result the visitor chose and whether it led to an order. Each dataset's **Statistics**
 tab shows the result for the last 7, 30 or 90 days.
 
-![The statistics tab for a bookshop: five tiles for searches, fuzzy finds, click-through,
-average click position and conversions, a month of searches and clicks per day
-with changes marked, and the top queries](docs/images/console-statistics.png)
+![The statistics tab for a bookshop: a month of searches and clicks per day with changes
+marked, then the Overview section's tiles and pictures](docs/images/console-statistics.png)
 
 Below the chart, one section at a time, each with its own view settings:
+
+- **Overview** opens with the window's figures, searches, fuzzy finds, click-through, the average
+  click position and, once there are any, conversions, and then the pictures: when people search,
+  as a week-by-hour grid and as a clock of the day; where the searches come from; which result
+  gets chosen; which languages visitors search in; how they type; and the search profile, six
+  shares on one scale with the window before this one drawn behind, so a change is the shape
+  moving.
+![The Overview section: the window's tiles, when people search as a week-by-hour grid and a clock
+of the day, searches by surface, which result is chosen and how people type](docs/images/console-statistics-overview.png)
 
 - **Top queries** gives each query its click-through and the average position of the result
   people chose. A low position means the right document was found and ranked too low. Order by
@@ -250,6 +279,10 @@ does both for you: it sends the session, and a result's `select()` reports the c
 below it: synonyms, boost rules, field configuration, a replace, a reindex, and large document
 changes. When a number moves, the reason is next to it. Only what changed and when is kept,
 never who.
+
+**Languages:** send `locale` with each search, a BCP 47 tag such as `nb-NO` for the language the
+page is in, and the Overview counts the languages visitors search in; without it the browser's
+`Accept-Language` is read. intrface sends it for you.
 
 **Over the API:** `GET …/statistics/overview`, `timeseries`, `queries`, `documents` and `changes`,
 with a Read key. Statistics are stored in their own `stats.db` next to `indx.db`. Raw events are kept
@@ -430,9 +463,26 @@ Instead of placing the file manually, IndxServer can pull its license straight f
 Indx__LicenseToken = <token from your portal license page>
 ```
 
-The download endpoint is **hardcoded** to the Indx portal (`https://license.indx.co/api/license/current`), because only Indx issues licenses, so it is not configurable. Auto-fetch is **token-gated**: with a token set, a **fresh license is fetched on every startup** (the portal rolls Pro/Free expiry forward) and written to `Indx:LicenseFile` (default `./IndxData/indx.license`). **Without a token, auto-fetch is a no-op**: the server never reaches out and relies on a manually placed file or free-tier mode. Fetch failures are logged but never fatal, and the server keeps any existing file, or falls back to free-tier mode. Set the token via environment variable or Key Vault, not in `appsettings.json`.
+The download endpoint is **hardcoded** to the Indx portal (`https://license.indx.co/api/license/current`), because only Indx issues licenses, so it is not configurable. Auto-fetch is **token-gated**: with a token set, a **fresh license is fetched on every startup** (the portal rolls Pro/Free expiry forward) and written to `Indx:LicenseFile` (default `./IndxData/indx.license`). **Without a token, auto-fetch is a no-op**: the server fetches no licence and relies on a manually placed file or free-tier mode. With a token, the daily fetch also sends the server's version in an `X-Indx-Version` header, so we can see which licensed instances a fix has not reached; nothing else about the instance is sent. Fetch failures are logged but never fatal, and the server keeps any existing file, or falls back to free-tier mode. Set the token via environment variable or Key Vault, not in `appsettings.json`.
 
 > **Legacy:** the old `Indx__LicenseDownloadUrl` setting is no longer read. The URL is hardcoded and fetching is driven solely by `Indx__LicenseToken`. Remove it from any existing configuration.
+
+### Updates
+
+Once a day the server asks [license.indx.co](https://license.indx.co) which Indx release is the
+latest. When it is newer than the one running, every admin gets one notification in the console,
+and the admin area shows it under the running version until the server is updated. Email is off for an
+ordinary release (each admin can turn it on under notification settings); a release that fixes a
+security issue says so and is emailed as well. A self-hosted server points at the release on
+GitHub; a Managed instance is updated by Indx, since Azure keeps its files out of the customer's
+reach, and the notice says to write to support@indx.co.
+
+The check is one anonymous request: no token, no instance id, nothing about your data. Switch it
+off with:
+
+```
+Updates__Check = false
+```
 
 ## Deployment
 
@@ -469,6 +519,12 @@ Migrations run automatically on startup. No manual migration steps needed.
 
 ## Dataset lifecycle: keep-alive & hibernation
 
+Each dataset's **Status** tab reads its state at a glance: the index, its document count, when it
+was last built and how long that took, and how it is kept in memory.
+
+![The Status tab: the dataset's state, documents, records on disk, last index build and time to
+index, then searches since load, keep-alive and last used](docs/images/console-status.png)
+
 Because the documents live in `indx.db` while only the index is in memory, datasets can be loaded and unloaded on demand to manage RAM. Each dataset has a **keep-alive policy** (`KeepAliveTimeHrs`), set per dataset on the **Datasets** page (a dataset's *Options* tab) or, across all teams, on **Admin → Datasets**:
 
 | Policy | Behaviour |
@@ -502,9 +558,11 @@ reading the same thing.
 
 ### In the browser
 
-**Admin → Monitor** shows the event stream and the instance figures. It needs no terminal, so it
-is the one to use on a hosted deployment, and it is where the stream is visible when an agent is
-configuring a dataset over MCP or the API.
+**Admin → Monitor** shows the event stream and the instance figures: the process's CPU and memory
+as rings against what the machine allows, with the pressure zones marked, the native memory pool,
+the searches counted and the average a minute over the last hour, and every dataset's state in one
+strip. It needs no terminal, so it is the one to use on a hosted deployment, and it is where the
+stream is visible when an agent is configuring a dataset over MCP or the API.
 
 ![Admin, Monitor: the instance figures above a table of recent events, newest first](docs/images/admin-monitor.png)
 

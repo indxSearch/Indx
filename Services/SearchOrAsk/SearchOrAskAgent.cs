@@ -21,6 +21,10 @@ namespace IndxServer.Services.SearchOrAsk
         private const int AgentMaxTurns = 6;
         private const int AgentRecordsPerSearch = 30;
 
+        /// <summary>How much of a turn's text is held back before the list is shown, in case it is a
+        /// preamble to a search rather than the answer: about a sentence, a few tenths of a second.</summary>
+        private const int PreambleChars = 120;
+
         private static readonly JsonArray AgentTools = (JsonArray)JsonNode.Parse("""
             [
               {"type": "function", "function": {
@@ -35,7 +39,7 @@ namespace IndxServer.Services.SearchOrAsk
                   "required": ["filters"]}}},
               {"type": "function", "function": {
                 "name": "show_results",
-                "description": "Put a list on the visitor's page, below your answer: the search that best answers them, with its order. Call it once, with the filters, text and sort of the list you are going to talk about, before you answer.",
+                "description": "Put a list on the visitor's page, below your answer: the search that best answers them, with its order. Call it once, in the message that answers: write your answer as that message's text and call this beside it, with the filters, text and sort of the list the answer talks about.",
                 "parameters": {"type": "object", "properties": {
                   "filters": {"type": "array", "items": {"type": "object", "properties": {
                     "field": {"type": "string"}, "value": {"type": "string"}, "min": {"type": "number"}, "max": {"type": "number"}},
@@ -58,7 +62,7 @@ namespace IndxServer.Services.SearchOrAsk
             var schema = FilterFields(teamId, dataSetName, engine);
             if (schema.Count == 0) return null;
             var site = SiteDescription(teamId, dataSetName, settings);
-            var messages = new JsonArray(new JsonObject { ["role"] = "system", ["content"] = AgentPrompt(site, settings.FilterNotes, schema) + SearchOrAskRecipes.AnswerStyle(settings) });
+            var messages = new JsonArray(new JsonObject { ["role"] = "system", ["content"] = AgentPrompt(site, settings.FilterNotes, schema) + SearchOrAskRecipes.AnswerStyle(settings) + AgentLanguage(settings) });
             // The conversation so far, with the list each answer put on the page: a follow-up ("which is
             // the largest?") is about that list, and searching it again starts from those filters.
             foreach (var t in history)
@@ -75,33 +79,70 @@ namespace IndxServer.Services.SearchOrAsk
             List<long> shownKeys = [];
             var titleOf = (JsonNode? doc) => doc != null && fields.TitleField != null ? ReadField(doc, fields.TitleField) ?? "" : "";
 
+            // The agent answers in the message that puts its list on the page (show_results), so
+            // the answer needs no turn of its own: one model call fewer, a few seconds of Sonnet's
+            // reading the conversation again. Every turn streams, the first included: the list can
+            // come without a search before it. Text in a turn that goes on to search is a preamble ("Let me look wider"),
+            // and a turn cannot be told from an answer until it ends, so until the list is shown the
+            // first PreambleChars are held back: a preamble is one short sentence, and a turn that
+            // ends in a search drops what it held. A model that still answers in a turn of its own,
+            // after show_results, is streamed from its first word.
+            var listShown = false;
+            var streamed = new StringBuilder();
+            StringBuilder? held = null;
+            var breakBefore = false;
+            long? firstText = null;
+            async Task Emit(string delta)
+            {
+                firstText ??= Ms();
+                if (breakBefore) { delta = "\n\n" + delta; breakBefore = false; }
+                streamed.Append(delta);
+                await send("text", new { delta });
+            }
+            async Task Stream(string delta)
+            {
+                if (held != null)
+                {
+                    held.Append(delta);
+                    if (held.Length < PreambleChars) return;
+                    delta = held.ToString();
+                    held = null;
+                }
+                await Emit(delta);
+            }
+
             await send("status", new { step = "Reading the question" });
             for (var turn = 1; turn <= AgentMaxTurns; turn++)
             {
+                held = listShown ? null : new StringBuilder();
                 JsonNode message;
                 try
                 {
-                    (message, var c) = await _models.ChatAsync(model, messages, AgentTools, ct);
+                    (message, var c) = await _models.ChatAsync(model, messages, AgentTools, ct, Stream);
                     cost += c ?? 0;
                 }
                 catch (Exception ex) when (ex is SearchOrAskModelException or HttpRequestException)
                 {
                     _logger.LogWarning("Search or ask agent failed for {Team}/{Dataset}: {Error}", teamId, dataSetName, ex.Message);
-                    return null;
+                    Refused("answer", ex);
+                    if (streamed.Length == 0) return null;
+                    // Part of the answer is on the page: a second answer after it would read as one.
+                    await send("error", new { code = ex is SearchOrAskModelException { Status: 429 } ? "upstreamBusy" : "failed", message = "The answer could not be written." });
+                    return new AgentOutcome("failed", shownKeys, firstText, cost);
                 }
                 messages.Add(message.DeepClone());
-                var calls = message["tool_calls"]?.AsArray();
-                if (calls == null || calls.Count == 0)
+                var calls = message["tool_calls"]?.AsArray() ?? [];
+                var answer = message["content"]?.GetValue<string>()?.Trim() ?? "";
+                // The last turn: no call, or the list with the answer beside it.
+                var last = calls.Count == 0
+                    || answer.Length > 0 && calls.All(call => call?["function"]?["name"]?.GetValue<string>() == "show_results");
+                if (!last)
                 {
-                    var answer = message["content"]?.GetValue<string>()?.Trim() ?? "";
-                    if (answer.Length == 0) return null;
-                    var firstText = Ms();
-                    // The answer as a few deltas, so a page renders it as it does a streamed one.
-                    foreach (var part in answer.Split("\n\n"))
-                        await send("text", new { delta = part + "\n\n" });
-                    await send("done", new { model, askId, latencyMs = Ms(), turns = turn });
-                    return new AgentOutcome("answered", shownKeys, firstText, cost);
+                    held = null;
+                    // Text streamed in a turn that went on to search again: what comes next is its own paragraph.
+                    if (streamed.Length > 0) breakBefore = true;
                 }
+                if (last && answer.Length == 0 && streamed.Length == 0) return null;
 
                 foreach (var call in calls)
                 {
@@ -113,11 +154,13 @@ namespace IndxServer.Services.SearchOrAsk
                     string result;
                     if (name == "show_results")
                     {
-                        await send("status", new { step = $"Showing {Count(keys)} on the page" });
+                        // Under an answer already on its way, the step would only flicker.
+                        if (streamed.Length == 0) await send("status", new { step = $"Showing {Count(keys)} on the page" });
                         await send("filters", new { filters = used, text, sort, found = keys.Count, more = keys.Count >= CatalogueFound });
                         shownKeys = keys.Take(CatalogueShown).ToList();
                         var shown = shownKeys.Select((k, i) => new AskSource(i + 1, k, titleOf(Parse(engine.GetJsonDataOfKey(k))))).ToArray();
                         await send("sources", shown);
+                        listShown = true;
                         result = $"The page now shows these {Count(keys)}, in that order.";
                     }
                     else
@@ -135,10 +178,13 @@ namespace IndxServer.Services.SearchOrAsk
                             foreach (var line in Summary(docs, schema.Fields)) sb.AppendLine($"- {line}");
                             sb.AppendLine($"The first {Math.Min(AgentRecordsPerSearch, docs.Count)}:");
                             foreach (var doc in docs.Take(AgentRecordsPerSearch))
-                                sb.AppendLine($"- {titleOf(doc)}: {Facts(doc, schema.Fields)}");
+                                sb.AppendLine($"- {titleOf(doc)}: {Facts(doc, schema.Fields, schema.Readable)}");
                         }
                         result = sb.ToString();
                     }
+                    // The language once more after the round's last result: what the agent reads last
+                    // before it writes is records, and records in other languages pulled it along.
+                    if (call == calls[^1]) result += $"\n\n({LanguageAfterResults(settings, question)})";
                     messages.Add(new JsonObject
                     {
                         ["role"] = "tool",
@@ -146,10 +192,35 @@ namespace IndxServer.Services.SearchOrAsk
                         ["content"] = result,
                     });
                 }
+                if (!last) continue;
+
+                if (held is { Length: > 0 }) await Emit(held.ToString());
+                Succeeded("answer");
+                await send("done", new { model, askId, latencyMs = Ms(), turns = turn });
+                return new AgentOutcome("answered", shownKeys, firstText, cost);
             }
             _logger.LogInformation("Search or ask agent ran out of turns for {Team}/{Dataset}", teamId, dataSetName);
-            return null;
+            if (streamed.Length == 0) return null;
+            Succeeded("answer");
+            await send("done", new { model, askId, latencyMs = Ms(), turns = AgentMaxTurns });
+            return new AgentOutcome("answered", shownKeys, firstText, cost);
         }
+
+        /// <summary>The answer's language in the agent's own instructions. The reminder after the
+        /// question was the only one, and the searches came after it: "whats the oldest movie in the
+        /// set?" was answered once in Spanish and once in German (20 Oct 2026), the oldest films being
+        /// silent European ones whose titles and language fields the agent had just read.</summary>
+        private static string AgentLanguage(SearchOrAskSettings settings) =>
+            string.IsNullOrWhiteSpace(settings.AnswerLanguage)
+                ? "\n\nWrite the answer in the language of the visitor's question. The records you read do not change it: a title, a language field or a description in another language is a fact about a record, not the language to answer in."
+                : "";
+
+        /// <summary>The note after a round of search results, naming the question so its language is
+        /// the last thing read before the answer.</summary>
+        private static string LanguageAfterResults(SearchOrAskSettings settings, string question) =>
+            string.IsNullOrWhiteSpace(settings.AnswerLanguage)
+                ? $"When you answer, write in the language of the visitor's question: \"{question}\"."
+                : $"When you answer, write in {settings.AnswerLanguage.Trim()}.";
 
         private static string Count(List<long> keys) => keys.Count >= CatalogueFound ? $"{CatalogueFound} or more" : keys.Count.ToString();
 
@@ -168,8 +239,9 @@ namespace IndxServer.Services.SearchOrAsk
             sb.AppendLine($"""
                 You answer a visitor who typed into the search field of a website. About the site: {site}
 
-                You can search its records with the search tool, as often as you need, and you put the list that
-                answers the visitor on their page with show_results, once, before you answer. Search for what they
+                You can search its records with the search tool, as often as you need. Write no text in a message
+                that searches. When you know the answer, write it in one message that also calls show_results, once,
+                to put the list it talks about on the visitor's page. Search for what they
                 described with filters; when a search finds nothing or too little, try what is nearest (a wider
                 place, a looser condition) and say what you did. When the results mix kinds the visitor would want
                 apart (an arts school among ordinary schools), notice it, and filter it in or out as they meant.
@@ -183,6 +255,11 @@ namespace IndxServer.Services.SearchOrAsk
                 sb.AppendLine();
             }
             if (schema.Sortable.Count > 0) sb.AppendLine($"Sortable: {string.Join(", ", schema.Sortable)}.");
+            // Too many values to list as filters, but in every record found: a question about one
+            // is answered by searching its words ("george miller") and reading the records.
+            if (schema.Readable.Count > 0)
+                sb.AppendLine($"Also in every record found, though not a filter: {string.Join(", ", schema.Readable)}. " +
+                              "To find records by one of these, search its words; to answer about one, read it from the records.");
             if (!string.IsNullOrWhiteSpace(notes)) sb.AppendLine().AppendLine(notes.Trim());
             sb.AppendLine("""
 

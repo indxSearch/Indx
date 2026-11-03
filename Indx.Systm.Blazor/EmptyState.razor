@@ -1,0 +1,34 @@
+@* What a list or a page shows while it has nothing yet: a large icon in a quiet tone, a title, a
+   line saying what would be here and how it gets here, and the action that starts it when there
+   is one to offer here. "default" opens a page (a team with no datasets); "compact" sits inside a
+   tab or a section, under the toolbar that already holds the page's New button. Every empty list
+   in the console draws it the same way. Port of the React EmptyState in indx-systm. *@
+<div class="indx-empty indx-empty-@Size @Class" role="status">
+    @if (Icon != null)
+    {
+        <span class="indx-empty-icon" aria-hidden="true">@Icon(Size == "compact" ? 35 : 70)</span>
+    }
+    <div class="indx-empty-title">@Title</div>
+    @if (ChildContent != null)
+    {
+        <div class="indx-empty-detail">@ChildContent</div>
+    }
+    @if (Actions != null)
+    {
+        <div class="indx-empty-actions">@Actions</div>
+    }
+</div>
+
+@code {
+    /// <summary>A pixl icon, drawn 70px ("default") or 35px ("compact") in lv4.</summary>
+    [Parameter] public RenderFragment<int>? Icon { get; set; }
+    [Parameter, EditorRequired] public string Title { get; set; } = "";
+    /// <summary>The line under the title: what would be here, and how it gets here.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Buttons that start it, primary first. Leave it out where the toolbar above already
+    /// has the page's New button.</summary>
+    [Parameter] public RenderFragment? Actions { get; set; }
+    /// <summary>"default" | "compact".</summary>
+    [Parameter] public string Size { get; set; } = "default";
+    [Parameter] public string? Class { get; set; }
+}

@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.AspNetCore.Identity.UI.Services;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Data.Sqlite;
@@ -50,6 +51,11 @@ internal static class StartupServices
         // ============================================
         // DATABASE CONFIGURATION
         // ============================================
+        // The one data folder (Indx:DataDirectory), before anything reads or writes a data file.
+        DataPaths.Use(builder.Configuration);
+        if (DataPaths.Configured(builder.Configuration) is { } dataDir)
+            foreach (var moved in DataPaths.CarryOver(Path.Combine(builder.Environment.ContentRootPath, "IndxData"), dataDir))
+                Console.WriteLine($"✓ {moved} carried over from the app folder's IndxData to {dataDir}");
         var identityConnectionString = ServerConnectionStrings.GetIdentityConnectionString(builder.Configuration);
         var dbPath = ServerConnectionStrings.ExtractDbPath(identityConnectionString);
         Console.WriteLine($"Using Identity database: {dbPath}");
@@ -107,6 +113,7 @@ internal static class StartupServices
             builder.Configuration.GetSection("Registration"));
         builder.Services.AddScoped<RegistrationValidator>();
         builder.Services.AddSingleton<InstanceSettingsService>();
+        builder.Services.AddSingleton<ExportProgress>();
         builder.Services.AddScoped<BrowserFiles>();
         builder.Services.AddSingleton<IDatasetEngines, ManagerDatasetEngines>();
         builder.Services.AddSingleton<ITeamDatasets>(sp => sp.GetRequiredService<IDatasetEngines>());
@@ -130,6 +137,11 @@ internal static class StartupServices
         // service and the clients alike, so a request sees one consistent choice.
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskSetupProvider>();
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.ISearchOrAskModels, IndxServer.Services.SearchOrAsk.SearchOrAskModelClients>();
+        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskModelLists>();
+        // Incoming webhooks: the store (tables in indx.db), the sources, the applier, and the queue's
+        // worker, one instance so the receiving route can wake it.
+        IndxServer.Services.Webhooks.WebhookServices.AddIndxWebhooks(builder.Services);
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.Webhooks.WebhookWorker>());
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskService>();
 
         // Indx Observr (Notes/Anders/observr-plan.md): the instance reaches out with its licence
@@ -146,6 +158,8 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrTools>();
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrChat>();
         builder.Services.AddScoped<IndxServer.Services.Observr.AgentPanelState>();
+        builder.Services.AddScoped<IndxServer.Services.ConsolePaletteState>();
+        builder.Services.AddScoped<Indx.Systm.Blazor.ToastService>();
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrDigestJob>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.Observr.ObservrDigestJob>());
 
@@ -308,7 +322,7 @@ internal static class StartupServices
         // Anchor the key file to the content root, NOT the process CWD. IndxServer is launched
         // many ways (various VS profiles, `dotnet run`, the published app) whose working directories
         // differ; a CWD-relative path silently resolves to the wrong place and the key isn't found.
-        var jwtKeyFile = Path.Combine(builder.Environment.ContentRootPath, "IndxData", "jwt.key");
+        var jwtKeyFile = Path.Combine(DataPaths.Configured(builder.Configuration) ?? Path.Combine(builder.Environment.ContentRootPath, "IndxData"), "jwt.key");
         var isPlaceholder = jwtkey == defaultKey;
         var keyMissingOrPlaceholder = string.IsNullOrEmpty(jwtkey) || isPlaceholder;
 
@@ -672,46 +686,16 @@ internal static class StartupServices
             options.MaxRequestBodySize = 2_000_000_000;
         });
 
-        // CORS: permissive in dev/test for local frontend work; restricted to
-        // Cors:AllowedOrigins (comma-separated) in Production. Marketplace deployments
-        // pass the App Service hostname here via Bicep app settings.
-        var corsAllowedOrigins = (builder.Configuration["Cors:AllowedOrigins"] ?? "")
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-
-        builder.Services.AddCors(options =>
-        {
-            options.AddPolicy("NewPolicy", policy =>
-            {
-                if (!builder.Environment.IsProduction())
-                {
-                    // Indx-Query-Id must be EXPOSED, not merely sent: a cross-origin client
-                    // (the storefront) can only read CORS-safelisted response headers, and the
-                    // statistics select/convert events reference exactly this header's value.
-                    policy.AllowAnyOrigin()
-                        .AllowAnyMethod()
-                        .AllowAnyHeader()
-                        .WithExposedHeaders("Indx-Query-Id", "Indx-Ask-Id", IndxServer.Services.QueryParameterResolution.ResponseHeader);
-                }
-                else if (corsAllowedOrigins.Length > 0)
-                {
-                    policy.WithOrigins(corsAllowedOrigins)
-                        .AllowAnyMethod()
-                        .AllowAnyHeader()
-                        .WithExposedHeaders("Indx-Query-Id", "Indx-Ask-Id", IndxServer.Services.QueryParameterResolution.ResponseHeader);
-                }
-                else
-                {
-                    // Production with no origins configured: allow no cross-origin browser
-                    // access rather than falling open. Same-origin traffic (the Blazor UI,
-                    // Swagger, MCP, any server-to-server client) is unaffected by CORS.
-                    policy.WithOrigins();
-                    Console.WriteLine(
-                        "⚠ Cors:AllowedOrigins is not set. Browser apps on other origins cannot call " +
-                        "this API until it is (comma-separated list of origins, e.g. " +
-                        "https://app.example.com). Same-origin use is unaffected.");
-                }
-            });
-        });
+        // CORS: any origin outside Production; in Production the origins set on the instance
+        // settings page, or Cors:AllowedOrigins (comma-separated; the Managed App wizard sets it)
+        // until an admin has saved a list. Read per request: Services/InstanceCors.cs.
+        builder.Services.AddCors();
+        builder.Services.Replace(ServiceDescriptor.Singleton<Microsoft.AspNetCore.Cors.Infrastructure.ICorsPolicyProvider, Services.InstanceCorsPolicyProvider>());
+        if (builder.Environment.IsProduction()
+            && Services.InstanceCorsPolicyProvider.FromConfiguration(builder.Configuration).Count == 0)
+            Console.WriteLine(
+                "ℹ Cors:AllowedOrigins is not set. Unless an admin adds origins under Admin > Settings, " +
+                "browser apps on other origins cannot call this API. Same-origin use is unaffected.");
 
         builder.WebHost.ConfigureKestrel(serverOptions =>
         {
@@ -750,10 +734,12 @@ internal static class StartupServices
             });
         builder.Services.AddSingleton<Services.ILicenseBootstrapper, Services.LicenseBootstrapper>();
         // Daily background re-fetch so a long-running instance never lets its on-disk license
-        // go stale. No-op until auto-fetch is configured. See LicenseRefreshJob. Skipped in
-        // Managed mode, where licensing is irrelevant.
-        if (edition == Services.IndxEdition.SelfHost)
-            builder.Services.AddHostedService<Services.LicenseRefreshJob>();
+        // go stale. No-op until auto-fetch is configured. See LicenseRefreshJob. Managed too,
+        // with the token the portal writes into its app settings.
+        builder.Services.AddHostedService<Services.LicenseRefreshJob>();
+        // A newer release, announced to the admins once (Updates:Check false switches it off).
+        builder.Services.AddSingleton<Services.ManagedUpdateClient>();
+        builder.Services.AddHostedService<Services.UpdateCheckJob>();
 
         // Application Insights: only activate when a connection string is configured.
         // The Bicep template provisions an AI resource and injects the connection string

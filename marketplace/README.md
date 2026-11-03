@@ -14,9 +14,9 @@ Local `dotnet run` is unaffected - none of these files are referenced by the pro
 
 ## What gets provisioned per customer
 
-- Linux App Service Plan (default `P1v3`)
-- App Service (Linux, .NET 10) with system-assigned managed identity
-- Storage Account + Azure Files share mounted at `/home/data` (holds `identity.db`, `indx.db`, `indx.license`)
+- Windows App Service Plan (default `P1v3`), as cloud.indx.co runs
+- App Service (Windows, .NET 10, 64-bit) with system-assigned managed identity
+- All data in `D:\home\data`, the app's persistent storage outside `wwwroot` (`identity.db`, `indx.db`, statistics, settings, licence, backups), covered by App Service backups
 - Key Vault holding: JWT signing key, initial admin password, ACS connection string, OAuth client secrets
 - Application Insights (workspace-based) + Log Analytics workspace
 - Diagnostic settings shipping App Service logs to the workspace
@@ -24,7 +24,7 @@ Local `dotnet run` is unaffected - none of these files are referenced by the pro
 
 ## Plans & capacity
 
-This package deploys as the **Managed edition** (`Indx__Edition=Managed`). Per-instance licensing is hidden — there are no `.license` files to manage — and features are gated by the purchased plan via `Indx__Plan` (fixed per marketplace plan, not a customer input):
+This package deploys as the **Managed edition** (`Indx__Edition=Managed`). Per-instance licensing is hidden (the licence arrives on its own, below) and features are gated by the purchased plan via `Indx__Plan` (fixed per marketplace plan, not a customer input):
 
 | Plan | Marketplace visibility | What it includes |
 |------|------------------------|------------------|
@@ -38,56 +38,72 @@ Plans differ by **features**, never by document/dataset capacity (there are no c
 
 ### Lifting the 100K document cap
 
-The engine enforces a 100,000-document limit unless a valid `.license` is present (independent of edition/plan). The Managed package lifts it by **bundling a no-expiry Indx master license**, and the mechanism needs **no env var or bicep change** — it rides the existing build pipeline:
+The engine enforces a 100,000-document limit unless a valid `.license` is present. No build carries
+a licence any more (16 Oct 2026, after one was deployed by mistake), so a Managed instance fetches
+one, like a self-hosted instance with a licence token, and the portal (license.indx.co) delivers
+the token without anyone typing it:
 
-- The master license is generated once via the Eziriz `LicenseGenerator` (`LicensedTo = "Indx Managed"`, no expiry) and placed at `IndxData/indx-managed.license`.
-- `IndxServer.csproj` already publishes it: `<Content Include="IndxData\*.license" CopyToPublishDirectory="PreserveNewest" />`.
-- The engine auto-detects `./IndxData/*.license` at startup → cap lifted. No `Indx:LicenseFile` setting required.
-- `*.license` is gitignored, so the file is **never committed** to the public repo. The Managed package build must have it present in `IndxData/` (developer machine, or CI pulling it from a secret); a clean public/self-host build has no license and runs at the 100K cap (self-hosters add their own free dev license from indx.co).
+1. Partner Center's notification address for the offer is
+   `https://license.indx.co/api/marketplace?sig=<Marketplace:NotificationSig>`. Azure posts to it,
+   with `/resource` added, when a customer deploys, updates or deletes the app.
+2. The portal reads the application back from Azure (a notification is not signed), and on a
+   succeeded deployment makes a Managed licence: its tier from the plan id (`enterprise` in it is
+   Enterprise, `pro` is Pro, else Free), its own token.
+3. With the publisher access the offer grants on the managed resource group, the portal writes
+   the token into the App Service's app settings as `Indx__LicenseToken`. The app restarts,
+   fetches `indx.license` into the data folder, and refreshes it daily. The file runs 90 days from
+   each fetch, so a deleted deployment's licence lapses within that time.
+4. Observr's subscription check reads the same token: Professional and Enterprise include it.
 
-Why this is safe to ship universally: payment is enforced by **Azure** (unpaid subscription → Microsoft suspends it → the app stops), and unlimited documents is already free for anyone via the indx.co developer license, so the bundled license has negligible leak value. Keep the app-binaries blob private/SAS regardless.
+What the portal needs, all in its own configuration: `Marketplace:NotificationSig` and the
+publisher app registration (`TenantId`, `ClientId`, `ClientSecret`). That registration is the
+principal named in the offer's publisher access (Contributor on the managed resource group is
+enough to read the site and write its settings). The admin page (Admin > Licenses) lists each
+deployment and whether its token was written; a failed write is answered with a 500, which makes
+Azure send the notification again for up to 10 hours.
+
+The token is an app setting outside the template, so a redeploy of this template over an existing
+instance must not drop it: the template's `appsettings` resource replaces the whole set.
 
 ## Build and package
 
-Bicep is compiled to ARM JSON before zipping:
+One package per plan, built by `deploy/marketplace-package.sh` (in the private repo, beside the
+deploy scripts) and uploaded to that plan's Technical configuration in Partner Center:
 
 ```bash
-az bicep build --file main.bicep
-# Produces main.json next to main.bicep
+deploy/marketplace-package.sh --plan Professional --version 1.0.0
 ```
 
-Package the three files into a zip for Partner Center:
+The package holds, at its root, `mainTemplate.json` (this folder's `main.bicep`, compiled, with the
+plan as its default), `createUiDefinition.json`, `viewDefinition.json` and `app.zip`, which is
+IndxServer itself. The template installs `app.zip` from the package (`ZipDeploy`, addressed through
+`_artifactsLocation`, which Azure sets), so a customer gets the version the package was certified
+with and nothing of ours has to stay downloadable. The script refuses a build that:
 
-```bash
-zip indxcloud-managed-app.zip main.json createUiDefinition.json viewDefinition.json
-```
+- is not built against the published IndxSearchLib (its `Indx.dll` must be the NuGet package's),
+- carries the brand font (licensed for Indx's own sites; a customer's instance renders in Geist),
+- carries `IndxData` or any `.license` file.
 
-The zip is uploaded to a publisher-controlled Azure Storage container (with public read access on the blob), and the blob URL is referenced by the `applicationDefinition` resource.
+About 66 MB; a managed app definition takes at most 120 MB.
 
 ## One-time publisher setup
 
-These steps happen once per publisher tenant, outside this folder:
+1. **Partner Center commercial account**, enrolled for Azure Application offers.
+2. **The publisher identity** is the `Indx Marketplace` app registration in Indx's tenant. Its
+   service principal is named in each plan's *Publisher management access* with **Contributor**:
+   enough to read the site and write its app settings, which is all the licence portal does. This
+   cannot be changed once the offer is live.
+3. **Notification endpoint URL** (each plan's Technical configuration):
+   `https://license.indx.co/api/marketplace?sig=<Marketplace:NotificationSig>`. Azure adds `/resource`.
+4. **Customer access**: restrict with deny assignments, so the managed resources cannot be changed
+   from the customer's side; read stays available.
+5. The licence portal's `Marketplace` settings (sig and the registration's tenant, client id and
+   secret) set on `indxlicenseportal`.
 
-1. **Microsoft Partner Center commercial account** - sign up at partner.microsoft.com. Required to publish on Marketplace.
-2. **Capture the publisher Entra principal ID** that should retain management access into customer-locked resource groups. Typically a security group containing your support team. Get the object ID via:
-   ```bash
-   az ad group show --group "Indx Support" --query id -o tsv
-   ```
-3. **Create the application definition** in your publisher tenant pointing at the uploaded zip. This is the resource that ties together the package, the publisher principal, and the access role:
-   ```bash
-   az managedapp definition create \
-     --name "IndxServer" \
-     --location "westeurope" \
-     --resource-group "indx-marketplace-rg" \
-     --lock-level "ReadOnly" \
-     --display-name "Indx" \
-     --description "Single-tenant search engine for JSON data" \
-     --authorizations "<publisher-principal-id>:8e3af657-a8ff-443c-a75c-2fe8c4bcb635" \
-     --package-file-uri "https://<your-storage>.blob.core.windows.net/packages/indxcloud-managed-app.zip"
-   ```
-   The role GUID `8e3af657-...` is the built-in **Owner** role; downgrade to **Contributor** (`b24988ac-...`) if you don't need to manage role assignments inside the customer RG.
-
-4. **Submit the offer** in Partner Center under Marketplace offers > New offer > Azure Application > Managed Application plan. Upload the zip, link to your application definition, set pricing, and publish.
+To try a package in our own subscription first, without Partner Center, create a service catalog
+definition from it (`az managedapp definition create --package-file-uri <blob url>` with the
+publisher principal as an authorization) and deploy that. The notification and licence steps then
+need the definition's own `notificationPolicy`.
 
 ## Test locally before submission
 
@@ -124,8 +140,8 @@ App-side hardening (in `IndxServer/Program.cs`) that must land before going live
 - [ ] Lock CORS to the deployed hostname in `Production`.
 - [ ] Add `app.MapHealthChecks("/health")`.
 - [ ] Wire `AddApplicationInsightsTelemetry()` from `APPLICATIONINSIGHTS_CONNECTION_STRING`.
-- [x] Startup logic auto-fetches the license to `Indx:LicenseFile` from the Indx portal when a license token is configured (see `LicenseBootstrapper`).
-- [ ] Switch EF `EnsureCreated()` to `Database.Migrate()` so schema changes can ship to existing customers.
+- [x] Startup logic auto-fetches the license from the Indx portal when a license token is configured (see `LicenseBootstrapper`), Managed included; the portal writes the token (see above).
+- [x] Switch EF `EnsureCreated()` to `Database.Migrate()` so schema changes can ship to existing customers (identity.db migrates at startup; indx.db and stats.db add their tables and columns when missing).
 
 Marketplace-side:
 
@@ -137,13 +153,10 @@ Marketplace-side:
 
 ## Updating an existing customer deployment
 
-Bump the version, recompile, re-upload the zip, then update the application definition. Customers receive an update prompt in their managed application blade.
+Azure never updates an installed Managed App, and a new package version or an updated definition
+reaches new installs only. Updates are ours to deliver: the licence portal deploys a release into
+the install, which then runs it from its own copy (`WEBSITE_RUN_FROM_PACKAGE=1`), and the customer
+starts it from Admin > Settings > Version. `deploy/managed-release.sh` publishes and offers a
+release. The whole design, and why it is built this way, is in `Notes/managed-upgrades.md`.
 
-```bash
-az managedapp definition update \
-  --name "IndxServer" \
-  --resource-group "indx-marketplace-rg" \
-  --package-file-uri "https://<your-storage>.blob.core.windows.net/packages/indxcloud-managed-app-1.1.0.zip"
-```
-
-Schema changes between versions must be backward-compatible during the rolling update window.
+A release must keep the previous one able to read the databases, so an install can go back.

@@ -11,6 +11,12 @@
 }
 .indx-composer:hover,
 .indx-composer:focus-within { border-color: var(--lv5); }
+/* Over MaxLength: the edge takes the signal colour and the note under the field says how far over. */
+.indx-composer-wrap { display: flex; flex-direction: column; gap: 4px; }
+.indx-composer-over,
+.indx-composer-over:hover,
+.indx-composer-over:focus-within { border-color: var(--CSignal); }
+.indx-composer-note { margin: 0; padding: 0 2px; font: var(--text-2xs); color: var(--CSignal); }
 .indx-composer-field { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 8px; }
 .indx-composer-icon { display: inline-flex; align-items: center; height: 30px; flex-shrink: 0; color: var(--lv4); transition: color 0.2s; }
 .indx-composer-field:focus-within .indx-composer-icon { color: var(--lv7); }

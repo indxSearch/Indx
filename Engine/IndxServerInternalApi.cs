@@ -148,7 +148,7 @@ namespace IndxServer.Engine
                 return Path.GetFullPath(LicensePath);
 
             // Auto-detect in ./IndxData directory
-            var dataDir = "./IndxData";
+            var dataDir = IndxServer.Services.DataPaths.Current;
             if (Directory.Exists(dataDir))
             {
                 var licenses = Directory.GetFiles(dataDir, "*.license");
@@ -818,6 +818,7 @@ namespace IndxServer.Engine
             _searchOrAskStore?.Delete(teamId, dataSetName);
             _observrStore?.Delete(teamId, dataSetName);
             _observrConversations?.Delete(teamId, dataSetName);
+            _webhookStore?.DeleteDataset(teamId, dataSetName);
             // Statistics survive a delete by design, so the history says where the gap came from.
             ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Delete);
             return true;
@@ -1047,6 +1048,7 @@ namespace IndxServer.Engine
             _searchOrAskStore?.Rename(teamId, dataSetName, newName);
             _observrStore?.Rename(teamId, dataSetName, newName);
             _observrConversations?.Rename(teamId, dataSetName, newName);
+            _webhookStore?.Rename(teamId, dataSetName, newName);
             MoveSavedEmbeddings(dataSetName, teamId, newName, teamId);
             _logger.LogInformation("{Prefix}renamed to '{NewName}'", MakeLogPrefix(teamId, dataSetName), newName);
 
@@ -1094,6 +1096,7 @@ namespace IndxServer.Engine
             _searchOrAskStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _observrStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _observrConversations?.Transfer(currentTeamId, newTeamId, dataSetName);
+            _webhookStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             MoveSavedEmbeddings(dataSetName, currentTeamId, dataSetName, newTeamId);
 
             // Warm up the engine for the new owning team, same as InitializeSystem does on startup.
@@ -1171,7 +1174,7 @@ namespace IndxServer.Engine
 
         internal IReadOnlyList<LicenseFileInfo> GetLicenseFiles()
         {
-            var dataDir = "./IndxData";
+            var dataDir = IndxServer.Services.DataPaths.Current;
             if (!Directory.Exists(dataDir))
                 return [];
             var activePath = GetLicensePath();
@@ -1188,7 +1191,7 @@ namespace IndxServer.Engine
             var safeName = Path.GetFileName(filename);
             if (!safeName.EndsWith(".license", StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Only .license files are accepted.");
-            var dataDir = "./IndxData";
+            var dataDir = IndxServer.Services.DataPaths.Current;
             Directory.CreateDirectory(dataDir);
             using var fs = File.Create(Path.Combine(dataDir, safeName));
             await content.CopyToAsync(fs);
@@ -1199,8 +1202,8 @@ namespace IndxServer.Engine
             var safeName = Path.GetFileName(filename);
             if (!safeName.EndsWith(".license", StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Only .license files can be deleted.");
-            var dataDir = Path.GetFullPath("./IndxData");
-            var fullPath = Path.GetFullPath(Path.Combine("./IndxData", safeName));
+            var dataDir = Path.GetFullPath(IndxServer.Services.DataPaths.Current);
+            var fullPath = Path.GetFullPath(Path.Combine(IndxServer.Services.DataPaths.Current, safeName));
             if (!fullPath.StartsWith(dataDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
                 throw new ArgumentException("Invalid file path.");
             if (File.Exists(fullPath))
@@ -1489,6 +1492,9 @@ namespace IndxServer.Engine
         internal void AttachObservrStore(Services.Observr.ObservrFindingStore store) => _observrStore = store;
         private Services.Observr.ObservrConversationStore? _observrConversations;
         internal void AttachObservrConversations(Services.Observr.ObservrConversationStore store) => _observrConversations = store;
+        // A dataset's webhooks and their key registry, likewise.
+        private Services.Webhooks.WebhookStore? _webhookStore;
+        internal void AttachWebhookStore(Services.Webhooks.WebhookStore store) => _webhookStore = store;
 
         /// <summary>
         /// Applies the dataset's server-declared key field to the engine's <see cref="DocumentFields"/>
@@ -1632,6 +1638,19 @@ namespace IndxServer.Engine
             return string.IsNullOrEmpty(declared)
                 ? (rawError ?? "Load failed")
                 : DescribeKeyedLoadFailure(declared, rawError);
+        }
+
+        /// <summary>
+        /// Declares a key field for a dataset that has none, ahead of a replace whose documents
+        /// carry it: a webhook's full sync writes each document's number into the field before the
+        /// data exists, so <see cref="SetKeyField"/>'s check against the analyzed fields cannot apply.
+        /// The replace's build keys by it (ApplyDeclaredKeyField). False when one is declared already.
+        /// </summary>
+        internal bool DeclareKeyFieldForReplace(string dataSetName, string teamId, string fieldName)
+        {
+            if (_metadataStore == null || GetDeclaredKeyField(dataSetName, teamId).Length > 0) return false;
+            _metadataStore.SaveKeyField(teamId, dataSetName, fieldName);
+            return true;
         }
 
         /// <summary>

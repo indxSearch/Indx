@@ -15,34 +15,154 @@ namespace IndxServer.Components.Datasets
     public partial class StatisticsTab
     {
         private AskOverviewStat _ask;
+        private AskedAgainStat _askedAgain;
+        private List<AskRephrasingStat> _rephrased = [];
+        private List<AskNeedStat> _needs = [];
+        private AskNeedStat? _need;
+
+        /// <summary>At most this many cells in a need's row: a need asked in more visits shows its
+        /// shares across them, so a busy need does not widen the table.</summary>
+        private const int NeedCells = 24;
+
+        /// <summary>A need's visits as waffle cells, in the same tones as its bar.</summary>
+        private static IReadOnlyList<Waffle.Segment> NeedWaffle(AskNeedStat need)
+        {
+            var segments = new List<Waffle.Segment>();
+            void Add(string label, long n, string color) { if (n > 0) segments.Add(new(label, n, color)); }
+            Add("First try", need.FirstTry, "var(--lv8)");
+            Add("After asking again", need.AfterRewording, "var(--lv5)");
+            Add("Gave up", need.GaveUp, "var(--CSignal)");
+            return segments;
+        }
+
+        /// <summary>How a need's visits ended, as shares of one bar, the way the overview shows how
+        /// the asks ended: first try in the ink, after asking again down the ladder, given up in the
+        /// signal red.</summary>
+        private static IReadOnlyList<BarMeter.Segment> NeedSegments(AskNeedStat need)
+        {
+            var segments = new List<BarMeter.Segment>();
+            void Add(string label, long n, string? color = null) { if (n > 0) segments.Add(new(label, n, color)); }
+            Add("First try", need.FirstTry);
+            Add("After asking again", need.AfterRewording);
+            Add("Gave up", need.GaveUp, "var(--CSignal)");
+            return segments;
+        }
+        private AskBudgetStat _askBudget;
         private List<AskQuestionStat> _askQuestions = [];
         private List<AskOfferStat> _askOffers = [];
-        private string _askView = "questions";
+        private string _askView = "overview";
+        // The section's pictures: the window day by day, the budget day by day and today's, and
+        // when people ask.
+        private List<AskDayStat> _askDays = [];
+        private List<AskBudgetDayStat> _askBudgetDays = [];
+        private long _askCallsToday;
+        private int _askBudgetToday;
+        private WeekHourStat? _askWeekHour;
+        private (long[] Calls, long[] Spent)? _askHours;
+
+        private long _askFromDay, _askToDay;
 
         [Inject] private SearchOrAskService SearchOrAsk { get; set; } = default!;
 
         /// <summary>Only while the instance shows the feature, and once there is something to show.</summary>
+        /// <summary>Whether the answers cite sources to open: documentation's do. A catalogue's answer
+        /// puts its list on the page instead, so a count of sources opened would always read 0.</summary>
+        private bool CitesSources => _citesSources;
+        private bool _citesSources = true;
+
         private bool HasSearchOrAsk => SearchOrAsk.ShownFor(Ctx.TeamId, Ctx.Name) && (_ask.Judged > 0 || _ask.Asks > 0);
 
         private IEnumerable<Tabs.TabItem> SearchOrAskSection =>
             HasSearchOrAsk ? [new("Search or ask", "search-or-ask", DatasetIcons.SearchOrAsk)] : [];
 
-        private static readonly List<Tabs.TabItem> AskViewItems =
+        // Overview first and the default, the pictures; Questions, what to write next; Offers.
+        private static readonly List<SegmentedControl.Item> AskViewItems =
         [
-            new("Questions", "questions"), new("Offers", "offers"),
+            new("overview", "Overview", DatasetIcons.AskOverview),
+            new("needs", "Needs", DatasetIcons.AskNeeds),
+            new("questions", "Questions", DatasetIcons.AskQuestions),
+            new("offers", "Offers", DatasetIcons.AskOffers),
         ];
 
         private void LoadSearchOrAsk(StatisticsStore store, string team, string ds, long fromDay, long toDay, string? source)
         {
+            _citesSources = SearchOrAsk.Settings(team, ds).Kind != SearchOrAskRecipes.Catalogue;
             _ask = store.AskOverview(team, ds, fromDay, toDay, source);
+            // The budget belongs to the dataset, not to a surface: the whole window whatever the source.
+            _askBudget = store.AskBudget(team, ds, fromDay, toDay);
             _askQuestions = HasSearchOrAsk ? store.TopQuestions(team, ds, fromDay, toDay, 25, source) : [];
+            (_askedAgain, _rephrased) = HasSearchOrAsk ? store.AskedAgain(team, ds, fromDay, toDay, 25, source) : (default, []);
+            _needs = HasSearchOrAsk ? store.AskNeeds(team, ds, fromDay, toDay, 25, source) : [];
             _askOffers = HasSearchOrAsk ? store.TopOffers(team, ds, fromDay, toDay, 25, source) : [];
+            (_askFromDay, _askToDay) = (fromDay, toDay);
+            _askDays = HasSearchOrAsk ? store.AsksByDay(team, ds, fromDay, toDay, source) : [];
+            _askBudgetDays = HasSearchOrAsk ? store.BudgetByDay(team, ds, fromDay, toDay) : [];
+            _askHours = HasSearchOrAsk ? store.BudgetCallsByHour(team, ds, Math.Max(fromDay, toDay - Stats.RetentionDays + 1), toDay) : null;
+            _askWeekHour = HasSearchOrAsk ? store.AsksByWeekHour(team, ds, Math.Max(fromDay, toDay - Stats.RetentionDays + 1), toDay, source) : null;
+            // Today against its budget: the budget's day is UTC, as the service counts it.
+            long todayUtc = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            _askCallsToday = HasSearchOrAsk ? store.BudgetCalls(team, ds, todayUtc) : 0;
+            _askBudgetToday = SearchOrAsk.Settings(team, ds).DailyCallBudget;
             if (!HasSearchOrAsk && _section == "search-or-ask") _section = "queries";
+        }
+
+        /// <summary>How the asks ended, as shares of one bar: answered in the ink, the rest down
+        /// the ladder, failed in the signal red. "Sources could not answer" is the unanswered less
+        /// the ones that found nothing, which are their own segment.</summary>
+        private IReadOnlyList<BarMeter.Segment> AskOutcomeSegments()
+        {
+            var segments = new List<BarMeter.Segment>();
+            void Add(string label, long n, string? color = null) { if (n > 0) segments.Add(new(label, n, color)); }
+            Add("Answered", _ask.Answered);
+            Add("Nothing found", _ask.NothingFound);
+            Add("Sources could not answer", Math.Max(0, _ask.Unanswered - _ask.NothingFound));
+            Add("Stopped", _ask.Stopped);
+            Add("Failed", _ask.Failed, "var(--CSignal)");
+            return segments;
+        }
+
+        /// <summary>Offers and asks, one value a day across the window, days with nothing as zero.</summary>
+        private (double[] Offers, double[] Asks, double[] Cost, string[] Labels) AskDaySeries()
+        {
+            int days = (int)(_askToDay - _askFromDay + 1);
+            var byDay = _askDays.ToDictionary(d => d.Day);
+            var offers = new double[days]; var asks = new double[days]; var cost = new double[days]; var labels = new string[days];
+            int epoch = DateOnly.Parse("1970-01-01").DayNumber;
+            for (int i = 0; i < days; i++)
+            {
+                var d = byDay.GetValueOrDefault(_askFromDay + i);
+                offers[i] = d.Offers; asks[i] = d.Asks; cost[i] = d.Cost;
+                labels[i] = DateOnly.FromDayNumber((int)(_askFromDay + i) + epoch).ToString("d MMM");
+            }
+            return (offers, asks, cost, labels);
+        }
+
+        /// <summary>The calls per day against the budget, the window's days in order; the budget
+        /// shown is the largest any day in the window had, since it can be changed under Options.</summary>
+        private (double[] Calls, int Budget, string[] Labels) AskBudgetSeries()
+        {
+            int days = (int)(_askToDay - _askFromDay + 1);
+            var byDay = _askBudgetDays.ToDictionary(d => d.Day);
+            var calls = new double[days]; var labels = new string[days];
+            int epoch = DateOnly.Parse("1970-01-01").DayNumber;
+            for (int i = 0; i < days; i++)
+            {
+                calls[i] = byDay.GetValueOrDefault(_askFromDay + i).Calls;
+                labels[i] = DateOnly.FromDayNumber((int)(_askFromDay + i) + epoch).ToString("d MMM");
+            }
+            int budget = _askBudgetDays.Count > 0 ? _askBudgetDays.Max(d => d.Budget) : _askBudgetToday;
+            return (calls, budget, labels);
         }
 
         private static string Usd(double usd) => usd == 0 ? "–" : usd < 0.01 ? "< $0.01" : usd.ToString("$#,##0.00");
 
         private static string Seconds(long? ms) => ms is long m ? (m / 1000.0).ToString("0.0 s") : "–";
+
+        /// <summary>The budget tile's line: the days it ran out on, or the busiest day against its budget.</summary>
+        private string BudgetLine =>
+            _askBudget.DaysRunOut > 0 ? $"ran out on {_askBudget.DaysRunOut} {(_askBudget.DaysRunOut == 1 ? "day" : "days")}, {N(_askBudget.Refused)} turned away"
+            : _askBudget.PeakBudget > 0 ? $"busiest day {N(_askBudget.PeakCalls)} of {N(_askBudget.PeakBudget)}"
+            : "";
 
         private static string Score(double? p) => p is double v ? v.ToString("0.00") : "–";
 

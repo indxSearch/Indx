@@ -4,22 +4,15 @@
 @using IndxServer.Models
 
 @inherits DatasetTabBase
-@inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
 @inject IndxServer.Services.Observr.AgentPanelState Agent
 @inject IServiceProvider Services
 @if (!Active) { return; }
 
 @if (!Ctx.IsSaving)
 {
-    @* The whole-setup action first, on its own row at the left as on Search or ask; the toolbar's
-       right side is the view's own controls. *@
-    @if (Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
-    {
-        <div class="indx-list-toolbar">
-            <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Disabled="@Ctx.IsDirty" @onclick="ReviewInAgent">Review my setup</Button></span>
-        </div>
-    }
-    <FieldConfigToolbar @bind-Filter="_filter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced" />
+    <FieldConfigToolbar @bind-Filter="_filter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced">
+        <ObservrPageAction Label="Review my setup" OnClick="ReviewInAgent" Disabled="@Ctx.IsDirty" />
+    </FieldConfigToolbar>
 }
 
 @if (!string.IsNullOrEmpty(_saveError))
@@ -42,6 +35,13 @@ else if (Ctx.EditedFields is { } fields)
     @* The page action pattern (app.css): Save / Cancel in a bar that appears once something
        changed and sticks to the window bottom, since this table is often taller than the screen.
        Export and import close the page. The document key follows below. *@
+    @if (ChangedUnderEdit)
+    {
+        <Alert Variant="warning">
+            <Title>Observr changed the saved field setup</Title>
+            <Description>You have unsaved changes here. Save keeps yours; Cancel shows the ones Observr applied.</Description>
+        </Alert>
+    }
     <SaveBar Visible="@(Ctx.IsEditor && Ctx.IsDirty)" Message="Unsaved changes">
         <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" @onclick="Save" disabled="@(!Ctx.HasSearchable)">Save</Button>
         <Button Variant="secondary" Size="micro" @onclick="Cancel">Cancel</Button>
@@ -163,6 +163,23 @@ else if (Ctx.EditedFields is { } fields)
             try { await Render(); }
             catch (ObjectDisposedException) { }
         }
+    }
+
+    /// <summary>Set when Observr changed the saved fields while the working copy held unsaved edits.</summary>
+    private bool _changedUnderEdit;
+    /// <summary>The notice, while the edits it is about are still unsaved: a Save or a Cancel ends
+    /// them, and with them the notice, so a later edit does not show it for an old change.</summary>
+    private bool ChangedUnderEdit { get { if (!Ctx.IsDirty) _changedUnderEdit = false; return _changedUnderEdit; } }
+
+    /// <summary>A field change Observr applied (the rebuild is done by then): the fields are read
+    /// again, unless the working copy holds edits, which stay with a notice.</summary>
+    protected override void OnObservrApplied(IReadOnlySet<string> kinds)
+    {
+        if (!kinds.Contains(IndxServer.Services.Observr.ObservrProposal.FieldKind)) return;
+        if (Ctx.IsDirty) { _changedUnderEdit = true; return; }
+        _changedUnderEdit = false;
+        Ctx.RefreshFieldsFromEngine();
+        Ctx.RefreshStatus();
     }
 
     public override void Dispose()

@@ -14,26 +14,39 @@ namespace IndxServer.Controllers
     /// Team scoping, authentication and the error contract are declared on
     /// <see cref="DatasetApiController"/>.
     /// </summary>
-    // Experimental: kept out of the API description until it ships (Notes/search-or-ask-server.md).
-    [ApiExplorerSettings(IgnoreApi = true)]
+    // In the API description since 21 Oct 2026, with its guide and reference in the docs; it was kept
+    // out while experimental. Its routes still answer 404 until the instance and the dataset show it.
     public class SearchOrAskController(TeamContextResolver resolver, SearchOrAskStore store, SearchOrAskService service,
         StatisticsService statistics)
         : DatasetApiController(resolver)
     {
         private const string Route = DataSetRoute + "/search-or-ask";
 
-        public sealed record IntentRequest(string? Text);
+        /// <summary>The text to judge. <c>Prefetch</c>: asked while the visitor still types, ahead
+        /// of the pause; it warms the judge's cache and is not counted as a judgement.</summary>
+        public sealed record IntentRequest(string? Text, bool Prefetch = false);
         public sealed record FiltersRequest(string? Text);
 
         /// <summary>The window's Search or ask statistics. Rates are null where nothing was offered
-        /// or asked. Cost is in USD as OpenRouter reports it, judge and answers together.</summary>
+        /// or asked. AskedAgain counts the questions a visitor asked again in other words soon after,
+        /// in the same session (a sign the answer missed), over the asks that carried a session;
+        /// Rephrased lists the pairs; Needs bundles the questions into what visitors wanted, each with its
+        /// wordings, how its visits ended and the records its answers landed on. Cost is in USD as
+        /// OpenRouter reports it, judge and answers together. Asks are the questions visitors chose to
+        /// ask; ProactiveAnswers the answers the proactive mode wrote on its own, which the outcomes,
+        /// opened sources and cost include.</summary>
         public sealed record SearchOrAskStatisticsResponse(
             long Judged, long Offers, long StrongOffers, long Asks, double? TakeRate,
             long Answered, long NothingFound, long Failed, long Stopped, long Unanswered, double? UnansweredRate,
             long SourcesOpened, double? SourcesOpenedPerAnswer, double Cost, long? MedianFirstTextMs,
-            AskQuestionStat[] Questions, AskOfferStat[] Offered);
-        /// <summary>A question, and for a follow-up the conversation so far (the last three turns are used).</summary>
-        public sealed record AskRequest(string? Question, AskTurn[]? History = null);
+            AskQuestionStat[] Questions, AskOfferStat[] Offered,
+            long Calls = 0, long CallsRefused = 0, int DaysBudgetRanOut = 0,
+            long AskedAgain = 0, double? AskedAgainRate = null, AskRephrasingStat[]? Rephrased = null, AskNeedStat[]? Needs = null,
+            long ProactiveAnswers = 0);
+        /// <summary>A question, and for a follow-up the conversation so far (the last three turns are used).
+        /// <c>Proactive</c>: the page started this answer on its own, in the proactive mode, rather
+        /// than the visitor asking; it counts against the day's proactive answers.</summary>
+        public sealed record AskRequest(string? Question, AskTurn[]? History = null, bool Proactive = false);
 
         /// <summary>
         /// What the dataset sets, what it runs with (the site description and fields after defaults),
@@ -50,11 +63,20 @@ namespace IndxServer.Controllers
             if (!FileNameValidity.IsValid(dataSetName))
                 return ApiProblems.InvalidDatasetName(dataSetName);
             var settings = service.Settings(ctx.OwnerKey, dataSetName);
+            // A search key sits in every visitor's browser: the site's knowledge is not for it,
+            // though answers may state what it says. A Read or Full key, or a person, gets them, so a
+            // read, change and write back does not wipe them. A copy: the store's is shared.
+            if (ApiKeyScope.For(HttpContext) is { } scope && !scope.AllowsLevel(ApiKeyLevel.Read) && settings.Knowledge != null)
+            {
+                settings = System.Text.Json.JsonSerializer.Deserialize<SearchOrAskSettings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
+                settings.Knowledge = null;
+            }
             var engine = IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey);
             var fields = SearchOrAskService.Fields(settings, engine?.DocumentFields == null ? null : engine.GetFieldList());
             return new SearchOrAskSettingsResponse(settings,
                 new SearchOrAskEffective(service.SiteDescription(ctx.OwnerKey, dataSetName, settings),
-                    fields.TitleField, fields.SectionFields, fields.SnippetFields),
+                    fields.TitleField, fields.SectionFields, fields.SnippetFields, settings.AskPhrases ?? SearchOrAskPhrases.Default,
+                    service.Setup.ModelFor(settings), settings.SearchesResolved(), service.Setup.OfferedModels),
                 service.Available);
         }
 
@@ -72,6 +94,9 @@ namespace IndxServer.Controllers
                 return ApiProblems.InvalidArgument("A body with the settings is required.");
             if (settings.Validate() is { } invalid)
                 return ApiProblems.InvalidArgument(invalid);
+            settings.AnswerModel = string.IsNullOrWhiteSpace(settings.AnswerModel) ? null : settings.AnswerModel.Trim();
+            if (settings.AnswerModel is { } chosen && !service.Setup.OfferedModels.Contains(chosen))
+                return ApiProblems.InvalidArgument($"answerModel must be one the instance offers: {string.Join(", ", service.Setup.OfferedModels)}.");
             // Whether the dataset has the feature is a team admin's (PUT shown), not an editor's.
             settings.Shown = store.Load(ctx.OwnerKey, dataSetName)?.Shown ?? false;
             store.Save(ctx.OwnerKey, dataSetName, settings);
@@ -117,7 +142,10 @@ namespace IndxServer.Controllers
         /// something an answer would serve, <c>answerable</c>, whether the results could answer it,
         /// and the <c>offer</c> those come to on their own. Call it on a typing pause, beside the
         /// search the page already ran. A judge that is slow or failing answers <c>p</c> 0 with a
-        /// <c>reason</c>; it never fails the call.
+        /// <c>reason</c>; it never fails the call. With <c>prefetch</c> true, call it while the
+        /// visitor types as well, one call in flight at a time: the judge reads the text ahead of
+        /// the pause and keeps its answer, so the pause's own call comes back from that at once.
+        /// Only the pause's call is a judgement in the statistics.
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(Route + "/intent")]
@@ -134,7 +162,7 @@ namespace IndxServer.Controllers
             if (ReadyEngine(dataSetName, ctx.OwnerKey, out var engineError) is not { } engine) return engineError!;
 
             var outcome = await service.IntentAsync(ctx.OwnerKey, dataSetName, engine, text,
-                AuthRateLimiting.ClientIp(HttpContext), HttpContext.RequestAborted, origin: Origin());
+                AuthRateLimiting.ClientIp(HttpContext), HttpContext.RequestAborted, origin: Origin(), prefetch: request?.Prefetch ?? false);
             return Refusal(outcome) ?? (ActionResult<IntentResult>)outcome.Result!;
         }
 
@@ -184,7 +212,8 @@ namespace IndxServer.Controllers
             if (question.Length == 0 || question.Length > SearchOrAskService.MaxQuestion)
                 return ApiProblems.InvalidArgument($"Send {{ question }} of 1 to {SearchOrAskService.MaxQuestion} characters.");
             if (ReadyEngine(dataSetName, ctx.OwnerKey, out var engineError) is not { } engine) return engineError!;
-            if (Refusal(service.CanAsk(ctx.OwnerKey, dataSetName, AuthRateLimiting.ClientIp(HttpContext))) is { } refused)
+            var proactive = request!.Proactive;
+            if (Refusal(service.CanAsk(ctx.OwnerKey, dataSetName, AuthRateLimiting.ClientIp(HttpContext), proactive: proactive)) is { } refused)
                 return refused;
 
             // Minted here so the page has it from the first byte: a select that sends it as its
@@ -204,7 +233,7 @@ namespace IndxServer.Controllers
             try
             {
                 await service.AskAsync(ctx.OwnerKey, dataSetName, engine, question, Send, HttpContext.RequestAborted,
-                    askId: askId, origin: Origin(), history: request!.History);
+                    askId: askId, origin: Origin() with { Proactive = proactive }, history: request.History);
             }
             catch (OperationCanceledException) when (HttpContext.RequestAborted.IsCancellationRequested)
             {
@@ -248,12 +277,20 @@ namespace IndxServer.Controllers
             var src = StatisticsService.CleanSource(source);
             limit = Math.Clamp(limit, 1, 500);
             var o = s.AskOverview(ctx.OwnerKey, dataSetName, fromDay, today, src);
+            var budget = s.AskBudget(ctx.OwnerKey, dataSetName, fromDay, today);
+            var (again, rephrased) = s.AskedAgain(ctx.OwnerKey, dataSetName, fromDay, today, limit, src);
             static double? Rate(double n, double d) => d == 0 ? null : n / d;
             return new SearchOrAskStatisticsResponse(o.Judged, o.Offers, o.StrongOffers, o.Asks, Rate(o.Asks, o.Offers),
-                o.Answered, o.NothingFound, o.Failed, o.Stopped, o.Unanswered, Rate(o.Unanswered, o.Asks),
-                o.SourcesOpened, Rate(o.SourcesOpened, o.Answered), o.Cost, o.MedianFirstTextMs,
+                o.Answered, o.NothingFound, o.Failed, o.Stopped, o.Unanswered, Rate(o.Unanswered, o.Asks + o.ProactiveAnswers),
+                o.SourcesOpened, Rate(o.SourcesOpened, o.Answered), o.Cost + budget.Cost, o.MedianFirstTextMs,
                 s.TopQuestions(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray(),
-                s.TopOffers(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray());
+                s.TopOffers(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray())
+            {
+                Calls = budget.Calls, CallsRefused = budget.Refused, DaysBudgetRanOut = budget.DaysRunOut,
+                AskedAgain = again.AskedAgain, AskedAgainRate = Rate(again.AskedAgain, again.Asks), Rephrased = rephrased.ToArray(),
+                Needs = s.AskNeeds(ctx.OwnerKey, dataSetName, fromDay, today, limit, src).ToArray(),
+                ProactiveAnswers = o.ProactiveAnswers,
+            };
         }
 
         private IServerSearchEngine? ReadyEngine(string dataSetName, string teamId, out ActionResult? error)

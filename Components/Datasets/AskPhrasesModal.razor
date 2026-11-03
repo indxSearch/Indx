@@ -1,0 +1,180 @@
+@* The dataset's Ask phrases, a tab a group (28 Oct 2026; four textareas before): what the group
+   does, its phrases as fields to edit in place, one to add, and a search within it. A phrase
+   belongs to one group, since where it is taken off is what its group means. Try it, under the
+   tabs, shows on a typed question what the page takes off and what it searches, with the
+   stripping the page runs. Apply hands the list to the tab's working copy; the tab's Save bar
+   saves it. *@
+@using IndxServer.Services.SearchOrAsk
+
+@* A wrapper of this component's own, so its stylesheet reaches the Modal's box to widen it. *@
+<div class="askp-root">
+<Modal Open="Open" OpenChanged="OpenChanged" Title="Ask phrases" Class="askp-modal"
+       Description="The words a question is built with. The page takes them off its start, so the list searches what the question is about.">
+    <div class="askp">
+        <Tabs Items="TabItems" Active="@_group" ActiveChanged="@(v => { _group = v ?? Groups[0].Key; _filter = null; _error = null; })" Size="micro" AriaLabel="Groups" />
+
+        @{ var group = Groups[GroupIndex]; var list = _lists[GroupIndex]; }
+        <p class="askp-help">@group.Help</p>
+
+        <div class="askp-bar">
+            <div class="askp-add">
+                <InputField @bind-Value="_new" placeholder="@group.Example" Error="@_error" aria-label="@($"New {group.Singular}")" />
+                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.ShowMore" @onclick="Add">Add</Button>
+            </div>
+            <div class="askp-search">
+                <SearchField Size="micro" Placeholder="@($"Search {group.Label.ToLowerInvariant()}")" Value="@_filter" ValueChanged="@(v => _filter = v)" />
+            </div>
+        </div>
+
+        <ul class="askp-list" aria-label="@group.Label">
+            @foreach (var entry in Shown(list))
+            {
+                var e = entry;
+                <li class="askp-item" @key="e">
+                    <InputField @bind-Value="e.Text" aria-label="@group.Singular" />
+                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.No" aria-label="@($"Remove {e.Text}")" @onclick="() => { list.Remove(e); }" />
+                </li>
+            }
+        </ul>
+        @if (!Shown(list).Any())
+        {
+            <p class="askp-none">@(string.IsNullOrWhiteSpace(_filter) ? $"No {group.Label.ToLowerInvariant()}. Add one above." : "No phrase matches the search.")</p>
+        }
+
+        @* What the page does with a question, live, from all four groups: the same stripping it runs on every keystroke. *@
+        <div class="askp-try">
+            <InputField Label="Try it" @bind-Value="_try" Immediate placeholder="help me find the movie about the green ogre" />
+            @if (!string.IsNullOrWhiteSpace(_try))
+            {
+                var (text, taken) = SearchOrAskPhrases.Strip(_try, Build());
+                <dl class="askp-result">
+                    <dt>Takes off</dt>
+                    <dd>@(taken.Count > 0 ? string.Join(" · ", taken) : "nothing: the start is not a question's, or nothing of substance would be left")</dd>
+                    <dt>Searches</dt>
+                    <dd class="askp-searches">@text</dd>
+                </dl>
+            }
+        </div>
+
+        @if (_applyError != null) { <Alert Variant="destructive">@_applyError</Alert> }
+        <div class="indx-form-actions">
+            <Button Variant="primary" @onclick="Apply">Apply</Button>
+            <Button Variant="secondary" @onclick="() => OpenChanged.InvokeAsync(false)">Cancel</Button>
+            <span class="askp-actions-end">
+                <Button Variant="ghost" Size="micro" @onclick="UseDefaults">Use the defaults</Button>
+            </span>
+        </div>
+    </div>
+</Modal>
+</div>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    /// <summary>The dataset's own phrases; null runs with <see cref="SearchOrAskPhrases.Default"/>.</summary>
+    [Parameter] public SearchOrAskPhrases? Phrases { get; set; }
+    /// <summary>The list as applied; null when it is the defaults.</summary>
+    [Parameter] public EventCallback<SearchOrAskPhrases?> OnApply { get; set; }
+
+    private sealed record Group(string Key, string Label, string Singular, string Example, string Help);
+
+    // The tabs, in the order the page takes them off.
+    private static readonly Group[] Groups =
+    [
+        new("leadIns", "Lead-ins", "lead-in", "help me find",
+            "How a question starts. Taken off with what follows it: \"help me find the movie about the green ogre\" searches \"green ogre\"."),
+        new("frames", "Asked for", "name for the records", "the movie",
+            "The records' names, as visitors say them. Taken off after a lead-in (\"which movie has tom hanks\" searches \"tom hanks\"), and off the end of a question."),
+        new("links", "Links", "link", "about",
+            "The word that joins what is asked for to the rest: \"the movie about a rat in paris\" searches \"rat in paris\"."),
+        new("articles", "Articles", "article", "the",
+            "Taken off before the subject once the start is a question's: \"help me find a green ogre\" searches \"green ogre\". Never a question on their own."),
+    ];
+
+    private sealed class Entry(string text) { public string? Text { get; set; } = text; }
+
+    private List<Entry>[] _lists = [[], [], [], []];
+    private string _group = Groups[0].Key;
+    private bool _wasOpen;
+    private string? _filter;
+    private string? _new;
+    private string? _error;
+    private string? _applyError;
+    private string? _try;
+
+    private int GroupIndex => Math.Max(0, Array.FindIndex(Groups, g => g.Key == _group));
+
+    private IEnumerable<Tabs.TabItem> TabItems => Groups.Select((g, i) =>
+        new Tabs.TabItem(g.Label, g.Key, Badge: Clean(_lists[i]).Count().ToString(), BadgeTone: "info"));
+
+    // Read afresh each time it opens, so Cancel leaves nothing behind.
+    protected override void OnParametersSet()
+    {
+        if (Open && !_wasOpen) Load(Phrases ?? SearchOrAskPhrases.Default);
+        _wasOpen = Open;
+    }
+
+    private void Load(SearchOrAskPhrases from)
+    {
+        _lists = Lists(from).Select(l => l.Select(p => new Entry(p)).ToList()).ToArray();
+        _filter = _new = _error = _applyError = null;
+    }
+
+    private static List<string>[] Lists(SearchOrAskPhrases p) => [p.LeadIns, p.Frames, p.Links, p.Articles];
+
+    private static string Norm(string? text) =>
+        string.Join(' ', (text ?? "").Trim().ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    private static IEnumerable<string> Clean(List<Entry> list) => list.Select(e => Norm(e.Text)).Where(t => t.Length > 0);
+
+    private IEnumerable<Entry> Shown(List<Entry> list) => string.IsNullOrWhiteSpace(_filter)
+        ? list
+        : list.Where(e => (e.Text ?? "").Contains(_filter.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    private void Add()
+    {
+        _error = null;
+        var phrase = Norm(_new);
+        if (phrase.Length == 0) return;
+        if (phrase.Length > SearchOrAskPhrases.MaxLength) { _error = $"At most {SearchOrAskPhrases.MaxLength} characters"; return; }
+        // One group a phrase: where it is taken off is what its group means.
+        for (int g = 0; g < Groups.Length; g++)
+            if (Clean(_lists[g]).Contains(phrase))
+            {
+                _error = g == GroupIndex ? "Already here" : $"Already in {Groups[g].Label}";
+                return;
+            }
+        // A new phrase goes to the top, where it is seen.
+        _lists[GroupIndex].Insert(0, new Entry(phrase));
+        _new = null;
+        _filter = null;
+    }
+
+    private void UseDefaults() => Load(SearchOrAskPhrases.Default);
+
+    private SearchOrAskPhrases Build()
+    {
+        var p = new SearchOrAskPhrases();
+        var lists = Lists(p);
+        for (int g = 0; g < lists.Length; g++)
+            lists[g].AddRange(Clean(_lists[g]).Distinct());
+        return p;
+    }
+
+    private async Task Apply()
+    {
+        _applyError = null;
+        var p = Build();
+        var lists = Lists(p);
+        // An edit can make two groups hold the same phrase; say which, rather than keep one silently.
+        var twice = lists.SelectMany((l, g) => l.Select(t => (t, g))).GroupBy(x => x.t).FirstOrDefault(x => x.Count() > 1);
+        if (twice != null) { _applyError = $"\"{twice.Key}\" is in {string.Join(" and ", twice.Select(x => Groups[x.g].Label))}. Keep it in one."; return; }
+        if (p.Validate() is { } problem) { _applyError = problem; return; }
+        var defaults = Lists(SearchOrAskPhrases.Default);
+        bool isDefault = lists.Zip(defaults).All(x => x.First.SequenceEqual(x.Second));
+        bool empty = lists.All(l => l.Count == 0);
+        // The defaults as they are, or nothing at all, is the dataset running with the defaults.
+        await OnApply.InvokeAsync(isDefault || empty ? null : p);
+        await OpenChanged.InvokeAsync(false);
+    }
+}

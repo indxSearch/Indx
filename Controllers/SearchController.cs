@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Cors;
 using Microsoft.AspNetCore.Mvc;
+using System.Diagnostics;
 using System.Security.Claims;
 using System.Text;
 using System.Text.Json;
@@ -23,9 +24,24 @@ namespace IndxServer.Controllers
     /// <see cref="DatasetApiController"/>.
     /// </summary>
     public class SearchController(TeamContextResolver resolver, StatisticsService statistics,
-        QueryParameterStore queryParameters)
+        QueryParameterStore queryParameters, IConfiguration configuration)
         : DatasetApiController(resolver)
     {
+        /// <summary>A search's own steps as a <c>Server-Timing</c> header (milliseconds): the team
+        /// lookup, the dataset lookup with its state check, the engine's search, and what follows it
+        /// (the query-parameter header, the statistics). What a browser's network panel and
+        /// <c>curl -D -</c> show, so the time a search costs can be split from the outside: on
+        /// cloud.indx.co a search took about twice the library's own time (22 Oct 2026), and this is
+        /// how to see where. Off with <c>Indx:ServerTiming=false</c>.</summary>
+        private void ServerTiming(long start, long team, long dataset, long search)
+        {
+            if (!configuration.GetValue("Indx:ServerTiming", true)) return;
+            var end = Stopwatch.GetTimestamp();
+            static string Ms(long from, long to) => Stopwatch.GetElapsedTime(from, to).TotalMilliseconds.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+            Response.Headers["Server-Timing"] =
+                $"team;dur={Ms(start, team)}, dataset;dur={Ms(team, dataset)}, search;dur={Ms(dataset, search)}, after;dur={Ms(search, end)}, total;dur={Ms(start, end)}";
+        }
+
         /// <summary>
         /// Search will validate the search query and return the search result.
         /// </summary>
@@ -33,7 +49,9 @@ namespace IndxServer.Controllers
         [HttpPost(DataSetRoute + "/search")]
         public ActionResult<Indx.Api.Result> Search(string teamName, string dataSetName, [FromBody] QueryProxy query)
         {
+            var tStart = Stopwatch.GetTimestamp();
             var ctx = ResolveTeam(teamName, out var error);
+            var tTeam = Stopwatch.GetTimestamp();
             if (ctx == null) return error!;
             if (query == null)
                 return ApiProblems.InvalidArgument("Search query body is required");
@@ -42,9 +60,14 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "Search", SystemState.Ready) is { } stateError)
                 return stateError;
+            var tDataset = Stopwatch.GetTimestamp();
+            // When the search was asked for, not when it finished: a short text can take longer than
+            // the keystroke after it, and the keystroke rule reads the session's searches in order.
+            long askedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             try
             {
                 Indx.Api.Result res = IndxServerInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey, out var resolvedFilterKey);
+                var tSearch = Stopwatch.GetTimestamp();
                 // Which values the dataset's query parameters decided, because the request left
                 // them out: "why does my search find so few" is answered by one response. Absent
                 // when the request (or the engine default) decided everything.
@@ -64,6 +87,10 @@ namespace IndxServer.Controllers
                     // ?session= is any per-page-load random id. It identifies no one; it lets the
                     // rollup see that "o", "os", "osl", "oslo" were one visitor typing one search.
                     var session = Request.Query["session"].FirstOrDefault();
+                    // ?typed= is what the visitor typed when the page searched something else for
+                    // it (the Ask phrases taken off a question): the keystroke rule follows the
+                    // typing, which the searched text jumps out of as the phrases start to match.
+                    var typed = Request.Query["typed"].FirstOrDefault();
                     // ?source=<name> names the surface the search came from: a search box, an app,
                     // an agent. ?count=false says it is not a visitor's search - an agent looking at
                     // what a query returns, a monitor, a test - so it is stored but left out of
@@ -72,6 +99,14 @@ namespace IndxServer.Controllers
                     // one ?probe= did both, and a surface that should count could not be named.
                     // A caller can only hide its own searches.
                     var source = StatisticsService.CleanSource(Request.Query["source"].FirstOrDefault());
+                    // ?locale=<tag> is the language the page was in, as the storefront reports it
+                    // (intrface sends the document's lang, else the browser's). Without it, the
+                    // browser's own preference from Accept-Language, which a storefront calling from
+                    // the visitor's browser sends for free; a server calling on the visitor's behalf
+                    // sends its own or none, and then ?locale= is the way. Which languages people
+                    // search in, not where they are: nothing here reads an address.
+                    var locale = StatisticsService.CleanLocale(Request.Query["locale"].FirstOrDefault())
+                                 ?? StatisticsService.CleanLocale(StatisticsService.FirstAcceptLanguage(Request.Headers.AcceptLanguage));
                     bool counted = !string.Equals(Request.Query["count"].FirstOrDefault()?.Trim(), "false",
                         StringComparison.OrdinalIgnoreCase);
                     // The header is minted either way, so a client can always read one; a click
@@ -85,11 +120,14 @@ namespace IndxServer.Controllers
                             // above would have thrown.
                             filterKey,
                             res.Records?.Length ?? 0, string.IsNullOrWhiteSpace(subject) ? null : subject,
-                            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                            askedAt,
                             Session: string.IsNullOrWhiteSpace(session) ? null : session,
                             Source: source, Counted: counted,
-                            Covered: StatisticsService.CoverageConfirmed(query, res)));
+                            Covered: StatisticsService.CoverageConfirmed(query, res),
+                            Typed: string.IsNullOrWhiteSpace(typed) ? null : typed.Length > 1000 ? typed[..1000] : typed,
+                            Locale: locale));
                 }
+                ServerTiming(tStart, tTeam, tDataset, tSearch);
                 return res;
             }
             catch (UnknownFilterException ex)

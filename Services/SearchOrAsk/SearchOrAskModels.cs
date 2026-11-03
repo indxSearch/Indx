@@ -15,8 +15,11 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>One turn of a conversation with tools, in OpenAI's shape (messages with
         /// <c>tool_calls</c> and <c>tool</c> roles, tools as functions): the assistant's message
-        /// (its content, or its tool_calls) and the turn's cost.</summary>
-        Task<(JsonNode Message, double? Cost)> ChatAsync(string model, JsonArray messages, JsonArray tools, CancellationToken ct);
+        /// (its content, or its tool_calls) and the turn's cost. With <paramref name="text"/> the turn
+        /// is streamed and each piece of its text handed there as it arrives; the message returned is
+        /// the same either way.</summary>
+        Task<(JsonNode Message, double? Cost)> ChatAsync(string model, JsonArray messages, JsonArray tools, CancellationToken ct,
+            Func<string, Task>? text = null);
 
         /// <summary>One completion, not streamed: the reply's text and its cost.</summary>
         Task<(string Content, double? Cost)> CompleteAsync(string model, string system, string user, CancellationToken ct);
@@ -76,9 +79,10 @@ namespace IndxServer.Services.SearchOrAsk
     /// The clients, one door per provider: Jev on OpenRouter's or TypeSafe's System One endpoint;
     /// the answers and the filters on OpenRouter, an OpenAI-compatible endpoint or Anthropic. Raw
     /// HTTP, as JevProbe does: the wire shapes are the contract, and nothing here needs an SDK.
-    /// A provider that reports no cost per call gets an estimate from the price table.
+    /// Only OpenRouter reports what a call cost; on any other provider the cost is left unknown
+    /// (null), never estimated, and the Statistics tab says so (<see cref="SearchOrAskSetup.CostsReported"/>).
     /// </summary>
-    public sealed class SearchOrAskModelClients(IHttpClientFactory http, SearchOrAskOptions options, SearchOrAskSetupProvider setup)
+    public sealed class SearchOrAskModelClients(IHttpClientFactory http, SearchOrAskSetupProvider setup)
         : ISearchOrAskModels
     {
         public const string HttpClientName = "SearchOrAsk";
@@ -111,10 +115,9 @@ namespace IndxServer.Services.SearchOrAsk
             };
             using var response = await Client(s.JudgeKey).PostAsync(s.JudgeEndpoint,
                 new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"), ct);
-            var text = await response.Content.ReadAsStringAsync(ct);
-            if (!response.IsSuccessStatusCode)
-                throw new SearchOrAskModelException((int)response.StatusCode, $"Judge answered {(int)response.StatusCode}");
-            return ParseJudgement(text, questions.Keys);
+            if (!response.IsSuccessStatusCode) await FailAsync(response, "Judge", ct);
+            var json = await response.Content.ReadAsStringAsync(ct);
+            return ParseJudgement(json, questions.Keys);
         }
 
         /// <summary>Reads the probabilities out of a System One response. "noul" is the documented
@@ -150,10 +153,8 @@ namespace IndxServer.Services.SearchOrAsk
             };
             using var response = await Client(s.JudgeKey).PostAsync(s.JudgeEndpoint,
                 new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"), ct);
-            var text = await response.Content.ReadAsStringAsync(ct);
-            if (!response.IsSuccessStatusCode)
-                throw new SearchOrAskModelException((int)response.StatusCode, $"Judge answered {(int)response.StatusCode}");
-            return ParseDecisions(text, questions.Keys, options.DecisionsPricePerMillion);
+            if (!response.IsSuccessStatusCode) await FailAsync(response, "Judge", ct);
+            return ParseDecisions(await response.Content.ReadAsStringAsync(ct), questions.Keys);
         }
 
         /// <summary>A recipe question (Jev's noul: instructions and two criteria) as a Decisions
@@ -165,7 +166,8 @@ namespace IndxServer.Services.SearchOrAsk
             ["instructions"] = $"{noul["instructions"]?.GetValue<string>()}\n\nTrue when: {noul["criteria"]?["true"]?.GetValue<string>()}\n\nFalse when: {noul["criteria"]?["false"]?.GetValue<string>()}",
         };
 
-        public static JudgeAnswer ParseDecisions(string json, IEnumerable<string> questions, double pricePerMillion)
+        /// <summary>The Decisions API's answer: the probabilities, and no cost, since it reports only tokens.</summary>
+        public static JudgeAnswer ParseDecisions(string json, IEnumerable<string> questions)
         {
             var parsed = JsonNode.Parse(json);
             var probabilities = new Dictionary<string, double>();
@@ -177,29 +179,52 @@ namespace IndxServer.Services.SearchOrAsk
                             probabilities[q] = p;
                             break;
                         }
-            // The Decisions API bills input tokens only; the usage block names them one of two ways.
-            var tokens = (parsed?["usage"]?["input_tokens"] ?? parsed?["usage"]?["prompt_tokens"]) is JsonValue t && t.TryGetValue<long>(out var n) ? n : (long?)null;
-            return new JudgeAnswer(probabilities, tokens * pricePerMillion / 1_000_000);
+            return new JudgeAnswer(probabilities, null);
         }
 
         // ── The answers: dispatch by provider ────────────────────────────────
 
-        public Task<(JsonNode Message, double? Cost)> ChatAsync(string model, JsonArray messages, JsonArray tools, CancellationToken ct)
+        public Task<(JsonNode Message, double? Cost)> ChatAsync(string model, JsonArray messages, JsonArray tools, CancellationToken ct,
+            Func<string, Task>? text = null)
         {
             var s = Answering();
-            return s.Provider == SearchOrAskProviders.Anthropic ? AnthropicChatAsync(s, model, messages, tools, ct) : OpenAiChatAsync(s, model, messages, tools, ct);
+            return s.Provider switch
+            {
+                SearchOrAskProviders.Anthropic => AnthropicChatAsync(s, model, messages, tools, text, ct),
+                SearchOrAskProviders.OpenAi => ResponsesChatAsync(s, model, messages, tools, text, ct),
+                _ => OpenAiChatAsync(s, model, messages, tools, text, ct),
+            };
+        }
+
+        /// <summary>The "data:" payloads of a server-sent event stream, until it ends.</summary>
+        private static async IAsyncEnumerable<string> EventData(HttpResponseMessage response, [EnumeratorCancellation] CancellationToken ct)
+        {
+            using var stream = await response.Content.ReadAsStreamAsync(ct);
+            using var reader = new StreamReader(stream);
+            while (await reader.ReadLineAsync(ct) is { } line)
+                if (line.StartsWith("data:", StringComparison.Ordinal)) yield return line[5..].Trim();
         }
 
         public Task<(string Content, double? Cost)> CompleteAsync(string model, string system, string user, CancellationToken ct)
         {
             var s = Answering();
-            return s.Provider == SearchOrAskProviders.Anthropic ? AnthropicCompleteAsync(s, model, system, user, ct) : OpenAiCompleteAsync(s, model, system, user, ct);
+            return s.Provider switch
+            {
+                SearchOrAskProviders.Anthropic => AnthropicCompleteAsync(s, model, system, user, ct),
+                SearchOrAskProviders.OpenAi => ResponsesCompleteAsync(s, model, system, user, ct),
+                _ => OpenAiCompleteAsync(s, model, system, user, ct),
+            };
         }
 
         public IAsyncEnumerable<string> AnswerAsync(string model, string system, string user, IReadOnlyList<AskTurn> history, AnswerUsage usage, CancellationToken ct)
         {
             var s = Answering();
-            return s.Provider == SearchOrAskProviders.Anthropic ? AnthropicAnswerAsync(s, model, system, user, history, usage, ct) : OpenAiAnswerAsync(s, model, system, user, history, usage, ct);
+            return s.Provider switch
+            {
+                SearchOrAskProviders.Anthropic => AnthropicAnswerAsync(s, model, system, user, history, usage, ct),
+                SearchOrAskProviders.OpenAi => ResponsesAnswerAsync(s, model, system, user, history, ct),
+                _ => OpenAiAnswerAsync(s, model, system, user, history, usage, ct),
+            };
         }
 
         private SearchOrAskSetup Answering()
@@ -209,37 +234,124 @@ namespace IndxServer.Services.SearchOrAsk
             return s;
         }
 
-        /// <summary>The call's cost: reported by OpenRouter, else estimated from the tokens.</summary>
-        private double? Cost(SearchOrAskSetup s, string model, JsonNode? usage)
+        /// <summary>The call's cost as the provider reported it (OpenRouter's <c>usage.cost</c>), or null.</summary>
+        private static double? Cost(SearchOrAskSetup s, string model, JsonNode? usage) =>
+            usage?["cost"] is JsonValue c && c.TryGetValue<double>(out var usd) ? usd : null;
+
+        /// <summary>A failed call, with the provider's own reason in the message: a 403 from
+        /// OpenRouter is a spent key budget, a guardrail or a moderation flag, and only the body
+        /// says which (19 Oct 2026: the log said "403" and the instance could not say why).</summary>
+        private static async Task FailAsync(HttpResponseMessage response, string what, CancellationToken ct)
         {
-            if (usage == null) return null;
-            if (usage["cost"] is JsonValue c && c.TryGetValue<double>(out var usd)) return usd;
-            long In(string a, string b) => usage[a]?.GetValue<long>() ?? usage[b]?.GetValue<long>() ?? 0;
-            var input = In("prompt_tokens", "input_tokens");
-            var output = In("completion_tokens", "output_tokens");
-            return input + output == 0 ? null : ModelPrices.Estimate(model, input, output, options.Prices);
+            string reason;
+            try { reason = Reason(await response.Content.ReadAsStringAsync(ct)); }
+            catch (Exception) { reason = ""; }
+            throw new SearchOrAskModelException((int)response.StatusCode, $"{what} answered {(int)response.StatusCode}{(reason.Length > 0 ? ": " + reason : "")}");
         }
 
-        private static void Throw(HttpResponseMessage response, string what) =>
-            throw new SearchOrAskModelException((int)response.StatusCode, $"{what} answered {(int)response.StatusCode}");
+        /// <summary>The provider's message out of an error body (OpenAI's and OpenRouter's
+        /// <c>error.message</c>, Anthropic's too), else the body itself; short, since it is logged.</summary>
+        public static string Reason(string body)
+        {
+            var text = body.Trim();
+            try
+            {
+                if (JsonNode.Parse(text)?["error"] is { } error)
+                {
+                    var message = error["message"]?.GetValue<string>() ?? error.ToJsonString();
+                    var metadata = error["metadata"];
+                    if (metadata != null) message += " " + metadata.ToJsonString();
+                    text = message;
+                }
+            }
+            catch (Exception) { }
+            text = text.Replace('\n', ' ').Replace('\r', ' ');
+            return text.Length > 300 ? text[..300] + "…" : text;
+        }
 
         // ── OpenAI's chat completions: OpenRouter and every compatible endpoint ──
 
         private string ChatCompletions(SearchOrAskSetup s) => s.AnswerBaseUrl + "/chat/completions";
 
-        private async Task<(JsonNode Message, double? Cost)> OpenAiChatAsync(SearchOrAskSetup s, string model, JsonArray messages, JsonArray tools, CancellationToken ct)
+
+
+        private async Task<(JsonNode Message, double? Cost)> OpenAiChatAsync(SearchOrAskSetup s, string model, JsonArray messages, JsonArray tools,
+            Func<string, Task>? text, CancellationToken ct)
         {
             var body = new JsonObject
             {
                 ["model"] = model,
-                ["max_tokens"] = 1500,
                 ["messages"] = messages.DeepClone(),
                 ["tools"] = tools.DeepClone(),
             };
+            body["max_tokens"] = 1500;
             if (s.ReportsCost) body["usage"] = new JsonObject { ["include"] = true };
-            var reply = await OpenAiPostAsync(s, body, ct);
-            var message = reply?["choices"]?[0]?["message"] ?? throw new SearchOrAskModelException(502, "No message in the reply");
-            return (message.DeepClone(), Cost(s, model, reply?["usage"]));
+            if (text == null)
+            {
+                var reply = await OpenAiPostAsync(s, body, ct);
+                var message = FirstChoice(reply)?["message"] ?? throw new SearchOrAskModelException(502, "No message in the reply");
+                return (message.DeepClone(), Cost(s, model, reply?["usage"]));
+            }
+
+            body["stream"] = true;
+            body["stream_options"] = new JsonObject { ["include_usage"] = true };
+            using var request = new HttpRequestMessage(HttpMethod.Post, ChatCompletions(s))
+            {
+                Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
+            };
+            using var response = await Client(s.AnswerKey).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (!response.IsSuccessStatusCode) await FailAsync(response, "Model", ct);
+            var turn = new OpenAiChatStream();
+            double? cost = null;
+            await foreach (var data in EventData(response, ct))
+            {
+                if (data == "[DONE]") break;
+                if (UsageOf(data) is { } u && Cost(s, model, u) is { } c) cost = c;
+                if (turn.Read(data) is { Length: > 0 } delta) await text(delta);
+            }
+            return (turn.Message(), cost);
+        }
+
+        /// <summary>A streamed chat completions turn put back together: its text, and its tool calls,
+        /// which arrive in pieces keyed by their index (the id and name first, the arguments after).</summary>
+        public sealed class OpenAiChatStream
+        {
+            private readonly StringBuilder _content = new();
+            private readonly SortedDictionary<int, (string? Id, string? Name, StringBuilder Arguments)> _calls = [];
+
+            /// <summary>Takes one chunk; returns its text, if it has any.</summary>
+            public string? Read(string chunkJson)
+            {
+                JsonNode? delta;
+                try { delta = FirstChoice(JsonNode.Parse(chunkJson))?["delta"]; }
+                catch (Exception e) when (e is JsonException or InvalidOperationException or FormatException) { return null; }
+                if (delta == null) return null;
+                foreach (var call in delta["tool_calls"] as JsonArray ?? [])
+                {
+                    var index = call?["index"] is JsonValue i && i.TryGetValue<int>(out var n) ? n : _calls.Count;
+                    var entry = _calls.TryGetValue(index, out var e) ? e : (null, null, new StringBuilder());
+                    entry.Id ??= call?["id"]?.GetValue<string>();
+                    entry.Name ??= call?["function"]?["name"]?.GetValue<string>();
+                    entry.Arguments.Append(call?["function"]?["arguments"]?.GetValue<string>());
+                    _calls[index] = entry;
+                }
+                var piece = delta["content"] is JsonValue v && v.TryGetValue<string>(out var t) ? t : null;
+                _content.Append(piece);
+                return piece;
+            }
+
+            public JsonObject Message()
+            {
+                var message = new JsonObject { ["role"] = "assistant", ["content"] = _content.Length > 0 ? _content.ToString() : null };
+                if (_calls.Count > 0)
+                    message["tool_calls"] = new JsonArray(_calls.Values.Select(c => (JsonNode)new JsonObject
+                    {
+                        ["id"] = c.Id,
+                        ["type"] = "function",
+                        ["function"] = new JsonObject { ["name"] = c.Name, ["arguments"] = c.Arguments.Length > 0 ? c.Arguments.ToString() : "{}" },
+                    }).ToArray());
+                return message;
+            }
         }
 
         private async Task<(string Content, double? Cost)> OpenAiCompleteAsync(SearchOrAskSetup s, string model, string system, string user, CancellationToken ct)
@@ -247,15 +359,15 @@ namespace IndxServer.Services.SearchOrAsk
             var body = new JsonObject
             {
                 ["model"] = model,
-                ["max_tokens"] = 600,
-                ["temperature"] = 0,
                 ["messages"] = new JsonArray(
                     new JsonObject { ["role"] = "system", ["content"] = system },
                     new JsonObject { ["role"] = "user", ["content"] = user }),
             };
+            body["max_tokens"] = 600;
+            body["temperature"] = 0;
             if (s.ReportsCost) body["usage"] = new JsonObject { ["include"] = true };
             var reply = await OpenAiPostAsync(s, body, ct);
-            var content = reply?["choices"]?[0]?["message"]?["content"]?.GetValue<string>() ?? "";
+            var content = FirstChoice(reply)?["message"]?["content"]?.GetValue<string>() ?? "";
             return (content, Cost(s, model, reply?["usage"]));
         }
 
@@ -267,7 +379,7 @@ namespace IndxServer.Services.SearchOrAsk
             };
             using var response = await Client(s.AnswerKey).SendAsync(request, ct);
             var text = await response.Content.ReadAsStringAsync(ct);
-            if (!response.IsSuccessStatusCode) Throw(response, "Model");
+            if (!response.IsSuccessStatusCode) await FailAsync(response, "Model", ct);
             return JsonNode.Parse(text);
         }
 
@@ -278,7 +390,6 @@ namespace IndxServer.Services.SearchOrAsk
             {
                 ["model"] = model,
                 ["stream"] = true,
-                ["max_tokens"] = 1500,
                 // The last chunk then carries the usage: OpenRouter's cost in USD, or the tokens an
                 // estimate is made from.
                 ["stream_options"] = new JsonObject { ["include_usage"] = true },
@@ -291,13 +402,14 @@ namespace IndxServer.Services.SearchOrAsk
                     }),
                     new JsonObject { ["role"] = "user", ["content"] = user }]),
             };
+            body["max_tokens"] = 1500;
             if (s.ReportsCost) body["usage"] = new JsonObject { ["include"] = true };
             using var request = new HttpRequestMessage(HttpMethod.Post, ChatCompletions(s))
             {
                 Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
             };
             using var response = await Client(s.AnswerKey).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-            if (!response.IsSuccessStatusCode) Throw(response, "Answer model");
+            if (!response.IsSuccessStatusCode) await FailAsync(response, "Answer model", ct);
 
             using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var reader = new StreamReader(stream);
@@ -322,11 +434,14 @@ namespace IndxServer.Services.SearchOrAsk
             catch (Exception e) when (e is JsonException or InvalidOperationException or FormatException) { return null; }
         }
 
+        /// <summary>The text in a streamed chunk. OpenAI's last chunk, the one with the usage, has an
+        /// empty <c>choices</c> list (OpenRouter's never does), so the first choice is looked for,
+        /// not indexed: a JsonArray's indexer throws past its end.</summary>
         public static string? DeltaOf(string chunkJson)
         {
             try
             {
-                return JsonNode.Parse(chunkJson)?["choices"]?[0]?["delta"]?["content"]?.GetValue<string>();
+                return FirstChoice(JsonNode.Parse(chunkJson))?["delta"]?["content"]?.GetValue<string>();
             }
             catch (JsonException)
             {
@@ -334,9 +449,252 @@ namespace IndxServer.Services.SearchOrAsk
             }
         }
 
+        /// <summary>A reply's first choice, or null when it has none.</summary>
+        private static JsonNode? FirstChoice(JsonNode? reply) =>
+            reply?["choices"] is JsonArray { Count: > 0 } choices ? choices[0] : null;
+
+        // ── OpenAI's Responses API: OpenAI itself ────────────────────────────
+        //
+        // OpenAI keeps two things off chat completions for its reasoning models: function tools (the
+        // catalogue agent: "use /v1/responses or set reasoning_effort to 'none'") and the Ultrafast
+        // tier ("Invalid service_tier argument"), both found on 26 Oct 2026 with the first OpenAI
+        // customer's models. So OpenAI is called here, and every other provider keeps chat
+        // completions. Nothing is stored at OpenAI (store: false); the reasoning a tool call came
+        // with travels back encrypted in the reply's own items, which the agent's message carries.
+
+        /// <summary>The field on an agent message that holds the Responses API's output items, so the
+        /// next turn can hand them back whole: reasoning, calls and text, in their order.</summary>
+        public const string ResponsesItems = "responses_output";
+
+        private string ResponsesUrl(SearchOrAskSetup s) => s.AnswerBaseUrl + "/responses";
+
+        /// <summary>A request's common fields. Low reasoning effort: a visitor waits for the first
+        /// words, and the records hold the facts. The cap covers the reasoning as well as the reply,
+        /// so it is generous.</summary>
+        public static JsonObject ResponsesBody(string model, string? instructions, JsonArray input, int maxTokens, string? speed)
+        {
+            var body = new JsonObject
+            {
+                ["model"] = model,
+                ["store"] = false,
+                ["max_output_tokens"] = maxTokens,
+                ["reasoning"] = new JsonObject { ["effort"] = "low" },
+                ["input"] = input,
+            };
+            if (instructions != null) body["instructions"] = instructions;
+            if (speed != null) body["service_tier"] = speed;
+            return body;
+        }
+
+        private async Task<(JsonNode Message, double? Cost)> ResponsesChatAsync(SearchOrAskSetup s, string model, JsonArray messages, JsonArray tools,
+            Func<string, Task>? text, CancellationToken ct)
+        {
+            var (instructions, input) = ResponsesInput(messages);
+            var body = ResponsesBody(model, instructions, input, 16000, null);
+            body["tools"] = new JsonArray(tools.Select(t => (JsonNode)new JsonObject
+            {
+                ["type"] = "function",
+                ["name"] = t!["function"]?["name"]?.GetValue<string>(),
+                ["description"] = t["function"]?["description"]?.GetValue<string>(),
+                ["parameters"] = t["function"]?["parameters"]?.DeepClone() ?? new JsonObject { ["type"] = "object" },
+            }).ToArray());
+            if (text == null) return (MessageOfResponse(await ResponsesPostAsync(s, body, ct)), null);
+
+            body["stream"] = true;
+            using var response = await ResponsesStreamAsync(s, body, "Model", ct);
+            // The last event carries the whole response, its function calls and reasoning items
+            // included, so the message is read from it exactly as an unstreamed reply's is.
+            await foreach (var data in EventData(response, ct))
+            {
+                var (delta, done, error) = ResponsesEvent(data);
+                if (error != null) throw new SearchOrAskModelException(502, $"Model failed: {error}");
+                if (delta is { Length: > 0 }) await text(delta);
+                if (done) return (MessageOfResponse(JsonNode.Parse(data)?["response"]), null);
+            }
+            throw new SearchOrAskModelException(502, "The stream ended before the response did");
+        }
+
+        /// <summary>Starts a streamed request; a model that takes no reasoning setting is asked once
+        /// more without, as <see cref="ResponsesPostAsync"/> does.</summary>
+        private async Task<HttpResponseMessage> ResponsesStreamAsync(SearchOrAskSetup s, JsonObject body, string what, CancellationToken ct)
+        {
+            for (var attempt = 0; ; attempt++)
+            {
+                var request = new HttpRequestMessage(HttpMethod.Post, ResponsesUrl(s))
+                {
+                    Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
+                };
+                var response = await Client(s.AnswerKey).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+                if (response.IsSuccessStatusCode) return response;
+                var text = await response.Content.ReadAsStringAsync(ct);
+                response.Dispose();
+                if (attempt == 0 && RefusesReasoning((int)response.StatusCode, text) && body.Remove("reasoning")) continue;
+                throw new SearchOrAskModelException((int)response.StatusCode, $"{what} answered {(int)response.StatusCode}: {Reason(text)}");
+            }
+        }
+
+        private async Task<(string Content, double? Cost)> ResponsesCompleteAsync(SearchOrAskSetup s, string model, string system, string user, CancellationToken ct)
+        {
+            var body = ResponsesBody(model, system, new JsonArray(new JsonObject { ["role"] = "user", ["content"] = user }), 8000, null);
+            var reply = await ResponsesPostAsync(s, body, ct);
+            return (MessageOfResponse(reply)["content"]?.GetValue<string>() ?? "", null);
+        }
+
+        /// <summary>Posts a request; a model that takes no reasoning setting (an older one an admin
+        /// chose) answers 400 naming it, and is asked once more without.</summary>
+        private async Task<JsonNode?> ResponsesPostAsync(SearchOrAskSetup s, JsonObject body, CancellationToken ct)
+        {
+            for (var attempt = 0; ; attempt++)
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Post, ResponsesUrl(s))
+                {
+                    Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
+                };
+                using var response = await Client(s.AnswerKey).SendAsync(request, ct);
+                var text = await response.Content.ReadAsStringAsync(ct);
+                if (response.IsSuccessStatusCode) return JsonNode.Parse(text);
+                if (attempt == 0 && RefusesReasoning((int)response.StatusCode, text) && body.Remove("reasoning")) continue;
+                throw new SearchOrAskModelException((int)response.StatusCode, $"Model answered {(int)response.StatusCode}: {Reason(text)}");
+            }
+        }
+
+        private static bool RefusesReasoning(int status, string body) =>
+            status == 400 && Reason(body).Contains("reasoning", StringComparison.OrdinalIgnoreCase);
+
+        private async IAsyncEnumerable<string> ResponsesAnswerAsync(SearchOrAskSetup s, string model, string system, string user, IReadOnlyList<AskTurn> history,
+            [EnumeratorCancellation] CancellationToken ct)
+        {
+            var input = new JsonArray([
+                .. history.SelectMany(t => new JsonNode[]
+                {
+                    new JsonObject { ["role"] = "user", ["content"] = t.Question },
+                    new JsonObject { ["role"] = "assistant", ["content"] = t.Answer },
+                }),
+                new JsonObject { ["role"] = "user", ["content"] = user }]);
+            var body = ResponsesBody(model, system, input, 16000, s.AnswerSpeed);
+            body["stream"] = true;
+
+            // OpenAI reports tokens, not a cost: the answer's cost stays unknown.
+            using var response = await ResponsesStreamAsync(s, body, "Answer model", ct);
+            await foreach (var data in EventData(response, ct))
+            {
+                var (delta, done, error) = ResponsesEvent(data);
+                if (error != null) throw new SearchOrAskModelException(502, $"Answer model failed: {error}");
+                if (delta is { Length: > 0 }) yield return delta;
+                if (done) break;
+            }
+        }
+
+        /// <summary>One streamed event: a text delta, whether the response ended, or why it failed.</summary>
+        public static (string? Delta, bool Done, string? Error) ResponsesEvent(string json)
+        {
+            try
+            {
+                var e = JsonNode.Parse(json);
+                return (e?["type"]?.GetValue<string>()) switch
+                {
+                    "response.output_text.delta" => (e?["delta"]?.GetValue<string>(), false, null),
+                    "response.completed" or "response.incomplete" => (null, true, null),
+                    "response.failed" => (null, true, e?["response"]?["error"]?["message"]?.GetValue<string>() ?? "the response failed"),
+                    "error" => (null, true, e?["message"]?.GetValue<string>() ?? "error"),
+                    _ => (null, false, null),
+                };
+            }
+            catch (Exception ex) when (ex is JsonException or InvalidOperationException or FormatException)
+            {
+                return (null, false, null);
+            }
+        }
+
+        /// <summary>The agent's OpenAI-chat-shaped conversation as the Responses API reads it: system
+        /// messages become the instructions; an assistant turn that came from this API is handed back
+        /// as its own output items (its encrypted reasoning among them, which a tool call needs), one
+        /// written elsewhere as text and function calls; a tool result as a function call output.</summary>
+        public static (string? Instructions, JsonArray Input) ResponsesInput(JsonArray messages)
+        {
+            var instructions = new List<string>();
+            var input = new JsonArray();
+            foreach (var m in messages)
+            {
+                var role = m?["role"]?.GetValue<string>();
+                var content = m?["content"] is JsonValue v && v.TryGetValue<string>(out var text) ? text : null;
+                switch (role)
+                {
+                    case "system":
+                        if (content != null) instructions.Add(content);
+                        break;
+                    case "assistant" when m![ResponsesItems] is JsonArray items:
+                        foreach (var item in items) input.Add(item?.DeepClone());
+                        break;
+                    case "assistant":
+                        if (!string.IsNullOrEmpty(content)) input.Add(new JsonObject { ["role"] = "assistant", ["content"] = content });
+                        foreach (var call in m!["tool_calls"]?.AsArray() ?? [])
+                            input.Add(new JsonObject
+                            {
+                                ["type"] = "function_call",
+                                ["call_id"] = call?["id"]?.GetValue<string>(),
+                                ["name"] = call?["function"]?["name"]?.GetValue<string>(),
+                                ["arguments"] = call?["function"]?["arguments"]?.GetValue<string>() ?? "{}",
+                            });
+                        break;
+                    case "tool":
+                        input.Add(new JsonObject
+                        {
+                            ["type"] = "function_call_output",
+                            ["call_id"] = m!["tool_call_id"]?.GetValue<string>(),
+                            ["output"] = content ?? "",
+                        });
+                        break;
+                    default:
+                        input.Add(new JsonObject { ["role"] = "user", ["content"] = content ?? "" });
+                        break;
+                }
+            }
+            return (instructions.Count > 0 ? string.Join("\n\n", instructions) : null, input);
+        }
+
+        /// <summary>A Responses API reply as the OpenAI-chat-shaped message the agent reads: its text
+        /// and its function calls, with the output items kept for the next turn. A reply that ran out
+        /// of tokens before saying anything is a failure, not an empty answer.</summary>
+        public static JsonObject MessageOfResponse(JsonNode? reply)
+        {
+            var output = reply?["output"] as JsonArray ?? [];
+            var text = new StringBuilder();
+            var calls = new JsonArray();
+            foreach (var item in output)
+            {
+                switch (item?["type"]?.GetValue<string>())
+                {
+                    case "message":
+                        foreach (var part in item["content"]?.AsArray() ?? [])
+                            if (part?["type"]?.GetValue<string>() == "output_text") text.Append(part["text"]?.GetValue<string>());
+                        break;
+                    case "function_call":
+                        calls.Add(new JsonObject
+                        {
+                            ["id"] = item["call_id"]?.GetValue<string>(),
+                            ["type"] = "function",
+                            ["function"] = new JsonObject
+                            {
+                                ["name"] = item["name"]?.GetValue<string>(),
+                                ["arguments"] = item["arguments"]?.GetValue<string>() ?? "{}",
+                            },
+                        });
+                        break;
+                }
+            }
+            if (text.Length == 0 && calls.Count == 0 && reply?["status"]?.GetValue<string>() == "incomplete")
+                throw new SearchOrAskModelException(502, $"The model stopped before answering ({reply["incomplete_details"]?["reason"]?.GetValue<string>() ?? "incomplete"})");
+            var message = new JsonObject { ["role"] = "assistant", ["content"] = text.Length > 0 ? text.ToString() : null };
+            if (calls.Count > 0) message["tool_calls"] = calls;
+            message[ResponsesItems] = output.DeepClone();
+            return message;
+        }
+
         // ── Anthropic's messages API ─────────────────────────────────────────
 
-        private async Task<(JsonNode Message, double? Cost)> AnthropicChatAsync(SearchOrAskSetup s, string model, JsonArray messages, JsonArray tools, CancellationToken ct)
+        private async Task<(JsonNode Message, double? Cost)> AnthropicChatAsync(SearchOrAskSetup s, string model, JsonArray messages, JsonArray tools,
+            Func<string, Task>? text, CancellationToken ct)
         {
             var (system, converted) = AnthropicMessages(messages);
             var body = new JsonObject
@@ -352,8 +710,84 @@ namespace IndxServer.Services.SearchOrAsk
                 }).ToArray()),
             };
             if (system != null) body["system"] = system;
-            var reply = await AnthropicPostAsync(s, body, ct);
-            return (OpenAiMessageOf(reply), Cost(s, model, reply?["usage"]));
+            if (text == null)
+            {
+                var reply = await AnthropicPostAsync(s, body, ct);
+                return (OpenAiMessageOf(reply), Cost(s, model, reply?["usage"]));
+            }
+
+            body["stream"] = true;
+            using var request = new HttpRequestMessage(HttpMethod.Post, s.AnswerBaseUrl)
+            {
+                Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
+            };
+            using var response = await Client(s.AnswerKey, anthropic: true).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (!response.IsSuccessStatusCode) await FailAsync(response, "Model", ct);
+            // Anthropic reports tokens, not a cost: the turn's cost stays unknown.
+            var turn = new AnthropicChatStream();
+            await foreach (var data in EventData(response, ct))
+            {
+                var (delta, done) = turn.Read(data);
+                if (delta is { Length: > 0 }) await text(delta);
+                if (done) break;
+            }
+            return (OpenAiMessageOf(turn.Reply()), null);
+        }
+
+        /// <summary>A streamed Anthropic message put back together as the unstreamed reply reads: its
+        /// content blocks in order, a tool use's input from the JSON pieces it streams in.</summary>
+        public sealed class AnthropicChatStream
+        {
+            private readonly SortedDictionary<int, (string Type, string? Id, string? Name, StringBuilder Text)> _blocks = [];
+
+            /// <summary>Takes one event; returns its text, if it has any, and whether the message ended.</summary>
+            public (string? Delta, bool Done) Read(string json)
+            {
+                JsonNode? e;
+                try { e = JsonNode.Parse(json); }
+                catch (JsonException) { return (null, false); }
+                var index = e?["index"] is JsonValue i && i.TryGetValue<int>(out var n) ? n : 0;
+                switch (e?["type"]?.GetValue<string>())
+                {
+                    case "content_block_start":
+                        var block = e["content_block"];
+                        _blocks[index] = (block?["type"]?.GetValue<string>() ?? "", block?["id"]?.GetValue<string>(), block?["name"]?.GetValue<string>(), new StringBuilder());
+                        return (null, false);
+                    case "content_block_delta" when _blocks.TryGetValue(index, out var b):
+                        var delta = e["delta"];
+                        if (delta?["type"]?.GetValue<string>() == "input_json_delta")
+                        {
+                            b.Text.Append(delta["partial_json"]?.GetValue<string>());
+                            return (null, false);
+                        }
+                        var piece = delta?["text"]?.GetValue<string>();
+                        b.Text.Append(piece);
+                        return (piece, false);
+                    case "message_stop":
+                        return (null, true);
+                    case "error":
+                        throw new SearchOrAskModelException(502, $"Model failed: {e["error"]?["message"]?.GetValue<string>() ?? "error"}");
+                    default:
+                        return (null, false);
+                }
+            }
+
+            public JsonObject Reply()
+            {
+                var content = new JsonArray();
+                foreach (var b in _blocks.Values)
+                {
+                    if (b.Type == "text") content.Add(new JsonObject { ["type"] = "text", ["text"] = b.Text.ToString() });
+                    else if (b.Type == "tool_use")
+                    {
+                        JsonNode input;
+                        try { input = b.Text.Length > 0 ? JsonNode.Parse(b.Text.ToString()) ?? new JsonObject() : new JsonObject(); }
+                        catch (JsonException) { input = new JsonObject(); }
+                        content.Add(new JsonObject { ["type"] = "tool_use", ["id"] = b.Id, ["name"] = b.Name, ["input"] = input });
+                    }
+                }
+                return new JsonObject { ["content"] = content };
+            }
         }
 
         private async Task<(string Content, double? Cost)> AnthropicCompleteAsync(SearchOrAskSetup s, string model, string system, string user, CancellationToken ct)
@@ -379,7 +813,7 @@ namespace IndxServer.Services.SearchOrAsk
             };
             using var response = await Client(s.AnswerKey, anthropic: true).SendAsync(request, ct);
             var text = await response.Content.ReadAsStringAsync(ct);
-            if (!response.IsSuccessStatusCode) Throw(response, "Model");
+            if (!response.IsSuccessStatusCode) await FailAsync(response, "Model", ct);
             return JsonNode.Parse(text);
         }
 
@@ -405,21 +839,18 @@ namespace IndxServer.Services.SearchOrAsk
                 Content = new StringContent(body.ToJsonString(), Encoding.UTF8, "application/json"),
             };
             using var response = await Client(s.AnswerKey, anthropic: true).SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
-            if (!response.IsSuccessStatusCode) Throw(response, "Answer model");
+            if (!response.IsSuccessStatusCode) await FailAsync(response, "Answer model", ct);
 
-            long input = 0, output = 0;
+            // Anthropic reports tokens, not a cost: the answer's cost stays unknown.
             using var stream = await response.Content.ReadAsStreamAsync(ct);
             using var reader = new StreamReader(stream);
             while (await reader.ReadLineAsync(ct) is { } line)
             {
                 if (!line.StartsWith("data:", StringComparison.Ordinal)) continue;
-                var (delta, tokensIn, tokensOut, done) = AnthropicEvent(line[5..].Trim());
-                if (tokensIn is { } i) input = i;
-                if (tokensOut is { } o) output = o;
+                var (delta, _, _, done) = AnthropicEvent(line[5..].Trim());
                 if (delta is { Length: > 0 }) yield return delta;
                 if (done) break;
             }
-            usage.Cost = ModelPrices.Estimate(model, input, output, options.Prices);
         }
 
         /// <summary>One streamed event: a text delta, the input tokens (message_start), the output

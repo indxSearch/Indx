@@ -10,9 +10,38 @@
         @if (_containerWidth > 0 && Series.Count > 0)
         {
             <svg width="@F(_containerWidth)" height="@Height" class="indx-chart-svg">
-                @* midline *@
-                <line x1="@F(PadLeft)" y1="@F(PadTop + _ch * 0.5)" x2="@F(PadLeft + _cw)" y2="@F(PadTop + _ch * 0.5)"
-                      stroke="var(--chart-midline)" stroke-width="0.5" />
+                @* The pixel patterns a series may be filled with: a 4px tile of cells in its colour. *@
+                @if (Series.Any(s => IsPattern(FillOf(s))))
+                {
+                    <defs>
+                        @for (int si = 0; si < Series.Count; si++)
+                        {
+                            var fill = FillOf(Series[si]);
+                            if (!IsPattern(fill)) { continue; }
+                            <pattern id="@PatternId(si)" width="4" height="4" patternUnits="userSpaceOnUse">
+                                @foreach (var (x, y, w, h) in PatternCells[fill])
+                                {
+                                    <rect x="@x" y="@y" width="@w" height="@h" fill="@ColorOf(Series[si])" />
+                                }
+                            </pattern>
+                        }
+                    </defs>
+                }
+                @* midline, or with an axis the ticks' gridlines in its place *@
+                @if (!HasAxis)
+                {
+                    <line x1="@F(PadLeft)" y1="@F(PadTop + _ch * 0.5)" x2="@F(PadLeft + _cw)" y2="@F(PadTop + _ch * 0.5)"
+                          stroke="var(--chart-midline)" stroke-width="0.5" />
+                }
+                else
+                {
+                    @foreach (var t in _ticks)
+                    {
+                        if (t == _minVal) { continue; }
+                        <line x1="@F(PadLeft)" y1="@F(ToY(t))" x2="@F(PadLeft + _cw)" y2="@F(ToY(t))"
+                              stroke="var(--chart-midline)" stroke-width="0.5" />
+                    }
+                }
                 @* baseline *@
                 <line x1="@F(PadLeft)" y1="@F(PadTop + _ch)" x2="@F(PadLeft + _cw)" y2="@F(PadTop + _ch)"
                       stroke="var(--chart-baseline)" stroke-width="1" />
@@ -29,43 +58,19 @@
                           stroke="var(--chart-crosshair)" stroke-width="1" stroke-dasharray="3 3" />
                 }
 
-                @if (Type == "line")
+                @RenderSeries(null)
+                @if (_signalY is { } signalY && signalY > PadTop)
                 {
-                    @for (int si = 0; si < Series.Count; si++)
-                    {
-                        var s = Series[si];
-                        if (s.Data.Count == 0) { continue; }
-                        var color = s.Color ?? DefaultLineColor;
-                        <polyline points="@LinePoints(s)" fill="none" stroke="@color" stroke-width="1"
-                                  stroke-linejoin="round" stroke-linecap="round" />
-                        @for (int i = 0; i < s.Data.Count; i++)
-                        {
-                            var hovered = _tooltip?.Index == i;
-                            if (!hovered && !RoomForMarkers) { continue; }
-                            var size = hovered ? (RoomForMarkers ? 10.0 : 7.0) : 5.0;
-                            var half = size / 2;
-                            <rect x="@F(ToX(i) - half)" y="@F(ToY(s.Data[i]) - half)" width="@F(size)" height="@F(size)" fill="@color" />
-                        }
-                    }
-                }
-                else if (_dataLen > 0)
-                {
-                    var groupW = _cw / _dataLen;
-                    const double barGap = 2.0;
-                    var barW = Math.Max((groupW - barGap * (Series.Count + 1)) / Series.Count, 2);
-                    var bottom = PadTop + _ch;
-                    @for (int si = 0; si < Series.Count; si++)
-                    {
-                        var s = Series[si];
-                        var color = s.Color ?? "var(--chart-bar)";
-                        @for (int i = 0; i < s.Data.Count; i++)
-                        {
-                            var bx = PadLeft + i * groupW + barGap + si * (barW + barGap);
-                            var by = ToY(s.Data[i]);
-                            var bh = Math.Max(bottom - by, 0);
-                            <rect x="@F(bx)" y="@F(by)" width="@F(barW)" height="@F(bh)" fill="@color" />
-                        }
-                    }
+                    @* A limit: the plot above the lowest signal reference is drawn again in the signal
+                       red, clipped to that region, so what lies past the limit says so. *@
+                    <defs>
+                        <clipPath id="@(_patternId)-signal">
+                            <rect x="@F(PadLeft)" y="@F(PadTop)" width="@F(_cw)" height="@F(signalY - PadTop)" />
+                        </clipPath>
+                    </defs>
+                    <g clip-path="url(#@(_patternId)-signal)">
+                        @RenderSeries(Signal)
+                    </g>
                 }
 
                 @* Markers: something happened on this point (a change, a release). A small square on
@@ -82,6 +87,9 @@
 
                 @* SVG <text> is a reserved Razor tag, so the axis labels are emitted via the builder. *@
                 @RenderAxisLabels
+                @RenderValueAxis
+                @* References last, so a bar or an area cannot cover the line or its tag. *@
+                @RenderReferences
 
                 @* transparent overlay captures the pointer so OffsetX/Y is relative to the whole svg.
                    Pointer events, not mouse events: a tap opens the tooltip on a phone, and a
@@ -102,6 +110,22 @@
                         <span class="indx-chart-tooltip-name">@s.Label</span>
                         <span class="indx-chart-tooltip-value">@FormatValue(tip.Index < s.Data.Count ? s.Data[tip.Index] : 0)</span>
                     </div>
+                    @if (s.HasBand && tip.Index < s.Low!.Count && tip.Index < s.High!.Count)
+                    {
+                        <div class="indx-chart-tooltip-row indx-chart-tooltip-range">
+                            <span class="indx-chart-tooltip-dot" style="visibility: hidden;"></span>
+                            <span class="indx-chart-tooltip-name">@(s.RangeLabel ?? "Range")</span>
+                            <span class="indx-chart-tooltip-range-value">@FormatValue(s.Low[tip.Index]) to @FormatValue(s.High[tip.Index])</span>
+                        </div>
+                    }
+                }
+                @if (IsStacked && Series.Count > 1)
+                {
+                    <div class="indx-chart-tooltip-row indx-chart-tooltip-total">
+                        <span class="indx-chart-tooltip-dot" style="visibility: hidden;"></span>
+                        <span class="indx-chart-tooltip-name">Total</span>
+                        <span class="indx-chart-tooltip-value">@FormatValue(tip.Index < _totals.Length ? _totals[tip.Index] : 0)</span>
+                    </div>
                 }
                 @if (Markers != null)
                 {
@@ -120,10 +144,21 @@
     @if (ShowLegend && Series.Count > 1)
     {
         <div class="indx-chart-legend">
-            @foreach (var s in Series)
+            @for (int li = 0; li < Series.Count; li++)
             {
+                var s = Series[li];
                 <div class="indx-chart-legend-item">
-                    <div class="indx-chart-legend-mark" style="background:@(s.Color ?? DefaultLineColor);"></div>
+                    @if (IsPattern(FillOf(s)))
+                    {
+                        <svg class="indx-chart-legend-swatch" width="12" height="8" aria-hidden="true">
+                            <rect width="12" height="8" fill="@PaintOf(s, li)" />
+                        </svg>
+                    }
+                    else
+                    {
+                        @* The bar tone token lives on the chart frame, so out here a bar's mark takes the line grey. *@
+                        <div class="indx-chart-legend-mark" style="background:@(s.Color ?? DefaultLineColor);"></div>
+                    }
                     <span class="indx-chart-legend-label">@s.Label</span>
                 </div>
             }
@@ -132,8 +167,40 @@
 </div>
 
 @code {
-    /// <summary>One plotted series. <c>Color</c>/<c>HoverColor</c> are CSS colors (e.g. "var(--CTeal)").</summary>
-    public sealed record ChartSeries(string Label, IReadOnlyList<double> Data, string? Color = null, string? HoverColor = null);
+    /// <summary>One plotted series. <c>Color</c>/<c>HoverColor</c> are CSS colors (e.g. "var(--CTeal)").
+    /// <c>Fill</c> is how it is filled, a bar or the area under a line: "solid" is the series colour,
+    /// flat on a bar and faint under a line; "hatch", "dots" and "checker" are drawn in the colour on
+    /// the 2px pixel grid, so two series tell apart in one tone; "none" leaves a line as a line.
+    /// Bars are solid unless told otherwise, a line is none.
+    /// <c>Low</c>/<c>High</c>, lines only, are a range around the line, one value per point, drawn as a
+    /// band behind it: faint in the series colour, or its pattern when <c>Fill</c> is one, and the area
+    /// under the line is then not drawn. <c>RangeLabel</c> names it in the tooltip, "Range" when left out.
+    /// <c>Step</c>, lines only: the value holds flat until the next point and then jumps, for what does
+    /// not move between samples: a record count, a state, a quota that changes on a date.</summary>
+    public sealed record ChartSeries(string Label, IReadOnlyList<double> Data, string? Color = null, string? HoverColor = null, string? Fill = null,
+        IReadOnlyList<double>? Low = null, IReadOnlyList<double>? High = null, string? RangeLabel = null, bool Step = false)
+    {
+        public bool HasBand => Low is { Count: > 0 } && High is { Count: > 0 };
+    }
+
+    // The pixel patterns, each a 4px tile of 1px or 2px cells in the series colour.
+    private static readonly Dictionary<string, (int X, int Y, int W, int H)[]> PatternCells = new()
+    {
+        ["hatch"] = new[] { (0, 3, 1, 1), (1, 2, 1, 1), (2, 1, 1, 1), (3, 0, 1, 1) },
+        ["dots"] = new[] { (0, 0, 2, 2) },
+        ["checker"] = new[] { (0, 0, 2, 2), (2, 2, 2, 2) },
+    };
+
+    /// <summary>The faintness of a solid area under a line, so the midline and other lines show through.</summary>
+    private const double AreaOpacity = 0.14;
+
+    private readonly string _patternId = "indx-chart-" + Guid.NewGuid().ToString("N")[..8];
+    private string PatternId(int si) => $"{_patternId}-{si}";
+    private static bool IsPattern(string fill) => PatternCells.ContainsKey(fill);
+    private string FillOf(ChartSeries s) => s.Fill ?? (Type == "bar" ? "solid" : "none");
+    private string ColorOf(ChartSeries s) => s.Color ?? (Type == "bar" ? "var(--chart-bar)" : DefaultLineColor);
+    /// <summary>What a shape is painted with: the colour, or the series' pattern in that colour.</summary>
+    private string PaintOf(ChartSeries s, int si) => IsPattern(FillOf(s)) ? $"url(#{PatternId(si)})" : ColorOf(s);
 
     [Parameter, EditorRequired] public IReadOnlyList<ChartSeries> Series { get; set; } = Array.Empty<ChartSeries>();
     [Parameter] public string[]? Labels { get; set; }
@@ -150,7 +217,56 @@
     /// <summary>One marker: the point's index in the series, and what happened there.</summary>
     public sealed record ChartMarker(int Index, string Label);
 
-    private const double PadTop = 12, PadRight = 20, PadBottomBase = 8, PadBottomLabels = 28, PadLeft = 20;
+    /// <summary>A level to read the data against: a threshold, an average, a quota, the value now.
+    /// <c>Label</c> is shown in a tag at the right end of the line, the formatted value when left out;
+    /// <c>Color</c> is the line's and the tag's, the signal red for a limit, the ink by default.
+    /// <c>Signal</c> marks a limit: whatever lies above the line is drawn in the signal red, bars and points alike.</summary>
+    public sealed record ChartReference(double Value, string? Label = null, string? Color = null, bool Signal = false);
+
+    /// <summary>A value axis at "left" or "right": round ticks with a faint gridline each, the range
+    /// widened to the ticks. "none" (default) keeps the midline, and the chart reads by the tooltip.</summary>
+    [Parameter] public string YAxis { get; set; } = "none";
+    /// <summary>The tick labels, and a reference's label when it has none; compact by default: 1.2k, 3M.</summary>
+    [Parameter] public Func<double, string>? YFormat { get; set; }
+    /// <summary>Levels to read the data against, each a dashed line with its label in a tag at the right.</summary>
+    [Parameter] public IReadOnlyList<ChartReference>? References { get; set; }
+    /// <summary>Bars only: the series on top of each other in one bar per label, in series order from
+    /// the baseline, so the bar's height is the total. The tooltip lists each part and the total.</summary>
+    [Parameter] public bool Stacked { get; set; }
+
+    private bool IsStacked => Stacked && Type == "bar";
+    private double[] _totals = Array.Empty<double>();
+
+    private bool HasAxis => YAxis is "left" or "right";
+    private readonly List<double> _ticks = new();
+    private string Fmt(double v) => YFormat != null ? YFormat(v) : Compact(v);
+    private string RefLabelOf(ChartReference r) => r.Label ?? Fmt(r.Value);
+
+    /// <summary>A round step for about four ticks over the range: 1, 2 or 5 times a power of ten.</summary>
+    private static double NiceStep(double range, int count = 4)
+    {
+        var raw = range / count;
+        if (raw <= 0) raw = 1;
+        var magnitude = Math.Pow(10, Math.Floor(Math.Log10(raw)));
+        var n = raw / magnitude;
+        return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * magnitude;
+    }
+
+    private static string Compact(double v)
+    {
+        var abs = Math.Abs(v);
+        if (abs >= 1e6) return Trim(v / 1e6) + "M";
+        if (abs >= 1e3) return Trim(v / 1e3) + "k";
+        return Trim(v);
+    }
+
+    private static string Trim(double v) =>
+        v.ToString(Math.Abs(v) < 10 ? "0.##" : "0.#", CultureInfo.InvariantCulture);
+
+    private const double PadTop = 12, PadBottomBase = 8, PadBottomLabels = 28, PadSide = 20;
+    // The side paddings make room for the axis labels and the reference tags, which sit outside
+    // the plot at the right. PadSide is the margin a chart has without either.
+    private double PadLeft, PadRight;
     private const string DefaultLineColor = "var(--lv4)";
 
     private sealed record TooltipState(int Index, double X, double Y);
@@ -168,16 +284,54 @@
     private void ComputeLayout()
     {
         var padBottom = (Labels?.Length ?? 0) > 0 ? PadBottomLabels : PadBottomBase;
-        _cw = Math.Max(_containerWidth - PadLeft - PadRight, 0);
         _ch = Math.Max(Height - PadTop - padBottom, 0);
+        // The range: the data, and any reference, which must be in view to be read against. With
+        // an axis the range widens to round ticks, so the top gridline carries a label.
         var all = new List<double>();
-        foreach (var s in Series)
-            foreach (var d in s.Data)
-                if (!double.IsNaN(d) && !double.IsInfinity(d)) all.Add(d);
-        var maxVal = all.Count > 0 ? Math.Max(all.Max(), 0) : 1.0;
-        _minVal = Type == "bar" ? 0.0 : (all.Count > 0 ? Math.Min(all.Min(), 0) : 0.0);
+        var dataLenAll = Series.Count > 0 ? Series.Max(s => s.Data.Count) : 0;
+        if (IsStacked)
+        {
+            // Stacked, the range is set by the totals per label, not the parts.
+            _totals = new double[dataLenAll];
+            for (int i = 0; i < dataLenAll; i++)
+                foreach (var s in Series)
+                    _totals[i] += i < s.Data.Count ? Math.Max(0, s.Data[i]) : 0;
+            all.AddRange(_totals);
+        }
+        else
+        {
+            _totals = Array.Empty<double>();
+            foreach (var s in Series)
+            {
+                foreach (var d in s.Data)
+                    if (double.IsFinite(d)) all.Add(d);
+                if (Type == "line" && s.HasBand)
+                    all.AddRange(s.Low!.Concat(s.High!).Where(double.IsFinite));
+            }
+        }
+        var refs = (References ?? Array.Empty<ChartReference>()).Select(r => r.Value).Where(double.IsFinite).ToList();
+        var maxVal = all.Count > 0 || refs.Count > 0 ? Math.Max(all.Concat(refs).Max(), 0) : 1.0;
+        _minVal = Type == "bar"
+            ? Math.Min(0, refs.Count > 0 ? refs.Min() : 0)
+            : (all.Count > 0 || refs.Count > 0 ? Math.Min(all.Concat(refs).Min(), 0) : 0.0);
+        var step = NiceStep(maxVal - _minVal);
+        _ticks.Clear();
+        if (HasAxis)
+        {
+            maxVal = Math.Ceiling(maxVal / step - 1e-9) * step;
+            _minVal = Math.Floor(_minVal / step + 1e-9) * step;
+            for (var t = _minVal; t <= maxVal + step / 2; t += step) _ticks.Add(Math.Round(t, 10));
+        }
         _range = (maxVal - _minVal) == 0 ? 1.0 : maxVal - _minVal;
         _dataLen = Series.Count > 0 ? Series.Max(s => s.Data.Count) : 0;
+        var signalRefs = (References ?? Array.Empty<ChartReference>()).Where(r => r.Signal && double.IsFinite(r.Value)).ToList();
+        _signalY = signalRefs.Count > 0 ? ToY(signalRefs.Min(r => r.Value)) : null;
+
+        var axisWidth = HasAxis && _ticks.Count > 0 ? _ticks.Max(t => Fmt(t).Length) * LabelCharWidth + 10 : 0;
+        var tagWidth = References is { Count: > 0 } ? References.Max(r => RefLabelOf(r).Length) * LabelCharWidth + 8 : 0;
+        PadLeft = YAxis == "left" ? axisWidth + 4 : PadSide;
+        PadRight = Math.Max(YAxis == "right" ? axisWidth + 4 : PadSide, tagWidth > 0 ? tagWidth + 6 : 0);
+        _cw = Math.Max(_containerWidth - PadLeft - PadRight, 0);
     }
 
     private double ToY(double v) => PadTop + (1 - (v - _minVal) / _range) * _ch;
@@ -214,6 +368,68 @@
     // Roughly the width of one --text-2xs character, and the gap kept between two labels.
     private const double LabelCharWidth = 6, LabelGap = 12, MinMarkerSpacing = 12;
 
+    private static void SvgText(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder builder, ref int seq,
+        double x, double y, string anchor, string fill, string text)
+    {
+        builder.OpenElement(seq++, "text");
+        builder.AddAttribute(seq++, "x", F(x));
+        builder.AddAttribute(seq++, "y", F(y));
+        builder.AddAttribute(seq++, "text-anchor", anchor);
+        builder.AddAttribute(seq++, "fill", fill);
+        builder.AddAttribute(seq++, "style", "font: var(--text-2xs)");
+        builder.AddContent(seq++, text);
+        builder.CloseElement();
+    }
+
+    // The value axis labels, at the ticks, outside the plot on the chosen side.
+    private RenderFragment RenderValueAxis => builder =>
+    {
+        if (!HasAxis) return;
+        var seq = 0;
+        // A reference's tag takes a tick label's place at the right, so a label the tag would
+        // cover is left out.
+        var refYs = (References ?? Array.Empty<ChartReference>()).Where(r => double.IsFinite(r.Value)).Select(r => ToY(r.Value)).ToList();
+        foreach (var t in _ticks)
+        {
+            var y = ToY(t);
+            if (YAxis == "right" && refYs.Any(ry => Math.Abs(ry - y) < 12)) continue;
+            var x = YAxis == "left" ? PadLeft - 6 : PadLeft + _cw + 6;
+            SvgText(builder, ref seq, x, y + 3, YAxis == "left" ? "end" : "start", "var(--lv4)", Fmt(t));
+        }
+    };
+
+    // A dashed line across the plot at each reference's value, its label in an inverted tag just
+    // outside the right edge, centred on the line.
+    private RenderFragment RenderReferences => builder =>
+    {
+        if (References is not { Count: > 0 }) return;
+        var seq = 0;
+        foreach (var r in References.Where(r => double.IsFinite(r.Value)))
+        {
+            var y = ToY(r.Value);
+            var color = r.Color ?? "var(--lv8)";
+            var label = RefLabelOf(r);
+            var w = label.Length * LabelCharWidth + 8;
+            builder.OpenElement(seq++, "line");
+            builder.AddAttribute(seq++, "x1", F(PadLeft));
+            builder.AddAttribute(seq++, "y1", F(y));
+            builder.AddAttribute(seq++, "x2", F(PadLeft + _cw));
+            builder.AddAttribute(seq++, "y2", F(y));
+            builder.AddAttribute(seq++, "stroke", color);
+            builder.AddAttribute(seq++, "stroke-width", "1");
+            builder.AddAttribute(seq++, "stroke-dasharray", "3 3");
+            builder.CloseElement();
+            builder.OpenElement(seq++, "rect");
+            builder.AddAttribute(seq++, "x", F(PadLeft + _cw + 4));
+            builder.AddAttribute(seq++, "y", F(y - 7));
+            builder.AddAttribute(seq++, "width", F(w));
+            builder.AddAttribute(seq++, "height", "14");
+            builder.AddAttribute(seq++, "fill", color);
+            builder.CloseElement();
+            SvgText(builder, ref seq, PadLeft + _cw + 8, y + 3, "start", "var(--lv0)", label);
+        }
+    };
+
     /// <summary>Every how many points a label is drawn: as many as fit side by side at the
     /// chart's current width, so 90 daily labels on a phone become a readable handful.</summary>
     private int LabelStep()
@@ -228,15 +444,98 @@
     /// the markers merge into a second, thicker line, so only the hovered point gets one.</summary>
     private bool RoomForMarkers => _dataLen <= 1 || _cw / (_dataLen - 1) >= MinMarkerSpacing;
 
-    private string LinePoints(ChartSeries s)
-    {
-        var sb = new System.Text.StringBuilder();
-        for (int i = 0; i < s.Data.Count; i++)
+    // The series, or with a paint the signal copy: the line and its points, or the bars, in that
+    // colour, no band or area.
+    private RenderFragment RenderSeries(string? paint) => @<text>
+        @if (Type == "line")
         {
-            if (i > 0) sb.Append(' ');
-            sb.Append(F(ToX(i))).Append(',').Append(F(ToY(s.Data[i])));
+            @for (int si = 0; si < Series.Count; si++)
+            {
+                var s = Series[si];
+                if (s.Data.Count == 0) { continue; }
+                var color = paint ?? s.Color ?? DefaultLineColor;
+                var fill = FillOf(s);
+                @if (paint == null && s.HasBand && BandPoints(s) is { } bandPts)
+                {
+                    @* The band between low and high: along high to the right, back along low. *@
+                    <polygon points="@bandPts" fill="@(IsPattern(fill) ? PaintOf(s, si) : color)" fill-opacity="@(IsPattern(fill) ? "1" : F(AreaOpacity))" stroke="none" />
+                }
+                else if (paint == null && fill != "none" && s.Data.Count > 1)
+                {
+                    @* The area under the line, down to the baseline (or zero, where the range goes below it). *@
+                    <polygon points="@AreaPoints(s)" fill="@PaintOf(s, si)" fill-opacity="@(fill == "solid" ? F(AreaOpacity) : "1")" stroke="none" />
+                }
+                <polyline points="@LinePoints(s)" fill="none" stroke="@color" stroke-width="1"
+                          stroke-linejoin="round" stroke-linecap="round" />
+                @for (int i = 0; i < s.Data.Count; i++)
+                {
+                    var hovered = _tooltip?.Index == i;
+                    if (!hovered && !RoomForMarkers) { continue; }
+                    var size = hovered ? (RoomForMarkers ? 10.0 : 7.0) : 5.0;
+                    var half = size / 2;
+                    <rect x="@F(ToX(i) - half)" y="@F(ToY(s.Data[i]) - half)" width="@F(size)" height="@F(size)" fill="@color" />
+                }
+            }
         }
-        return sb.ToString();
+        else if (_dataLen > 0)
+        {
+            var groupW = _cw / _dataLen;
+            const double barGap = 2.0;
+            var seriesCount = IsStacked ? 1 : Series.Count;
+            var barW = Math.Max((groupW - barGap * (seriesCount + 1)) / seriesCount, 2);
+            var bottom = PadTop + _ch;
+            // Stacked: each series starts where the ones before it ended.
+            var stackBase = new double[_dataLen];
+            @for (int si = 0; si < Series.Count; si++)
+            {
+                var s = Series[si];
+                var color = paint ?? PaintOf(s, si);
+                @for (int i = 0; i < s.Data.Count; i++)
+                {
+                    var bx = IsStacked ? PadLeft + i * groupW + barGap : PadLeft + i * groupW + barGap + si * (barW + barGap);
+                    var part = IsStacked ? Math.Max(0, s.Data[i]) : s.Data[i];
+                    var from = IsStacked ? stackBase[i] : 0;
+                    if (IsStacked) { stackBase[i] += part; }
+                    var by = ToY(from + part);
+                    var bh = IsStacked ? Math.Max(ToY(from) - by, 0) : Math.Max(bottom - by, 0);
+                    <rect x="@F(bx)" y="@F(by)" width="@F(barW)" height="@F(bh)" fill="@color" />
+                }
+            }
+        }
+    </text>;
+
+    private const string Signal = "var(--CSignal)";
+    private double? _signalY;
+
+    /// <summary>The points of a series as "x,y" pairs; with Step, a corner at each new x holding the
+    /// last value, so the line runs flat and then jumps.</summary>
+    private List<string> PointsOf(IReadOnlyList<double> values, bool step, int n)
+    {
+        var pts = new List<string>(step ? n * 2 : n);
+        for (int i = 0; i < n; i++)
+        {
+            if (step && i > 0) pts.Add($"{F(ToX(i))},{F(ToY(values[i - 1]))}");
+            pts.Add($"{F(ToX(i))},{F(ToY(values[i]))}");
+        }
+        return pts;
+    }
+
+    private string LinePoints(ChartSeries s) => string.Join(' ', PointsOf(s.Data, s.Step, s.Data.Count));
+
+    private string? BandPoints(ChartSeries s)
+    {
+        var n = Math.Min(s.Data.Count, Math.Min(s.Low!.Count, s.High!.Count));
+        if (n < 2) return null;
+        var top = PointsOf(s.High, s.Step, n);
+        var back = PointsOf(s.Low, s.Step, n);
+        back.Reverse();
+        return string.Join(' ', top.Concat(back));
+    }
+
+    private string AreaPoints(ChartSeries s)
+    {
+        var baseY = ToY(Math.Max(_minVal, 0));
+        return $"{F(ToX(0))},{F(baseY)} {LinePoints(s)} {F(ToX(s.Data.Count - 1))},{F(baseY)}";
     }
 
     private static string F(double v) => v.ToString("0.###", CultureInfo.InvariantCulture);
@@ -251,12 +550,28 @@
             ? Labels[tip.Index]
             : (tip.Index + 1).ToString(CultureInfo.InvariantCulture);
 
+    // Kept inside the frame, which clips. The box's size is estimated from its rows and its
+    // longest name (a row is 20px, a character about 6.5px), since it is not measured before it
+    // is drawn: below the pointer when that fits, else above, else pinned to the top.
     private string TooltipStyle(TooltipState tip)
     {
-        var tipX = Math.Min(Math.Max(tip.X, 60), _containerWidth - 60);
-        return tip.Y < 80
-            ? $"left:{F(tipX)}px;top:{F(tip.Y + 12)}px;transform:translate(-50%,0);"
-            : $"left:{F(tipX)}px;top:{F(tip.Y - 8)}px;transform:translate(-50%,-100%);";
+        int rows = Series.Count
+            + Series.Count(s => s.HasBand && tip.Index < s.Low!.Count && tip.Index < s.High!.Count)
+            + (IsStacked && Series.Count > 1 ? 1 : 0)
+            + (Markers?.Count(m => m.Index == tip.Index) ?? 0);
+        int longest = Math.Max(TooltipLabel(tip).Length,
+            Math.Max(Series.Count > 0 ? Series.Max(s => s.Label.Length + 8) : 0, Markers is { Count: > 0 } ? Markers.Max(m => m.Label.Length) : 0));
+        double tipW = Math.Min(Math.Max(90, longest * 6.5 + 36), Math.Max(120, _containerWidth - 16));
+        double tipH = 30 + rows * 20;
+        // Beside the pointed column, never on it: to its right when the box fits there, else to
+        // its left, and at the pointer's height, kept inside the frame. Above or below the pointer
+        // it covered the columns and lines it describes, in a short chart every time.
+        // From the bar's edge on a bar chart (its column's centre is tip.X), from the point on a line.
+        const double gap = 12;
+        double half = Type == "bar" && _dataLen > 0 ? _cw / _dataLen / 2 : 0;
+        double left = tip.X + half + gap + tipW <= _containerWidth - 4 ? tip.X + half + gap : Math.Max(4, tip.X - half - gap - tipW);
+        double top = Math.Max(4, Math.Min(tip.Y - tipH / 2, Height - tipH - 4));
+        return $"left:{F(left)}px;top:{F(top)}px;";
     }
 
     private void OnMouseMove(MouseEventArgs e)

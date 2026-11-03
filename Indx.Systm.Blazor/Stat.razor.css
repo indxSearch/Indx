@@ -16,8 +16,29 @@
 }
 
 .indx-stat-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     font: var(--text-xs);
     color: var(--lv5);
+}
+
+/* The icon before the label, in its tone. */
+.indx-stat-label-icon {
+    display: inline-flex;
+    line-height: 0;
+}
+
+/* The middle row: the height the label and the foot leave, its content centred in it. Tiles in a
+   StatGroup are as tall as the tallest, so their middles line up and their feet sit at the bottom. */
+.indx-stat-body {
+    flex: 1 1 auto;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    align-self: stretch;
+    min-width: 0;
 }
 
 /* A label with a hint says so: a dotted underline and the help cursor. */
@@ -30,12 +51,23 @@
    Book reads heavier at 24px than the Inter the React systm draws, and the number is the one
    large thing on the stat. Geist, where the brand font is absent, has a 300 too. */
 .indx-stat-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
     max-width: 100%;
     font: var(--text-2xl);
     font-weight: 300;
     color: var(--lv8);
     font-variant-numeric: tabular-nums;
     overflow-wrap: anywhere;
+}
+
+/* The icon before a state's word, in the value's colour; it sits on the cap height, so a touch
+   down from the line box's centre. */
+.indx-stat-icon {
+    display: inline-flex;
+    flex: none;
+    margin-top: 2px;
 }
 
 /* A chip is a value too (a state): it sits on the value's line. */
@@ -50,6 +82,34 @@
     gap: 6px;
     font: var(--text-xs);
     color: var(--lv5);
+}
+
+/* With a figure: under the label, the graphic at the left and the value and foot stacked
+   beside it, centred on it. */
+/* Under the label with air above, so the ring does not press on it. */
+.indx-stat--figured {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    max-width: 100%;
+    margin-top: 6px;
+}
+
+/* The foot of a tile without a figure: the full width (a sparkline, a strip of cells fills it). */
+.indx-stat > .indx-stat-foot { align-self: stretch; }
+
+.indx-stat-figure {
+    display: inline-flex;
+    flex: none;
+}
+
+.indx-stat-text {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 4px;
+    min-width: 0;
 }
 
 /* The hint spans the stat rather than centring on its label. Labels sit at the start, so a

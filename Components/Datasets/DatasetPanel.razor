@@ -15,6 +15,7 @@
 @inject NavigationManager Nav
 @inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
 @inject IndxServer.Services.SideMenuState Menu
+@inject IndxServer.Services.Webhooks.WebhookStore Webhooks
 
 @* The header slot (the console's breadcrumb row, with DatasetStatus in its actions) sits
    outside the Surface so it lands at exactly the same spot as on the team page — the
@@ -46,23 +47,35 @@
                     var tab = Ctx.ActiveTab;
                     // Not Ready and not Error: the not-yet sections are shown disabled.
                     var pending = !isReady && engineState != SystemState.Error;
+                    // Asleep: hibernated, not loaded, waking, or created and empty. The upload flow
+                    // is the content (Wake up, its progress, or the upload). A hibernated dataset's
+                    // data is all there, so Options (download, keep-alive, transfer, delete) and
+                    // Statistics need no engine and open; the wake view sits under Status, where a
+                    // dataset's state is read; the rest waits for Wake up (24 Oct 2026).
+                    var asleep = Ctx.HasStatus && Visible && !showNav;
+                    var sleepTab = !asleep ? tab
+                        : Ctx.IsHibernated && tab is "options" or "statistics" ? tab
+                        : tab == "webhooks" && Ctx.IsAdmin ? tab
+                        : Ctx.IsHibernated ? "status" : null;
                     if (!Ctx.HasStatus || !Visible) PublishMenu(null, tab);
                     else if (showNav) PublishMenu(NavItems(isReady, pending), tab);
-                    else PublishMenu(SleepingItems(), null);
+                    else PublishMenu(SleepingItems(), sleepTab);
                 }
 
                 @* ── Tabs. All stay mounted so edit state survives switching; only the active one renders. ── *@
-                <UploadFlow Active="@(tab == "fields")" />
+                <UploadFlow Active="@(asleep ? sleepTab is null or "status" : tab == "fields")" />
                 <FieldConfigTab Active="@(tab == "fields" && isReady)" />
+                <CategoriesTab Active="@(tab == "categories" && isReady)" />
                 <SearchPreviewTab Active="@(tab == "search")" />
-                <StatusTab Active="@(tab == "status")" />
-                <OptionsTab Active="@(tab == "options")" />
+                <StatusTab Active="@(tab == "status" && !asleep)" />
+                <OptionsTab Active="@(sleepTab == "options")" />
                 <RankingRulesTab Active="@(tab == "boosts")" Kind="boost" />
                 <RankingRulesTab Active="@(tab == "buries")" Kind="bury" />
                 <SynonymsTab Active="@(tab == "synonyms")" />
                 <QueryParametersTab Active="@(tab == "query-parameters")" />
                 <SearchOrAskTab Active="@(tab == "search-or-ask")" />
-                <StatisticsTab Active="@(tab == "statistics")" />
+                <StatisticsTab Active="@(sleepTab == "statistics")" />
+                <WebhooksTab Active="@(sleepTab == "webhooks")" />
 
             </CascadingValue>
         </Surface>
@@ -99,6 +112,29 @@
         Ctx.DatasetListChanged += () => OnDatasetListChanged.InvokeAsync();
         Ctx.Renamed += newName => OnRenamed.InvokeAsync(newName);
         OnContextCreated?.Invoke(Ctx);
+    }
+
+    // Listened for only in a live circuit: a static render (the tests' HtmlRenderer) has a
+    // NavigationManager that was never initialised, and removing a handler from it throws.
+    private bool _listening;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender) return;
+        Nav.LocationChanged += OnLocationChanged;
+        _listening = true;
+    }
+
+    /// <summary>A jump to another tab of this dataset (the command palette, a link) changes only
+    /// ?tab=, and the page is not created again: open the tab the address now names. SyncAddress's
+    /// own replace lands here too, naming the tab already open, and changes nothing.</summary>
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        if (!Visible || Ctx.EngineState != SystemState.Ready) return;
+        if (IndxServer.Services.TeamRoutes.DatasetFromPath(Nav.ToBaseRelativePath(e.Location)) != Name) return;
+        var tab = RequestedTab() ?? "status";
+        if (tab == Ctx.ActiveTab) return;
+        _ = InvokeAsync(() => { Ctx.ActiveTab = tab; Ctx.NotifyChanged(); StateHasChanged(); });
     }
 
     protected override void OnParametersSet()
@@ -163,7 +199,7 @@
         var layout = new (string Title, string[] Keys)[]
         {
             ("Overview", ["status", "statistics"]),
-            ("Data", ["fields"]),
+            ("Data", ["fields", "categories", "webhooks"]),
             ("Relevance", ["query-parameters", "boosts", "synonyms"]),
             ("Try it", ["search", "search-or-ask"]),
             ("Settings", ["options"]),
@@ -182,8 +218,10 @@
         return groups;
     }
 
+    // Search or ask carries the lab mark in the column, as its page carries the Experimental chip.
     private static SideMenuItem ToMenuItem(Tabs.TabItem i) =>
-        new(i.Value, i.Label, i.Icon, Href: null, Disabled: i.Disabled, Title: i.Title, Badge: i.Badge, BadgeTitle: i.BadgeTitle);
+        new(i.Value, i.Label, i.Icon, Href: null, Disabled: i.Disabled, Title: i.Title, Badge: i.Badge, BadgeTitle: i.BadgeTitle,
+            Experimental: i.Value == "search-or-ask");
 
     private const string TabQuery = "tab";
 
@@ -222,7 +260,10 @@
     {
         var reason = Ctx.IsHibernated ? Asleep : NotYet;
         return NavItems(isReady: false, pending: true)
-            .Select(i => i with { Disabled = true, Title = reason, Badge = null, BadgeTitle = null })
+            .Select(i => Ctx.IsHibernated && i.Value is "status" or "options" or "statistics"
+                || i.Value == "webhooks"
+                ? i with { Disabled = false, Title = null, Badge = null, BadgeTitle = null }
+                : i with { Disabled = true, Title = reason, Badge = null, BadgeTitle = null })
             .ToList();
     }
 
@@ -236,6 +277,8 @@
 
         if (isReady || pending) items.Add(Tab("status", "Status", DatasetIcons.Status, isReady));
         items.Add(Tab("fields", "Field configuration", DatasetIcons.Fields, true));
+        // The categories of a catalogue, read from a facet: needs the built index.
+        if (isReady || pending) items.Add(Tab("categories", "Categories", DatasetIcons.Categories, isReady));
         // Configuration only, read on every search: needs no built index.
         if ((isReady || pending) && Ctx.IsEditor)
             items.Add(Tab("query-parameters", "Query parameters", DatasetIcons.QueryParameters, true));
@@ -260,6 +303,14 @@
                 expiredBuries > 0 ? $"{expiredBuries} expired bury rule(s), no longer applying" : null));
             items.Add(Tab("synonyms", "Synonyms", DatasetIcons.Synonym, isReady));
         }
+        // Needs no built index: a webhook's first full sync is how an empty dataset gets its documents.
+        if (Ctx.IsAdmin)
+        {
+            var held = HeldWebhookBatches();
+            items.Add(Tab("webhooks", "Webhooks", DatasetIcons.Webhooks, true,
+                held > 0 ? held.ToString() : null,
+                held > 0 ? $"{held} webhook batch(es) held by the brake, waiting for you" : null));
+        }
         if (Ctx.IsAdmin) items.Add(Tab("options", "Options", DatasetIcons.Sliders, true));
         return items;
     }
@@ -271,6 +322,9 @@
         var today = DateOnly.FromDateTime(DateTime.Today);
         return store.LoadRules(Ctx.TeamId, Ctx.Name).Count(r => r.Enabled && r.ActiveUntil is { } u && u < today);
     }
+
+    /// <summary>Batches the webhooks' brake holds for an admin: the badge says they wait.</summary>
+    private int HeldWebhookBatches() => Webhooks.List(Ctx.TeamId, Ctx.Name).Sum(h => Webhooks.Held(h.Id).Count);
 
     /// <summary>While the engine loads or indexes in the background (a load started from the API,
     /// or a page reopened mid-operation), refresh the status once a second until it settles, and
@@ -298,6 +352,7 @@
 
     public void Dispose()
     {
+        if (_listening) Nav.LocationChanged -= OnLocationChanged;
         Menu.Clear(this);
         Ctx.Changed -= OnCtxChanged;
         _pollCts?.Cancel();

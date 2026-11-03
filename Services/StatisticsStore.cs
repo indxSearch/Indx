@@ -16,7 +16,13 @@ namespace IndxServer.Services
     public readonly record struct SearchEventRow(
         string QueryId, string TeamId, string DataSet, string QueryText, string? FilterKey,
         int HitCount, string? Subject, long Timestamp, string? Source = null, string? Session = null,
-        bool? Covered = null, bool Counted = true);
+        bool? Covered = null, bool Counted = true, string? Typed = null, string? Locale = null);
+    // Locale: the language the page was in (?locale=, a BCP 47 tag such as nb-NO), as the
+    // storefront reports it; what "which languages do people search in" is read from. Not where
+    // they are: that would take their address, which the statistics do not keep.
+    // Typed: what the visitor typed, when the page searched something else for it (Search or
+    // ask's Ask phrases search "lis" for "show me a lis"). Only the keystroke rule reads it, in
+    // memory; QueryText stays what was searched, and nothing new is stored.
 
     /// <summary>One select: the user chose a result. QueryId is an opaque reference — an orphan
     /// (unknown or expired id) is stored like any other row and simply finds no search to join.
@@ -312,6 +318,12 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
             catch (SqliteException) { /* already there */ }
             try
             {
+                cmd.CommandText = "ALTER TABLE SearchEvents ADD COLUMN Locale TEXT NULL";
+                cmd.ExecuteNonQuery();
+            }
+            catch (SqliteException) { /* already there */ }
+            try
+            {
                 cmd.CommandText = "ALTER TABLE SearchEvents ADD COLUMN Session TEXT NULL";
                 cmd.ExecuteNonQuery();
                 // The column arriving means this file predates "what counts as a search"
@@ -374,6 +386,13 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                     logger.LogInformation("statistics: where a search came from and whether it counts are separate now ({Uncounted} uncounted); re-rolling the kept days", uncounted);
             }
             catch (SqliteException) { /* already there */ }
+            // The keystroke rule counts a session's superseded searches per settled one (Typing):
+            // without this it scanned the table once per search, minutes on 300k events (25 Oct
+            // 2026). After the migrations, since it names Superseded, which a file from before the
+            // column has only once the ALTER above has run; in the base script it broke EnsureSchema
+            // on such a file, and the keystrokes were never marked (StatisticsStoreUpgradeTests).
+            cmd.CommandText = "CREATE INDEX IF NOT EXISTS IX_Search_Session ON SearchEvents(TeamId, DataSet, Session, Timestamp) WHERE Superseded = 1";
+            cmd.ExecuteNonQuery();
         }
 
         /// <summary>The keystroke rule in SQL, for rows the writer did not mark: a search with
@@ -413,8 +432,9 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = @"INSERT OR IGNORE INTO SearchEvents
-                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp, Source, Session, Covered, Counted)
-                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts, $src, $sess, $cov, $cnt)";
+                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp, Source, Session, Covered, Counted, Locale)
+                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts, $src, $sess, $cov, $cnt, $loc)";
+                var loc = cmd.Parameters.Add("$loc", SqliteType.Text);
                 var qid = cmd.Parameters.Add("$qid", SqliteType.Text);
                 var team = cmd.Parameters.Add("$team", SqliteType.Text);
                 var ds = cmd.Parameters.Add("$ds", SqliteType.Text);
@@ -432,7 +452,7 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                     qid.Value = e.QueryId; team.Value = e.TeamId; ds.Value = e.DataSet;
                     text.Value = e.QueryText; filter.Value = (object?)e.FilterKey ?? DBNull.Value;
                     hits.Value = e.HitCount; subj.Value = (object?)e.Subject ?? DBNull.Value;
-                    ts.Value = e.Timestamp; src.Value = (object?)e.Source ?? DBNull.Value;
+                    ts.Value = e.Timestamp; src.Value = (object?)e.Source ?? DBNull.Value; loc.Value = (object?)e.Locale ?? DBNull.Value;
                     sess.Value = (object?)e.Session ?? DBNull.Value;
                     cov.Value = e.Covered is bool covered ? (covered ? 1 : 0) : DBNull.Value;
                     cnt.Value = e.Counted ? 1 : 0;
@@ -1011,7 +1031,7 @@ GROUP BY TeamId, DataSet, DocumentKey;";
         /// </list>
         /// </summary>
         private static string CountedSearches(string where) => $@"(
-SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.Timestamp, s.Covered, s.Source,
+SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.Timestamp, s.Covered, s.Source, s.Locale,
        -- Per counted search through IX_Select_QueryId, after the WHERE has dropped the
        -- keystrokes. Not a GROUP BY over SelectEvents joined in: that grouped every select ever
        -- kept on every read (StatisticsReadCostProbeTests).
@@ -1256,6 +1276,49 @@ LIMIT $n";
             if (uncoveredOnly && result.Count > 0)
                 result = WithMostChosen(conn, teamId, dataSet, tz, fromDay, toDay, result, source);
             return result;
+        }
+
+        /// <summary>
+        /// One query text's counts over [fromDay, toDay], through the same union as
+        /// <see cref="TopQueries"/> (compared lowercased, as that groups it), so a query that is
+        /// not among the top lists can still be looked up. Null when it was not searched in the
+        /// period; a query searched once has a row, which the capped lists leave out.
+        /// </summary>
+        public QueryStat? OneQuery(string teamId, string dataSet, string queryText, long fromDay, long toDay, string? source = null)
+        {
+            // SQLite's lower() folds ASCII only, and the rollup wrote its text through it: compare
+            // through the same function, never through .NET's.
+            var text = queryText.Trim();
+            if (text.Length == 0) return null;
+            var tz = ZoneOf(teamId, dataSet);
+            long rolledTo = RolledTo(fromDay, toDay, source);
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"
+SELECT SUM(Searches), SUM(ZeroHits), SUM(Selects), SUM(Clicked), SUM(PosSum), SUM(Unc), SUM(UncChosen) FROM (
+    SELECT Searches, ZeroHits, Selects, ClickedSearches AS Clicked, PositionSum AS PosSum,
+           Uncovered AS Unc, UncoveredChosen AS UncChosen
+      FROM DailyQueryStats
+     WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $rolledTo AND QueryText = lower($q)
+    UNION ALL
+    SELECT 1, CASE WHEN c.HitCount = 0 THEN 1 ELSE 0 END, COALESCE(c.Cnt, 0),
+           CASE WHEN c.Cnt > 0 THEN 1 ELSE 0 END, COALESCE(c.PosSum, 0),
+           CASE WHEN (c.HitCount = 0 OR c.Covered = 0) THEN 1 ELSE 0 END,
+           CASE WHEN (c.HitCount = 0 OR c.Covered = 0) AND c.Cnt > 0 THEN 1 ELSE 0 END
+      FROM {CountedSearches(LiveWhereFor(source))} c
+     WHERE lower(c.QueryText) = lower($q)
+)";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$fromDay", fromDay);
+            cmd.Parameters.AddWithValue("$rolledTo", rolledTo);
+            cmd.Parameters.AddWithValue("$liveFrom", StatisticsDays.Start(tz, Math.Max(fromDay, rolledTo + 1)));
+            cmd.Parameters.AddWithValue("$toEx", StatisticsDays.Start(tz, toDay + 1));
+            cmd.Parameters.AddWithValue("$q", text);
+            AddSource(cmd, source);
+            using var r = cmd.ExecuteReader();
+            if (!r.Read() || r.IsDBNull(0) || r.GetInt64(0) == 0) return null;
+            return new QueryStat(text, r.GetInt64(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3), r.GetInt64(4), r.GetInt64(5), r.GetInt64(6));
         }
 
         /// <summary>
@@ -1562,7 +1625,7 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
                 using (var cmd = Command($"DELETE FROM AskEvents WHERE {searchWhere}")) cmd.ExecuteNonQuery();
                 if (source == null)
                 {
-                    foreach (var table in new[] { "DailyQueryStats", "DailyDocumentStats", "DailyFilterStats", "DailyAskStats" })
+                    foreach (var table in new[] { "DailyQueryStats", "DailyDocumentStats", "DailyFilterStats", "DailyAskStats", "AskBudgetDays" })
                     {
                         using var cmd = Command($"DELETE FROM {table} WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $toDay");
                         cmd.Parameters.AddWithValue("$fromDay", fromDay ?? long.MinValue);
@@ -1686,7 +1749,7 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
              // Deleting the statistics deletes their explanation too: starting the numbers over
              // starts the history of what moved them over (decided 1 Oct 2026).
              "DatasetChanges", "DailyDocumentChanges",
-             "AskIntentEvents", "AskEvents", "DailyAskStats"];
+             "AskIntentEvents", "AskEvents", "DailyAskStats", "AskBudgetDays"];
 
         private int ExecutePerTable(string where, string a, string? b)
         {

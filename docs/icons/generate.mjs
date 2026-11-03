@@ -26,6 +26,8 @@ const ICONS = [
   'Login', 'Boost', 'Synonym', 'Bell', 'Terminal',
   // The 2.0 GitHub release, which links them by their raw.githubusercontent.com address.
   'FuzzySearch', 'HybridSearch', 'Eye', 'Key', 'Speedometer', 'Github',
+  // 2.0 beta 2.
+  'SearchOrAsk', 'Observr', 'Analytics', 'Folder', 'Database', 'LayoutAlignLeft',
 ];
 
 const SCALE = 3;                 // CSS pixels per grid unit: a 7x5 icon becomes 21x15

@@ -1,0 +1,13 @@
+@* Text a highlight sweeps across, left to right, as Notion's quick answer has it: for a line that
+   says something is about to happen ("Thinking", "For a quick answer, type a bit more"). The one
+   motion in systm that runs before anything is computing (27 Oct 2026): it invites. Still under
+   prefers-reduced-motion. Port of the React ShimmerText in indx-systm. *@
+<span class="indx-shimmer-text @(Active ? "indx-shimmer-text--active" : null) @Class" @attributes="AdditionalAttributes">@ChildContent</span>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>The highlight sweeps while true; false is the same text, still.</summary>
+    [Parameter] public bool Active { get; set; } = true;
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+}

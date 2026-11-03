@@ -9,7 +9,16 @@ namespace IndxServer.Services.Observr
     public sealed record ObservrSummaryDocument(string Name, long Selects);
     public sealed record ObservrSummaryChange(DateTime AtUtc, string Kind, string? Summary);
     public sealed record ObservrSummaryTotals(long Searches, long ZeroHits, long ClickedSearches, long Uncovered);
-    public sealed record ObservrSummaryAsk(long Judged, long Offers, long Asks, long Answered, long NothingFound, long Unanswered, List<string> UnansweredQuestions);
+    public sealed record ObservrSummaryAsk(long Judged, long Offers, long Asks, long Answered, long NothingFound, long Unanswered, List<string> UnansweredQuestions,
+        List<string>? LeadIns = null, List<ObservrSummaryLeadIn>? LeadInCandidates = null, List<ObservrSummaryRefocusMiss>? RefocusedNothing = null,
+        long AskedAgain = 0, List<ObservrSummaryRephrasing>? AskedAgainAs = null);
+    /// <summary>A question asked again in other words soon after, in the same visit: the first
+    /// wording, the second, how often, and how often the second answer had a source opened.</summary>
+    public sealed record ObservrSummaryRephrasing(string First, string Again, long Times, long AgainOpened);
+    /// <summary>How questions began that no Ask phrase caught: the first words, how many, one of them.</summary>
+    public sealed record ObservrSummaryLeadIn(string Words, long Searches, string Example);
+    /// <summary>An Ask phrase taken off a question, and what was left, which found nothing.</summary>
+    public sealed record ObservrSummaryRefocusMiss(string Phrase, string Searched, long Times);
     public sealed record ObservrSummaryField(string Name, string Type, bool Searchable, bool Filterable, bool Facetable, bool Sortable, float Weight);
 
     /// <summary>
@@ -34,7 +43,7 @@ namespace IndxServer.Services.Observr
     /// dataset is loaded, its engine. Never loads a dataset: a summary of a sleeping one has no field
     /// list, which is also a fact about it.</summary>
     internal sealed class ObservrSummaryBuilder(StatisticsService statistics, DatasetMetadataStore metadata, IDatasetEngines engines,
-        ObservrFindingStore findings)
+        ObservrFindingStore findings, SearchOrAsk.SearchOrAskStore searchOrAskStore)
     {
         private const int TopQueries = 20;
         private const int ZeroHits = 15;
@@ -43,6 +52,7 @@ namespace IndxServer.Services.Observr
         private const int Documents = 10;
         private const int ChangesMax = 20;
         private const int Unanswered = 10;
+        private const int Rephrased = 10;
         private const int Findings = 15;
 
         /// <summary>Null when the instance keeps no statistics: there is nothing to summarise.</summary>
@@ -67,8 +77,14 @@ namespace IndxServer.Services.Observr
             ObservrSummaryTotals Totals(OverviewStat o) => new(o.Searches, o.ZeroHits, o.ClickedSearches, o.Uncovered);
 
             var ask = store.AskOverview(teamId, dataSetName, from, to);
+            var askSettings = searchOrAskStore.Load(teamId, dataSetName);
+            var (again, rephrased) = store.AskedAgain(teamId, dataSetName, from, to, Rephrased);
             var searchOrAsk = ask.Judged == 0 && ask.Asks == 0 ? null : new ObservrSummaryAsk(ask.Judged, ask.Offers, ask.Asks, ask.Answered, ask.NothingFound,
-                ask.Unanswered, store.TopQuestions(teamId, dataSetName, from, to, Unanswered).Where(q => q.Unanswered > 0 || q.NothingFound > 0).Select(q => q.Question).ToList());
+                ask.Unanswered, store.TopQuestions(teamId, dataSetName, from, to, Unanswered).Where(q => q.Unanswered > 0 || q.NothingFound > 0).Select(q => q.Question).ToList(),
+                [.. (askSettings?.AskPhrases ?? SearchOrAsk.SearchOrAskPhrases.Default).LeadIns],
+                store.LeadInCandidates(teamId, dataSetName, from, to).Select(c => new ObservrSummaryLeadIn(c.Words, c.Searches, c.Example)).ToList(),
+                store.RefocusMisses(teamId, dataSetName, from, to).Select(m => new ObservrSummaryRefocusMiss(m.Phrase, m.Searched, m.Times)).ToList(),
+                again.AskedAgain, rephrased.Select(r => new ObservrSummaryRephrasing(r.First, r.Again, r.Times, r.AgainOpened)).ToList());
 
             var site = metadata.Load(teamId, dataSetName);
             return new ObservrSummary(ObservrSummary.CurrentVersion, ObservrClient.DigestKind, teamId, dataSetName,

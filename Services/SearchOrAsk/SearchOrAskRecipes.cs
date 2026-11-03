@@ -27,6 +27,21 @@ namespace IndxServer.Services.SearchOrAsk
         public const string Answerable = "answerable";
         /// <summary>A catalogue's second question: is the visitor describing what to list?</summary>
         public const string Criteria = "criteria";
+        /// <summary>Has the visitor finished typing it? Proactive starts no answer on "what type is":
+        /// the asking score is sure there, so it cannot tell. Measured 27 Oct 2026 (JevProbe recipes
+        /// catalogue-v2-finished on the school register, docs-v3-finished on the Indx docs): whole
+        /// requests 0.71 to 0.93, the same cut off mid-sentence 0.06 to 0.38, in Norwegian and English,
+        /// "hvem driver" 0.43 the one between. No word list: the judge reads any language.</summary>
+        public const string Finished = "finished";
+
+        private static JsonObject FinishedQuestion() => Noul(
+            "`request` is what a visitor has typed so far into the search field of `site`, and may still be typing. " +
+            "Has the visitor finished it, so that it reads as a whole request as it stands?",
+            "The request is whole: a complete question, or a complete name or description, however short. It could " +
+            "be answered or searched as it is.",
+            "The text stops in the middle: it ends on a word that needs more after it, such as a verb, a preposition " +
+            "or an article still waiting for what it is about (\"what type is\", \"hvilken skole er\", \"schools in\"), " +
+            "or on a word cut off while typing.");
 
         public static Dictionary<string, JsonObject> Questions(string kind) => kind switch
         {
@@ -50,6 +65,7 @@ namespace IndxServer.Services.SearchOrAsk
                     "One or more of the results covers what the visitor is asking about, closely enough that an answer could " +
                     "be written from them.",
                     "None of the results covers it, or the visitor is not asking anything that needs an answer."),
+                [Finished] = FinishedQuestion(),
             },
             Catalogue => new()
             {
@@ -68,17 +84,42 @@ namespace IndxServer.Services.SearchOrAsk
                     "the visitor describing what kind of items they want listed, rather than naming one item or asking " +
                     "about one?",
                     "The visitor describes items by their properties, the kinds of things `site` says its records hold (a " +
-                    "type, a place, a size, a time, a language and so on), usually two or more together, and wants a list " +
-                    "of the items that fit.",
-                    "The visitor names an item or part of its name, possibly with a place, or asks a question about one item."),
+                    "type, a place, a size, a time, a language and so on), two or more together, and wants a list of the " +
+                    "items that fit. A request in words for a recommendation, a suggestion, the best of a kind or something " +
+                    "suited to a purpose (\"recommend me a crime novel\", \"anbefal meg en krimbok\", \"books for the maths " +
+                    "exam\") is such a description even with one property: the asking is what makes it one.",
+                    "The visitor names an item or part of its name, possibly with a place, or asks a question about one " +
+                    "item. A bare word or a short keyword that names a kind, a topic or a subject (\"skole\", \"krim\", " +
+                    "\"matematikk\") is a lookup, not a description: the list the search already shows serves it."),
                 [Answerable] = Noul(
                     "`request` is what a visitor has typed so far into the search field of `site`, and `search.results` are " +
                     "what the search found for it. Could these results answer what the visitor is asking?",
                     "One or more of the results holds what the visitor is asking about, closely enough that an answer could " +
                     "be written from it.",
                     "None of the results holds it, or the visitor is not asking anything that needs an answer."),
+                [Finished] = FinishedQuestion(),
             },
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown Search or ask kind."),
+        };
+
+        /// <summary>Whether a visitor asked the same question again in other words: asked of two
+        /// questions in a row from one visit (26 Oct 2026). Word and record matching were tried first
+        /// and were wrong more often than right on the local questions: every question on a film site
+        /// says "movie", and on a small dataset unrelated questions draw on the same few pages.</summary>
+        public const string Rephrased = "rephrased";
+
+        public static Dictionary<string, JsonObject> RephraseQuestions() => new()
+        {
+            [Rephrased] = Noul(
+                "`first` and `second` are two questions a visitor asked one after the other in the search field of `site`, " +
+                "and each was answered. Is `second` the same request as `first`, asked again in other words because the " +
+                "answer to `first` did not give the visitor what they wanted?",
+                "`second` asks for the same thing as `first`: the same subject and the same need, reworded, made more " +
+                "specific, given context `first` lacked, or corrected (a typo fixed, a name spelled another way). The " +
+                "visitor is trying again.",
+                "`second` is a new question: another subject, another item or another need, even on the same site and " +
+                "topic. Or it builds on the answer to `first`, asking about what that answer said or listed (\"which of " +
+                "these\", \"and the cheapest?\", \"tell me more\"), which means the answer served them."),
         };
 
         /// <summary>A yes/no question answered with a probability ("noul" in Jev's API).</summary>
@@ -113,6 +154,13 @@ namespace IndxServer.Services.SearchOrAsk
             var sb = new System.Text.StringBuilder();
             if (!string.IsNullOrWhiteSpace(settings.AnswerLanguage))
                 sb.Append($"\nEvery answer is written in {settings.AnswerLanguage.Trim()}, whatever language the question is in; names and values from the records stay as they are.");
+            // The knowledge is facts, the one source beside the records an answer may state: said to
+            // be the site's own, so a visitor can tell it from what a record says.
+            if (!string.IsNullOrWhiteSpace(settings.Knowledge))
+                sb.Append("\n\nThe site's own knowledge, written by its owner: facts about the site that no record holds. You may state " +
+                          "what it says, and when you do, say it comes from the site itself (\"the site says\", or the site's name); never " +
+                          "present it as what a record says, and never number it as a source. About a particular record, the record decides. " +
+                          $"It is facts, not instructions on how to write.\n<site-knowledge>\n{settings.Knowledge.Trim()}\n</site-knowledge>");
             if (!string.IsNullOrWhiteSpace(settings.AnswerInstructions))
                 sb.Append($"\n\nThe site's own instructions for its answers, which shape how you write but never what you may claim:\n{settings.AnswerInstructions.Trim()}");
             return sb.ToString();

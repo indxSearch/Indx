@@ -1,0 +1,28 @@
+@* Blazor's reconnect dialog, in the systm's shape. Blazor replaces its own dialog with the element
+   that carries id components-reconnect-modal: it toggles components-reconnect-show / -failed /
+   -paused / -resume-failed / -rejected on it and fills the two attempt counters; everything else
+   here is ours. Put it in App.razor after the routes, as a static component (it renders once; the
+   classes Blazor toggles stay on the element). The messages for every state are in the markup and
+   the state class picks one. One copy, for IndxServer, the licence portal and IndxObservr. *@
+<div id="components-reconnect-modal" class="indx-reconnect" role="alertdialog" aria-live="assertive" aria-labelledby="indx-reconnect-title">
+    <div class="indx-reconnect-panel">
+        <p id="indx-reconnect-title" class="indx-reconnect-title">
+            <span class="indx-reconnect-reconnecting"><Spinner Size="21" Class="indx-reconnect-icon" AriaLabel="Reconnecting" /> Reconnecting</span>
+            <span class="indx-reconnect-failed indx-reconnect-resume-failed">Connection lost</span>
+            <span class="indx-reconnect-paused"><Spinner Size="21" Class="indx-reconnect-icon" AriaLabel="Resuming" /> Resuming</span>
+            <span class="indx-reconnect-rejected">Session ended</span>
+        </p>
+        <p class="indx-reconnect-body">
+            <span class="indx-reconnect-reconnecting">Attempt <span id="components-reconnect-current-attempt"></span> of <span id="components-reconnect-max-retries"></span>. Your work is kept while we restore the connection.</span>
+            <span class="indx-reconnect-failed">The server could not be reached. Retry keeps your unsaved work if the server is back; Reload starts fresh.</span>
+            <span class="indx-reconnect-resume-failed">The paused session could not be restored. Resume again, or reload the page.</span>
+            <span class="indx-reconnect-paused">Your session was paused while inactive and is being restored.</span>
+            <span class="indx-reconnect-rejected">The server restarted or your session expired. Reload to continue.</span>
+        </p>
+        <div class="indx-reconnect-actions">
+            <button type="button" class="indx-reconnect-btn indx-reconnect-btn--primary indx-reconnect-failed" onclick="window.Blazor.reconnect()">Retry now</button>
+            <button type="button" class="indx-reconnect-btn indx-reconnect-btn--primary indx-reconnect-resume-failed" onclick="window.Blazor.resume()">Resume</button>
+            <button type="button" class="indx-reconnect-btn indx-reconnect-btn--secondary indx-reconnect-failed indx-reconnect-resume-failed indx-reconnect-rejected" onclick="location.reload()">Reload</button>
+        </div>
+    </div>
+</div>

@@ -374,15 +374,62 @@ a.btn-danger:hover {
     flex: none;
 }
 
-/* The side column, where a page has sections of its own; it sticks under the header. */
+/* Under 1280px the page cannot share the window: pushed in, a 220px column and the panel's
+   340px left the content 540px at 1100 and 240 at 800, the header's trail under its own Jump to
+   button, and every breakpoint (which reads the window, not the page) a size behind. So the panel
+   lies over the page at the right instead, the window's height, set off by its line; the page
+   keeps its own width and layout under it. A phone goes further (768px, below). */
+@media (max-width: 1279px) {
+    .shell-agent--open {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        height: 100vh;
+        height: 100dvh;
+        z-index: 70;
+        background: var(--lv0);
+    }
+}
+
+/* The side column, where a page has sections: the systm Sidebar, as wide as it is (the column's
+   width, or its rail of icons) and the window's height under the header, sticking as the page
+   scrolls. It does not scroll itself: the Sidebar's own body does, so the rail's tooltips can
+   reach out over the page. */
 .shell-side {
-    width: var(--side-width);
+    --sidebar-width: var(--side-width);
     flex: none;
     position: sticky;
     top: 0;
     align-self: flex-start;
-    max-height: calc(100vh - var(--header-height));
-    overflow-y: auto;
+    height: calc(100vh - var(--header-height));
+    /* Sticky makes the column a layer of its own, and the page after it painted over the rail's
+       tooltips. Above the page's own sticky rows (the field table's header is at 3), under the
+       header (50). */
+    z-index: 10;
+}
+
+/* The line between the column and the page, inside the column's own width, so the trail above
+   still starts where the content does. */
+@media (min-width: 769px) {
+    .shell-side .indx-sidebar {
+        border-right: 1px solid var(--lv2);
+    }
+}
+
+/* The rail (Cmd or Ctrl and B): the header's brand cell narrows with the column to the mark
+   alone, centred over the rail's icons, so the trail still starts where the content does. */
+@media (min-width: 769px) {
+    :root:has(.shell-side .indx-sidebar--rail) {
+        --side-now: 50px;
+    }
+    :root:has(.shell-side .indx-sidebar--rail) .nav-instance,
+    :root:has(.shell-side .indx-sidebar--rail) .nav .nav-brand .indx-chip {
+        display: none;
+    }
+    :root:has(.shell-side .indx-sidebar--rail) .nav-brand {
+        padding-left: 12px;
+    }
 }
 
 /* How wide the page gets before it stops growing and centres. One value for the header and the
@@ -444,24 +491,32 @@ a.btn-danger:hover {
    mark sits over the menu's icons and the trail starts at the content's edge. */
 .nav {
     display: grid;
-    grid-template-columns: var(--side-width) minmax(0, 1fr);
+    grid-template-columns: var(--side-now, var(--side-width)) minmax(0, 1fr);
     align-items: center;
     width: 100%;
     min-height: 30px;
 }
 
+/* The way into the side column's drawer: on a phone only, before the mark. */
+.nav-sections {
+    display: none;
+}
+
+/* 18px: with the link's own 2px the mark starts at 20px, on the side menu's icon line (the
+   menu's 10px of padding plus its buttons' 10px). It sat 8px left of that until 16 Oct 2026. */
 .nav-brand {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding-left: 10px;
+    padding-left: 18px;
     min-width: 0;
 }
 
 .nav-home {
     display: inline-flex;
     align-items: center;
-    gap: 8px;
+    /* 12px: four of the logo's own 3px cells between the mark and the name. */
+    gap: 12px;
     flex-shrink: 0;
     color: var(--lv7);
     text-decoration: none;
@@ -517,65 +572,17 @@ a.btn-danger:hover {
     background: var(--lv1);
 }
 
-/* Between the team switcher and the account's controls. */
-.nav-right-divider {
-    width: 1px;
-    height: 18px;
-    background: var(--lv3);
-    margin: 0 6px;
-}
-
 /* Header dropdowns (Instance, personal): trigger + right-anchored Surface of ghost buttons. */
-.nav-dropdown {
-    position: relative;
-    display: flex;
-    align-items: center;
-}
+.nav-dropdown { display: flex; align-items: center; }
+.nav-dropdown-menu { min-width: 200px; }
 
-.nav-dropdown-backdrop {
-    position: fixed;
-    inset: 0;
-    z-index: 999;
-}
-
-.nav-dropdown-menu {
-    position: absolute;
-    top: calc(100% + 4px);
-    right: 0;
-    z-index: 1000;
-    min-width: 200px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.nav-dropdown-menu .indx-btn-ghost:hover {
-    background: var(--lv3) !important;
-}
-
-@media (prefers-color-scheme: dark) {
-    .nav-dropdown-menu .indx-btn-ghost:hover {
-        background: var(--lv2) !important;
-    }
-}
-
-/* Menu items are systm Buttons; styled from the container because a class attribute passed to
-   the component would replace its own classes (Blazor attribute splat), not merge with them. */
-.nav-dropdown-menu .indx-btn {
-    width: 100%;
-    justify-content: flex-start;
-}
-
-.nav-menu-form {
-    display: contents;
-}
-
-.nav-menu-divider {
-    height: 1px;
-    background: var(--lv3);
-    margin: 4px 0;
-}
-
+/* The way into the command palette, shaped like a search field: a secondary Button widened, the
+   words in the quiet tone, the shortcut in a key cap at its end. Styled from its wrapper, since a
+   class passed to Button replaces its own. Narrow, it keeps the icon (see the 1000px rule). */
+.nav-jump { display: inline-flex; margin-right: 8px; }
+.nav-jump .indx-btn.indx-btn-secondary { min-width: 200px; gap: 8px; color: var(--lv5); }
+.nav-jump .indx-btn.indx-btn-secondary:hover:not(:disabled) { color: var(--lv7); }
+.nav-jump-label { flex: 1; text-align: left; }
 /* Notification bell: square, quiet, like a ghost button. */
 .nav-bell {
     display: flex;
@@ -596,15 +603,42 @@ a.btn-danger:hover {
     color: var(--lv8);
 }
 
-/* Narrow: the header is two rows. The first is the mark and, at the right, the team switcher with
-   its name and the account's icons; the second, only where a page has one, the trail. The
-   standing chip goes, and the trail's earlier steps keep their icon as the way back and lose
-   their text and switcher, so the dataset's name has the room. */
+/* In between (a tablet, a narrow window): the account's controls take their room in the row
+   instead of floating over the trail, which they covered at these widths, cutting a long
+   dataset name; the trail truncates with an ellipsis instead. The trail's centring is for the
+   wide window where the content stands at its maximum; here the content is narrower than that
+   and sits at the left either way, so nothing moves. */
+@media (max-width: 1280px) {
+    .nav-right {
+        position: static;
+        transform: none;
+    }
+
+    .nav-crumbs {
+        margin: 0;
+        max-width: none;
+    }
+}
+
+/* Narrower still: the account's controls keep their icons and lose their words (Admin, the
+   name, Agent), so the dataset's name keeps its. */
+@media (max-width: 1000px) {
+    .nav-jump .indx-btn.indx-btn-secondary { min-width: 0; }
+    .nav-jump-label,
+    /* Specific enough to beat the Kbd's own scoped display. */
+    .nav-jump kbd.nav-jump-kbd { display: none; }
+
+    .nav-right .nav-dropdown-label {
+        display: none;
+    }
+}
+
+/* Narrow: one row. The Sections button and the mark, the trail's last step, the account's icons.
+   The standing chip goes, so the dataset's name has the room. */
 @media (max-width: 768px) {
     /* Narrow: one row, the header's own height, everything centred on it. The mark on the
-       content's gutter (15px: the logo sits 2px into its link), the trail beside it, the team's
-       icon and the account's controls at the right. The team's name and the divider go, and the
-       trail's earlier steps keep their icon as the way back, so the dataset's name has the room. */
+       content's gutter (15px: the logo sits 2px into its link), or after the Sections button
+       where there is a column, the trail beside it and the account's controls at the right. */
     .nav {
         grid-template-columns: auto minmax(0, 1fr) auto;
         gap: 4px;
@@ -613,6 +647,15 @@ a.btn-danger:hover {
 
     .nav-brand {
         padding-left: calc(var(--spacing) * 3 - 2px);
+    }
+
+    /* The button's icon on the gutter, as the mark's would be: the gutter less its 10px padding. */
+    .nav-sections {
+        display: inline-flex;
+    }
+    .nav-brand:has(.nav-sections) {
+        padding-left: calc(var(--spacing) * 3 - 10px);
+        gap: 2px;
     }
 
     /* Three classes: the chip's own scoped rule has two, and is loaded after this file. */
@@ -634,8 +677,10 @@ a.btn-danger:hover {
         padding-left: 0;
     }
 
-    .nav-crumbs .indx-breadcrumbs-item:not(:last-child) .indx-breadcrumbs-text,
-    .nav-crumbs .indx-breadcrumbs-item:not(:last-child) .indx-breadcrumbs-trigger {
+    /* The trail is its last step: the mark beside it leads to the team's page, and the team's
+       step beside the Sections button left the dataset's name four letters. */
+    .nav-crumbs .indx-breadcrumbs-item:not(:last-child),
+    .nav-crumbs .indx-breadcrumbs-item:last-child .indx-breadcrumbs-separator {
         display: none;
     }
 
@@ -648,22 +693,9 @@ a.btn-danger:hover {
         transform: none;
     }
 
-    .nav-team .indx-breadcrumbs-text,
-    .nav-right-divider {
-        display: none;
-    }
-
-    /* With its name gone the team's crumb is its icon and caret: the truncating trail's room for
-       six characters of name (Breadcrumbs' --text-min) would leave a gap after it. Four classes:
-       that rule is scoped, so it carries an attribute too. */
-    .nav .nav-team .indx-breadcrumbs-item.indx-breadcrumbs-item {
-        min-width: 0;
-    }
-
-    /* Room for the dataset's name: the trails lose their box's side padding (the header has its
+    /* Room for the dataset's name: the trail loses its box's side padding (the header has its
        own) and the account menu its caret; the icon still opens it. */
-    .nav .nav-crumbs .indx-breadcrumbs.indx-breadcrumbs,
-    .nav .nav-team .indx-breadcrumbs.indx-breadcrumbs {
+    .nav .nav-crumbs .indx-breadcrumbs.indx-breadcrumbs {
         padding-inline: 0;
     }
 
@@ -689,23 +721,10 @@ a.btn-danger:hover {
         .shell-agent--open { width: 100%; border-left: none; }
     }
 
-    /* The column becomes a row above the content, scrolling sideways. */
-    .shell {
-        flex-direction: column;
-    }
-
-    /* The row is the screen's width and the menu scrolls inside it. The wide rule's
-       align-self: flex-start made it as wide as its content here (971px on a phone), so the
-       whole page scrolled sideways with it. */
+    /* The column is the Sidebar's drawer over the page, opened by the header's Sections button:
+       it takes no room of its own here. */
     .shell-side {
-        width: auto;
-        align-self: stretch;
-        min-width: 0;
-        overflow: visible;
-        position: static;
-        max-height: none;
-        border-bottom: 1px solid var(--lv2);
-        padding: 6px 12px;
+        display: contents;
     }
 
     .nav-instance {
@@ -1076,7 +1095,8 @@ a.btn-danger:hover {
    import on the right. It wraps as two groups, never inside one. */
 /* ── Page action pattern ─────────────────────────────────────────────────────────────────────
    One layout for every page that lists things or edits them:
-     top     .indx-list-toolbar   primary "New …" first, then the filter; the count sits at the end
+     top     .indx-list-toolbar   primary "New …" first, then the filter; the count sits at the end,
+                                  and the page's Observr action (ObservrPageAction) after it, top right
      bottom  <SaveBar>            Save then Cancel, only while there are changes, sticky
      bottom  .indx-file-actions   export, import and whole-list actions, at the end of the row
    Creating happens in a Modal whose buttons are .indx-form-actions: primary first, then Cancel. */
@@ -1088,6 +1108,10 @@ a.btn-danger:hover {
     margin-bottom: 12px;
 }
 .indx-list-toolbar-filter { flex: 0 1 220px; min-width: 140px; }
+/* A page's Observr action (ObservrPageAction): the last thing in the top row, at its right end.
+   After the count it keeps the count's push and sits beside it. */
+.indx-page-action { margin-left: auto; }
+.indx-list-toolbar-end ~ .indx-page-action { margin-left: 12px; }
 .indx-list-toolbar-end {
     margin-left: auto;
     color: var(--lv4);
@@ -1153,88 +1177,6 @@ a.btn-danger:hover {
     border-color: var(--lv5);
 }
 
-/* ── Blazor reconnect overlay ──────────────────────────────────────────────
-   Hidden until Blazor adds one of its state classes to #components-reconnect-modal.
-   The three message variants are all in the markup; the state class picks one. */
-.indx-reconnect {
-    display: none;
-    position: fixed;
-    inset: 0;
-    z-index: 1000;
-    background: color-mix(in srgb, var(--lv0) 82%, transparent);
-    backdrop-filter: blur(2px);
-    align-items: center;
-    justify-content: center;
-    padding: 24px;
-}
-.indx-reconnect.components-reconnect-show,
-.indx-reconnect.components-reconnect-failed,
-.indx-reconnect.components-reconnect-paused,
-.indx-reconnect.components-reconnect-resume-failed,
-.indx-reconnect.components-reconnect-rejected {
-    display: flex;
-}
-.indx-reconnect-panel {
-    width: min(420px, 100%);
-    background: var(--lv1);
-    border: 1px solid var(--lv3);
-    border-radius: var(--radius);
-    padding: 20px 22px;
-}
-.indx-reconnect-title {
-    margin: 0 0 6px;
-    font: var(--text-base);
-    font-weight: var(--med);
-    color: var(--lv8);
-}
-.indx-reconnect-body {
-    margin: 0;
-    font: var(--text-sm);
-    color: var(--lv5);
-}
-.indx-reconnect-actions {
-    display: flex;
-    gap: 8px;
-    margin-top: 14px;
-}
-.indx-reconnect-actions:empty { display: none; }
-
-/* The overlay sits outside every component, so the Button component's scoped stylesheet does
-   not reach these <button>s. Restate the systm micro primary/secondary buttons here. */
-.indx-reconnect-actions button {
-    display: inline-flex; align-items: center; cursor: pointer; margin: 0;
-    border: none; border-radius: var(--radius); box-sizing: border-box;
-    -webkit-appearance: none; appearance: none;
-    font: var(--text-xs); font-weight: var(--med); height: 30px; padding: 0 10px; gap: 7px;
-}
-.indx-reconnect-actions .indx-btn-primary { background: var(--lv7); color: var(--lv1); }
-.indx-reconnect-actions .indx-btn-primary:hover { opacity: 0.8; }
-.indx-reconnect-actions .indx-btn-secondary { background: transparent; border: 1px solid var(--lv3); color: var(--lv6); }
-.indx-reconnect-actions .indx-btn-secondary:hover { border-color: var(--lv4); }
-
-/* State → message. Each span is hidden unless its state is active. */
-.indx-reconnect-reconnecting, .indx-reconnect-failed, .indx-reconnect-paused,
-.indx-reconnect-resume-failed, .indx-reconnect-rejected { display: none; }
-.components-reconnect-show .indx-reconnect-reconnecting { display: inline; }
-.components-reconnect-failed .indx-reconnect-failed { display: inline; }
-.components-reconnect-paused .indx-reconnect-paused { display: inline; }
-.components-reconnect-resume-failed .indx-reconnect-resume-failed { display: inline; }
-.components-reconnect-rejected .indx-reconnect-rejected { display: inline; }
-.components-reconnect-failed .indx-reconnect-actions .indx-reconnect-failed,
-.components-reconnect-resume-failed .indx-reconnect-actions .indx-reconnect-resume-failed,
-.components-reconnect-rejected .indx-reconnect-actions .indx-reconnect-rejected { display: inline-flex; }
-.indx-reconnect-icon {
-    vertical-align: -2px;
-    margin-right: 8px;
-    color: var(--lv8);
-}
-/* The overlay is plain markup outside any component, so the Spinner's scoped rule is repeated. */
-.indx-reconnect .indx-spinner-frame { opacity: 0; }
-@media (prefers-reduced-motion: reduce) {
-    .indx-reconnect .indx-spinner-frame { animation: none !important; }
-    .indx-reconnect .indx-spinner-frame:first-of-type { opacity: 1; }
-}
-
 
 /* Observr's buttons wear its colour, so one glance says "this goes to Observr". The colour itself
    is not decided (12 Oct 2026): not a traffic light, not the blue of the badge; until it is, the
@@ -1274,3 +1216,8 @@ a.btn-danger:hover {
     background-repeat: no-repeat;
     background-position: top left, top right, bottom left, bottom right;
 }
+
+/* The bar over a tab's content (Statistics, Status): what belongs to everything below, on one
+   line, on a phone too. The end cluster holds the controls at the right. */
+.indx-context-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.indx-context-bar-end { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; min-width: 0; margin-left: auto; }

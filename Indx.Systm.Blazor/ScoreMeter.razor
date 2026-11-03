@@ -1,0 +1,42 @@
+@* A score from 0 to 1 as a row of small cells, the waffle's pixels in one line, lit up to the
+   score, with a thin tick at each threshold that matters to it (its name on hover): a judge's
+   score against the lines that decide what it does. The lit cells strengthen as the score passes
+   the ticks: dim below them all, a step up past some, the full ink past every one, so where it
+   stands reads at a glance. Compact, for a line of text: 20 cells of 4px by default. Port of the
+   React ScoreMeter in indx-systm. *@
+<span class="indx-score-meter indx-score-meter--@Reach @Class" role="meter" aria-valuemin="0" aria-valuemax="1" aria-valuenow="@V(Value)"
+      aria-label="@AriaLabel" style="--score-cell: @(Cell)px;">
+    @for (int i = 0; i < Cells; i++)
+    {
+        <span class="indx-score-cell @(Lit(i) ? "indx-score-cell--lit" : null)"></span>
+    }
+    @foreach (var mark in Marks)
+    {
+        <span class="indx-score-mark" style="left: @(Pct(mark.At))%;" title="@($"{mark.Label} {V(mark.At)}")"></span>
+    }
+</span>
+
+@code {
+    /// <summary>A threshold on the scale: where, and its name.</summary>
+    public sealed record Mark(double At, string Label);
+
+    /// <summary>The score, 0 to 1.</summary>
+    [Parameter] public double Value { get; set; }
+    [Parameter] public IReadOnlyList<Mark> Marks { get; set; } = [];
+    /// <summary>How many cells; 20 by default, a cell for each 0.05.</summary>
+    [Parameter] public int Cells { get; set; } = 20;
+    /// <summary>A cell's width in pixels; 4 by default.</summary>
+    [Parameter] public int Cell { get; set; } = 4;
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    // How far past the ticks: none (or no ticks: the plain lit tone), some, or all.
+    private string Reach => Marks.Count == 0 ? "plain"
+        : Marks.All(m => Value >= m.At) ? "all"
+        : Marks.Any(m => Value >= m.At) ? "some" : "none";
+
+    // A cell is lit when the score reaches its middle, so 0.39 lights eight of twenty.
+    private bool Lit(int i) => Value >= (i + 0.5) / Cells;
+    private static string V(double v) => Math.Clamp(v, 0, 1).ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+    private static string Pct(double v) => (Math.Clamp(v, 0, 1) * 100).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+}

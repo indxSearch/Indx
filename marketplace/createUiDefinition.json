@@ -26,9 +26,10 @@
             "type": "Microsoft.Common.DropDown",
             "label": "App Service plan size",
             "defaultValue": "Premium P1v3 (recommended)",
-            "toolTip": "Premium tier is required for guaranteed persistent /home/data storage and the always-on indexing workload.",
+            "toolTip": "Basic suits the Free plan and trying Indx out. Premium has the memory and processors a production dataset needs.",
             "constraints": {
               "allowedValues": [
+                { "label": "Basic B1 (Free plan, small datasets)", "value": "B1" },
                 { "label": "Basic B2 (test only)", "value": "B2" },
                 { "label": "Basic B3 (test only)", "value": "B3" },
                 { "label": "Premium P0v3 (light prod)", "value": "P0v3" },
@@ -96,6 +97,17 @@
             "visible": "[equals(steps('admin').registrationMode, 'EmailDomain')]",
             "constraints": {
               "required": false
+            }
+          },
+          {
+            "name": "allowedOrigins",
+            "type": "Microsoft.Common.TextBox",
+            "label": "Websites that call the API",
+            "toolTip": "The websites whose pages search from the browser, comma-separated, e.g. https://shop.example.com,https://www.example.com. You can change them later in the app under Admin, Settings.",
+            "constraints": {
+              "required": false,
+              "regex": "^$|^(https?://[^,\\s/]+)(,\\s*https?://[^,\\s/]+)*$",
+              "validationMessage": "Website addresses with https://, separated by commas."
             }
           }
         ]
@@ -240,7 +252,7 @@
             "visible": true,
             "options": {
               "icon": "Info",
-              "text": "Without a license, the engine runs with a 100,000-document limit. After deployment, license the app from its License page: paste a token from license.indx.co to auto-fetch, or upload a .license file. You can also drop a .license file at /home/data/indx.license via the App Service Console."
+              "text": "Your plan includes the Indx licence, with no limit on documents. It reaches the app on its own within a few minutes of the deployment finishing, so there is nothing to enter here."
             }
           },
           {
@@ -271,6 +283,7 @@
       "adminInitialPassword": "[steps('admin').adminInitialPassword]",
       "registrationMode": "[steps('admin').registrationMode]",
       "allowedEmailDomains": "[coalesce(steps('admin').allowedEmailDomains, '')]",
+      "allowedOrigins": "[coalesce(steps('admin').allowedOrigins, '')]",
       "emailProvider": "[steps('email').emailProvider]",
       "acsConnectionString": "[coalesce(steps('email').acsConnectionString, '')]",
       "acsFromAddress": "[coalesce(steps('email').acsFromAddress, '')]",

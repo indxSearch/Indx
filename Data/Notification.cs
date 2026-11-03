@@ -16,7 +16,11 @@ namespace IndxServer.Data
         BackupFailed        = 8,
         LowDiskSpace        = 9,
         RepeatedApiErrors   = 10,
-        BuryRuleExpired     = 11,
+        UpdateAvailable     = 11,
+        SecurityUpdate      = 12,
+        WebhookAttention    = 13,
+        // 14, not 11: master's 11-13 were stored by 5.0 servers first (fastmaster, 3 Nov 2026).
+        BuryRuleExpired     = 14,
     }
 
     public class Notification

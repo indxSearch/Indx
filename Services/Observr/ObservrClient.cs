@@ -23,10 +23,13 @@ namespace IndxServer.Services.Observr
     public sealed record ObservrZeroHitAsk(string Kind, string Team, string Dataset, string Site, List<string> Fields,
         string Query, long Searches, List<ObservrNamed> NearMatches, List<ObservrWordMatches> Words);
 
-    /// <summary>One field as Observr reviews it: its roles today and what a sample of the records
-    /// holds in it. Values are the top few only, so a review sends little of the data.</summary>
+    /// <summary>One field as Observr reviews it: its roles today and what the records hold in it.
+    /// <see cref="Filled"/> is of the sample; <see cref="Distinct"/> and <see cref="TopValues"/>
+    /// (each with its count) are over <see cref="ValuesOver"/> records: every record for a
+    /// facetable field, whose facets count the whole dataset, the sample for the rest. Values are
+    /// the top few only, so a review sends little of the data.</summary>
     public sealed record ObservrFieldEvidence(string Name, string Type, bool IsArray, bool Searchable, bool Filterable, bool Facetable,
-        bool Sortable, float Weight, int Filled, int Distinct, List<string> TopValues, double? Min, double? Max, int AvgLength);
+        bool Sortable, float Weight, int Filled, int Distinct, List<string> TopValues, double? Min, double? Max, int AvgLength, long ValuesOver);
 
     /// <summary>The dataset's setup for review: every field with its evidence, the key field, and
     /// what visitors searched for lately, which says what the fields are expected to answer.</summary>
@@ -38,7 +41,8 @@ namespace IndxServer.Services.Observr
     public sealed record ObservrSearchOrAskCurrent(bool Shown, bool Enabled, string Kind, string? SiteDescription, string EffectiveSite,
         string? TitleField, List<string>? SectionFields, List<string>? SnippetFields, string? EffectiveTitle, List<string> EffectiveSection,
         List<string> EffectiveSnippet, string? FilterNotes, string Answers, string? AnswerInstructions, string? AnswerLanguage, double Strong, double Invite,
-        int? CoverageDepth, bool? Truncate);
+        int? CoverageDepth, bool? Truncate, SearchOrAsk.SearchOrAskPhrases AskPhrases, bool AskPhrasesAreDefault,
+        bool RefocusWhileTyping, bool InviteOnAskPhrase);
 
     /// <summary>"Help me set this up" on the Search or ask tab: the dataset as the field review sees it,
     /// a few record names, the queries, and the settings as they stand. No record bodies.</summary>
@@ -86,9 +90,12 @@ namespace IndxServer.Services.Observr
         List<ObservrDay> Before, List<ObservrDay> After, List<ObservrSummaryQuery> TopBefore, List<ObservrSummaryQuery> TopAfter);
 
     /// <summary>A change to the dataset's Search or ask settings: null leaves that setting as it is.
-    /// Never the switches (Shown, Enabled, the budget): switching on stays the owner's.</summary>
+    /// Never the switches (Shown, Enabled, the budget): switching on stays the owner's. Ask phrases only
+    /// grow: <see cref="AddLeadIns"/> and <see cref="AddFrames"/> join the list in effect, so an owner's
+    /// own edits are never undone and a yes means just the phrases named.</summary>
     public sealed record ObservrSearchOrAskChange(string? Kind, string? SiteDescription, string? TitleField, List<string>? SectionFields,
-        List<string>? SnippetFields, string? FilterNotes, string? Answers, string? AnswerInstructions = null, string? AnswerLanguage = null)
+        List<string>? SnippetFields, string? FilterNotes, string? Answers, string? AnswerInstructions = null, string? AnswerLanguage = null,
+        List<string>? AddLeadIns = null, List<string>? AddFrames = null)
     {
         [JsonIgnore]
         public IEnumerable<string> Parts
@@ -104,6 +111,8 @@ namespace IndxServer.Services.Observr
                 if (SiteDescription != null) yield return "about the site";
                 if (FilterNotes != null) yield return "notes about the fields";
                 if (AnswerInstructions != null) yield return "answer instructions";
+                if (AddLeadIns is { Count: > 0 }) yield return $"Ask phrases: start with {string.Join(", ", AddLeadIns.Select(p => $"\"{p}\""))}";
+                if (AddFrames is { Count: > 0 }) yield return $"Ask phrases: ask for {string.Join(", ", AddFrames.Select(p => $"\"{p}\""))}";
             }
         }
     }
@@ -128,6 +137,66 @@ namespace IndxServer.Services.Observr
     public sealed record ObservrProposal(string Kind, string[] Terms, string Direction, string Reason, ObservrFieldChange? Field = null,
         ObservrSearchOrAskChange? SearchOrAsk = null, ObservrQueryParametersChange? QueryParameters = null)
     {
+        /// <summary>What this server can carry out, sent to Observr as <see cref="AcceptsHeader"/> on
+        /// every request: the kinds, and as <c>kind.part</c> each part added to a kind after it first
+        /// shipped. Observr is deployed ahead of every installed server and narrows what it proposes
+        /// to this list. A part added here must be applied in the same change, or Observr sends it
+        /// and a yes leaves it out.</summary>
+        public static readonly string[] Accepted = [Synonym, FieldKind, SearchOrAskKind, QueryParametersKind, "searchOrAsk.askPhrases"];
+        public const string AcceptsHeader = "X-Indx-Observr-Accepts";
+
+        /// <summary>Whether a yes would change something. Reading drops JSON this server does not
+        /// know, so a kind from a newer Observr, or a proposal whose only content is a newer part,
+        /// arrives with nothing in it; kept, it would show as an empty suggestion and be marked
+        /// accepted with nothing done.</summary>
+        [JsonIgnore]
+        public bool CanApply => Kind switch
+        {
+            Synonym => Terms.Select(t => t.Trim()).Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).Count() >= 2,
+            FieldKind => Field != null,
+            SearchOrAskKind => SearchOrAsk?.Parts.Any() == true,
+            QueryParametersKind => QueryParameters?.Parts.Any() == true,
+            _ => false,
+        };
+
+        /// <summary>The proposal as a sentence an owner reads at a glance: the words before the
+        /// names, the names (fields or terms, drawn as chips), the words after. "Make [Pokedex
+        /// number] sortable"; "Treat [bike] [bicycle] as the same word"; "Change Search or ask:
+        /// [kind catalogue] [title Navn]".</summary>
+        [JsonIgnore]
+        public (string Before, IReadOnlyList<string> Names, string After) Sentence
+        {
+            get
+            {
+                switch (Kind)
+                {
+                    case Synonym:
+                        return (Terms.Length == 1 ? "Add the synonym" : "Treat as the same word:", Terms, "");
+                    case FieldKind when Field != null:
+                    {
+                        var c = Field;
+                        var on = new List<string>(); var off = new List<string>();
+                        Role(c.Searchable, "searchable"); Role(c.Filterable, "filterable"); Role(c.Facetable, "facetable"); Role(c.Sortable, "sortable");
+                        var tail = new List<string>();
+                        if (on.Count > 0) tail.Add(Join(on));
+                        if (off.Count > 0) tail.Add("no longer " + Join(off));
+                        var weight = c.Weight is { } w ? $"weight {w.ToString("0.##", CultureInfo.InvariantCulture)}" : null;
+                        if (tail.Count == 0 && weight != null) return ("Give", [c.Name], weight);
+                        if (weight != null) tail.Add("with " + weight);
+                        return ("Make", [c.Name], tail.Count == 0 ? "as it is" : string.Join(", ", tail));
+                        void Role(bool? v, string role) { if (v == true) on.Add(role); else if (v == false) off.Add(role); }
+                        static string Join(List<string> roles) => roles.Count == 1 ? roles[0] : string.Join(", ", roles[..^1]) + " and " + roles[^1];
+                    }
+                    case SearchOrAskKind when SearchOrAsk != null:
+                        return ("Change Search or ask:", SearchOrAsk.Parts.ToList(), "");
+                    case QueryParametersKind when QueryParameters != null:
+                        return ("Change the query parameters:", QueryParameters.Parts.ToList(), "");
+                    default:
+                        return (Label, [], "");
+                }
+            }
+        }
+
         public const string Synonym = "synonym";
         public const string FieldKind = "field";
         public const string SearchOrAskKind = "searchOrAsk";
@@ -155,6 +224,9 @@ namespace IndxServer.Services.Observr
         };
     }
 
+    /// <summary>A finding's proposals were carried out: the dataset, and the kinds of change.</summary>
+    public sealed record ObservrApplied(string TeamId, string DataSetName, IReadOnlySet<string> Kinds);
+
     public sealed record ObservrAnswer(int AskId, string Outcome, string Answer, List<ObservrProposal> Proposals, string Model);
 
     /// <summary>One thing worth the owners' attention in a digest: a title, the text, which tab it
@@ -168,7 +240,10 @@ namespace IndxServer.Services.Observr
         public int Count => FindingIds?.Count ?? 0;
     }
 
-    public enum ObservrStatus { Ok, NoToken, UnknownToken, NoSubscription, Unavailable, Failed }
+    /// <summary>What came of a call to Observr. <see cref="Off"/>: an admin has Observr off on this
+    /// instance, so nothing was sent. <see cref="OverQuota"/>: the licence has used the day's
+    /// allowance (429 from the service), back at midnight UTC.</summary>
+    public enum ObservrStatus { Ok, NoToken, UnknownToken, NoSubscription, Unavailable, Failed, Off, OverQuota }
 
     public static class ObservrText
     {
@@ -194,11 +269,61 @@ namespace IndxServer.Services.Observr
                 ? "This licence's Observr access has ended, so Observr is not included."
                 : "Observr is part of the Pro and Enterprise subscriptions. This instance's licence does not include it.",
             ObservrStatus.Unavailable => "Observr cannot be reached right now. Try again in a moment.",
+            ObservrStatus.Off => "Observr is off on this instance. An admin can switch it on under Admin, Observr.",
+            ObservrStatus.OverQuota => o.Reason switch
+            {
+                "chatEnded" => "This conversation has run as long as one question may. Ask again to start a new one.",
+                "monthlyQuota" => $"This licence has used this month's Observr allowance. It renews on {DateTime.UtcNow.Date.AddDays(1 - DateTime.UtcNow.Day).AddMonths(1).ToString("d MMMM", CultureInfo.InvariantCulture)}.",
+                _ => $"This licence has used today's Observr allowance. It is back at midnight UTC, {UntilMidnight()}.",
+            },
             _ => o.Reason == "datasetNotReady" ? $"The dataset is not ready to search, so there is nothing {nothingYet} yet."
                 : o.Reason == "noStatistics" ? "This instance keeps no statistics, so there is nothing to summarise."
-                : o.Reason == "quota" ? "This licence has used today's Observr allowance. It is back tomorrow."
+                : o.Reason == "tooLong" ? $"The question is too long for Observr: up to {ObservrChat.MaxQuestion:N0} characters."
                 : "Observr could not answer this time.",
         };
+
+        /// <summary>"in 5 hours", "in 40 minutes": until the allowance comes back.</summary>
+        public static string UntilMidnight(DateTime? nowUtc = null)
+        {
+            var now = nowUtc ?? DateTime.UtcNow;
+            var left = now.Date.AddDays(1) - now;
+            return left.TotalMinutes < 90 ? $"in {Math.Max(1, (int)Math.Ceiling(left.TotalMinutes))} minutes" : $"in {(int)Math.Round(left.TotalHours)} hours";
+        }
+    }
+
+    /// <summary>The licence's allowance as Observr last reported it: what is left of the calendar
+    /// month (UTC) and of the day, of how many, and the day the month's renew. Observr sets the
+    /// numbers (a plan's, or a licence's own) and enforces them; this instance only shows them, so
+    /// a customer given more needs nothing changed here. A number Observr does not limit is null.</summary>
+    public sealed record ObservrAllowance(int? MonthLeft, int? MonthLimit, int? DayLeft, int? DayLimit, DateOnly? Renews, DateTime SeenUtc, DateTime? RanOutUtc)
+    {
+        public const string LeftHeader = "X-Observr-Asks-Left";
+        public const string LimitHeader = "X-Observr-Asks-Limit";
+        public const string TodayLeftHeader = "X-Observr-Asks-Today-Left";
+        public const string TodayLimitHeader = "X-Observr-Asks-Today-Limit";
+        public const string RenewHeader = "X-Observr-Asks-Renew";
+
+        /// <summary>"1,000" on every machine, as the rest of the console writes numbers.</summary>
+        public static string N(int n) => n.ToString("N0", CultureInfo.InvariantCulture);
+
+        private DateOnly RenewsOn => Renews ?? DateOnly.FromDateTime(new DateTime(SeenUtc.Year, SeenUtc.Month, 1).AddMonths(1));
+        private bool SameMonth(DateTime now) => DateOnly.FromDateTime(now) < RenewsOn;
+        public bool MonthSpent(DateTime? nowUtc = null) => MonthLeft <= 0 && SameMonth(nowUtc ?? DateTime.UtcNow);
+        public bool DaySpent(DateTime? nowUtc = null) => DayLeft <= 0 && SeenUtc.Date == (nowUtc ?? DateTime.UtcNow).Date;
+        /// <summary>Nothing more is answered: until midnight UTC for the day, until the renewal for the month.</summary>
+        public bool Spent(DateTime? nowUtc = null) => MonthSpent(nowUtc) || DaySpent(nowUtc);
+        /// <summary>A tenth or less of the month left: worth a word before it runs out.</summary>
+        public bool Low(DateTime? nowUtc = null) => !Spent(nowUtc) && SameMonth(nowUtc ?? DateTime.UtcNow) && MonthLeft is > 0 && MonthLimit is > 0 && MonthLeft * 10 <= MonthLimit;
+
+        /// <summary>"Observr's asks are used up for this month; they renew on 1 November." and the like.</summary>
+        public string SpentSentence(DateTime? nowUtc = null) => MonthSpent(nowUtc)
+            ? $"This licence has used this month's Observr allowance{(MonthLimit is { } m ? $" of {N(m)} asks" : "")}. It renews on {RenewsOn.ToString("d MMMM", CultureInfo.InvariantCulture)}."
+            : $"This licence has used today's Observr allowance{(DayLimit is { } d ? $" of {N(d)} asks" : "")}. It is back at midnight UTC, {ObservrText.UntilMidnight(nowUtc)}.";
+
+        /// <summary>"820 of 1,000 asks left this month, renewing on 1 November; at most 100 a day."</summary>
+        public string LeftSentence() =>
+            (MonthLimit is { } m ? $"{N(MonthLeft ?? 0)} of {N(m)} Observr asks left this month, renewing on {RenewsOn.ToString("d MMMM", CultureInfo.InvariantCulture)}" : "No monthly limit on Observr asks")
+            + (DayLimit is { } d ? $"; at most {N(d)} a day, {N(DayLeft ?? 0)} left today." : ".");
     }
 
     /// <summary>What came of asking: an answer, or why there is none, in a word the console turns
@@ -238,8 +363,13 @@ namespace IndxServer.Services.Observr
         private const int PerWord = 3;
         private const int MaxWords = 8;
         /// <summary>The records a field review reads: enough for fill rates and value counts, few
-        /// enough to read in a moment.</summary>
+        /// enough to read in a moment. Spread over the whole dataset, never the first few hundred:
+        /// gyldendal.no's file begins with its teaching materials, and a sample of those had
+        /// Observr set up Search or ask for a school catalogue on a dataset that is mostly fiction
+        /// (19 Oct 2026).</summary>
         private const int ReviewSample = 300;
+        /// <summary>The most records an empty search is asked to list for the spread.</summary>
+        private const int SampleWalk = 2_000_000;
         private const int ReviewTopValues = 8;
         private const int ReviewTopQueries = 20;
         private const int ReviewQueryDays = 30;
@@ -248,16 +378,57 @@ namespace IndxServer.Services.Observr
         /// <summary>Whether this instance can ask at all: it has a licence token.</summary>
         public bool HasToken => Token() != null;
 
+        /// <summary>The last time Observr could not be reached or refused to serve (when, and the
+        /// reason), until a call goes through again; and the last time one did. The admin page
+        /// reads both, so an outage is visible somewhere other than the log.</summary>
+        public ObservrPortalFailure? LastFailure { get; private set; }
+        public DateTime? LastOkUtc { get; private set; }
+
+        /// <summary>Asks Observr whether it is up (GET /health), without a token or an ask: the admin
+        /// page's Try again. Records the outcome as a call would.</summary>
+        public async Task<bool> PingAsync(CancellationToken ct)
+        {
+            var client = http.CreateClient(HttpClientName);
+            try
+            {
+                using var response = await client.GetAsync($"{options.Url.TrimEnd('/')}/health", ct);
+                if (response.IsSuccessStatusCode) { LastOkUtc = DateTime.UtcNow; LastFailure = null; return true; }
+                LastFailure = new ObservrPortalFailure(DateTime.UtcNow, $"http{(int)response.StatusCode}");
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+            {
+                LastFailure = new ObservrPortalFailure(DateTime.UtcNow, "unreachable");
+            }
+            return false;
+        }
+
         /// <summary>One model turn of the Agent chat (POST /api/chat): the conversation as the
         /// instance keeps it goes up, the model's message comes back. The loop is ObservrChat's.</summary>
         public async Task<(ObservrStatus Status, ObservrChatReply? Reply, string? Reason)> ChatTurnAsync(object payload, string teamId, string dataSetName, CancellationToken ct)
         {
-            if (Token() is not { } token) return (ObservrStatus.NoToken, null, null);
+            if (Refused(out var token) is { } refused) return (refused, null, null);
             var (status, body, reason) = await PostAsync(token, "/api/chat", payload, teamId, dataSetName, ct);
             if (status != HttpStatusCode.OK) return (Status(status), null, reason);
             var reply = JsonSerializer.Deserialize<ObservrChatReply>(body, Json);
             return reply == null ? (ObservrStatus.Failed, null, "badAnswer") : (ObservrStatus.Ok, reply, null);
         }
+
+        /// <summary>Why nothing may be sent, or null with the token to send: an admin's "Observr on this
+        /// instance" is the promise that nothing of Observr leaves while it is off, so every call
+        /// passes here, whichever button or job made it.</summary>
+        private ObservrStatus? Refused(out string token)
+        {
+            token = "";
+            if (!settings.Load().ObservrEnabled) return ObservrStatus.Off;
+            if (Token() is not { } t) return ObservrStatus.NoToken;
+            token = t;
+            return null;
+        }
+
+        /// <summary>The day's allowance as the service last reported it, and when the licence last ran
+        /// out of it: the admin page and the Agent panel say so before an owner presses a button for
+        /// nothing.</summary>
+        public ObservrAllowance? Allowance { get; private set; }
 
         private string? Token()
         {
@@ -270,7 +441,7 @@ namespace IndxServer.Services.Observr
         /// <summary>Asks Observr about a query that found nothing.</summary>
         public async Task<ObservrOutcome> AskZeroHitAsync(string teamId, string dataSetName, string query, long searches, CancellationToken ct)
         {
-            if (Token() is not { } token) return new ObservrOutcome(ObservrStatus.NoToken);
+            if (Refused(out var token) is { } refused) return new ObservrOutcome(refused);
             var engine = engines.FindSearchEngine(dataSetName, teamId);
             if (engine == null || engine.Status.SystemState != SystemState.Ready)
                 return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
@@ -282,7 +453,7 @@ namespace IndxServer.Services.Observr
         /// Fields tab): what it sends is the roles and a summary of a sample, never the records.</summary>
         public async Task<ObservrOutcome> AskFieldReviewAsync(string teamId, string dataSetName, CancellationToken ct)
         {
-            if (Token() is not { } token) return new ObservrOutcome(ObservrStatus.NoToken);
+            if (Refused(out var token) is { } refused) return new ObservrOutcome(refused);
             var engine = engines.FindSearchEngine(dataSetName, teamId);
             if (engine == null || engine.Status.SystemState != SystemState.Ready)
                 return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
@@ -293,7 +464,7 @@ namespace IndxServer.Services.Observr
         /// <summary>"Why isn't this working?" on a query searched often and rarely clicked.</summary>
         public async Task<ObservrOutcome> AskLowClickAsync(string teamId, string dataSetName, QueryStat q, long fromDay, long toDay, CancellationToken ct)
         {
-            if (Token() is not { } token) return new ObservrOutcome(ObservrStatus.NoToken);
+            if (Refused(out var token) is { } refused) return new ObservrOutcome(refused);
             var engine = engines.FindSearchEngine(dataSetName, teamId);
             if (engine == null || engine.Status.SystemState != SystemState.Ready || statistics.Store is not { } store)
                 return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
@@ -311,7 +482,7 @@ namespace IndxServer.Services.Observr
         /// <summary>"Suggest synonyms" on the Synonyms tab: from the period's zero hits and fuzzy finds.</summary>
         public async Task<ObservrOutcome> AskSynonymsAsync(string teamId, string dataSetName, int days, CancellationToken ct)
         {
-            if (Token() is not { } token) return new ObservrOutcome(ObservrStatus.NoToken);
+            if (Refused(out var token) is { } refused) return new ObservrOutcome(refused);
             var engine = engines.FindSearchEngine(dataSetName, teamId);
             if (engine == null || engine.Status.SystemState != SystemState.Ready || statistics.Store is not { } store)
                 return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
@@ -336,7 +507,7 @@ namespace IndxServer.Services.Observr
         /// <summary>"Did this help?" on a change the owners made: the week before against the week after.</summary>
         public async Task<ObservrOutcome> AskChangeAsync(string teamId, string dataSetName, ChangeStat change, CancellationToken ct)
         {
-            if (Token() is not { } token) return new ObservrOutcome(ObservrStatus.NoToken);
+            if (Refused(out var token) is { } refused) return new ObservrOutcome(refused);
             if (statistics.Store is not { } store) return new ObservrOutcome(ObservrStatus.Failed, Reason: "noStatistics");
             var tz = store.ZoneOf(teamId, dataSetName);
             var day = StatisticsDays.DayOf(tz, change.Timestamp);
@@ -364,14 +535,15 @@ namespace IndxServer.Services.Observr
         /// roles, coverage), never the switches, and leaves thresholds to their measured defaults.</summary>
         public async Task<ObservrOutcome> AskSearchOrAskSetupAsync(string teamId, string dataSetName, CancellationToken ct)
         {
-            if (Token() is not { } token) return new ObservrOutcome(ObservrStatus.NoToken);
+            if (Refused(out var token) is { } refused) return new ObservrOutcome(refused);
             var engine = engines.FindSearchEngine(dataSetName, teamId);
             if (engine == null || engine.Status.SystemState != SystemState.Ready)
                 return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
             var review = BuildFieldReviewAsk(teamId, dataSetName, engine);
             var label = StatisticsLabels.For(engine, statistics.Store?.LabelField(teamId, dataSetName));
-            var names = (IndxServerInternalApi.Manager.Search(new QueryProxy { Text = "", EnableFacets = true, MaxNumberOfRecordsToReturn = SetupNames }, dataSetName, teamId)
-                .Records ?? []).Select(r => label(r.DocumentKey)).Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n!).ToList();
+            // Names from across the dataset, like the sample: the first dozen records say what the
+            // file begins with, not what a record is.
+            var names = Spread(teamId, dataSetName, SetupNames).Keys.Select(label).Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n!).ToList();
             var today = statistics.Store?.Today(teamId, dataSetName) ?? 0;
             var top = statistics.Store?.TopQueries(teamId, dataSetName, today - 29, today, 30)
                 .Select(q => new ObservrSummaryQuery(q.QueryText, q.Searches, q.ZeroHits, q.ClickedSearches,
@@ -384,7 +556,8 @@ namespace IndxServer.Services.Observr
             var current = new ObservrSearchOrAskCurrent(settings.Shown, settings.Enabled, settings.Kind, settings.SiteDescription,
                 searchOrAskService.SiteDescription(teamId, dataSetName, settings), settings.TitleField, settings.SectionFields, settings.SnippetFields,
                 effective.TitleField, effective.SectionFields.ToList(), effective.SnippetFields.ToList(), settings.FilterNotes, settings.Answers,
-                settings.AnswerInstructions, settings.AnswerLanguage, settings.Thresholds.Strong, settings.Thresholds.Invite, qp?.Candidates?.MaxCandidates, !qp?.Candidates?.Rest);
+                settings.AnswerInstructions, settings.AnswerLanguage, settings.Thresholds.Strong, settings.Thresholds.Invite, qp?.Candidates?.MaxCandidates, !qp?.Candidates?.Rest,
+                settings.AskPhrases ?? SearchOrAsk.SearchOrAskPhrases.Default, settings.AskPhrases == null, settings.RefocusWhileTyping, settings.InviteOnAskPhrase);
             var ask = new ObservrSearchOrAskSetupAsk(SetupKind, teamId, dataSetName, review.Site, review.FieldEvidence.Select(f => f.Name).ToList(),
                 review.Records, review.Sampled, review.FieldEvidence, names, top, zero, current);
             return await SendAsync(token, teamId, dataSetName, SetupKind, "", ask, ct);
@@ -397,7 +570,7 @@ namespace IndxServer.Services.Observr
         /// menu. Run daily for every dataset with Observr on, and on the Options tab's button.</summary>
         public async Task<ObservrDigestOutcome> SendDigestAsync(string teamId, string dataSetName, CancellationToken ct)
         {
-            if (Token() is not { } token) return new ObservrDigestOutcome(ObservrStatus.NoToken);
+            if (Refused(out var token) is { } refused) return new ObservrDigestOutcome(refused);
             var summary = summaries.Build(teamId, dataSetName);
             if (summary == null) return new ObservrDigestOutcome(ObservrStatus.Failed, "noStatistics");
             var (status, body, reason) = await PostAsync(token, "/api/summary", summary, teamId, dataSetName, ct);
@@ -420,6 +593,7 @@ namespace IndxServer.Services.Observr
             HttpStatusCode.Unauthorized => ObservrStatus.UnknownToken,
             HttpStatusCode.PaymentRequired => ObservrStatus.NoSubscription,
             HttpStatusCode.ServiceUnavailable => ObservrStatus.Unavailable,
+            HttpStatusCode.TooManyRequests => ObservrStatus.OverQuota,
             _ => ObservrStatus.Failed,
         };
 
@@ -438,6 +612,10 @@ namespace IndxServer.Services.Observr
             var (instanceId, instanceName) = Instance();
             request.Headers.TryAddWithoutValidation("X-Indx-Instance", instanceId);
             request.Headers.TryAddWithoutValidation("X-Indx-Instance-Name", instanceName);
+            request.Headers.TryAddWithoutValidation(ObservrProposal.AcceptsHeader, string.Join(',', ObservrProposal.Accepted));
+            // Which release asked, for Observr's support and for knowing when an old one is gone;
+            // what it can carry out is the accepts list above, never inferred from this.
+            request.Headers.TryAddWithoutValidation("X-Indx-Server-Version", ServerVersion);
             try
             {
                 using var response = await client.SendAsync(request, ct);
@@ -447,14 +625,66 @@ namespace IndxServer.Services.Observr
                 catch (JsonException) { }
                 if (response.StatusCode is not (HttpStatusCode.OK or HttpStatusCode.Unauthorized or HttpStatusCode.PaymentRequired or HttpStatusCode.ServiceUnavailable or HttpStatusCode.TooManyRequests))
                     logger.LogWarning("Observr answered {Status} for {Team}/{Dataset}", (int)response.StatusCode, teamId, dataSetName);
+                // Health: the service answered, whatever it said about this licence; a 503 is the
+                // service (or its portal) being down, which is the one thing the admin page reports.
+                if (response.StatusCode == HttpStatusCode.ServiceUnavailable) LastFailure = new ObservrPortalFailure(DateTime.UtcNow, reason ?? "unavailable");
+                else { LastOkUtc = DateTime.UtcNow; LastFailure = null; }
+                ReadAllowance(response, reason);
                 return (response.StatusCode, body, reason ?? (response.StatusCode == HttpStatusCode.OK ? null : $"http{(int)response.StatusCode}"));
             }
             catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
             {
                 logger.LogWarning(ex, "Observr unreachable");
+                LastFailure = new ObservrPortalFailure(DateTime.UtcNow, "unreachable");
                 return (HttpStatusCode.ServiceUnavailable, "", "unreachable");
             }
         }
+
+        /// <summary>The allowance headers on every answer (what is left of the month and the day, of how
+        /// many, and the renewal), with a 429 <c>quota</c> or <c>monthlyQuota</c> as that one spent.
+        /// A service that sends none leaves what was known.</summary>
+        private void ReadAllowance(HttpResponseMessage response, string? reason)
+        {
+            var now = DateTime.UtcNow;
+            static int? Header(HttpResponseMessage r, string name) =>
+                r.Headers.TryGetValues(name, out var v) && int.TryParse(v.FirstOrDefault(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : null;
+            var monthLeft = Header(response, ObservrAllowance.LeftHeader);
+            var dayLeft = Header(response, ObservrAllowance.TodayLeftHeader);
+            var spent = response.StatusCode == HttpStatusCode.TooManyRequests && reason is "quota" or "monthlyQuota";
+            if (monthLeft == null && dayLeft == null && !spent) return;
+            DateOnly? renews = response.Headers.TryGetValues(ObservrAllowance.RenewHeader, out var r) && DateOnly.TryParseExact(r.FirstOrDefault(), "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var d) ? d : Allowance?.Renews;
+            Allowance = new ObservrAllowance(
+                reason == "monthlyQuota" && spent ? 0 : monthLeft ?? Allowance?.MonthLeft, Header(response, ObservrAllowance.LimitHeader) ?? Allowance?.MonthLimit,
+                reason == "quota" && spent ? 0 : dayLeft ?? Allowance?.DayLeft, Header(response, ObservrAllowance.TodayLimitHeader) ?? Allowance?.DayLimit,
+                renews, now, spent ? now : Allowance?.RanOutUtc);
+        }
+
+        /// <summary>Asks Observr what this licence has left (GET /api/allowance), which is not an ask:
+        /// the admin page's numbers on opening. Null when nothing may be sent or Observr cannot say.</summary>
+        public async Task<ObservrAllowance?> FetchAllowanceAsync(CancellationToken ct)
+        {
+            if (Refused(out var token) is not null) return null;
+            var client = http.CreateClient(HttpClientName);
+            using var request = new HttpRequestMessage(HttpMethod.Get, $"{options.Url.TrimEnd('/')}/api/allowance");
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+            var (instanceId, instanceName) = Instance();
+            request.Headers.TryAddWithoutValidation("X-Indx-Instance", instanceId);
+            request.Headers.TryAddWithoutValidation("X-Indx-Instance-Name", instanceName);
+            request.Headers.TryAddWithoutValidation("X-Indx-Server-Version", ServerVersion);
+            try
+            {
+                using var response = await client.SendAsync(request, ct);
+                if (!response.IsSuccessStatusCode) return Allowance;
+                ReadAllowance(response, null);
+                return Allowance;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException) { return Allowance; }
+        }
+
+        /// <summary>This build's version as released ("2.0.0-beta.1"), without the commit suffix.</summary>
+        internal static readonly string ServerVersion =
+            (typeof(ObservrClient).Assembly.GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+                .OfType<System.Reflection.AssemblyInformationalVersionAttribute>().FirstOrDefault()?.InformationalVersion ?? "unknown").Split('+')[0];
 
         /// <summary>The installation's id and name; the id is made once and kept in the settings.</summary>
         private (string Id, string Name) Instance()
@@ -494,6 +724,8 @@ namespace IndxServer.Services.Observr
                         return new ObservrOutcome(ObservrStatus.NoSubscription, Reason: reason ?? "noSubscription");
                     case HttpStatusCode.ServiceUnavailable:
                         return new ObservrOutcome(ObservrStatus.Unavailable, Reason: reason ?? "unavailable");
+                    case HttpStatusCode.TooManyRequests:
+                        return new ObservrOutcome(ObservrStatus.OverQuota, Reason: reason ?? "quota");
                     default:
                         return new ObservrOutcome(ObservrStatus.Failed, Reason: reason);
                 }
@@ -532,8 +764,7 @@ namespace IndxServer.Services.Observr
         {
             // An empty search lists records only as a faceted browse, and only where a field is
             // facetable; without one the sample is empty and Observr is told so (Sampled = 0).
-            var keys = (IndxServerInternalApi.Manager.Search(new QueryProxy { Text = "", EnableFacets = true, MaxNumberOfRecordsToReturn = ReviewSample }, dataSetName, teamId)
-                .Records ?? []).Select(r => r.DocumentKey).ToList();
+            var (keys, facets, total) = Spread(teamId, dataSetName, ReviewSample);
             var docs = keys.Select(k => Parse(engine.GetJsonDataOfKey(k))).Where(d => d != null).ToList();
             var evidence = new List<ObservrFieldEvidence>();
             foreach (var f in engine.GetFieldList())
@@ -541,24 +772,61 @@ namespace IndxServer.Services.Observr
                 var values = docs.SelectMany(d => Leaves(d!, f.Name)).ToList();
                 var filled = docs.Count(d => Leaves(d!, f.Name).Any());
                 var texts = values.Select(v => v.ToString()).Where(s => s.Length > 0).ToList();
-                var distinct = texts.Distinct().Count();
-                // The commonest values only where values repeat (a category, a type): a field whose
-                // values are mostly their own (names, descriptions) sends none, so no record goes.
-                var top = distinct <= texts.Count / 2
-                    ? texts.GroupBy(s => s).OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
-                        .Take(ReviewTopValues).Select(g => g.Key.Length > 80 ? g.Key[..80] + "…" : g.Key).ToList()
-                    : [];
+                int distinct;
+                List<string> top;
+                long over;
+                if (facets != null && facets.TryGetValue(f.Name, out var facet))
+                {
+                    // A facetable field is counted over every record by the search itself: the
+                    // sample cannot mislead about what the dataset mostly holds. A JSON null is
+                    // its own facet value and reads as no value.
+                    var named = facet.Where(v => v.Key != "null").ToList();
+                    distinct = named.Count;
+                    top = named.OrderByDescending(v => v.Value).ThenBy(v => v.Key, StringComparer.Ordinal).Take(ReviewTopValues).Select(v => Shown(v.Key, v.Value)).ToList();
+                    if (facet.FirstOrDefault(v => v.Key == "null") is { Value: > 0 } none) top.Add(Shown("(none)", none.Value));
+                    over = total;
+                }
+                else
+                {
+                    distinct = texts.Distinct().Count();
+                    // The commonest values only where values repeat (a category, a type): a field
+                    // whose values are mostly their own (names, descriptions) sends none, so no
+                    // record goes.
+                    top = distinct <= texts.Count / 2
+                        ? texts.GroupBy(s => s).OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.Ordinal)
+                            .Take(ReviewTopValues).Select(g => Shown(g.Key, g.Count())).ToList()
+                        : [];
+                    over = docs.Count;
+                }
                 var numbers = f.Type == JsonValueKind.Number
                     ? values.Select(v => v.TryGetValue<double>(out var n) ? n : (double?)null).Where(n => n != null).Select(n => n!.Value).ToList() : [];
                 evidence.Add(new ObservrFieldEvidence(f.Name, TypeName(f.Type), f.IsArray, f.WordMatching || f.PatternMatching != null, f.Filterable, f.Facetable, f.Sortable, f.Weight,
                     filled, distinct, top, numbers.Count > 0 ? numbers.Min() : null, numbers.Count > 0 ? numbers.Max() : null,
-                    texts.Count == 0 ? 0 : (int)texts.Average(s => s.Length)));
+                    texts.Count == 0 ? 0 : (int)texts.Average(s => s.Length), over));
             }
             var today = StatisticsDays.Today(TimeZoneInfo.Utc);
             var queries = statistics.Store?.TopQueries(teamId, dataSetName, today - ReviewQueryDays, today, ReviewTopQueries)
                 .Select(q => q.QueryText).ToList() ?? [];
             return new ObservrFieldReviewAsk(FieldReviewKind, teamId, dataSetName, Site(teamId, dataSetName), engine.DocumentFields?.NameOfDocumentKeyField ?? "",
                 engine.Status.DocumentCount, docs.Count, evidence, queries);
+        }
+
+        /// <summary>A value with its count, as the evidence lists it: "E-bok (10,595)".</summary>
+        private static string Shown(string value, int count) =>
+            (value.Length > 80 ? value[..80] + "…" : value) + " (" + count.ToString("N0", CultureInfo.InvariantCulture) + ")";
+
+        /// <summary>Up to <paramref name="count"/> record keys spread evenly over the dataset in its
+        /// own order, with the facets over every record and how many there are. An empty search
+        /// walks the records as they were loaded and facets them all; the first few hundred are
+        /// whatever the file begins with, so the spread takes every n-th instead.</summary>
+        private static (List<long> Keys, Dictionary<string, KeyValuePair<string, int>[]>? Facets, long Total) Spread(string teamId, string dataSetName, int count)
+        {
+            var result = IndxServerInternalApi.Manager.Search(new QueryProxy { Text = "", EnableFacets = true, MaxNumberOfRecordsToReturn = SampleWalk }, dataSetName, teamId);
+            var all = result.Records ?? [];
+            var stride = Math.Max(1, all.Length / Math.Max(1, count));
+            var keys = new List<long>();
+            for (var i = 0; i < all.Length && keys.Count < count; i += stride) keys.Add(all[i].DocumentKey);
+            return (keys, result.Facets, all.Length);
         }
 
         private string Site(string teamId, string dataSetName)
@@ -606,26 +874,85 @@ namespace IndxServer.Services.Observr
             return new ObservrSynonymTest(records.Length, records.Select(r => label(r.DocumentKey) ?? r.DocumentKey.ToString()).ToList());
         }
 
+        /// <summary>After a yes has carried a finding's proposals out: which dataset, and the kinds of
+        /// change (<see cref="ObservrProposal.Synonym"/>, <see cref="ObservrProposal.FieldKind"/>, …).
+        /// The console's tabs reload what they show from it: a yes in the Agent panel, the Observr
+        /// menu or the Status tab changed the saved settings under a tab that had read them.</summary>
+        public event Action<ObservrApplied>? Applied;
+
+        /// <summary>The findings being decided right now: a second Yes on one (another editor, or the
+        /// Agent panel and the Status page at once) waits for nothing and is refused, rather than
+        /// carrying the proposals out twice; a field change would otherwise rebuild twice.</summary>
+        private readonly HashSet<long> _deciding = [];
+
         /// <summary>The owners' decision on a finding: a yes carries out its proposals (all of them, or
-        /// only the ones at <paramref name="onlyProposals"/>, indices into the finding's list), a no
-        /// closes it. Returns why a yes could not be carried out (the finding stays open), or null.</summary>
+        /// only the ones at <paramref name="onlyProposals"/>, indices into the finding's list; the rest
+        /// are declined with it), a no closes it. Only an open finding is decided. Returns why a yes
+        /// could not be carried out, or null. A yes that fails part way says what was done before it
+        /// stopped; that part stays done (each kind of change is safe to carry out again) and the
+        /// finding stays open, so a second Yes finishes it.</summary>
         public string? Decide(long findingId, bool yes, IReadOnlyCollection<int>? onlyProposals = null)
+        {
+            lock (_deciding)
+                if (!_deciding.Add(findingId)) return "This suggestion is already being carried out.";
+            try { return DecideOnce(findingId, yes, onlyProposals); }
+            finally { lock (_deciding) _deciding.Remove(findingId); }
+        }
+
+        private string? DecideOnce(long findingId, bool yes, IReadOnlyCollection<int>? onlyProposals)
         {
             var f = findings.Get(findingId);
             if (f == null) return "There is no such finding.";
-            if (yes)
+            if (f.Status != ObservrFinding.Open) return f.Status == ObservrFinding.Accepted ? "This was already carried out." : "This was already declined.";
+            if (!yes)
             {
-                var chosen = f.Proposals.Where((p, i) => onlyProposals == null || onlyProposals.Contains(i)).ToList();
-                foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.Synonym))
-                    if (!ApplySynonym(f.TeamId, f.DataSetName, p.Terms)) return "The synonym could not be stored.";
-                var changes = chosen.Where(p => p.Kind == ObservrProposal.FieldKind && p.Field != null).Select(p => p.Field!).ToList();
-                if (changes.Count > 0 && ApplyFields(f.TeamId, f.DataSetName, changes) is { } why) return why;
-                foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.SearchOrAskKind && p.SearchOrAsk != null))
-                    if (ApplySearchOrAsk(f.TeamId, f.DataSetName, p.SearchOrAsk!) is { } whyNot) return whyNot;
-                foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.QueryParametersKind && p.QueryParameters != null))
-                    ApplyQueryParameters(f.TeamId, f.DataSetName, p.QueryParameters!);
+                findings.Decide(findingId, ObservrFinding.Declined);
+                return null;
             }
-            findings.Decide(findingId, yes ? ObservrFinding.Accepted : ObservrFinding.Declined);
+            var chosen = f.Proposals.Where((p, i) => onlyProposals == null || onlyProposals.Contains(i)).ToList();
+            // The store keeps only what can be carried out; this holds for a finding kept before it did.
+            if (chosen.Any(p => !p.CanApply)) return "This suggestion needs a newer Indx Server. Nothing was changed.";
+            var done = new HashSet<string>();
+            var why = Apply(f, chosen, done);
+            if (why == null) findings.Decide(findingId, ObservrFinding.Accepted);
+            // The tabs reload what changed, also when the yes stopped part way: what was done is saved.
+            if (done.Count > 0)
+                foreach (var listener in Applied?.GetInvocationList() ?? [])
+                    // A listener that throws (a tab gone mid-call) must not turn an applied change into a failure.
+                    try { ((Action<ObservrApplied>)listener)(new ObservrApplied(f.TeamId, f.DataSetName, done)); }
+                    catch (Exception ex) { logger.LogWarning(ex, "An Observr applied listener failed"); }
+            if (why == null) return null;
+            if (done.Count == 0) return why + " Nothing was changed.";
+            var labels = f.Proposals.Where(p => done.Contains(p.Kind)).Select(p => p.Label.ToLowerInvariant()).Distinct();
+            return $"{why} The {string.Join(" and ", labels)} change{(done.Count == 1 ? " was" : "s were")} carried out; the rest was not.";
+        }
+
+        /// <summary>The chosen proposals, synonyms first and field changes (the slow one) after the
+        /// settings that cannot fail on their own. Each kind is added to <paramref name="done"/> once
+        /// carried out. Returns why it stopped, or null.</summary>
+        private string? Apply(ObservrFinding f, List<ObservrProposal> chosen, HashSet<string> done)
+        {
+            foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.Synonym))
+            {
+                if (!ApplySynonym(f.TeamId, f.DataSetName, p.Terms)) return "The synonym could not be stored.";
+                done.Add(ObservrProposal.Synonym);
+            }
+            foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.SearchOrAskKind && p.SearchOrAsk != null))
+            {
+                if (ApplySearchOrAsk(f.TeamId, f.DataSetName, p.SearchOrAsk!) is { } whyNot) return whyNot;
+                done.Add(ObservrProposal.SearchOrAskKind);
+            }
+            foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.QueryParametersKind && p.QueryParameters != null))
+            {
+                ApplyQueryParameters(f.TeamId, f.DataSetName, p.QueryParameters!);
+                done.Add(ObservrProposal.QueryParametersKind);
+            }
+            var changes = chosen.Where(p => p.Kind == ObservrProposal.FieldKind && p.Field != null).Select(p => p.Field!).ToList();
+            if (changes.Count > 0)
+            {
+                if (ApplyFields(f.TeamId, f.DataSetName, changes) is { } why) return why;
+                done.Add(ObservrProposal.FieldKind);
+            }
             return null;
         }
 
@@ -661,6 +988,21 @@ namespace IndxServer.Services.Observr
             if (c.Answers != null) s.Answers = c.Answers;
             if (c.AnswerInstructions != null) s.AnswerInstructions = c.AnswerInstructions.Trim().Length == 0 ? null : c.AnswerInstructions.Trim();
             if (c.AnswerLanguage != null) s.AnswerLanguage = c.AnswerLanguage.Trim().Length == 0 ? null : c.AnswerLanguage.Trim();
+            if (c.AddLeadIns is { Count: > 0 } || c.AddFrames is { Count: > 0 })
+            {
+                // Onto the list in effect: the dataset's own, or the defaults it then makes its own.
+                var basis = s.AskPhrases ?? SearchOrAsk.SearchOrAskPhrases.Default;
+                static List<string> Grow(List<string> have, List<string>? add) =>
+                    [.. have, .. (add ?? []).Select(p => p.Trim().ToLowerInvariant()).Where(p => p.Length > 0)
+                        .Distinct().Where(p => !have.Contains(p, StringComparer.OrdinalIgnoreCase))];
+                s.AskPhrases = new SearchOrAsk.SearchOrAskPhrases
+                {
+                    LeadIns = Grow(basis.LeadIns, c.AddLeadIns),
+                    Frames = Grow(basis.Frames, c.AddFrames),
+                    Links = [.. basis.Links],
+                    Articles = [.. basis.Articles],
+                };
+            }
             if (s.Validate() is { } invalid) return invalid;
             searchOrAsk.Save(teamId, dataSetName, s);
             return null;

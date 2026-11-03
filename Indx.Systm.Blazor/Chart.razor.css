@@ -73,6 +73,7 @@
     font: var(--text-xs);
     color: var(--lv5);
     flex: 1;
+    white-space: nowrap;
 }
 
 .indx-chart-tooltip-value {
@@ -95,6 +96,23 @@
     background: var(--CLightBlue);
 }
 
+/* A series' range, under its value, in the dim tone. */
+.indx-chart-tooltip-range {
+    margin-top: -2px;
+}
+
+.indx-chart-tooltip-range-value {
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+/* The total of a stacked bar, under its parts with a rule between. */
+.indx-chart-tooltip-total {
+    margin-top: 4px;
+    padding-top: 4px;
+    border-top: 1px solid var(--lv2);
+}
+
 /* Legend */
 .indx-chart-legend {
     display: flex;
@@ -112,6 +130,12 @@
 .indx-chart-legend-mark {
     width: 12px;
     height: 2px;
+    flex-shrink: 0;
+}
+
+/* A patterned series shows its pattern, not a line, so the legend says which bar is which. */
+.indx-chart-legend-swatch {
+    display: block;
     flex-shrink: 0;
 }
 

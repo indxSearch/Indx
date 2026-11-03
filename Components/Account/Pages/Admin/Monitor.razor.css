@@ -1,3 +1,19 @@
+/* The instance at a glance: the stats, above the stream. */
+.admin-monitor-stats {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 24px;
+}
+
+/* The rate's sparkline fills the tile's foot, the height of a line of text. */
+::deep .admin-monitor-spark {
+    display: block;
+    width: 100%;
+    min-width: 80px;
+}
+
+
 /* ::deep throughout: the table element belongs to systm Table, not to this page. */
 
 /* Time and Source are short and fixed in shape, so they keep to one line and the width goes to
@@ -62,3 +78,6 @@
         margin-top: 2px;
     }
 }
+
+/* The CPU and Memory tiles carry their pixl icon before the name, the label's companion as on a
+   Tab: the same tone, the same line, under the hint's dotted underline together. */

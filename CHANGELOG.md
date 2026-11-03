@@ -7,7 +7,116 @@ Versions: the server has its own line (2.x). It bundles the Indx core library (`
 5.x) and serves the HTTP API contract `v2.0-beta`, which is the version in every URL. A server
 patch can pick up a newer core without changing the HTTP contract.
 
-## [2.0.0-beta.1] - Unreleased
+## [Unreleased]
+
+### Added
+
+- **Categories.** A dataset with a category hierarchy, a Google-style `product_type` with
+  "Furniture > Chairs > Office chairs" or fields that each hold a level, gets a **Categories** tab:
+  the whole catalogue as a tree, every category with its product count, the chosen one with its
+  first products beside it and a step to boost it. Open to a level, zoom, filter by name, or read
+  it as a list; full screen when the tree is wide. A category no visitor has selected or bought
+  from in the last 90 days carries a quiet mark. A dataset that mixes kinds of records, books with
+  authors and series, can limit the tab to one kind, and its "No category" then lists the books
+  that have none.
+- **Statistics, in pictures.** The Overview now shows when people search as a week-by-hour grid
+  and as a clock of the day, where searches come from, which result gets chosen, which languages
+  visitors search in, how they type, and a profile of the window against the one before it:
+  clicked, with hits, covered, filtered, one word, first result. Search or ask has pictures of
+  its own, with a clock of when the day's budget tends to run out.
+- **Languages.** Send `?locale=` with a search, a BCP 47 tag such as `nb-NO`, and Statistics
+  counts the languages visitors search in; a browser's `Accept-Language` is read when the
+  parameter is left out. A language whose tag names a country, `nb-NO` or `pt-BR`, carries that
+  country's flag.
+- **Admin > Monitor** shows the process's CPU and memory against what the machine allows, the
+  native memory pool, searches a minute over the last hour and every dataset's state at a glance.
+  The terminal monitor has the same gauges.
+- **Update notices.** Once a day the server checks which Indx release is the latest and tells its
+  admins once when a newer one is out: a notification in the console and a line under the version in
+  the admin area, with how to get it. A security release says so and is emailed too; an ordinary one is
+  emailed only to admins who turn that on. The check is anonymous. `Updates:Check` set to `false`
+  switches it off.
+- **Websites, set in the console.** Admin > Settings now lists the websites whose pages may call
+  the API from the browser, such as a shop with a search box. A change applies at once, without a
+  restart, and `*.example.com` covers every subdomain. Until an admin saves a list,
+  `Cors:AllowedOrigins` applies as before.
+- **Download progress.** Downloading a dataset's data shows how far it has come, document by
+  document, and the browser shows the download as started at once.
+
+### Changed
+
+- **The statistics tiles sit with their pictures,** at the top of the Overview, so the other
+  sections start at their own content; every tile wears an icon, on the Status tab and the
+  monitor too. Conversions show only once the window holds one.
+
+
+- **A sleeping dataset can be rescued.** Opening a dataset never loads it any more. One that is
+  hibernated or not loaded opens on Status with Wake up, and its Options are open: download the
+  data, change keep-alive, transfer or delete it, all without loading it into memory. That is the
+  way out when an instance ran out of memory loading a dataset. Before, opening a timed or
+  pinned dataset that was not loaded loaded it there and then, and the console waited.
+- **The console shows when it is working** on Refresh in Admin > Datasets and Admin > Users, on
+  saving keep-alive there, and while the Statistics lists reorder or show more.
+
+- **A smaller install.** The server no longer carries design-time tools and web libraries it never
+  used, about 45 MB less to download and deploy.
+
+### Fixed
+
+- **Statistics on a busy dataset.** The typing figures scanned the search events once per
+  search; on a shop with 300k searches in the window the tab never came back. It answers in a
+  second now, and the two per-text measures step aside above 50,000 searches.
+
+## [2.0.0-beta.2] - Unreleased
+
+Runs on IndxSearchLib 5.0.5 or later.
+
+### Added
+
+- **Search or ask (experimental).** One search field that also answers questions. On each pause
+  in typing a judge reads what was typed and the results, and offers to answer; the answer is
+  written from the dataset's own records and cites them. On a catalogue, a description such as
+  "funny space movies from the 80s" becomes filters on the list. Off by default behind three
+  switches, and it runs on your own model key (OpenRouter, Anthropic or any OpenAI-compatible
+  endpoint). The routes are under `…/search-or-ask`, intrface 3.13 has the front end, and the
+  [guide](https://docs.indx.co/guides/search-or-ask) covers the settings.
+- **Observr (early access).** For Pro and Enterprise subscriptions. Observr reads each watched
+  dataset's search statistics every morning and puts what deserves attention on the dataset's
+  Status page, each finding with the change that would fix it; a Yes carries it out through the
+  console's own paths. It also answers from buttons in the dataset's tabs and in the Agent panel.
+  Off until an admin switches it on; the [guide](https://docs.indx.co/guides/observr) lists
+  exactly what is sent.
+- **All data in one folder.** `Indx:DataDirectory` places every file the server keeps: the
+  databases, statistics, vector graphs, instance settings, licence, key file and backups. Point
+  it at a volume of its own (a container volume, an Azure Files share) and a new version of the
+  server can replace its own folder without touching your data. Unset, everything stays in
+  `./IndxData` as before; a connection string with an absolute path still places its database.
+- **A backup on request.** The server's own backup, a verified copy of each database taken
+  while it keeps running, now also runs within seconds of a file named `backup-now` appearing in
+  its backup folder, besides its daily schedule. Useful before an upgrade: ask, wait for the new
+  copies, then deploy.
+
+### Changed
+
+- **A new console layout.** A dataset's sections sit in a side column, with the page you are on
+  at the top and the team switcher beside your account. It works on a phone: the header folds to
+  one row and the dataset switcher opens there too. A sleeping dataset keeps its column, each
+  section greyed with the reason. Statistics show their outline while the numbers load, and the
+  first visit to a team without datasets is a short guide in three steps.
+- **Sharp icons on any screen.** Every icon is drawn at a size its pixels divide into, so they
+  stay crisp on a standard-resolution display instead of blurring between pixels.
+- **A visitor's typing counts once.** Search-as-you-type sends many searches while a visitor
+  types; the statistics fold them into the one they ended on, and now also across a backspace
+  and a pause. A page that searches something other than what was typed can send the typed text
+  as `?typed=` on the search, and the typing is counted once against it.
+- **A search on a sleeping dataset says so in plain words.** The `409 invalidState` detail reads
+  "The dataset is empty or hibernated. Load data into it or wake it up, then try again." instead
+  of a list of engine states, since a search box may show it to whoever searched. The state and
+  the allowed states stay in their own fields for clients that act on them.
+- **The licence file is never part of a build.** `dotnet publish` no longer copies a local
+  `.license` into the output, so a build handed on does not carry your licence with it.
+
+## [2.0.0-beta.1] - 2026-10-08
 
 Runs on IndxSearchLib 5.0.5 or later. First public release of the v2 server; v1 users should read
 the [v1 → v2 migration guide](https://github.com/indxSearch/skill-indx-search/blob/main/references/migration-v4-to-v5.md)
