@@ -4,10 +4,21 @@
 @using IndxServer.Models
 
 @inherits DatasetTabBase
+@inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
+@inject IndxServer.Services.Observr.AgentPanelState Agent
+@inject IServiceProvider Services
 @if (!Active) { return; }
 
 @if (!Ctx.IsSaving)
 {
+    @* The whole-setup action first, on its own row at the left as on Search or ask; the toolbar's
+       right side is the view's own controls. *@
+    @if (Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
+    {
+        <div class="indx-list-toolbar">
+            <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Disabled="@Ctx.IsDirty" @onclick="ReviewInAgent">Review my setup</Button></span>
+        </div>
+    }
     <FieldConfigToolbar @bind-Filter="_filter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced" />
 }
 
@@ -48,6 +59,33 @@ else if (Ctx.EditedFields is { } fields)
 @code {
 
     private bool _showUnused;
+    /// <summary>The review runs in the Agent panel as a turn; a Yes there applies the field
+    /// changes through the same path as Save. While that rebuilds, the tab shows its progress bar
+    /// as it does for its own Save; after, it re-reads the engine's fields.</summary>
+    private void ReviewInAgent() => Agent.Run(new IndxServer.Services.Observr.AgentAction("Review my field setup",
+        ct => Observr().AskFieldReviewAsync(Ctx.TeamId, Ctx.Name, ct),
+        OnApplied: () => InvokeAsync(() =>
+        {
+            _applyPolling?.Cancel();
+            _applyPolling = null;
+            Ctx.RefreshFieldsFromEngine();
+            Ctx.IsSaving = false;
+            Ctx.ShadowBuildPercent = 0;
+            Ctx.RefreshStatus();
+            Ctx.NotifyChanged();
+        }),
+        OnApplying: () => InvokeAsync(() =>
+        {
+            Ctx.IsSaving = true;
+            Ctx.ShadowBuildPercent = 0;
+            Ctx.NotifyChanged();
+            _applyPolling = new CancellationTokenSource();
+            _ = ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(100),
+                () => { Ctx.ShadowBuildPercent = Ctx.Engines.GetShadowBuildPercent(Ctx.Name, Ctx.TeamId); return true; },
+                () => InvokeAsync(() => { StateHasChanged(); Ctx.NotifyChanged(); }), _applyPolling.Token);
+        })));
+    private CancellationTokenSource? _applyPolling;
+    private IndxServer.Services.Observr.ObservrClient Observr() => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IndxServer.Services.Observr.ObservrClient>(Services);
 
     private string? _filter;
     private bool _showAdvanced;

@@ -1,0 +1,3 @@
+.indx-chat-suggestions { display: flex; flex-direction: column; gap: 8px; }
+.indx-chat-label { font: var(--text-2xs); font-weight: var(--med); color: var(--lv5); letter-spacing: 0.02em; text-transform: uppercase; }
+.indx-chat-wrap { display: flex; flex-wrap: wrap; gap: 6px; }

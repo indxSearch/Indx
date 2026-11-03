@@ -12,10 +12,44 @@ internal class InstanceSettings
     public bool AllowUserSelfDeletion { get; set; } = true;
     public string InstanceName { get; set; } = "Indx";
 
+    /// <summary>A stable, random id for this installation, made the first time it is needed and
+    /// kept in settings.json. It tells Observr which installation an ask came from, so one licence
+    /// token used by several installations is seen as such. Not a secret, not shown to users.</summary>
+    public string? InstanceId { get; set; }
+
     /// <summary>Master switch for the MCP server (/mcp). On by default (frictionless self-host);
     /// admins can disable the agent-facing surface. Enforced at runtime, so it takes effect without
     /// a restart.</summary>
     public bool McpEnabled { get; set; } = true;
+
+    /// <summary>Observr on this instance (Notes/Anders/observr-plan.md): an admin activates it once;
+    /// off, nothing of Observr is shown and nothing is sent, whatever the subscription. On, each team
+    /// chooses per dataset what Observr does on its own Observr page.</summary>
+    public bool ObservrEnabled { get; set; } = false;
+
+    /// <summary>Shows Search or ask on this instance (Notes/search-or-ask-server.md). Experimental,
+    /// so off by default: while off, its dataset tab, its statistics and its routes are absent, and
+    /// nothing is sent to a model. On, each dataset still switches it on in its own tab, and the
+    /// instance needs a model key (Indx:SearchOrAsk:ApiKey).</summary>
+    public bool SearchOrAskShown { get; set; } = false;
+
+    /// <summary>The OpenRouter key Search or ask uses, set in the console (Admin, Settings,
+    /// Experimental), so a self-hosted instance needs no server configuration for it. A key in the
+    /// configuration (Indx:SearchOrAsk:ApiKey, or its environment variable) wins over this one.</summary>
+    public string? SearchOrAskApiKey { get; set; }
+
+    /// <summary>The provider choices beside the key (<see cref="SearchOrAsk.SearchOrAskProviderSettings"/>):
+    /// the answer provider (openrouter, openai, anthropic), the OpenAI-compatible base URL, EU
+    /// routing on OpenRouter, the judge's door (openrouter, typesafe) and its own key when it has
+    /// one, and model names where the provider's defaults are not wanted. Configuration wins.</summary>
+    public string? SearchOrAskProvider { get; set; }
+    public string? SearchOrAskBaseUrl { get; set; }
+    public bool SearchOrAskEuRouting { get; set; }
+    public string? SearchOrAskJudgeProvider { get; set; }
+    public string? SearchOrAskJudgeApiKey { get; set; }
+    public string? SearchOrAskAnswerModel { get; set; }
+    public string? SearchOrAskFastAnswerModel { get; set; }
+    public string? SearchOrAskFilterModel { get; set; }
 
     /// <summary>True once the first-run onboarding (admin account + team + instance settings)
     /// has completed. Until then, the app routes visitors into the setup flow. Gated on this

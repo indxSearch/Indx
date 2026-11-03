@@ -302,3 +302,42 @@
     .indx-facet-field { flex: 0 0 auto; }
     .indx-facet-value { max-width: 190px; }
 }
+
+/* ── A hit, and the document panel ───────────────────────────────────────────────────────────
+   Hovering a hit shows its document where the facets are; clicking pins it. The panel takes the
+   facets base's place rather than floating over the list: the list scrolls inside a box that
+   clips, so a hover card would be cut off, and the base already has a fixed size, so nothing on
+   the page moves when it changes. */
+.indx-search-result-item { cursor: pointer; }
+.indx-search-result-item:hover,
+.indx-search-result-item:focus-visible { background: var(--lv1); outline: none; }
+.indx-search-result-item--pinned { background: var(--lv2); }
+
+.indx-doc-unpin { margin-left: auto; padding-right: 2px; }
+
+.indx-doc-meta { margin: 0; font: var(--text-xs); color: var(--lv5); font-variant-numeric: tabular-nums; }
+
+.indx-doc-section { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 0.5px solid var(--lv3); }
+.indx-doc-section-title { font: var(--text-xs); font-weight: var(--med); color: var(--lv7); display: flex; gap: 8px; align-items: baseline; }
+.indx-doc-section-note { font-weight: var(--reg); color: var(--lv5); }
+
+.indx-doc-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.indx-doc-field-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.indx-doc-field-name { font: var(--text-xs); color: var(--lv6); overflow-wrap: anywhere; }
+.indx-doc-field-tag {
+    font: var(--text-xs);
+    color: var(--lv5);
+    background: var(--lv2);
+    padding: 0 5px;
+    white-space: nowrap;
+}
+.indx-doc-value {
+    font: var(--text-xs);
+    color: var(--lv8);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.indx-doc-value + .indx-doc-value { padding-top: 3px; border-top: 0.5px dashed var(--lv3); }
+.indx-doc-value--empty { color: var(--lv4); font-style: italic; }
+.indx-doc-value-more { color: var(--lv5); }
+.indx-doc-json { margin: 0; font: var(--text-xs); color: var(--lv7); white-space: pre-wrap; overflow-wrap: anywhere; }

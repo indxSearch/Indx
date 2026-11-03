@@ -5,10 +5,3 @@
 .indx-dataset-card-inner {
     position: relative;
 }
-
-/* The tab bar (systm Tabs, button variant, scrollable). min-width: 0 lets it shrink inside the
-   panel so the bar scrolls sideways and the page never does. */
-.indx-dataset-nav {
-    min-width: 0;
-    margin-bottom: 30px;
-}

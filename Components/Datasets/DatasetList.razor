@@ -365,7 +365,7 @@ else
         if (store == null) return null;
         try
         {
-            long toDay = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            long toDay = store.Today(teamId, name);
             long fromDay = toDay - ActivityDays + 1;
             var series = new double[ActivityDays];
             foreach (var day in store.TimeSeries(teamId, name, fromDay, toDay))

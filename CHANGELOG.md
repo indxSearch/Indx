@@ -7,9 +7,9 @@ Versions: the server has its own line (2.x). It bundles the Indx core library (`
 5.x) and serves the HTTP API contract `v2.0-beta`, which is the version in every URL. A server
 patch can pick up a newer core without changing the HTTP contract.
 
-## [2.0.0-beta] - Unreleased
+## [2.0.0-beta.1] - Unreleased
 
-Runs on IndxSearchLib 5.0.0-RC240926. First public release of the v2 server; v1 users should read
+Runs on IndxSearchLib 5.0.5 or later. First public release of the v2 server; v1 users should read
 the [v1 → v2 migration guide](https://github.com/indxSearch/skill-indx-search/blob/main/references/migration-v4-to-v5.md)
 in the AI skill.
 
@@ -42,6 +42,18 @@ in the AI skill.
   search's `boosts` and `PUT boosts`; `boosts/from-filter` used to echo it back, and a search
   added it to the score unchecked. A search whose boosts' strengths, saved rules included, sum
   past 255 answers `200` with no records and `reason` set.
+- **Searches starting with periods work.** A search such as `... og noen` answered `500` on a
+  dataset with a title that starts with an ellipsis. It now finds that title. A search of
+  punctuation only, such as `...`, returns no records with a `reason`, since it has no words to
+  search for.
+
+- **Large datasets load on Windows and IIS hosting.** `analyze`, `load` and `replace` take a whole
+  dataset in one request, and the server allows up to 2 GB. Under IIS, including Azure App Service
+  on Windows, two limits in front of it still stopped at about 28 MB: IIS refused larger bodies
+  with its own `413` page, and the in-process server had a 30 MB default of its own. A `web.config`
+  now raises the first and the server raises the second, so a catalogue of 80 MB or more loads and
+  replaces in one request there too. Kestrel, Docker and Linux hosting already allowed 2 GB.
+
 - **Field roles are written by one route, and it no longer waits for a rebuild.** The per-role
   setters are removed: `PUT fields/searchable`, `fields/filterable`, `fields/facetable`,
   `fields/sortable`, `fields/word-indexing` and `fields/embeddable` answer `405`. They set one
@@ -71,6 +83,11 @@ in the AI skill.
   seconds on 43 000 vectors of 1 536 numbers). One file per dataset in `embeddings` beside the
   search database, about 3 KB a vector of that size. A cache only: a file that is missing or
   out of date costs the time to build.
+- **A load that fails is not indexed, and a refused field configuration is shown.** The server
+  went on to index after a load from the store that had failed or timed out, which left the
+  dataset Ready on the documents read so far. It now indexes only after a load that succeeded.
+  In the console, a field configuration the engine refuses at Load is shown as the reason
+  instead of being lost.
 - **MCP is read-only.** `set_field_configuration` is gone from the MCP surface; configuration is
   changed in the web console or over the HTTP API, where a person sees the change. It was the only
   tool that wrote, and it forced a **Full** key on anyone who wanted it - a key that, over HTTP,
@@ -126,6 +143,35 @@ in the AI skill.
   round across the antimeridian, both ends inclusive. Like a range filter's, the token describes
   the filter and is honoured after the cache has let it go. A position off the Earth, a negative
   distance, or a field without a position is a `400` with the reason.
+- **Query parameters per dataset.** A new tab on each dataset, and
+  `GET`/`PUT`/`DELETE …/query-parameters`, set the coverage values a search uses when it leaves
+  them out: typo tolerance, joined words, truncation, coverage depth and the rest. A value a
+  search sends still wins, one value at a time, so a search box that sets its own keeps it. A
+  search that used a dataset's value says which in the `Indx-Query-Parameters` response header.
+  Applies from the next search, without reindexing. Agents over MCP get the dataset's values too.
+  Sending the whole `coverageSetup` object, as intrface up to 3.10 does, overrides every value;
+  send only the ones a search needs to decide.
+
+- **Statistics for one search surface.** `overview`, `timeseries`, `queries`,
+  `queries/documents`, `documents` and `filters` take `?source=` and count only the searches sent
+  with it; a click or conversion counts for the surface of the search it names by `queryId`.
+  `GET statistics/sources` lists the surfaces with their searches. The `source` parameter was
+  accepted before and ignored, so every surface read as the dataset's totals. The console's
+  Statistics tab gets a surface selector.
+- **Statistics name documents, not only number them.** `documents`, `queries/documents` and
+  `subjects/{subject}` give each document a `label`, and the misspelled-query list a
+  `mostChosenLabel`: the first searchable field, or the field set as `labelField` with
+  `PUT statistics/settings` (also on the Options tab). That `PUT` now changes only what it is
+  sent, so setting one setting no longer resets the other. A sleeping dataset is not woken for
+  a label; it reads `null` until it is loaded.
+- **Statistics count in your time zone.** A day runs midnight to midnight in the dataset's
+  `timeZone` (`PUT statistics/settings`, or the Options tab), UTC unless set or unless the
+  operator sets a default with `Statistics:TimeZone`. Every read, the chart and the Statistics tab
+  follow it, so a late-evening search in Oslo lands on that evening's day. Changing it counts the
+  kept 90 days again.
+- **Delete part of the statistics.** `DELETE statistics?source=` and `?from=&to=` remove one
+  surface's searches or a span of days, with their clicks and conversions, so test traffic can
+  go without the real history. A bare `DELETE statistics` still erases everything.
 - **Monitor.** A live view of the instance: dataset states, document counts, idle-eviction
   countdowns, process and native memory, filter-cache routing, and an event stream carrying state
   changes, field configuration changes and anything the server logs.

@@ -113,6 +113,41 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.BoostRuleStore>();
         builder.Services.AddSingleton<IndxServer.Services.BuryRuleStore>();
         builder.Services.AddSingleton<IndxServer.Services.DatasetMetadataStore>();
+        builder.Services.AddSingleton<IndxServer.Services.QueryParameterStore>();
+
+        // Search or ask (Notes/search-or-ask-server.md): off unless a key is set (configuration or
+        // console), and then only for datasets an owner switches on. The customer's own key with
+        // the provider they choose: OpenRouter by default, else an OpenAI-compatible endpoint or
+        // Anthropic for the answers, Jev through OpenRouter or TypeSafe.
+        var searchOrAsk = builder.Configuration.GetSection(IndxServer.Services.SearchOrAsk.SearchOrAskOptions.Section)
+            .Get<IndxServer.Services.SearchOrAsk.SearchOrAskOptions>() ?? new();
+        builder.Services.AddSingleton(searchOrAsk);
+        builder.Services.AddHttpClient(IndxServer.Services.SearchOrAsk.SearchOrAskModelClients.HttpClientName,
+            client => client.Timeout = TimeSpan.FromSeconds(120));
+        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskStore>();
+        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.ISearchOrAskSwitch, IndxServer.Services.SearchOrAsk.InstanceSearchOrAskSwitch>();
+        // Where each call goes (the customer's provider and key): one resolved setup, read by the
+        // service and the clients alike, so a request sees one consistent choice.
+        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskSetupProvider>();
+        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.ISearchOrAskModels, IndxServer.Services.SearchOrAsk.SearchOrAskModelClients>();
+        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskService>();
+
+        // Indx Observr (Notes/Anders/observr-plan.md): the instance reaches out with its licence
+        // token when an owner asks; nothing is sent without one.
+        builder.Services.AddSingleton(builder.Configuration.GetSection(IndxServer.Services.Observr.ObservrOptions.Section)
+            .Get<IndxServer.Services.Observr.ObservrOptions>() ?? new());
+        builder.Services.AddHttpClient(IndxServer.Services.Observr.ObservrClient.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(90));
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrFindingStore>();
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrSubscription>();
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrSummaryBuilder>();
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrClient>();
+        // The Agent (stage 5 of the console shell): the conversations, the tools and the loop.
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrConversationStore>();
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrTools>();
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrChat>();
+        builder.Services.AddScoped<IndxServer.Services.Observr.AgentPanelState>();
+        builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrDigestJob>();
+        builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.Observr.ObservrDigestJob>());
 
         // MCP server: read-only retrieval tools over /mcp (Streamable HTTP), behind JWT auth.
         builder.Services.AddHttpContextAccessor();
@@ -143,6 +178,7 @@ internal static class StartupServices
         builder.Services.AddScoped<IndxServer.Services.UserProvisioningService>();
         builder.Services.AddScoped<IndxServer.Services.ActiveTeamState>();
         builder.Services.AddScoped<IndxServer.Services.HeaderState>();
+        builder.Services.AddScoped<IndxServer.Services.SideMenuState>();
         builder.Services.AddScoped<IndxServer.Services.TeamContextResolver>();
         builder.Services.AddScoped<IndxServer.Services.ApiKeyService>();
         builder.Services.AddScoped<IndxServer.Services.DataMigrationService>();
@@ -629,6 +665,11 @@ internal static class StartupServices
         builder.Services.Configure<IISServerOptions>(options =>
         {
             options.AllowSynchronousIO = true;
+            // Under IIS (Windows App Service) the app runs in-process and Kestrel's limit below does
+            // not apply; this one does, and it defaults to 30,000,000 bytes. Left unset it refused a
+            // 79 MB analyze on cloud.indx.co (Oct 2026) on every route without its own
+            // [RequestSizeLimit]. web.config raises IIS's request filtering, the limit in front.
+            options.MaxRequestBodySize = 2_000_000_000;
         });
 
         // CORS: permissive in dev/test for local frontend work; restricted to
@@ -649,14 +690,14 @@ internal static class StartupServices
                     policy.AllowAnyOrigin()
                         .AllowAnyMethod()
                         .AllowAnyHeader()
-                        .WithExposedHeaders("Indx-Query-Id");
+                        .WithExposedHeaders("Indx-Query-Id", "Indx-Ask-Id", IndxServer.Services.QueryParameterResolution.ResponseHeader);
                 }
                 else if (corsAllowedOrigins.Length > 0)
                 {
                     policy.WithOrigins(corsAllowedOrigins)
                         .AllowAnyMethod()
                         .AllowAnyHeader()
-                        .WithExposedHeaders("Indx-Query-Id");
+                        .WithExposedHeaders("Indx-Query-Id", "Indx-Ask-Id", IndxServer.Services.QueryParameterResolution.ResponseHeader);
                 }
                 else
                 {

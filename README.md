@@ -2,7 +2,7 @@
 
 A self-hosted search service built on [Indx Search](https://indx.co). Blazor Server UI, HTTP API with JWT authentication, user management, and everything needed to run a multi-user search service on your own infrastructure.
 
-![A tour of the Indx console: the dataset list, field configuration, boost rules, synonyms, search statistics, and the admin views of datasets and the monitor](docs/images/tour.gif)
+![A tour of the Indx console: the dataset list, a hibernated dataset, field configuration, query parameters, search statistics, boost rules, synonyms, and the admin views of teams, datasets and the monitor](docs/images/tour.gif)
 
 ## What's Included
 
@@ -492,7 +492,7 @@ was last indexed, and its keep-alive policy:
 
 ![Admin, Datasets: every dataset across both teams with state, document count, last indexed and keep-alive](docs/images/admin-datasets.png)
 
-Over the HTTP API, the per-dataset `Hibernate`, `WakeUp`, and `LoadFromDatabase` operations control loading. See the [API reference](https://v5.docs.indx.co).
+Over the HTTP API, the per-dataset `Hibernate`, `WakeUp`, and `LoadFromDatabase` operations control loading. See the [API reference](https://docs.indx.co).
 
 ## Monitor
 
@@ -597,13 +597,21 @@ the way it always was.
 
 ```bash
 # Run with hot reload
-dotnet watch run
+dotnet watch
 
 # Set secrets without editing appsettings.json
 dotnet user-secrets set "Jwt:Key" "your-dev-key-minimum-32-characters"
 dotnet user-secrets set "Authentication:Microsoft:ClientId" "your-client-id"
 dotnet user-secrets set "Email:Provider" "Console"
 ```
+
+`dotnet watch` applies most edits to a running server, so a dataset stays loaded and a console
+page keeps its state: markup and code in `.razor` files, method bodies in C#, and every stylesheet,
+scoped `.razor.css` included, which the browser picks up without a reload. An edit it cannot apply
+in place (a new field or parameter, a changed constructor or record, a new type in some cases) is
+reported in the terminal, and the server restarts. Set `DOTNET_WATCH_RESTART_ON_RUDE_EDIT=1` to
+restart without being asked. The terminal monitor is off under watch, since both want the
+console; `dotnet watch -- --monitor` turns it back on.
 
 The test suite lives in the full IndxSolutions repository and is not part of this repo; `dotnet test` here finds no tests.
 
@@ -613,5 +621,5 @@ The test suite lives in the full IndxSolutions repository and is not part of thi
 - [`@indxsearch/indx-types`](https://www.npmjs.com/package/@indxsearch/indx-types): TypeScript types for every request, response and error code
 - [Indx Search skill](https://skills.sh/indxsearch/skill-indx-search/indx-search): teaches AI coding agents this API, including a v1 → v2 migration guide
 - [`IndxSearchLib`](https://www.nuget.org/packages/IndxSearchLib): the embedded C# search engine this server is built on
-- [Documentation](https://v5.docs.indx.co): guides, how-tos, and the full API reference
+- [Documentation](https://docs.indx.co): guides, how-tos, and the full API reference
 - [Changelog](CHANGELOG.md) and [release notes](docs/release-notes/)

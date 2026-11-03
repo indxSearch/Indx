@@ -1,0 +1,11 @@
+.indx-chat-assistant { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.indx-chat-assistant-head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font: var(--text-xs);
+    font-weight: var(--med);
+    color: var(--lv5);
+}
+.indx-chat-assistant-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; font: var(--text-sm); line-height: 1.5; color: var(--lv7); }
+.indx-chat-assistant-body ::deep p { margin: 0; line-height: 1.5; }

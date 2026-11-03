@@ -1,6 +1,6 @@
-<div class="indx-progress-wrapper" role="progressbar" aria-valuenow="@_clamped" aria-valuemin="0" aria-valuemax="100">
+<div class="indx-progress-wrapper" role="progressbar" aria-valuenow="@_css" aria-valuemin="0" aria-valuemax="100">
     <div class="indx-progress-track">
-        <div class="indx-progress-fill" style="width: @(_clamped)%; @(_fillColor)"></div>
+        <div class="indx-progress-fill" style="width: @(_css)%; @(_fillColor)"></div>
     </div>
     @if (ShowLabel)
     {
@@ -14,5 +14,7 @@
     [Parameter] public bool FulfilledColor { get; set; }
 
     private double _clamped => Math.Min(100, Math.Max(0, Value));
+    // Invariant: in a culture with a decimal comma, "45,5%" is invalid CSS and the fill vanishes.
+    private string _css => _clamped.ToString(System.Globalization.CultureInfo.InvariantCulture);
     private string _fillColor => FulfilledColor && _clamped >= 100 ? "background-color: var(--CPureBlue);" : "";
 }

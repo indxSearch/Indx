@@ -72,7 +72,9 @@
     transition: color 0.2s;
 }
 
-.container:focus-within .icon {
+/* The input's own focus, not :focus-within: a button on the right is inside the container, and
+   clicking it lit the icon for a moment. Same rule as indx-systm's SearchField. */
+.container:has(input:focus) .icon {
     color: var(--lv7);
 }
 

@@ -7,6 +7,8 @@
 @inherits DatasetTabBase
 @inject DatasetMetadataStore DatasetMeta
 @inject StatisticsService Stats
+@inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
+@inject IndxServer.Services.SearchOrAsk.SearchOrAskStore SearchOrAskStore
 
 @if (!Active) { return; }
 
@@ -97,6 +99,48 @@
             <ToggleSwitch Label="Record filters for the Browsing report"
                           Checked="Stats.Store.RecordsFilters(Ctx.TeamId, Ctx.Name)"
                           CheckedChanged="SetRecordFilters" Disabled="!Ctx.IsAdmin" />
+            @if (!Ctx.IsAdmin)
+            {
+                <span class="opt-muted">Team admins can change this.</span>
+            }
+        </div>
+        <p class="indx-section-help opt-gap">
+            Statistics name each document by one of its fields, beside its key: on the Statistics tab
+            and in the statistics API. Without a choice it is the first searchable field.
+        </p>
+        <div class="opt-row">
+            <div class="opt-w240">
+                <SelectField Size="micro" Label="Name documents by" Options="LabelFieldOptions"
+                             Value="@(_labelField ?? "")" ValueChanged="SetLabelField" disabled="@(!Ctx.IsAdmin)" />
+            </div>
+        </div>
+        <p class="indx-section-help opt-gap">
+            Statistics count by day, and a day begins at midnight in this time zone. Changing it
+            counts the last @Stats.RetentionDays days again; days before that keep the zone they were counted in.
+        </p>
+        <div class="opt-row">
+            <div class="opt-w240">
+                <SelectField Size="micro" Label="Time zone" Options="TimeZoneOptions"
+                             Value="@(_timeZone ?? "")" ValueChanged="SetTimeZone" disabled="@(!Ctx.IsAdmin || _savingZone)" />
+            </div>
+            @if (_savingZone) { <span class="opt-muted">Counting the days again…</span> }
+        </div>
+    }
+
+    @* ── Search or ask (experimental): whether this dataset has it. A team admin's call, as the
+       statistics' privacy settings are; only while the instance shows the feature. ── *@
+    @if (SearchOrAsk.Shown)
+    {
+        <h3 class="indx-section-heading">Search or ask <span class="opt-muted">experimental</span></h3>
+        <p class="indx-section-help">
+            Offers to answer what visitors ask, or turns a description of what to list into filters, from
+            this dataset's records. Switching it on adds a Search or ask tab, where editors set it up, try it,
+            and take it live. What visitors type is then sent to the model provider this instance is set up with.
+        </p>
+        <div class="opt-row">
+            <ToggleSwitch Label="Search or ask on this dataset"
+                          Checked="SearchOrAsk.ShownFor(Ctx.TeamId, Ctx.Name)"
+                          CheckedChanged="SetSearchOrAskShown" Disabled="!Ctx.IsAdmin" />
             @if (!Ctx.IsAdmin)
             {
                 <span class="opt-muted">Team admins can change this.</span>
@@ -256,11 +300,21 @@
 
     <ConfirmModal @bind-Open="_renameOpen" Title="@($"Rename {Ctx.Name}")" Consequences="RenameConsequences"
                   CanConfirm="RenameReady" ConfirmLabel="Rename dataset" ConfirmIcon="DatasetIcons.Tag" OnConfirm="RenameAsync">
-        <InputField Label="New name" @bind-Value="_renameInput" @oninput="e => _renameInput = e.Value?.ToString() ?? string.Empty" />
+        <InputField Label="New name" @bind-Value="_renameInput" Immediate />
     </ConfirmModal>
 </div>
 
 @code {
+    private void SetSearchOrAskShown(bool shown)
+    {
+        if (!Ctx.IsAdmin) return;
+        var settings = SearchOrAskStore.Load(Ctx.TeamId, Ctx.Name) ?? new IndxServer.Services.SearchOrAsk.SearchOrAskSettings();
+        settings.Shown = shown;
+        SearchOrAskStore.Save(Ctx.TeamId, Ctx.Name, settings);
+        // The tab bar reads it: tell the panel.
+        Ctx.NotifyChanged();
+    }
+
     private bool _purgeOpen;
 
     private static readonly IReadOnlyList<string> PurgeConsequences =
@@ -277,6 +331,77 @@
         if (store == null || !Ctx.IsAdmin) return "Statistics are not available.";
         await Task.Run(() => store.PurgeDataset(Ctx.TeamId, Ctx.Name));
         return null;
+    }
+
+    private string? _labelField;
+    private bool _labelFieldLoaded;
+
+    /// <summary>"First searchable field (title)" and the dataset's fields, vector fields left out.
+    /// From the engine only when it is loaded (never woken for this); asleep, the choice made
+    /// before is still listed.</summary>
+    private List<SelectField.SelectOption> LabelFieldOptions
+    {
+        get
+        {
+            if (!_labelFieldLoaded && Stats.Store != null)
+            {
+                _labelField = Stats.Store.LabelField(Ctx.TeamId, Ctx.Name);
+                _labelFieldLoaded = true;
+            }
+            var engine = Ctx.FindEngine();
+            var fields = engine is { IsDisposed: false } ? engine.GetFieldConfiguration() ?? [] : [];
+            var first = fields.FirstOrDefault(f => f.Searchable == true)?.FieldName;
+            var names = fields.Where(f => f.Embeddable != true).Select(f => f.FieldName).ToList();
+            if (_labelField != null && !names.Contains(_labelField)) names.Insert(0, _labelField);
+            return [new(first == null ? "First searchable field" : $"First searchable field ({first})", ""),
+                    .. names.Select(n => new SelectField.SelectOption(n, n))];
+        }
+    }
+
+    private string? _timeZone;
+    private bool _timeZoneLoaded, _savingZone;
+
+    /// <summary>The instance default first, then every zone this host knows by its IANA name,
+    /// west to east, with today's offset in front.</summary>
+    private List<SelectField.SelectOption> TimeZoneOptions
+    {
+        get
+        {
+            if (!_timeZoneLoaded && Stats.Store != null)
+            {
+                _timeZone = Stats.Store.TimeZoneName(Ctx.TeamId, Ctx.Name);
+                _timeZoneLoaded = true;
+            }
+            var fallback = StatisticsDays.NameOf(Stats.Store?.DefaultTimeZone ?? TimeZoneInfo.Utc);
+            var now = DateTime.UtcNow;
+            var zones = TimeZoneInfo.GetSystemTimeZones()
+                .Select(z => (Name: StatisticsDays.NameOf(z), Offset: z.GetUtcOffset(now)))
+                .Where(z => z.Name.Contains('/') && !z.Name.StartsWith("Etc/", StringComparison.Ordinal))
+                .DistinctBy(z => z.Name)
+                .OrderBy(z => z.Offset).ThenBy(z => z.Name, StringComparer.Ordinal)
+                .Select(z => new SelectField.SelectOption(
+                    $"UTC{(z.Offset < TimeSpan.Zero ? "−" : "+")}{Math.Abs(z.Offset.Hours):00}:{Math.Abs(z.Offset.Minutes):00} {z.Name}", z.Name));
+            return [new($"Instance default ({fallback})", ""), new("UTC", "UTC"), .. zones];
+        }
+    }
+
+    private async Task SetTimeZone(string? value)
+    {
+        var store = Stats.Store;
+        if (store == null || !Ctx.IsAdmin) return;
+        _timeZone = string.IsNullOrEmpty(value) ? null : value;
+        _savingZone = true;
+        StateHasChanged();
+        try { await Task.Run(() => store.SetTimeZone(Ctx.TeamId, Ctx.Name, _timeZone)); }
+        finally { _savingZone = false; }
+    }
+
+    private async Task SetLabelField(string? value)
+    {
+        var store = Stats.Store;
+        if (store == null || !Ctx.IsAdmin) return;
+        _labelField = string.IsNullOrEmpty(value) ? null : value;
+        await Task.Run(() => store.SetLabelField(Ctx.TeamId, Ctx.Name, _labelField));
     }
 
     private async Task SetRecordFilters(bool on)

@@ -75,7 +75,14 @@ internal static class StartupPipeline
 
         if (!app.Environment.IsDevelopment())
         {
-            app.UseExceptionHandler("/Error");
+            // The Razor error page is for pages, so it handles only what the API branch above does
+            // not. Registered for every path it sat INSIDE that branch's handler and caught API
+            // exceptions first: it re-ran the request as POST /Error, which answers 404, and .NET
+            // then threw InvalidOperationException around the original. The caller still got the
+            // JSON 500, but every incident was logged twice, under the wrapper rather than the
+            // cause, and the error alert saw the wrong exception (cloud.indx.co, 8 Oct 2026).
+            app.UseWhen(ctx => !ctx.Request.Path.StartsWithSegments("/api"),
+                branch => branch.UseExceptionHandler("/Error"));
             app.UseHsts();
         }
 
@@ -334,6 +341,8 @@ internal static class StartupPipeline
             boostStore.EnsureTable();
             var metadataStore = app.Services.GetRequiredService<IndxServer.Services.DatasetMetadataStore>();
             metadataStore.EnsureTable();
+            var queryParameterStore = app.Services.GetRequiredService<IndxServer.Services.QueryParameterStore>();
+            queryParameterStore.EnsureTable();
             var boostCeiling = app.Configuration.GetValue<int?>("Indx:BoostSaturationCeiling") ?? 6;
             IndxServerInternalApi.Manager.AttachBoostStore(boostStore, boostCeiling);
             // The bury rules the same way, with a ceiling of their own: the sums are separate.
@@ -342,6 +351,16 @@ internal static class StartupPipeline
             var buryCeiling = app.Configuration.GetValue<int?>("Indx:BurySaturationCeiling") ?? 6;
             IndxServerInternalApi.Manager.AttachBuryStore(buryStore, buryCeiling);
             IndxServerInternalApi.Manager.AttachMetadataStore(metadataStore);
+            IndxServerInternalApi.Manager.AttachQueryParameterStore(queryParameterStore);
+            var searchOrAskStore = app.Services.GetRequiredService<IndxServer.Services.SearchOrAsk.SearchOrAskStore>();
+            searchOrAskStore.EnsureTable();
+            IndxServerInternalApi.Manager.AttachSearchOrAskStore(searchOrAskStore);
+            var observrStore = app.Services.GetRequiredService<IndxServer.Services.Observr.ObservrFindingStore>();
+            observrStore.EnsureTable();
+            IndxServerInternalApi.Manager.AttachObservrStore(observrStore);
+            var conversations = app.Services.GetRequiredService<IndxServer.Services.Observr.ObservrConversationStore>();
+            conversations.EnsureTable();
+            IndxServerInternalApi.Manager.AttachObservrConversations(conversations);
 
             // Detect license file for summary
             if (!string.IsNullOrWhiteSpace(licensePath) && File.Exists(licensePath))

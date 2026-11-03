@@ -12,8 +12,12 @@ if (!fs.existsSync(outputFolder)) {
 const RESERVED_NAMES = new Set(['Array', 'String', 'Object', 'Number', 'Bool', 'List']);
 
 // Names that would shadow a root namespace used by the project (class Icons.Microsoft
-// makes `@using Microsoft.AspNetCore...` unresolvable everywhere)
-const NAMESPACE_COLLISIONS = { Microsoft: 'MicrosoftLogo', Indx: 'IndxLogo', Google: 'GoogleLogo' };
+// makes `@using Microsoft.AspNetCore...` unresolvable everywhere), or a component or type the pages
+// use by its bare name (two components tagged <Table> or <Router> fail the Razor build, RZ9985)
+const NAMESPACE_COLLISIONS = {
+  Microsoft: 'MicrosoftLogo', Indx: 'IndxLogo', Google: 'GoogleLogo',
+  Router: 'RouterIcon', Table: 'TableIcon', Type: 'TypeIcon',
+};
 
 function toPascalCase(filename) {
   const name = filename

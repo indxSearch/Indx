@@ -19,10 +19,15 @@ function place(trigger, menu) {
     const wanted = Math.min(menu.scrollHeight, MAX_HEIGHT);
     const up = below < wanted && above > below;
 
+    // As wide as the longest option, never narrower than the field: a ghost field is sized to its
+    // value and would squeeze its options. Kept inside the window, so one at the right edge opens
+    // leftward rather than past it.
     menu.style.position = 'fixed';
-    menu.style.left = `${r.left}px`;
     menu.style.right = 'auto';
-    menu.style.width = `${r.width}px`;
+    menu.style.width = 'max-content';
+    menu.style.minWidth = `${r.width}px`;
+    const w = menu.offsetWidth;
+    menu.style.left = `${Math.max(MARGIN, Math.min(r.left, window.innerWidth - MARGIN - w))}px`;
     menu.style.maxHeight = `${Math.max(0, Math.min(MAX_HEIGHT, up ? above : below))}px`;
     if (up) {
         menu.style.top = 'auto';
@@ -55,15 +60,45 @@ export function init(trigger) {
         }
     });
     observer.observe(trigger, { childList: true });
-    trigger._indxSelect = { observer, follow };
+
+    // Arrow keys inside the open menu, here rather than in .NET: moving focus needs no state the
+    // server holds, and a round-trip per key would lag. Escape and opening stay in .NET.
+    const keydown = event => {
+        const menu = state.menu;
+        if (!menu || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+        const options = [...menu.querySelectorAll('[role="option"]')];
+        if (options.length === 0) return;
+        event.preventDefault();
+        const at = options.indexOf(document.activeElement);
+        let next;
+        if (event.key === 'Home') next = 0;
+        else if (event.key === 'End') next = options.length - 1;
+        else if (at < 0) next = Math.max(0, options.findIndex(o => o.getAttribute('aria-selected') === 'true'));
+        else next = Math.min(options.length - 1, Math.max(0, at + (event.key === 'ArrowDown' ? 1 : -1)));
+        options[next].focus();
+    };
+    trigger.addEventListener('keydown', keydown);
+    trigger._indxSelect = true;
+
+    // Disposed through this handle rather than through the element: on an enhanced navigation
+    // the element is already gone when .NET disposes, and the window listeners of an open menu
+    // would outlive the page.
+    return {
+        dispose() {
+            observer.disconnect();
+            window.removeEventListener('scroll', follow, true);
+            window.removeEventListener('resize', follow);
+            trigger.removeEventListener('keydown', keydown);
+            delete trigger._indxSelect;
+        }
+    };
 }
 
-export function dispose(trigger) {
-    // Null when Blazor tore the DOM down (navigation) before running disposal.
-    const s = trigger?._indxSelect;
-    if (!s) return;
-    s.observer.disconnect();
-    window.removeEventListener('scroll', s.follow, true);
-    window.removeEventListener('resize', s.follow);
-    delete trigger._indxSelect;
+// Focus the chosen option of an open menu, or the first: the field was opened from the keyboard.
+export function focusOption(trigger) {
+    const menu = trigger?.querySelector(':scope > .indx-select-menu');
+    if (!menu) return;
+    const options = [...menu.querySelectorAll('[role="option"]')];
+    (options.find(o => o.getAttribute('aria-selected') === 'true') ?? options[0])?.focus({ preventScroll: true });
 }
+

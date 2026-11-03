@@ -1,0 +1,27 @@
+.qp-tab { margin-top: 0; }
+.qp-intro { max-width: 640px; }
+::deep .qp-table { max-width: 640px; margin-bottom: 24px; }
+/* Matching and Result list: two columns once each can have 380px, else one. Each table keeps
+   its own height; the shorter one does not stretch to match. */
+.qp-groups {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(380px, 100%), 1fr));
+    gap: 0 24px;
+    align-items: start;
+    max-width: 1304px;
+}
+/* One column: the setting's name, its help, and its control on the last line. The systm cell is
+   one 40px line, so this cell sets its own padding. */
+::deep .qp-cell { padding: 12px 15px; }
+.qp-label { display: block; font: var(--text-sm); color: var(--lv7); }
+/* A value this dataset sets, as opposed to one left to the engine default. */
+::deep .qp-row--set .qp-label { color: var(--lv8); font-weight: var(--med); }
+.qp-help { display: block; font: var(--text-xs); color: var(--lv5); margin-top: 2px; }
+.qp-control { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; min-height: 28px; }
+.qp-number { width: 110px; }
+/* Reads as the toggle's label does, so every control names its parameter the same way. */
+.qp-param-name { font: var(--text-sm); color: var(--lv7); }
+/* Keeps the restore button's place, so the row does not change height when a value is set. */
+.qp-restore-placeholder { display: inline-block; width: 28px; height: 28px; }
+.qp-advanced { margin-bottom: 8px; }
+.qp-error { color: var(--CSignal); font: var(--text-sm); margin-top: 10px; }

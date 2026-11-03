@@ -1,0 +1,12 @@
+.indx-chat-user-row { display: flex; justify-content: flex-end; }
+.indx-chat-user {
+    max-width: 78%;
+    padding: 10px 12px;
+    background: var(--lv2);
+    border-radius: var(--radius);
+    font: var(--text-sm);
+    line-height: 1.45;
+    color: var(--lv7);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}

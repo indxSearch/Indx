@@ -16,7 +16,8 @@ namespace IndxServer.Components.Datasets
     ///   red         Error, needs someone
     ///   grey        nothing in it yet
     /// Light blue is reserved for hibernation on purpose. Used for Loading as well, the list could
-    /// not tell a dataset going to sleep from one waking up.
+    /// not tell a dataset going to sleep from one waking up. (A grey was tried for an afternoon on
+    /// 13 Oct 2026 while Observr's colour was open, and put back: Observr is monochrome instead.)
     ///
     /// <para><b>Loading and Indexing share the amber deliberately</b>, and it was looked at again on
     /// 28 Sep 2026. They are one thing to the reader -- something is working on it, do not expect

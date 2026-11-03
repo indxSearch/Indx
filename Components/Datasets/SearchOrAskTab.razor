@@ -1,0 +1,636 @@
+@* Search or ask for one dataset (Notes/search-or-ask-server.md): the settings (SearchOrAskStore),
+   saved with the SaveBar as a working copy, and a tester that judges what is typed into it with
+   the working copy, saved or not, so an owner can try it before switching it on. The tester costs
+   what a visitor's call costs and counts against the daily budget. *@
+@using System.Globalization
+@using System.Text.Json
+@using System.Text.Json.Nodes
+@using System.Text.Json.Serialization
+@using IndxServer.Services.SearchOrAsk
+@using Indx.Api
+@using Icons = Indx.Systm.Blazor.Icons
+@inherits DatasetTabBase
+@inject SearchOrAskStore Store
+@inject SearchOrAskService Service
+@inject SearchOrAskOptions ModelOptions
+@inject IndxServer.Services.Observr.ObservrFindingStore ObservrStore
+@inject IndxServer.Services.Observr.AgentPanelState Agent
+@inject IServiceProvider Services
+
+@if (!Active) { return; }
+
+<div class="soa-tab">
+    <p class="indx-section-help soa-intro">
+        When a visitor types a question rather than a name, offer to answer it from this dataset's records.
+        On each pause in typing, a judge reads what is typed and the top results. An answer is written only
+        when the visitor asks, and only from the records.
+    </p>
+
+    @if (!Service.Available)
+    {
+        <Alert Variant="warning">
+            <Description>
+                This instance has no model key, so Search or ask cannot run. An instance admin adds one, with the
+                provider of their choice, in Admin, Settings, Experimental. The settings below are kept until then.
+            </Description>
+        </Alert>
+    }
+
+    @if (Ctx.IsEditor && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name))
+    {
+        <div class="indx-list-toolbar">
+            <span class="indx-observr"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" Disabled="@IsDirty" @onclick="SetupInAgent">Help me set this up</Button></span>
+        </div>
+    }
+
+    <div class="soa-groups">
+        <Table AriaLabel="Search or ask" Class="soa-table">
+            @Head("Search or ask")
+            <tbody>
+                @Row(DatasetIcons.SearchOrAsk, "Offer answers",
+                     $"Sends what visitors type to {Service.Setup.Receivers}, and their questions to the answer model. Name this in your privacy notice.",
+                     _edit.Enabled, @<ToggleSwitch Label="Enabled" Variant="positive" Checked="@_edit.Enabled" CheckedChanged="@(v => _edit.Enabled = v)" />)
+                @Row(Icon<Icons.Book>(), "Kind of site", "How the judge tells a question from a lookup.",
+                     false, @<div class="soa-select"><SelectField Size="micro" Options="KindOptions" Value="@_edit.Kind" ValueChanged="@(v => _edit.Kind = v ?? SearchOrAskRecipes.Documentation)" /></div>)
+                @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold, in a sentence or two. Empty uses the dataset's description.",
+                     !string.IsNullOrWhiteSpace(_edit.SiteDescription),
+                     @<Textarea Rows="3" @bind-Value="_edit.SiteDescription" placeholder="@_effectiveSite" />)
+                @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                {
+                    @Row(Icon<Icons.Filter>(), "About the fields", "What the values mean here, for turning a description into filters. One per line, such as \"barneskole: grades 1 to 7\".",
+                         !string.IsNullOrWhiteSpace(_edit.FilterNotes),
+                         @<Textarea Rows="4" @bind-Value="_edit.FilterNotes" placeholder="friskole: private" />)
+                }
+                @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
+                     _edit.Answers != SearchOrAskSettings.BestAnswers,
+                     @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@_edit.Answers" ValueChanged="@(v => _edit.Answers = v ?? SearchOrAskSettings.BestAnswers)" /></div>)
+                @Row(Icon<Icons.Paragraph>(), "Answer instructions", "How the answers should speak: voice, house rules, what to say when nothing is found. They shape the wording; what an answer may claim stays bound to the records.",
+                     !string.IsNullOrWhiteSpace(_edit.AnswerInstructions),
+                     @<Textarea Rows="3" @bind-Value="_edit.AnswerInstructions" placeholder="Formal. Say du. Never recommend another shop." />)
+                @Row(Icon<Icons.UserText>(), "Answer language", "The visitor's language by default; or one language for every answer.",
+                     !string.IsNullOrWhiteSpace(_edit.AnswerLanguage),
+                     @<div class="soa-select"><SelectField Size="micro" Options="LanguageOptions" Value="@(_edit.AnswerLanguage ?? VisitorsLanguage)" ValueChanged="@(v => _edit.AnswerLanguage = v == VisitorsLanguage ? null : v)" /></div>)
+                @Row(Icon<Icons.Coins>(), "Daily call budget", $"Calls per day (UTC). {_callsToday:N0} used today.",
+                     _budgetText != null,
+                     @<div class="soa-number"><InputField @bind-Value="_budgetText" @bind-Value:after="SetBudget" Error="@_budgetError" inputmode="numeric" placeholder="5,000" /></div>)
+            </tbody>
+        </Table>
+
+        <Table AriaLabel="What the judge sees" Class="soa-table">
+            @Head("What the judge sees of a result")
+            <tbody>
+                @if (TextFields.Count == 0)
+                {
+                    <TableRow><TableCell Class="soa-cell"><span class="soa-help">The fields can be chosen once the dataset has been analyzed.</span></TableCell></TableRow>
+                }
+                else
+                {
+                    @Row(Icon<Icons.TextSize>(), "Title", "Each result's name.",
+                         _edit.TitleField != null,
+                         @<div class="soa-select"><SelectField Size="micro" Options="TitleOptions" Value="@(_edit.TitleField ?? Automatic)" ValueChanged="@(v => _edit.TitleField = v == Automatic ? null : v)" /></div>)
+                    @Row(Icon<Icons.Tag>(), "Section", "Where a result belongs, such as a category or year.",
+                         _edit.SectionFields != null, FieldChoice(PlaceFields, () => _edit.SectionFields, v => _edit.SectionFields = v, _effective?.SectionFields))
+                    @Row(Icon<Icons.Paragraph>(), "Snippet", "The text the judge reads, and the answer is written from.",
+                         _edit.SnippetFields != null, FieldChoice(TextFields, () => _edit.SnippetFields, v => _edit.SnippetFields = v, _effective?.SnippetFields))
+                }
+            </tbody>
+        </Table>
+
+        <Table AriaLabel="When to offer" Class="soa-table">
+            @Head("When to offer")
+            <tbody>
+                <TableRow>
+                    <TableCell Class="soa-cell">
+                        <span class="soa-help">On each pause the judge scores what is typed from 0, a lookup, to 1, a question.</span>
+                        @Scale()
+                    </TableCell>
+                </TableRow>
+                @ThresholdRow(Icon<Icons.ClickButton>(), "Answer offer", "A full offer to answer. Enter asks.",
+                    t => t.Strong, (t, v) => t.Strong = v, Defaults.Strong,
+                    t => t.StrongHide, (t, v) => t.StrongHide = v, Defaults.StrongHide)
+                @ThresholdRow(Icon<Icons.CommentChatMessage>(), "Invitation", "A quieter \"Ask about this\".",
+                    t => t.Invite, (t, v) => t.Invite = v, Defaults.Invite,
+                    t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide)
+            </tbody>
+        </Table>
+
+        <Table AriaLabel="While asking" Class="soa-table">
+            @Head("While asking")
+            <tbody>
+                <TableRow>
+                    <TableCell Class="soa-cell">
+                        <span class="soa-help">What the page does with its list while a full offer is up.</span>
+                    </TableCell>
+                </TableRow>
+                @Row(DatasetIcons.QueryParameters, "The list", "Keep only the results that still match: those scoring a share of the top result, and only when the top result scores enough. Off keeps the whole list.",
+                     _edit.CutWhileAsking != true || _edit.CutShareOfTop != 0.5 || _edit.CutTopFloor != 0.2,
+                     @<div class="soa-stack">
+                         <ToggleSwitch Label="Strong matches only" Checked="@_edit.CutWhileAsking" CheckedChanged="@(v => _edit.CutWhileAsking = v)" />
+                         @if (_edit.CutWhileAsking)
+                         {
+                             <div class="soa-thresholds">
+                                 <div class="soa-threshold">
+                                     <span class="soa-threshold-label">Share of top</span>
+                                     <Slider Min="0" Max="1" Step="0.05" Value="@_edit.CutShareOfTop" ValueChanged="@(v => _edit.CutShareOfTop = Math.Round(v, 2))" AriaLabel="Keep results scoring at least this share of the top" Class="soa-slider" />
+                                     <span class="soa-threshold-value">@Two(_edit.CutShareOfTop)</span>
+                                 </div>
+                                 <div class="soa-threshold">
+                                     <span class="soa-threshold-label">Top at least</span>
+                                     <Slider Min="0" Max="1" Step="0.05" Value="@_edit.CutTopFloor" ValueChanged="@(v => _edit.CutTopFloor = Math.Round(v, 2))" AriaLabel="Show the list only when the top result scores at least this" Class="soa-slider" />
+                                     <span class="soa-threshold-value">@Two(_edit.CutTopFloor)</span>
+                                 </div>
+                             </div>
+                         }
+                     </div>)
+                @Row(Icon<Icons.TextSize>(), "Matching", "The page's own searches match whole words only: no typos, prefixes or joined words. The answer still searches with the full setup, so a typo in a name still finds the record.",
+                     !_edit.StrictCoverageWhileAsking, @<ToggleSwitch Label="Whole words only" Checked="@_edit.StrictCoverageWhileAsking" CheckedChanged="@(v => _edit.StrictCoverageWhileAsking = v)" />)
+                @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                {
+                    @Row(Icon<Icons.Filter>(), "Filters", "When the text describes what to list: leave the list alone until the visitor asks, or narrow it at once. From facet values is instant: a typed word that equals a value becomes that filter. With the model also asks for what the values could not name, about a second and a half.",
+                         _edit.FiltersWhileTyping != SearchOrAskSettings.FiltersOff,
+                         @<div class="soa-select"><SelectField Size="micro" Options="FiltersWhileTypingOptions" Value="@_edit.FiltersWhileTyping" ValueChanged="@(v => _edit.FiltersWhileTyping = v ?? SearchOrAskSettings.FiltersOff)" /></div>)
+                }
+            </tbody>
+        </Table>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <p class="soa-error">@_error</p>
+    }
+
+    <SaveBar Visible="@IsDirty" Message="Unsaved changes">
+        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save</Button>
+        <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
+    </SaveBar>
+
+    <Table AriaLabel="Try it" Class="soa-table soa-try">
+        @Head("Try it")
+        <tbody>
+            <TableRow>
+                <TableCell Class="soa-cell">
+                    <span class="soa-help">Type as a visitor would. Uses the settings above, saved or not. Each pause is one call against the budget.</span>
+                    @if (!Service.Available)
+                    {
+                        <span class="soa-help soa-try-off">Needs the instance's model key.</span>
+                    }
+                    else if (Ctx.EngineState != SystemState.Ready)
+                    {
+                        <span class="soa-help soa-try-off">Available after the index is built.</span>
+                    }
+                    else
+                    {
+                        <div class="soa-control">
+                            <div class="soa-try-input">
+                                <InputField Immediate @bind-Value="_tryText" @bind-Value:after="OnTryInput" placeholder="how do I …" />
+                            </div>
+                            @if (_try is { } r)
+                            {
+                                <Chip Size="micro" Class="@($"soa-offer soa-offer--{r.Offer}")">@OfferLabel(r.Offer)</Chip>
+                                <span class="soa-try-score">p @r.P.ToString("0.00", CultureInfo.InvariantCulture)@(r.Answerable is { } a ? $" · answerable {a.ToString("0.00", CultureInfo.InvariantCulture)}" : "") · @(r.Cached ? "cached" : $"{r.Ms} ms")@(r.Criteria is { } c ? $" · description {c.ToString("0.00", CultureInfo.InvariantCulture)}" : "")@(r.Reason is { } why ? $" · {why}" : "")</span>
+                            }
+                            else if (_tryMessage != null)
+                            {
+                                <span class="soa-help">@_tryMessage</span>
+                            }
+                        </div>
+                        @if (_try != null)
+                        {
+                            <div class="soa-try-actions">
+                                <Button Variant="ghost" Size="micro" Loading="@_asking" @onclick="AskAsync">Ask</Button>
+                                @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                                {
+                                    <Button Variant="ghost" Size="micro" Loading="@_filtering" @onclick="FiltersAsync">Filters</Button>
+                                }
+                                <Button Variant="ghost" Size="micro" IconRight="@(_showState ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)"
+                                        @onclick="() => _showState = !_showState">What the judge was sent</Button>
+                            </div>
+                        }
+                        @if (_showState && _state != null)
+                        {
+                            <pre class="soa-state">@_state</pre>
+                        }
+                        @if (_filters is { } fr)
+                        {
+                            <div class="soa-answer">
+                                @if (fr.Filters.Length == 0)
+                                {
+                                    <p class="soa-help">No filters@(fr.Reason is { } why ? $" ({why})" : "").</p>
+                                }
+                                <div class="soa-control">
+                                    @foreach (var f in fr.Filters)
+                                    {
+                                        <Chip Size="micro">@FilterLabel(f)</Chip>
+                                    }
+                                    @if (fr.Text.Length > 0) { <span class="soa-help">search for "@fr.Text"</span> }
+                                    <span class="soa-try-score">@fr.Ms ms</span>
+                                </div>
+                            </div>
+                        }
+                        @if (_sources.Count > 0 || _answer.Length > 0 || _answerError != null)
+                        {
+                            <div class="soa-answer">
+                                @if (_answerError != null) { <p class="soa-error">@_answerError</p> }
+                                <p class="soa-answer-text">@_answer</p>
+                                @if (_sources.Count > 0)
+                                {
+                                    <ol class="soa-sources">
+                                        @foreach (var s in _sources) { <li>@s.Title <span class="soa-key">@s.DocumentKey</span></li> }
+                                    </ol>
+                                }
+                            </div>
+                        }
+                    }
+                </TableCell>
+            </TableRow>
+        </tbody>
+    </Table>
+</div>
+
+@code {
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+    private static readonly JsonSerializerOptions Pretty = new()
+    {
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
+    private static readonly IEnumerable<SelectField.SelectOption> FiltersWhileTypingOptions =
+        [
+            new("Only after Ask", SearchOrAskSettings.FiltersOff),
+            new("From facet values, at once", SearchOrAskSettings.FiltersFromFacets),
+            new("With the model, for the rest", SearchOrAskSettings.FiltersWithModel),
+        ];
+
+    private static readonly IEnumerable<SelectField.SelectOption> KindOptions =
+        [
+            new("Documentation, help and reference", SearchOrAskRecipes.Documentation),
+            new("Catalogue: a description becomes filters", SearchOrAskRecipes.Catalogue),
+        ];
+
+    // First-word times measured on the docs with eight sources (Notes/search-or-ask-server.md).
+    private IEnumerable<SelectField.SelectOption> AnswerOptions =>
+    [
+        new($"Best quality ({ModelName(ModelOptions.AnswerModel)}), first words in 3 to 5 s", SearchOrAskSettings.BestAnswers),
+        new($"Fast ({ModelName(ModelOptions.FastAnswerModel)}), first words in about 1 s", SearchOrAskSettings.FastAnswers),
+    ];
+
+    /// <summary>"anthropic/claude-sonnet-5.5" as "claude-sonnet-5.5": the provider adds nothing here.</summary>
+    private static string ModelName(string model) => model[(model.IndexOf('/') + 1)..];
+
+    // The defaults were measured on the docs set (Notes/search-or-ask.md): no lookup there scored
+    // above 0.22, and the lowest question that was not missed 0.47.
+    private static readonly SearchOrAskThresholds Defaults = new();
+
+    private static RenderFragment<int> Icon<T>() where T : IComponent => size => builder =>
+    {
+        builder.OpenComponent<T>(0);
+        builder.AddAttribute(1, "Size", size);
+        builder.CloseComponent();
+    };
+
+    // ── Fields: chosen from the dataset's own, never typed ────────────────────────────────
+
+    private const string Automatic = "";
+
+    /// <summary>The dataset's text fields, searchable ones first by weight: what a title or a
+    /// snippet can be read from.</summary>
+    private List<string> TextFields => (Ctx.SavedFields ?? [])
+        .Where(f => f.FieldType == "String")
+        .OrderByDescending(f => f.Searchable == true).ThenByDescending(f => f.Weight ?? 0).ThenBy(f => f.FieldName)
+        .Select(f => f.FieldName).ToList();
+
+    /// <summary>What can place a result: text and numbers (a category, a year).</summary>
+    private List<string> PlaceFields => (Ctx.SavedFields ?? [])
+        .Where(f => f.FieldType is "String" or "Number")
+        .OrderBy(f => f.FieldName).Select(f => f.FieldName).ToList();
+
+    private IEnumerable<SelectField.SelectOption> TitleOptions =>
+        new[] { new SelectField.SelectOption($"Automatic ({AutoTitle})", Automatic) }
+            .Concat(TextFields.Select(f => new SelectField.SelectOption(f, f)));
+
+    /// <summary>The title the server picks when none is chosen, read with no title set.</summary>
+    private string AutoTitle
+    {
+        get
+        {
+            var engine = Ctx.FindEngine();
+            return SearchOrAskService.Fields(new SearchOrAskSettings(), engine?.DocumentFields == null ? null : engine.GetFieldList())
+                .TitleField ?? "none";
+        }
+    }
+
+    /// <summary>A field per checkbox. Untouched, the boxes show what the server picks on its own
+    /// (<paramref name="automatic"/>); the first click makes the choice the dataset's, and
+    /// "Automatic" hands it back.</summary>
+    private RenderFragment FieldChoice(List<string> fields, Func<List<string>?> get, Action<List<string>?> set,
+        IReadOnlyList<string>? automatic) => __builder =>
+    {
+        var chosen = get();
+        var shown = chosen ?? automatic?.ToList() ?? [];
+        @foreach (var f in fields)
+        {
+            var name = f;
+            <Checkbox Label="@name" Checked="@shown.Contains(name)"
+                      CheckedChanged="@(on => set(on ? [.. shown.Where(x => x != name), name] : [.. shown.Where(x => x != name)]))" />
+        }
+        @if (chosen != null)
+        {
+            <Button Variant="ghost" Size="micro" @onclick="() => set(null)">Automatic</Button>
+        }
+    };
+
+    // ── When to offer: scores from 0 to 1 ─────────────────────────────────────────────────
+
+    /// <summary>The scale the thresholds cut: lookups at 0, questions at 1, and where each offer
+    /// starts. Redrawn as the sliders move.</summary>
+    private RenderFragment Scale() => __builder =>
+    {
+        var t = _edit.Thresholds;
+        double invite = Math.Clamp(t.Invite, 0, 1), strong = Math.Clamp(Math.Max(t.Strong, t.Invite), 0, 1);
+        <div class="soa-scale" aria-hidden="true">
+            <div class="soa-scale-bar">
+                <span class="soa-scale-none" style="@($"width:{Pct(invite)}")"></span>
+                <span class="soa-scale-invite" style="@($"width:{Pct(strong - invite)}")"></span>
+                <span class="soa-scale-strong" style="@($"width:{Pct(1 - strong)}")"></span>
+            </div>
+            <div class="soa-scale-ticks">
+                <span>0 · lookup</span>
+                <span class="soa-scale-mark" style="@($"left:{Pct(invite)}")">@Two(invite)</span>
+                <span class="soa-scale-mark" style="@($"left:{Pct(strong)}")">@Two(strong)</span>
+                <span>question · 1</span>
+            </div>
+        </div>
+    };
+
+    private static string Pct(double fraction) => (fraction * 100).ToString("0.##", CultureInfo.InvariantCulture) + "%";
+    private static string Two(double v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+
+    /// <summary>One offer's pair: the score it shows from, and the score it is kept down to once
+    /// shown, each a slider from 0 to 1 in steps of 0.05.</summary>
+    private RenderFragment ThresholdRow(RenderFragment<int> icon, string label, string help,
+        Func<SearchOrAskThresholds, double> show, Action<SearchOrAskThresholds, double> setShow, double showDefault,
+        Func<SearchOrAskThresholds, double> keep, Action<SearchOrAskThresholds, double> setKeep, double keepDefault) => __builder =>
+    {
+        var t = _edit.Thresholds;
+        @Row(icon, label, help, show(t) != showDefault || keep(t) != keepDefault,
+            @<div class="soa-thresholds">
+                <div class="soa-threshold">
+                    <span class="soa-threshold-label">Show from</span>
+                    <Slider Min="0" Max="1" Step="0.05" Value="@show(t)" ValueChanged="@(v => setShow(_edit.Thresholds, Math.Round(v, 2)))" AriaLabel="@($"{label}: show from")" Class="soa-slider" />
+                    <span class="soa-threshold-value">@Two(show(t))</span>
+                </div>
+                <div class="soa-threshold">
+                    <span class="soa-threshold-label">Keep down to</span>
+                    <Slider Min="0" Max="1" Step="0.05" Value="@keep(t)" ValueChanged="@(v => setKeep(_edit.Thresholds, Math.Round(v, 2)))" AriaLabel="@($"{label}: keep down to")" Class="soa-slider" />
+                    <span class="soa-threshold-value">@Two(keep(t))</span>
+                </div>
+            </div>)
+    };
+
+    private bool _loaded;
+    private SearchOrAskSettings _edit = new();
+    private string _savedJson = "";
+    private SearchOrAskEffective? _effective;
+    private string _effectiveSite = "";
+    private int _callsToday;
+    private string? _budgetText;
+    private string? _budgetError;
+    private string? _error;
+    private bool _saving;
+
+    protected override void OnParametersSet()
+    {
+        if (Active && !_loaded) Load();
+    }
+
+    private void Load()
+    {
+        _loaded = true;
+        Ctx.EnsureFieldsLoaded();
+        var saved = Store.Load(Ctx.TeamId, Ctx.Name);
+        _savedJson = Json(saved ?? new SearchOrAskSettings());
+        Reset(saved);
+    }
+
+    private void Reset(SearchOrAskSettings? from)
+    {
+        // A copy: the store's instance is shared with every intent call.
+        _edit = JsonSerializer.Deserialize<SearchOrAskSettings>(Json(from ?? new SearchOrAskSettings()), JsonOpts)!;
+        _budgetText = from == null || from.DailyCallBudget == Defaults2.DailyCallBudget ? null : from.DailyCallBudget.ToString(CultureInfo.InvariantCulture);
+        _budgetError = null;
+        _error = null;
+        Refresh();
+    }
+
+    private static readonly SearchOrAskSettings Defaults2 = new();
+    private const string VisitorsLanguage = "";
+    private static readonly List<SelectField.SelectOption> LanguageOptions =
+    [
+        new("The visitor's language", VisitorsLanguage),
+        .. new[] { "English", "Norwegian", "Swedish", "Danish", "Finnish", "German", "Dutch", "French", "Spanish", "Italian", "Portuguese", "Polish" }
+            .Select(l => new SelectField.SelectOption(l, l)),
+    ];
+    private void SetupInAgent() => Agent.Run(new IndxServer.Services.Observr.AgentAction("Help me set up Search or ask",
+        ct => Observr().AskSearchOrAskSetupAsync(Ctx.TeamId, Ctx.Name, ct), () => InvokeAsync(Reload)));
+    private IndxServer.Services.Observr.ObservrClient Observr() => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IndxServer.Services.Observr.ObservrClient>(Services);
+    private void Reload() { Load(); Ctx.NotifyChanged(); }
+
+    /// <summary>What the dataset runs with after defaults, and today's calls.</summary>
+    private void Refresh()
+    {
+        var engine = Ctx.FindEngine();
+        var fields = SearchOrAskService.Fields(_edit, engine?.DocumentFields == null ? null : engine.GetFieldList());
+        _effectiveSite = Service.SiteDescription(Ctx.TeamId, Ctx.Name, new SearchOrAskSettings());
+        _effective = new SearchOrAskEffective(_effectiveSite, fields.TitleField, fields.SectionFields, fields.SnippetFields);
+        _callsToday = Service.CallsToday(Ctx.TeamId, Ctx.Name);
+    }
+
+    private static string Json(SearchOrAskSettings s) => JsonSerializer.Serialize(s, JsonOpts);
+    private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _budgetError != null);
+
+
+    private static RenderFragment Head(string group) => __builder =>
+    {
+        <thead>
+            <tr><th>@group</th></tr>
+        </thead>
+    };
+
+    /// <summary>A setting: its icon, its name in bold when changed from the default, one line of
+    /// help, and the control under them.</summary>
+    private static RenderFragment Row(RenderFragment<int> icon, string label, string help, bool set, RenderFragment control) => __builder =>
+    {
+        <TableRow Class="@(set ? "soa-row--set" : null)">
+            <TableCell Class="soa-cell">
+                <div class="soa-row">
+                    <span class="soa-icon">@icon(16)</span>
+                    <div class="soa-row-body">
+                        <span class="soa-label">@label</span>
+                        <span class="soa-help">@help</span>
+                        <div class="soa-control">@control</div>
+                    </div>
+                </div>
+            </TableCell>
+        </TableRow>
+    };
+
+
+    private void SetBudget()
+    {
+        _budgetError = null;
+        var text = _budgetText?.Trim().Replace(" ", "").Replace(",", "");
+        if (string.IsNullOrEmpty(text)) { _budgetText = null; _edit.DailyCallBudget = Defaults2.DailyCallBudget; return; }
+        if (!int.TryParse(text, out var n) || n < 0) { _budgetError = "A whole number, 0 or more"; return; }
+        _edit.DailyCallBudget = n;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (_saving) return;
+        _error = null;
+        if (_budgetError != null) { _error = "Fix the values marked above, or clear them to use the default."; return; }
+        if (_edit.Validate() is { } invalid) { _error = invalid; return; }
+        var toSave = JsonSerializer.Deserialize<SearchOrAskSettings>(Json(_edit), JsonOpts)!;
+        // The dataset's switch is the Options tab's (a team admin's): kept as it is now.
+        toSave.Shown = Store.Load(Ctx.TeamId, Ctx.Name)?.Shown ?? false;
+        _saving = true;
+        try
+        {
+            await Task.Run(() => Store.Save(Ctx.TeamId, Ctx.Name, toSave));
+            _savedJson = Json(toSave);
+            Refresh();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not save: {ex.Message}";
+        }
+        finally { _saving = false; }
+    }
+
+    private void Cancel() => Reset(Store.Load(Ctx.TeamId, Ctx.Name));
+
+    // ── The tester ────────────────────────────────────────────────────────────
+
+    private const int PauseMs = 300;
+    private string? _tryText;
+    private IntentResult? _try;
+    private string? _tryMessage;
+    private string? _state;
+    private bool _showState;
+    private CancellationTokenSource? _typing;
+    private bool _asking;
+    private string _answer = "";
+    private string? _answerError;
+    private List<AskSource> _sources = [];
+
+    private string Address => $"console:{Ctx.TeamId}";
+
+    private static string OfferLabel(string offer) => offer switch
+    {
+        "strong" => "Offer an answer",
+        "invite" => "Invite to ask",
+        _ => "Results only",
+    };
+
+    /// <summary>A pause in typing, as the search page has it: the judge is asked once the text has
+    /// been still for <see cref="PauseMs"/>, and only the newest answer is shown.</summary>
+    private async Task OnTryInput()
+    {
+        _typing?.Cancel();
+        var typing = _typing = new CancellationTokenSource();
+        var text = _tryText?.Trim() ?? "";
+        if (text.Length == 0) { _try = null; _tryMessage = null; _state = null; return; }
+        try { await Task.Delay(PauseMs, typing.Token); }
+        catch (OperationCanceledException) { return; }
+
+        var engine = Ctx.FindEngine();
+        if (engine == null) return;
+        if (_edit.Validate() is { } invalid) { _try = null; _tryMessage = invalid; return; }
+        string? state = null;
+        var outcome = await Service.IntentAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, typing.Token,
+            trial: _edit, onState: s => state = s.ToJsonString(Pretty));
+        if (typing.IsCancellationRequested) return; // a newer pause has asked since
+        (_try, _tryMessage) = outcome.Status switch
+        {
+            IntentStatus.Ok => (outcome.Result, null),
+            IntentStatus.RateLimited => ((IntentResult?)null, $"Too many tries; wait {outcome.RetryAfterSeconds} seconds."),
+            IntentStatus.BudgetSpent => (null, "Today's budget is spent."),
+            _ => (null, "Search or ask cannot run on this instance."),
+        };
+        _state = state ?? _state;
+        _callsToday = Service.CallsToday(Ctx.TeamId, Ctx.Name);
+        _answer = "";
+        _answerError = null;
+        _sources = [];
+        _filters = null;
+    }
+
+    private FiltersResult? _filters;
+    private bool _filtering;
+
+    private static string FilterLabel(FilterSuggestion f) =>
+        f.Value != null ? $"{f.Field}: {f.Value}"
+        : $"{f.Field}: {f.Min?.ToString(CultureInfo.InvariantCulture) ?? ""}–{f.Max?.ToString(CultureInfo.InvariantCulture) ?? ""}";
+
+    /// <summary>The tester's description, as the filters a page would apply, with the settings on screen.</summary>
+    private async Task FiltersAsync()
+    {
+        var engine = Ctx.FindEngine();
+        var text = _tryText?.Trim();
+        if (engine == null || string.IsNullOrEmpty(text) || _filtering) return;
+        _filtering = true;
+        try
+        {
+            var outcome = await Service.FiltersAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, CancellationToken.None, trial: _edit);
+            _filters = outcome.Result;
+            if (outcome.Result == null) _tryMessage = outcome.Status.ToString();
+        }
+        finally { _filtering = false; }
+    }
+
+    private async Task AskAsync()
+    {
+        var engine = Ctx.FindEngine();
+        var question = _tryText?.Trim();
+        if (engine == null || string.IsNullOrEmpty(question) || _asking) return;
+        _answer = "";
+        _answerError = null;
+        _sources = [];
+        var gate = Service.CanAsk(Ctx.TeamId, Ctx.Name, Address, trial: _edit);
+        if (gate.Status != IntentStatus.Ok)
+        {
+            _answerError = gate.Status == IntentStatus.BudgetSpent ? "Today's budget is spent." : $"Not now ({gate.Status}).";
+            return;
+        }
+        _asking = true;
+        try
+        {
+            await Service.AskAsync(Ctx.TeamId, Ctx.Name, engine, question, async (name, data) =>
+            {
+                switch (name)
+                {
+                    case "sources": _sources = ((AskSource[])data).ToList(); break;
+                    case "text": _answer += JsonSerializer.SerializeToNode(data)?["delta"]?.GetValue<string>(); break;
+                    case "error": _answerError = JsonSerializer.SerializeToNode(data)?["message"]?.GetValue<string>(); break;
+                }
+                await InvokeAsync(StateHasChanged);
+            }, CancellationToken.None, trial: _edit);
+        }
+        finally
+        {
+            _asking = false;
+            _callsToday = Service.CallsToday(Ctx.TeamId, Ctx.Name);
+        }
+    }
+
+    public override void Dispose()
+    {
+        _typing?.Cancel();
+        base.Dispose();
+    }
+}

@@ -28,7 +28,7 @@
     </p>
     <p class="key-intro">
         These keys act as you, which suits your own scripts and AI agents, and they stop working if you leave the team.
-        For a production website or a shared server, a team Admin can create a team key under Manage team instead.
+        For a production website or a shared server, a team Admin can create a team key on the team's API keys page instead.
     </p>
 
     @if (!string.IsNullOrEmpty(_error) && !_showCreate)
@@ -174,8 +174,8 @@
             <div class="key-field">
                 <span class="key-label">Datasets</span>
                 <div class="key-radios">
-                    <RadioButton Id="key-ds-all" Name="key-datasets" Value="all" Label="All datasets in the team" Checked="@(!_limitDatasets)" CheckedChanged="@(_ => _limitDatasets = false)" />
-                    <RadioButton Id="key-ds-some" Name="key-datasets" Value="some" Label="Only these datasets" Checked="@_limitDatasets" CheckedChanged="@(_ => _limitDatasets = true)" />
+                    <RadioButton Id="key-ds-all" Name="key-datasets" Value="all" Label="All datasets in the team" Checked="@(!_limitDatasets)" OnChange="@(_ => _limitDatasets = false)" />
+                    <RadioButton Id="key-ds-some" Name="key-datasets" Value="some" Label="Only these datasets" Checked="@_limitDatasets" OnChange="@(_ => _limitDatasets = true)" />
                 </div>
                 @if (_limitDatasets)
                 {

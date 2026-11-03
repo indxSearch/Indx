@@ -11,12 +11,13 @@
         {
             <div class="indx-slider-fill" style="@_fillStyle"></div>
             <input id="@_id"
+                   @key="_live.Key"
                    type="range"
                    class="indx-slider-input"
                    min="@Fmt(Min)"
                    max="@Fmt(Max)"
                    step="@(Step.HasValue ? Fmt(Step.Value) : "any")"
-                   value="@Fmt(Value)"
+                   value="@_live.Rendered"
                    disabled="@Disabled"
                    aria-label="@AriaLabel"
                    @oninput="OnInput"
@@ -65,7 +66,20 @@
 
     private static string Fmt(double v) => v.ToString("0.####", CultureInfo.InvariantCulture);
 
-    private Task OnInput(ChangeEventArgs e) => Parse(e) is { } v ? ValueChanged.InvokeAsync(v) : Task.CompletedTask;
+    // The browser owns the thumb while it is dragged. Writing Value back on every tick would, with
+    // any latency, put an older tick's position under the pointer and the thumb would jump back:
+    // the same race LiveInputState documents for typing. So the rendered value holds still while
+    // ticks arrive from the input, and only a change from outside (a reset, Cancel) is rendered.
+    private readonly LiveInputState _live = new();
+
+    protected override void OnParametersSet() => _live.Set(Fmt(Value));
+
+    private Task OnInput(ChangeEventArgs e)
+    {
+        if (Parse(e) is not { } v) return Task.CompletedTask;
+        _live.Typed(Fmt(v));
+        return ValueChanged.InvokeAsync(v);
+    }
 
     private Task OnCommit(ChangeEventArgs e) => Parse(e) is { } v ? FinalChanged.InvokeAsync(v) : Task.CompletedTask;
 

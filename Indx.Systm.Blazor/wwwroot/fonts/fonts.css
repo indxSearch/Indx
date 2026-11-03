@@ -110,3 +110,14 @@
   font-style: normal;
   font-display: swap;
 }
+
+/* Geist Mono: the face of --font-mono, for commands, keys and file names. Same family and licence
+   as Geist (Geist-OFL.txt covers both). Named Geist-Mono-* rather than Vercel's GeistMono-* so it
+   falls under PublicTreeTests' rule that only Geist- files may ship. */
+@font-face {
+  font-family: 'Geist Mono';
+  src: url('./Geist-Mono-Variable.woff2') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}

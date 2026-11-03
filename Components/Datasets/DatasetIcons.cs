@@ -26,6 +26,15 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> Bury = Of<Icons.ArrowDown>();
         public static readonly RenderFragment<int> Statistics = Of<Icons.Graph>();
         public static readonly RenderFragment<int> Synonym = Of<Icons.Synonym>();
+        public static readonly RenderFragment<int> QueryParameters = Of<Icons.Coverage>();
+        public static readonly RenderFragment<int> SearchOrAsk = Of<Icons.SearchOrAsk>();
+        public static readonly RenderFragment<int> Observr = Of<Icons.Observr>();
+        /// <summary>Hands a setting back to its default.</summary>
+        public static readonly RenderFragment<int> Restore = Of<Icons.Refresh>();
+        public static readonly RenderFragment<int> ChevronRight = Of<Icons.ChevronRight>();
+        /// <summary>"Open this", beside a name that is not itself a link.</summary>
+        public static readonly RenderFragment<int> Open = Of<Icons.ArrowUpRightAlt>();
+        public static readonly RenderFragment<int> ChevronDown = Of<Icons.ChevronDown>();
         public static readonly RenderFragment<int> Experimental = Of<Icons.LabExperiment>();
         public static readonly RenderFragment<int> Save = Of<Icons.Save>();
         public static readonly RenderFragment<int> WeightLow = Of<Icons.WeightLow>();

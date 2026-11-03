@@ -5,10 +5,19 @@
 
 @inject HeaderState Header
 @inject NavigationManager NavigationManager
+@inject IndxServer.Services.Observr.ObservrSubscription Observr
 @implements IDisposable
 
 <DatasetList TeamId="@TeamId" TeamName="@TeamName" Role="@Role">
     <HeadingActions>
+        @if (Observr.Visible)
+        {
+            <span class="indx-observr"><Button Variant="primary" Size="micro" Href="@TeamRoutes.TeamObservr(TeamName)" IconLeft="DatasetIcons.Observr">Observr</Button></span>
+        }
+        @if (TeamRoles.CanAdmin(Role))
+        {
+            <Button Variant="secondary" Size="micro" Href="@TeamRoutes.TeamKeys(TeamName)" IconLeft="_iconKey">API keys</Button>
+        }
         <Button Variant="secondary" Size="micro" Href="@TeamRoutes.TeamSettings(TeamName)" IconLeft="_iconManage">Manage team</Button>
     </HeadingActions>
 </DatasetList>
@@ -19,6 +28,7 @@
     [Parameter] public string? Role { get; set; }
 
     private static readonly RenderFragment<int> _iconManage = size => @<Users Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconKey = size => @<Key Size="size" Color="currentColor" />;
 
     // The trail lives in the header; this page owns it while mounted.
     protected override void OnParametersSet() => Header.Set(this, b =>

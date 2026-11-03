@@ -1,27 +1,38 @@
-@* The header is the breadcrumb. Left: the Indx mark as the home link, with the instance name.
-   Middle: whatever the current page put in HeaderState (the console's team › dataset trail),
-   else a label derived from the URL. Right: notifications and one personal menu (Account,
-   API keys, Admin for admins, Docs, Swagger, Log out). The menu only enters a section; the
-   admin area navigates with its own tab bar under the "Admin" crumb. *@
+@* The header (Notes/Anders/console-shell-plan-2026-10-13.md, stage 1). Left, over the side
+   column: the Indx mark as the home link, with a chip for the instance's standing as the
+   licence portal reports it (Free, Pro, Enterprise; Managed on a managed deployment). Then the
+   trail, at the content's edge: whatever the current page put in HeaderState (the console's
+   dataset or page), else a label derived from the URL. Right: the team switcher (one team at a
+   time, so it is a global control, not the trail's first step), then Admin (for instance admins;
+   it is a page that needs a role, not a personal page), the bell, the personal menu, Observr. *@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @implements IDisposable
 @inject NavigationManager NavigationManager
 @inject IndxServer.Services.InstanceSettingsService InstanceSettingsService
 @inject IndxServer.Services.IEditionService Edition
 @inject IndxServer.Services.HeaderState Header
+@inject IndxServer.Services.Observr.ObservrSubscription Subscription
+@inject AuthenticationStateProvider AuthState
 
 <nav class="nav">
-    <a href="/" class="nav-home" title="@_instanceName">
-        <IndxLogo Size="21" Color="currentColor" />
-        <span class="nav-instance">@_instanceName</span>
-    </a>
+    <div class="nav-brand">
+        <a href="/" class="nav-home" title="@_instanceName">
+            <IndxLogo Size="21" Color="currentColor" />
+            <span class="nav-instance">@_instanceName</span>
+        </a>
+        @if (Standing() is { } standing)
+        {
+            <Chip Color="var(--lv2)" TextColor="var(--lv6)">@standing</Chip>
+        }
+    </div>
 
+    <div class="nav-main">
     <div class="nav-crumbs">
         @if (Header.Breadcrumb != null)
         {
             @Header.Breadcrumb
         }
-        else
+        else if (_pageCrumb.Count > 0)
         {
             <Breadcrumbs Items="_pageCrumb" Size="micro" Overflow="truncate" />
         }
@@ -30,24 +41,27 @@
     <div class="nav-right">
         <AuthorizeView>
             <Authorized>
+                <TeamSwitcher />
+                <span class="nav-right-divider" aria-hidden="true"></span>
+                @if (_admin)
+                {
+                    <Button Variant="ghost" Size="micro" Href="admin" IconLeft="_iconInstance" title="Admin" aria-label="Admin"><span class="nav-dropdown-label">Admin</span></Button>
+                }
                 <NotificationPanel />
-                <NavDropdown Label="@ShortName(context.User.Identity?.Name)" Title="@context.User.Identity?.Name" Icon="_iconUser">
-                    <Button Variant="ghost" Size="micro" Href="account/manage" IconLeft="_iconUser" >Account</Button>
-                    <Button Variant="ghost" Size="micro" Href="account/api-key" IconLeft="_iconKey" >API keys</Button>
-                    <AuthorizeView Roles="Admin" Context="admin">
-                        <div class="nav-menu-divider"></div>
-                        <Button Variant="ghost" Size="micro" Href="admin" IconLeft="_iconInstance" >Admin</Button>
-                    </AuthorizeView>
+                <NavDropdown Label="@ShortName(_name)" Title="@_name" Icon="_iconUser">
+                    <Button Variant="ghost" Size="micro" Href="account/manage" IconLeft="_iconUser">Account</Button>
+                    <Button Variant="ghost" Size="micro" Href="account/api-key" IconLeft="_iconKey">API keys</Button>
                     <div class="nav-menu-divider"></div>
-                    <Button Variant="ghost" Size="micro" Href="https://v5.docs.indx.co" IconLeft="_iconBook" >Docs ↗</Button>
-                    <Button Variant="ghost" Size="micro" Href="swagger" IconLeft="_iconApi" >Swagger ↗</Button>
+                    <Button Variant="ghost" Size="micro" Href="https://docs.indx.co" IconLeft="_iconBook">Docs ↗</Button>
+                    <Button Variant="ghost" Size="micro" Href="swagger" IconLeft="_iconApi">Swagger ↗</Button>
                     <div class="nav-menu-divider"></div>
                     <form method="post" action="account/logout" class="nav-menu-form">
                         <AntiforgeryToken />
                         <input type="hidden" name="returnUrl" value="" />
-                        <Button Type="submit" Variant="ghost" Size="micro" IconLeft="_iconLogout" >Log out</Button>
+                        <Button Type="submit" Variant="ghost" Size="micro" IconLeft="_iconLogout">Log out</Button>
                     </form>
                 </NavDropdown>
+                <AgentButton />
             </Authorized>
             <NotAuthorized>
                 <Button Href="account/register" Variant="secondary" Size="micro">Register</Button>
@@ -55,11 +69,14 @@
             </NotAuthorized>
         </AuthorizeView>
     </div>
+    </div>
 </nav>
 
 @code {
     private string _instanceName = "Indx";
     private List<Breadcrumbs.BreadcrumbItem> _pageCrumb = new();
+    private string _name = "Account";
+    private bool _admin;
 
     private RenderFragment<int> _iconInstance => size => @<Shield Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconUsers    => size => @<Users Size="size" Color="currentColor" />;
@@ -72,11 +89,18 @@
     private RenderFragment<int> _iconBook     => size => @<Book Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconLogout   => size => @<Logout Size="size" Color="currentColor" />;
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        if (auth.User.Identity?.IsAuthenticated == true)
+        {
+            _name = auth.User.Identity.Name ?? "Account";
+            _admin = auth.User.IsInRole("Admin");
+        }
         _instanceName = InstanceSettingsService.Load().InstanceName;
         NavigationManager.LocationChanged += OnLocationChanged;
         Header.Changed += OnHeaderChanged;
+        Subscription.Changed += OnHeaderChanged;
         _pageCrumb = PageCrumb();
     }
 
@@ -88,23 +112,41 @@
 
     private void OnHeaderChanged() => _ = InvokeAsync(StateHasChanged);
 
-    public void Dispose()
+    private static string ShortName(string name)
     {
-        NavigationManager.LocationChanged -= OnLocationChanged;
-        Header.Changed -= OnHeaderChanged;
-    }
-
-    private static string ShortName(string? name)
-    {
-        if (string.IsNullOrEmpty(name)) return "Account";
         var at = name.IndexOf('@');
         return at > 0 ? name[..at] : name;
     }
 
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+        Header.Changed -= OnHeaderChanged;
+        Subscription.Changed -= OnHeaderChanged;
+    }
+
+    /// <summary>The chip beside the mark: the instance's standing. Nothing until the portal has
+    /// answered, which the first page after a start asks for in the background.</summary>
+    private string? Standing()
+    {
+        if (Edition.Edition == IndxEdition.Managed) return "Managed";
+        Subscription.EnsureChecked();
+        var s = Subscription.Current;
+        if (!s.Known) return null;
+        return s.Tier switch
+        {
+            "FreeDeveloper" => "Free",
+            "Internal" => "Indx",
+            "" => null,
+            var t => t,
+        };
+    }
+
     // The fallback trail when no page has set one. For console URLs it is read off the URL —
-    // team › dataset, linked but without switchers — so the hop between console pages (the
-    // island is rebuilt, and the new page sets its trail only after resolving the team) shows
-    // the right names in the gap rather than a placeholder. Other pages get one unlinked crumb.
+    // the dataset or the page, linked but without a switcher — so the hop between console pages
+    // (the island is rebuilt, and the new page sets its trail only after resolving the team)
+    // shows the right name in the gap rather than a placeholder. Areas with a column (admin,
+    // account) get one unlinked crumb; the team's own pages get none.
     private List<Breadcrumbs.BreadcrumbItem> PageCrumb()
     {
         var path = new Uri(NavigationManager.Uri).AbsolutePath.Trim('/').ToLowerInvariant();
@@ -112,20 +154,13 @@
         if (seg.Length >= 2 && seg[0] == "teams")
         {
             var team = Uri.UnescapeDataString(seg[1]);
-            var items = new List<Breadcrumbs.BreadcrumbItem>
-            {
-                new("team", team) { Href = TeamRoutes.Team(team), Icon = _iconUsers },
-            };
             if (seg.Length >= 4 && seg[2] == "datasets")
             {
                 var dataset = Uri.UnescapeDataString(seg[3]);
-                items.Add(new("dataset", dataset) { Href = TeamRoutes.Dataset(team, dataset), Icon = _iconDatabase });
+                return [new("dataset", dataset) { Href = TeamRoutes.Dataset(team, dataset), Icon = _iconDatabase }];
             }
-            else if (seg.Length >= 3 && seg[2] == "settings")
-            {
-                items.Add(new("page", "Settings"));
-            }
-            return items;
+            // The team's own pages have no column and no step; the switcher at the right names the team.
+            return [];
         }
         (string label, RenderFragment<int> icon) = path switch
         {
@@ -135,8 +170,9 @@
             var p when p.StartsWith("account/") => ("Account", _iconUser),
             var p when p.StartsWith("admin") => ("Admin", _iconInstance),
             var p when p.StartsWith("swagger") => ("Swagger", _iconApi),
-            _ => ("Datasets", _iconDatabase),
+            _ => ("", _iconDatabase),
         };
+        if (label.Length == 0) return [];
         return [new Breadcrumbs.BreadcrumbItem("page", label) { Icon = icon }];
     }
 }

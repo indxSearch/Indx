@@ -2,19 +2,45 @@
 @implements IAsyncDisposable
 @inject IJSRuntime JS
 
-<div class="indx-select-wrapper">
+<div class="indx-select-wrapper @(Variant == "ghost" ? "indx-select-wrapper-ghost" : null)">
     @if (!string.IsNullOrEmpty(Label))
     {
-        <label for="@_id" class="indx-select-label">@Label</label>
+        <label id="@_id-label" for="@_id" class="indx-select-label">@Label</label>
     }
-    <div class="indx-select-trigger" @ref="_trigger">
-        <button type="button" id="@_id" class="indx-select indx-select-@Size" @onclick="Toggle" @onkeydown="OnKeyDown" @attributes="AdditionalAttributes">
-            <span class="indx-select-value @(string.IsNullOrEmpty(Value) ? "indx-select-placeholder" : null)" style="display:inline-flex; align-items:center; gap:6px;">
+    <div class="indx-select-trigger" @ref="_trigger" @onkeydown="OnKeyDown">
+        <button type="button" id="@_id" class="indx-select indx-select-@Size @(Variant == "ghost" ? "indx-select-ghost" : null)" @ref="_button"
+                aria-haspopup="listbox" aria-expanded="@(_open ? "true" : "false")"
+                aria-labelledby="@_labelledBy"
+                @onclick="Toggle" @attributes="_splat">
+            @if (_ariaLabel is not null)
+            {
+                <span id="@_id-name" hidden>@_ariaLabel</span>
+            }
+            <span id="@_id-value" class="indx-select-value @(string.IsNullOrEmpty(Value) ? "indx-select-placeholder" : null)" style="display:inline-flex; align-items:center; gap:6px;">
                 @if (SelectedOption?.Icon is { } selIcon)
                 {
                     @selIcon(_iconSize)
                 }
-                <span>@(SelectedLabel ?? Placeholder)</span>
+                @if (Variant == "ghost")
+                {
+                    @* Every label in one grid cell, only the chosen one visible: the field is as
+                       wide as its widest option, so a value never clips and the field does not
+                       change width as the choice changes. *@
+                    <span class="indx-select-sizer">
+                        @foreach (var option in _options)
+                        {
+                            <span class="@(option.Value == Value ? null : "indx-select-sizer-hidden")" aria-hidden="@(option.Value == Value ? null : "true")">@option.Label</span>
+                        }
+                        @if (SelectedOption == null)
+                        {
+                            <span>@Placeholder</span>
+                        }
+                    </span>
+                }
+                else
+                {
+                    <span>@(SelectedLabel ?? Placeholder)</span>
+                }
             </span>
             <span class="indx-select-icon" aria-hidden="true"><ChevronDown Size="@_iconSize" /></span>
         </button>
@@ -22,9 +48,10 @@
         {
             <div class="indx-select-backdrop" @onclick="Close"></div>
             <div class="indx-select-menu" role="listbox">
-                @foreach (var option in Options)
+                @foreach (var option in _options)
                 {
-                    <Button Variant="ghost" Size="@Size" @onclick="() => Pick(option.Value)" style="width:100%; justify-content:space-between;">
+                    <Button Variant="ghost" Size="@Size" role="option" aria-selected="@(Value == option.Value ? "true" : "false")"
+                            @onclick="() => Pick(option.Value)" style="width:100%; justify-content:space-between;">
                         <span style="display:inline-flex; align-items:center; gap:6px;">
                             @if (option.Icon is { } optIcon)
                             {
@@ -53,6 +80,10 @@
     /// <summary>"micro" | "default" | "large" — matches Button sizing.</summary>
     [Parameter] public string Size { get; set; } = "default";
 
+    /// <summary>"default" (a bordered field) | "ghost" (no border or background, sized to its
+    /// value, like a ghost Button): for a view setting in a toolbar rather than a form field.</summary>
+    [Parameter] public string Variant { get; set; } = "default";
+
     [Parameter, EditorRequired] public IEnumerable<SelectOption> Options { get; set; } = [];
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
@@ -64,7 +95,23 @@
     // Match Button's icon sizing.
     private int _iconSize => Size == "large" ? 21 : 14;
 
-    private SelectOption? SelectedOption => Options.FirstOrDefault(o => o.Value == Value);
+    // Materialized once per parameter set: Options may be a lazy sequence, read several times a render.
+    private IReadOnlyList<SelectOption> _options = [];
+
+    // An aria-label on the field would replace its whole name, so a screen reader heard "Order"
+    // and never the current choice (the field is a button, named by its label alone). It is turned into a hidden name that the field is labelled by
+    // together with its value: "Order, Newest first".
+    private string? _ariaLabel => AdditionalAttributes is { } a && a.TryGetValue("aria-label", out var v) ? v?.ToString() : null;
+    // A visible Label has the same effect through <label for>, so it is referenced the same way.
+    private string? _labelledBy =>
+        _ariaLabel is not null ? $"{_id}-name {_id}-value"
+        : !string.IsNullOrEmpty(Label) ? $"{_id}-label {_id}-value"
+        : null;
+    private Dictionary<string, object>? _splat => _ariaLabel is null ? AdditionalAttributes
+        : AdditionalAttributes!.Where(p => p.Key != "aria-label").ToDictionary(p => p.Key, p => p.Value);
+    protected override void OnParametersSet() => _options = Options as IReadOnlyList<SelectOption> ?? Options.ToArray();
+
+    private SelectOption? SelectedOption => _options.FirstOrDefault(o => o.Value == Value);
     private string? SelectedLabel => SelectedOption?.Label;
 
     private void Toggle() => _open = !_open;
@@ -73,28 +120,64 @@
     private async Task Pick(string value)
     {
         _open = false;
+        // The option that had focus is gone with the menu; give it back to the field, or the
+        // next Tab starts from the top of the page.
+        _refocus = true;
         await ValueChanged.InvokeAsync(value);
     }
 
-    // v1 keyboard support: Escape closes. (Arrow-key navigation / type-ahead is a follow-up.)
+    // The handler sits on the wrapper, which holds both the field and the menu, so it hears keys
+    // from either. Escape closes and returns focus to the field. ArrowDown/ArrowUp on a closed
+    // field opens it with the chosen option focused; inside an open menu the arrows, Home and
+    // End move focus in SelectField.razor.js, which can do it without a round-trip.
     private void OnKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Escape") _open = false;
+        if (e.Key == "Escape" && _open)
+        {
+            _open = false;
+            _refocus = true;
+        }
+        else if (!_open && e.Key is "ArrowDown" or "ArrowUp")
+        {
+            _open = true;
+            _focusOption = true;
+        }
     }
+
+    private ElementReference _button;
+    private bool _refocus;
+    private bool _focusOption;
 
     // The open menu is placed against the window by SelectField.razor.js, so a scrolling
     // ancestor (a Modal's content box) cannot clip it. Without JS it falls back to the CSS
     // position under the field.
     private ElementReference _trigger;
     private IJSObjectReference? _module;
+    private IJSObjectReference? _handle;
+
+    private bool _disposed;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender) return;
         try
         {
-            _module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Indx.Systm.Blazor/SelectField.razor.js");
-            await _module.InvokeVoidAsync("init", _trigger);
+            if (firstRender)
+            {
+                var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Indx.Systm.Blazor/SelectField.razor.js");
+                if (_disposed) { await module.DisposeAsync(); return; }
+                _module = module;
+                _handle = await _module.InvokeAsync<IJSObjectReference?>("init", _trigger);
+            }
+            if (_refocus)
+            {
+                _refocus = false;
+                await _button.FocusAsync();
+            }
+            if (_focusOption && _module is not null)
+            {
+                _focusOption = false;
+                await _module.InvokeVoidAsync("focusOption", _trigger);
+            }
         }
         catch (JSDisconnectedException) { }
         catch (TaskCanceledException) { }
@@ -103,10 +186,15 @@
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
         if (_module is null) return;
         try
         {
-            await _module.InvokeVoidAsync("dispose", _trigger);
+            if (_handle is not null)
+            {
+                await _handle.InvokeVoidAsync("dispose");
+                await _handle.DisposeAsync();
+            }
             await _module.DisposeAsync();
         }
         catch (JSDisconnectedException) { }

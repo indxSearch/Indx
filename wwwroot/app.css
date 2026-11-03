@@ -288,19 +288,101 @@ a.btn-danger:hover {
 /* Font @font-face declarations (FunktionalGrotesk + Geist) live in the
    Indx.Systm.Blazor RCL: _content/Indx.Systm.Blazor/fonts/fonts.css */
 
-/* Layout */
+/* Layout (Notes/Anders/console-shell-plan-2026-10-13.md, stage 1): a header over a side column
+   and the page. The column is one width, named once, so the header's brand cell sits exactly over
+   it and the trail starts where the content does. */
+:root {
+    --side-width: 220px;
+}
+
+/* The window: the page (header over the shell) and, at the right, the Agent panel the window's
+   full height. The page takes what the panel leaves. */
+/* The window is the app's height: the page scrolls inside the shell, so the header stays and the
+   Agent panel's own scrolling never reaches the page. */
+:root {
+    --header-height: 60px;
+}
+
 .layout {
     display: flex;
+    align-items: stretch;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.layout-page {
+    flex: 1;
+    min-width: 0;
+    display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    min-height: 0;
 }
 
 .header {
     display: flex;
-    align-items: center;
-    padding: calc(var(--spacing) * 3) calc(var(--spacing) * 4);
+    /* Not centred: the header is 60px with a 1px border, so centring a 30px row put it at 14.5 and
+       every pixel icon in it on a half pixel, soft on a 1x screen. The row sits at a whole 15px. */
+    align-items: flex-start;
+    padding-top: calc((var(--header-height) - 30px) / 2);
+    flex: none;
+    height: var(--header-height);
+    box-sizing: border-box;
     background: var(--lv1);
     border-bottom: 1px solid var(--lv2);
+    /* Above the page: its menus open over the shell's sticky rows (the field table's header is
+       at 3), and the account controls' transform makes a stacking context of their own, so the
+       header needs one that outranks the page. Modals and tooltips sit far higher. */
+    position: relative;
+    z-index: 50;
+}
+
+/* The column sits at the window's left edge; the content is centred in what the column leaves,
+   up to its own maximum (below). */
+.shell {
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+    min-height: 0;
+    width: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+/* The Agent panel (stage 5): the window's full height at the right, beside the page. Closed it has
+   no width; opening it pushes the page in, with a short slide. */
+.shell-agent {
+    width: 0;
+    flex: none;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    height: 100vh;
+    box-sizing: border-box;
+    display: flex;
+    min-width: 0;
+    overflow: hidden;
+    transition: width 160ms ease-out;
+}
+
+.shell-agent--open {
+    width: 340px;
+    border-left: 1px solid var(--lv2);
+}
+
+.shell-agent > * {
+    width: 340px;
+    flex: none;
+}
+
+/* The side column, where a page has sections of its own; it sticks under the header. */
+.shell-side {
+    width: var(--side-width);
+    flex: none;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    max-height: calc(100vh - var(--header-height));
+    overflow-y: auto;
 }
 
 /* How wide the page gets before it stops growing and centres. One value for the header and the
@@ -315,9 +397,23 @@ a.btn-danger:hover {
        Tabs, Bleed) by exactly this much. */
     --page-gutter: calc(var(--spacing) * 8);
     flex: 1;
-    padding: var(--page-gutter);
+    min-width: 0;
+    /* The same top as the column's menu (16px), so a page's first line and the column's first
+       title start together, whatever the page. */
+    padding: calc(var(--spacing) * 4) var(--page-gutter) var(--page-gutter);
     max-width: var(--page-max);
     width: 100%;
+    margin: 0 auto;
+}
+
+/* No page adds its own space at the top: the content's padding is the top on every page. */
+.content > :first-child,
+.content > :first-child > :first-child {
+    margin-top: 0;
+}
+
+/* Signed out: no column, no foot; the page is centred under the header as before. */
+.content--alone {
     margin: 0 auto;
 }
 
@@ -344,15 +440,22 @@ a.btn-danger:hover {
     max-width: 560px;
 }
 
-/* Navigation — the header is the breadcrumb. */
+/* Navigation — the header is the breadcrumb. The brand cell is the side column's width, so the
+   mark sits over the menu's icons and the trail starts at the content's edge. */
 .nav {
-    display: flex;
+    display: grid;
+    grid-template-columns: var(--side-width) minmax(0, 1fr);
     align-items: center;
     width: 100%;
-    gap: 14px;
-    max-width: var(--page-max);
-    margin: 0 auto;
     min-height: 30px;
+}
+
+.nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 10px;
+    min-width: 0;
 }
 
 .nav-home {
@@ -377,19 +480,49 @@ a.btn-danger:hover {
     white-space: nowrap;
 }
 
+/* The trail is centred in the header's second cell over the same maximum as the content, so it
+   starts where the content does whatever the window's width; the account's controls sit at the
+   window's edge, outside that box. */
+.nav-main {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 14px;
+    position: relative;
+}
+
 .nav-crumbs {
     flex: 1;
     min-width: 0;
+    max-width: var(--page-max);
+    margin: 0 auto;
+    box-sizing: border-box;
     display: flex;
     align-items: center;
+    /* The content's gutter less the first crumb's own padding, so its icon sits on the
+       content's left edge rather than one button-padding in from it. */
+    padding-left: calc(var(--spacing) * 8 - 8px);
 }
 
 .nav-right {
     display: flex;
     align-items: center;
     gap: 4px;
-    margin-left: auto;
+    padding-right: calc(var(--spacing) * 4);
     flex-shrink: 0;
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--lv1);
+}
+
+/* Between the team switcher and the account's controls. */
+.nav-right-divider {
+    width: 1px;
+    height: 18px;
+    background: var(--lv3);
+    margin: 0 6px;
 }
 
 /* Header dropdowns (Instance, personal): trigger + right-anchored Surface of ghost buttons. */
@@ -463,14 +596,116 @@ a.btn-danger:hover {
     color: var(--lv8);
 }
 
-/* Mobile */
+/* Narrow: the header is two rows. The first is the mark and, at the right, the team switcher with
+   its name and the account's icons; the second, only where a page has one, the trail. The
+   standing chip goes, and the trail's earlier steps keep their icon as the way back and lose
+   their text and switcher, so the dataset's name has the room. */
 @media (max-width: 768px) {
-    .header {
-        padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 3);
+    /* Narrow: one row, the header's own height, everything centred on it. The mark on the
+       content's gutter (15px: the logo sits 2px into its link), the trail beside it, the team's
+       icon and the account's controls at the right. The team's name and the divider go, and the
+       trail's earlier steps keep their icon as the way back, so the dataset's name has the room. */
+    .nav {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 4px;
+        align-items: center;
     }
 
-    .nav {
-        gap: 8px;
+    .nav-brand {
+        padding-left: calc(var(--spacing) * 3 - 2px);
+    }
+
+    /* Three classes: the chip's own scoped rule has two, and is loaded after this file. */
+    .nav .nav-brand .indx-chip {
+        display: none;
+    }
+
+    /* nav-main steps aside so the trail and the right cluster are the grid's own cells. */
+    .nav-main {
+        display: contents;
+    }
+
+    /* Not overflow: hidden. The step's switcher menu hangs below it, positioned inside it, and
+       clipping here hid the menu on a phone; the label ellipsizes on its own. */
+    .nav-crumbs {
+        grid-column: 2;
+        margin: 0;
+        max-width: none;
+        padding-left: 0;
+    }
+
+    .nav-crumbs .indx-breadcrumbs-item:not(:last-child) .indx-breadcrumbs-text,
+    .nav-crumbs .indx-breadcrumbs-item:not(:last-child) .indx-breadcrumbs-trigger {
+        display: none;
+    }
+
+    /* The last icon's edge on the content's gutter: the gutter less the button's 10px padding. */
+    .nav-right {
+        grid-column: 3;
+        gap: 0;
+        padding-right: calc(var(--spacing) * 3 - 10px);
+        position: static;
+        transform: none;
+    }
+
+    .nav-team .indx-breadcrumbs-text,
+    .nav-right-divider {
+        display: none;
+    }
+
+    /* With its name gone the team's crumb is its icon and caret: the truncating trail's room for
+       six characters of name (Breadcrumbs' --text-min) would leave a gap after it. Four classes:
+       that rule is scoped, so it carries an attribute too. */
+    .nav .nav-team .indx-breadcrumbs-item.indx-breadcrumbs-item {
+        min-width: 0;
+    }
+
+    /* Room for the dataset's name: the trails lose their box's side padding (the header has its
+       own) and the account menu its caret; the icon still opens it. */
+    .nav .nav-crumbs .indx-breadcrumbs.indx-breadcrumbs,
+    .nav .nav-team .indx-breadcrumbs.indx-breadcrumbs {
+        padding-inline: 0;
+    }
+
+    .nav .nav-dropdown .indx-btn .indx-btn-icon-right {
+        display: none;
+    }
+
+    /* The panel covers the page instead of sitting beside it. */
+    .shell-agent--open {
+        position: fixed;
+        inset: 0 0 0 auto;
+        width: min(340px, 100%);
+        height: 100vh;
+        height: 100dvh;   /* a phone's browser bars come off the panel, so the composer stays in sight */
+        z-index: 70;
+        background: var(--lv0);
+        padding: 8px;
+    }
+    .shell-agent--open > * { width: 100%; }
+
+    /* A phone: the whole screen. 340px left a sliver of page beside it that did nothing. */
+    @media (max-width: 560px) {
+        .shell-agent--open { width: 100%; border-left: none; }
+    }
+
+    /* The column becomes a row above the content, scrolling sideways. */
+    .shell {
+        flex-direction: column;
+    }
+
+    /* The row is the screen's width and the menu scrolls inside it. The wide rule's
+       align-self: flex-start made it as wide as its content here (971px on a phone), so the
+       whole page scrolled sideways with it. */
+    .shell-side {
+        width: auto;
+        align-self: stretch;
+        min-width: 0;
+        overflow: visible;
+        position: static;
+        max-height: none;
+        border-bottom: 1px solid var(--lv2);
+        padding: 6px 12px;
     }
 
     .nav-instance {
@@ -748,7 +983,9 @@ a.btn-danger:hover {
 .indx-table thead {
     position: sticky;
     top: 0;
-    z-index: 1;
+    /* Above the body's sticky first column (StickyFirstColumn, z-index 1), which otherwise paints
+       over the header's first cell as the rows scroll under it: equal z-index, later in the tree. */
+    z-index: 3;
 }
 
 .indx-table thead tr {
@@ -998,3 +1235,42 @@ a.btn-danger:hover {
     .indx-reconnect .indx-spinner-frame:first-of-type { opacity: 1; }
 }
 
+
+/* Observr's buttons wear its colour, so one glance says "this goes to Observr". The colour itself
+   is not decided (12 Oct 2026): not a traffic light, not the blue of the badge; until it is, the
+   buttons look like any other and the wrapper only marks them. A wrapper, since systm Button takes
+   no colour; a selector with the extra class outranks the component's isolated rules.
+   Trying (13 Oct 2026): the 1px checkerboard behind Observr's ghost buttons, as ProgressBar's
+   track has it, so the eye knows the button goes to Observr without a hue. */
+.indx-observr { display: inline-flex; }
+.indx-observr .indx-btn.indx-btn-ghost { position: relative; isolation: isolate; color: var(--lv8); }
+.indx-observr .indx-btn.indx-btn-ghost:hover:not(:disabled) { color: var(--lv8); }
+.indx-observr .indx-btn.indx-btn-ghost::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background-image: var(--pattern-checkerboard-light);
+    background-repeat: repeat;
+    background-size: 2px 2px;
+    opacity: 0.18;
+    pointer-events: none;
+}
+.indx-observr .indx-btn.indx-btn-ghost:hover::before { opacity: 0.3; }
+/* And a 2x2 lv8 square in each corner: four radial gradients, one per corner, on the same layer. */
+.indx-observr .indx-btn.indx-btn-ghost::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+        linear-gradient(var(--lv8), var(--lv8)),
+        linear-gradient(var(--lv8), var(--lv8)),
+        linear-gradient(var(--lv8), var(--lv8)),
+        linear-gradient(var(--lv8), var(--lv8));
+    background-size: 2px 2px;
+    background-repeat: no-repeat;
+    background-position: top left, top right, bottom left, bottom right;
+}

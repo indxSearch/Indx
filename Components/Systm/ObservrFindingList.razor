@@ -1,0 +1,121 @@
+@* The findings as a list, one block each: what it is about, where and when on one line, the
+   text at reading width, the proposal as chips, the decision. A table put two paragraphs in a
+   narrow column beside five empty cells; this is what a finding actually looks like. Used by the
+   team's Observr page and the account's history; the menu keeps its own, shorter shape. *@
+@using IndxServer.Services.Observr
+
+@if (Findings.Count == 0)
+{
+    <p class="ofl-empty">@Empty</p>
+}
+else
+{
+    <ol class="ofl">
+        @foreach (var f in Findings)
+        {
+            <li class="ofl-item @(f.Status == ObservrFinding.Open ? "ofl-item--open" : null) @(ProposalsOnly ? "ofl-item--proposals" : null)">
+                @if (!ProposalsOnly)
+                {
+                <div class="ofl-head">
+                    <span class="ofl-title">@f.Title</span>
+                    <span class="ofl-where">
+                        @if (ShowTeam) { <text>@TeamName(f.TeamId) / </text> }@f.DataSetName
+                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" Href="@Link(f)" title="Open where it is about" aria-label="@($"Open {f.DataSetName}, {f.Tab}")" />
+                    </span>
+                    <span class="ofl-spacer"></span>
+                    <span class="ofl-time"><TimeAgo Value="f.CreatedUtc" TooltipPosition="left" /></span>
+                    @{ var status = f.Status == ObservrFinding.Open ? (f.Proposals.Count == 0 ? "unread" : "open") : f.Proposals.Count == 0 ? "read" : f.Status; }
+                    <Chip Color="@StatusColor(status)" TextColor="@StatusText(status)">@status</Chip>
+                </div>
+                <div class="ofl-text">@ObservrMarkdown.Render(f.Answer)</div>
+                }
+                @if (f.Proposals.Count > 0)
+                {
+                    <div class="ofl-proposals">
+                        @foreach (var (p, i) in f.Proposals.Select((p, i) => (p, i)))
+                        {
+                            <div class="ofl-proposal">
+                                @if (Selectable(f))
+                                {
+                                    var index = i;
+                                    <Checkbox Checked="@(!_unticked.Contains((f.Id, index)))" CheckedChanged="v => Tick(f.Id, index, v)" Disabled="@(Busy == f.Id)" aria-label="Apply this proposal" />
+                                }
+                                <span class="ofl-label">@p.Label</span>
+                                @if (p.Field is { } change)
+                                {
+                                    <Chip>@change.Name</Chip><span class="ofl-label">@change.Summary</span>
+                                }
+                                else
+                                {
+                                    @foreach (var t in p.Describe()) { <Chip>@t</Chip> }
+                                }
+                                @if (!string.IsNullOrWhiteSpace(p.Reason) && p.Reason != f.Answer) { <span class="ofl-why">@p.Reason</span> }
+                            </div>
+                        }
+                    </div>
+                }
+                @if (f.Status == ObservrFinding.Open && CanDecide)
+                {
+                    <div class="ofl-actions">
+                        @if (f.Proposals.Count == 0)
+                        {
+                            <Button Variant="ghost" Size="micro" Loading="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, true, null))">Got it</Button>
+                        }
+                        else
+                        {
+                            var chosen = Chosen(f);
+                            <Button Variant="primary" Size="micro" Loading="@(Busy == f.Id)" Disabled="@(chosen.Count == 0)" @onclick="() => OnDecide.InvokeAsync((f, true, chosen))">@(Selectable(f) && chosen.Count < f.Proposals.Count ? $"Yes, {chosen.Count} of {f.Proposals.Count}" : "Yes")</Button>
+                            <Button Variant="ghost" Size="micro" Disabled="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, false, null))">No</Button>
+                        }
+                    </div>
+                }
+                else if (f.Status == ObservrFinding.Open)
+                {
+                    <span class="ofl-label">open</span>
+                }
+            </li>
+        }
+    </ol>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<ObservrFinding> Findings { get; set; } = [];
+    /// <summary>Where a finding points: the dataset's page, on the tab it is about.</summary>
+    [Parameter, EditorRequired] public Func<ObservrFinding, string> Link { get; set; } = default!;
+    [Parameter] public Func<string, string> TeamName { get; set; } = id => id;
+    /// <summary>Name the team beside the dataset: the account's history spans teams, a team's page does not.</summary>
+    [Parameter] public bool ShowTeam { get; set; }
+    [Parameter] public bool CanDecide { get; set; }
+    [Parameter] public long Busy { get; set; }
+    /// <summary>The decision, and for a Yes with several proposals which of them (by index); null
+    /// means all of them.</summary>
+    [Parameter] public EventCallback<(ObservrFinding Finding, bool Yes, IReadOnlyList<int>? Only)> OnDecide { get; set; }
+
+    /// <summary>A finding with several proposals lets the owner untick some before a Yes, as the
+    /// field review's rows did; every proposal starts ticked.</summary>
+    private readonly HashSet<(long, int)> _unticked = [];
+    private bool Selectable(ObservrFinding f) => CanDecide && f.Status == ObservrFinding.Open && f.Proposals.Count > 1;
+    private void Tick(long id, int index, bool on) { if (on) _unticked.Remove((id, index)); else _unticked.Add((id, index)); }
+    private List<int> Chosen(ObservrFinding f) => Enumerable.Range(0, f.Proposals.Count).Where(i => !_unticked.Contains((f.Id, i))).ToList();
+    [Parameter] public string Empty { get; set; } = "Nothing yet.";
+    /// <summary>Only the proposals and the decision: for a finding shown under the answer that
+    /// made it (the Agent panel), where the text is already on the page.</summary>
+    [Parameter] public bool ProposalsOnly { get; set; }
+
+    // Decided ones in the chip colours the console uses elsewhere; an open one inverted (ink on
+    // the page's darkest or lightest level), so the eye finds what still wants a decision. Observr's
+    // own colour is not chosen yet (Anders, 13 Oct 2026): monochrome until it is.
+    private static string StatusColor(string status) => status switch
+    {
+        "accepted" => "var(--CTeal)",
+        "declined" => "var(--CWarning)",
+        "open" or "unread" => "var(--lv7)",
+        _ => "var(--lv2)",
+    };
+    private static string StatusText(string status) => status switch
+    {
+        "open" or "unread" => "var(--lv0)",
+        "read" => "var(--lv6)",
+        _ => "#080809",
+    };
+}

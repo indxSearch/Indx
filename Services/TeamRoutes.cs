@@ -10,6 +10,8 @@ namespace IndxServer.Services
         public static string Team(string teamName) => $"/teams/{teamName}";
 
         public static string TeamSettings(string teamName) => $"/teams/{teamName}/settings";
+        public static string TeamObservr(string teamName) => $"/teams/{teamName}/observr";
+        public static string TeamKeys(string teamName) => $"/teams/{teamName}/keys";
 
         public static string Dataset(string teamName, string dataset) =>
             $"/teams/{teamName}/datasets/{Uri.EscapeDataString(dataset)}";

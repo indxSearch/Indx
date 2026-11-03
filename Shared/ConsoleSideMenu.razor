@@ -1,0 +1,81 @@
+@* The side column (Notes/Anders/console-shell-plan-2026-10-13.md, stages 1 and 2): a SideMenu
+   drawn for a page with sections of its own. One that sets them through SideMenuState (the
+   dataset page), or an area whose sections are read off the URL (admin, account). The team page
+   has no column; its pages are buttons on the page itself. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@implements IDisposable
+@inject NavigationManager NavigationManager
+@inject IndxServer.Services.SideMenuState Menu
+
+@if (_groups.Count > 0)
+{
+<aside class="shell-side">
+    <SideMenu Groups="_groups" Active="@_active" OnSelect="Menu.OnSelect" />
+</aside>
+}
+
+@code {
+    private IReadOnlyList<SideMenuGroup> _groups = [];
+    private string? _active;
+
+    private static readonly RenderFragment<int> _iconUser = size => @<UserId Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconKey = size => @<Key Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconBell = size => @<Bell Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconLock = size => @<Lock Size="size" Color="currentColor" />;
+    protected override void OnInitialized()
+    {
+        NavigationManager.LocationChanged += OnLocationChanged;
+        Menu.Changed += OnMenuChanged;
+        Resolve();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) { Resolve(); InvokeAsync(StateHasChanged); }
+    private void OnMenuChanged() { Resolve(); _ = InvokeAsync(StateHasChanged); }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+        Menu.Changed -= OnMenuChanged;
+    }
+
+    private void Resolve()
+    {
+        if (Menu.Groups != null)
+        {
+            _groups = Menu.Groups;
+            _active = Menu.Active;
+            return;
+        }
+        (_groups, _active) = ForUrl(NavigationManager.Uri);
+    }
+
+    /// <summary>The area's sections when no page set them: admin, account. Read off the URL so the
+    /// hop between pages shows the right list in the gap.</summary>
+    public static (IReadOnlyList<SideMenuGroup> Groups, string? Active) ForUrl(string uri)
+    {
+        var path = new Uri(uri).AbsolutePath.Trim('/');
+        var lower = path.ToLowerInvariant();
+        if (lower.StartsWith("admin"))
+        {
+            var active = AdminNav.Items.FirstOrDefault(i => i.Href != null && lower.StartsWith(i.Href.Trim('/').ToLowerInvariant()))?.Value;
+            return ([new SideMenuGroup("Admin", AdminNav.Items.Select(i => new SideMenuItem(i.Value, i.Label, i.Icon, i.Href)).ToList(), AdminNav.VersionLine)], active);
+        }
+        if (lower.StartsWith("account"))
+        {
+            var active = lower switch
+            {
+                var p when p.StartsWith("account/api-key") => "keys",
+                var p when p.StartsWith("account/notifications") => "notifications",
+                var p when p.StartsWith("account/change-password") => "password",
+                _ => "account",
+            };
+            return ([new SideMenuGroup("Account", [
+                new("account", "Account", _iconUser, "/account/manage"),
+                new("keys", "API keys", _iconKey, "/account/api-key"),
+                new("notifications", "Notifications", _iconBell, "/account/notifications"),
+                new("password", "Change password", _iconLock, "/account/change-password"),
+            ])], active);
+        }
+        return ([], null);
+    }
+}

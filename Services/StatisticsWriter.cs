@@ -45,6 +45,8 @@ namespace IndxServer.Services
         public void RecordConvert(in ConvertEventRow row) => Enqueue(row);
         public void RecordChange(in ChangeEventRow row) => Enqueue(row);
         public void RecordDocuments(in DocumentCountRow row) => Enqueue(row);
+        public void RecordAskIntent(in AskIntentEventRow row) => Enqueue(row);
+        public void RecordAsk(in AskEventRow row) => Enqueue(row);
 
         private void Enqueue(object row)
         {
@@ -84,6 +86,8 @@ namespace IndxServer.Services
             var converts = new List<ConvertEventRow>();
             var changes = new List<ChangeEventRow>();
             var documents = new List<DocumentCountRow>();
+            var intents = new List<AskIntentEventRow>();
+            var asks = new List<AskEventRow>();
             while (_queue.TryDequeue(out var row))
             {
                 Interlocked.Decrement(ref _queued);
@@ -94,9 +98,12 @@ namespace IndxServer.Services
                     case ConvertEventRow c: converts.Add(c); break;
                     case ChangeEventRow c: changes.Add(c); break;
                     case DocumentCountRow d: documents.Add(d); break;
+                    case AskIntentEventRow i: intents.Add(i); break;
+                    case AskEventRow a: asks.Add(a); break;
                 }
             }
-            var count = searches.Count + selects.Count + converts.Count + changes.Count + documents.Count;
+            var count = searches.Count + selects.Count + converts.Count + changes.Count + documents.Count
+                        + intents.Count + asks.Count;
             if (count == 0) return;
             var superseded = MarkKeystrokes(searches);
             var started = Environment.TickCount64;
@@ -104,6 +111,7 @@ namespace IndxServer.Services
             {
                 store.WriteBatch(searches, selects, converts, superseded);
                 store.WriteChanges(changes, documents);
+                store.WriteSearchOrAsk(intents, asks);
                 Interlocked.Add(ref _flushedTotal, count);
                 Interlocked.Increment(ref _flushes);
                 Interlocked.Add(ref _flushMsTotal, Environment.TickCount64 - started);

@@ -36,15 +36,21 @@ namespace IndxServer.Monitor
         /// decision, not a collection one.</summary>
         private static readonly TimeSpan DefaultPoll = TimeSpan.FromSeconds(1);
 
-        internal static MonitorOptions Resolve(IConfiguration configuration, string[] args)
+        // underDotnetWatch: whether `dotnet watch` started the process; null reads DOTNET_WATCH,
+        // which it sets to 1 for the app it runs. Watch shares the console with the app: its
+        // hot-reload messages and its keys (Ctrl+R) land in the same terminal, and a full-screen
+        // monitor would draw over the one and swallow the other. So under watch the monitor is
+        // off unless it is asked for.
+        internal static MonitorOptions Resolve(IConfiguration configuration, string[] args, bool? underDotnetWatch = null)
         {
             bool hasTerminal = !Console.IsOutputRedirected && !Console.IsInputRedirected;
+            bool underWatch = underDotnetWatch ?? Environment.GetEnvironmentVariable("DOTNET_WATCH") == "1";
 
             bool? configured = configuration.GetValue<bool?>(EnabledKey);
             if (args.Contains("--no-monitor")) configured = false;
             else if (args.Contains("--monitor")) configured = true;
 
-            bool enabled = configured ?? hasTerminal;
+            bool enabled = configured ?? (hasTerminal && !underWatch);
 
             var mode = !enabled ? MonitorMode.Off
                 : hasTerminal ? MonitorMode.Interactive

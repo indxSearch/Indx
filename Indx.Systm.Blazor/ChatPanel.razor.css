@@ -1,0 +1,41 @@
+.indx-chat {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    background: var(--lv1);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+.indx-chat-header { flex-shrink: 0; padding: 4px 12px 0; }
+.indx-chat-thread {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    padding: 24px 20px;
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+.indx-chat-footer { flex-shrink: 0; padding: 4px 12px 0; }
+/* The hints row gives the composer its space below; without it the footer keeps its own. */
+.indx-chat-footer:last-child { padding-bottom: 12px; }
+.indx-chat-hints {
+    display: flex;
+    gap: 18px;
+    padding: 6px 16px 12px;
+    font: var(--text-2xs);
+    color: var(--lv4);
+}
+.indx-chat-hints ::deep span { display: inline-flex; align-items: center; gap: 4px; }
+.indx-chat-kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    font: var(--text-2xs);
+    color: var(--lv5);
+    background: var(--lv2);
+    border-radius: 3px;
+}

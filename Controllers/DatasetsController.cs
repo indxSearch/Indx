@@ -27,6 +27,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// As Analyze but handles a stream as input text.
         /// </summary>
+        [RequestSizeLimit(2_000_000_000)]
         [HttpPost(DataSetRoute + "/analyze")]
         public async Task<ActionResult<SystemStatus>> AnalyzeStreamAsync(string teamName, string dataSetName)
         {
@@ -263,6 +264,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// Loads the jsonData into search engine as a stream.
         /// </summary>
+        [RequestSizeLimit(2_000_000_000)]
         [HttpPost(DataSetRoute + "/load")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult LoadStreamAsync(string teamName, string dataSetName)

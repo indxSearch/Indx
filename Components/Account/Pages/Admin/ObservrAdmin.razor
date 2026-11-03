@@ -1,0 +1,112 @@
+@page "/admin/observr"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@using IndxServer.Engine
+@using IndxServer.Services
+@using IndxServer.Services.Observr
+@attribute [Authorize(Roles = "Admin")]
+@inject ObservrSubscription Subscription
+@inject ObservrClient Observr
+
+<PageTitle>Admin — Observr</PageTitle>
+
+
+<div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
+    <div>
+        <h2 style="margin-bottom: 4px;">Observr</h2>
+        <p style="color: var(--lv5); margin: 0;">
+            Indx's agent for search owners: it reads a weekly summary of a dataset's statistics every day, puts what is worth
+            attention in the Observr menu, and answers from the Statistics, Fields and Synonyms tabs. Never a record, never a visitor.
+        </p>
+    </div>
+</div>
+
+@* ── The subscription: what the licence portal says about this instance's token. ── *@
+<div style="max-width: 720px; margin-bottom: 32px;">
+    <h3>Subscription</h3>
+    @if (!Observr.HasToken)
+    {
+        <p style="color: var(--lv5);">This instance has no licence token, so it cannot reach Observr. Add one under <a href="/admin/license">License</a>.</p>
+    }
+    else if (!_state.Known)
+    {
+        <p style="display:flex; align-items:center; gap:8px; color:var(--lv5);"><Spinner Size="14" /> Asking the licence portal…</p>
+    }
+    else if (_state.Tier == "Internal")
+    {
+        <p style="color: var(--lv6); margin: 0 0 8px;">This instance uses an Observr token of its own (<code>Indx:Observr:Token</code>), which Observr trusts by configuration. No licence is checked.</p>
+    }
+    else if (_state.EarlyAccess)
+    {
+        <p style="color: var(--lv6); margin: 0 0 8px;">
+            This licence has early access to Observr while it is in preview@(string.IsNullOrEmpty(_state.LicensedTo) ? "" : $" ({_state.LicensedTo})")@(_state.ExpiresAt is { } until ? $", until {until:d MMM yyyy}" : "").
+            <span style="color: var(--lv5);">Checked <TimeAgo Value="_state.CheckedUtc!.Value" />.</span>
+        </p>
+    }
+    else if (_state.Included)
+    {
+        <p style="color: var(--lv6); margin: 0 0 8px;">
+            Observr is part of this licence: <strong>@_state.Tier</strong>@(string.IsNullOrEmpty(_state.LicensedTo) ? "" : $", {_state.LicensedTo}").
+            <span style="color: var(--lv5);">Checked <TimeAgo Value="_state.CheckedUtc!.Value" />.</span>
+        </p>
+    }
+    else
+    {
+        <p style="color: var(--lv6); margin: 0 0 8px;">
+            @(_state.Reason switch
+            {
+                "unknownToken" => "The licence portal does not recognise this instance's token. Check it under License.",
+                "expired" => "This licence's Observr access has ended. Renew the subscription, or ask Indx for early access, to switch Observr on.",
+                _ => "Observr is part of the Pro and Enterprise subscriptions. This instance's licence does not include it, so nothing of Observr is shown to its users.",
+            })
+            <span style="color: var(--lv5);">Checked <TimeAgo Value="_state.CheckedUtc!.Value" />.</span>
+        </p>
+    }
+    @if (Observr.HasToken && _state.Tier != "Internal")
+    {
+        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Restore" Loading="@_checking" @onclick="CheckAsync">Check again</Button>
+    }
+</div>
+
+@* ── The instance switch: an admin activates Observr once; the teams choose per dataset. ── *@
+@if (_state.Included)
+{
+    <div style="max-width: 720px; margin-bottom: 32px;">
+        <h3>On this instance</h3>
+        <p style="color: var(--lv5); margin: 0 0 12px;">
+            With Observr on, each team gets an Observr page (the Observr button on the team page) where its editors choose per
+            dataset whether Observr reads it, how often it reports, and whether its buttons show in the dataset's tabs.
+            Off, nothing of Observr is shown and nothing is sent. Each ask counts against the licence's daily allowance.
+        </p>
+        <ToggleSwitch Label="Observr on this instance" Checked="_enabled" CheckedChanged="SetEnabled" />
+    </div>
+}
+
+@code {
+    private ObservrSubscriptionState _state = ObservrSubscriptionState.Unknown;
+    private bool _checking;
+    private bool _enabled;
+
+    [Inject] private InstanceSettingsService InstanceSettings { get; set; } = default!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _enabled = InstanceSettings.Load().ObservrEnabled;
+        _state = await Subscription.GetAsync();
+    }
+
+    private async Task CheckAsync()
+    {
+        _checking = true;
+        try { _state = await Subscription.GetAsync(force: true); }
+        finally { _checking = false; }
+    }
+
+    private void SetEnabled(bool on)
+    {
+        var settings = InstanceSettings.Load();
+        settings.ObservrEnabled = on;
+        InstanceSettings.Save(settings);
+        _enabled = on;
+    }
+}

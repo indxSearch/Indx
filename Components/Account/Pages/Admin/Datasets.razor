@@ -14,7 +14,6 @@
 <PageTitle>Admin — Datasets</PageTitle>
 
 
-<AdminNav Active="Datasets" />
 
 <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 40px;">
     <div>
@@ -68,7 +67,7 @@ else
             @foreach (var row in _rows)
             {
                 <tr>
-                    <td style="color: var(--lv6); font-family: monospace;">@row.DataSetName</td>
+                    <td style="color: var(--lv6); font-family: var(--font-mono);">@row.DataSetName</td>
                     <td style="color: var(--lv5);">@(row.TeamName ?? row.TeamId)</td>
                     <td>
                         @if (row.Unknown)

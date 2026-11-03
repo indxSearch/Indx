@@ -2,6 +2,8 @@
 {
     @if (Disabled || Loading)
     {
+        @* disabled is placed after the splat: the later attribute wins, so a caller's
+           disabled="@false" cannot make a Loading button clickable. *@
         <span class="@_classes"
               aria-disabled="true"
               aria-busy="@(Loading ? "true" : null)"
@@ -29,9 +31,9 @@ else
 {
     <button class="@_classes"
             type="@Type"
-            disabled="@(Disabled || Loading)"
             aria-busy="@(Loading ? "true" : null)"
-            @attributes="AdditionalAttributes">
+            @attributes="AdditionalAttributes"
+            disabled="@(Disabled || Loading)">
         @if (Loading) { <Spinner Size="@_iconSize" /> }
         else if (IconLeft != null) { @IconLeft(_iconSize) }
         @ChildContent

@@ -153,8 +153,7 @@ namespace IndxServer.Controllers
             {
                 Status = StatusCodes.Status409Conflict,
                 Title = "Dataset not in a valid state for this operation",
-                Detail = $"{operation} requires the dataset to be {string.Join("/", allowed)}; " +
-                         $"it is currently {state}. {StateGuidance(state, status)}"
+                Detail = StateGuidance(state, status)
             };
             problem.Extensions["code"] = "invalidState";
             problem.Extensions["operation"] = operation;
@@ -174,17 +173,21 @@ namespace IndxServer.Controllers
             };
         }
 
-        /// <summary>Per-state, operation-independent guidance shown in the 409 body. Created covers
-        /// both "new and empty" and "hibernated" — which one it is stands in the status response's
-        /// recordsOnDisk, which a 409 cannot see from here, so the guidance names both ways out.</summary>
+        /// <summary>The 409's detail: what the dataset is doing and what to do, in plain words. It
+        /// reaches people as it is (intrface shows a search's failure to the visitor), so it names
+        /// no method or state, which stand in the body's own fields (currentState, allowedStates,
+        /// operation) for a client that branches on them. Created covers both "new and empty" and
+        /// "hibernated": which one stands in the status response's recordsOnDisk, which a 409
+        /// cannot see from here, so it names both. It used to read "Search requires the dataset to
+        /// be Ready; it is currently Created" and a list of calls, which confused (Oct 2026).</summary>
         protected static string StateGuidance(SystemState state, SystemStatus status) => state switch
         {
-            SystemState.Created => "The dataset is created but not loaded. Call Load (LoadStream/LoadString/LoadFromDatabase) and then IndexDataSet — or WakeUp, if the dataset is hibernated (status shows recordsOnDisk > 0).",
-            SystemState.Loading => "Loading is in progress — retry once the dataset reaches Ready.",
-            SystemState.Loaded => "The dataset is loaded but not indexed. Call IndexDataSet.",
-            SystemState.Indexing => "Indexing is in progress — retry once the dataset reaches Ready.",
-            SystemState.Error => $"The dataset is in an error state: {status.ErrorMessage}",
-            _ => ""
+            SystemState.Created => "The dataset is empty or hibernated. Load data into it or wake it up, then try again.",
+            SystemState.Loading => "The dataset is loading. Try again in a moment.",
+            SystemState.Loaded => "The dataset is loaded but not indexed yet. Build its index, then try again.",
+            SystemState.Indexing => "The dataset is being indexed. Try again in a moment.",
+            SystemState.Error => $"The dataset failed: {status.ErrorMessage}",
+            _ => "The dataset is not ready. Try again in a moment.",
         };
  
 

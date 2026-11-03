@@ -11,10 +11,12 @@ namespace IndxServer.Services
     ///
     /// Configuration (appsettings "Statistics"): <c>Enabled</c> (default true — the measurement
     /// in Notes/statistics-design.md is why logging every search is affordable),
-    /// <c>RetentionDays</c> (default 90; raw event rows only — rollups are kept), <c>DbFile</c>.
+    /// <c>RetentionDays</c> (default 90; raw event rows only — rollups are kept), <c>DbFile</c>,
+    /// <c>TimeZone</c> (an IANA name, default UTC: where a day begins for a dataset that has not
+    /// chosen its own on the Options tab or in statistics/settings).
     /// </summary>
     public sealed class StatisticsService(IConfiguration configuration, ILoggerFactory loggerFactory,
-        BoostRuleStore? boostRules = null, BuryRuleStore? buryRules = null)
+        BoostRuleStore? boostRules = null, BuryRuleStore? buryRules = null, QueryParameterStore? queryParameters = null)
         : IHostedService, IDisposable, IDatasetChangeSink
     {
         /// <summary>Roll up day D no earlier than D+2, so its selects and converts have arrived.</summary>
@@ -97,6 +99,14 @@ namespace IndxServer.Services
             }
 
             Store = new StatisticsStore(dbFile, loggerFactory.CreateLogger<StatisticsStore>());
+            var zone = configuration["Statistics:TimeZone"];
+            if (!string.IsNullOrWhiteSpace(zone))
+            {
+                if (StatisticsDays.Find(zone) is { } tz) Store.DefaultTimeZone = tz;
+                else loggerFactory.CreateLogger<StatisticsService>().LogWarning(
+                    "Statistics:TimeZone '{Zone}' is not a time zone this host knows; days are cut in UTC", zone);
+            }
+            Store.RetentionDays = RetentionDays;
             Store.EnsureSchema();
             Store.LogState();
             Writer = new StatisticsWriter(Store, loggerFactory.CreateLogger<StatisticsWriter>());
@@ -107,6 +117,7 @@ namespace IndxServer.Services
             IndxServerInternalApi.ManagerOrNull?.AttachChangeSink(this);
             if (boostRules != null) boostRules.ChangeSink = this;
             if (buryRules != null) buryRules.ChangeSink = this;
+            if (queryParameters != null) queryParameters.ChangeSink = this;
 
             _cts = new CancellationTokenSource();
             _rollupLoop = Task.Run(() => RollupLoopAsync(_cts.Token));
@@ -212,7 +223,9 @@ namespace IndxServer.Services
             long pruneDay = Math.Min(today - RetentionDays, store.LastRolledDay());
             if (pruneDay >= 0)
             {
-                int pruned = store.PruneRawBefore(pruneDay * 86_400_000L);
+                // A day before the cut: a dataset's local day can begin up to 14 hours before UTC
+                // midnight, and its raw rows are what a re-roll or a read for one surface needs.
+                int pruned = store.PruneRawBefore((pruneDay - 1) * 86_400_000L);
                 if (pruned > 0)
                     logger.LogInformation("statistics pruned {Rows} raw rows older than day {Day}", pruned, pruneDay);
             }

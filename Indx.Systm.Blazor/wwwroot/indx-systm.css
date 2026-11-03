@@ -27,10 +27,16 @@
        on light mode; teal reads well on dark (overridden below). */
     --CConfirmed: var(--CPureBlue);
 
+    /* Semantic: "on / enabled" — green on light mode, teal on dark (overridden below).
+       Used by ToggleSwitch's positive variant. */
+    --CPositive: #53A645;
+
     /* FONT FAMILY */
     /* The brand font where its files are present, Geist everywhere else (see fonts/fonts.css).
        Arial is the last resort should the Geist file itself fail to load. */
     --font-family: 'FunktionalGrotesk', 'Geist', Arial, sans-serif;
+    /* Code, commands, keys and file names. Geist Mono ships beside Geist (fonts/fonts.css). */
+    --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
 
     /* TEXT — line-height tuned per scale: looser for body (wraps to multiple lines),
        tighter for large display sizes. Controls (buttons/inputs) use fixed heights with
@@ -45,8 +51,25 @@
     --text-3xl: 350 30px/1.2 var(--font-family);
     --text-4xl: 350 36px/1.15 var(--font-family);
 
+    /* The patterns, the same set as indx-systm's globals/patterns.css (ported 13 Oct 2026): the
+       2x2 checkerboard, spaced checkerboards (4, 6, 8, 10) and grids (6, 12, 24), each with a
+       light (dark ink) and a dark (white ink) variant; dark mode swaps the light one below. */
     --pattern-checkerboard-light: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23080809'/%3E%3Crect x='1' width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
     --pattern-checkerboard-dark: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='1' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-4-light: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-4-dark: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-6-light: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-6-dark: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-8-light: url("data:image/svg+xml,%3Csvg width='8' height='8' viewBox='0 0 8 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-8-dark: url("data:image/svg+xml,%3Csvg width='8' height='8' viewBox='0 0 8 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-10-light: url("data:image/svg+xml,%3Csvg width='10' height='10' viewBox='0 0 10 10' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3Crect x='5' y='5' width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-10-dark: url("data:image/svg+xml,%3Csvg width='10' height='10' viewBox='0 0 10 10' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='5' y='5' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-grid-6-light: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-grid-6-dark: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-grid-12-light: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-grid-12-dark: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-grid-24-light: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-grid-24-dark: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
 
     --light: 300;
     --book: 350;
@@ -60,6 +83,13 @@
 @media (prefers-color-scheme: dark) {
     :root {
         --pattern-checkerboard-light: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='1' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+        --pattern-checkerboard-spaced-4-light: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+        --pattern-checkerboard-spaced-6-light: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+        --pattern-checkerboard-spaced-8-light: url("data:image/svg+xml,%3Csvg width='8' height='8' viewBox='0 0 8 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+        --pattern-checkerboard-spaced-10-light: url("data:image/svg+xml,%3Csvg width='10' height='10' viewBox='0 0 10 10' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='5' y='5' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+        --pattern-grid-6-light: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+        --pattern-grid-12-light: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+        --pattern-grid-24-light: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
 
         --lv0: #080809;
         --lv1: #121215;
@@ -73,7 +103,22 @@
 
         /* Teal reads well on dark backgrounds. */
         --CConfirmed: var(--CTeal);
+        --CPositive: var(--CTeal);
     }
+}
+
+/* Pixl icons are pixel art on a 7x5 grid. Text widths beside them (a label, a name) leave them on a
+   fraction of a pixel, which a 1x screen draws as a soft edge; crispEdges snaps their edges to
+   the screen's pixels wherever they land. Every pixl icon shares this viewBox. */
+svg[viewBox="0 0 7 5"] {
+    shape-rendering: crispEdges;
+}
+
+/* Selected text: a level rather than the browser's blue, which sat badly on the dark theme. lv3 is the
+   fields' own selection; the text goes to lv8 so grey text stays readable on it in both themes. */
+::selection {
+    background: var(--lv3);
+    color: var(--lv8);
 }
 
 /* InputField — the text input box. A reusable class: used both by the InputField

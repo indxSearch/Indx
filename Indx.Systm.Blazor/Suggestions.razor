@@ -1,0 +1,18 @@
+@* Port of indx-systm Suggestions: questions to start from, shown while the thread is empty. *@
+<div class="indx-chat-suggestions @Class">
+    <div class="indx-chat-label">@Label</div>
+    <div class="indx-chat-wrap">
+        @foreach (var s in Items)
+        {
+            var text = s;
+            <Button Variant="secondary" Size="micro" @onclick="() => OnPick.InvokeAsync(text)">@text</Button>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<string> Items { get; set; } = [];
+    [Parameter] public EventCallback<string> OnPick { get; set; }
+    [Parameter] public string Label { get; set; } = "Try asking";
+    [Parameter] public string? Class { get; set; }
+}

@@ -1,0 +1,45 @@
+@* The team's API keys page: [team ▾] › API keys. The keys the team owns, for deployed sites and
+   servers, on a page of their own beside Observr and Manage team so they are as easy to find as
+   the personal ones under Account. Admins manage them; the others are told where to turn. Reached
+   from the API keys button on the team page. Hosted by Pages/ConsolePage. *@
+@using IndxServer.Data
+@using IndxServer.Services
+@inject HeaderState Header
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+<PageTitle>API keys · @Team.Name</PageTitle>
+
+<div>
+    <h2 class="indx-section-heading indx-section-heading--first">API keys</h2>
+    <p class="indx-section-help">
+        Keys the team owns, for a production website or a server. They keep working when the person who created
+        them leaves the team, and every Admin can see and revoke them. Your own keys, for scripts and AI agents,
+        are under <a href="/account/api-key">Account, API keys</a>.
+    </p>
+
+    @if (TeamRoles.CanAdmin(Role))
+    {
+        <TeamKeys Team="Team" UserId="@UserId" />
+    }
+    else
+    {
+        <p class="indx-section-help">The team's Admins manage its keys. Ask one of them for a key, or make a personal one under Account.</p>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public Team Team { get; set; } = default!;
+    [Parameter] public string? Role { get; set; }
+    [Parameter, EditorRequired] public string UserId { get; set; } = "";
+
+    protected override void OnParametersSet() => Header.Set(this, b =>
+    {
+        b.OpenComponent<ConsoleBreadcrumb>(0);
+        b.AddAttribute(1, "TeamName", Team.Name);
+        b.AddAttribute(2, "Page", "API keys");
+        b.CloseComponent();
+    });
+
+    public void Dispose() => Header.Clear(this, keepIf: NavigationManager.ToBaseRelativePath(NavigationManager.Uri).StartsWith("teams/", StringComparison.OrdinalIgnoreCase));
+}
