@@ -23,8 +23,9 @@ namespace IndxServer.Mcp
         TeamService teams,
         DatasetMetadataStore metadata)
     {
-        // Default match semantics for agents: precise near-exact only (Coverage on, pattern
-        // matches off). A query with no near-exact hit returns nothing rather than fuzzy noise.
+        // Default match semantics for agents: precise near-exact only (EditDistance reranked, the
+        // fallback's pattern matches off). A query with no near-exact hit returns nothing rather
+        // than fuzzy noise.
         private const int DefaultLimit = 10;
         private const int MaxResponseBytes = 80_000; // size guardrail for the context window
         private const int MaxFacetValues = 25;
@@ -139,6 +140,7 @@ namespace IndxServer.Mcp
                      "know the field names and the values that exist. An empty result is meaningful here: matching is precise by " +
                      "default (near-exact only, incl. typo tolerance) — an empty result means nothing matches well, " +
                      "which is a trustworthy 'not found' (don't retry with looser wording unless you set broaden=true). " +
+                     "count is the hits returned, total how many documents match in all (report total as the number of matches). " +
                      "Saved boost rules are applied. Use filters for structured constraints on filterable fields, and filter " +
                      "(an expression) for OR, NOT, IN or open ranges (get valid fields/values from describe_dataset).")]
         public async Task<McpSearchResult> Search(
@@ -494,6 +496,9 @@ namespace IndxServer.Mcp
                 outp.Hits.Add(new McpSearchHit { Key = rec.DocumentKey, Score = rec.Score, Document = doc });
             }
             outp.Count = outp.Hits.Count;
+            // How many documents answer the query (Result.Count, 2 Nov 2026), beyond the hits
+            // returned: what an agent says when it reports "N matches".
+            outp.Total = res.Count;
 
             if (res.Facets != null)
             {

@@ -78,7 +78,10 @@ namespace IndxServer.Mcp
     /// <summary>Search response: ranked hits, optional facets, truncation note.</summary>
     public class McpSearchResult
     {
+        /// <summary>The hits returned.</summary>
         public int Count { get; set; }
+        /// <summary>How many documents answer the query, beyond the hits returned (Result.Count).</summary>
+        public int Total { get; set; }
         public List<McpSearchHit> Hits { get; set; } = new();
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
