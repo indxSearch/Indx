@@ -37,7 +37,7 @@ namespace IndxServer.Components.Datasets
             {
                 if (containers.Contains(f.FieldName)) continue;
                 var field = new InspectedField(f, Values(doc, f.FieldName));
-                if (f.Searchable == true) indexed.Add(field);
+                if (f.WordMatching == true || f.PatternMatching == true) indexed.Add(field);
                 else if (field.RoleNames.Count > 0) roles.Add(field);
                 else stored.Add(field);
             }
@@ -82,13 +82,12 @@ namespace IndxServer.Components.Datasets
     {
         public string Name => Field.FieldName;
 
-        /// <summary>The roles other than searchable, in the field table's order.</summary>
+        /// <summary>The roles other than searched (by words or by pattern), in the field table's order.</summary>
         public IReadOnlyList<string> RoleNames { get; } = new[]
         {
             Field.Filterable == true ? "filterable" : null,
             Field.Facetable == true ? "facetable" : null,
             Field.Sortable == true ? "sortable" : null,
-            Field.WordIndexing == true ? "word indexing" : null,
             Field.Embeddable == true ? "embeddable" : null,
         }.OfType<string>().ToArray();
     }

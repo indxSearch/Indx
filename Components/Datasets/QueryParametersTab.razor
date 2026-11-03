@@ -1,9 +1,11 @@
-@* The dataset's query parameters (QueryParameterStore): the coverage values a search takes when
-   its request leaves them out. Each value is "not set" (the engine default applies), or set
-   here; a request that sends the value still wins. A working copy saved with the SaveBar, as
-   boost rules are. Needs no engine, so it works while the dataset is asleep. *@
+@* The dataset's query parameters (QueryParameterStore): the values a search takes when its
+   request leaves them out (6.0: the mode, and the members of match, candidates and ranking). Each
+   value is "not set" (the engine default applies), or set here; a request that sends the value
+   still wins. A working copy saved with the SaveBar, as boost rules are. Needs no engine, so it
+   works while the dataset is asleep. *@
 @using System.Text.Json
 @using System.Text.Json.Serialization
+@using Indx.Api
 @using Indx.Http
 @using IndxServer.Models
 @inherits DatasetTabBase
@@ -18,12 +20,15 @@
     </p>
 
     @* Each table has one column: a setting's name and help, and its control on the last line
-       under them. Matching and Result list sit side by side where there is room for both, one
-       under the other where there is not. *@
+       under them. The groups sit side by side where there is room, one under the other where
+       there is not. *@
     <div class="qp-groups">
-        <Table AriaLabel="Matching" Class="qp-table">
-            @Head("Matching")
+        <Table AriaLabel="Search" Class="qp-table">
+            @Head("Search")
             <tbody>
+                @ChoiceRow(ModeParam)
+                @BoolRow(RerankParam)
+                @ChoiceRow(ToleranceParam)
                 @foreach (var p in MatchingParams) { @BoolRow(p) }
             </tbody>
         </Table>
@@ -32,7 +37,7 @@
             @Head("Result list")
             <tbody>
                 @foreach (var p in ResultParams) { @BoolRow(p) }
-                @IntRow(Depth)
+                @foreach (var p in BoundParams) { @IntRow(p) }
             </tbody>
         </Table>
     </div>
@@ -47,6 +52,7 @@
             @Head("Advanced")
             <tbody>
                 @foreach (var p in AdvancedParams) { @IntRow(p) }
+                @foreach (var p in AdvancedBoolParams) { @BoolRow(p) }
             </tbody>
         </Table>
     }
@@ -73,86 +79,108 @@
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new JsonStringEnumConverter() },
     };
 
-    private static readonly CoverageSetupDefaults Engine = new();
+    // The engine's own values, read from the library so a changed default reaches the console.
+    private static readonly MatchSetup MatchDefaults = new();
+    private static readonly CandidateSetup CandidateDefaults = new();
+    private static readonly RankingSetup RankingDefaults = new();
 
-    /// <summary>A yes/no coverage value. Get/Set work on the working copy's coverage setup.</summary>
-    // Name is the parameter's own name, as in CoverageSetup: the toggle's label, so the console
+    /// <summary>A yes/no value. Get/Set work on the whole working copy.</summary>
+    // Name is the parameter's own name, as in the search body: the toggle's label, so the console
     // and the API read the same.
     private sealed record BoolParam(string Name, string Label, string Help, bool EngineDefault,
-        Func<CoverageSetupProxy, bool?> Get, Action<CoverageSetupProxy, bool?> Set);
+        Func<DatasetQueryParameters, bool?> Get, Action<DatasetQueryParameters, bool?> Set);
 
-    /// <summary>A number. Get/Set work on the whole working copy, so coverageDepth fits too.</summary>
+    /// <summary>A number, as a whole number on screen (a share as a percentage).</summary>
     private sealed record IntParam(string Key, string Label, string Help, int EngineDefault, int Min, int Max,
-        Func<DatasetQueryParameters, int?> Get, Action<DatasetQueryParameters, int?> Set);
+        Func<DatasetQueryParameters, int?> Get, Action<DatasetQueryParameters, int?> Set, string Unit = "");
 
-    private sealed class CoverageSetupDefaults
-    {
-        private readonly Indx.Api.CoverageSetup _s = new();
-        public bool IncludePatternMatches => _s.IncludePatternMatches;
-        public int LevenshteinMaxWordSize => _s.LevenshteinMaxWordSize;
-        public int MinWordSize => _s.MinWordSize;
-        public int TruncateWordHitLimit => _s.TruncateWordHitLimit;
-        public int TruncateWordHitTolerance => _s.TruncateWordHitTolerance;
-        public bool CoverWholeQuery => _s.CoverWholeQuery;
-        public bool CoverWholeWords => _s.CoverWholeWords;
-        public bool CoverFuzzyWords => _s.CoverFuzzyWords;
-        public bool CoverJoinedWords => _s.CoverJoinedWords;
-        public bool CoverPrefixSuffix => _s.CoverPrefixSuffix;
-        public bool Truncate => _s.Truncate;
-        public int TruncationScore => _s.TruncationScore;
-    }
+    /// <summary>One of a few values, by name.</summary>
+    private sealed record ChoiceParam(string Name, string Label, string Help, string EngineDefault,
+        IReadOnlyList<SelectField.SelectOption> Options,
+        Func<DatasetQueryParameters, string?> Get, Action<DatasetQueryParameters, string?> Set);
+
+    private static MatchProxy M(DatasetQueryParameters p) => p.Match ??= new MatchProxy();
+    private static CandidateProxy C(DatasetQueryParameters p) => p.Candidates ??= new CandidateProxy();
+    private static RankingProxy R(DatasetQueryParameters p) => p.Ranking ??= new RankingProxy();
+    private static int? Percent(float? share) => share is { } s ? (int)MathF.Round(s * 100) : null;
+    private static float? Share(int? percent) => percent is { } n ? n / 100f : null;
+
+    private static readonly ChoiceParam ModeParam = new("Mode", "How documents are fetched",
+        "EditDistance finds the documents holding every query word, exactly or within a typo or two, and orders them by how close the words are. Bm25f ranks every document by pattern recognition, closest first.",
+        nameof(SearchMode.EditDistance),
+        [new("EditDistance", nameof(SearchMode.EditDistance)), new("Bm25f", nameof(SearchMode.Bm25f))],
+        p => p.Mode?.ToString(), (p, v) => p.Mode = v == null ? null : Enum.Parse<SearchMode>(v));
+
+    private static readonly BoolParam RerankParam = new("Rerank", "Rerank",
+        "Orders the documents fetched by how fully and how closely they hold the query, words, joined words and the whole query as typed.",
+        RankingDefaults.Rerank, p => p.Ranking?.Rerank, (p, v) => R(p).Rerank = v);
+
+    private static readonly ChoiceParam ToleranceParam = new("Tolerance", "Typos",
+        "The most a query word may differ from a word in a document. A field can allow fewer, never more.",
+        nameof(Tolerance.TwoEdits),
+        [new("Exact", nameof(Tolerance.Exact)), new("One edit", nameof(Tolerance.OneEdit)), new("Two edits", nameof(Tolerance.TwoEdits))],
+        p => p.Match?.Tolerance?.ToString(), (p, v) => M(p).Tolerance = v == null ? null : Enum.Parse<Tolerance>(v));
 
     private static readonly BoolParam[] MatchingParams =
     [
-        new("CoverWholeQuery", "Whole query", "Ranks documents that contain the whole query, as typed, above the rest. This is what lets a half-typed query like \"knut h\" find Knut Hamsun.",
-            Engine.CoverWholeQuery, s => s.CoverWholeQuery, (s, v) => s.CoverWholeQuery = v),
-        new("CoverWholeWords", "Whole words", "Lifts documents where the query's words appear as whole words.",
-            Engine.CoverWholeWords, s => s.CoverWholeWords, (s, v) => s.CoverWholeWords = v),
-        new("CoverFuzzyWords", "Typos", "Accepts a word with one letter wrong, missing or extra.",
-            Engine.CoverFuzzyWords, s => s.CoverFuzzyWords, (s, v) => s.CoverFuzzyWords = v),
-        new("CoverJoinedWords", "Joined and split words", "Matches words written together or apart, so \"head set\" finds \"headset\" and the other way round.",
-            Engine.CoverJoinedWords, s => s.CoverJoinedWords, (s, v) => s.CoverJoinedWords = v),
-        new("CoverPrefixSuffix", "Start or end of a word", "Matches the start or end of a longer word, so \"phone\" finds \"headphone\".",
-            Engine.CoverPrefixSuffix, s => s.CoverPrefixSuffix, (s, v) => s.CoverPrefixSuffix = v),
+        new("JoinedWords", "Joined and split words", "Matches words written together or apart, so \"head set\" finds \"headset\" and the other way round.",
+            MatchDefaults.JoinedWords, p => p.Match?.JoinedWords, (p, v) => M(p).JoinedWords = v),
+        new("Rungs", "Every typo level", "Counts the exact matches and those within one and two typos together, the exact first. Off, a search stops at the first level that finds anything.",
+            MatchDefaults.Rungs == Rungs.All, p => p.Match?.Rungs is { } r ? r == Rungs.All : null,
+            (p, v) => M(p).Rungs = v is { } on ? (on ? Rungs.All : Rungs.Fewest) : null),
     ];
 
     private static readonly BoolParam[] ResultParams =
     [
-        new("Truncate", "Truncate", "Ends the result list after the last close match, so a search returns what it found rather than everything that looks a little like it.",
-            Engine.Truncate, s => s.Truncate, (s, v) => s.Truncate = v),
-        new("IncludePatternMatches", "Include pattern matches", "When no document is a close match, return the nearest patterns. Off returns nothing instead.",
-            Engine.IncludePatternMatches, s => s.IncludePatternMatches, (s, v) => s.IncludePatternMatches = v),
+        new("Fallback", "Closest when nothing matches", "When no document holds every query word, return those holding the most of them. Off returns nothing instead.",
+            CandidateDefaults.Fallback, p => p.Candidates?.Fallback, (p, v) => C(p).Fallback = v),
+        new("Rest", "Related below the matches", "Below the documents holding every word, the best of the rest by pattern recognition.",
+            CandidateDefaults.Rest, p => p.Candidates?.Rest, (p, v) => C(p).Rest = v),
     ];
 
-    private static readonly IntParam Depth = new("coverageDepth", "Coverage depth",
-        "How many of the best pattern matches are examined for close matches. It is also the most results a search can return. Higher finds more, and every search pays for it.",
-        QueryParameterResolution.EngineCoverageDepth, 1, QueryParameterResolution.MaxCoverageDepth,
-        p => p.CoverageDepth, (p, v) => p.CoverageDepth = v);
+    private static readonly IntParam[] BoundParams =
+    [
+        new("candidatesPerRow", "Candidates per row", "How many documents are ranked for each row a search asks for, at least 100 and at most 5,000 in all.",
+            CandidateDefaults.CandidatesPerRow, 1, 1000, p => p.Candidates?.CandidatesPerRow, (p, v) => C(p).CandidatesPerRow = v),
+        new("maxCandidates", "Candidates", "How many documents are ranked, in place of the rows times the candidates per row. Higher ranks more of a large match, and every search pays for it.",
+            0, 1, QueryParameterResolution.MaxCandidates, p => p.Candidates?.MaxCandidates, (p, v) => C(p).MaxCandidates = v),
+    ];
 
     private static readonly IntParam[] AdvancedParams =
     [
-        new("minWordSize", "Shortest whole word", "The fewest characters a word needs to count as a whole-word hit.",
-            Engine.MinWordSize, 1, 63, p => p.CoverageSetup?.MinWordSize, (p, v) => Cs(p).MinWordSize = v),
-        new("levenshteinMaxWordSize", "Longest word checked for typos", "Longer words are not checked for typos by this step. At most 63.",
-            Engine.LevenshteinMaxWordSize, 1, 63, p => p.CoverageSetup?.LevenshteinMaxWordSize, (p, v) => Cs(p).LevenshteinMaxWordSize = v),
-        new("truncateWordHitLimit", "Fewest words to keep", "A document must match at least this many of the query's words to stay above the cut.",
-            Engine.TruncateWordHitLimit, 0, 1000, p => p.CoverageSetup?.TruncateWordHitLimit, (p, v) => Cs(p).TruncateWordHitLimit = v),
-        new("truncateWordHitTolerance", "Word tolerance", "How many fewer words than the best match a document may match and still stay above the cut.",
-            Engine.TruncateWordHitTolerance, 0, 1000, p => p.CoverageSetup?.TruncateWordHitTolerance, (p, v) => Cs(p).TruncateWordHitTolerance = v),
-        new("truncationScore", "Always keep at score", "A document scoring at least this always stays above the cut. 0 to 65535.",
-            Engine.TruncationScore, 0, ushort.MaxValue, p => p.CoverageSetup?.TruncationScore, (p, v) => Cs(p).TruncationScore = v is { } n ? (ushort)n : null),
+        new("oneEditFrom", "One typo from", "The shortest query word allowed one typo. 0 is never.",
+            MatchDefaults.OneEditFrom, 0, 64, p => p.Match?.OneEditFrom, (p, v) => M(p).OneEditFrom = v),
+        new("twoEditsFrom", "Two typos from", "The shortest query word allowed two typos. 0 is never.",
+            MatchDefaults.TwoEditsFrom, 0, 64, p => p.Match?.TwoEditsFrom, (p, v) => M(p).TwoEditsFrom = v),
+        new("typingPrefixFrom", "Start of a word from", "The word being typed also finds longer words it starts, from this many characters. 0 is never.",
+            MatchDefaults.TypingPrefixFrom, 0, 64, p => p.Match?.TypingPrefixFrom, (p, v) => M(p).TypingPrefixFrom = v),
+        new("typingPrefixOneEditFrom", "Start of a word with a typo from", "That start within one typo, from this many characters. 0 is never.",
+            MatchDefaults.TypingPrefixOneEditFrom, 0, 64, p => p.Match?.TypingPrefixOneEditFrom, (p, v) => M(p).TypingPrefixOneEditFrom = v),
+        new("share", "Reranking's share", "How much the reranking weighs against pattern recognition in the order, in percent.",
+            Percent(RankingDefaults.Share) ?? 0, 0, 100, p => Percent(p.Ranking?.Share), (p, v) => R(p).Share = Share(v), "%"),
+        new("typingShift", "Share moved while typing", "How much of the share moves to the start of words while the last word is being typed, in percent.",
+            Percent(RankingDefaults.TypingShift) ?? 0, 0, 100, p => Percent(p.Ranking?.TypingShift), (p, v) => R(p).TypingShift = Share(v), "%"),
+        new("longFieldFrom", "Long field from", "A field with more words than this counts for less, down to the floor below. 0 is never.",
+            RankingDefaults.LongFieldFrom, 0, 100_000, p => p.Ranking?.LongFieldFrom, (p, v) => R(p).LongFieldFrom = v),
+        new("longFieldWeightFloor", "Long field floor", "The least a long field counts for, in percent of its weight.",
+            Percent(RankingDefaults.LongFieldWeightFloor) ?? 0, 0, 100, p => Percent(p.Ranking?.LongFieldWeightFloor), (p, v) => R(p).LongFieldWeightFloor = Share(v), "%"),
     ];
 
-    /// <summary>"coverageDepth" → "CoverageDepth": the name as the C# API spells it, as the toggles show.</summary>
+    private static readonly BoolParam[] AdvancedBoolParams =
+    [
+        new("WholeQueryFloor", "Whole query first", "A document holding the whole query as typed ranks above one holding its words apart.",
+            RankingDefaults.WholeQueryFloor, p => p.Ranking?.WholeQueryFloor, (p, v) => R(p).WholeQueryFloor = v),
+    ];
+
+    /// <summary>"maxCandidates" → "MaxCandidates": the name as the C# API spells it, as the toggles show.</summary>
     private static string ParamName(IntParam p) => char.ToUpperInvariant(p.Key[0]) + p.Key[1..];
     private string InputId(IntParam p) => $"qp-{Ctx.Name}-{p.Key}";
 
-    private static CoverageSetupProxy Cs(DatasetQueryParameters p) => p.CoverageSetup ??= new CoverageSetupProxy();
-
     private bool _loaded;
-    private DatasetQueryParameters _edit = new() { CoverageSetup = new() };
+    private DatasetQueryParameters _edit = new();
     private string _savedJson = "{}";
     // The number fields as typed, so an unparseable entry stays on screen with its error.
     private readonly Dictionary<string, NumberEntry> _text = new();
@@ -177,10 +205,9 @@
     {
         // A copy: the store's instance is shared with every search.
         _edit = from == null ? new() : JsonSerializer.Deserialize<DatasetQueryParameters>(Json(from), JsonOpts)!;
-        _edit.CoverageSetup ??= new();
         _text.Clear();
         _textErrors.Clear();
-        foreach (var p in AdvancedParams.Append(Depth))
+        foreach (var p in AdvancedParams.Concat(BoundParams))
             _text[p.Key] = new NumberEntry { Text = p.Get(_edit)?.ToString() };
         _error = null;
     }
@@ -188,27 +215,47 @@
     private static string Json(DatasetQueryParameters p)
     {
         var json = JsonSerializer.Serialize(p, JsonOpts);
-        // An empty coverage setup and none at all are the same thing.
-        return json.Replace(",\"coverageSetup\":{}", "").Replace("\"coverageSetup\":{}", "");
+        // An empty part and none at all are the same thing.
+        foreach (var part in new[] { "match", "candidates", "ranking" })
+            json = json.Replace($",\"{part}\":{{}}", "").Replace($"\"{part}\":{{}},", "").Replace($"\"{part}\":{{}}", "");
+        return json;
     }
 
     private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _textErrors.Count > 0);
     private bool AnySet => QueryParameterResolution.SetNames(_edit).Count > 0;
-    private bool AdvancedSet => AdvancedParams.Any(p => p.Get(_edit) != null);
+    private bool AdvancedSet => AdvancedParams.Any(p => p.Get(_edit) != null) || AdvancedBoolParams.Any(p => p.Get(_edit) != null);
     // Open by default when something in it is set, so a set value is never out of sight.
     private bool? _showAdvanced;
     private bool ShowAdvanced => _showAdvanced ?? AdvancedSet;
 
     private RenderFragment BoolRow(BoolParam p) => __builder =>
     {
-        var value = p.Get(_edit.CoverageSetup!);
+        var value = p.Get(_edit);
         <TableRow Class="@(value != null ? "qp-row--set" : null)">
             <TableCell Class="qp-cell">
                 @Text(p.Label, p.Help)
                 <div class="qp-control">
                     <ToggleSwitch Label="@p.Name" Variant="positive" Checked="@(value ?? p.EngineDefault)"
-                                  CheckedChanged="@(v => p.Set(_edit.CoverageSetup!, v))" />
-                    @Restore(value != null, p.EngineDefault ? "on" : "off", () => p.Set(_edit.CoverageSetup!, null))
+                                  CheckedChanged="@(v => p.Set(_edit, v))" />
+                    @Restore(value != null, p.EngineDefault ? "on" : "off", () => p.Set(_edit, null))
+                </div>
+            </TableCell>
+        </TableRow>
+    };
+
+    private RenderFragment ChoiceRow(ChoiceParam p) => __builder =>
+    {
+        var value = p.Get(_edit);
+        <TableRow Class="@(value != null ? "qp-row--set" : null)">
+            <TableCell Class="qp-cell">
+                @Text(p.Label, p.Help)
+                <div class="qp-control">
+                    <div class="qp-choice">
+                        <SelectField Size="micro" Options="p.Options" Value="@(value ?? p.EngineDefault)"
+                                     ValueChanged="@(v => p.Set(_edit, v))" />
+                    </div>
+                    <span class="qp-param-name">@p.Name</span>
+                    @Restore(value != null, p.EngineDefault, () => p.Set(_edit, null))
                 </div>
             </TableCell>
         </TableRow>
@@ -243,6 +290,11 @@
         }
     };
 
+    /// <summary>What a number left unset shows: the engine's value, or for the candidates the
+    /// rule that applies in its place.</summary>
+    private static string DefaultText(IntParam p) =>
+        p.Key == "maxCandidates" ? "rows × per row" : $"{p.EngineDefault:N0}{p.Unit}";
+
     private RenderFragment IntRow(IntParam p) => __builder =>
     {
         var entry = Entry(p);
@@ -254,11 +306,11 @@
                     <div class="qp-number">
                         <InputField @bind-Value="entry.Text" @bind-Value:after="@(() => SetNumber(p, entry.Text))"
                                     Error="@_textErrors.GetValueOrDefault(p.Key)" Id="@InputId(p)"
-                                    placeholder="@($"{p.EngineDefault:N0}")" inputmode="numeric" />
+                                    placeholder="@DefaultText(p)" inputmode="numeric" />
                     </div>
                     @* The parameter's own name, as on the toggles. *@
                     <label class="qp-param-name" for="@InputId(p)">@ParamName(p)</label>
-                    @Restore(set, $"{p.EngineDefault:N0}", () => SetNumber(p, ""))
+                    @Restore(set, DefaultText(p), () => SetNumber(p, ""))
                 </div>
             </TableCell>
         </TableRow>
@@ -279,7 +331,7 @@
         Entry(p).Text = text;
         _textErrors.Remove(p.Key);
         if (text.Length == 0) { p.Set(_edit, null); return; }
-        if (!int.TryParse(text.Replace(" ", "").Replace(",", "").Replace(".", ""), out var n) || n < p.Min || n > p.Max)
+        if (!int.TryParse(text.Replace(" ", "").Replace(",", "").Replace(".", "").TrimEnd('%'), out var n) || n < p.Min || n > p.Max)
         {
             _textErrors[p.Key] = $"A whole number from {p.Min:N0} to {p.Max:N0}";
             return;
@@ -289,7 +341,7 @@
 
     private void ClearAll()
     {
-        _edit = new() { CoverageSetup = new() };
+        _edit = new();
         _text.Clear();
         _textErrors.Clear();
         _error = null;

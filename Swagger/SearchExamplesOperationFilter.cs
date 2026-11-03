@@ -27,6 +27,18 @@ namespace IndxServer.Swagger
         /// </summary>
         /// <param name="operation">The OpenAPI operation to modify</param>
         /// <param name="context">The operation filter context</param>
+        /// <summary>A search with every setting at the value a dataset with no query parameters
+        /// runs with (6.0: the mode and the members of match, candidates and ranking).</summary>
+        private static QueryProxy FullExample()
+        {
+            var e = IndxServer.Services.QueryParameterResolution.Effective(null);
+            return new QueryProxy
+            {
+                Text = "string", MaxNumberOfRecordsToReturn = 30,
+                Mode = e.Mode, Match = e.Match, Candidates = e.Candidates, Ranking = e.Ranking,
+            };
+        }
+
         public void Apply(OpenApiOperation operation, OperationFilterContext context)
         {
             // Only the text search: POST .../datasets/{dataSetName}/search (not /search/vector or
@@ -40,7 +52,7 @@ namespace IndxServer.Swagger
                 return;
 
             var full = JsonSerializer.SerializeToNode(
-                new QueryProxy { Text = "string", MaxNumberOfRecordsToReturn = 30, Match = new MatchSetup(), Candidates = new CandidateSetup(), Ranking = new RankingProxy() },
+                FullExample(),
                 JsonSerializerOptions.Web);
 
             foreach (var mediaType in content.Values)

@@ -1734,39 +1734,26 @@ namespace IndxServer.Engine
 
         private Query FromQueryProxy(QueryProxy queryProxy, IServerSearchEngine engine, string teamId, string dataSetName)
         {
-            // Each coverage value: the request's if it sent one, else the dataset's query
-            // parameters, else the engine default. The engine always gets a complete setup.
-            var coverage = Services.QueryParameterResolution.Resolve(queryProxy,
+            // Each value: the request's if it sent one, else the dataset's query parameters, else
+            // the engine default. The engine always gets the complete parts.
+            var resolved = Services.QueryParameterResolution.Resolve(queryProxy,
                 _queryParameterStore?.Load(teamId, dataSetName));
             Query query = new Query(queryProxy.Text, queryProxy.MaxNumberOfRecordsToReturn)
             {
                 LogPrefix = queryProxy.LogPrefix,
                 RemoveDuplicates = queryProxy.RemoveDuplicates,
                 MeasureFit = queryProxy.MeasureFit,
-                Mode = queryProxy.Mode,
+                Mode = resolved.Mode,
                 EnableRerankReport = queryProxy.EnableRerankReport,
                 EnableFacets = queryProxy.EnableFacets,
                 SortAscending = queryProxy.SortAscending,
                 SortBy = queryProxy.SortBy != null ? engine.DocumentFields.GetField(queryProxy.SortBy) : null,
                 TimeOutLimitMilliseconds = queryProxy.TimeOutLimitMilliseconds
             };
-            if (queryProxy.Match != null)
-                query.Match = queryProxy.Match;
-            if (queryProxy.Candidates != null)
-                query.Candidates = queryProxy.Candidates;
+            query.Match = resolved.Match;
+            query.Candidates = resolved.Candidates;
+            query.Ranking = resolved.Ranking;
             var ranking = queryProxy.Ranking;
-            if (ranking != null)
-                query.Ranking = new RankingSetup
-                {
-                    Rerank = ranking.Rerank,
-                    Share = ranking.Share,
-                    TypingShift = ranking.TypingShift,
-                    LongFieldFrom = ranking.LongFieldFrom,
-                    LongFieldWeightFloor = ranking.LongFieldWeightFloor,
-                    WholeQueryFloor = ranking.WholeQueryFloor,
-                    FieldWeights = ranking.FieldWeights ?? [],
-                    FieldBoosts = ranking.FieldBoosts ?? [],
-                };
             query.Filter = ResolveRequestFilter(engine, queryProxy.Filter, queryProxy.FilterExpression, queryProxy.FilterParameters);
 
             // The client's boosts merged with the dataset's stored, currently active boost rules,

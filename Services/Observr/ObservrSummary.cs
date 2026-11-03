@@ -83,7 +83,7 @@ namespace IndxServer.Services.Observr
                 store.Changes(teamId, dataSetName, from, to).Take(ChangesMax)
                     .Select(c => new ObservrSummaryChange(DateTimeOffset.FromUnixTimeMilliseconds(c.Timestamp).UtcDateTime, c.Kind, c.Summary)).ToList(),
                 searchOrAsk,
-                loaded ? engine!.GetFieldList().Select(f => new ObservrSummaryField(f.Name, ObservrClient.TypeName(f.Type), f.Searchable, f.Filterable, f.Facetable, f.Sortable, f.Weight)).ToList() : [],
+                loaded ? engine!.GetFieldList().Select(f => new ObservrSummaryField(f.Name, ObservrClient.TypeName(f.Type), f.WordMatching || f.PatternMatching != null, f.Filterable, f.Facetable, f.Sortable, f.Weight)).ToList() : [],
                 // What Observr has said about this dataset lately, so a digest does not say it again.
                 findings.ListForDataset(teamId, dataSetName, Findings).Select(f => $"{f.Kind}: {(f.Query.Length > 0 ? f.Query + ": " : "")}{f.Answer} ({f.Status})").ToList());
         }

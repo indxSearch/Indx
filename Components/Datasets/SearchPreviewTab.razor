@@ -333,6 +333,8 @@ else
         var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = PreviewHits };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         var hits = new List<PreviewHit>();
+        // A close match is one the search counted: they come first (6.0; until then up to TruncationIndex).
+        int counted = result.CountedInList();
         for (int i = 0; i < result.Records.Length; i++)
         {
             var record = result.Records[i];
@@ -342,7 +344,7 @@ else
                 try
                 {
                     hits.Add(new PreviewHit(JsonDocument.Parse(json).RootElement.Clone(), record.Score,
-                        record.DocumentKey, i + 1, i <= result.TruncationIndex));
+                        record.DocumentKey, i + 1, i < counted));
                 }
                 catch { }
             }

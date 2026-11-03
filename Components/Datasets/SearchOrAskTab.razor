@@ -301,7 +301,7 @@
     /// snippet can be read from.</summary>
     private List<string> TextFields => (Ctx.SavedFields ?? [])
         .Where(f => f.FieldType == "String")
-        .OrderByDescending(f => f.Searchable == true).ThenByDescending(f => f.Weight ?? 0).ThenBy(f => f.FieldName)
+        .OrderByDescending(f => f.WordMatching == true || f.PatternMatching == true).ThenByDescending(f => f.Weight ?? 0).ThenBy(f => f.FieldName)
         .Select(f => f.FieldName).ToList();
 
     /// <summary>What can place a result: text and numbers (a category, a year).</summary>

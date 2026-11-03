@@ -15,6 +15,14 @@ in the AI skill.
 
 ### Changed
 
+- **A dataset's query parameters are 6.0's settings.** `GET`/`PUT`/`DELETE …/query-parameters` and
+  the console's Query parameters tab set the `mode` and the members of `match`, `candidates` and
+  `ranking` a search takes when it leaves them out: `{ "match": { "tolerance": "Exact" },
+  "candidates": { "maxCandidates": 1000 } }`. A value a search sends still wins, one at a time, and
+  `Indx-Query-Parameters` names what came from the dataset (`match.tolerance`). What is a search's
+  own is refused: `match.cursorAt`, `candidates.indexTerms`, the field weights and boosts, the
+  boosts and buries. Settings saved by an earlier server (`coverageDepth`, `coverageSetup`) are read
+  as none: set them again.
 - **The Coverage report** (IndxSearchLib 5.1): `enableCoverageReport` on a search returns
   `coverageReport`, how each query word was met in each returned record and in which field, and
   per field how many words were met each way. Null unless asked for.

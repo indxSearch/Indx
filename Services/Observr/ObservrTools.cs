@@ -85,7 +85,7 @@ namespace IndxServer.Services.Observr
             if (engine != null && engine.Status.SystemState == SystemState.Ready)
             {
                 sb.AppendLine($"The dataset is loaded: {engine.Status.DocumentCount:N0} records.");
-                sb.AppendLine($"Fields: {string.Join(", ", engine.GetFieldList().Select(f => f.Name + (f.Searchable ? " (searched)" : "")))}.");
+                sb.AppendLine($"Fields: {string.Join(", ", engine.GetFieldList().Select(f => f.Name + (f.WordMatching || f.PatternMatching != null ? " (searched)" : "")))}.");
             }
             else
             {
@@ -168,15 +168,15 @@ namespace IndxServer.Services.Observr
             var engine = engines.FindSearchEngine(ds, ctx.TeamId);
             if (engine == null || engine.Status.SystemState != SystemState.Ready) return "The dataset is not loaded, so it cannot be searched now.";
             var label = StatisticsLabels.For(engine, statistics.Store?.LabelField(ctx.TeamId, ds));
-            var result = IndxServerInternalApi.Manager.Search(new QueryProxy { Text = text, MaxNumberOfRecordsToReturn = take, EnableCoverage = true }, ds, ctx.TeamId);
+            var result = IndxServerInternalApi.Manager.Search(new QueryProxy { Text = text, MaxNumberOfRecordsToReturn = take, Mode = SearchMode.EditDistance }, ds, ctx.TeamId);
             var records = result.Records ?? [];
-            // The list a visitor sees: the truncation point is where the search stopped trusting
-            // the matches, and what sits beyond it is what pattern matching found.
+            // The list a visitor sees: the counted matches first, and what follows them is what
+            // pattern matching found (6.0; until then up to the truncation point).
             var sb = new StringBuilder();
             if (records.Length == 0) sb.AppendLine($"\"{text}\" finds nothing.");
             else
             {
-                var trusted = result.TruncationIndex > 0 && result.TruncationIndex < records.Length ? result.TruncationIndex : records.Length;
+                var trusted = result.CountedInList();
                 sb.AppendLine($"\"{text}\": {records.Length} records returned (the first {take} asked for), {trusted} of them matches the search trusts; by name:");
                 for (var i = 0; i < records.Length; i++)
                     sb.AppendLine($"- {label(records[i].DocumentKey) ?? records[i].DocumentKey.ToString()}{(i >= trusted ? " (beyond the truncation)" : "")}");

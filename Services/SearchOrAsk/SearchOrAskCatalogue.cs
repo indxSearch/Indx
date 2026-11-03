@@ -111,7 +111,7 @@ namespace IndxServer.Services.SearchOrAsk
                 Filter = combined == null ? null : new FilterProxy(combined.SerializedKey),
                 MaxNumberOfRecordsToReturn = cap,
                 EnableFacets = true,
-                EnableCoverage = text.Length > 0,
+                Mode = text.Length > 0 ? SearchMode.EditDistance : SearchMode.Bm25f,
                 // An order asked for ("the largest") puts those first: what is read first is what leads.
                 SortBy = sort?.Field ?? string.Empty,
                 SortAscending = sort is { Descending: false },

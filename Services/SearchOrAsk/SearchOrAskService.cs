@@ -203,7 +203,7 @@ namespace IndxServer.Services.SearchOrAsk
         /// searchable fields the snippet. Section is only what the owner names.</summary>
         public static SearchOrAskFields Fields(SearchOrAskSettings settings, IReadOnlyList<Field>? fields)
         {
-            var searchable = (fields ?? []).Where(f => f.Searchable).OrderByDescending(f => f.Weight).Select(f => f.Name).ToList();
+            var searchable = (fields ?? []).Where(f => f.WordMatching || f.PatternMatching != null).OrderByDescending(f => f.Weight).Select(f => f.Name).ToList();
             var title = settings.TitleField ?? searchable.FirstOrDefault();
             var snippet = settings.SnippetFields is { Count: > 0 } s ? s : searchable.Where(n => n != title).Take(2).ToList();
             return new SearchOrAskFields(title, settings.SectionFields ?? [], snippet);
@@ -321,12 +321,13 @@ namespace IndxServer.Services.SearchOrAsk
             {
                 Text = text,
                 MaxNumberOfRecordsToReturn = 10,
-                EnableCoverage = true,
-                CoverageSetup = truncate ? null : new CoverageSetupProxy { Truncate = false },
+                Mode = SearchMode.EditDistance,
+                // Not truncated: the rest below the counted (6.0; until then Truncate off).
+                Candidates = truncate ? null : new CandidateProxy { Rest = true },
             }, dataSetName, teamId);
             var records = result.Records ?? [];
             var hits = records.Take(top).Select(r => Describe(engine, r.DocumentKey, fields, SnippetChars, forAnswer: false)).ToList();
-            return new SearchSummary(records.Length, result.TruncationIndex >= 0, hits);
+            return new SearchSummary(records.Length, result.CountedInList() > 0, hits);
         }
 
         /// <summary>A record as the models read it: key, title, sections and text. For the judge the

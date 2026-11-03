@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace IndxServer.Controllers
 {
     /// <summary>
-    /// The dataset's query parameters: the coverage values a search takes when its request leaves
+    /// The dataset's query parameters: the values a search takes when its request leaves
     /// them out. A value a request sends always wins, one value at a time.
     /// Team scoping, authentication and the error contract are declared on
     /// <see cref="DatasetApiController"/>.
@@ -15,7 +15,7 @@ namespace IndxServer.Controllers
     {
         /// <summary>
         /// Returns what the dataset sets (<c>parameters</c>, null where it sets nothing) and what a search
-        /// that sends no coverage values runs with (<c>effective</c>, every value filled in).
+        /// that sends none of these values runs with (<c>effective</c>, every value filled in).
         /// Config, not state-gated: available while the dataset is asleep. A search key may read it:
         /// it says how this dataset's searches run, and a search page shows it beside its own values.
         /// </summary>

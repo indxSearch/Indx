@@ -298,7 +298,7 @@ namespace IndxServer.Services.Observr
             if (engine == null || engine.Status.SystemState != SystemState.Ready || statistics.Store is not { } store)
                 return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
             var label = StatisticsLabels.For(engine, store.LabelField(teamId, dataSetName));
-            var results = (IndxServerInternalApi.Manager.Search(new QueryProxy { Text = q.QueryText, MaxNumberOfRecordsToReturn = 10, EnableCoverage = true }, dataSetName, teamId)
+            var results = (IndxServerInternalApi.Manager.Search(new QueryProxy { Text = q.QueryText, MaxNumberOfRecordsToReturn = 10, Mode = SearchMode.EditDistance }, dataSetName, teamId)
                 .Records ?? []).Select(r => new ObservrNamed(r.DocumentKey, label(r.DocumentKey) ?? r.DocumentKey.ToString())).ToList();
             var chosen = store.QueryDocuments(teamId, dataSetName, q.QueryText, fromDay, toDay, 10)
                 .Select(d => new ObservrChosen(d.DocumentKey, d.Label ?? label(d.DocumentKey) ?? d.DocumentKey.ToString(), d.Selects,
@@ -319,8 +319,10 @@ namespace IndxServer.Services.Observr
             var label = StatisticsLabels.For(engine, store.LabelField(teamId, dataSetName));
             List<ObservrNamed> Near(string text) => (IndxServerInternalApi.Manager.Search(new QueryProxy
             {
-                Text = text, MaxNumberOfRecordsToReturn = 3, EnableCoverage = true,
-                CoverageSetup = new CoverageSetupProxy { Truncate = false, IncludePatternMatches = true },
+                Text = text, MaxNumberOfRecordsToReturn = 3, Mode = SearchMode.EditDistance,
+                // The nearest, counted or not: the rest below the counted, and the fallback (6.0;
+                // until then Truncate off and IncludePatternMatches on).
+                Candidates = new CandidateProxy { Rest = true, Fallback = true },
             }, dataSetName, teamId).Records ?? []).Select(r => new ObservrNamed(r.DocumentKey, label(r.DocumentKey) ?? r.DocumentKey.ToString())).ToList();
             var zero = store.TopQueries(teamId, dataSetName, today - days + 1, today, 20, zeroHitsOnly: true)
                 .Select(q => new ObservrZeroHitBrief(q.QueryText, q.ZeroHits, Near(q.QueryText))).ToList();
@@ -382,13 +384,13 @@ namespace IndxServer.Services.Observr
             var current = new ObservrSearchOrAskCurrent(settings.Shown, settings.Enabled, settings.Kind, settings.SiteDescription,
                 searchOrAskService.SiteDescription(teamId, dataSetName, settings), settings.TitleField, settings.SectionFields, settings.SnippetFields,
                 effective.TitleField, effective.SectionFields.ToList(), effective.SnippetFields.ToList(), settings.FilterNotes, settings.Answers,
-                settings.AnswerInstructions, settings.AnswerLanguage, settings.Thresholds.Strong, settings.Thresholds.Invite, qp?.CoverageDepth, qp?.CoverageSetup?.Truncate);
+                settings.AnswerInstructions, settings.AnswerLanguage, settings.Thresholds.Strong, settings.Thresholds.Invite, qp?.Candidates?.MaxCandidates, !qp?.Candidates?.Rest);
             var ask = new ObservrSearchOrAskSetupAsk(SetupKind, teamId, dataSetName, review.Site, review.FieldEvidence.Select(f => f.Name).ToList(),
                 review.Records, review.Sampled, review.FieldEvidence, names, top, zero, current);
             return await SendAsync(token, teamId, dataSetName, SetupKind, "", ask, ct);
         }
 
-        private static List<string> SearchableFields(IServerSearchEngine engine) => engine.GetFieldList().Where(f => f.Searchable).Select(f => f.Name).ToList();
+        private static List<string> SearchableFields(IServerSearchEngine engine) => engine.GetFieldList().Where(f => f.WordMatching || f.PatternMatching != null).Select(f => f.Name).ToList();
 
         /// <summary>The digest: the bounded summary of the last week goes up (<see cref="ObservrSummary"/>),
         /// and each thing Observr finds worth attention comes back as a finding of its own in the
@@ -510,15 +512,15 @@ namespace IndxServer.Services.Observr
                 {
                     Text = text,
                     MaxNumberOfRecordsToReturn = take,
-                    EnableCoverage = true,
-                    CoverageSetup = strict ? null : new CoverageSetupProxy { Truncate = false, IncludePatternMatches = true },
+                    Mode = SearchMode.EditDistance,
+                    Candidates = strict ? null : new CandidateProxy { Rest = true, Fallback = true },
                 }, dataSetName, teamId).Records ?? []).Select(r => r.DocumentKey).ToList();
 
             var near = Named(Keys(query, NearMatches, strict: false));
             var words = Regex.Split(query.Trim().ToLowerInvariant(), @"[^\p{L}\p{N}]+")
                 .Where(w => w.Length >= 2).Distinct().Take(MaxWords)
                 .Select(w => new ObservrWordMatches(w, Named(Keys(w, PerWord, strict: true)))).ToList();
-            var fields = engine.GetFieldList().Where(f => f.Searchable).Select(f => f.Name).ToList();
+            var fields = engine.GetFieldList().Where(f => f.WordMatching || f.PatternMatching != null).Select(f => f.Name).ToList();
             return new ObservrZeroHitAsk(ZeroHitKind, teamId, dataSetName, Site(teamId, dataSetName), fields, query.Trim(), searches, near, words);
         }
 
@@ -548,7 +550,7 @@ namespace IndxServer.Services.Observr
                     : [];
                 var numbers = f.Type == JsonValueKind.Number
                     ? values.Select(v => v.TryGetValue<double>(out var n) ? n : (double?)null).Where(n => n != null).Select(n => n!.Value).ToList() : [];
-                evidence.Add(new ObservrFieldEvidence(f.Name, TypeName(f.Type), f.IsArray, f.Searchable, f.Filterable, f.Facetable, f.Sortable, f.Weight,
+                evidence.Add(new ObservrFieldEvidence(f.Name, TypeName(f.Type), f.IsArray, f.WordMatching || f.PatternMatching != null, f.Filterable, f.Facetable, f.Sortable, f.Weight,
                     filled, distinct, top, numbers.Count > 0 ? numbers.Min() : null, numbers.Count > 0 ? numbers.Max() : null,
                     texts.Count == 0 ? 0 : (int)texts.Average(s => s.Length)));
             }
@@ -598,7 +600,7 @@ namespace IndxServer.Services.Observr
             if (engine == null) return new ObservrSynonymTest(0, []);
             var list = new SynonymList { Entries = [new SynonymEntry { Direction = SynonymDirection.Multidirectional, Terms = terms }] };
             var expanded = list.Expand(query);
-            var result = IndxServerInternalApi.Manager.Search(new QueryProxy { Text = expanded, MaxNumberOfRecordsToReturn = 5, EnableCoverage = true }, dataSetName, teamId);
+            var result = IndxServerInternalApi.Manager.Search(new QueryProxy { Text = expanded, MaxNumberOfRecordsToReturn = 5, Mode = SearchMode.EditDistance }, dataSetName, teamId);
             var label = StatisticsLabels.For(engine, statistics.Store?.LabelField(teamId, dataSetName));
             var records = result.Records ?? [];
             return new ObservrSynonymTest(records.Length, records.Select(r => label(r.DocumentKey) ?? r.DocumentKey.ToString()).ToList());
@@ -669,8 +671,10 @@ namespace IndxServer.Services.Observr
         public void ApplyQueryParameters(string teamId, string dataSetName, ObservrQueryParametersChange c)
         {
             var p = queryParameters.Load(teamId, dataSetName) ?? new DatasetQueryParameters();
-            if (c.CoverageDepth != null) p.CoverageDepth = c.CoverageDepth.Value <= 0 ? null : c.CoverageDepth;
-            if (c.Truncate != null) { p.CoverageSetup ??= new CoverageSetupProxy(); p.CoverageSetup.Truncate = c.Truncate; }
+            // Observr speaks 5.0's names: the depth is the candidate bound, and a list not truncated
+            // is one with the rest below the counted (6.0).
+            if (c.CoverageDepth != null) (p.Candidates ??= new CandidateProxy()).MaxCandidates = c.CoverageDepth.Value <= 0 ? null : c.CoverageDepth;
+            if (c.Truncate != null) (p.Candidates ??= new CandidateProxy()).Rest = !c.Truncate;
             queryParameters.Save(teamId, dataSetName, p);
         }
 
@@ -684,7 +688,10 @@ namespace IndxServer.Services.Observr
             var proposed = changes.GroupBy(c => c.Name).Select(g => new FieldProxy
             {
                 FieldName = g.Key,
-                Searchable = g.Select(c => c.Searchable).LastOrDefault(v => v != null),
+                // Observr proposes "searchable" (5.0's role): searched by its words, as an older
+                // client's Searchable is read (FieldProxy.LegacySearchable); not searched at all.
+                WordMatching = g.Select(c => c.Searchable).LastOrDefault(v => v != null),
+                PatternMatching = g.Select(c => c.Searchable).LastOrDefault(v => v != null) == false ? false : null,
                 Filterable = g.Select(c => c.Filterable).LastOrDefault(v => v != null),
                 Facetable = g.Select(c => c.Facetable).LastOrDefault(v => v != null),
                 Sortable = g.Select(c => c.Sortable).LastOrDefault(v => v != null),

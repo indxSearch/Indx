@@ -180,7 +180,7 @@ namespace IndxServer.Mcp
                 Mode = SearchMode.EditDistance,
                 // broaden: the pattern matches below the counted (Rest, 3 Nov 2026) and, when nothing
                 // is counted, the fallback's.
-                Candidates = new CandidateSetup { Fallback = broaden, Rest = broaden },
+                Candidates = new CandidateProxy { Fallback = broaden, Rest = broaden },
                 EnableFacets = facets || isBrowse,
             };
 

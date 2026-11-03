@@ -46,7 +46,7 @@ namespace IndxServer.Controllers
             {
                 Indx.Api.Result res = IndxServerInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey, out var resolvedFilterKey);
                 // Which values the dataset's query parameters decided, because the request left
-                // them out: "why does my search truncate" is answered by one response. Absent
+                // them out: "why does my search find so few" is answered by one response. Absent
                 // when the request (or the engine default) decided everything.
                 var fromDataset = QueryParameterResolution.Resolve(query,
                     queryParameters.Load(ctx.OwnerKey, dataSetName)).FromDataset;

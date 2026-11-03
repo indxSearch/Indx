@@ -27,7 +27,7 @@ namespace IndxServer.Services
             var fields = engine.GetFieldConfiguration() ?? [];
             if (!string.IsNullOrEmpty(configured) && fields.Any(f => f.FieldName == configured))
                 return configured;
-            return fields.FirstOrDefault(f => f.Searchable == true)?.FieldName;
+            return fields.FirstOrDefault(f => f.WordMatching == true || f.PatternMatching == true)?.FieldName;
         }
 
         /// <summary>

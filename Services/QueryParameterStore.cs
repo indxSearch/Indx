@@ -10,7 +10,8 @@ namespace IndxServer.Services
 {
     /// <summary>
     /// Server-owned persistence for a dataset's query parameters (<see cref="DatasetQueryParameters"/>):
-    /// the coverage values a search takes when its request leaves them out. One JSON row per dataset
+    /// the values a search takes when its request leaves them out (6.0: the mode and the members of
+    /// match, candidates and ranking; a row saved by 5.0, coverageDepth and coverageSetup, reads as none set). One JSON row per dataset
     /// in its own table (<c>DatasetQueryParameters</c>) inside indx.db, the same pattern as
     /// <see cref="BoostRuleStore"/>, because <c>ISearchEngine</c> has no concept of a default for a
     /// query. Keyed by (TeamId, DatasetName); read on every search, so cached; writes invalidate.
@@ -177,8 +178,12 @@ namespace IndxServer.Services
             if (QueryParameterResolution.SetNames(p).Count == 0) return null;
             var json = JsonSerializer.Serialize(p, JsonOptions);
             var copy = JsonSerializer.Deserialize<DatasetQueryParameters>(json, JsonOptions)!;
-            if (copy.CoverageSetup != null && JsonSerializer.Serialize(copy.CoverageSetup, JsonOptions) == "{}")
-                copy.CoverageSetup = null;
+            if (copy.Match != null && JsonSerializer.Serialize(copy.Match, JsonOptions) == "{}")
+                copy.Match = null;
+            if (copy.Candidates != null && JsonSerializer.Serialize(copy.Candidates, JsonOptions) == "{}")
+                copy.Candidates = null;
+            if (copy.Ranking != null && JsonSerializer.Serialize(copy.Ranking, JsonOptions) == "{}")
+                copy.Ranking = null;
             return copy;
         }
 

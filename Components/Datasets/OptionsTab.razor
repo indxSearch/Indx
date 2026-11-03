@@ -350,7 +350,7 @@
             }
             var engine = Ctx.FindEngine();
             var fields = engine is { IsDisposed: false } ? engine.GetFieldConfiguration() ?? [] : [];
-            var first = fields.FirstOrDefault(f => f.Searchable == true)?.FieldName;
+            var first = fields.FirstOrDefault(f => f.WordMatching == true || f.PatternMatching == true)?.FieldName;
             var names = fields.Where(f => f.Embeddable != true).Select(f => f.FieldName).ToList();
             if (_labelField != null && !names.Contains(_labelField)) names.Insert(0, _labelField);
             return [new(first == null ? "First searchable field" : $"First searchable field ({first})", ""),
