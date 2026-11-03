@@ -131,11 +131,16 @@ namespace IndxServer.Services.Observr
         }
     }
 
+    /// <summary>A support ticket Observr drafted for the owner to send to Indx: support, feature or
+    /// feedback, a subject and the text. Sent by the Yes, through the console's support client.</summary>
+    public sealed record ObservrTicketDraft(string Kind, string Subject, string Body);
+
     /// <summary>A proposal Observr made, which this instance can carry out after a yes: a synonym
     /// (<see cref="Terms"/>), a field change (<see cref="Field"/>), Search or ask settings
-    /// (<see cref="SearchOrAsk"/>) or query parameters (<see cref="QueryParameters"/>).</summary>
+    /// (<see cref="SearchOrAsk"/>), query parameters (<see cref="QueryParameters"/>) or a support
+    /// ticket to send to Indx (<see cref="Ticket"/>).</summary>
     public sealed record ObservrProposal(string Kind, string[] Terms, string Direction, string Reason, ObservrFieldChange? Field = null,
-        ObservrSearchOrAskChange? SearchOrAsk = null, ObservrQueryParametersChange? QueryParameters = null)
+        ObservrSearchOrAskChange? SearchOrAsk = null, ObservrQueryParametersChange? QueryParameters = null, ObservrTicketDraft? Ticket = null)
     {
         /// <summary>What this server can carry out, sent to Observr as <see cref="AcceptsHeader"/> on
         /// every request: the kinds, and as <c>kind.part</c> each part added to a kind after it first
@@ -143,6 +148,11 @@ namespace IndxServer.Services.Observr
         /// to this list. A part added here must be applied in the same change, or Observr sends it
         /// and a yes leaves it out.</summary>
         public static readonly string[] Accepted = [Synonym, FieldKind, SearchOrAskKind, QueryParametersKind, "searchOrAsk.askPhrases"];
+
+        /// <summary>What this server can carry out right now: <see cref="Accepted"/>, and a support
+        /// ticket while support is on (it is sent through the Portal, which an instance with support
+        /// switched off never calls).</summary>
+        public static IEnumerable<string> AcceptedWith(bool support) => support ? [.. Accepted, SupportTicketKind] : Accepted;
         public const string AcceptsHeader = "X-Indx-Observr-Accepts";
 
         /// <summary>Whether a yes would change something. Reading drops JSON this server does not
@@ -156,6 +166,7 @@ namespace IndxServer.Services.Observr
             FieldKind => Field != null,
             SearchOrAskKind => SearchOrAsk?.Parts.Any() == true,
             QueryParametersKind => QueryParameters?.Parts.Any() == true,
+            SupportTicketKind => Ticket is { Subject.Length: > 0, Body.Length: > 0 },
             _ => false,
         };
 
@@ -191,9 +202,23 @@ namespace IndxServer.Services.Observr
                         return ("Change Search or ask:", SearchOrAsk.Parts.ToList(), "");
                     case QueryParametersKind when QueryParameters != null:
                         return ("Change the query parameters:", QueryParameters.Parts.ToList(), "");
+                    case SupportTicketKind when Ticket != null:
+                        return (Ticket.Kind switch { "feature" => "Send Indx a feature request:", "feedback" => "Send Indx feedback:", _ => "Send Indx a support request:" },
+                            [Ticket.Subject], "");
                     default:
                         return (Label, [], "");
                 }
+            }
+        }
+
+        /// <summary>The sentence as plain text, for a note: "Treat as the same word: tv, telly".</summary>
+        [JsonIgnore]
+        public string SentenceText
+        {
+            get
+            {
+                var (before, names, after) = Sentence;
+                return string.Join(" ", new[] { before, string.Join(", ", names), after }.Where(p => p.Length > 0));
             }
         }
 
@@ -201,6 +226,7 @@ namespace IndxServer.Services.Observr
         public const string FieldKind = "field";
         public const string SearchOrAskKind = "searchOrAsk";
         public const string QueryParametersKind = "queryParameters";
+        public const string SupportTicketKind = "supportTicket";
 
         /// <summary>What the proposal is, as a label, for a panel that is not a synonym's or a field's.</summary>
         [JsonIgnore]
@@ -210,6 +236,7 @@ namespace IndxServer.Services.Observr
             FieldKind => "Field",
             SearchOrAskKind => "Search or ask",
             QueryParametersKind => "Query parameters",
+            SupportTicketKind => "Send to Indx",
             _ => Kind,
         };
 
@@ -220,8 +247,22 @@ namespace IndxServer.Services.Observr
             FieldKind when Field != null => [Field.Name + ": " + Field.Summary],
             SearchOrAskKind when SearchOrAsk != null => SearchOrAsk.Parts,
             QueryParametersKind when QueryParameters != null => QueryParameters.Parts,
+            SupportTicketKind when Ticket != null => [Ticket.Subject],
             _ => [],
         };
+    }
+
+    /// <summary>What a Yes replaced (ObservrClient.Undo): the synonyms it added, the Search or ask
+    /// settings and query parameters as they were (null when there were none), each changed field's
+    /// roles as they were.</summary>
+    public sealed class ObservrUndo
+    {
+        public List<string[]> AddedSynonyms { get; set; } = [];
+        public bool HasSearchOrAsk { get; set; }
+        public string? SearchOrAskBefore { get; set; }
+        public bool HasQueryParameters { get; set; }
+        public string? QueryParametersBefore { get; set; }
+        public List<ObservrFieldChange> FieldsBefore { get; set; } = [];
     }
 
     /// <summary>A finding's proposals were carried out: the dataset, and the kinds of change.</summary>
@@ -346,7 +387,8 @@ namespace IndxServer.Services.Observr
     internal sealed class ObservrClient(IHttpClientFactory http, ObservrOptions options, InstanceSettingsService settings,
         IConfiguration configuration, IDatasetEngines engines, DatasetMetadataStore metadata, StatisticsService statistics,
         ObservrFindingStore findings, ObservrSummaryBuilder summaries, SearchOrAsk.SearchOrAskStore searchOrAsk,
-        SearchOrAsk.SearchOrAskService searchOrAskService, QueryParameterStore queryParameters, ILogger<ObservrClient> logger)
+        SearchOrAsk.SearchOrAskService searchOrAskService, QueryParameterStore queryParameters, ILogger<ObservrClient> logger,
+        Support.SupportOptions supportOptions, Support.SupportClient support, Support.SupportState supportState)
     {
         public const string HttpClientName = "Observr";
         public const string ZeroHitKind = "zeroHitQuery";
@@ -411,6 +453,19 @@ namespace IndxServer.Services.Observr
             if (status != HttpStatusCode.OK) return (Status(status), null, reason);
             var reply = JsonSerializer.Deserialize<ObservrChatReply>(body, Json);
             return reply == null ? (ObservrStatus.Failed, null, "badAnswer") : (ObservrStatus.Ok, reply, null);
+        }
+
+        /// <summary>A long conversation's earlier part as a summary, written by Observr (the previous
+        /// summary folded in). Null when it could not be had: a service from before summaries answers
+        /// 404, and the panel then keeps its plain line.</summary>
+        public async Task<string?> SummarizeAsync(string teamId, string teamName, string? previous, IReadOnlyList<ObservrTurn> turns, CancellationToken ct)
+        {
+            if (Refused(out var token) is not null) return null;
+            var payload = new { team = teamName, previous, turns = turns.Select(t => new { role = t.Role, text = t.Text }).ToList() };
+            var (status, body, _) = await PostAsync(token, "/api/chat/summary", payload, teamId, "", ct);
+            if (status != HttpStatusCode.OK) return null;
+            try { return JsonDocument.Parse(body).RootElement.GetProperty("summary").GetString() is { Length: > 0 } s ? s.Trim() : null; }
+            catch (Exception) { return null; }
         }
 
         /// <summary>Why nothing may be sent, or null with the token to send: an admin's "Observr on this
@@ -571,6 +626,8 @@ namespace IndxServer.Services.Observr
         public async Task<ObservrDigestOutcome> SendDigestAsync(string teamId, string dataSetName, CancellationToken ct)
         {
             if (Refused(out var token) is { } refused) return new ObservrDigestOutcome(refused);
+            // The key's limit, read now (at most every five minutes), so the summary can warn before it runs out.
+            await searchOrAskService.KeyLimitAsync(ct);
             var summary = summaries.Build(teamId, dataSetName);
             if (summary == null) return new ObservrDigestOutcome(ObservrStatus.Failed, "noStatistics");
             var (status, body, reason) = await PostAsync(token, "/api/summary", summary, teamId, dataSetName, ct);
@@ -612,7 +669,7 @@ namespace IndxServer.Services.Observr
             var (instanceId, instanceName) = Instance();
             request.Headers.TryAddWithoutValidation("X-Indx-Instance", instanceId);
             request.Headers.TryAddWithoutValidation("X-Indx-Instance-Name", instanceName);
-            request.Headers.TryAddWithoutValidation(ObservrProposal.AcceptsHeader, string.Join(',', ObservrProposal.Accepted));
+            request.Headers.TryAddWithoutValidation(ObservrProposal.AcceptsHeader, string.Join(',', ObservrProposal.AcceptedWith(supportOptions.Enabled)));
             // Which release asked, for Observr's support and for knowing when an old one is gone;
             // what it can carry out is the accepts list above, never inferred from this.
             request.Headers.TryAddWithoutValidation("X-Indx-Server-Version", ServerVersion);
@@ -907,13 +964,19 @@ namespace IndxServer.Services.Observr
             if (!yes)
             {
                 findings.Decide(findingId, ObservrFinding.Declined);
+                RememberDeclined(f, f.Proposals);
                 return null;
             }
             var chosen = f.Proposals.Where((p, i) => onlyProposals == null || onlyProposals.Contains(i)).ToList();
+            // The ones left out of a partial yes are declined with it, and remembered as such.
+            RememberDeclined(f, f.Proposals.Where((p, i) => onlyProposals != null && !onlyProposals.Contains(i)));
             // The store keeps only what can be carried out; this holds for a finding kept before it did.
             if (chosen.Any(p => !p.CanApply)) return "This suggestion needs a newer Indx Server. Nothing was changed.";
             var done = new HashSet<string>();
-            var why = Apply(f, chosen, done);
+            // What the Yes replaces, kept for Undo; a second Yes after a partial one adds to it.
+            var undo = findings.GetUndo(findingId) is { } kept ? JsonSerializer.Deserialize<ObservrUndo>(kept.Json, UndoJson) ?? new() : new ObservrUndo();
+            var why = Apply(f, chosen, done, undo);
+            if (done.Count > 0) findings.SetUndo(findingId, JsonSerializer.Serialize(undo, UndoJson));
             if (why == null) findings.Decide(findingId, ObservrFinding.Accepted);
             // The tabs reload what changed, also when the yes stopped part way: what was done is saved.
             if (done.Count > 0)
@@ -927,33 +990,163 @@ namespace IndxServer.Services.Observr
             return $"{why} The {string.Join(" and ", labels)} change{(done.Count == 1 ? " was" : "s were")} carried out; the rest was not.";
         }
 
+        /// <summary>A No is kept as a note on the dataset (Notes/observr-agent-plan.md, step 2), so
+        /// Observr does not propose the same change again in the next conversation.</summary>
+        private void RememberDeclined(ObservrFinding f, IEnumerable<ObservrProposal> declined)
+        {
+            if (f.DataSetName.Length == 0) return;
+            foreach (var p in declined)
+                if (p.SentenceText is { Length: > 0 } text) findings.AddNote(f.TeamId, f.DataSetName, "Declined: " + text, ObservrNote.Declined);
+        }
+
         /// <summary>The chosen proposals, synonyms first and field changes (the slow one) after the
         /// settings that cannot fail on their own. Each kind is added to <paramref name="done"/> once
         /// carried out. Returns why it stopped, or null.</summary>
-        private string? Apply(ObservrFinding f, List<ObservrProposal> chosen, HashSet<string> done)
+        private string? Apply(ObservrFinding f, List<ObservrProposal> chosen, HashSet<string> done, ObservrUndo undo)
         {
             foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.Synonym))
             {
+                var had = HasSynonym(f.TeamId, f.DataSetName, p.Terms);
                 if (!ApplySynonym(f.TeamId, f.DataSetName, p.Terms)) return "The synonym could not be stored.";
+                if (!had) undo.AddedSynonyms.Add(p.Terms);
                 done.Add(ObservrProposal.Synonym);
             }
             foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.SearchOrAskKind && p.SearchOrAsk != null))
             {
+                var before = searchOrAsk.Load(f.TeamId, f.DataSetName);
                 if (ApplySearchOrAsk(f.TeamId, f.DataSetName, p.SearchOrAsk!) is { } whyNot) return whyNot;
+                if (!undo.HasSearchOrAsk) { undo.HasSearchOrAsk = true; undo.SearchOrAskBefore = before == null ? null : JsonSerializer.Serialize(before, UndoJson); }
                 done.Add(ObservrProposal.SearchOrAskKind);
             }
             foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.QueryParametersKind && p.QueryParameters != null))
             {
+                var before = queryParameters.Load(f.TeamId, f.DataSetName);
                 ApplyQueryParameters(f.TeamId, f.DataSetName, p.QueryParameters!);
+                if (!undo.HasQueryParameters) { undo.HasQueryParameters = true; undo.QueryParametersBefore = before == null ? null : JsonSerializer.Serialize(before, UndoJson); }
                 done.Add(ObservrProposal.QueryParametersKind);
+            }
+            foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.SupportTicketKind && p.Ticket != null))
+            {
+                if (SendTicket(f, p.Ticket!) is { } whyNot) return whyNot;
+                done.Add(ObservrProposal.SupportTicketKind);
             }
             var changes = chosen.Where(p => p.Kind == ObservrProposal.FieldKind && p.Field != null).Select(p => p.Field!).ToList();
             if (changes.Count > 0)
             {
+                // Each changed field's roles as they were, read before the change.
+                var fields = engines.FindSearchEngine(f.DataSetName, f.TeamId)?.GetFieldList() ?? [];
+                var before = changes.Select(c => c.Name).Distinct()
+                    .Select(n => fields.FirstOrDefault(x => x.Name == n))
+                    .Where(x => x != null && !undo.FieldsBefore.Any(b => b.Name == x.Name))
+                    .Select(x => new ObservrFieldChange(x!.Name, x.Searchable, x.Filterable, x.Facetable, x.Sortable, x.Weight)).ToList();
                 if (ApplyFields(f.TeamId, f.DataSetName, changes) is { } why) return why;
+                undo.FieldsBefore.AddRange(before);
                 done.Add(ObservrProposal.FieldKind);
             }
             return null;
+        }
+
+        /// <summary>Sends a ticket Observr drafted, on the owner's Yes, through the support client: to
+        /// the Portal, marked as Observr's. Decide runs off the request thread, so waiting is fine.
+        /// A ticket cannot be taken back, so Undo leaves it. Returns why not, or null.</summary>
+        private string? SendTicket(ObservrFinding f, ObservrTicketDraft draft)
+        {
+            if (!supportOptions.Enabled) return "Support is switched off on this instance.";
+            var where = f.DataSetName.Length > 0 ? $"the dataset {f.DataSetName}" : "the team";
+            var result = support.CreateAsync(draft.Kind, draft.Subject, $"{draft.Body}\n\n(Drafted by Observr about {where}, sent by an owner's Yes.)",
+                "Observr", null, null, source: "observr").GetAwaiter().GetResult();
+            if (!result.Ok) return result.Problem switch
+            {
+                Support.SupportProblem.NoToken or Support.SupportProblem.Unauthorized => "The ticket needs this instance's licence token, set under Admin, License.",
+                Support.SupportProblem.Unreachable => $"Indx's support could not be reached. Try again, or write to {supportOptions.Email}.",
+                _ => result.Message ?? "The ticket could not be sent.",
+            };
+            _ = supportState.RefreshAsync();
+            return null;
+        }
+
+        private static readonly JsonSerializerOptions UndoJson = new(JsonSerializerDefaults.Web);
+
+        /// <summary>How long after a Yes it can be undone.</summary>
+        public static readonly TimeSpan UndoWindow = TimeSpan.FromHours(1);
+
+        /// <summary>Whether a finding's Yes can still be undone: carried out within <see cref="UndoWindow"/>,
+        /// with what it replaced on record.</summary>
+        public bool CanUndo(ObservrFinding f) =>
+            f.Status == ObservrFinding.Accepted && findings.GetUndo(f.Id) is { } u && DateTime.UtcNow - u.CreatedUtc < UndoWindow;
+
+        /// <summary>
+        /// Undoes a Yes (Notes/observr-agent-plan.md): the synonyms it added go, the Search or ask
+        /// settings and query parameters go back to what they were, and each changed field gets its
+        /// roles back (a rebuild, as the change was). The finding then counts as declined and is
+        /// kept as a note, so Observr does not propose it again. Returns why not, or null.
+        /// </summary>
+        public string? Undo(long findingId)
+        {
+            lock (_deciding)
+                if (!_deciding.Add(findingId)) return "This suggestion is already being carried out.";
+            try
+            {
+                var f = findings.Get(findingId);
+                if (f == null || !CanUndo(f) || findings.GetUndo(findingId) is not { } kept) return "This can no longer be undone.";
+                var undo = JsonSerializer.Deserialize<ObservrUndo>(kept.Json, UndoJson) ?? new();
+                var done = new HashSet<string>();
+                foreach (var terms in undo.AddedSynonyms)
+                {
+                    RemoveSynonym(f.TeamId, f.DataSetName, terms);
+                    done.Add(ObservrProposal.Synonym);
+                }
+                if (undo.HasSearchOrAsk)
+                {
+                    if (undo.SearchOrAskBefore is { } json && JsonSerializer.Deserialize<SearchOrAsk.SearchOrAskSettings>(json, UndoJson) is { } s) searchOrAsk.Save(f.TeamId, f.DataSetName, s);
+                    else searchOrAsk.Delete(f.TeamId, f.DataSetName);
+                    done.Add(ObservrProposal.SearchOrAskKind);
+                }
+                if (undo.HasQueryParameters)
+                {
+                    if (undo.QueryParametersBefore is { } json && JsonSerializer.Deserialize<DatasetQueryParameters>(json, UndoJson) is { } p) queryParameters.Save(f.TeamId, f.DataSetName, p);
+                    else queryParameters.Delete(f.TeamId, f.DataSetName);
+                    done.Add(ObservrProposal.QueryParametersKind);
+                }
+                string? why = null;
+                if (undo.FieldsBefore.Count > 0)
+                {
+                    why = ApplyFields(f.TeamId, f.DataSetName, undo.FieldsBefore);
+                    if (why == null) done.Add(ObservrProposal.FieldKind);
+                }
+                if (why == null)
+                {
+                    findings.ClearUndo(findingId);
+                    findings.Decide(findingId, ObservrFinding.Declined);
+                    foreach (var p in f.Proposals)
+                        if (p.SentenceText is { Length: > 0 } text && f.DataSetName.Length > 0)
+                            findings.AddNote(f.TeamId, f.DataSetName, "Undone after a Yes: " + text, ObservrNote.Declined);
+                }
+                if (done.Count > 0)
+                    foreach (var listener in Applied?.GetInvocationList() ?? [])
+                        try { ((Action<ObservrApplied>)listener)(new ObservrApplied(f.TeamId, f.DataSetName, done)); }
+                        catch (Exception ex) { logger.LogWarning(ex, "An Observr applied listener failed"); }
+                return why == null ? null : $"{why} The fields keep the change; the rest was undone.";
+            }
+            finally { lock (_deciding) _deciding.Remove(findingId); }
+        }
+
+        private static bool SameTerms(SynonymEntry e, string[] terms)
+        {
+            var clean = terms.Select(t => t.Trim()).Where(t => t.Length > 0).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            return clean.Count > 0 && clean.All(t => e.Terms.Contains(t, StringComparer.OrdinalIgnoreCase));
+        }
+
+        private bool HasSynonym(string teamId, string dataSetName, string[] terms) =>
+            engines.GetSynonyms(dataSetName, teamId)?.Entries.Any(e => SameTerms(e, terms)) == true;
+
+        private void RemoveSynonym(string teamId, string dataSetName, string[] terms)
+        {
+            if (engines.GetSynonyms(dataSetName, teamId) is not { } list) return;
+            var gone = list.Entries.RemoveAll(e => SameTerms(e, terms) && e.Terms.Length == terms.Select(t => t.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+            if (gone == 0) return;
+            list.Invalidate();
+            engines.SetSynonyms(dataSetName, teamId, list);
         }
 
         public bool ApplySynonym(string teamId, string dataSetName, string[] terms)

@@ -94,7 +94,12 @@ namespace IndxServer.Services.SearchOrAsk
     /// <summary>A provider's refusal of a model call: which call (<c>judge</c>, <c>answer</c> or
     /// <c>filters</c>), its status, the provider's own words, when, and what to do about it where the
     /// reason is one we know.</summary>
-    public sealed record ModelRefusal(string Call, int Status, string Reason, DateTime At, string? Advice);
+    public sealed record ModelRefusal(string Call, int Status, string Reason, DateTime At, string? Advice, string? LimitSource = null);
+
+    /// <summary>One kind of model call on this instance (<c>judge</c>, <c>answer</c>, <c>filters</c>):
+    /// when it last succeeded, the refusal since then if any, and the refusals of the last 24 hours
+    /// by kind (<see cref="SearchOrAskService.RefusalKind"/>). Kept in memory: a restart starts it over.</summary>
+    public sealed record ModelCallHealth(string Call, DateTime? LastSuccess, ModelRefusal? Refusal, IReadOnlyDictionary<string, int> RefusedToday);
 
     public sealed partial class SearchOrAskService : IDisposable
     {
@@ -105,26 +110,120 @@ namespace IndxServer.Services.SearchOrAsk
         /// succeeds clears it.</summary>
         public ModelRefusal? LastRefusal { get; private set; }
 
+        private readonly ConcurrentDictionary<string, DateTime> _lastSuccess = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, ModelRefusal> _refusalSince = new(StringComparer.Ordinal);
+        private readonly ConcurrentQueue<(string Call, string Kind, DateTime At)> _refusals = new();
+
         private void Refused(string call, Exception ex)
         {
             if (ex is SearchOrAskModelException { Status: 429 }) return;
-            var (status, reason) = ex is SearchOrAskModelException m ? (m.Status, m.Message) : (0, "The provider could not be reached.");
-            LastRefusal = new ModelRefusal(call, status, reason, DateTime.UtcNow, AdviceFor(reason, status));
+            var (status, reason, source) = ex is SearchOrAskModelException m ? (m.Status, m.Message, m.LimitSource) : (0, "The provider could not be reached.", null);
+            var refusal = new ModelRefusal(call, status, reason, DateTime.UtcNow, AdviceFor(reason, status, source), source);
+            LastRefusal = refusal;
+            _refusalSince[call] = refusal;
+            _refusals.Enqueue((call, RefusalKind(status, source), refusal.At));
+            while (_refusals.TryPeek(out var old) && refusal.At - old.At > TimeSpan.FromHours(24)) _refusals.TryDequeue(out _);
+            if (call == "answer") PauseOffers(status, source);
         }
 
         private void Succeeded(string call)
         {
             if (LastRefusal?.Call == call) LastRefusal = null;
+            _lastSuccess[call] = DateTime.UtcNow;
+            _refusalSince.TryRemove(call, out _);
+            if (call == "answer") ResumeOffers();
         }
 
-        /// <summary>What an owner can do about a refusal whose reason we have seen before.</summary>
-        public static string? AdviceFor(string reason, int status) =>
+        /// <summary>What a refusal was, in a word the console groups by: <c>credit</c> (the account
+        /// cannot pay), <c>keyLimit</c> (the key's cap is spent), <c>inFlight</c> (too much running at
+        /// once for what the provider holds back per call), <c>key</c> (the key is not accepted),
+        /// <c>refused</c> (another refusal of the call), <c>failed</c> (the provider failed or could not be reached).</summary>
+        public static string RefusalKind(int status, string? limitSource) => (status, limitSource) switch
+        {
+            (402, SearchOrAskLimits.InFlight) => "inFlight",
+            (402, SearchOrAskLimits.KeyLimit) => "keyLimit",
+            (402, _) => "credit",
+            (401, _) => "key",
+            (403, _) => "refused",
+            _ => "failed",
+        };
+
+        private (ProviderKeyLimit? Limit, DateTime At) _keyLimit;
+
+        /// <summary>The key's limit as last read, without reading it again.</summary>
+        public ProviderKeyLimit? CachedKeyLimit => _keyLimit.Limit;
+
+        /// <summary>What the provider says is left on its key (<see cref="ISearchOrAskModels.KeyLimitAsync"/>),
+        /// read at most every five minutes; null where the provider does not say.</summary>
+        public async Task<ProviderKeyLimit?> KeyLimitAsync(CancellationToken ct = default)
+        {
+            if (DateTime.UtcNow - _keyLimit.At < TimeSpan.FromMinutes(5)) return _keyLimit.Limit;
+            var limit = await _models.KeyLimitAsync(ct);
+            _keyLimit = (limit, DateTime.UtcNow);
+            return limit;
+        }
+
+        /// <summary>Each kind of model call, for Admin's view of the provider.</summary>
+        public IReadOnlyList<ModelCallHealth> CallHealth()
+        {
+            var since = DateTime.UtcNow.AddHours(-24);
+            var recent = _refusals.Where(r => r.At >= since).ToList();
+            return new[] { "judge", "answer", "filters" }.Select(call => new ModelCallHealth(call,
+                    _lastSuccess.TryGetValue(call, out var at) ? at : null, _refusalSince.GetValueOrDefault(call),
+                    recent.Where(r => r.Call == call).GroupBy(r => r.Kind).ToDictionary(g => g.Key, g => g.Count())))
+                .ToList();
+        }
+
+        // ── The offer pause ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// While the provider refuses answers in a way that does not pass by itself (out of credit, a
+        /// key's cap spent, a key refused or a call it will not make), no offer is shown: a visitor would
+        /// only click into "the answer could not be written", again and again (2 Nov 2026, gyldendal.no).
+        /// Search is untouched. The first refusal pauses for two minutes; offers then come back and the
+        /// next answer is the test, each refusal after doubling the pause up to half an hour. An answer
+        /// that succeeds ends it. Too much in flight at once and a rate limit pass on their own and
+        /// pause nothing.
+        /// </summary>
+        public DateTime? OffersPausedUntil { get; private set; }
+
+        /// <summary>The reason an intent gives while offers are paused.</summary>
+        public const string Paused = "paused";
+
+        private TimeSpan _pauseStep;
+        public static readonly TimeSpan FirstPause = TimeSpan.FromMinutes(2);
+        public static readonly TimeSpan LongestPause = TimeSpan.FromMinutes(30);
+
+        public bool OffersPaused => OffersPausedUntil is { } until && until > DateTime.UtcNow;
+
+        private void PauseOffers(int status, string? limitSource)
+        {
+            if (status is not (401 or 402 or 403) || limitSource == SearchOrAskLimits.InFlight) return;
+            _pauseStep = _pauseStep == TimeSpan.Zero ? FirstPause : TimeSpan.FromTicks(Math.Min(_pauseStep.Ticks * 2, LongestPause.Ticks));
+            OffersPausedUntil = DateTime.UtcNow + _pauseStep;
+            _logger.LogWarning("Search or ask offers paused until {Until:u}: the provider refused an answer ({Status})", OffersPausedUntil, status);
+        }
+
+        private void ResumeOffers()
+        {
+            _pauseStep = TimeSpan.Zero;
+            OffersPausedUntil = null;
+        }
+
+        /// <summary>What an owner can do about a refusal whose reason we have seen before. A 402 from
+        /// OpenRouter says which limit it hit, and each has its own remedy.</summary>
+        public static string? AdviceFor(string reason, int status, string? limitSource = null) =>
             reason.Contains("Regional routing", StringComparison.OrdinalIgnoreCase)
                 ? "OpenRouter serves its EU endpoint only on a Business or Enterprise plan. Switch off Keep requests in the EU in Admin, Settings, or upgrade the OpenRouter plan."
-            : status == 402 ? "The provider's account is out of credit. Top it up in the provider's own console."
-            : status == 401 ? "The provider does not accept the key. Check it in Admin, Settings."
-            : status == 403 ? "The provider refused the call: a spent key budget, a plan that does not allow it, or a guardrail. Its own words are above."
-            : null;
+            : (status, limitSource) switch
+            {
+                (402, SearchOrAskLimits.InFlight) => "Too many answers were being written at once for what OpenRouter holds back for each call while it runs. It passes by itself. If it keeps happening, choose faster answer models, or raise the key's limit or the account's credit.",
+                (402, SearchOrAskLimits.KeyLimit) => "The key's spending limit is used up. Raise it, or wait for it to reset, in OpenRouter's Keys settings.",
+                (402, _) => "The provider's account is out of credit. Top it up in the provider's own console.",
+                (401, _) => "The provider does not accept the key. Check it in Admin, Settings.",
+                (403, _) => "The provider refused the call: a spent key budget, a plan that does not allow it, or a guardrail. Its own words are above.",
+                _ => null,
+            };
 
         private readonly SearchOrAskStore _store;
         private readonly DatasetMetadataStore _metadata;
@@ -359,7 +458,7 @@ namespace IndxServer.Services.SearchOrAsk
                 // is not: the pause that follows is recorded, from the cache it filled.
                 if (prefetch && cost is { } spent)
                     RecordCost(teamId, dataSetName, settings.DailyCallBudget, spent);
-                if (!prefetch && reason != "identifier" && origin != null && Writer is { } w)
+                if (!prefetch && reason is not ("identifier" or Paused) && origin != null && Writer is { } w)
                     w.RecordAskIntent(new AskIntentEventRow(teamId, dataSetName, Blank(origin.QueryId), p, answerable,
                         result.Offer, cached, reason, cost, Blank(origin.Subject), Blank(origin.Session), origin.Source,
                         DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted, askPhrase, focusedHits));
@@ -369,6 +468,11 @@ namespace IndxServer.Services.SearchOrAsk
             // On the text as typed: lowercasing first would hide the camel case the rule looks for.
             if (IsIdentifier(text))
                 return new IntentOutcome(IntentStatus.Ok, Result(0, null, false, "identifier"));
+            // An offer whose answer the provider would refuse is no offer (OffersPausedUntil): the page
+            // gets "none" as from a judge that was not sure, and no call is made or recorded. The
+            // console's tester (a trial) still judges, so a paused instance can be looked into.
+            if (trial == null && OffersPaused)
+                return new IntentOutcome(IntentStatus.Ok, Result(0, null, false, Paused));
 
             var site = SiteDescription(teamId, dataSetName, settings);
             var fields = Fields(settings, engine.GetFieldList());
@@ -822,6 +926,8 @@ namespace IndxServer.Services.SearchOrAsk
                         DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted, FollowUp: history.Count > 0, Proactive: origin.Proactive));
                     if (askId != null && outcome != "stopped")
                         CompareWithLastAsk(teamId, dataSetName, settings, askId, question, history.Count > 0, origin);
+                    if (askId != null && outcome != "stopped" && origin.Counted && history.Count == 0)
+                        CompareWithEarlierNeeds(teamId, dataSetName, settings, question);
                 }
             }
         }
@@ -905,6 +1011,112 @@ namespace IndxServer.Services.SearchOrAsk
                 if (await RephrasedAsync(site, last.Question, question) is { } p)
                     w.RecordAskRephrase(new AskRephraseRow(askId, teamId, dataSetName, last.AskId, p));
             });
+        }
+
+        /// <summary>The datasets whose question texts are being compared, so one comparison runs at a time.</summary>
+        private readonly ConcurrentDictionary<(string, string), byte> _comparingNeeds = new();
+
+        /// <summary>The texts each dataset was asked lately, by when: a run reads the texts from the
+        /// statistics, where the writer's queue may not have put the latest yet.</summary>
+        private readonly ConcurrentDictionary<(string, string), ConcurrentDictionary<string, long>> _recentNeedTexts = new();
+
+        /// <summary>How many earlier texts a new one is put to the judge against: the closest Indx finds.</summary>
+        public const int SameNeedCandidates = 3;
+
+        /// <summary>Texts compared per run, so a dataset with a backlog catches up a little per question.</summary>
+        public const int SameNeedTextsPerRun = 20;
+
+        /// <summary>The texts a run searches among, the most recently asked.</summary>
+        public const int SameNeedTextsSearched = 5000;
+
+        /// <summary>
+        /// After a question is recorded: each question text not yet compared (this one first, then any
+        /// left from before, oldest first) is put to the judge against the texts Indx finds closest,
+        /// whether the two ask for the same thing (<see cref="SearchOrAskRecipes.SameNeed"/>); the needs
+        /// join on its word. Off the visitor's path, once per pair, with no more than half the day's
+        /// budget, which stays for the visitors. A text is marked compared only when all its pairs were
+        /// judged, so one the budget or a failing judge cut short is taken up again next time. One run
+        /// per dataset at a time; a question asked during it makes it go round again.
+        /// </summary>
+        private void CompareWithEarlierNeeds(string teamId, string dataSetName, SearchOrAskSettings settings, string question)
+        {
+            if (!JudgeAvailable || _statistics?.Store is not { } store) return;
+            var key = (teamId, dataSetName);
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var recent = _recentNeedTexts.GetOrAdd(key, _ => new(StringComparer.Ordinal));
+            var asked = SearchOrAskRephrasing.Normalise(question);
+            if (asked.Length > 0) recent[asked] = now;
+            foreach (var old in recent.Where(e => now - e.Value > 60_000).Select(e => e.Key).ToList()) recent.TryRemove(old, out _);
+            if (!_comparingNeeds.TryAdd(key, 0)) return;
+            var site = SiteDescription(teamId, dataSetName, settings);
+            _ = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    var started = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    try
+                    {
+                        await CompareNeedsOnceAsync(store, teamId, dataSetName, settings, site, recent);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Comparing Search or ask's questions failed for {Team}/{Dataset}", teamId, dataSetName);
+                    }
+                    _comparingNeeds.TryRemove(key, out _);
+                    if (!recent.Values.Any(at => at >= started) || !_comparingNeeds.TryAdd(key, 0)) return;
+                }
+            });
+        }
+
+        private async Task CompareNeedsOnceAsync(StatisticsStore store, string teamId, string dataSetName, SearchOrAskSettings settings,
+            string site, ConcurrentDictionary<string, long> recent)
+        {
+            var texts = store.AskTexts(teamId, dataSetName, SameNeedTextsSearched);
+            var latest = recent.OrderByDescending(e => e.Value).Select(e => e.Key).ToList();
+            foreach (var text in latest.Where(t => !texts.Contains(t)).Reverse()) texts.Insert(0, text);
+            var compared = store.SameNeedCompared(teamId, dataSetName);
+            // What was asked lately first, then what is left from before, oldest first.
+            var pending = texts.Where(t => !compared.Contains(t)).Reverse()
+                .OrderBy(t => latest.Contains(t) ? 0 : 1).Take(SameNeedTextsPerRun).ToList();
+            if (pending.Count == 0) return;
+            if (texts.Count < 2)
+            {
+                foreach (var text in pending) store.MarkSameNeedCompared(teamId, dataSetName, text);
+                return;
+            }
+            using var engine = IndxServer.Components.Shared.MicroIndex.Build(texts);
+            foreach (var text in pending)
+            {
+                bool whole = true;
+                // Without coverage: it keeps the texts that hold the words, and a paraphrase may hold few.
+                var found = engine.Search(new Query { Text = text, MaxNumberOfRecordsToReturn = SameNeedCandidates + 1, EnableCoverage = false });
+                var candidates = found.Records.Where(r => r.Score > 0 && r.DocumentKey >= 0 && r.DocumentKey < texts.Count)
+                    .Select(r => texts[(int)r.DocumentKey]).Where(c => c != text).Take(SameNeedCandidates).ToList();
+                foreach (var other in candidates)
+                {
+                    if (store.SameNeedJudged(teamId, dataSetName, text, other)) continue;
+                    if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget, settings.DailyCallBudget / 2)) return;
+                    if (await SameNeedAsync(site, other, text) is { } p) store.SaveSameNeed(teamId, dataSetName, text, other, p);
+                    else whole = false;
+                }
+                if (whole) store.MarkSameNeedCompared(teamId, dataSetName, text);
+            }
+        }
+
+        /// <summary>The judge's word on two questions from different visits: the probability they ask
+        /// for the same thing, or null when the judge failed or took too long.</summary>
+        public async Task<double?> SameNeedAsync(string site, string first, string second)
+        {
+            using var timeout = new CancellationTokenSource(_options.JudgeTimeoutMs * 2);
+            try
+            {
+                var state = new JsonObject { ["site"] = site, ["first"] = first, ["second"] = second };
+                return (await _models.JudgeAsync(state, SearchOrAskRecipes.SameNeedQuestions(), timeout.Token))[SearchOrAskRecipes.SameNeed];
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or SearchOrAskModelException or HttpRequestException)
+            {
+                return null;
+            }
         }
 
         /// <summary>The judge's word on two questions in a row: the probability the second asks the

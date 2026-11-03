@@ -40,9 +40,11 @@ else
 
     @if (!_loaded)
     {
-        @* The shape of what is coming: the five tiles, the chart and the first rows of a table, so
-           nothing jumps when the numbers land. Skeleton waits 0.15s before it shows, so a quick
-           load (most of them) never flashes it. *@
+        @* The shape of what is coming: the chart's head, the chart and the first rows of a table,
+           so nothing jumps when the numbers land. The head is the real one's element, so its
+           margins and the tab's gap place the chart where the real chart will be. Skeleton waits
+           0.1s before it shows, so a quick load (most of them) never flashes it. *@
+        <div class="stats-chart-head" aria-hidden="true"><Skeleton Width="64px" Height="24px" Delay="0.1" /></div>
         <div class="stats-loading" role="status" aria-busy="true" aria-label="Loading statistics">
             <Skeleton Height="180px" Delay="0.1" />
             <div class="stats-loading-rows">
@@ -422,8 +424,8 @@ else
             @if (_askView == "overview")
             {
                 @* The Overview view: the section's pictures, in the overview's grid. How the asks ended,
-                   offers and asks against the day's budget, today against the budget, when people ask,
-                   and what it cost day by day where the provider reports it. *@
+                   new and repeated, offers and asks against the day's budget, when people ask, what it
+                   cost day by day where the provider reports it, and when the budget goes. *@
                 <div class="stats-overview stats-ask-panels">
                     @if (_ask.Asks > 0)
                     {
@@ -431,6 +433,24 @@ else
                             <div class="stats-chart-head"><span class="stats-chart-title">How the asks ended</span></div>
                             <p class="stats-help">Answered in @Pct(_ask.Answered, _ask.Asks) of @N(_ask.Asks) asks.</p>
                             <BarMeter Segments="AskOutcomeSegments()" Labels="legend" Format="@(v => Pct((long)v, _ask.Asks))" />
+                        </div>
+                    }
+                    @* New and repeated: different visitors asking what an earlier one asked, in any
+                       wording, as the needs group them. Not "Asked again", which is one visitor
+                       trying again after an answer missed. A ring, the repeated share of the visits
+                       (2 Nov 2026; a full-width bar before, then briefly a rose, too much for two). *@
+                    @if (_askRepeats.Visits > 0)
+                    {
+                        <div class="stats-overview-item">
+                            <div class="stats-chart-head">
+                                <span class="stats-chart-title">New and repeated</span>
+                                <Button Variant="ghost" Size="micro" @onclick="@(() => _askView = "needs")">Needs</Button>
+                            </div>
+                            <p class="stats-help">@Pct(_askRepeats.Repeated, _askRepeats.Visits) of @N(_askRepeats.Visits) visits asked something an earlier visitor had asked, in any wording, over the last @Stats.RetentionDays days. A better answer to those pays off again and again.</p>
+                            <div class="stats-centred">
+                                <BarMeter Shape="ring" Size="120" Label="Repeated" Value="_askRepeats.Repeated" Max="_askRepeats.Visits"
+                                          Format="@(v => Pct((long)v, _askRepeats.Visits))" MaxLabel="@($"of {N(_askRepeats.Visits)} visits")" />
+                            </div>
                         </div>
                     }
                     @if (_askDays.Count > 0)
@@ -447,15 +467,6 @@ else
                                        new("Calls", budget.Calls, "var(--lv5)", Step: true),
                                    })"
                                    References="@(budget.Budget > 0 ? new List<Chart.ChartReference> { new(budget.Budget, "budget", "var(--CSignal)", Signal: true) } : null)" />
-                        </div>
-                    }
-                    @if (_askBudgetToday > 0)
-                    {
-                        <div class="stats-overview-item">
-                            <div class="stats-chart-head"><span class="stats-chart-title">Today against the budget</span></div>
-                            <p class="stats-help">Calls so far today, UTC, of the daily budget set under Options. Past it, visitors see no offers until midnight.</p>
-                            <BarMeter Value="_askCallsToday" Max="_askBudgetToday" Format="@(v => N((long)v))" MaxLabel="@($"of {N(_askBudgetToday)} calls")"
-                                      Color="@(_askCallsToday >= _askBudgetToday * 0.85 ? "var(--CSignal)" : null)" />
                         </div>
                     }
                     @if (_askWeekHour is { Total: > 0 } askWeek)
@@ -531,26 +542,72 @@ else
                     </tbody>
                 </Table>
                 }
-                <Modal Open="@(_need != null)" OpenChanged="@(v => { if (!v) _need = null; })" Title="@_need?.Title"
+                @if (_needDenials.Count > 0)
+                {
+                    @* What editors took back, readable by everyone and undone by an editor: the grouping
+                       is the judge's, and so is every correction of it on show. *@
+                    <h3 class="stats-subhead">Taken back</h3>
+                    <p class="stats-help">Pairs an editor said are not the same. They are kept apart whatever the judge says; undo one to let the judge's word count again.</p>
+                    <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Links taken back" Class="stats-table">
+                        <thead><tr><th>Asked as</th><th>Not the same as</th><th>By</th><th>When</th>@if (Ctx.IsEditor) {<th></th>}</tr></thead>
+                        <tbody>
+                            @foreach (var d in _needDenials)
+                            {
+                                var denial = d;
+                                <tr>
+                                    <td>@d.A</td>
+                                    <td>@d.B</td>
+                                    <td>@d.DeniedBy</td>
+                                    <td><TimeAgo Value="@DateTimeOffset.FromUnixTimeMilliseconds(d.Timestamp).UtcDateTime" TooltipPosition="left" /></td>
+                                    @if (Ctx.IsEditor) { <td><Button Variant="ghost" Size="micro" @onclick="() => UndoDenyNeedLinkAsync(denial.A, denial.B)">Undo</Button></td> }
+                                </tr>
+                            }
+                        </tbody>
+                    </Table>
+                }
+                <Modal Open="@(_need != null)" OpenChanged="@(v => { if (!v) _need = null; })" Title="@_need?.Title" Class="stats-need-modal"
                        Description="@(_need is { } d ? $"{N(d.Visits)} {(d.Visits == 1 ? "visit" : "visits")}, {d.Wordings.Count} {(d.Wordings.Count == 1 ? "wording" : "wordings")}" : null)">
                     @if (_need is { } need)
                     {
                         <div class="stats-need">
                             <BarMeter Segments="NeedSegments(need)" Labels="legend" Format="@(v => Pct((long)v, need.Visits))" />
+                            @* Why each wording is here, and who said so: the grouping is the judge's, so the page
+                               shows its every link and lets an editor take one back (Nov 2026). *@
                             <Table AriaLabel="How it was asked" Class="stats-table">
-                                <thead><tr><th>How it was asked</th><th class="stats-num">Times</th><th class="stats-num">Asked again</th><th class="stats-num">Landed</th></tr></thead>
+                                <thead><tr><th>How it was asked</th><th class="stats-num">Times</th><th class="stats-num">Asked again</th><th class="stats-num">Landed</th>@if (need.Wordings.Count > 1) {<th>Why it is here</th>}</tr></thead>
                                 <tbody>
                                     @foreach (var w in need.Wordings)
                                     {
+                                        var wording = w;
                                         <tr>
                                             <td>@w.Text</td>
                                             <td class="stats-num">@N(w.Asked)</td>
                                             <td class="stats-num">@(w.Reworded > 0 ? N(w.Reworded) : "–")</td>
                                             <td class="stats-num">@(w.Landed > 0 ? N(w.Landed) : "–")</td>
+                                            @if (need.Wordings.Count > 1)
+                                            {
+                                            <td>
+                                                <span class="stats-need-why">
+                                                    <span>@NeedWhy(need, w)</span>
+                                                    @if (w.P is { } p)
+                                                    {
+                                                        <Tooltip Content="@NeedJudged(w)" Position="left"><span class="stats-need-score">Jev @p.ToString("0.00")</span></Tooltip>
+                                                    }
+                                                    @if (w.LinkedTo != null && Ctx.IsEditor)
+                                                    {
+                                                        <Button Variant="ghost" Size="micro" @onclick="() => DenyNeedLinkAsync(wording)">Not the same</Button>
+                                                    }
+                                                </span>
+                                            </td>
+                                            }
                                         </tr>
                                     }
                                 </tbody>
                             </Table>
+                            @if (Ctx.IsEditor && need.Wordings.Any(x => x.LinkedTo != null))
+                            {
+                                <p class="stats-help">"Not the same" takes back that one link. The need splits where the link held it together; the others stand. It can be undone under Taken back.</p>
+                            }
                             @if (need.LandedOn.Count > 0)
                             {
                                 <p class="stats-help">Landed on @string.Join(", ", need.LandedOn.Select(r => TitleOf(r.DocumentKey))).</p>
@@ -570,7 +627,25 @@ else
                         @foreach (var q in _askQuestions)
                         {
                             <tr>
-                                <td>@q.Question</td>
+                                <td>
+                                    @q.Question
+                                    @if (q.OtherWordings is { Count: > 0 } others)
+                                    {
+                                        @* The need's other wordings are counted in: say so, and open the need. *@
+                                        var need = NeedOf(q);
+                                        var label = others.Count == 1 ? "+1 way" : $"+{others.Count} ways";
+                                        <Tooltip Content="@($"Also asked as: {string.Join("; ", others)}")">
+                                            @if (need != null)
+                                            {
+                                                <span class="stats-need-more"><Button Variant="ghost" Size="micro" @onclick="() => OpenNeed(need)">@label</Button></span>
+                                            }
+                                            else
+                                            {
+                                                <span class="stats-need-more stats-need-score">@label</span>
+                                            }
+                                        </Tooltip>
+                                    }
+                                </td>
                                 <td class="stats-num">@N(q.Asks)</td>
                                 <td>@QuestionOutcome(q)</td>
                                 <td class="stats-num">@Score(q.Answerability)</td>
@@ -1168,6 +1243,7 @@ else
 
     private async Task LoadAsync()
     {
+        MarkStep("stats");
         var store = Stats.Store;
         if (store == null) return;
         _loaded = false;

@@ -60,6 +60,8 @@
         [
             new("Invite", EmailTemplates.Subject(instanceName, "You have been invited"),
                 EmailTemplates.Invite(instanceName, exampleUrl, _dark)),
+            new("Invite to a team", EmailTemplates.Subject(instanceName, "You have been invited to team \"acme\""),
+                EmailTemplates.Invite(instanceName, exampleUrl, _dark, teamName: "acme", inviterEmail: "admin@example.com")),
 
             new("Verify email (on registration)", EmailTemplates.Subject(instanceName, "Please verify your email"),
                 EmailTemplates.VerifyEmail(instanceName, exampleUrl, _dark)),

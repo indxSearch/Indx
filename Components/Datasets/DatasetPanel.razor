@@ -10,6 +10,7 @@
 @implements IDisposable
 @inject IndxServer.Services.StatisticsService Statistics
 @inject IDatasetEngines Engines
+@inject IServiceProvider PanelServices
 @inject BoostRuleStore BoostStore
 @inject BuryRuleStore BuryStore
 @inject NavigationManager Nav
@@ -43,7 +44,7 @@
                 @{
                     var engineState = Ctx.EngineState;
                     var isReady = engineState == SystemState.Ready;
-                    var showNav = isReady || (Ctx.IsAnalyzed && !Ctx.IsLoadIndexing && Ctx.IsEditor) || (engineState == SystemState.Error && Ctx.IsAdmin && !Ctx.IsLoadIndexing);
+                    var showNav = ShowNav;
                     var tab = Ctx.ActiveTab;
                     // Not Ready and not Error: the not-yet sections are shown disabled.
                     var pending = !isReady && engineState != SystemState.Error;
@@ -52,7 +53,7 @@
                     // data is all there, so Options (download, keep-alive, transfer, delete) and
                     // Statistics need no engine and open; the wake view sits under Status, where a
                     // dataset's state is read; the rest waits for Wake up (24 Oct 2026).
-                    var asleep = Ctx.HasStatus && Visible && !showNav;
+                    var asleep = IsAsleep;
                     var sleepTab = !asleep ? tab
                         : Ctx.IsHibernated && tab is "options" or "statistics" ? tab
                         : tab == "webhooks" && Ctx.IsAdmin ? tab
@@ -60,6 +61,15 @@
                     if (!Ctx.HasStatus || !Visible) PublishMenu(null, tab);
                     else if (showNav) PublishMenu(NavItems(isReady, pending), tab);
                     else PublishMenu(SleepingItems(), sleepTab);
+                }
+
+                @* Below Editor these are shown read-only: say so once, above them. Categories is not
+                   among them: a viewer browses it fully, and its editing parts are simply absent. *@
+                @if (!Ctx.IsEditor && !asleep && tab is "fields" or "boosts" or "synonyms" or "query-parameters" or "search-or-ask")
+                {
+                    <div class="indx-readonly-note">
+                        <Alert>You can view this as a @(Ctx.Role?.ToLowerInvariant() ?? "viewer"). An editor or admin of the team changes it.</Alert>
+                    </div>
                 }
 
                 @* ── Tabs. All stay mounted so edit state survives switching; only the active one renders. ── *@
@@ -123,18 +133,25 @@
         if (!firstRender) return;
         Nav.LocationChanged += OnLocationChanged;
         _listening = true;
+        // Get started's Open a dataset, for whoever is signed in (a live circuit only, as here).
+        if (PanelServices.GetService(typeof(IndxServer.Services.OnboardingService)) is IndxServer.Services.OnboardingService onboarding)
+            _ = onboarding.MarkAsync(TeamId, "open");
     }
 
     /// <summary>A jump to another tab of this dataset (the command palette, a link) changes only
     /// ?tab=, and the page is not created again: open the tab the address now names. SyncAddress's
-    /// own replace lands here too, naming the tab already open, and changes nothing.</summary>
+    /// own replace lands here too, naming the tab already open, and changes nothing. A sleeping
+    /// dataset takes the tabs it can open (OpenAddressTab).</summary>
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
     {
-        if (!Visible || Ctx.EngineState != SystemState.Ready) return;
+        if (!Visible) return;
         if (IndxServer.Services.TeamRoutes.DatasetFromPath(Nav.ToBaseRelativePath(e.Location)) != Name) return;
-        var tab = RequestedTab() ?? "status";
-        if (tab == Ctx.ActiveTab) return;
-        _ = InvokeAsync(() => { Ctx.ActiveTab = tab; Ctx.NotifyChanged(); StateHasChanged(); });
+        _ = InvokeAsync(() =>
+        {
+            if (!OpenAddressTab()) return;
+            Ctx.NotifyChanged();
+            StateHasChanged();
+        });
     }
 
     protected override void OnParametersSet()
@@ -144,13 +161,10 @@
         {
             _loaded = true;
             Ctx.RefreshStatus();
-            if (Ctx.EngineState == SystemState.Ready)
-            {
-                Ctx.EnsureFieldsLoaded();
-                // A Ready dataset opens on the tab the address names (?tab=, so a refresh stays
-                // where it was), else on Status; Created opens on the upload flow.
-                Ctx.ActiveTab = RequestedTab() ?? "status";
-            }
+            if (Ctx.EngineState == SystemState.Ready) Ctx.EnsureFieldsLoaded();
+            // Opens on the tab the address names (?tab=), so a refresh or a link lands where it
+            // was; a sleeping dataset too, for the tabs it can open (OpenAddressTab).
+            OpenAddressTab();
             StartPollingIfTransitional();
             // The tab components rendered once already (before status was known) and Blazor
             // skips children whose parameters did not change — tell them the context moved.
@@ -161,13 +175,22 @@
     private void OnCtxChanged()
     {
         StartPollingIfTransitional();
-        _ = InvokeAsync(() => { SyncAddress(); StateHasChanged(); });
+        _ = InvokeAsync(() =>
+        {
+            // Woken: open the tab the link asked for while the dataset slept. Its notification
+            // brings this handler back round to sync the address and render.
+            if (OpenWakeTab()) { Ctx.NotifyChanged(); return; }
+            SyncAddress();
+            StateHasChanged();
+        });
     }
 
     /// <summary>Chosen in the side column, which is another component: the context's event is
     /// what re-renders this panel and its tabs, and keeps the address in step.</summary>
     private void SelectTab(string tab)
     {
+        // A tab picked by hand replaces the one a link left waiting for Wake up.
+        Ctx.WakeTab = null;
         if (Ctx.ActiveTab == tab) return;
         Ctx.ActiveTab = tab;
         Ctx.NotifyChanged();
@@ -225,26 +248,91 @@
 
     private const string TabQuery = "tab";
 
-    /// <summary>The tab the address asks for, when this user can open it on a Ready dataset:
-    /// one the nav shows and has enabled. Anything else (a stale link, a viewer handed an
-    /// editor's link) falls back to the default.</summary>
-    private string? RequestedTab()
+    /// <summary>The sections are the full menu: Ready, or a dataset that can be worked on in
+    /// another state (analysed and not yet loaded for an editor, Error for an admin).</summary>
+    private bool ShowNav =>
+        Ctx.EngineState == SystemState.Ready
+        || (Ctx.IsAnalyzed && !Ctx.IsLoadIndexing && Ctx.IsEditor)
+        || (Ctx.EngineState == SystemState.Error && Ctx.IsAdmin && !Ctx.IsLoadIndexing);
+
+    /// <summary>Hibernated, not loaded, waking, or created and empty: the sleeping menu
+    /// (SleepingItems), and the upload flow or the wake view as the content.</summary>
+    private bool IsAsleep => Ctx.HasStatus && Visible && !ShowNav;
+
+    /// <summary>The address, or null in a static render (the tests' HtmlRenderer), whose
+    /// NavigationManager was never initialised and throws when asked.</summary>
+    private Uri? Address()
     {
-        var query = new Uri(Nav.Uri).Query;
-        var requested = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(query)
+        try { return new Uri(Nav.Uri); }
+        catch (InvalidOperationException) { return null; }
+    }
+
+    /// <summary>The tab the address names (?tab=), or null.</summary>
+    private string? AddressTab()
+    {
+        if (Address() is not { } address) return null;
+        var requested = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(address.Query)
             .TryGetValue(TabQuery, out var v) ? v.ToString() : null;
-        if (string.IsNullOrEmpty(requested)) return null;
-        return NavItems(isReady: true, pending: false).Any(i => i.Value == requested && !i.Disabled) ? requested : null;
+        return string.IsNullOrEmpty(requested) ? null : requested;
+    }
+
+    private static bool Opens(IEnumerable<Tabs.TabItem> items, string? tab) =>
+        tab != null && items.Any(i => i.Value == tab && !i.Disabled);
+
+    /// <summary>
+    /// Opens the tab the address names, when the dataset in its state can show it to this user,
+    /// and says whether the open tab changed. Ready: any enabled section, else Status. Asleep:
+    /// the sections that need no engine (Options and Statistics while hibernated, Webhooks for
+    /// an admin); a section that needs one shows the wake view (or the upload) and is kept in
+    /// <see cref="DatasetContext.WakeTab"/> for when the dataset is Ready. Navigation never wakes
+    /// a dataset. Other states (loading, Error) choose their own view. A stale link, or a viewer
+    /// handed an editor's, falls back the same way.
+    /// </summary>
+    private bool OpenAddressTab()
+    {
+        var requested = AddressTab();
+        string tab;
+        if (Ctx.EngineState == SystemState.Ready)
+            tab = Opens(NavItems(isReady: true, pending: false), requested) ? requested! : "status";
+        else if (IsAsleep)
+        {
+            if (Opens(SleepingItems(), requested)) { tab = requested!; Ctx.WakeTab = null; }
+            else
+            {
+                tab = Ctx.IsHibernated ? "status" : "fields";
+                Ctx.WakeTab = Ctx.IsHibernated && Opens(NavItems(isReady: true, pending: false), requested) ? requested : null;
+            }
+        }
+        else return false;
+        if (tab == Ctx.ActiveTab) return false;
+        Ctx.ActiveTab = tab;
+        return true;
+    }
+
+    /// <summary>Once the dataset is Ready, opens the tab a link asked for while it slept.</summary>
+    private bool OpenWakeTab()
+    {
+        if (Ctx.WakeTab is not { } tab || Ctx.EngineState != SystemState.Ready) return false;
+        Ctx.WakeTab = null;
+        if (tab == Ctx.ActiveTab || !Opens(NavItems(isReady: true, pending: false), tab)) return false;
+        Ctx.ActiveTab = tab;
+        return true;
     }
 
     /// <summary>Keeps ?tab= in step with the open tab, replacing the history entry rather than
-    /// adding one, so Back still leaves the dataset. Status is the default and is left out. Only
-    /// while the dataset is Ready: the other states choose their own view.</summary>
+    /// adding one, so Back still leaves the dataset. Status is the default and is left out. While
+    /// the dataset is Ready, and while it sleeps on a tab it can open: the wake view keeps a tab
+    /// waiting for Wake up in the address, so a refresh keeps it too. The other states choose
+    /// their own view and leave the address alone.</summary>
     private void SyncAddress()
     {
-        if (!Visible || Ctx.EngineState != SystemState.Ready) return;
-        var want = Ctx.ActiveTab == "status" ? null : Ctx.ActiveTab;
-        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query);
+        if (!Visible) return;
+        string? want;
+        if (Ctx.EngineState == SystemState.Ready) want = Ctx.ActiveTab == "status" ? null : Ctx.ActiveTab;
+        else if (IsAsleep && Opens(SleepingItems(), Ctx.ActiveTab)) want = Ctx.ActiveTab == "status" ? Ctx.WakeTab : Ctx.ActiveTab;
+        else return;
+        if (Address() is not { } address) return;
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(address.Query);
         var have = query.TryGetValue(TabQuery, out var v) ? v.ToString() : null;
         if (want == have) return;
         Nav.NavigateTo(Nav.GetUriWithQueryParameter(TabQuery, want), replace: true);
@@ -279,25 +367,26 @@
         items.Add(Tab("fields", "Field configuration", DatasetIcons.Fields, true));
         // The categories of a catalogue, read from a facet: needs the built index.
         if (isReady || pending) items.Add(Tab("categories", "Categories", DatasetIcons.Categories, isReady));
-        // Configuration only, read on every search: needs no built index.
-        if ((isReady || pending) && Ctx.IsEditor)
+        // Configuration only, read on every search: needs no built index. Every role sees it;
+        // below Editor read-only (ReadOnlyArea), as boost rules, synonyms and Search or ask.
+        if (isReady || pending)
             items.Add(Tab("query-parameters", "Query parameters", DatasetIcons.QueryParameters, true));
         // Settings need no built index; the tester inside the tab says when it needs one. Only
         // while the instance shows the experimental feature (admin settings) and a team admin has
         // switched it on for this dataset (Options).
-        if ((isReady || pending) && Ctx.IsEditor && SearchOrAsk.ShownFor(Ctx.TeamId, Ctx.Name))
+        if ((isReady || pending) && SearchOrAsk.ShownFor(Ctx.TeamId, Ctx.Name))
             items.Add(Tab("search-or-ask", "Search or ask", DatasetIcons.SearchOrAsk, true));
         if (isReady || pending) items.Add(Tab("search", "Search preview", DatasetIcons.Search, isReady));
         // Statistics live in their own store, so the tab works even for a hibernated dataset -
         // it reads no engine (titles fall back to keys) and must never wake one.
         if (Statistics.Enabled) items.Add(Tab("statistics", "Statistics", DatasetIcons.Statistics, true));
-        if ((isReady || pending) && Ctx.IsEditor)
+        if (isReady || pending)
         {
-            var expired = isReady ? ExpiredRules(BoostStore) : 0;
+            var expired = isReady && Ctx.IsEditor ? ExpiredRules(BoostStore) : 0;
             items.Add(Tab("boosts", "Boost rules", DatasetIcons.Boost, isReady,
                 expired > 0 ? expired.ToString() : null,
                 expired > 0 ? $"{expired} expired boost rule(s), no longer applying" : null));
-            var expiredBuries = isReady ? ExpiredRules(BuryStore) : 0;
+            var expiredBuries = isReady && Ctx.IsEditor ? ExpiredRules(BuryStore) : 0;
             items.Add(Tab("buries", "Bury rules", DatasetIcons.Bury, isReady,
                 expiredBuries > 0 ? expiredBuries.ToString() : null,
                 expiredBuries > 0 ? $"{expiredBuries} expired bury rule(s), no longer applying" : null));

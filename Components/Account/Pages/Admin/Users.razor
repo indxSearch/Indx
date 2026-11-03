@@ -9,11 +9,10 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject ILogger<Users> Logger
 @inject AuthenticationStateProvider AuthenticationStateProvider
-@inject IndxServer.Services.InstanceSettingsService SettingsService
-@inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
 @inject NavigationManager NavigationManager
 @inject IndxServer.Services.IEditionService Edition
 @inject IndxServer.Data.ApplicationDbContext Db
+@inject IndxServer.Services.InviteService Invites
 
 <PageTitle>Admin — Users</PageTitle>
 
@@ -109,36 +108,52 @@ else
         </p>
     </div>
 }
-else if (_isInviteMode)
+else
 {
     <div style="margin-top: 48px;">
         <h3 style="margin-bottom: 4px;">Pending invites</h3>
         <p style="color: var(--lv5); margin: 8px 0 20px; font: var(--text-xs);">
-            Invited addresses can register once. They are removed automatically after the account is created.
+            An invited address can register once, in any registration mode, within @((int)IndxServer.Services.InviteService.Lifetime.TotalDays) days.
+            Invited to a team, it joins that team instead of getting one of its own. Team admins invite from their team's settings too.
         </p>
 
         @* The page action pattern (app.css): the primary add on top of the list it adds to. *@
         <div class="indx-list-toolbar">
             <Button Variant="primary" Size="micro" IconLeft="_iconUserPlus" @onclick="OpenInvite">Invite user</Button>
-            @if (_inviteEmails.Count > 0)
+            @if (_invites.Count > 0)
             {
-                <span class="indx-list-toolbar-end">@_inviteEmails.Count pending</span>
+                <span class="indx-list-toolbar-end">@_invites.Count pending</span>
             }
         </div>
 
-        @if (_inviteEmails.Count > 0)
+        @if (_invites.Count > 0)
         {
             <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px;">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--lv3); color: var(--lv5);">
+                        <th style="text-align: left; padding: 6px 12px; font-weight: 500;">Email</th>
+                        <th style="text-align: left; padding: 6px 12px; font-weight: 500;">Team</th>
+                        <th style="text-align: left; padding: 6px 12px; font-weight: 500;">Invited by</th>
+                        <th style="text-align: left; padding: 6px 12px; font-weight: 500;">Lasts until</th>
+                        <th style="padding: 6px 12px;"></th>
+                    </tr>
+                </thead>
                 <tbody>
-                    @foreach (var email in _inviteEmails)
+                    @foreach (var i in _invites)
                     {
                         <tr style="border-bottom: 1px solid var(--lv2);">
-                            <td style="padding: 8px 12px; color: var(--lv6);">@email</td>
-                            <td style="padding: 8px 12px;">
-                                <Chip Color="var(--lv2)" TextColor="var(--lv5)">Pending</Chip>
+                            <td style="padding: 8px 12px; color: var(--lv6);">@i.Email</td>
+                            <td style="padding: 8px 12px; color: var(--lv6);">
+                                @if (i.TeamName != null) { @i.TeamName <Chip Color="var(--lv2)" TextColor="var(--lv6)">@i.Role</Chip> }
+                                else { <span style="color: var(--lv5);">Their own team</span> }
                             </td>
-                            <td style="padding: 8px 12px; text-align: right;">
-                                <Button Variant="ghost" Size="micro" @onclick="() => RevokeInvite(email)">Revoke</Button>
+                            <td style="padding: 8px 12px; color: var(--lv5);">@(i.InvitedBy ?? "—")</td>
+                            <td style="padding: 8px 12px; color: @(i.Expired ? "var(--CSignal)" : "var(--lv5)");">
+                                @if (i.Expired) { <text>Expired </text> }<TimeAgo Value="i.ExpiresAt" />
+                            </td>
+                            <td style="padding: 8px 12px; text-align: right; white-space: nowrap;">
+                                <Button Variant="ghost" Size="micro" Loading="@(_inviteBusy == i.Id)" @onclick="() => ResendInvite(i.Id)">Resend</Button>
+                                <Button Variant="ghost" Size="micro" Disabled="@(_inviteBusy == i.Id)" @onclick="() => RevokeInvite(i.Id)">Revoke</Button>
                             </td>
                         </tr>
                     }
@@ -151,10 +166,15 @@ else if (_isInviteMode)
         }
 
         <Modal Open="_showAddInvite" OpenChanged="@(open => { if (!open && !_inviting) CloseInvite(); })" Title="Invite user"
-               Description="They get an email with a link to register. The invite can be used once.">
+               Description="They get an email with a link to register. Invited to a team, they join it when they do; someone who already has an account is added to the team at once.">
             <div class="indx-modal-form">
                 <InputField Label="Email address" placeholder="name@example.com" @bind-Value="_inviteEmailInput"
                             @oninput="@(e => _inviteEmailInput = e.Value?.ToString() ?? string.Empty)" />
+                <SelectField Size="micro" Label="Team" @bind-Value="_inviteTeamId" Options="_teamOptions" />
+                @if (!string.IsNullOrEmpty(_inviteTeamId))
+                {
+                    <SelectField Size="micro" Label="Role" @bind-Value="_inviteRole" Options="_inviteRoleOptions" />
+                }
                 @if (!string.IsNullOrEmpty(_inviteError))
                 {
                     <Alert Variant="destructive">@_inviteError</Alert>
@@ -214,13 +234,19 @@ else if (_isInviteMode)
         return error;
     }
     private string? _currentUserId;
-    private bool _isInviteMode;
-    private List<string> _inviteEmails = [];
+    private List<IndxServer.Services.InviteService.Pending> _invites = [];
     private string _inviteEmailInput = "";
     private bool _showAddInvite;
     private bool _inviting;
+    private Guid? _inviteBusy;
     private string? _roleBusyId;
     private string? _inviteError;
+    // "" is no team: the invited person gets a team of their own, as before Nov 2026.
+    private string _inviteTeamId = "";
+    private string _inviteRole = IndxServer.Services.TeamRoles.Viewer;
+    private List<SelectField.SelectOption> _teamOptions = [];
+    private static readonly List<SelectField.SelectOption> _inviteRoleOptions =
+        IndxServer.Services.TeamRoles.All.Select(r => new SelectField.SelectOption(r, r)).ToList();
 
     private record UserRow(string Id, string? Email, bool IsAdmin, bool EmailConfirmed);
 
@@ -228,21 +254,23 @@ else if (_isInviteMode)
     {
         var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
         _currentUserId = UserManager.GetUserId(auth.User);
-        LoadInvites();
+        await LoadInvites();
         await LoadUsers();
     }
 
-    private void LoadInvites()
+    private async Task LoadInvites()
     {
-        var settings = SettingsService.Load();
-        _isInviteMode = settings.RegistrationMode == IndxServer.Services.RegistrationMode.Invite;
-        _inviteEmails = [.. settings.AllowedEmails];
+        _invites = await Invites.AllAsync();
+        _teamOptions = [new("None: they get a team of their own", ""), .. (await Db.Teams.AsNoTracking().OrderBy(t => t.Name).ToListAsync())
+            .Select(t => new SelectField.SelectOption(t.Name, t.Id.ToString()))];
     }
 
     private void OpenInvite()
     {
         _inviteError = null;
         _inviteEmailInput = string.Empty;
+        _inviteTeamId = "";
+        _inviteRole = IndxServer.Services.TeamRoles.Viewer;
         _showAddInvite = true;
     }
 
@@ -255,57 +283,60 @@ else if (_isInviteMode)
 
     private async Task AddInviteAsync()
     {
-        if (_inviting) return;
+        if (_inviting || _currentUserId == null) return;
         var email = _inviteEmailInput.Trim();
         if (!IsValidEmail(email)) return;
-        if (_inviteEmails.Any(e => e.Equals(email, StringComparison.OrdinalIgnoreCase)))
-        {
-            _inviteError = "This email is already on the invite list.";
-            return;
-        }
-        _inviteEmails.Add(email);
         _inviteError = null;
-        PersistInvites();
-
-        // Sending the email is the slow part (an SMTP/ACS round trip); keep the row up with a
+        // Sending the email is the slow part (an SMTP/ACS round trip); keep the modal up with a
         // spinner until it is done rather than collapsing it while nothing seems to happen.
         _inviting = true;
-        var instanceName = SettingsService.Load().InstanceName;
-        var registerUrl = NavigationManager.ToAbsoluteUri("/account/register").ToString();
         try
         {
-            await EmailSender.SendEmailAsync(
-                email,
-                IndxServer.Services.EmailTemplates.Subject(instanceName, "You have been invited"),
-                IndxServer.Services.EmailTemplates.Invite(instanceName, registerUrl));
-            Logger.LogInformation("Invite sent to {Email}", email);
-            _message = $"Invite sent to {email}.";
-        }
-        catch (Exception ex)
-        {
-            Logger.LogError(ex, "Failed to send invite email to {Email}", email);
-            _message = $"{email} added to invite list, but the email could not be sent.";
-        }
-        finally
-        {
-            _inviting = false;
-            _inviteEmailInput = string.Empty;
+            Guid? team = Guid.TryParse(_inviteTeamId, out var id) ? id : null;
+            var result = await Invites.InviteAsync(email, team, team == null ? null : _inviteRole, _currentUserId, RegisterUrl);
+            _message = result.Outcome switch
+            {
+                IndxServer.Services.InviteService.Outcome.AddedToTeam => $"{email} already had an account and was added to the team.",
+                _ when !result.EmailSent => $"{email} is invited, but the email could not be sent. Try Resend.",
+                IndxServer.Services.InviteService.Outcome.Renewed => $"Invite to {email} sent again.",
+                _ => $"Invite sent to {email}.",
+            };
             _showAddInvite = false;
+            _inviteEmailInput = string.Empty;
+            await LoadInvites();
         }
+        catch (IndxServer.Services.InviteService.InviteException ex) { _inviteError = ex.Message; }
+        finally { _inviting = false; }
     }
 
-    private void RevokeInvite(string email)
+    private async Task ResendInvite(Guid id)
     {
-        _inviteEmails.RemoveAll(e => e.Equals(email, StringComparison.OrdinalIgnoreCase));
-        PersistInvites();
+        if (_inviteBusy != null || _currentUserId == null) return;
+        _inviteBusy = id;
+        try
+        {
+            var sent = await Invites.ResendAsync(id, _currentUserId, RegisterUrl);
+            _message = sent ? "Invite sent again." : "The invite was renewed, but the email could not be sent.";
+            await LoadInvites();
+        }
+        catch (IndxServer.Services.InviteService.InviteException ex) { _errorMessage = ex.Message; }
+        finally { _inviteBusy = null; }
     }
 
-    private void PersistInvites()
+    private async Task RevokeInvite(Guid id)
     {
-        var settings = SettingsService.Load();
-        settings.AllowedEmails = [.. _inviteEmails];
-        SettingsService.Save(settings);
+        if (_inviteBusy != null || _currentUserId == null) return;
+        _inviteBusy = id;
+        try
+        {
+            await Invites.RevokeAsync(id, _currentUserId);
+            await LoadInvites();
+        }
+        catch (IndxServer.Services.InviteService.InviteException ex) { _errorMessage = ex.Message; }
+        finally { _inviteBusy = null; }
     }
+
+    private string RegisterUrl => NavigationManager.ToAbsoluteUri("/account/register").ToString();
 
     private static bool IsValidEmail(string email) =>
         !string.IsNullOrWhiteSpace(email) && email.Contains('@') && email.Contains('.');

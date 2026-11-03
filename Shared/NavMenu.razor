@@ -16,6 +16,7 @@
 @inject AuthenticationStateProvider AuthState
 @inject IndxServer.Services.SideMenuState Menu
 @inject IndxServer.Services.ActiveTeamState ActiveTeam
+@inject IndxServer.Services.OnboardingService Onboarding
 
 <nav class="nav">
     <div class="nav-brand">
@@ -50,7 +51,8 @@
     <div class="nav-right">
         <AuthorizeView>
             <Authorized>
-                <ConsolePaletteButton />
+                @* With a column the palette's button is at its top; the header keeps one only on a phone. *@
+                <ConsolePaletteButton PhoneOnly="Menu.HasColumn" />
                 @if (_admin)
                 {
                     <Button Variant="ghost" Size="micro" Href="admin" IconLeft="_iconInstance" title="Admin" aria-label="Admin"><span class="nav-dropdown-label">Admin</span></Button>
@@ -60,6 +62,12 @@
                     <Button Variant="ghost" Size="micro" Href="account/manage" IconLeft="_iconUser">Account</Button>
                     <Button Variant="ghost" Size="micro" Href="account/api-key" IconLeft="_iconKey">API keys</Button>
                     <PopoverDivider />
+                    @* Get started back (OnboardingService). *@
+                    @if (ActiveTeam.ActiveTeamId != null && _getStartedLeft)
+                    {
+                        <Button Variant="ghost" Size="micro" IconLeft="_iconRocket" @onclick="ShowGetStartedAsync">Get started</Button>
+                        <PopoverDivider />
+                    }
                     <Button Variant="ghost" Size="micro" Href="https://docs.indx.co" IconLeft="_iconBook">Docs ↗</Button>
                     <Button Variant="ghost" Size="micro" Href="swagger" IconLeft="_iconApi">Swagger ↗</Button>
                     <PopoverDivider />
@@ -95,6 +103,31 @@
     private RenderFragment<int> _iconUser     => size => @<UserId Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconApi      => size => @<Api Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconBook     => size => @<Book Size="size" Color="currentColor" />;
+    private RenderFragment<int> _iconRocket   => size => @<Rocket Size="size" Color="currentColor" />;
+
+    /// <summary>Get started back on the active team: shown again, or made for an account from
+    /// before it shipped, as the list that fits the team.</summary>
+    /// <summary>Whether Get started has steps left on the active team (or the account has none
+    /// yet): once every step is done the card is gone, and so is the item.</summary>
+    private bool _getStartedLeft;
+
+    private async Task LoadGetStartedAsync()
+    {
+        _getStartedLeft = false;
+        var user = (await AuthState.GetAuthenticationStateAsync()).User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (user == null || ActiveTeam.Find(ActiveTeam.ActiveTeamName) is not { } team) return;
+        var view = await Onboarding.GetAsync(user, team.Team, team.Role);
+        _getStartedLeft = view is not { Finished: true };
+    }
+
+    private void OnGetStartedChanged() => _ = InvokeAsync(async () => { await LoadGetStartedAsync(); StateHasChanged(); });
+
+    private async Task ShowGetStartedAsync()
+    {
+        var user = (await AuthState.GetAuthenticationStateAsync()).User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (user == null || ActiveTeam.ActiveTeamId is not { } team) return;
+        await Onboarding.ShowAsync(user, team, IndxServer.Engine.IndxServerInternalApi.Manager.GetTeamDataSets(team.ToString()).Count > 0);
+    }
     private RenderFragment<int> _iconLogout   => size => @<Logout Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconMenu     => size => @<Indx.Systm.Blazor.Icons.Menu Size="size" Color="currentColor" />;
     private RenderFragment<int> _iconTeam     => size => @<UserGroup Size="size" Color="currentColor" />;
@@ -113,7 +146,10 @@
         Subscription.Changed += OnHeaderChanged;
         Menu.Changed += OnHeaderChanged;
         ActiveTeam.OnChange += OnHeaderChanged;
+        ActiveTeam.OnChange += OnGetStartedChanged;
+        Onboarding.Changed += OnGetStartedChanged;
         _pageCrumb = PageCrumb();
+        await LoadGetStartedAsync();
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
@@ -137,6 +173,8 @@
         Subscription.Changed -= OnHeaderChanged;
         Menu.Changed -= OnHeaderChanged;
         ActiveTeam.OnChange -= OnHeaderChanged;
+        ActiveTeam.OnChange -= OnGetStartedChanged;
+        Onboarding.Changed -= OnGetStartedChanged;
     }
 
     /// <summary>The chip beside the mark: the instance's standing. Nothing until the portal has

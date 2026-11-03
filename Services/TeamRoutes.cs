@@ -29,26 +29,51 @@ namespace IndxServer.Services
         /// </summary>
         public static string? DatasetFromPath(string? relativePath)
         {
-            if (string.IsNullOrEmpty(relativePath))
-                return null;
+            // teams/{team}/datasets/{name}, or the legacy datasets/{name}. The console has no pages
+            // below a dataset, so a further segment is not this scheme.
+            var name = Segments(relativePath) switch
+            {
+                ["teams", _, "datasets", var n] => n,
+                ["datasets", var n] => n,
+                _ => null,
+            };
+            return string.IsNullOrEmpty(name) ? null : Uri.UnescapeDataString(name);
+        }
 
-            // A query or fragment is not part of the name.
+        /// <summary>
+        /// Which console view a path names, read segment by segment. Until 1 Nov 2026 the console
+        /// looked at how the path ended, so a dataset or a team called "settings", "keys" or
+        /// "observr" opened that page instead of its own, and a query string
+        /// (<c>/teams/x/settings?foo=1</c>) fell through to the team page.
+        /// </summary>
+        public static ConsoleView ViewFromPath(string? relativePath) => Segments(relativePath) switch
+        {
+            ["teams", _, "settings"] => ConsoleView.Settings,
+            ["teams", _, "keys"] => ConsoleView.Keys,
+            ["teams", _, "observr"] => ConsoleView.Observr,
+            ["teams", _, "observr", "datasets"] => ConsoleView.ObservrDatasets,
+            ["teams", _, "datasets", _] or ["datasets", _] => ConsoleView.Dataset,
+            _ => ConsoleView.Team,
+        };
+
+        /// <summary>The path's segments, without the query or fragment, which are not part of it.
+        /// The fixed segments are compared lower-case; a team or dataset name keeps its case.</summary>
+        private static string[] Segments(string? relativePath)
+        {
+            if (string.IsNullOrEmpty(relativePath)) return [];
             var path = relativePath;
             int cut = path.IndexOfAny(['?', '#']);
             if (cut >= 0) path = path[..cut];
-            path = path.Trim('/');
-
-            const string marker = "datasets/";
-            int at = path.LastIndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            if (at < 0)
-                return null;
-
-            var name = path[(at + marker.Length)..];
-            // The console has no pages below a dataset, so a further segment is not this scheme.
-            if (name.Length == 0 || name.Contains('/'))
-                return null;
-
-            return Uri.UnescapeDataString(name);
+            var segments = path.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+            // The fixed words are the first and third segments, and the fourth under observr
+            // (teams/{team}/observr/datasets); the others are names and keep their case.
+            for (int i = 0; i < segments.Length; i++)
+                if (i is 0 or 2 || (i == 3 && segments.Length == 4 && segments[2].Equals("observr", StringComparison.OrdinalIgnoreCase)))
+                    segments[i] = segments[i].ToLowerInvariant();
+            return segments;
         }
     }
+
+    /// <summary>The views of the console's one routed page (ConsolePage).</summary>
+    public enum ConsoleView { Team, Settings, Observr, ObservrDatasets, Keys, Dataset }
 }

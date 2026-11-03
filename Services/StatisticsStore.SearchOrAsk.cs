@@ -66,9 +66,10 @@ namespace IndxServer.Services
     /// out, and the busiest day's calls against that day's budget.</summary>
     public readonly record struct AskBudgetStat(long Calls, long Refused, int DaysRunOut, long PeakCalls, int PeakBudget, double Cost = 0);
 
-    /// <summary>One question over a window, as asked (case and spacing folded).</summary>
+    /// <summary>One question over a window, as asked (case and spacing folded), with the other
+    /// wordings of its need counted in (<see cref="StatisticsStore.TopQuestions"/>).</summary>
     public readonly record struct AskQuestionStat(string Question, long Asks, long Answered, long NothingFound,
-        long Unanswered, double? Answerability, long SourcesOpened, long LastAsked);
+        long Unanswered, double? Answerability, long SourcesOpened, long LastAsked, IReadOnlyList<string>? OtherWordings = null);
 
     /// <summary>One text an offer was shown beside, from the searches the intents name.</summary>
     public readonly record struct AskOfferStat(string Text, long Offers, long Strong, double MaxP, long Asked);
@@ -485,40 +486,6 @@ SELECT
                 all.Add(r.GetInt64(1));
             }
             return byModel.ToDictionary(m => m.Key, m => (m.Value[m.Value.Count / 2], m.Value.Count), StringComparer.Ordinal);
-        }
-
-        /// <summary>The questions asked in the window, the ones the content did not answer first,
-        /// then the most asked. From the raw rows: a question list is within retention.</summary>
-        public List<AskQuestionStat> TopQuestions(string teamId, string dataSet, long fromDay, long toDay,
-            int limit = 50, string? source = null)
-        {
-            var tz = ZoneOf(teamId, dataSet);
-            using var conn = Open();
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-SELECT lower(trim(a.Question)) AS Q, COUNT(*),
-       SUM(CASE WHEN a.Outcome = 'answered' THEN 1 ELSE 0 END),
-       SUM(CASE WHEN a.Outcome = 'nothingFound' THEN 1 ELSE 0 END),
-       SUM(CASE WHEN a.Outcome = 'nothingFound' OR a.Answerable < $floor THEN 1 ELSE 0 END) AS Unanswered,
-       AVG(a.Answerable),
-       (SELECT COUNT(*) FROM SelectEvents x JOIN AskEvents b ON x.QueryId = b.AskId
-         WHERE b.TeamId = $t AND b.DataSet = $d AND lower(trim(b.Question)) = lower(trim(a.Question)) AND x.Counted = 1
-           AND b.Timestamp >= $from AND b.Timestamp < $to),
-       MAX(a.Timestamp)
-  FROM AskEvents a
- WHERE a.TeamId = $t AND a.DataSet = $d AND a.Timestamp >= $from AND a.Timestamp < $to AND a.Counted = 1" +
-                (source == null ? "" : " AND a.Source = $src") + @"
- GROUP BY Q
- ORDER BY Unanswered DESC, COUNT(*) DESC, MAX(a.Timestamp) DESC
- LIMIT $limit";
-            AddWindow(cmd, teamId, dataSet, StatisticsDays.Start(tz, fromDay), StatisticsDays.Start(tz, toDay + 1), source);
-            cmd.Parameters.AddWithValue("$limit", limit);
-            var list = new List<AskQuestionStat>();
-            using var r = cmd.ExecuteReader();
-            while (r.Read())
-                list.Add(new AskQuestionStat(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetInt64(3), r.GetInt64(4),
-                    r.IsDBNull(5) ? null : r.GetDouble(5), r.GetInt64(6), r.GetInt64(7)));
-            return list;
         }
 
         /// <summary>The texts an offer was shown beside, most offered first, with how often an ask

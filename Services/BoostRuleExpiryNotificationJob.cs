@@ -43,10 +43,10 @@ namespace IndxServer.Services
                 // Both kinds (25 Oct 2026): a bury rule that quietly ended looks live too.
                 var expired = boostStore.Load(teamId, dataSetName)
                     .Where(r => r.Enabled && r.ActiveUntil is { } until && until < today)
-                    .Select(r => (Rule: (IRankingRule)r, Type: NotificationType.BoostRuleExpired, Word: "Boost", Verb: "boosts", Tab: "Boost rules"))
+                    .Select(r => (Rule: (IRankingRule)r, Type: NotificationType.BoostRuleExpired, Word: "Boost", Verb: "boosts", Tab: "Boost rules", Key: "boosts"))
                     .Concat(buryStore.Load(teamId, dataSetName)
                         .Where(r => r.Enabled && r.ActiveUntil is { } until && until < today)
-                        .Select(r => (Rule: (IRankingRule)r, Type: NotificationType.BuryRuleExpired, Word: "Bury", Verb: "buries", Tab: "Bury rules")))
+                        .Select(r => (Rule: (IRankingRule)r, Type: NotificationType.BuryRuleExpired, Word: "Bury", Verb: "buries", Tab: "Bury rules", Key: "buries")))
                     .ToList();
                 if (expired.Count == 0) continue;
 
@@ -60,7 +60,7 @@ namespace IndxServer.Services
                     .Select(m => m.UserId)
                     .ToListAsync();
 
-                foreach (var (rule, type, word, verb, tab) in expired)
+                foreach (var (rule, type, word, verb, tab, key) in expired)
                 {
                     var sourceId = $"{teamId}/{dataSetName}/{rule.Name}/{rule.ActiveUntil:yyyy-MM-dd}";
                     foreach (var userId in recipients)
@@ -72,7 +72,7 @@ namespace IndxServer.Services
                             $"{word} rule \"{rule.Name}\" on {dataSetName} has expired",
                             $"The rule \"{rule.Name}\" on dataset {dataSetName} (team {team.Name}) ended on {rule.ActiveUntil:yyyy-MM-dd} and no longer {verb} results. " +
                             $"Extend its dates, switch it off, or delete it under {tab}.",
-                            metadata: $"/datasets/{Uri.EscapeDataString(dataSetName)}",
+                            metadata: $"{TeamRoutes.Dataset(team.Name, dataSetName)}?tab={key}",
                             sourceId: sourceId);
                     }
                     logger.LogInformation("Sent {Type} for {Dataset}/{Rule} to {Count} member(s)", type, dataSetName, rule.Name, recipients.Count);

@@ -73,7 +73,7 @@
         Logger.LogInformation("Creating new user account for email: {Email}", email);
 
         // Validate registration is allowed
-        var allowedResult = RegistrationValidator.ValidateRegistrationAllowed();
+        var allowedResult = RegistrationValidator.ValidateRegistrationAllowed(email);
         if (!allowedResult.IsValid)
         {
             Logger.LogWarning("OAuth registration blocked - registration is closed. Email: {Email}", email);

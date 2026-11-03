@@ -19,7 +19,15 @@ internal class InstanceSettings
 {
     public RegistrationMode RegistrationMode { get; set; } = RegistrationMode.Open;
     public List<string> AllowedDomains { get; set; } = [];
+    /// <summary>The invite list before Nov 2026, moved into the Invites table at startup
+    /// (<see cref="InviteService.MoveSettingsListAsync"/>) and empty after. Kept so a settings
+    /// file written before still reads.</summary>
     public List<string> AllowedEmails { get; set; } = [];
+
+    /// <summary>Whether a team's admins may invite someone who has no account on the instance
+    /// (<see cref="InviteService"/>). On by default; off, only instance admins can, and team
+    /// admins can still add people who have an account.</summary>
+    public bool TeamAdminsCanInvite { get; set; } = true;
 
     /// <summary>The web origins whose browser apps may call the API (CORS), set on the instance
     /// settings page. Null until an admin saves a list: until then Cors:AllowedOrigins applies.
@@ -33,6 +41,11 @@ internal class InstanceSettings
     /// kept in settings.json. It tells Observr which installation an ask came from, so one licence
     /// token used by several installations is seen as such. Not a secret, not shown to users.</summary>
     public string? InstanceId { get; set; }
+
+    /// <summary>The team people who sign in with Entra ID join, in the role Entra gives them
+    /// (<see cref="EntraSignIn"/>). Set by the first such sign-in: the instance's oldest team, or
+    /// a new one named after the organisation when there is none.</summary>
+    public Guid? EntraTeamId { get; set; }
 
     /// <summary>Master switch for the MCP server (/mcp). On by default (frictionless self-host);
     /// admins can disable the agent-facing surface. Enforced at runtime, so it takes effect without

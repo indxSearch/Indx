@@ -11,6 +11,7 @@ namespace IndxServer.Services
         UserManager<ApplicationUser> userManager,
         IEmailSender emailSender,
         InstanceSettingsService settings,
+        NotificationSignal signal,
         ILogger<NotificationService> logger)
     {
         public async Task CreateAsync(
@@ -38,6 +39,7 @@ namespace IndxServer.Services
             // out for display. Email is sent only when the user's per-type preference allows it.
             db.Notifications.Add(notification);
             await db.SaveChangesAsync();
+            signal.Raise(userId);
 
             var user = await userManager.FindByIdAsync(userId);
             if (user is { Email: not null } && NotificationPreferences.EmailEnabled(user, type))

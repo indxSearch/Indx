@@ -162,3 +162,6 @@
 }
 
 /* From the foot of the side column: above the bell, opening to the right. */
+
+/* One that goes somewhere when opened (NotificationLinks): the hand, as for a link. */
+.notif-row--link { cursor: pointer; }

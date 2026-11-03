@@ -76,6 +76,7 @@
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.13" />
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.13" />
 		<PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="10.0.13" />
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.13" />
 		<PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.13" />
 		<PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.13" />
 		<PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="10.0.13" />
@@ -108,6 +109,12 @@
 		     stale. PixlIcon.cs reads the SVG path out of each and rasterises it. The folder is in
 		     DefaultItemExcludes above, so this explicit item is the only thing that picks them up. -->
 		<EmbeddedResource Include="Indx.Systm.Blazor\Icons\*.razor" LogicalName="pixl/%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The demo films (Services/DemoDatasets.cs): Wikidata, CC0, built by
+		     tools/demo-data/build-films.py. Embedded, so a published server carries them. -->
+		<EmbeddedResource Include="Demo\films.json.gz" LogicalName="IndxServer.Demo.films.json.gz" Condition="Exists('Demo/films.json.gz')" />
 	</ItemGroup>
 
 	<!-- ===== Indx engine reference selection =====

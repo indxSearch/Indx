@@ -287,6 +287,7 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
 );";
             cmd.ExecuteNonQuery();
             EnsureSearchOrAskSchema(conn);
+            EnsureSameNeedSchema(conn);
             // Dev-file guard: adds the two rollup columns to a stats.db created in the days
             // before they existed. They shipped in no release, so this can go after one.
             foreach (var col in new[] { "ClickedSearches", "PositionSum", "Uncovered", "UncoveredChosen" })
@@ -1189,6 +1190,11 @@ SELECT s.QueryId, s.TeamId, s.DataSet, s.QueryText, s.FilterKey, s.HitCount, s.T
             n += cmd.ExecuteNonQuery();
             cmd.CommandText = @"DELETE FROM AskEvents WHERE Timestamp < $cut;";
             n += cmd.ExecuteNonQuery();
+            // The judge's word on two texts ages with the asks: a text asked again is compared again.
+            cmd.CommandText = @"DELETE FROM AskNeedLinks WHERE Timestamp < $cut;";
+            n += cmd.ExecuteNonQuery();
+            cmd.CommandText = @"DELETE FROM AskNeedTexts WHERE Timestamp < $cut;";
+            n += cmd.ExecuteNonQuery();
             return n;
         }
 
@@ -1625,6 +1631,12 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
                 using (var cmd = Command($"DELETE FROM AskEvents WHERE {searchWhere}")) cmd.ExecuteNonQuery();
                 if (source == null)
                 {
+                    // Which questions are one need is read from the asks: what was said of the deleted ones goes with them.
+                    foreach (var table in new[] { "AskNeedLinks", "AskNeedTexts" })
+                    {
+                        using var cmd = Command($"DELETE FROM {table} WHERE TeamId = $t AND DataSet = $d AND Timestamp >= $from AND Timestamp < $to");
+                        cmd.ExecuteNonQuery();
+                    }
                     foreach (var table in new[] { "DailyQueryStats", "DailyDocumentStats", "DailyFilterStats", "DailyAskStats", "AskBudgetDays" })
                     {
                         using var cmd = Command($"DELETE FROM {table} WHERE TeamId = $t AND DataSet = $d AND Day >= $fromDay AND Day <= $toDay");
@@ -1749,7 +1761,7 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
              // Deleting the statistics deletes their explanation too: starting the numbers over
              // starts the history of what moved them over (decided 1 Oct 2026).
              "DatasetChanges", "DailyDocumentChanges",
-             "AskIntentEvents", "AskEvents", "DailyAskStats", "AskBudgetDays"];
+             "AskIntentEvents", "AskEvents", "DailyAskStats", "AskBudgetDays", "AskNeedLinks", "AskNeedTexts", "AskNeedDenied"];
 
         private int ExecutePerTable(string where, string a, string? b)
         {

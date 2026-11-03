@@ -13,6 +13,7 @@
 @inject ILogger<ExternalLogin> Logger
 @inject RegistrationValidator RegistrationValidator
 @inject UserProvisioningService UserProvisioning
+@inject EntraSignIn Entra
 
 <PageTitle>Processing login</PageTitle>
 
@@ -73,6 +74,22 @@
 
     private async Task OnLoginCallbackAsync()
     {
+        // Entra ID has its own rules: the account is the directory's person, not the address, and
+        // the role comes with every sign-in (EntraSignIn).
+        if (externalLoginInfo.LoginProvider == EntraSignIn.Scheme)
+        {
+            var entra = await Entra.SignInAsync(externalLoginInfo);
+            if (entra.User == null)
+            {
+                Logger.LogWarning("Entra ID sign-in refused: {Reason}", entra.Refusal);
+                NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString(entra.Refusal ?? "Sign-in refused.")}");
+                return;
+            }
+            await SignInManager.SignInAsync(entra.User, isPersistent: false, EntraSignIn.Scheme);
+            RedirectManager.RedirectTo(ReturnUrl ?? "/");
+            return;
+        }
+
         // Sign in the user with this external login provider if the user already has a login.
         var result = await SignInManager.ExternalLoginSignInAsync(
             externalLoginInfo.LoginProvider,
@@ -146,7 +163,7 @@
         Logger.LogInformation("Creating new user account for OAuth email: {Email}", email);
 
         // Validate registration is allowed
-        var allowedResult = RegistrationValidator.ValidateRegistrationAllowed();
+        var allowedResult = RegistrationValidator.ValidateRegistrationAllowed(email);
         if (!allowedResult.IsValid)
         {
             Logger.LogWarning("OAuth registration blocked - registration is closed. Email: {Email}", email);

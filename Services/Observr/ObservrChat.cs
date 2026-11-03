@@ -14,8 +14,8 @@ namespace IndxServer.Services.Observr
     /// The Agent's loop (Notes/Anders/console-shell-plan-2026-10-13.md, stage 5): a question goes
     /// to Observr with the context, the tools and the conversation so far; Observr answers, or asks
     /// for tools, which run here, and the conversation goes up again until there is an answer. The
-    /// text turns are kept per user and context; a proposal becomes a finding, so Yes and No go
-    /// through the same path as every other finding's.
+    /// turns are kept per conversation, an answer with a short note of what it looked at; a proposal
+    /// becomes a finding, so Yes and No go through the same path as every other finding's.
     /// </summary>
     internal sealed class ObservrChat(ObservrClient client, ObservrTools tools, ObservrConversationStore conversations,
         ObservrFindingStore findings, ILogger<ObservrChat> logger)
@@ -23,9 +23,11 @@ namespace IndxServer.Services.Observr
         public const string Kind = "chat";
         /// <summary>Model turns a question may take before the loop gives up.</summary>
         private const int MaxTurns = 8;
-        /// <summary>Earlier text turns the model sees, from the kept conversation.</summary>
-        private const int HistoryTurns = 10;
         private const int MaxToolResult = 12_000;
+        /// <summary>What an answer keeps of each thing it looked at, and of all of them: enough for a
+        /// follow-up to point back ("the second one"), not the whole result again.</summary>
+        private const int LookedExcerpt = 600;
+        private const int LookedTotal = 4000;
         /// <summary>Longest question, the same number as Observr's AskEndpoint.MaxQuestion: over it
         /// the question is refused here with a reason the panel can word, not with Observr's 400.</summary>
         public const int MaxQuestion = 4000;
@@ -42,24 +44,48 @@ namespace IndxServer.Services.Observr
             return t.DatasetName.Length > 0 ? $"(about the dataset {t.DatasetName} of another team) {t.Text}" : "(about another team) " + t.Text;
         }
 
-        /// <summary>Asks, and tells <paramref name="status"/> what is being read along the way.</summary>
-        public async Task<ObservrChatOutcome> AskAsync(ObservrChatContext ctx, string userId, string question, Func<ObservrChatStatus, Task> status, CancellationToken ct)
+        /// <summary>An earlier answer as the model reads it again: its text, and what it looked at.</summary>
+        internal static string Recalled(ObservrTurn t)
         {
+            var looked = t.LookedAt();
+            if (looked.Count == 0) return t.Text;
+            var sb = new System.Text.StringBuilder(t.Text).Append("\n\n[What this answer looked at]");
+            foreach (var l in looked) sb.Append("\n- ").Append(l.Done).Append(": ").Append(l.Result);
+            return sb.ToString();
+        }
+
+        /// <summary>Asks in a conversation (the user's current one, or a new one, when none is
+        /// named), and tells <paramref name="status"/> what is being read along the way.</summary>
+        public async Task<ObservrChatOutcome> AskAsync(ObservrChatContext ctx, string userId, string question, Func<ObservrChatStatus, Task> status, CancellationToken ct,
+            long? conversationId = null)
+        {
+            var conversation = conversationId ?? conversations.Current(userId, DateTime.UtcNow) ?? conversations.Next(userId);
             question = question.Trim();
             if (question.Length == 0) return new ObservrChatOutcome(ObservrStatus.Failed, Reason: "empty");
             if (question.Length > MaxQuestion) return new ObservrChatOutcome(ObservrStatus.Failed, Reason: "tooLong");
             if (!client.HasToken) return new ObservrChatOutcome(ObservrStatus.NoToken);
 
-            // One thread per user, so an earlier turn may be about another dataset or team; a
-            // user turn from elsewhere says where, so the model does not read it as this one.
-            // The question itself is kept only once Observr has answered a turn: a refusal (the
-            // service down, the licence refused) is shown in the panel and leaves no trace in the
-            // thread, which the model would otherwise read as conversation.
-            var history = conversations.List(userId, HistoryTurns);
+            // The conversation as the panel shows it, from where its memory starts (the same rule
+            // draws the panel's line): an earlier turn may be about another dataset or team, and a
+            // user turn from elsewhere says where, so the model does not read it as this one. An
+            // answer comes with what it looked at. The question itself is kept only once Observr has
+            // answered a turn: a refusal (the service down, the licence refused) is shown in the
+            // panel and leaves no trace, which the model would otherwise read as conversation.
+            var history = conversations.Turns(userId, conversation);
+            var from = ObservrConversationStore.RememberedFrom(history);
+            // The part past the memory, kept as a summary Observr writes (the earlier summary folded
+            // in), made once per turn that falls out; without one the panel's line says it is gone.
+            var summary = from > 0 ? await SummaryAsync(ctx, userId, conversation, history, from, status, ct) : null;
             var messages = new List<Turn>();
-            foreach (var t in history)
-                if (t.Text.Length > 0) messages.Add(new Turn(t.Role, t.Role == ObservrTurn.User ? Placed(t, ctx) : t.Text));
+            foreach (var t in history.Skip(from))
+                if (t.Text.Length > 0)
+                {
+                    var text = t.Role == ObservrTurn.User ? Placed(t, ctx) : Recalled(t);
+                    if (messages.Count == 0 && summary != null) text = $"[Earlier in this conversation, summarised]\n{summary}\n\n[The conversation goes on]\n{text}";
+                    messages.Add(new Turn(t.Role, text));
+                }
             messages.Add(new Turn(ObservrTurn.User, question));
+            var looked = new List<ObservrLooked>();
             var kept = false;
 
             var definitions = tools.Definitions(ctx);
@@ -81,10 +107,11 @@ namespace IndxServer.Services.Observr
                 {
                     // Mid-conversation (after a tool turn) the question is already in the thread, so
                     // the refusal closes it; before any answer, nothing is written.
-                    if (kept) conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.Assistant, ObservrText.Refusal(new ObservrOutcome(st, Reason: reason), "to answer"));
+                    if (kept) conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.Assistant, ObservrText.Refusal(new ObservrOutcome(st, Reason: reason), "to answer"),
+                        conversationId: conversation);
                     return new ObservrChatOutcome(st, Reason: reason);
                 }
-                if (!kept) { conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.User, question); kept = true; }
+                if (!kept) { conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.User, question, conversationId: conversation); kept = true; }
                 askId = reply.AskId;
                 proposals.AddRange(reply.Proposals);
                 if (reply.ToolUses.Count == 0)
@@ -94,7 +121,8 @@ namespace IndxServer.Services.Observr
                     if (proposals.Count > 0)
                         findingId = findings.Add(ctx.TeamId, ctx.DatasetKey, Kind, question,
                             new ObservrAnswer(reply.AskId, "proposal", text, proposals, reply.Model));
-                    conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.Assistant, text, findingId > 0 ? findingId : null);
+                    conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.Assistant, text, findingId > 0 ? findingId : null,
+                        conversation, looked);
                     return new ObservrChatOutcome(ObservrStatus.Ok, text, findingId);
                 }
 
@@ -109,9 +137,17 @@ namespace IndxServer.Services.Observr
                         content = reply.Problem ?? "Recorded. Now answer the owner and say what you proposed.";
                     else
                     {
-                        await status(Step(use.Name, use.Input));
+                        var step = Step(use.Name, use.Input);
+                        await status(step);
                         content = await Task.Run(() => tools.Run(use.Name, use.Input, ctx), ct);
                         if (content.Length > MaxToolResult) content = content[..MaxToolResult] + "\n(cut)";
+                        // Kept with the answer, short, within the answer's total.
+                        var room = LookedTotal - looked.Sum(l => l.Result.Length);
+                        if (room > 0)
+                        {
+                            var excerpt = content.Length > Math.Min(LookedExcerpt, room) ? content[..Math.Min(LookedExcerpt, room)] + "…" : content;
+                            looked.Add(new ObservrLooked(use.Name, step.Done ?? step.Text, excerpt));
+                        }
                     }
                     results.Add(new ToolResult(use.Id, content));
                 }
@@ -119,8 +155,33 @@ namespace IndxServer.Services.Observr
                 await status(new ObservrChatStatus("Writing"));
             }
             logger.LogInformation("The Agent ran out of turns for {Team}/{Dataset}", ctx.TeamName, ctx.DataSetName);
-            conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.Assistant, "I read more than I could put together into an answer. Ask it in a smaller piece.");
+            conversations.Add(userId, ctx.TeamId, ctx.DatasetKey, ObservrTurn.Assistant, "I read more than I could put together into an answer. Ask it in a smaller piece.",
+                conversationId: conversation);
             return new ObservrChatOutcome(ObservrStatus.Failed, Reason: "turns");
+        }
+
+        /// <summary>The summary of the turns before <paramref name="from"/>: the kept one while it covers
+        /// them all, else a new one written by Observr from the kept one and the turns since. Null
+        /// when none could be had.</summary>
+        private async Task<string?> SummaryAsync(ObservrChatContext ctx, string userId, long conversation, List<ObservrTurn> history, int from,
+            Func<ObservrChatStatus, Task> status, CancellationToken ct)
+        {
+            var kept = conversations.Summary(userId, conversation);
+            var lastOut = history[from - 1].Id;
+            if (kept is { } k && k.UpToId >= lastOut) return k.Text;
+            var fallen = history.Take(from).Where(t => kept == null || t.Id > kept.Value.UpToId).Where(t => t.Text.Length > 0).ToList();
+            if (fallen.Count == 0) return kept?.Text;
+            await status(new ObservrChatStatus("Remembering the earlier part"));
+            try
+            {
+                if (await client.SummarizeAsync(ctx.TeamId, ctx.TeamName, kept?.Text, fallen, ct) is { } written)
+                {
+                    conversations.SetSummary(userId, conversation, lastOut, written);
+                    return written;
+                }
+            }
+            catch (Exception ex) when (!ct.IsCancellationRequested) { logger.LogWarning(ex, "The Agent could not summarise a long conversation"); }
+            return kept?.Text;
         }
 
         /// <summary>A tool call as the owner reads it: while it runs, and once it has.</summary>

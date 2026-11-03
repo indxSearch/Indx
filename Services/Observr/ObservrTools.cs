@@ -110,6 +110,13 @@ namespace IndxServer.Services.Observr
                     : "The dataset has no records yet.");
             }
             sb.AppendLine($"Observr watches this dataset: {(findings.IsEnabled(ctx.TeamId, ds) ? "yes" : "no")}.");
+            // What the owner told Observr and what they declined, kept beside the dataset: a No holds
+            // beyond the conversation it was said in.
+            if (findings.NotesFor(ctx.TeamId, ds) is { Count: > 0 } notes)
+            {
+                sb.AppendLine("Notes the owner keeps for you about this dataset. Follow them; do not propose a change they declined unless they ask for it:");
+                foreach (var n in notes) sb.AppendLine("- " + n.Text);
+            }
             return sb.ToString();
         }
 

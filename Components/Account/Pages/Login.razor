@@ -45,6 +45,13 @@ else if (externalLogins.Count > 0)
                         <ChildContent>Sign in with Google</ChildContent>
                     </Button>
                 }
+                else if (provider.Name == EntraSignIn.Scheme)
+                {
+                    <Button Type="submit" Variant="primary">
+                        <IconLeft><MicrosoftLogo Size="@context" Color="currentColor" /></IconLeft>
+                        <ChildContent>Sign in with your work account</ChildContent>
+                    </Button>
+                }
                 else if (provider.Name == "Microsoft")
                 {
                     <Button Type="submit" Variant="primary">
@@ -136,7 +143,9 @@ else if (externalLogins.Count > 0)
         }
 
         // Get available external authentication schemes
-        externalLogins = (await SignInManager.GetExternalAuthenticationSchemesAsync()).ToList();
+        // Entra ID first: where it is on, it is how this organisation signs in.
+        externalLogins = (await SignInManager.GetExternalAuthenticationSchemesAsync())
+            .OrderBy(s => s.Name == EntraSignIn.Scheme ? 0 : 1).ToList();
 
         Logger.LogInformation("Login page loaded. Found {Count} external login providers", externalLogins.Count);
 

@@ -4,9 +4,9 @@
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
 @* A panel that opens from a trigger and floats by it, without blocking the page: a menu of
-   actions, a few settings, a short list. Fixed to the window (Popover.razor.js), so a scrolling or
-   clipping parent never cuts it off; it takes the side asked and flips to the other when that has
-   no room. A press or focus outside closes it, Escape closes it and returns focus to the trigger,
+   actions, a few settings, a short list. In the browser's top layer (popover="manual", raised and
+   placed by Popover.razor.js and float.js), so no parent clips it, moves it or covers it; it
+   takes the side asked and flips to the other when that has no room. A press or focus outside closes it, Escape closes it and returns focus to the trigger,
    and so does a navigation. Role="menu" makes it a menu: its items are ghost Buttons, full width,
    and the arrows move between them; PopoverDivider separates groups. The trigger's control gets
    aria-expanded and aria-haspopup. Port of the React Popover in indx-systm (Radix there). *@
@@ -15,7 +15,7 @@
     @if (_open)
     {
         <div class="indx-popover @(Role == "menu" ? "indx-popover-menu" : "") @Class" role="@Role" aria-label="@AriaLabel"
-             tabindex="-1" @ref="_content">
+             tabindex="-1" popover="manual" @ref="_content">
             @ChildContent
         </div>
     }

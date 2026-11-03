@@ -1,0 +1,231 @@
+@page "/support"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Security.Claims
+@using System.Text.Json
+@using System.Text.Json.Nodes
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using IndxServer.Data
+@using IndxServer.Services
+@using IndxServer.Services.Support
+@attribute [Authorize]
+@implements IDisposable
+@inject SupportState State
+@inject SupportClient Client
+@inject SupportDiagnostics Diagnostics
+@inject SupportOptions Options
+@inject ActiveTeamState ActiveTeam
+@inject AuthenticationStateProvider AuthState
+@inject UserManager<ApplicationUser> Users
+@inject NavigationManager Nav
+@inject Indx.Systm.Blazor.ToastService Toasts
+
+@* Support (Notes/support-tickets-design.md): tickets to Indx, written and read here, answered by
+   Indx in its Portal. Reached from the foot of the side column, by the instance's admins and the
+   editors and admins of any team; every one of them sees the customer's tickets, a shared inbox.
+   The plan's promise is said once, above the list and in the dialog; Free can write too. *@
+
+<PageTitle>Support</PageTitle>
+
+<div class="support-page">
+    <h2 class="support-title">Support</h2>
+
+    @if (!_ready)
+    {
+        <p class="support-quiet">Loading…</p>
+    }
+    else if (!_allowed)
+    {
+        <EmptyState Size="compact" Icon="_iconSupport" Title="Support is for admins and editors">
+            Ask an admin of your team, or write to <a href="mailto:@Options.Email">@Options.Email</a>.
+        </EmptyState>
+    }
+    else if (_problem == SupportProblem.NoToken || _problem == SupportProblem.Unauthorized)
+    {
+        <EmptyState Size="compact" Icon="_iconSupport" Title="Support needs a licence token">
+            Tickets reach Indx with this instance's licence token, which tells us who you are and your plan.
+            The free developer licence has one: get it at <a href="https://license.indx.co" target="_blank" rel="noopener">license.indx.co</a>
+            and set its token under <a href="/admin/license">Admin → License</a>. Until then, write to <a href="mailto:@Options.Email">@Options.Email</a>.
+        </EmptyState>
+    }
+    else if (_problem == SupportProblem.Off)
+    {
+        <EmptyState Size="compact" Icon="_iconSupport" Title="Support is switched off on this instance">
+            Write to <a href="mailto:@Options.Email">@Options.Email</a>.
+        </EmptyState>
+    }
+    else if (State.Last is not { } list)
+    {
+        <Alert Variant="destructive"><Description>Indx's support could not be reached from this instance. Write to <a href="mailto:@Options.Email">@Options.Email</a>, or try again later.</Description></Alert>
+    }
+    else
+    {
+        <p class="support-promise">
+            @list.Promise
+            @if (list.Plan == "free") { <Button Variant="ghost" Size="micro" Href="https://indx.co/#pricing" target="_blank" rel="noopener">See Pro</Button> }
+        </p>
+
+        @* The page action pattern (app.css): the primary "New …" first, the count at the end. No
+           filter: a customer has a handful of tickets, not a queue. *@
+        <div class="indx-list-toolbar">
+            <Button Variant="primary" Size="micro" IconLeft="_iconPlus" @onclick="OpenNew">New ticket</Button>
+            @if (list.Tickets.Count > 0)
+            {
+                <span class="indx-list-toolbar-end">@(list.Tickets.Count == 1 ? "1 ticket" : $"{list.Tickets.Count} tickets")</span>
+            }
+        </div>
+
+        @if (list.Tickets.Count == 0)
+        {
+            <EmptyState Size="compact" Icon="_iconSupport" Title="No tickets yet">
+                Something not working, an idea for Indx, or a thought on how it works for you? Write to Indx here, and the answer comes back to this page.
+            </EmptyState>
+        }
+        else
+        {
+            <Table AriaLabel="Support tickets">
+                <thead><tr><th>Subject</th><th>Kind</th><th>Status</th><th>Last activity</th><th>Written by</th></tr></thead>
+                <tbody>
+                    @foreach (var t in list.Tickets)
+                    {
+                        var status = SupportView.Status(t.Status);
+                        <tr>
+                            <td>
+                                <span class="support-subject"><Button Variant="ghost" Size="micro" Href="@($"/support/{t.Id}")">
+                                    @if (t.Unread) { <span class="support-unread" aria-label="New reply"></span> }
+                                    @t.Subject
+                                </Button></span>
+                            </td>
+                            <td class="support-quiet">@SupportView.Kind(t.Kind)</td>
+                            <td><Chip Color="@status.Color" TextColor="@status.Text">@status.Label</Chip></td>
+                            <td class="support-quiet"><TimeAgo Value="t.UpdatedAt" TooltipPosition="left" /></td>
+                            <td class="support-quiet">@t.WrittenBy</td>
+                        </tr>
+                    }
+                </tbody>
+            </Table>
+        }
+    }
+</div>
+
+@* The writer chooses what it is: a support request (the plan's promise applies, and diagnostics
+   help), a feature request or feedback (read by the team, answered when there is something to say).
+   Immediate fields, so Send enables as the text is typed rather than when the field is left. *@
+<Modal @bind-Open="_showNew" Title="New ticket" Description="@(_kind == "support" ? State.Last?.Promise : "Read by the people who build Indx. We answer when there is something to say.")">
+    <div class="indx-modal-form">
+        <SegmentedControl Items="_kinds" @bind-Value="_kind" Stretch AriaLabel="Kind of ticket" />
+        <InputField Label="Subject" placeholder="@Subject(_kind)" Immediate @bind-Value="_subject" />
+        <Textarea Label="@BodyLabel(_kind)" Rows="6" placeholder="@BodyHint(_kind)" Immediate @bind-Value="_body" />
+        @if (_kind == "support")
+        {
+            @* What is sent can be seen, quietly: a micro "Show" beside the box, as VS Code's issue
+               reporter and Chrome's feedback form do, rather than a panel of its own. *@
+            <div class="support-diag-row">
+                <Checkbox Id="support-diagnostics" Label="Include diagnostics" Checked="_includeDiagnostics" CheckedChanged="@(v => _includeDiagnostics = v)" />
+                <Button Variant="ghost" Size="micro" aria-expanded="@(_showDiagnostics ? "true" : "false")" @onclick="() => _showDiagnostics = !_showDiagnostics">@(_showDiagnostics ? "Hide" : "Show")</Button>
+            </div>
+            @if (_showDiagnostics)
+            {
+                <p class="support-warn">Versions, memory, your datasets' names, states and sizes, and the last warnings and errors in the log, with addresses and anything like a key masked. Never records or search text.</p>
+                <pre class="support-diag">@_diagnosticsText</pre>
+            }
+        }
+        <p class="support-warn">Do not paste API keys, tokens or passwords: Indx never needs them.</p>
+        @if (_error != null)
+        {
+            <Alert Variant="destructive"><Description>@_error</Description></Alert>
+        }
+        <div class="indx-form-actions">
+            <Button Variant="primary" Size="micro" IconLeft="_iconMail" Loading="_sending"
+                    Disabled="@(string.IsNullOrWhiteSpace(_subject) || string.IsNullOrWhiteSpace(_body))" @onclick="SendAsync">Send</Button>
+            <Button Variant="secondary" Size="micro" Disabled="_sending" @onclick="() => _showNew = false">Cancel</Button>
+        </div>
+    </div>
+</Modal>
+
+@code {
+    private static readonly RenderFragment<int> _iconSupport = size => @<Indx.Systm.Blazor.Icons.Support Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconPlus = size => @<Indx.Systm.Blazor.Icons.Plus Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconMail = size => @<Indx.Systm.Blazor.Icons.Mail Size="size" Color="currentColor" />;
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+
+    private bool _ready;
+    private bool _allowed;
+    private SupportProblem _problem;
+
+    private bool _showNew;
+    private string? _subject;
+    private string? _body;
+    private static readonly SegmentedControl.Item[] _kinds =
+        [new("support", "Support request"), new("feature", "Feature request"), new("feedback", "Feedback")];
+    private string _kind = "support";
+    private bool _includeDiagnostics = true;
+
+    private static string Subject(string kind) => kind switch
+    {
+        "feature" => "What would you like Indx to do?",
+        "feedback" => "What is it about?",
+        _ => "What is not working?",
+    };
+    private static string BodyLabel(string kind) => kind switch { "feature" => "Tell us more", "feedback" => "Your feedback", _ => "What happened" };
+    private static string BodyHint(string kind) => kind switch
+    {
+        "feature" => "What you are trying to do, and what is in the way today",
+        "feedback" => "What works, what does not, what you would change",
+        _ => "What you did, what you expected, what you saw instead",
+    };
+    private bool _showDiagnostics;
+    private JsonObject? _diagnostics;
+    private string _diagnosticsText = "";
+    private bool _sending;
+    private string? _error;
+    private ClaimsPrincipal _user = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        _user = (await AuthState.GetAuthenticationStateAsync()).User;
+        var userId = _user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+        if (userId.Length > 0) await ActiveTeam.EnsureInitializedAsync(userId);
+        _allowed = SupportAccess.CanUse(_user, ActiveTeam.Teams);
+        if (_allowed) _problem = (await State.RefreshAsync()).Problem;
+        _ready = true;
+        State.Changed += OnStateChanged;
+    }
+
+    private void OnStateChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => State.Changed -= OnStateChanged;
+
+    /// <summary>Opens the dialog with the diagnostics built now, so what is shown is what is sent.</summary>
+    private void OpenNew()
+    {
+        _error = null;
+        _diagnostics = Diagnostics.Build();
+        _diagnosticsText = _diagnostics.ToJsonString(Indented);
+        _showDiagnostics = false;
+        _showNew = true;
+    }
+
+    private async Task SendAsync()
+    {
+        _sending = true;
+        _error = null;
+        var user = await Users.GetUserAsync(_user);
+        var result = await Client.CreateAsync(_kind, _subject!.Trim(), _body!.Trim(), _user, user,
+            _kind == "support" && _includeDiagnostics ? _diagnostics : null);
+        _sending = false;
+        if (!result.Ok || result.Value is null)
+        {
+            _error = result.Problem switch
+            {
+                SupportProblem.Unreachable => $"Indx's support could not be reached. Try again, or write to {Options.Email}.",
+                _ => result.Message ?? $"The ticket could not be sent. Write to {Options.Email}.",
+            };
+            return;
+        }
+        _showNew = false;
+        _subject = _body = null;
+        await State.RefreshAsync();
+        Toasts.Show("Ticket sent. Indx's answer comes back here.");
+        Nav.NavigateTo($"/support/{result.Value.Id}");
+    }
+}

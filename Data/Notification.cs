@@ -19,8 +19,9 @@ namespace IndxServer.Data
         UpdateAvailable     = 11,
         SecurityUpdate      = 12,
         WebhookAttention    = 13,
-        // 14, not 11: master's 11-13 were stored by 5.0 servers first (fastmaster, 3 Nov 2026).
-        BuryRuleExpired     = 14,
+        SupportReply        = 14,
+        // 15: master's 11-14 were stored by 5.0 servers first (fastmaster, 3 Nov 2026).
+        BuryRuleExpired     = 15,
     }
 
     public class Notification

@@ -64,10 +64,24 @@ namespace IndxServer.Services.Observr
     /// should be asked about, test copies and the like. Both follow the dataset through delete,
     /// rename and transfer.
     /// </summary>
+    /// <summary>A note Observr keeps about a dataset (Notes/observr-agent-plan.md, step 2): what the
+    /// owner told it ("owner"), or a change they declined ("declined"). Read with every question
+    /// about the dataset, so a No holds beyond the conversation it was said in.</summary>
+    public sealed record ObservrNote(long Id, string TeamId, string DatasetName, string Text, string Source, DateTime CreatedUtc)
+    {
+        public const string Owner = "owner";
+        public const string Declined = "declined";
+    }
+
     public class ObservrFindingStore(ILogger<ObservrFindingStore> logger)
     {
         private const string Table = "ObservrFindings";
         private const string Datasets = "ObservrDatasets";
+        private const string Notes = "ObservrNotes";
+        private const string Undos = "ObservrUndos";
+        /// <summary>Notes kept per dataset, the oldest going first, and the longest a note may be.</summary>
+        public const int MaxNotes = 50;
+        public const int MaxNoteLength = 500;
         private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
         private static string DbPath => IndxServerInternalApi.SearchDbConnectionString;
@@ -90,7 +104,11 @@ namespace IndxServer.Services.Observr
                     Status TEXT NOT NULL, AskId INTEGER NOT NULL, CreatedUtc TEXT NOT NULL, DecidedUtc TEXT NULL);
                     CREATE INDEX IF NOT EXISTS IX_ObservrFindings_Team ON {Table} (TeamId, Status);
                     CREATE TABLE IF NOT EXISTS {Datasets} (TeamId TEXT NOT NULL, DatasetName TEXT NOT NULL, Enabled INTEGER NOT NULL,
-                    Report TEXT NOT NULL DEFAULT 'daily', Buttons INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (TeamId, DatasetName));";
+                    Report TEXT NOT NULL DEFAULT 'daily', Buttons INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (TeamId, DatasetName));
+                    CREATE TABLE IF NOT EXISTS {Notes} (Id INTEGER PRIMARY KEY AUTOINCREMENT, TeamId TEXT NOT NULL, DatasetName TEXT NOT NULL,
+                    Text TEXT NOT NULL, Source TEXT NOT NULL, CreatedUtc TEXT NOT NULL);
+                    CREATE INDEX IF NOT EXISTS IX_ObservrNotes_Dataset ON {Notes} (TeamId, DatasetName);
+                    CREATE TABLE IF NOT EXISTS {Undos} (FindingId INTEGER PRIMARY KEY, Json TEXT NOT NULL, CreatedUtc TEXT NOT NULL);";
                 cmd.ExecuteNonQuery();
                 // The two columns that came after the table (12 Oct 2026): added to a table that lacks them.
                 foreach (var add in new[] { $"ALTER TABLE {Datasets} ADD COLUMN Report TEXT NOT NULL DEFAULT 'daily'", $"ALTER TABLE {Datasets} ADD COLUMN Buttons INTEGER NOT NULL DEFAULT 1" })
@@ -302,20 +320,105 @@ namespace IndxServer.Services.Observr
             catch (Exception ex) { logger.LogWarning(ex, "Observr findings: {Sql}", sql); }
         }
 
+        /// <summary>The dataset's notes, oldest first.</summary>
+        public List<ObservrNote> NotesFor(string teamId, string dataSetName)
+        {
+            if (!DbExists()) return [];
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT Id, TeamId, DatasetName, Text, Source, CreatedUtc FROM {Notes} WHERE TeamId = $t AND DatasetName = $d ORDER BY Id";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSetName);
+                using var r = cmd.ExecuteReader();
+                var list = new List<ObservrNote>();
+                while (r.Read())
+                    list.Add(new ObservrNote(r.GetInt64(0), r.GetString(1), r.GetString(2), r.GetString(3), r.GetString(4),
+                        DateTime.Parse(r.GetString(5), null, System.Globalization.DateTimeStyles.RoundtripKind)));
+                return list;
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { return []; }
+        }
+
+        /// <summary>Keeps a note about a dataset: trimmed, cut to <see cref="MaxNoteLength"/>, not
+        /// twice, and the oldest gone past <see cref="MaxNotes"/>. Null when there is nothing to keep.</summary>
+        public long? AddNote(string teamId, string dataSetName, string text, string source)
+        {
+            text = text.Trim().ReplaceLineEndings(" ");
+            if (text.Length == 0 || dataSetName.Length == 0) return null;
+            if (text.Length > MaxNoteLength) text = text[..MaxNoteLength];
+            if (NotesFor(teamId, dataSetName).FirstOrDefault(n => string.Equals(n.Text, text, StringComparison.OrdinalIgnoreCase)) is { } same) return same.Id;
+            new SqLiteManager(DbPath, createOrOpenDatabase: true);
+            EnsureTable();
+            using var conn = Connection();
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $@"INSERT INTO {Notes} (TeamId, DatasetName, Text, Source, CreatedUtc) VALUES ($t, $d, $x, $s, $c); SELECT last_insert_rowid();
+                DELETE FROM {Notes} WHERE TeamId = $t AND DatasetName = $d AND Id NOT IN (
+                    SELECT Id FROM {Notes} WHERE TeamId = $t AND DatasetName = $d ORDER BY Id DESC LIMIT $n);";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSetName);
+            cmd.Parameters.AddWithValue("$x", text);
+            cmd.Parameters.AddWithValue("$s", source);
+            cmd.Parameters.AddWithValue("$c", DateTime.UtcNow.ToString("o"));
+            cmd.Parameters.AddWithValue("$n", MaxNotes);
+            var id = (long)cmd.ExecuteScalar()!;
+            Changed?.Invoke();
+            return id;
+        }
+
+        /// <summary>What a Yes replaced, kept so it can be undone (ObservrClient.Undo): JSON of
+        /// ObservrUndo, and when it was kept. Null when there is nothing to undo.</summary>
+        public (string Json, DateTime CreatedUtc)? GetUndo(long findingId)
+        {
+            if (!DbExists()) return null;
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT Json, CreatedUtc FROM {Undos} WHERE FindingId = $f";
+                cmd.Parameters.AddWithValue("$f", findingId);
+                using var r = cmd.ExecuteReader();
+                return r.Read() ? (r.GetString(0), DateTime.Parse(r.GetString(1), null, System.Globalization.DateTimeStyles.RoundtripKind)) : null;
+            }
+            catch (SqliteException ex) when (ex.SqliteErrorCode == 1) { return null; }
+        }
+
+        public void SetUndo(long findingId, string json)
+        {
+            EnsureTable();
+            Execute($"INSERT OR REPLACE INTO {Undos} (FindingId, Json, CreatedUtc) VALUES ($f, $j, $c)",
+                c => { c.Parameters.AddWithValue("$f", findingId); c.Parameters.AddWithValue("$j", json); c.Parameters.AddWithValue("$c", DateTime.UtcNow.ToString("o")); });
+        }
+
+        public void ClearUndo(long findingId) =>
+            Execute($"DELETE FROM {Undos} WHERE FindingId = $f", c => c.Parameters.AddWithValue("$f", findingId));
+
+        /// <summary>Forgets a note, only the dataset's own (an id from another is a no-op).</summary>
+        public void ForgetNote(long id, string teamId, string dataSetName)
+        {
+            Execute($"DELETE FROM {Notes} WHERE Id = $i AND TeamId = $t AND DatasetName = $d",
+                c => { c.Parameters.AddWithValue("$i", id); c.Parameters.AddWithValue("$t", teamId); c.Parameters.AddWithValue("$d", dataSetName); });
+            Changed?.Invoke();
+        }
+
         public void Delete(string teamId, string dataSetName)
         {
-            Execute($"DELETE FROM {Table} WHERE TeamId = $t AND DatasetName = $d; DELETE FROM {Datasets} WHERE TeamId = $t AND DatasetName = $d",
+            Execute($"DELETE FROM {Undos} WHERE FindingId IN (SELECT Id FROM {Table} WHERE TeamId = $t AND DatasetName = $d); DELETE FROM {Table} WHERE TeamId = $t AND DatasetName = $d; DELETE FROM {Datasets} WHERE TeamId = $t AND DatasetName = $d; DELETE FROM {Notes} WHERE TeamId = $t AND DatasetName = $d",
                 c => { c.Parameters.AddWithValue("$t", teamId); c.Parameters.AddWithValue("$d", dataSetName); });
             Changed?.Invoke();
         }
 
         public void Rename(string teamId, string dataSetName, string newName) =>
-            Execute($"UPDATE {Table} SET DatasetName = $n WHERE TeamId = $t AND DatasetName = $d; UPDATE OR REPLACE {Datasets} SET DatasetName = $n WHERE TeamId = $t AND DatasetName = $d",
+            Execute($"UPDATE {Table} SET DatasetName = $n WHERE TeamId = $t AND DatasetName = $d; UPDATE OR REPLACE {Datasets} SET DatasetName = $n WHERE TeamId = $t AND DatasetName = $d; UPDATE {Notes} SET DatasetName = $n WHERE TeamId = $t AND DatasetName = $d",
                 c => { c.Parameters.AddWithValue("$n", newName); c.Parameters.AddWithValue("$t", teamId); c.Parameters.AddWithValue("$d", dataSetName); });
 
         public void Transfer(string fromTeamId, string toTeamId, string dataSetName)
         {
-            Execute($"UPDATE {Table} SET TeamId = $to WHERE TeamId = $from AND DatasetName = $d; UPDATE OR REPLACE {Datasets} SET TeamId = $to WHERE TeamId = $from AND DatasetName = $d",
+            Execute($"UPDATE {Table} SET TeamId = $to WHERE TeamId = $from AND DatasetName = $d; UPDATE OR REPLACE {Datasets} SET TeamId = $to WHERE TeamId = $from AND DatasetName = $d; UPDATE {Notes} SET TeamId = $to WHERE TeamId = $from AND DatasetName = $d",
                 c => { c.Parameters.AddWithValue("$to", toTeamId); c.Parameters.AddWithValue("$from", fromTeamId); c.Parameters.AddWithValue("$d", dataSetName); });
             Changed?.Invoke();
         }

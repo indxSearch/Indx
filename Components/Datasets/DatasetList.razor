@@ -4,6 +4,7 @@
    wake every timed dataset of the team just to list it. *@
 @using Indx.Api
 @inject IDatasetEngines Engines
+@inject IndxServer.Services.DemoDatasets Demos
 @inject NavigationManager NavigationManager
 @inject ILogger<DatasetList> Logger
 @inject StatisticsService Stats
@@ -40,7 +41,18 @@
                 {
                     <div class="indx-empty-step-actions">
                         <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset">New dataset</Button>
+                        @* Or try Indx first on 25,000 films from Wikidata (CC0), set up and indexed in seconds (DemoDatasets). *@
+                        @if (DemoDatasets.FilmsAvailable)
+                        {
+                            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Disk" Disabled="_demoRunning" @onclick="StartDemoAsync">
+                                @(_demoRunning ? "Setting up the films…" : "Start from a demo")
+                            </Button>
+                        }
                     </div>
+                    @if (_demoError != null)
+                    {
+                        <Alert Variant="destructive"><Description>@_demoError</Description></Alert>
+                    }
                 }
             </li>
             <li class="indx-empty-step">
@@ -462,6 +474,30 @@ else
     private async Task OnNewDatasetKeyDown(KeyboardEventArgs e)
     {
         if (e.Key == "Enter") await CreateDataset();
+    }
+
+    private bool _demoRunning;
+    private string? _demoError;
+
+    /// <summary>The films demo in this team, then its page: a dataset ready to search in a few
+    /// seconds, for someone who wants to see Indx before bringing their own data.</summary>
+    private async Task StartDemoAsync()
+    {
+        _demoRunning = true;
+        _demoError = null;
+        try
+        {
+            var name = await Demos.CreateFilmsAsync(TeamId);
+            NavigationManager.NavigateTo(IndxServer.Services.TeamRoutes.Dataset(TeamName, name));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _demoError = ex.Message;
+        }
+        finally
+        {
+            _demoRunning = false;
+        }
     }
 
     private void OpenNewDataset()

@@ -59,7 +59,7 @@ namespace IndxServer.Services
                             NotificationType.ApiKeyExpired,
                             $"API key \"{key.Name}\" has expired",
                             $"Your API key \"{key.Name}\" expired on {key.ExpiresAt.Value:yyyy-MM-dd}. Create a new key to restore access.",
-                            sourceId: sourceId);
+                            metadata: "/account/api-key", sourceId: sourceId);
 
                         logger.LogInformation("Sent ApiKeyExpired notification for API key \"{Name}\"", key.Name);
                     }
@@ -74,7 +74,7 @@ namespace IndxServer.Services
                             NotificationType.ApiKeyExpiringSoon,
                             $"API key \"{key.Name}\" expires in {daysLeft} day{(daysLeft == 1 ? "" : "s")}",
                             $"Your API key \"{key.Name}\" will expire on {key.ExpiresAt.Value:yyyy-MM-dd}. Rotate it before then to avoid disruption.",
-                            sourceId: sourceId);
+                            metadata: "/account/api-key", sourceId: sourceId);
 
                         logger.LogInformation("Sent ApiKeyExpiringSoon notification for API key \"{Name}\"", key.Name);
                     }
@@ -129,7 +129,7 @@ namespace IndxServer.Services
             foreach (var adminId in admins)
             {
                 if (await svc.ExistsAsync(adminId, type, sourceId)) continue;
-                await svc.CreateAsync(adminId, type, title, body, sourceId: sourceId);
+                await svc.CreateAsync(adminId, type, title, body, metadata: TeamRoutes.TeamKeys(team.Name), sourceId: sourceId);
                 sent++;
             }
             if (sent > 0)

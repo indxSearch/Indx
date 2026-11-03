@@ -18,7 +18,61 @@ namespace IndxServer.Components.Datasets
         private AskedAgainStat _askedAgain;
         private List<AskRephrasingStat> _rephrased = [];
         private List<AskNeedStat> _needs = [];
+        private (long Visits, long Repeated) _askRepeats;
         private AskNeedStat? _need;
+
+        /// <summary>Why a wording is in its need, in words: how it joined which other wording. The
+        /// title is the one the others are traced back to.</summary>
+        private static string NeedWhy(AskNeedStat need, AskNeedWording w) => w.Link switch
+        {
+            AskNeedLink.AskedAgain => $"Asked again after \"{w.LinkedTo}\" in the same visit",
+            AskNeedLink.SameNeed => $"The same as \"{w.LinkedTo}\", asked in another visit",
+            _ when w.Text == need.Title => need.Wordings.Any(x => x.Landed > 0) ? "Named after it: it landed most" : "Named after it: it was asked most",
+            _ => "Through a question asked outside this period",
+        };
+
+        /// <summary>What the judge said of the link, for its tooltip.</summary>
+        private static string NeedJudged(AskNeedWording w) =>
+            $"The judge (Jev) gave {w.P:0.00} that the two ask for the same thing. From 0.50 up, they are one need.";
+
+        /// <summary>The need a question of the Questions list is, when it is one on the Needs list.</summary>
+        private AskNeedStat? NeedOf(AskQuestionStat q)
+        {
+            var key = SearchOrAskRephrasing.Normalise(q.Question);
+            return _needs.FirstOrDefault(n => n.Wordings.Any(w => SearchOrAskRephrasing.Normalise(w.Text) == key));
+        }
+
+        private List<(string A, string B, string DeniedBy, long Timestamp)> _needDenials = [];
+
+        private async Task UndoDenyNeedLinkAsync(string a, string b)
+        {
+            if (!Ctx.IsEditor || Stats.Store is not { } store) return;
+            store.UndoDenySameNeed(Ctx.TeamId, Ctx.Name, a, b);
+            await LoadAsync();
+        }
+
+        private void OpenNeed(AskNeedStat need)
+        {
+            _askView = "needs";
+            _need = need;
+        }
+
+        /// <summary>
+        /// An editor's "not the same" on one link of a need: that pair stops holding the need
+        /// together, the rest stand. The page reloads; the need opens again if it is still one.
+        /// </summary>
+        private async Task DenyNeedLinkAsync(AskNeedWording w)
+        {
+            if (!Ctx.IsEditor || w.LinkedTo is not { } other || Stats.Store is not { } store) return;
+            // Resolved here, not injected: the tab also renders where no one is signed in (its tests).
+            var auth = Services.GetService(typeof(Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider))
+                as Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider;
+            var user = (auth == null ? null : (await auth.GetAuthenticationStateAsync()).User.Identity?.Name) ?? "unknown";
+            var title = _need?.Title;
+            store.DenySameNeed(Ctx.TeamId, Ctx.Name, w.Text, other, user);
+            await LoadAsync();
+            _need = _needs.FirstOrDefault(n => n.Title == title || n.Wordings.Any(x => x.Text == title));
+        }
 
         /// <summary>At most this many cells in a need's row: a need asked in more visits shows its
         /// shares across them, so a busy need does not widen the table.</summary>
@@ -51,11 +105,9 @@ namespace IndxServer.Components.Datasets
         private List<AskQuestionStat> _askQuestions = [];
         private List<AskOfferStat> _askOffers = [];
         private string _askView = "overview";
-        // The section's pictures: the window day by day, the budget day by day and today's, and
-        // when people ask.
+        // The section's pictures: the window day by day, the budget day by day, and when people ask.
         private List<AskDayStat> _askDays = [];
         private List<AskBudgetDayStat> _askBudgetDays = [];
-        private long _askCallsToday;
         private int _askBudgetToday;
         private WeekHourStat? _askWeekHour;
         private (long[] Calls, long[] Spent)? _askHours;
@@ -93,15 +145,15 @@ namespace IndxServer.Components.Datasets
             _askQuestions = HasSearchOrAsk ? store.TopQuestions(team, ds, fromDay, toDay, 25, source) : [];
             (_askedAgain, _rephrased) = HasSearchOrAsk ? store.AskedAgain(team, ds, fromDay, toDay, 25, source) : (default, []);
             _needs = HasSearchOrAsk ? store.AskNeeds(team, ds, fromDay, toDay, 25, source) : [];
+            _needDenials = HasSearchOrAsk ? store.SameNeedDenials(team, ds) : [];
+            _askRepeats = HasSearchOrAsk ? store.AskRepeats(team, ds, fromDay, toDay, source) : default;
             _askOffers = HasSearchOrAsk ? store.TopOffers(team, ds, fromDay, toDay, 25, source) : [];
             (_askFromDay, _askToDay) = (fromDay, toDay);
             _askDays = HasSearchOrAsk ? store.AsksByDay(team, ds, fromDay, toDay, source) : [];
             _askBudgetDays = HasSearchOrAsk ? store.BudgetByDay(team, ds, fromDay, toDay) : [];
             _askHours = HasSearchOrAsk ? store.BudgetCallsByHour(team, ds, Math.Max(fromDay, toDay - Stats.RetentionDays + 1), toDay) : null;
             _askWeekHour = HasSearchOrAsk ? store.AsksByWeekHour(team, ds, Math.Max(fromDay, toDay - Stats.RetentionDays + 1), toDay, source) : null;
-            // Today against its budget: the budget's day is UTC, as the service counts it.
-            long todayUtc = StatisticsStore.DayOf(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-            _askCallsToday = HasSearchOrAsk ? store.BudgetCalls(team, ds, todayUtc) : 0;
+            // The budget set now: the per-day chart's line where the window recorded none.
             _askBudgetToday = SearchOrAsk.Settings(team, ds).DailyCallBudget;
             if (!HasSearchOrAsk && _section == "search-or-ask") _section = "queries";
         }

@@ -1,10 +1,18 @@
-<span class="indx-tooltip-wrapper indx-tooltip-@Position">
+@* A short hint by a control, on hover and on keyboard focus. The bubble is in the browser's top
+   layer (popover="manual"), shown and placed by one script for the whole page
+   (wwwroot/Indx.Systm.Blazor.lib.module.js, loaded by Blazor as a JS initializer), so no frame
+   it sits in clips it: a Table that scrolls, a panel with a transform. It takes the side asked
+   and flips when that has no room, and stays inside the window. Nothing runs per tooltip, so a
+   table of them costs nothing until one is hovered. The script also points the control at the
+   bubble (aria-describedby). Port of the React Tooltip (Radix there). *@
+<span class="indx-tooltip-wrapper" data-side="@Position">
     @ChildContent
-    <span class="indx-tooltip" role="tooltip">@Content</span>
+    <span class="indx-tooltip" role="tooltip" popover="manual">@Content</span>
 </span>
 
 @code {
     [Parameter, EditorRequired] public string Content { get; set; } = "";
+    /// <summary>"top" (the default), "bottom", "left" or "right" of the control; flipped when it has no room.</summary>
     [Parameter] public string Position { get; set; } = "top";
     [Parameter] public RenderFragment? ChildContent { get; set; }
 }

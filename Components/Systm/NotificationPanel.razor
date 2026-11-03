@@ -1,6 +1,9 @@
 @inject IndxServer.Services.NotificationService NotificationService
 @inject AuthenticationStateProvider AuthState
 @inject NavigationManager NavigationManager
+@inject IndxServer.Services.NotificationSignal Signal
+@inject IndxServer.Services.NotificationLinks Links
+@implements IDisposable
 
 @* The bell and its panel, a systm Popover: a press outside, Escape or a navigation closes it. *@
 <div class="notif-wrapper">
@@ -47,8 +50,9 @@
             <ul class="notif-list">
                 @foreach (var n in _notifications)
                 {
-                    <li class="notif-row @(!n.IsRead ? "notif-row--unread" : "")"
-                        @onclick="() => MarkRead(n)">
+                    @* Opening one marks it read and goes where it is about (NotificationLinks). *@
+                    <li class="notif-row @(!n.IsRead ? "notif-row--unread" : "") @(_links.ContainsKey(n.Id) ? "notif-row--link" : "")"
+                        @onclick="() => OpenAsync(n)">
                         <div class="notif-dot-col">
                             @if (!n.IsRead)
                             {
@@ -86,7 +90,27 @@
         _userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
         if (_userId != null)
             _unreadCount = await NotificationService.GetUnreadCountAsync(_userId);
+        Signal.Created += OnCreated;
     }
+
+    // A notification for this user was stored elsewhere (a background job, another tab): the
+    // count, and the list when it is open, now rather than at the next reload.
+    private void OnCreated(string userId)
+    {
+        if (userId != _userId) return;
+        _ = InvokeAsync(async () =>
+        {
+            _unreadCount = await NotificationService.GetUnreadCountAsync(userId);
+            if (_open)
+            {
+                _notifications = await NotificationService.GetRecentAsync(userId, 10);
+                _links = await Links.ForAsync(_notifications);
+            }
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose() => Signal.Created -= OnCreated;
 
     private async Task OnOpenChanged(bool open)
     {
@@ -94,11 +118,24 @@
         if (_open && _userId != null)
         {
             _notifications = await NotificationService.GetRecentAsync(_userId, 10);
+            _links = await Links.ForAsync(_notifications);
             _unreadCount   = await NotificationService.GetUnreadCountAsync(_userId);
         }
     }
 
     private void Close() => _open = false;
+
+    private Dictionary<int, string> _links = [];
+
+    private async Task OpenAsync(IndxServer.Data.Notification n)
+    {
+        await MarkRead(n);
+        if (_links.TryGetValue(n.Id, out var href))
+        {
+            _open = false;
+            NavigationManager.NavigateTo(href);
+        }
+    }
 
     private async Task MarkRead(IndxServer.Data.Notification n)
     {

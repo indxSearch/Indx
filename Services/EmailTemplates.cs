@@ -2,16 +2,27 @@ namespace IndxServer.Services;
 
 internal static class EmailTemplates
 {
-    public static string Invite(string instanceName, string registerUrl, bool darkPreview = false) =>
-        Build(
+    /// <summary>An invitation to the instance, or with <paramref name="teamName"/> to a team on it
+    /// (InviteService). The link lasts as long as the invite.</summary>
+    public static string Invite(string instanceName, string registerUrl, bool darkPreview = false,
+        string? teamName = null, string? inviterEmail = null)
+    {
+        var who = inviterEmail is { Length: > 0 } ? System.Net.WebUtility.HtmlEncode(inviterEmail) : "You have been";
+        var verb = inviterEmail is { Length: > 0 } ? " invited you" : " invited";
+        var to = teamName is { Length: > 0 }
+            ? $" to join the team <strong>{System.Net.WebUtility.HtmlEncode(teamName)}</strong> on <strong>{instanceName}</strong>"
+            : $" to join <strong>{instanceName}</strong>";
+        var days = (int)InviteService.Lifetime.TotalDays;
+        return Build(
             instanceName,
             "You have been invited",
-            $"You have been invited to join <strong>{instanceName}</strong>. Click the button below to create your account.",
+            $"{who}{verb}{to}. Click the button below to create your account. The invitation lasts {days} days.",
             registerUrl,
             "Create Account",
             "If you were not expecting this invitation, you can safely ignore this email.",
             darkPreview
         );
+    }
 
     public static string Subject(string instanceName, string message) =>
         $"Indx Search System - {instanceName} - {message}";

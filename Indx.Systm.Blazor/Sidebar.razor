@@ -72,9 +72,15 @@
             </div>
         }
     </div>
-    @if (Footer != null || Collapsible)
+    @if (Footer != null || RailFooter != null || Collapsible)
     {
         <div class="indx-sidebar-footer">
+            @* The rail's footer first: where it stands for something in the footer, it keeps that
+               thing's place at the top of the foot, folded or not. *@
+            @if (RailFooter != null)
+            {
+                <div class="indx-sidebar-rail-footer">@RailFooter</div>
+            }
             @if (Footer != null)
             {
                 <div class="indx-sidebar-footer-content">@Footer</div>
@@ -116,6 +122,9 @@
     [Parameter] public RenderFragment? Header { get; set; }
     /// <summary>Under the groups, above the fold button; hidden in the rail.</summary>
     [Parameter] public RenderFragment? Footer { get; set; }
+    /// <summary>What the foot shows folded to a rail, in place of the footer, which the rail hides:
+    /// something narrow, 50px at most (Get started's progress ring). Not shown unfolded.</summary>
+    [Parameter] public RenderFragment? RailFooter { get; set; }
 
     /// <summary>The rail of icons. Controlled with CollapsedChanged (@bind-Collapsed); leave both
     /// out and the sidebar keeps its own, starting from DefaultCollapsed or what StorageKey kept.</summary>

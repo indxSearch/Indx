@@ -346,6 +346,11 @@ a.btn-danger:hover {
     width: 100%;
     overflow-y: auto;
     overscroll-behavior: contain;
+    /* Room for the scrollbar whether or not the page scrolls. Where scrollbars take space (a
+       mouse on macOS, Windows, VS Code's browser), a page that grows past the window when its
+       data lands (Statistics, from its skeleton) otherwise narrows by the bar's width, and the
+       whole page shifts sideways. Overlay scrollbars take none, so nothing changes there. */
+    scrollbar-gutter: stable;
 }
 
 /* The Agent panel (stage 5): the window's full height at the right, beside the page. Closed it has
@@ -583,6 +588,24 @@ a.btn-danger:hover {
 .nav-jump .indx-btn.indx-btn-secondary { min-width: 200px; gap: 8px; color: var(--lv5); }
 .nav-jump .indx-btn.indx-btn-secondary:hover:not(:disabled) { color: var(--lv7); }
 .nav-jump-label { flex: 1; text-align: left; }
+/* With a side column the header's button is there only on a phone, where the column is a drawer. */
+.nav-jump--phone-only { display: none; }
+@media (max-width: 768px) { .nav-jump--phone-only { display: inline-flex; } }
+
+/* The same button at the top of the side column (ConsoleSideMenu's Sidebar header): the column's
+   width, its edges in line with the items under it. In the rail the icon alone, a square like the
+   rail's items, its name in a tooltip. The Sidebar hides its header in the rail, so the rail rule
+   here is made more specific than the Sidebar's own, which loads after this file. */
+.layout .shell-side .indx-sidebar-header { padding: 0; }
+.layout .shell-side .indx-sidebar.indx-sidebar--rail .indx-sidebar-header { display: block; }
+.side-jump, .side-jump .indx-tooltip-wrapper { display: flex; width: 100%; }
+.side-jump .indx-btn.indx-btn-secondary { width: 100%; gap: 8px; color: var(--lv5); }
+.side-jump .indx-btn.indx-btn-secondary:hover:not(:disabled) { color: var(--lv7); }
+@media (min-width: 769px) {
+    .indx-sidebar--rail .side-jump .nav-jump-label,
+    .indx-sidebar--rail .side-jump kbd.nav-jump-kbd { display: none; }
+    .indx-sidebar--rail .side-jump .indx-btn.indx-btn-secondary { width: 30px; padding: 0; justify-content: center; }
+}
 /* Notification bell: square, quiet, like a ghost button. */
 .nav-bell {
     display: flex;
@@ -624,7 +647,8 @@ a.btn-danger:hover {
    name, Agent), so the dataset's name keeps its. */
 @media (max-width: 1000px) {
     .nav-jump .indx-btn.indx-btn-secondary { min-width: 0; }
-    .nav-jump-label,
+    /* The header's only: the column's keeps its words. */
+    .nav-jump .nav-jump-label,
     /* Specific enough to beat the Kbd's own scoped display. */
     .nav-jump kbd.nav-jump-kbd { display: none; }
 
@@ -1218,6 +1242,51 @@ a.btn-danger:hover {
 }
 
 /* The bar over a tab's content (Statistics, Status): what belongs to everything below, on one
-   line, on a phone too. The end cluster holds the controls at the right. */
-.indx-context-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+   line, on a phone too. The end cluster holds the controls at the right. As tall as its tallest
+   control (a micro SelectField, 30px) whether or not it is there: Statistics shows its surface
+   picker only once the numbers name a second surface, and the bar growing then moved everything
+   under it. */
+.indx-context-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; min-height: 30px; }
 .indx-context-bar-end { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; min-width: 0; margin-left: auto; }
+
+/* Support (Notes/support-tickets-design.md): the /support pages, and the link at the foot of the
+   side column. Global, since both pages share them and their links are systm Buttons, which take
+   no class of their own: they are styled through a wrapper. */
+.support-page { display: flex; flex-direction: column; gap: 14px; }
+.support-title { margin: 0; }
+.support-quiet { color: var(--lv5); font: var(--text-sm); }
+.support-warn { margin: 0; font: var(--text-xs); color: var(--lv5); }
+.support-promise { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font: var(--text-sm); color: var(--lv7); }
+.support-subject .indx-btn { max-width: 100%; justify-content: flex-start; color: var(--lv8); gap: 8px; }
+/* Support's marks are blue, Indx's colour for a message to you, not the signal red of trouble. */
+.support-unread { width: 6px; height: 6px; background: var(--CLightBlue); flex: none; }
+.support-back .indx-btn { margin-left: -10px; color: var(--lv6); }
+.support-meta { display: flex; align-items: center; gap: 10px; margin: 0; }
+.support-thread { display: flex; flex-direction: column; gap: 10px; }
+.support-message { border: 1px solid var(--lv2); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; max-width: 72ch; }
+.support-message--staff { background: var(--lv1); border-color: var(--lv1); }
+.support-message-head { display: flex; align-items: center; gap: 10px; font: var(--text-xs); }
+.support-who { display: inline-flex; align-items: center; gap: 6px; color: var(--lv8); font-weight: var(--med); }
+.support-when { margin-left: auto; color: var(--lv5); }
+.support-body { margin: 0; font: var(--text-sm); color: var(--lv7); white-space: pre-wrap; overflow-wrap: anywhere; }
+.support-diag-row { display: flex; align-items: center; gap: 8px; }
+.support-diag { margin: 0; padding: 10px 12px; background: var(--lv1); border-radius: var(--radius); font-family: var(--font-mono); font-size: 11px; line-height: 1.5; color: var(--lv6); overflow: auto; max-height: 220px; }
+
+/* The column's Support link (ConsoleSideMenu's footer), above Collapse: a ghost Button the
+   column's width, primary on /support, with the unread replies as a badge. In the rail the
+   Sidebar hides its footer's content, so the rule below shows it again with the link alone, an
+   icon like the rail's items, its name in a tooltip; the version and update line stay hidden. */
+.side-support, .side-support .indx-tooltip-wrapper { display: flex; width: 100%; }
+.side-support .indx-btn { width: 100%; justify-content: flex-start; gap: 8px; }
+.side-support-badge { margin-left: auto; padding: 0 5px; font: var(--text-2xs); font-weight: var(--med); border-radius: 3px; background: var(--CLightBlue); color: #080809; }
+.side-foot + .side-support { margin-top: 8px; }
+.layout .shell-side .indx-sidebar.indx-sidebar--rail .indx-sidebar-footer-content { display: block; }
+@media (min-width: 769px) {
+    .indx-sidebar--rail .side-foot,
+    .indx-sidebar--rail .side-support-label { display: none; }
+    .indx-sidebar--rail .side-support .indx-btn { width: 30px; padding: 0; justify-content: center; position: relative; }
+    .indx-sidebar--rail .side-support-badge { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; padding: 0; font-size: 0; }
+    /* Get started's card is footer content too, shown again above: in the rail its own button
+       (the Sidebar's RailFooter) stands for it, so the card is hidden there. */
+    .indx-sidebar--rail .indx-sidebar-footer-content .getstarted { display: none; }
+}

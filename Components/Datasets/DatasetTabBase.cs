@@ -18,6 +18,19 @@ namespace IndxServer.Components.Datasets
         /// <summary>For the Observr client, which is absent where the service is not configured.</summary>
         [Inject] protected IServiceProvider TabServices { get; set; } = default!;
 
+        /// <summary>Marks a Get started step done for whoever is signed in, as it happens here (the
+        /// preview searched, the statistics read, a synonym saved). Resolved here, not injected: the
+        /// tabs also render where the service is not set up (their rendering tests).</summary>
+        protected void MarkStep(string key)
+        {
+            try
+            {
+                if (TabServices.GetService(typeof(IndxServer.Services.OnboardingService)) is IndxServer.Services.OnboardingService onboarding)
+                    _ = onboarding.MarkAsync(Ctx.TeamId, key);
+            }
+            catch (InvalidOperationException) { /* not set up here */ }
+        }
+
         private bool _subscribed;
         private IndxServer.Services.Observr.ObservrClient? _observr;
 

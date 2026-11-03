@@ -120,6 +120,7 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.BoostRuleStore>();
         builder.Services.AddSingleton<IndxServer.Services.BuryRuleStore>();
         builder.Services.AddSingleton<IndxServer.Services.DatasetMetadataStore>();
+        builder.Services.AddSingleton<IndxServer.Services.DemoDatasets>();
         builder.Services.AddSingleton<IndxServer.Services.QueryParameterStore>();
 
         // Search or ask (Notes/search-or-ask-server.md): off unless a key is set (configuration or
@@ -163,6 +164,16 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.Observr.ObservrDigestJob>();
         builder.Services.AddHostedService(sp => sp.GetRequiredService<IndxServer.Services.Observr.ObservrDigestJob>());
 
+        // Support tickets (Notes/support-tickets-design.md): written and read in the console, held
+        // and answered in Indx's Portal, reached with the licence token. The instance only calls out.
+        builder.Services.AddSingleton(builder.Configuration.GetSection(IndxServer.Services.Support.SupportOptions.Section)
+            .Get<IndxServer.Services.Support.SupportOptions>() ?? new());
+        builder.Services.AddHttpClient(IndxServer.Services.Support.SupportClient.HttpClientName, c => c.Timeout = TimeSpan.FromSeconds(20));
+        builder.Services.AddSingleton<IndxServer.Services.Support.SupportClient>();
+        builder.Services.AddSingleton<IndxServer.Services.Support.SupportState>();
+        builder.Services.AddSingleton<IndxServer.Services.Support.SupportDiagnostics>();
+        builder.Services.AddHostedService<IndxServer.Services.Support.SupportPollJob>();
+
         // MCP server: read-only retrieval tools over /mcp (Streamable HTTP), behind JWT auth.
         builder.Services.AddHttpContextAccessor();
         // ServerInstructions is sent at the handshake (initialize, or server/discover since the
@@ -188,8 +199,13 @@ internal static class StartupServices
                 new System.Text.Json.JsonSerializerOptions(ModelContextProtocol.McpJsonUtilities.DefaultOptions));
 
         builder.Services.AddScoped<IndxServer.Services.NotificationService>();
+        builder.Services.AddSingleton<IndxServer.Services.NotificationSignal>();
         builder.Services.AddScoped<IndxServer.Services.TeamService>();
         builder.Services.AddScoped<IndxServer.Services.UserProvisioningService>();
+        builder.Services.AddScoped<IndxServer.Services.EntraSignIn>();
+        builder.Services.AddScoped<IndxServer.Services.InviteService>();
+        builder.Services.AddScoped<IndxServer.Services.OnboardingService>();
+        builder.Services.AddScoped<IndxServer.Services.NotificationLinks>();
         builder.Services.AddScoped<IndxServer.Services.ActiveTeamState>();
         builder.Services.AddScoped<IndxServer.Services.HeaderState>();
         builder.Services.AddScoped<IndxServer.Services.SideMenuState>();
@@ -572,6 +588,39 @@ internal static class StartupServices
         else
         {
             Console.WriteLine("ℹ Microsoft authentication not configured (optional)");
+        }
+
+        // Microsoft Entra ID, the customer's own directory (Notes/entra-id-sign-in.md). Off until
+        // Entra:TenantId and Entra:ClientId are set; a Managed App's template sets both. Only an ID
+        // token is asked for, so there is no client secret to keep or to expire, and only the one
+        // directory's issuer is accepted.
+        var entra = EntraOptions.From(builder.Configuration);
+        if (entra.Enabled)
+        {
+            authBuilder.AddOpenIdConnect(EntraSignIn.Scheme, EntraSignIn.DisplayName, options =>
+            {
+                options.SignInScheme = IdentityConstants.ExternalScheme;
+                options.Authority = entra.Issuer;
+                options.ClientId = entra.ClientId;
+                options.CallbackPath = EntraSignIn.CallbackPath;
+                options.ResponseType = Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectResponseType.IdToken;
+                options.ResponseMode = Microsoft.IdentityModel.Protocols.OpenIdConnect.OpenIdConnectResponseMode.FormPost;
+                options.Scope.Add("email");
+                options.MapInboundClaims = false;
+                options.TokenValidationParameters.ValidIssuer = entra.Issuer;
+                options.Events.OnRedirectToIdentityProvider = context =>
+                {
+                    // The account picker, as for Microsoft above: people often have several.
+                    context.ProtocolMessage.Prompt = "select_account";
+                    return Task.CompletedTask;
+                };
+                options.Events.OnTokenValidated = context =>
+                {
+                    if (context.Principal != null) EntraSignIn.Normalize(context.Principal);
+                    return Task.CompletedTask;
+                };
+            });
+            Console.WriteLine("✓ Microsoft Entra ID sign-in configured");
         }
     }
 
