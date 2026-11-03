@@ -159,7 +159,7 @@ namespace IndxServer.Mcp
                          "Fields must be filterable (describe_dataset). An expression with errors is refused with each error and its position.")] string? filter = null,
             [System.ComponentModel.Description("How many documents to return. Default 10, maximum 100. Ask for what you will actually read.")] int limit = DefaultLimit,
             [System.ComponentModel.Description("If set, return only these top-level fields from each document.")] string[]? fields = null,
-            [System.ComponentModel.Description("Set true to include looser character-pattern matches. Default false, which is near-exact. Worth one retry when a " +
+            [System.ComponentModel.Description("Set true to include looser character-pattern matches, below the near-exact ones, and when nothing matches near-exactly. Default false, which is near-exact only. Worth one retry when a " +
                          "query you expected to match returns nothing; it trades precision for recall, so prefer the default.")] bool broaden = false,
             [System.ComponentModel.Description("Set true to also return counts per value for facetable fields. Use them to offer the user a way to narrow the " +
                          "search, or to pick the filter for your next call.")] bool facets = false)
@@ -176,7 +176,9 @@ namespace IndxServer.Mcp
                 Text = query ?? "",
                 MaxNumberOfRecordsToReturn = Math.Clamp(limit, 1, 100),
                 Mode = SearchMode.EditDistance,
-                Candidates = new CandidateSetup { Fallback = broaden },
+                // broaden: the pattern matches below the counted (Rest, 3 Nov 2026) and, when nothing
+                // is counted, the fallback's.
+                Candidates = new CandidateSetup { Fallback = broaden, Rest = broaden },
                 EnableFacets = facets || isBrowse,
             };
 
