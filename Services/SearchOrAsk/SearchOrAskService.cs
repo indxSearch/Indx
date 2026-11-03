@@ -1088,8 +1088,9 @@ namespace IndxServer.Services.SearchOrAsk
             foreach (var text in pending)
             {
                 bool whole = true;
-                // Without coverage: it keeps the texts that hold the words, and a paraphrase may hold few.
-                var found = engine.Search(new Query { Text = text, MaxNumberOfRecordsToReturn = SameNeedCandidates + 1, EnableCoverage = false });
+                // BM25F alone, no word count and no reranking: it keeps the texts that hold the words,
+                // and a paraphrase may hold few.
+                var found = engine.Search(new Query { Text = text, MaxNumberOfRecordsToReturn = SameNeedCandidates + 1, Mode = SearchMode.Bm25f, Ranking = { Rerank = false } });
                 var candidates = found.Records.Where(r => r.Score > 0 && r.DocumentKey >= 0 && r.DocumentKey < texts.Count)
                     .Select(r => texts[(int)r.DocumentKey]).Where(c => c != text).Take(SameNeedCandidates).ToList();
                 foreach (var other in candidates)

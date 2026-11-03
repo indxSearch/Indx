@@ -35,11 +35,11 @@ namespace IndxServer.Services
         /// </summary>
         public static FieldProxy[] FilmsFields =>
         [
-            new() { FieldName = "title", Searchable = true, Weight = 3f },
-            new() { FieldName = "originalTitle", Searchable = true, Weight = 2f },
-            new() { FieldName = "directors", Searchable = true, Filterable = true, Weight = 1.5f },
-            new() { FieldName = "cast", Searchable = true, Weight = 1.2f },
-            new() { FieldName = "description", Searchable = true, Weight = 0.8f },
+            new() { FieldName = "title", WordMatching = true, PatternMatching = true, Weight = 3f },
+            new() { FieldName = "originalTitle", WordMatching = true, PatternMatching = true, Weight = 2f },
+            new() { FieldName = "directors", WordMatching = true, PatternMatching = true, Filterable = true, Weight = 1.5f },
+            new() { FieldName = "cast", WordMatching = true, PatternMatching = true, Weight = 1.2f },
+            new() { FieldName = "description", WordMatching = true, PatternMatching = true, Weight = 0.8f },
             new() { FieldName = "genres", Filterable = true, Facetable = true },
             new() { FieldName = "countries", Filterable = true, Facetable = true },
             new() { FieldName = "languages", Filterable = true, Facetable = true },

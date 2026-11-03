@@ -1038,7 +1038,7 @@ namespace IndxServer.Services.Observr
                 var before = changes.Select(c => c.Name).Distinct()
                     .Select(n => fields.FirstOrDefault(x => x.Name == n))
                     .Where(x => x != null && !undo.FieldsBefore.Any(b => b.Name == x.Name))
-                    .Select(x => new ObservrFieldChange(x!.Name, x.Searchable, x.Filterable, x.Facetable, x.Sortable, x.Weight)).ToList();
+                    .Select(x => new ObservrFieldChange(x!.Name, x.WordMatching || x.PatternMatching != null, x.Filterable, x.Facetable, x.Sortable, x.Weight)).ToList();
                 if (ApplyFields(f.TeamId, f.DataSetName, changes) is { } why) return why;
                 undo.FieldsBefore.AddRange(before);
                 done.Add(ObservrProposal.FieldKind);
