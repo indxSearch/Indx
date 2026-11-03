@@ -956,7 +956,7 @@ else
         {
             var engine = Ctx.FindEngine();
             if (engine == null) return ("The dataset is not loaded, so its records cannot be read now.", null);
-            var filter = engine.GetFilterFromKey(key);
+            var filter = engine.GetFilterFromKey(key, out _);
             if (filter == null) return ("This filter no longer applies: a field in it has been removed, renamed or is no longer Filterable.", null);
             var query = new global::Indx.Http.QueryProxy
             {

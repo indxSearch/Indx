@@ -69,7 +69,7 @@ namespace IndxServer.Services
                 }
                 case DatasetChangeKind.QueryParameters:
                 {
-                    // Stored as "coverageDepth", "coverageSetup.truncate": the last part reads.
+                    // Stored as "mode", "match.tolerance" (6.0; "coverageSetup.truncate" before): the last part reads.
                     var changed = A("changed").Select(n => n[(n.LastIndexOf('.') + 1)..]).ToArray();
                     if (changed.Length == 0) return "Query parameters changed";
                     var shown = string.Join(", ", changed.Take(3));

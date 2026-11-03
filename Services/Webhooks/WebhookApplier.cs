@@ -266,9 +266,9 @@ namespace IndxServer.Services.Webhooks
                     if (values is { Count: > 0 } && values.All(LooksLikeDate))
                         roles.Add(new FieldProxy { FieldName = f.FieldName, Sortable = f.IsArray != true });
                     else if (values is { Count: > 0 } && Repeats(values))
-                        roles.Add(new FieldProxy { FieldName = f.FieldName, Searchable = true, Filterable = true, Facetable = true });
+                        roles.Add(new FieldProxy { FieldName = f.FieldName, WordMatching = true, PatternMatching = true, Filterable = true, Facetable = true });
                     else
-                        roles.Add(new FieldProxy { FieldName = f.FieldName, Searchable = true });
+                        roles.Add(new FieldProxy { FieldName = f.FieldName, WordMatching = true, PatternMatching = true });
                 }
                 else if (type.Equals(nameof(JsonValueKind.Number), StringComparison.OrdinalIgnoreCase)
                          || type.Equals(nameof(JsonValueKind.True), StringComparison.OrdinalIgnoreCase)

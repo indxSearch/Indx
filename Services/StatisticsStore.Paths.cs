@@ -1,3 +1,5 @@
+using Indx.Api;
+
 namespace IndxServer.Services
 {
     /// <summary>
@@ -120,7 +122,7 @@ namespace IndxServer.Services
         {
             var spans = new Dictionary<string, (double Low, double High, HashSet<(double, double)> Seen)>(StringComparer.Ordinal);
             foreach (var key in keys.Keys)
-                foreach (var r in FilterKeyOperands.ParseRanges(key))
+                foreach (var r in Ranges(key))
                 {
                     var sp = spans.TryGetValue(r.Field, out var had) ? (Math.Min(had.Low, r.Min), Math.Max(had.High, r.Max), had.Seen) : (r.Min, r.Max, new HashSet<(double, double)>());
                     sp.Item3.Add((r.Min, r.Max));
@@ -152,10 +154,24 @@ namespace IndxServer.Services
         /// <summary>A filter key's fields, each with the value it was searched on: "type1 = water",
         /// "type1 (2 values)" for several in one search, a range in its field's band when the bands
         /// are known, else "speed (range)".</summary>
+        /// <summary>The operands a search narrowed by, read with the library's reader (FilterKeyReader;
+        /// until 6.0 FilterKeyOperands): a value with its value, a range with an empty one; a negated
+        /// operand, a position or a custom filter is no choice of a value and is left out.</summary>
+        private static IEnumerable<(string Field, string Value)> Chosen(string key) =>
+            FilterKeyReader.Operands(key)
+                .Where(o => !o.Negated && o.Kind is not (FilterOperandKind.Position or FilterOperandKind.Custom))
+                .Select(o => (o.Field, o.Value));
+
+        /// <summary>The ranges a search narrowed by, with their limits, lower first.</summary>
+        private static IEnumerable<(string Field, double Min, double Max)> Ranges(string key) =>
+            FilterKeyReader.Operands(key)
+                .Where(o => !o.Negated && o.Kind == FilterOperandKind.Range && o.Min != null && o.Max != null)
+                .Select(o => (o.Field, Math.Min(o.Min!.Value, o.Max!.Value), Math.Max(o.Min!.Value, o.Max!.Value)));
+
         public static Dictionary<string, string> FieldValues(string key, IReadOnlyDictionary<string, RangeBands>? bands = null)
         {
-            var ranges = FilterKeyOperands.ParseRanges(key).ToList();
-            return FilterKeyOperands.Parse(key).Distinct()
+            var ranges = Ranges(key).ToList();
+            return Chosen(key).Distinct()
                 .GroupBy(o => o.Field, StringComparer.Ordinal)
                 .ToDictionary(g => g.Key, g =>
                 {
