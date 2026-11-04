@@ -200,10 +200,10 @@ else
 
 @code {
 
-    // Rank is the 1-based place in the list. CloseMatch: within the coverage truncation point, a
-    // near-exact match coverage confirmed, rather than a pattern match ranked below them.
-    // Matches: how the reranker met each query word in this record (Result.RerankReport), Nov 2026.
-    private record PreviewHit(JsonElement Doc, ushort Score, long Key, int Rank, bool CloseMatch, IReadOnlyList<SearchExplanation.Word>? Matches);
+    // Rank is the 1-based place in the list. Kind: counted, related, partial or broad, with what it
+    // means (SearchExplanation.KindOf; 5.x's close and pattern match until Nov 2026). Matches: how the
+    // reranker met each query word in this record (Result.RerankReport).
+    private record PreviewHit(JsonElement Doc, ushort Score, long Key, int Rank, (string Label, string Title) Kind, IReadOnlyList<SearchExplanation.Word>? Matches);
     private record PerfTestResult(int Iterations, double MedianMs, double P95Ms, double MinMs, double MaxMs, double PerSecond);
     private record DisplayField(string Name, string Value);
 
@@ -377,8 +377,6 @@ else
         var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = PreviewHits, EnableRerankReport = true };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         var hits = new List<PreviewHit>();
-        // A close match is one the search counted: they come first (6.0; until then up to TruncationIndex).
-        int counted = result.CountedInList();
         for (int i = 0; i < result.Records.Length; i++)
         {
             var record = result.Records[i];
@@ -388,7 +386,7 @@ else
                 try
                 {
                     hits.Add(new PreviewHit(JsonDocument.Parse(json).RootElement.Clone(), record.Score,
-                        record.DocumentKey, i + 1, i < counted, SearchExplanation.For(result, record.DocumentKey)));
+                        record.DocumentKey, i + 1, SearchExplanation.KindOf(result, i), SearchExplanation.For(result, record.DocumentKey)));
                 }
                 catch { }
             }
@@ -552,6 +550,7 @@ else
         {
             case "Strong matches": <Indx.Systm.Blazor.Icons.SearchQuery Size="14" Color="currentColor" />; break;
             case "Fuzzy matches": <Indx.Systm.Blazor.Icons.FuzzySearch Size="14" Color="currentColor" />; break;
+            case "Partial matches": <Indx.Systm.Blazor.Icons.PatternRecognition Size="14" Color="currentColor" />; break;
             default: <Search Size="14" />; break;
         }
     };
@@ -562,22 +561,16 @@ else
         "Strong matches" => "Every word, as typed",
         "Fuzzy matches" => "Every word, within a typo or two: none held them all as typed",
         "Partial matches" => "Some of the words: no record holds them all",
-        _ => "BM25F's order, with no typo levels",
+        _ => "Any of the words, or parts of them: no typo levels",
     };
 
     private RenderFragment DocumentPanel(PreviewHit hit) => __builder =>
     {
         var fields = Ctx.SavedFields;
         <p class="indx-doc-meta">
-            #@hit.Rank · score @hit.Score.ToString("N0") ·
-            @if (hit.CloseMatch)
-            {
-                <span title="Coverage found the query in this document, near-exact">close match</span>
-            }
-            else
-            {
-                <span title="Ranked by pattern matching only; coverage did not confirm the query here">pattern match</span>
-            }
+            <span>#@hit.Rank</span>
+            <span>score @hit.Score.ToString("N0")</span>
+            <span title="@hit.Kind.Title">@hit.Kind.Label</span>
         </p>
         @if (hit.Matches is { Count: > 0 } words)
         {

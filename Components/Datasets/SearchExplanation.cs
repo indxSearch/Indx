@@ -1,4 +1,5 @@
 using Indx.Api;
+using IndxServer.Services;
 
 namespace IndxServer.Components.Datasets
 {
@@ -31,8 +32,12 @@ namespace IndxServer.Components.Datasets
             string headline;
             if (result.ToleranceCounts is null)
             {
-                headline = "Ranked by relevance";
-                notes.Add($"{result.Count:N0} records score above 0 by BM25F: the Bm25f mode, with no typo levels.");
+                // The Bm25f mode: any of the words, or parts of them, is a candidate. Reranked unless
+                // the search says otherwise; the report the preview asks for is there only when it is.
+                headline = "Broad matches";
+                notes.Add($"{result.Count:N0} records hold any of the words or parts of them: the Bm25f mode, with no typo levels.");
+                if (result.RerankReport == null && result.Records.Length > 0)
+                    notes.Add("BM25F's order, not reranked.");
             }
             else if (result.IsFallback)
             {
@@ -63,6 +68,21 @@ namespace IndxServer.Components.Datasets
             if (result.Count > result.Ranked)
                 notes.Add($"The best {result.Ranked:N0} of the {result.Count:N0} were ranked: the candidate bound. The rest are counted, and in the facets, but not ordered.");
             return new Summary(headline, levels, notes);
+        }
+
+        /// <summary>What one listed record is, by its place in the list: counted (it holds every word on
+        /// the counted level), related (BM25F's best below them, Rest), partial (the fallback), or broad
+        /// (the Bm25f mode). The label and what it means, on hover. Until Nov 2026 the preview said
+        /// "close match" or "pattern match", 5.x's words for either side of the truncation.</summary>
+        public static (string Label, string Title) KindOf(Result result, int index)
+        {
+            if (result.ToleranceCounts is null)
+                return ("broad match", "Holds some of the words or parts of them: the Bm25f mode, with no typo levels");
+            if (result.IsFallback)
+                return ("partial", "Holds some of the words: no record holds them all, so the fallback lists those with the most");
+            if (index < result.CountedInList())
+                return ("counted", "Holds every word on the level counted");
+            return ("related", "Below the counted records: BM25F's best among the rest (Rest)");
         }
 
         /// <summary>How the reranker met each query word in one record, in the query's order; null

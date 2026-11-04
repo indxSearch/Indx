@@ -315,7 +315,8 @@
 
 .indx-doc-unpin { margin-left: auto; padding-right: 2px; }
 
-.indx-doc-meta { margin: 0; font: var(--text-xs); color: var(--lv5); font-variant-numeric: tabular-nums; }
+/* Rank, score and kind, spaced apart rather than separated by a dot. */
+.indx-doc-meta { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font: var(--text-xs); color: var(--lv5); font-variant-numeric: tabular-nums; }
 
 .indx-doc-section { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 0.5px solid var(--lv3); }
 .indx-doc-section-title { font: var(--text-xs); font-weight: var(--med); color: var(--lv7); display: flex; gap: 8px; align-items: baseline; }
