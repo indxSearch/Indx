@@ -20,7 +20,7 @@
                 <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Matches inside words: a query finds the field by any part of a word. With WordMatching too, the field is matched both ways. Leave it off for codes, identifiers and tags.">PatternMatching</span></th>
                 @if (ShowProfiles)
                 {
-                    <th class="indx-col-profile"><span class="indx-th-tip" data-tooltip="A searched field's search settings under a name many fields share: its typos, its weight in the reranker and its pattern setup. The button beside the menu edits them.">Profile</span></th>
+                    <th class="indx-col-profile"><span class="indx-th-tip" data-tooltip="A searched field's search settings under a name many fields share: its typos, its weight in the reranker and its pattern setup. Each profile in the menu can be edited from there.">Profile</span></th>
                 }
                 <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Can be used to filter results by exact value or range.">Filterable</span></th>
                 <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Field values are counted and returned as facets for building filter UI.">Facetable</span></th>
@@ -504,9 +504,13 @@
     /// <summary>The dataset's profiles and which field has which (the context's working copy). Null
     /// for an analyzed upload, which has no profiles yet: the column is left out.</summary>
     [Parameter] public DatasetFieldProfiles? Profiles { get; set; }
-    /// <summary>The edit button beside a field's Profile menu: edits its profile, or a Custom
-    /// field's own values.</summary>
-    [Parameter] public EventCallback<FieldProxy> OnEditProfile { get; set; }
+    /// <summary>Edit on a row of a field's Profile menu: that profile, chosen for the field or not, or
+    /// with no id the field's own values while it is Custom.</summary>
+    [Parameter] public EventCallback<ProfileEdit> OnEditProfile { get; set; }
+
+    /// <summary>What Edit in a Profile menu asks for: the field it was opened on, and the profile;
+    /// a null id is the field's own values (Custom).</summary>
+    public sealed record ProfileEdit(FieldProxy Field, string? ProfileId);
     /// <summary>"New profile" at the foot of a field's Profile menu, as the dataset switcher has
     /// one: a new profile, which that field then has.</summary>
     [Parameter] public EventCallback<FieldProxy> OnNewProfile { get; set; }
@@ -515,8 +519,9 @@
     private const string CustomProfile = "custom";
 
     /// <summary>
-    /// A searched field's Profile cell: the menu of profiles by name, and the edit button beside
-    /// it. A field whose values match no profile chosen for it shows Custom until one is. Not
+    /// A searched field's Profile cell: the menu of profiles by name, each with its edit button,
+    /// and "New profile" at its foot. A field whose values match no profile chosen for it shows
+    /// Custom until one is. Not
     /// searched, the row note says so, in the tone of the table's other notes.
     /// </summary>
     private RenderFragment ProfileCell(FieldProxy field) => __builder =>
@@ -529,14 +534,14 @@
         var current = FieldProfiles.ProfileOf(field, Profiles);
         var options = FieldProfiles.All(Profiles).Select(p => new SelectField.SelectOption(p.Name, p.Id)).ToList();
         if (current == null) options.Insert(0, new SelectField.SelectOption("Custom", CustomProfile));
+        @* Every profile in the menu can be edited from there, chosen or not, and the field's own
+           settings while it is Custom; "New profile" at its foot. *@
         <div class="indx-profile-cell">
             <SelectField Size="micro" Variant="ghost" Value="@(current?.Id ?? CustomProfile)" Options="options" disabled="@(!Editable)"
                          aria-label="@($"Profile: {field.FieldName}")" ValueChanged="@(v => ChooseProfile(field, v))"
+                         OptionActionIcon="@(Editable ? DatasetIcons.Edit : null)" OptionActionLabel="Edit"
+                         OnOptionAction="@(id => OnEditProfile.InvokeAsync(new ProfileEdit(field, id == CustomProfile ? null : id)))"
                          ActionLabel="@(Editable ? "New profile" : null)" OnAction="() => OnNewProfile.InvokeAsync(field)" />
-            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Edit" Disabled="@(!Editable)"
-                    aria-label="@(current != null ? $"Edit {current.Name}, the profile of {field.FieldName}" : $"Edit the settings of {field.FieldName}")"
-                    title="@(current != null ? $"Edit {current.Name}" : "Edit this field's settings")"
-                    @onclick="() => OnEditProfile.InvokeAsync(field)" />
         </div>
     };
 

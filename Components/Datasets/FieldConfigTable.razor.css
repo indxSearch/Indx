@@ -434,8 +434,8 @@ td:first-child:hover {
 
 /* The Profile column: the menu and the edit button beside it (Nov 2026). */
 .indx-col-profile {
-    width: 200px;
-    min-width: 170px;
+    width: 240px;
+    min-width: 200px;
 }
 
 .indx-profile-cell {
@@ -448,4 +448,10 @@ td:first-child:hover {
 .indx-profile-cell ::deep .indx-select-wrapper {
     flex: 1;
     min-width: 0;
+}
+
+/* The menu's button fills the column, its caret at the far end, rather than sizing to its value. */
+.indx-profile-cell ::deep .indx-select {
+    width: 100%;
+    justify-content: space-between;
 }

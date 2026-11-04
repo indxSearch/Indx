@@ -50,20 +50,24 @@
             <div class="indx-select-menu" role="listbox">
                 @foreach (var option in _options)
                 {
-                    <Button Variant="ghost" Size="@Size" role="option" aria-selected="@(Value == option.Value ? "true" : "false")"
-                            @onclick="() => Pick(option.Value)" style="width:100%; justify-content:space-between;">
-                        <span style="display:inline-flex; align-items:center; gap:6px;">
-                            @if (option.Icon is { } optIcon)
-                            {
-                                @optIcon(_iconSize)
-                            }
-                            <span>@option.Label</span>
-                        </span>
-                        @if (Value == option.Value)
-                        {
-                            <Check Size="14" />
-                        }
-                    </Button>
+                    var choose = OptionRow(option);
+                    @if (OptionActionIcon is { } actionIcon && OnOptionAction.HasDelegate)
+                    {
+                        @* An option with an action of its own beside it ("Edit"), for a menu whose
+                           options can be changed without choosing them first. Two buttons in a row,
+                           not one inside the other; the arrows move among the options only. *@
+                        <div class="indx-select-option-row">
+                            @choose
+                            <Button Variant="ghost" Size="@Size" aria-label="@($"{OptionActionLabel} {option.Label}")" title="@($"{OptionActionLabel} {option.Label}")"
+                                    @onclick="() => RunOptionAction(option.Value)">
+                                <IconLeft>@actionIcon(context)</IconLeft>
+                            </Button>
+                        </div>
+                    }
+                    else
+                    {
+                        @choose
+                    }
                 }
                 @if (!string.IsNullOrEmpty(ActionLabel))
                 {
@@ -100,6 +104,13 @@
     /// shown when set, it closes the menu and raises <see cref="OnAction"/> instead of choosing.</summary>
     [Parameter] public string? ActionLabel { get; set; }
     [Parameter] public EventCallback OnAction { get; set; }
+
+    /// <summary>An action beside every option, drawn as this icon (typically an edit): it closes
+    /// the menu and raises <see cref="OnOptionAction"/> with the option's value, choosing nothing.
+    /// Shown when both are set. <see cref="OptionActionLabel"/> names it with the option's label.</summary>
+    [Parameter] public RenderFragment<int>? OptionActionIcon { get; set; }
+    [Parameter] public EventCallback<string> OnOptionAction { get; set; }
+    [Parameter] public string OptionActionLabel { get; set; } = "Edit";
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _open;
@@ -131,6 +142,32 @@
 
     private void Toggle() => _open = !_open;
     private void Close() => _open = false;
+
+    /// <summary>One option, the button that chooses it.</summary>
+    private RenderFragment OptionRow(SelectOption option) => __builder =>
+    {
+        <Button Variant="ghost" Size="@Size" role="option" aria-selected="@(Value == option.Value ? "true" : "false")"
+                @onclick="() => Pick(option.Value)" style="width:100%; justify-content:space-between;">
+            <span style="display:inline-flex; align-items:center; gap:6px;">
+                @if (option.Icon is { } optIcon)
+                {
+                    @optIcon(_iconSize)
+                }
+                <span>@option.Label</span>
+            </span>
+            @if (Value == option.Value)
+            {
+                <Check Size="14" />
+            }
+        </Button>
+    };
+
+    private async Task RunOptionAction(string value)
+    {
+        _open = false;
+        _refocus = true;
+        await OnOptionAction.InvokeAsync(value);
+    }
 
     private async Task RunAction()
     {

@@ -178,3 +178,16 @@
     background: var(--lv3);
     margin: 4px 0;
 }
+
+/* An option with its own action beside it: the option takes the row, the action its icon's width. */
+.indx-select-option-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.indx-select-option-row > :first-child {
+    flex: 1;
+    min-width: 0;
+}

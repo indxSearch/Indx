@@ -147,11 +147,21 @@ else if (Ctx.EditedFields is { } fields)
         _newFor = field;
     }
 
-    private void EditProfile(FieldProxy field)
+    /// <summary>Edit in a field's Profile menu: the profile on that row, chosen for the field or
+    /// not; with no id, the field's own values while it is Custom.</summary>
+    private void EditProfile(FieldConfigTable.ProfileEdit edit)
     {
-        var current = FieldProfiles.ProfileOf(field, Ctx.EditedProfiles);
-        _editingField = current == null ? field : null;
-        _editing = current ?? FieldProfiles.FromField(field);
+        _newFor = null;
+        if (edit.ProfileId is { } id && FieldProfiles.All(Ctx.EditedProfiles).FirstOrDefault(p => p.Id == id) is { } profile)
+        {
+            _editingField = null;
+            _editing = profile;
+        }
+        else
+        {
+            _editingField = edit.Field;
+            _editing = FieldProfiles.FromField(edit.Field);
+        }
     }
 
     private void SaveProfile(FieldProfile edited)
