@@ -46,7 +46,7 @@ namespace IndxServer.Services
                     .Select(r => (Rule: (IRankingRule)r, Type: NotificationType.BoostRuleExpired, Word: "Boost", Verb: "boosts", Tab: "Boost rules", Key: "boosts"))
                     .Concat(buryStore.Load(teamId, dataSetName)
                         .Where(r => r.Enabled && r.ActiveUntil is { } until && until < today)
-                        .Select(r => (Rule: (IRankingRule)r, Type: NotificationType.BuryRuleExpired, Word: "Bury", Verb: "buries", Tab: "Bury rules", Key: "buries")))
+                        .Select(r => (Rule: (IRankingRule)r, Type: NotificationType.BuryRuleExpired, Word: "Bury", Verb: "buries", Tab: "Boost rules", Key: "boosts")))
                     .ToList();
                 if (expired.Count == 0) continue;
 

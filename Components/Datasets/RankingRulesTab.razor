@@ -1,7 +1,9 @@
-@* Per-dataset ranking rules, boost or bury by Kind (BoostRuleStore / BuryRuleStore, one tab
-   component since 25 Oct 2026). The condition builder reads the *edited* field configuration from
-   the context, so an unsaved Filterable toggle in the Fields tab immediately changes what can be
-   picked here. *@
+@* Per-dataset ranking rules, boost and bury in one list (Nov 2026; two tabs of this component from
+   25 Oct 2026). Each rule's strength is one scale from Bury high to Boost high, so a rule changes
+   direction by its slider; the rules are still kept apart where they are stored (BoostRuleStore,
+   BuryRuleStore) and searched (enableBoost, enableBury), as the HTTP API has them. The condition
+   builder reads the *edited* field configuration from the context, so an unsaved Filterable toggle
+   in the Fields tab immediately changes what can be picked here. *@
 @using IndxServer.Models
 @using Indx.Api
 @inherits DatasetTabBase
@@ -14,14 +16,7 @@
 
 <div class="boost-tab">
     <p class="boost-intro">
-        @if (IsBury)
-        {
-            <text>Ranking rules that take matching documents down when a search runs with <code>enableBury</code>. Conditions use filterable fields; rules stack.</text>
-        }
-        else
-        {
-            <text>Ranking rules that lift matching documents when a search runs with <code>enableBoost</code>. Conditions use filterable fields; rules stack.</text>
-        }
+        Ranking rules that lift matching documents, or bury them, when a search runs with <code>enableBoost</code> or <code>enableBury</code>. Conditions use filterable fields; rules stack.
     </p>
 
     @{ var fieldOpts = FieldOptions(); }
@@ -30,7 +25,7 @@
     {
         <Alert Variant="warning">
             <Title>No filterable fields on this dataset</Title>
-            <Description>@Capitalized rules match on filterable fields. Mark a field <strong>Filterable</strong> under Field configuration, then come back here.</Description>
+            <Description>Boost rules match on filterable fields. Mark a field <strong>Filterable</strong> under Field configuration, then come back here.</Description>
         </Alert>
     }
     else
@@ -39,7 +34,7 @@
         <div class="indx-list-toolbar">
             @if (Ctx.IsEditor)
             {
-                <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="AddRule">New @Word rule</Button>
+                <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="AddRule">New boost rule</Button>
             }
             @if (_rules.Count > 0)
             {
@@ -48,15 +43,15 @@
         </div>
         @if (_rules.Count == 0)
         {
-            <EmptyState Size="compact" Icon="@(IsBury ? DatasetIcons.Bury : DatasetIcons.Boost)" Title="@($"No {Word} rules yet")">@(IsBury ? "A rule takes the records it matches down, on every search or between two dates." : "A rule lifts the records it matches, on every search or between two dates.")</EmptyState>
+            <EmptyState Size="compact" Icon="DatasetIcons.Boost" Title="No boost rules yet">A rule lifts the records it matches, or buries them, on every search or between two dates.</EmptyState>
         }
         else
         {
             var today = DateOnly.FromDateTime(DateTime.Today);
-            var expired = _rules.Count(r => r.Enabled && r.ActiveUntil is { } u && u < today);
-            var scheduled = _rules.Count(r => r.Enabled && r.ActiveFrom is { } f && f > today);
-            var disabled = _rules.Count(r => !r.Enabled);
-            var active = _rules.Count(r => r.IsActiveOn(today));
+            var expired = _rules.Select(e => e.Rule).Count(r => r.Enabled && r.ActiveUntil is { } u && u < today);
+            var scheduled = _rules.Select(e => e.Rule).Count(r => r.Enabled && r.ActiveFrom is { } f && f > today);
+            var disabled = _rules.Count(e => !e.Rule.Enabled);
+            var active = _rules.Count(e => e.Rule.IsActiveOn(today));
             @if (expired + scheduled + disabled > 0)
             {
                 <p class="boost-summary">
@@ -70,8 +65,9 @@
 
         <ReadOnlyArea Editable="@Ctx.IsEditor">
         <div class="boost-rules">
-            @foreach (var rule in _rules)
+            @foreach (var entry in _rules)
             {
+                var rule = entry.Rule;
                 var status = RuleStatus(rule);
                 <div class="boost-rule @(status?.Label.StartsWith("Expired") == true ? "boost-rule--expired" : "")">
                     <div class="boost-rule-head">
@@ -81,9 +77,20 @@
                         {
                             <Chip Color="@status.Value.Color" TextColor="@status.Value.TextColor">@status.Value.Label</Chip>
                         }
-                        <span class="boost-label">Strength:</span>
-                        <div class="boost-w130"><SelectField Size="micro" Options="StrengthOptions" Value="@rule.StrengthValue.ToString()" ValueChanged="@(v => rule.StrengthValue = ParseStrength(v))" /></div>
-                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="@(() => _rules.Remove(rule))" />
+                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Delete" aria-label="Delete rule" @onclick="@(() => _rules.Remove(entry))" />
+                    </div>
+
+                    @* One scale for both directions: Bury high to Boost high, six steps and no middle. *@
+                    <div class="boost-strength">
+                        <span class="boost-strength-now">@(entry.Bury ? DatasetIcons.Bury(14) : DatasetIcons.Boost(14))@StrengthName(entry)</span>
+                        <div class="boost-strength-scale">
+                            <Slider Min="0" Max="5" Step="1" Value="@StepOf(entry)" AriaLabel="@($"Strength: {rule.Name}")" Disabled="@(!Ctx.IsEditor)"
+                                    ValueChanged="@(v => SetStep(entry, (int)Math.Round(v)))" />
+                            <div class="boost-strength-labels" aria-hidden="true">
+                                <span>High</span><span>Medium</span><span>Low</span><span>Low</span><span>Medium</span><span>High</span>
+                            </div>
+                            <div class="boost-strength-sides" aria-hidden="true"><span>Bury</span><span>Boost</span></div>
+                        </div>
                     </div>
 
                     <div class="boost-conditions">
@@ -185,32 +192,63 @@
 </div>
 
 @code {
-    /// <summary>"boost" (the default) or "bury": which rules this tab edits.</summary>
-    [Parameter] public string Kind { get; set; } = "boost";
+    /// <summary>One rule in the list and which way it goes. A bury rule is a BuryRule and a boost
+    /// rule a BoostRule, as they are stored; turning one round makes it the other kind.</summary>
+    // The two stores through the interface they share, which is where their rule methods are.
+    private IRankingRuleStore Boosts => BoostStore;
+    private IRankingRuleStore Buries => BuryStore;
 
-    private bool IsBury => Kind == "bury";
-    private string Word => IsBury ? "bury" : "boost";
-    private string Capitalized => IsBury ? "Bury" : "Boost";
-    private IRankingRuleStore Store => IsBury ? BuryStore : BoostStore;
+    private sealed class RuleEntry(IRankingRule rule, bool bury)
+    {
+        public IRankingRule Rule { get; set; } = rule;
+        public bool Bury { get; set; } = bury;
+    }
 
     private static readonly IEnumerable<SelectField.SelectOption> JoinOptions =
         [new("AND", "And"), new("OR", "Or")];
 
-    // The strength as its number, Low 1 to High 3: the same three words for both kinds.
-    private static readonly IEnumerable<SelectField.SelectOption> StrengthOptions =
-    [
-        new("Low", "1") { Icon = DatasetIcons.WeightLow },
-        new("Medium", "2") { Icon = DatasetIcons.WeightMedium },
-        new("High", "3") { Icon = DatasetIcons.WeightHigh },
-    ];
+    // The strength scale's six steps, left to right: Bury high, medium, low, then Boost low, medium,
+    // high. A step is a rule's direction and its strength (Low 1 to High 3) in one.
+    private static int StepOf(RuleEntry e) => e.Bury ? 3 - e.Rule.StrengthValue : 2 + e.Rule.StrengthValue;
+
+    private static string StrengthName(RuleEntry e) =>
+        $"{(e.Bury ? "Bury" : "Boost")} {e.Rule.StrengthValue switch { 1 => "low", 3 => "high", _ => "medium" }}";
+
+    private void SetStep(RuleEntry e, int step)
+    {
+        step = Math.Clamp(step, 0, 5);
+        bool bury = step <= 2;
+        int strength = bury ? 3 - step : step - 2;
+        if (bury != e.Bury)
+        {
+            e.Rule = Turned(e.Rule, bury);
+            e.Bury = bury;
+        }
+        e.Rule.StrengthValue = strength;
+    }
+
+    /// <summary>The rule as the other kind, everything else kept.</summary>
+    private IRankingRule Turned(IRankingRule rule, bool toBury)
+    {
+        var turned = (toBury ? Buries : Boosts).NewRule();
+        turned.Name = rule.Name;
+        turned.Enabled = rule.Enabled;
+        turned.Conditions = rule.Conditions;
+        turned.Join = rule.Join;
+        turned.StrengthValue = rule.StrengthValue;
+        turned.ActiveFrom = rule.ActiveFrom;
+        turned.ActiveUntil = rule.ActiveUntil;
+        if (_ruleTimeLimited.Remove(rule)) _ruleTimeLimited.Add(turned);
+        return turned;
+    }
 
     private bool _loaded;
-    private List<IRankingRule> _rules = new();
+    private List<RuleEntry> _rules = new();
     private string? _savedJson;
     private string? _error;
     private string? _importNote;
 
-    private string ImportInputId => $"{Kind}-rules-import-{Ctx.Name}";
+    private string ImportInputId => $"boost-rules-import-{Ctx.Name}";
 
     // Rules with no schedule are "always active". The Time-limit checkbox reveals the date
     // pickers; a rule is considered time-limited if the box was ticked or it already carries a date.
@@ -224,15 +262,28 @@
             // From the Categories tab: a rule on one category, at the top like a new rule, unsaved.
             Ctx.BoostDraft = null;
             _error = null;
-            _rules.Insert(0, new BoostRule { Name = draft.Name, Conditions = draft.Conditions.Select(c => new BoostCondition { Field = c.Field, Value = c.Value }).ToList() });
+            _rules.Insert(0, new RuleEntry(new BoostRule { Name = draft.Name, Conditions = draft.Conditions.Select(c => new BoostCondition { Field = c.Field, Value = c.Value }).ToList() }, bury: false));
         }
     }
 
     private void Load()
     {
         _loaded = true;
-        _savedJson = Store.Serialize(Store.LoadRules(Ctx.TeamId, Ctx.Name));
-        _rules = Store.Deserialize(_savedJson);
+        _rules = Entries(Boosts.LoadRules(Ctx.TeamId, Ctx.Name), Buries.LoadRules(Ctx.TeamId, Ctx.Name));
+        _savedJson = Serialized(_rules);
+    }
+
+    /// <summary>The boost rules, then the bury rules, as one list.</summary>
+    private List<RuleEntry> Entries(IEnumerable<IRankingRule> boosts, IEnumerable<IRankingRule> buries) =>
+        [.. Boosts.Deserialize(Boosts.Serialize(boosts)).Select(r => new RuleEntry(r, false)),
+         .. Buries.Deserialize(Buries.Serialize(buries)).Select(r => new RuleEntry(r, true))];
+
+    /// <summary>Both kinds as the stores write them, for the dirty check and the export.</summary>
+    private string Serialized(IEnumerable<RuleEntry> rules, bool indented = false)
+    {
+        var boosts = Boosts.Serialize(rules.Where(e => !e.Bury).Select(e => e.Rule), indented);
+        var buries = Buries.Serialize(rules.Where(e => e.Bury).Select(e => e.Rule), indented);
+        return $"{{\"boosts\":{boosts},\"buries\":{buries}}}";
     }
 
     // The conditions' field pickers search with Indx, over one micro index for the tab.
@@ -290,13 +341,12 @@
         if (!Ctx.IsEditor) return;
         _error = null;
         var first = FilterableFieldNames().FirstOrDefault() ?? "";
-        var rule = Store.NewRule();
+        var rule = Boosts.NewRule();
         rule.Name = "New rule";
         rule.Conditions = new() { NewCondition(first) };
-        _rules.Insert(0, rule);
+        _rules.Insert(0, new RuleEntry(rule, bury: false));
     }
 
-    private static int ParseStrength(string? v) => int.TryParse(v, out var n) && n is >= 1 and <= 3 ? n : 2;
     private static BoostJoin ParseJoin(string? v) => Enum.TryParse<BoostJoin>(v, out var j) ? j : BoostJoin.And;
 
     /// <summary>A chip for rules that are not applying right now; null for an active rule.
@@ -319,7 +369,7 @@
         else { _ruleTimeLimited.Remove(rule); rule.ActiveFrom = null; rule.ActiveUntil = null; }
     }
 
-    private bool IsDirty => _loaded && Store.Serialize(_rules) != _savedJson;
+    private bool IsDirty => _loaded && Serialized(_rules) != _savedJson;
 
     private bool _saving;
 
@@ -329,7 +379,7 @@
         if (!Ctx.IsEditor) return;
         if (_saving) return;
         _error = null;
-        foreach (var r in _rules)
+        foreach (var r in _rules.Select(e => e.Rule))
         {
             if (string.IsNullOrWhiteSpace(r.Name)) { _error = "Every rule needs a name."; return; }
             if (r.Conditions.Count == 0) { _error = $"Rule \"{r.Name}\" needs at least one condition."; return; }
@@ -343,13 +393,16 @@
                 else if (string.IsNullOrWhiteSpace(c.Value)) { _error = $"Rule \"{r.Name}\": enter a value for {c.Field}."; return; }
             }
         }
-        var rules = _rules;
-        var store = Store;
+        var rules = _rules.ToList();
         _saving = true;
         try
         {
-            await Task.Run(() => store.SaveRules(Ctx.TeamId, Ctx.Name, rules));
-            _savedJson = store.Serialize(rules);
+            await Task.Run(() =>
+            {
+                Boosts.SaveRules(Ctx.TeamId, Ctx.Name, rules.Where(e => !e.Bury).Select(e => e.Rule).ToList());
+                Buries.SaveRules(Ctx.TeamId, Ctx.Name, rules.Where(e => e.Bury).Select(e => e.Rule).ToList());
+            });
+            _savedJson = Serialized(rules);
         }
         finally { _saving = false; }
         Ctx.NotifyChanged(); // the panel's nav badge (expired count) reads the store
@@ -360,18 +413,29 @@
         _error = null;
         _importNote = null;
         if (_savedJson != null)
-            _rules = Store.Deserialize(_savedJson);
+            _rules = FromFile(_savedJson);
     }
 
     // ── Import / export ───────────────────────────────────────────────────────
-    // Same file shape as GET/PUT …/boosts or …/buries: a JSON array of rules. Import replaces the
-    // working copy (like field config and synonyms do) and leaves it unsaved, so Save commits and
-    // Cancel reverts. Rules naming fields this dataset lacks are kept — they show the existing
-    // "references non-filterable field" warning and stay dormant until the field appears.
+    // One file for both kinds: {"boosts": [...], "buries": [...]}, each array the shape GET/PUT
+    // …/boosts and …/buries take. A plain array, as exported before Nov 2026, reads as boost rules.
+    // Import replaces the working copy (like field config and synonyms do) and leaves it unsaved,
+    // so Save commits and Cancel reverts. Rules naming fields this dataset lacks are kept — they
+    // show the existing "references non-filterable field" warning and stay dormant until the field
+    // appears.
 
     private async Task ExportAsync()
     {
-        await Files.DownloadAsync($"{Ctx.Name}-{Word}-rules.json", Store.Serialize(_rules, indented: true));
+        await Files.DownloadAsync($"{Ctx.Name}-boost-rules.json", Serialized(_rules, indented: true));
+    }
+
+    private List<RuleEntry> FromFile(string json)
+    {
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        if (doc.RootElement.ValueKind == System.Text.Json.JsonValueKind.Array)
+            return Entries(Boosts.Deserialize(json), []);
+        string Part(string name) => doc.RootElement.TryGetProperty(name, out var p) ? p.GetRawText() : "[]";
+        return Entries(Boosts.Deserialize(Part("boosts")), Buries.Deserialize(Part("buries")));
     }
 
     private async Task ImportAsync(InputFileChangeEventArgs e)
@@ -383,13 +447,13 @@
         {
             using var stream = e.File.OpenReadStream(maxAllowedSize: 1_000_000);
             using var reader = new StreamReader(stream);
-            var imported = Store.Deserialize(await reader.ReadToEndAsync());
+            var imported = FromFile(await reader.ReadToEndAsync());
             var filterable = FilterableFieldNames();
-            var dormant = imported.Count(r => r.Conditions.Any(c => !string.IsNullOrEmpty(c.Field) && !filterable.Contains(c.Field)));
+            var dormant = imported.Count(e => e.Rule.Conditions.Any(c => !string.IsNullOrEmpty(c.Field) && !filterable.Contains(c.Field)));
             _rules = imported;
             _ruleTimeLimited.Clear();
             _importNote = imported.Count == 0
-                ? $"Imported an empty list — save to remove all {Word} rules."
+                ? $"Imported an empty list: save to remove all boost and bury rules."
                 : $"Imported {imported.Count} rule(s), replacing the current list. Save to apply."
                   + (dormant > 0 ? $" {dormant} reference field(s) this dataset does not have (filterable) and will stay dormant until it does." : "");
         }

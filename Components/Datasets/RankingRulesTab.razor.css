@@ -57,3 +57,63 @@
     .boost-dates { flex-wrap: wrap; gap: 12px 20px; }
     .boost-dates > div { flex: 1 1 140px; min-width: 0; }
 }
+
+/* A rule's strength: one scale from Bury high to Boost high (Nov 2026), its current step named
+   beside it with the direction's icon. Six equal columns under the slider, so each name sits
+   under its step, and Bury and Boost over their halves. */
+.boost-strength {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin: 0 0 12px 10px;
+}
+
+.boost-strength-now {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 120px;
+    padding-top: 2px;
+    font: var(--text-xs);
+    font-weight: var(--med);
+    color: var(--lv7);
+}
+
+.boost-strength-scale {
+    width: 300px;
+    max-width: 100%;
+}
+
+.boost-strength-labels {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    font: var(--text-2xs);
+    color: var(--lv5);
+}
+
+.boost-strength-labels > span {
+    text-align: center;
+}
+
+.boost-strength-labels > :first-child {
+    text-align: left;
+}
+
+.boost-strength-labels > :last-child {
+    text-align: right;
+}
+
+.boost-strength-sides {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    font: var(--text-2xs);
+    color: var(--lv4);
+}
+
+.boost-strength-sides > :last-child {
+    text-align: right;
+}
+
+@media (max-width: 640px) {
+    .boost-strength { flex-direction: column; gap: 6px; }
+}

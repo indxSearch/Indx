@@ -79,8 +79,7 @@
                 <SearchPreviewTab Active="@(tab == "search")" />
                 <StatusTab Active="@(tab == "status" && !asleep)" />
                 <OptionsTab Active="@(sleepTab == "options")" />
-                <RankingRulesTab Active="@(tab == "boosts")" Kind="boost" />
-                <RankingRulesTab Active="@(tab == "buries")" Kind="bury" />
+                <RankingRulesTab Active="@(tab == "boosts")" />
                 <SynonymsTab Active="@(tab == "synonyms")" />
                 <QueryParametersTab Active="@(tab == "query-parameters")" />
                 <SearchOrAskTab Active="@(tab == "search-or-ask")" />
@@ -291,6 +290,8 @@
     private bool OpenAddressTab()
     {
         var requested = AddressTab();
+        // ?tab=buries from before Nov 2026 opens the one list the bury rules are in now.
+        if (requested == "buries") requested = "boosts";
         string tab;
         if (Ctx.EngineState == SystemState.Ready)
             tab = Opens(NavItems(isReady: true, pending: false), requested) ? requested! : "status";
@@ -382,14 +383,11 @@
         if (Statistics.Enabled) items.Add(Tab("statistics", "Statistics", DatasetIcons.Statistics, true));
         if (isReady || pending)
         {
-            var expired = isReady && Ctx.IsEditor ? ExpiredRules(BoostStore) : 0;
+            // Boost and bury rules in one list (Nov 2026), so one badge for the expired of both.
+            var expired = isReady && Ctx.IsEditor ? ExpiredRules(BoostStore) + ExpiredRules(BuryStore) : 0;
             items.Add(Tab("boosts", "Boost rules", DatasetIcons.Boost, isReady,
                 expired > 0 ? expired.ToString() : null,
-                expired > 0 ? $"{expired} expired boost rule(s), no longer applying" : null));
-            var expiredBuries = isReady && Ctx.IsEditor ? ExpiredRules(BuryStore) : 0;
-            items.Add(Tab("buries", "Bury rules", DatasetIcons.Bury, isReady,
-                expiredBuries > 0 ? expiredBuries.ToString() : null,
-                expiredBuries > 0 ? $"{expiredBuries} expired bury rule(s), no longer applying" : null));
+                expired > 0 ? $"{expired} expired boost or bury rule(s), no longer applying" : null));
             items.Add(Tab("synonyms", "Synonyms", DatasetIcons.Synonym, isReady));
         }
         // Needs no built index: a webhook's first full sync is how an empty dataset gets its documents.
