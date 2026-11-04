@@ -267,8 +267,6 @@
         </ReadOnlyArea>
         </div>
         <aside class="soa-preview" aria-label="Try it">
-        @if (_edit.Enabled)
-        {
             @* Drawn as a visitor's search would be (the Search preview's box, intrface's offer row
                under the field, the answer as a chat turn), so what an editor tries here looks like
                what a visitor gets. *@
@@ -281,6 +279,12 @@
                         <ToggleSwitch Label="Show results" Checked="@_showResults" CheckedChanged="OnShowResults" />
                     </div>
                     <span class="soa-help">Type as a visitor would. Uses the settings below, saved or not. Each pause is one call against the budget.</span>
+                    @if (!_edit.Enabled)
+                    {
+                        @* The try box works with answers off: it runs the settings as they stand here,
+                           so the owner can see what visitors would get before offering it to them. *@
+                        <span class="soa-help">Answers are not offered to visitors yet: try them here first, then switch on Offer answers.</span>
+                    }
                 </div>
                 @if (!Service.Available)
                 {
@@ -453,7 +457,6 @@
                     }
                 }
             </section>
-        }
         </aside>
     </div>
 
