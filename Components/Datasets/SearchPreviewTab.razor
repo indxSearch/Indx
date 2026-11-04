@@ -121,7 +121,7 @@
                numbers. In a narrow preview (the facets under the box) it is one line, the levels
                after the caption and the notes left out. *@
             <div class="indx-facets-caption indx-search-explain-caption" title="@HeadlineTitle(summary.Headline)">
-                <span class="indx-facets-caption-icon"><Search Size="14" /></span>
+                <span class="indx-facets-caption-icon">@HeadlineIcon(summary.Headline)</span>
                 <span class="indx-facets-caption-text">@summary.Headline</span>
                 @if (summary.Levels.Count > 0)
                 {
@@ -535,6 +535,18 @@ else
     /// <summary>Longest value shown in full; past it the panel says how much was left out, so a
     /// document of whole books does not put megabytes into the page.</summary>
     private const int ValueChars = 5000;
+
+    /// <summary>The caption's icon for a kind of match: the query as typed for a strong match, a
+    /// fuzzy search for one within typos, the plain search glass for the others.</summary>
+    private static RenderFragment HeadlineIcon(string headline) => __builder =>
+    {
+        switch (headline)
+        {
+            case "Strong matches": <Indx.Systm.Blazor.Icons.SearchQuery Size="14" Color="currentColor" />; break;
+            case "Fuzzy matches": <Indx.Systm.Blazor.Icons.FuzzySearch Size="14" Color="currentColor" />; break;
+            default: <Search Size="14" />; break;
+        }
+    };
 
     /// <summary>What a headline means, on hover: the level it names is the one marked below.</summary>
     private static string HeadlineTitle(string headline) => headline switch
