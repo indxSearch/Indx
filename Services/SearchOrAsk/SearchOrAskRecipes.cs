@@ -43,7 +43,50 @@ namespace IndxServer.Services.SearchOrAsk
             "or an article still waiting for what it is about (\"what type is\", \"hvilken skole er\", \"schools in\"), " +
             "or on a word cut off while typing.");
 
-        public static Dictionary<string, JsonObject> Questions(string kind) => kind switch
+        /// <summary>The questions for a kind, as <paramref name="judge"/> is asked them. A judge
+        /// reads the same wording differently, so a question can have a judge's own (<see
+        /// cref="DecisionsQuestions"/>); every other judge, and every question without one, gets
+        /// the wording Jev was measured on.</summary>
+        public static Dictionary<string, JsonObject> Questions(string kind, string? judge = null)
+        {
+            var questions = JevQuestions(kind);
+            if (judge == SearchOrAskProviders.OpenAiDecisions)
+                foreach (var (name, question) in DecisionsQuestions(kind))
+                    questions[name] = question;
+            return questions;
+        }
+
+        /// <summary>OpenAI's Decisions API's own wording, where it has one. It takes Jev's literally:
+        /// "short keyword queries are lookups even when unfinished" made it score the start of a
+        /// question near 0 until the whole question was typed, and on the docs set, keystroke by
+        /// keystroke, Jev offered earlier on 10 questions and the Decisions API on none. Told that
+        /// the visitor is still typing and to judge where the text is heading, with the words that
+        /// show it, it offered first at a mean 27% of the question against Jev's 32% and its own
+        /// 31%, with no lookup offered anything (4 Nov 2026, JevProbe recipe docs-v3-openai-early).
+        /// What it still misses is a problem told without a question word ("error 422", "search
+        /// returns nothing"), which Jev invites on. Tuned on the set it was measured on, so these
+        /// numbers are optimistic until a fresh set confirms them. A catalogue has none yet.</summary>
+        private static Dictionary<string, JsonObject> DecisionsQuestions(string kind) => kind switch
+        {
+            Documentation => new()
+            {
+                [Asking] = Noul(
+                    "`request` is what a visitor has typed so far into the search field of `site`. They are usually " +
+                    "still typing, so judge where the text is heading from its first words, not only what it says yet. " +
+                    "`search` is what the search found for it. Is the visitor on the way to asking for help that an " +
+                    "answer written for them would serve better than a list of pages?",
+                    "The first words already show the visitor wants something explained, shown or decided: a question " +
+                    "word or phrase (how, what, why, when, where, which, can, does, is there, should I, hvordan, hva, " +
+                    "hvorfor, hvor, kan, finnes, skal jeg), a sentence being formed, a comparison (\"vs\", \"or\", " +
+                    "\"eller\", \"compared to\"), or a request for a guide, an example or a code sample. Count it as soon " +
+                    "as these words appear, even when the rest of the question has not been typed.",
+                    "The visitor names one thing to be taken to: a single feature, term, class, method, endpoint, code or " +
+                    "identifier, typed as a keyword or a bare topic, with no question word or sentence started."),
+            },
+            _ => [],
+        };
+
+        private static Dictionary<string, JsonObject> JevQuestions(string kind) => kind switch
         {
             Documentation => new()
             {

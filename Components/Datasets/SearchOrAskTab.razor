@@ -103,24 +103,24 @@
                 <tbody>
                     <TableRow>
                         <TableCell Class="soa-cell">
-                            <span class="soa-help">On each pause the judge scores what is typed from 0, a lookup, to 1, a question. On a catalogue a sure description of what to list earns the full offer too.</span>
+                            <span class="soa-help">On each pause the judge scores what is typed from 0, a lookup, to 1, a question. On a catalogue a sure description of what to list earns the full offer too. The defaults are measured for the judge this instance uses, @JudgeName: switch the judge and its own come along, and only what you set here stays.</span>
                             @Scale()
                         </TableCell>
                     </TableRow>
                     @ThresholdRow(Icon<Icons.ClickButton>(), "Answer offer", "A full offer to answer. Enter asks.",
-                        t => t.Strong, (t, v) => t.Strong = v, Defaults.Strong,
-                        t => t.StrongHide, (t, v) => t.StrongHide = v, Defaults.StrongHide)
+                        t => t.Strong, (t, v) => t.Strong = v, Defaults.Strong!.Value,
+                        t => t.StrongHide, (t, v) => t.StrongHide = v, Defaults.StrongHide!.Value)
                     @ThresholdRow(Icon<Icons.CommentChatMessage>(), "Invitation", "A quieter \"Ask about this\".",
-                        t => t.Invite, (t, v) => t.Invite = v, Defaults.Invite,
-                        t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide)
+                        t => t.Invite, (t, v) => t.Invite = v, Defaults.Invite!.Value,
+                        t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide!.Value)
                     @if (_edit.Mode is SearchOrAskSettings.ModeInviting or SearchOrAskSettings.ModeProactive)
                     {
-                        var hint = _edit.Thresholds.Hint ?? SearchOrAskThresholds.HintFor(_edit.Kind);
+                        var hint = _edit.Thresholds.Hint ?? SearchOrAskThresholds.HintFor(_edit.Kind, Judge);
                         @Row(Icon<Icons.Spark>(), "Hint", "\"For a quick answer, type a bit more\", from this score. Low: it shows early that the field answers.",
                              _edit.Thresholds.Hint != null,
                              @<div class="soa-threshold">
                                  <span class="soa-threshold-label">Show from</span>
-                                 <Slider Min="0" Max="1" Step="0.01" Value="@hint" ValueChanged="@(v => _edit.Thresholds.Hint = Math.Round(v, 2) == SearchOrAskThresholds.HintFor(_edit.Kind) ? null : Math.Round(v, 2))" AriaLabel="Hint: show from" Class="soa-slider" />
+                                 <Slider Min="0" Max="1" Step="0.01" Value="@hint" ValueChanged="@(v => _edit.Thresholds.Hint = Math.Round(v, 2) == SearchOrAskThresholds.HintFor(_edit.Kind, Judge) ? null : Math.Round(v, 2))" AriaLabel="Hint: show from" Class="soa-slider" />
                                  <span class="soa-threshold-value">@Two(hint)</span>
                              </div>)
                     }
@@ -379,7 +379,7 @@
                                 @* Each score with its thresholds as ticks on a meter: where it stands against
                                    the lines that decide the offer, not only its number. *@
                                 @Score("question", QuestionHelp, j.P, QuestionMarks(j))
-                                @if (j.Criteria is { } c) { @Score("description", DescriptionHelp, c, [new(j.Thresholds.Strong, "Answer offer")]) }
+                                @if (j.Criteria is { } c) { @Score("description", DescriptionHelp, c, [new(j.Thresholds.Strong!.Value, "Answer offer")]) }
                                 @if (j.Finished is { } f) { @Score("finished", FinishedHelp, f, [new(j.Thresholds.Finished, "Answers on its own from")]) }
                                 @if (j.Answerable is { } a) { @Score("answerable", AnswerableHelp, a, []) }
                                 <Tooltip Content="@(j.Cached ? "The judge answered this text before; the cached answer, no call made." : "How long the judge took. A visitor's page waits at most 3 seconds.")">@(j.Cached ? "cached" : $"{j.Ms} ms")</Tooltip>
@@ -555,9 +555,10 @@
     /// <summary>"anthropic/claude-sonnet-5.5" as "claude-sonnet-5.5": the provider adds nothing here.</summary>
     private static string ModelName(string model) => model[(model.IndexOf('/') + 1)..];
 
-    // The defaults were measured on the docs set (Notes/search-or-ask.md): no lookup there scored
-    // above 0.22, and the lowest question that was not missed 0.47.
-    private static readonly SearchOrAskThresholds Defaults = new();
+    // The judge's own thresholds (SearchOrAskThresholds.For), each measured for it on the docs set.
+    private string Judge => Service.Setup.JudgeProvider;
+    private string JudgeName => Judge == SearchOrAskProviders.OpenAiDecisions ? "OpenAI's Decisions API" : "Jev";
+    private SearchOrAskThresholds Defaults => SearchOrAskThresholds.For(Judge);
 
     private static RenderFragment<int> Icon<T>() where T : IComponent => size => builder =>
     {
@@ -625,11 +626,11 @@
     // the hint where the mode sweeps, the invitation unless strict, the full offer.
     private RenderFragment Scale() => __builder =>
     {
-        var t = _edit.Thresholds;
-        double strong = Math.Clamp(Math.Max(t.Strong, t.Invite), 0, 1);
-        double? invite = _edit.Mode == SearchOrAskSettings.ModeStrict ? null : Math.Clamp(t.Invite, 0, 1);
+        var t = _edit.Thresholds.Resolved(_edit.Kind, Judge);
+        double strong = Math.Clamp(Math.Max(t.Strong!.Value, t.Invite!.Value), 0, 1);
+        double? invite = _edit.Mode == SearchOrAskSettings.ModeStrict ? null : Math.Clamp(t.Invite.Value, 0, 1);
         double? hint = _edit.Mode is SearchOrAskSettings.ModeInviting or SearchOrAskSettings.ModeProactive
-            ? Math.Clamp(Math.Min(t.Hint ?? SearchOrAskThresholds.HintFor(_edit.Kind), invite ?? strong), 0, 1) : null;
+            ? Math.Clamp(Math.Min(t.Hint!.Value, invite ?? strong), 0, 1) : null;
         double start = hint ?? invite ?? strong;
         <div class="soa-scale" aria-hidden="true">
             <div class="soa-scale-bar">
@@ -652,13 +653,18 @@
     private static string Two(double v) => v.ToString("0.00", CultureInfo.InvariantCulture);
 
     /// <summary>One offer's pair: the score it shows from, and the score it is kept down to once
-    /// shown, each a slider from 0 to 1 in steps of 0.05.</summary>
+    /// shown, each a slider from 0 to 1 in steps of 0.05. Unset, a value is the judge's own (the
+    /// default given); moved back onto it, it is unset again, so it follows a switch of judge.</summary>
     private RenderFragment ThresholdRow(RenderFragment<int> icon, string label, string help,
-        Func<SearchOrAskThresholds, double> show, Action<SearchOrAskThresholds, double> setShow, double showDefault,
-        Func<SearchOrAskThresholds, double> keep, Action<SearchOrAskThresholds, double> setKeep, double keepDefault) => __builder =>
+        Func<SearchOrAskThresholds, double?> getShow, Action<SearchOrAskThresholds, double?> setShowValue, double showDefault,
+        Func<SearchOrAskThresholds, double?> getKeep, Action<SearchOrAskThresholds, double?> setKeepValue, double keepDefault) => __builder =>
     {
         var t = _edit.Thresholds;
-        @Row(icon, label, help, show(t) != showDefault || keep(t) != keepDefault,
+        double show(SearchOrAskThresholds x) => getShow(x) ?? showDefault;
+        double keep(SearchOrAskThresholds x) => getKeep(x) ?? keepDefault;
+        void setShow(SearchOrAskThresholds x, double v) => setShowValue(x, v == showDefault ? null : v);
+        void setKeep(SearchOrAskThresholds x, double v) => setKeepValue(x, v == keepDefault ? null : v);
+        @Row(icon, label, help, getShow(t) != null || getKeep(t) != null,
             @<div class="soa-thresholds">
                 <div class="soa-threshold">
                     <span class="soa-threshold-label"><Tooltip Content="The score the offer needs to appear.">Show from</Tooltip></span>
@@ -896,8 +902,9 @@
         if (_saving) return;
         _error = null;
         if (_budgetError != null || _proactiveError != null) { _error = "Fix the values marked above, or clear them to use the default."; return; }
-        if (_edit.Validate() is { } invalid) { _error = invalid; return; }
+        if (_edit.Validate(Judge) is { } invalid) { _error = invalid; return; }
         var toSave = JsonSerializer.Deserialize<SearchOrAskSettings>(Json(_edit), JsonOpts)!;
+        toSave.Thresholds.Normalise(toSave.Kind, Judge);
         // The dataset's switch is the Options tab's (a team admin's): kept as it is now.
         toSave.Shown = Store.Load(Ctx.TeamId, Ctx.Name)?.Shown ?? false;
         _saving = true;
@@ -972,8 +979,8 @@
     private static IReadOnlyList<ScoreMeter.Mark> QuestionMarks(IntentResult j) =>
     [
         .. Sweeps(j.Mode) && j.Thresholds.Hint is { } h ? new ScoreMeter.Mark[] { new(h, "Hint") } : [],
-        .. j.Mode == SearchOrAskSettings.ModeStrict ? Array.Empty<ScoreMeter.Mark>() : [new(j.Thresholds.Invite, "Invitation")],
-        new(j.Thresholds.Strong, "Answer offer"),
+        .. j.Mode == SearchOrAskSettings.ModeStrict ? Array.Empty<ScoreMeter.Mark>() : [new(j.Thresholds.Invite!.Value, "Invitation")],
+        new(j.Thresholds.Strong!.Value, "Answer offer"),
     ];
 
     private const string FinishedHelp = "Whether the visitor has finished typing it: a whole request, not one that stops on a word still waiting for more (\"what type is\"). " +

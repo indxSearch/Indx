@@ -607,11 +607,12 @@ namespace IndxServer.Services.Observr
 
             var settings = searchOrAsk.Load(teamId, dataSetName) ?? new SearchOrAsk.SearchOrAskSettings();
             var effective = SearchOrAsk.SearchOrAskService.Fields(settings, engine.GetFieldList());
+            var thresholds = settings.Thresholds.Resolved(settings.Kind, searchOrAskService.Setup.JudgeProvider);
             var qp = queryParameters.Load(teamId, dataSetName);
             var current = new ObservrSearchOrAskCurrent(settings.Shown, settings.Enabled, settings.Kind, settings.SiteDescription,
                 searchOrAskService.SiteDescription(teamId, dataSetName, settings), settings.TitleField, settings.SectionFields, settings.SnippetFields,
                 effective.TitleField, effective.SectionFields.ToList(), effective.SnippetFields.ToList(), settings.FilterNotes, settings.Answers,
-                settings.AnswerInstructions, settings.AnswerLanguage, settings.Thresholds.Strong, settings.Thresholds.Invite, qp?.Candidates?.MaxCandidates, !qp?.Candidates?.Rest,
+                settings.AnswerInstructions, settings.AnswerLanguage, thresholds.Strong!.Value, thresholds.Invite!.Value, qp?.Candidates?.MaxCandidates, !qp?.Candidates?.Rest,
                 settings.AskPhrases ?? SearchOrAsk.SearchOrAskPhrases.Default, settings.AskPhrases == null, settings.RefocusWhileTyping, settings.InviteOnAskPhrase);
             var ask = new ObservrSearchOrAskSetupAsk(SetupKind, teamId, dataSetName, review.Site, review.FieldEvidence.Select(f => f.Name).ToList(),
                 review.Records, review.Sampled, review.FieldEvidence, names, top, zero, current);

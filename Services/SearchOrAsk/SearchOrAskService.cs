@@ -309,7 +309,7 @@ namespace IndxServer.Services.SearchOrAsk
                 using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeout.CancelAfter(TimeSpan.FromSeconds(15));
                 var state = State("A site that explains itself.", "how do I reset my password", new SearchSummary(0, false, []));
-                var questions = SearchOrAskRecipes.Questions(SearchOrAskRecipes.Documentation)
+                var questions = SearchOrAskRecipes.Questions(SearchOrAskRecipes.Documentation, s.JudgeProvider)
                     .Where(q => q.Key == SearchOrAskRecipes.Asking).ToDictionary(q => q.Key, q => q.Value);
                 var answer = await _models.JudgeAsync(state, questions, timeout.Token);
                 return $"it answered{(answer.Cost is { } c ? $" for ${c:0.0000}" : "")}";
@@ -433,6 +433,9 @@ namespace IndxServer.Services.SearchOrAsk
             if (!JudgeAvailable) return new IntentOutcome(IntentStatus.Unavailable);
             var settings = trial ?? Settings(teamId, dataSetName);
             if (trial == null && !settings.Enabled) return new IntentOutcome(IntentStatus.Disabled);
+            // The judge decides the wording it is asked with and the thresholds its score is read
+            // against, both measured for it.
+            var judge = Setup.JudgeProvider;
 
             var started = Stopwatch.GetTimestamp();
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
@@ -450,7 +453,7 @@ namespace IndxServer.Services.SearchOrAsk
             IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null, double? criteria = null,
                 double? finished = null)
             {
-                var result = new IntentResult(p, answerable, settings.OfferFor(p, criteria), settings.Thresholds.Resolved(settings.Kind), cached, Ms(), reason, criteria,
+                var result = new IntentResult(p, answerable, settings.OfferFor(judge, p, criteria), settings.Thresholds.Resolved(settings.Kind, judge), cached, Ms(), reason, criteria,
                     settings.CutWhileAsking, settings.CutShareOfTop, settings.CutTopFloor, settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping, searchText,
                     settings.RefocusWhileTyping, settings.InviteOnAskPhrase, EffectiveMode(teamId, dataSetName, settings), finished);
                 // A judgement is recorded once the judge or its cache answered for it, a failing
@@ -476,7 +479,7 @@ namespace IndxServer.Services.SearchOrAsk
 
             var site = SiteDescription(teamId, dataSetName, settings);
             var fields = Fields(settings, engine.GetFieldList());
-            var cacheKey = string.Join('\0', teamId, dataSetName, settings.Kind, site, fields.TitleField,
+            var cacheKey = string.Join('\0', teamId, dataSetName, settings.Kind, judge, site, fields.TitleField,
                 string.Join(',', fields.SectionFields), string.Join(',', fields.SnippetFields), Normalise(text));
             if (_cache.TryGetValue(cacheKey, out var hit))
             {
@@ -507,7 +510,7 @@ namespace IndxServer.Services.SearchOrAsk
             timeout.CancelAfter(_options.JudgeTimeoutMs);
             try
             {
-                var answer = await _models.JudgeAsync(state, SearchOrAskRecipes.Questions(settings.Kind), timeout.Token);
+                var answer = await _models.JudgeAsync(state, SearchOrAskRecipes.Questions(settings.Kind, judge), timeout.Token);
                 if (_cache.Count > MaxCached) _cache.Clear();
                 _cache[cacheKey] = answer;
                 Succeeded("judge");
@@ -1175,7 +1178,7 @@ namespace IndxServer.Services.SearchOrAsk
             using var timeout = new CancellationTokenSource(_options.JudgeTimeoutMs);
             try
             {
-                var questions = SearchOrAskRecipes.Questions(kind)
+                var questions = SearchOrAskRecipes.Questions(kind, Setup.JudgeProvider)
                     .Where(q => q.Key == SearchOrAskRecipes.Answerable).ToDictionary(q => q.Key, q => q.Value);
                 return await _models.JudgeAsync(State(site, question, search), questions, timeout.Token);
             }

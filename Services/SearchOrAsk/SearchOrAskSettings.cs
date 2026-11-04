@@ -55,9 +55,9 @@ namespace IndxServer.Services.SearchOrAsk
         public int DailyProactiveAnswers { get; set; } = 500;
 
         /// <summary>The offer for one judgement on its own (<see cref="SearchOrAskThresholds.OfferFor(double, double?)"/>),
-        /// in this mode: strict has no quiet offer.</summary>
-        public string OfferFor(double p, double? criteria = null) =>
-            Thresholds.OfferFor(p, criteria) is var offer && Mode == ModeStrict && offer == "invite" ? "none" : offer;
+        /// on this judge's thresholds, in this mode: strict has no quiet offer.</summary>
+        public string OfferFor(string? judge, double p, double? criteria = null) =>
+            Thresholds.Resolved(Kind, judge).OfferFor(p, criteria) is var offer && Mode == ModeStrict && offer == "invite" ? "none" : offer;
 
         /// <summary>While the offer is strong (the judge says the visitor is asking), the page shows
         /// the result list only up to the truncation point: the coverage hits stay, the pattern
@@ -173,8 +173,9 @@ namespace IndxServer.Services.SearchOrAsk
 
         public const int MaxSiteDescription = 600;
 
-        /// <summary>Null when the settings can be saved, otherwise what is wrong, for a 400.</summary>
-        public string? Validate()
+        /// <summary>Null when the settings can be saved, otherwise what is wrong, for a 400. The
+        /// thresholds are checked in order with the <paramref name="judge"/>'s own filling the gaps.</summary>
+        public string? Validate(string? judge = null)
         {
             if (!SearchOrAskRecipes.IsKnown(Kind))
                 return $"kind must be one of: {string.Join(", ", SearchOrAskRecipes.Kinds)}.";
@@ -209,66 +210,109 @@ namespace IndxServer.Services.SearchOrAsk
                 return badPhrases;
             if (Thresholds == null)
                 return "thresholds are required.";
-            return Thresholds.Validate();
+            return Thresholds.Validate(Kind, judge);
         }
     }
 
     /// <summary>
-    /// Where Jev's probability becomes an offer. Entered at one value and left only below a lower
-    /// one, so the offer does not blink while a visitor types; the client applies that, since it
-    /// depends on what this visitor has been shown. Defaults measured on the docs set
-    /// (Notes/search-or-ask.md): no lookup scored above 0.22 there.
+    /// Where the judge's probability becomes an offer. Entered at one value and left only below a
+    /// lower one, so the offer does not blink while a visitor types; the client applies that, since
+    /// it depends on what this visitor has been shown. A value left null is the judge's own
+    /// (<see cref="For"/>), measured for it: switching the judge brings its numbers along, and only
+    /// what an owner set by hand stays. What a client is sent is always <see cref="Resolved"/>, every
+    /// value a number, since a published intrface spreads these over its defaults and would read a
+    /// null as 0.
     /// </summary>
     public sealed class SearchOrAskThresholds
     {
-        public double Strong { get; set; } = 0.65;
-        public double StrongHide { get; set; } = 0.45;
-        public double Invite { get; set; } = 0.40;
-        public double InviteHide { get; set; } = 0.30;
+        public double? Strong { get; set; }
+        public double? StrongHide { get; set; }
+        public double? Invite { get; set; }
+        public double? InviteHide { get; set; }
         /// <summary>The inviting and proactive modes' hint, "For a quick answer, type a bit more",
         /// from this score up: low, since its job is to show early that the field answers. Null is
-        /// the kind's own (<see cref="HintFor"/>), measured 27 Oct 2026 on bare openings against
-        /// lookups of the same length: on a catalogue openings scored from 0.18 ("What") and lookups
-        /// to 0.15 ("mew"), in Norwegian from 0.19 and to 0.11; on the Indx docs lookups reach 0.30
-        /// ("install"). Then replayed keystroke by keystroke on the labelled sets, where a name being
-        /// typed scores above the whole name ("skistua b..."): at 0.16 15 of 80 school-register
-        /// lookups got the hint, at 0.25 4, every question still reaching it; on films 1 of 59 either
-        /// way; on the docs 0.31 gives 4 of 29, all 40 questions.</summary>
+        /// the judge's and the kind's own (<see cref="HintFor"/>). For Jev, measured 27 Oct 2026 on
+        /// bare openings against lookups of the same length: on a catalogue openings scored from 0.18
+        /// ("What") and lookups to 0.15 ("mew"), in Norwegian from 0.19 and to 0.11; on the Indx docs
+        /// lookups reach 0.30 ("install"). Then replayed keystroke by keystroke on the labelled sets,
+        /// where a name being typed scores above the whole name ("skistua b..."): at 0.16 15 of 80
+        /// school-register lookups got the hint, at 0.25 4, every question still reaching it; on
+        /// films 1 of 59 either way; on the docs 0.31 gives 4 of 29, all 40 questions.</summary>
         public double? Hint { get; set; }
         /// <summary>Proactive answers on its own only from this "finished" score up, so "what type is"
         /// waits for the rest.</summary>
         public double Finished { get; set; } = 0.5;
 
-        public static double HintFor(string kind) => kind == SearchOrAskRecipes.Catalogue ? 0.25 : 0.31;
+        /// <summary>Jev's, measured on the docs set (Notes/search-or-ask.md): no lookup scored above
+        /// 0.22 there, and the lowest question that was not missed 0.47.</summary>
+        public static readonly SearchOrAskThresholds Jev = new() { Strong = 0.65, StrongHide = 0.45, Invite = 0.40, InviteHide = 0.30 };
 
-        /// <summary>A copy with the kind's hint filled in, as each judgement reports it.</summary>
-        public SearchOrAskThresholds Resolved(string kind) => new()
-        {
-            Strong = Strong, StrongHide = StrongHide, Invite = Invite, InviteHide = InviteHide,
-            Hint = Hint ?? HintFor(kind), Finished = Finished,
-        };
+        /// <summary>OpenAI's Decisions API's, measured 4 Nov 2026 on the docs set keystroke by keystroke
+        /// with its own wording (<see cref="SearchOrAskRecipes.Questions"/>): it hardly has a middle,
+        /// 5% of its calls between 0.2 and 0.8 against Jev's 46%, and no lookup scored above 0.01 on
+        /// any keystroke. So the invitation can start at 0.2, where two more questions get one than at
+        /// 0.4, and the hint at 0.05, with no lookup offered anything; the full offer is the same at
+        /// 0.5 as at 0.65 and stays where Jev has it. Measured on the docs only: a catalogue uses the
+        /// same numbers until it is.</summary>
+        public static readonly SearchOrAskThresholds Decisions = new() { Strong = 0.65, StrongHide = 0.45, Invite = 0.20, InviteHide = 0.10, Hint = 0.05 };
 
-        public string? Validate()
+        /// <summary>The judge's own thresholds: Jev's unless it is the Decisions API.</summary>
+        public static SearchOrAskThresholds For(string? judge) => judge == SearchOrAskProviders.OpenAiDecisions ? Decisions : Jev;
+
+        public static double HintFor(string kind, string? judge = null) =>
+            For(judge).Hint ?? (kind == SearchOrAskRecipes.Catalogue ? 0.25 : 0.31);
+
+        /// <summary>A copy with every value a number: the dataset's where set, else the judge's and
+        /// the kind's own. What each judgement reports and what a client is sent.</summary>
+        public SearchOrAskThresholds Resolved(string kind, string? judge = null)
         {
-            foreach (var (name, v) in new[] { ("strong", Strong), ("strongHide", StrongHide), ("invite", Invite), ("inviteHide", InviteHide) })
-                if (double.IsNaN(v) || v < 0 || v > 1)
+            var d = For(judge);
+            return new()
+            {
+                Strong = Strong ?? d.Strong, StrongHide = StrongHide ?? d.StrongHide,
+                Invite = Invite ?? d.Invite, InviteHide = InviteHide ?? d.InviteHide,
+                Hint = Hint ?? HintFor(kind, judge), Finished = Finished,
+            };
+        }
+
+        /// <summary>Each value that is the judge's own, or Jev's (every saved value was Jev's default
+        /// until the judges had their own, 4 Nov 2026), back to null, so that it follows the judge.
+        /// Applied to what is saved and what is read: a client that reads the settings, changes
+        /// something else and writes them back has sent the numbers it was given, and must not pin
+        /// this judge's thresholds on the next.</summary>
+        public void Normalise(string kind, string? judge = null)
+        {
+            var d = For(judge);
+            bool Own(double? v, double? mine, double? jev) => v is { } x && (x == mine || x == jev);
+            if (Own(Strong, d.Strong, Jev.Strong)) Strong = null;
+            if (Own(StrongHide, d.StrongHide, Jev.StrongHide)) StrongHide = null;
+            if (Own(Invite, d.Invite, Jev.Invite)) Invite = null;
+            if (Own(InviteHide, d.InviteHide, Jev.InviteHide)) InviteHide = null;
+            if (Own(Hint, HintFor(kind, judge), HintFor(kind))) Hint = null;
+        }
+
+        /// <summary>Each value between 0 and 1, and in order once the judge's own fill the gaps.</summary>
+        public string? Validate(string kind = SearchOrAskRecipes.Documentation, string? judge = null)
+        {
+            foreach (var (name, v) in new[] { ("strong", Strong), ("strongHide", StrongHide), ("invite", Invite), ("inviteHide", InviteHide), ("hint", Hint) })
+                if (v is { } x && (double.IsNaN(x) || x < 0 || x > 1))
                     return $"thresholds.{name} must be between 0 and 1.";
-            if (StrongHide > Strong) return "thresholds.strongHide cannot be above thresholds.strong.";
-            if (InviteHide > Invite) return "thresholds.inviteHide cannot be above thresholds.invite.";
-            if (Invite > Strong) return "thresholds.invite cannot be above thresholds.strong.";
-            if (Hint is { } h && (double.IsNaN(h) || h < 0 || h > 1)) return "thresholds.hint must be between 0 and 1.";
-            if (Hint > Invite) return "thresholds.hint cannot be above thresholds.invite.";
             if (double.IsNaN(Finished) || Finished < 0 || Finished > 1) return "thresholds.finished must be between 0 and 1.";
+            var r = Resolved(kind, judge);
+            if (r.StrongHide > r.Strong) return "thresholds.strongHide cannot be above thresholds.strong.";
+            if (r.InviteHide > r.Invite) return "thresholds.inviteHide cannot be above thresholds.invite.";
+            if (r.Invite > r.Strong) return "thresholds.invite cannot be above thresholds.strong.";
+            if (Hint > r.Invite) return "thresholds.hint cannot be above thresholds.invite.";
             return null;
         }
 
         /// <summary>The offer for one judgement on its own, with no memory of the last one: what a
-        /// client with no logic of its own shows. On a catalogue a description of what to list
-        /// (<paramref name="criteria"/>) is answered too, with filters and a summary, so a sure one
-        /// (at <see cref="Strong"/>) earns the full offer, as intrface has read it from the start;
-        /// a middling one earns nothing, since a description scores more generously than a
-        /// question and inviting on it made "skole" an invitation (19 Oct 2026). Below that the
-        /// asking score decides alone.</summary>
+        /// client with no logic of its own shows. Call it on <see cref="Resolved"/> thresholds. On a
+        /// catalogue a description of what to list (<paramref name="criteria"/>) is answered too, with
+        /// filters and a summary, so a sure one (at <see cref="Strong"/>) earns the full offer, as
+        /// intrface has read it from the start; a middling one earns nothing, since a description
+        /// scores more generously than a question and inviting on it made "skole" an invitation (19
+        /// Oct 2026). Below that the asking score decides alone.</summary>
         public string OfferFor(double p, double? criteria = null) =>
             criteria >= Strong ? "strong" : OfferFor(p);
         private string OfferFor(double p) => p >= Strong ? "strong" : p >= Invite ? "invite" : "none";

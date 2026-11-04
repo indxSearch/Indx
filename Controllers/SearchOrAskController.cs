@@ -73,6 +73,11 @@ namespace IndxServer.Controllers
                 settings = System.Text.Json.JsonSerializer.Deserialize<SearchOrAskSettings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
                 settings.Knowledge = null;
             }
+            // Every threshold a number, the judge's own where the dataset sets none: a published
+            // intrface spreads them over its defaults, and a null would read as 0. A copy: the
+            // store's is shared.
+            settings = System.Text.Json.JsonSerializer.Deserialize<SearchOrAskSettings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
+            settings.Thresholds = settings.Thresholds.Resolved(settings.Kind, service.Setup.JudgeProvider);
             var engine = IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey);
             var fields = SearchOrAskService.Fields(settings, engine?.DocumentFields == null ? null : engine.GetFieldList());
             return new SearchOrAskSettingsResponse(settings,
@@ -94,8 +99,10 @@ namespace IndxServer.Controllers
                 return ApiProblems.InvalidDatasetName(dataSetName);
             if (settings == null)
                 return ApiProblems.InvalidArgument("A body with the settings is required.");
-            if (settings.Validate() is { } invalid)
+            if (settings.Validate(service.Setup.JudgeProvider) is { } invalid)
                 return ApiProblems.InvalidArgument(invalid);
+            // A threshold at the judge's own is saved as the judge's own, so it follows a switch.
+            settings.Thresholds.Normalise(settings.Kind, service.Setup.JudgeProvider);
             settings.AnswerModel = string.IsNullOrWhiteSpace(settings.AnswerModel) ? null : settings.AnswerModel.Trim();
             if (settings.AnswerModel is { } chosen && !service.Setup.OfferedModels.Contains(chosen))
                 return ApiProblems.InvalidArgument($"answerModel must be one the instance offers: {string.Join(", ", service.Setup.OfferedModels)}.");

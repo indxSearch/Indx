@@ -75,7 +75,12 @@ namespace IndxServer.Services.SearchOrAsk
                 cmd.Parameters.AddWithValue("$t", teamId);
                 cmd.Parameters.AddWithValue("$d", dataSetName);
                 var json = cmd.ExecuteScalar() as string;
-                return string.IsNullOrWhiteSpace(json) ? null : JsonSerializer.Deserialize<SearchOrAskSettings>(json, JsonOptions);
+                if (string.IsNullOrWhiteSpace(json)) return null;
+                var settings = JsonSerializer.Deserialize<SearchOrAskSettings>(json, JsonOptions);
+                // Saved before the judges had thresholds of their own, every row holds Jev's
+                // numbers; read as the judge's own, so a switch of judge brings its own along.
+                settings?.Thresholds?.Normalise(settings.Kind);
+                return settings;
             }
             catch (SqliteException ex) when (ex.SqliteErrorCode == 1) // no such table: nothing saved yet
             {
