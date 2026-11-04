@@ -95,6 +95,19 @@ namespace IndxServer.Components.Datasets
         }
 
         /// <summary>
+        /// The kind of match as one word, for Search or ask's judge (Nov 2026): strong (every word
+        /// as typed), fuzzy (every word within typos), partial (the fallback), pattern (only parts of
+        /// words in every listed record), broad (no word lookup: the Bm25f mode, or no field with
+        /// WordMatching). The preview's headlines, in the words the judge reads.
+        /// </summary>
+        public static string MatchKind(Result result) =>
+            PatternOnly(result) ? "pattern"
+            : result.ToleranceCounts is null ? "broad"
+            : result.IsFallback ? "partial"
+            : result.CountedTolerance == Tolerance.Exact ? "strong"
+            : "fuzzy";
+
+        /// <summary>
         /// Whether every listed record matched by pieces of words alone: the rerank report confirms
         /// none of the query's words in any of them. Only known when the search was reranked, which
         /// the preview asks for; false otherwise, and with nothing listed.

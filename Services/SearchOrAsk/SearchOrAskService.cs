@@ -535,7 +535,17 @@ namespace IndxServer.Services.SearchOrAsk
         }
 
         /// <summary>What the search found, reduced to what the judge reads.</summary>
-        public sealed record SearchSummary(int Hits, bool CloseMatch, IReadOnlyList<(long Key, string Title, string Section, string Snippet)> Top);
+        /// <param name="Count">Result.Count: the records the search counted, not the ten listed. Null
+        /// where a summary is built from keys (a catalogue's filtered list): then <see cref="Hits"/>.</param>
+        /// <param name="Match">The kind of match (SearchExplanation.MatchKind): strong, fuzzy, partial,
+        /// pattern or broad.</param>
+        /// <param name="Levels">Records holding every word per typo level, cumulative; null with no
+        /// word lookup.</param>
+        /// <param name="Met">Per listed record, by key: how the reranker met each query word, and in
+        /// which field (Result.RerankReport).</param>
+        public sealed record SearchSummary(int Hits, bool CloseMatch, IReadOnlyList<(long Key, string Title, string Section, string Snippet)> Top,
+            int? Count = null, string? Match = null, ToleranceCounts? Levels = null,
+            IReadOnlyDictionary<long, IReadOnlyList<IndxServer.Components.Datasets.SearchExplanation.Word>>? Met = null);
 
         /// <summary>What the search finds for a text, as the judge reads it, for the console's
         /// tester: the hits by title, section and snippet. No model call, so it costs nothing.</summary>
@@ -566,10 +576,18 @@ namespace IndxServer.Services.SearchOrAsk
                 Mode = SearchMode.EditDistance,
                 // Not truncated: the rest below the counted (6.0; until then Truncate off).
                 Candidates = truncate ? null : new CandidateProxy { Rest = true },
+                // How each listed record's words were met, for the judge (Nov 2026): it reads the ten
+                // returned once more, which costs little.
+                EnableRerankReport = true,
             }, dataSetName, teamId);
             var records = result.Records ?? [];
             var hits = records.Take(top).Select(r => Describe(engine, r.DocumentKey, fields, SnippetChars, forAnswer: false)).ToList();
-            return new SearchSummary(records.Length, result.CountedInList() > 0, hits);
+            var met = records.Take(top)
+                .Select(r => (r.DocumentKey, Words: IndxServer.Components.Datasets.SearchExplanation.For(result, r.DocumentKey)))
+                .Where(m => m.Words != null)
+                .ToDictionary(m => m.DocumentKey, m => m.Words!);
+            return new SearchSummary(records.Length, result.CountedInList() > 0, hits,
+                result.Count, IndxServer.Components.Datasets.SearchExplanation.MatchKind(result), result.ToleranceCounts, met);
         }
 
         /// <summary>A record as the models read it: key, title, sections and text. For the judge the
@@ -608,23 +626,37 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>A record's field as text, for tests and the console: null when it is absent.</summary>
         public static string? ReadField(JsonNode doc, string path) => FieldAt(doc, path)?.ToString();
 
-        /// <summary>The state the judge reads: the shape every recipe was measured with.</summary>
-        public static JsonObject State(string site, string text, SearchSummary search) => new()
+        /// <summary>
+        /// The state the judge reads (JevProbe's v2, Nov 2026): the count, the kind of match, the
+        /// typo levels, closeMatch, and per result how each query word was met. Until then it was
+        /// hits (the ten listed, not the count), closeMatch and the results only. Measured against the
+        /// labelled sets before it went in: docs 33 of 36 questions answered against 31, recognised at
+        /// 21% of their length against 23%; TMDB 30 of 30 against 29; no false answer on a lookup in
+        /// either (JevProbe/search-or-ask/runs, tmdb/runs).
+        /// </summary>
+        public static JsonObject State(string site, string text, SearchSummary search)
         {
-            ["site"] = site,
-            ["request"] = text,
-            ["search"] = new JsonObject
+            var levels = search.Levels is { } c
+                ? new JsonObject { ["exact"] = c.Exact, ["oneEdit"] = c.OneEdit, ["twoEdits"] = c.TwoEdits }
+                : null;
+            var searchState = new JsonObject
             {
-                ["hits"] = search.Hits,
+                ["count"] = search.Count ?? search.Hits,
+                ["match"] = search.Match,
+                ["levels"] = levels,
                 ["closeMatch"] = search.CloseMatch,
                 ["results"] = new JsonArray(search.Top.Select(h => (JsonNode)new JsonObject
                 {
                     ["title"] = h.Title,
                     ["section"] = h.Section,
                     ["snippet"] = h.Snippet,
+                    ["met"] = search.Met?.TryGetValue(h.Key, out var words) == true
+                        ? new JsonArray(words.Select(w => (JsonNode)new JsonObject { ["word"] = w.Text, ["how"] = w.Found ? w.How : "not found", ["field"] = w.Field }).ToArray())
+                        : null,
                 }).ToArray()),
-            },
-        };
+            };
+            return new JsonObject { ["site"] = site, ["request"] = text, ["search"] = searchState };
+        }
 
         /// <summary>One call off the day's budget. <paramref name="ceiling"/> stops short of it (a
         /// prefetch, which leaves the rest to the pauses), and a call it turns away is no refusal in
