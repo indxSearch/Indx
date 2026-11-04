@@ -114,6 +114,34 @@
         }
         else
         {
+        @if (_summary is { } summary && !string.IsNullOrWhiteSpace(_text))
+        {
+            @* How the search found what it found, as IndxWorkbench's summary line says it: the typo
+               level whose records were counted, the ranked share, the fallback and Rest. *@
+            <div class="indx-facets-caption">
+                <span class="indx-facets-caption-icon"><Search Size="14" /></span>
+                <span class="indx-facets-caption-text">This search</span>
+            </div>
+            <div class="indx-search-explain">
+                <p class="indx-search-explain-headline">@summary.Headline</p>
+                @if (summary.Levels.Count > 0)
+                {
+                    <div class="indx-search-explain-levels">
+                        @foreach (var level in summary.Levels)
+                        {
+                            <span class="@(level.Counted ? "indx-search-explain-level indx-search-explain-level--counted" : "indx-search-explain-level")"
+                                  title="@(level.Counted ? "The level counted: these are the results" : "Records holding every word on this level or a nearer one")">
+                                @level.Name <strong>@level.Records.ToString("N0")</strong>
+                            </span>
+                        }
+                    </div>
+                }
+                @foreach (var note in summary.Notes)
+                {
+                    <p class="indx-search-explain-note">@note</p>
+                }
+            </div>
+        }
         <div class="indx-facets-caption">
             <span class="indx-facets-caption-icon"><Indx.Systm.Blazor.Icons.Filter Size="14" Color="currentColor" /></span>
             <span class="indx-facets-caption-text">Facets</span>
@@ -167,12 +195,15 @@ else
 
     // Rank is the 1-based place in the list. CloseMatch: within the coverage truncation point, a
     // near-exact match coverage confirmed, rather than a pattern match ranked below them.
-    private record PreviewHit(JsonElement Doc, ushort Score, long Key, int Rank, bool CloseMatch);
+    // Matches: how the reranker met each query word in this record (Result.RerankReport), Nov 2026.
+    private record PreviewHit(JsonElement Doc, ushort Score, long Key, int Rank, bool CloseMatch, IReadOnlyList<SearchExplanation.Word>? Matches);
     private record PerfTestResult(int Iterations, double MedianMs, double P95Ms, double MinMs, double MaxMs, double PerSecond);
     private record DisplayField(string Name, string Value);
 
     private string _text = string.Empty;
     private List<PreviewHit>? _results;
+    // How this search found what it found, for the right column while no document is shown.
+    private SearchExplanation.Summary? _summary;
     // The document panel: the hit under the pointer (or focus), and the one clicked to keep.
     private PreviewHit? _hovered;
     private PreviewHit? _pinned;
@@ -194,7 +225,7 @@ else
         _facetRuns.Begin();
         _facets = null;
         _facetsFor = null;
-        _results = null;
+        _results = null; _summary = null;
         _hovered = _pinned = null;
         _perf = null;
     }
@@ -232,7 +263,7 @@ else
         _ = RunFacetsAsync(string.Empty, immediately: true);
         _focusBox = _box.Set(string.Empty);
         _text = string.Empty;
-        _results = null;
+        _results = null; _summary = null;
         _hovered = _pinned = null;
         _perf = null;
     }
@@ -263,15 +294,17 @@ else
         _ = RunFacetsAsync(text);
         if (string.IsNullOrWhiteSpace(text))
         {
-            _results = null;
+            _results = null; _summary = null;
             return;
         }
-        var hits = await Task.Run(() => Search(text));
+        var searched = await Task.Run(() => Search(text));
+        var hits = searched?.Hits;
         MarkStep("try");
         if (!_searches.IsCurrent(ticket)) return; // a newer keystroke, Clear or Replace overtook this one
         if (hits != null)
         {
             _results = hits;
+            _summary = searched!.Value.Summary;
             // A pinned document stays while it is still among the hits, with its new rank; one
             // that dropped out goes, rather than showing a rank and score from another search.
             _pinned = _pinned == null ? null : hits.FirstOrDefault(h => h.Key == _pinned.Key);
@@ -326,13 +359,15 @@ else
         return FacetPreview.Build(result.Facets, order);
     }
 
-    private List<PreviewHit>? Search(string text)
+    private (List<PreviewHit> Hits, SearchExplanation.Summary? Summary)? Search(string text)
     {
         var engine = Ctx.FindEngine();
         if (engine == null) return null;
         // The dataset's saved boost rules are applied server-side in FromQueryProxy, as in every
         // search, so the preview matches what real searches return.
-        var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = PreviewHits };
+        // With the rerank report, as IndxWorkbench asks: it reads the rows returned once more, which
+        // for the preview's few hits costs little, and says how each word was met.
+        var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = PreviewHits, EnableRerankReport = true };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         var hits = new List<PreviewHit>();
         // A close match is one the search counted: they come first (6.0; until then up to TruncationIndex).
@@ -346,12 +381,12 @@ else
                 try
                 {
                     hits.Add(new PreviewHit(JsonDocument.Parse(json).RootElement.Clone(), record.Score,
-                        record.DocumentKey, i + 1, i < counted));
+                        record.DocumentKey, i + 1, i < counted, SearchExplanation.For(result, record.DocumentKey)));
                 }
                 catch { }
             }
         }
-        return hits;
+        return (hits, SearchExplanation.Of(result));
     }
 
     private async Task RunPerfTest()
@@ -505,6 +540,20 @@ else
                 <span title="Ranked by pattern matching only; coverage did not confirm the query here">pattern match</span>
             }
         </p>
+        @if (hit.Matches is { Count: > 0 } words)
+        {
+            @* How the reranker met each query word here, as IndxWorkbench's record pane shows it. *@
+            <div class="indx-doc-section">
+                <div class="indx-doc-section-title">How it matched</div>
+                @foreach (var word in words)
+                {
+                    <div class="indx-doc-match @(word.Found ? null : "indx-doc-match--missing")">
+                        <span class="indx-doc-match-word">@word.Text</span>
+                        <span class="indx-doc-match-how">@word.How@if (word.Field != null) { <span> in </span><span class="indx-doc-field-tag">@word.Field</span> }</span>
+                    </div>
+                }
+            </div>
+        }
         @if (fields == null)
         {
             <pre class="indx-doc-json">@hit.Doc.ToString()</pre>

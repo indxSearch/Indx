@@ -341,3 +341,67 @@
 .indx-doc-value--empty { color: var(--lv4); font-style: italic; }
 .indx-doc-value-more { color: var(--lv5); }
 .indx-doc-json { margin: 0; font: var(--text-xs); color: var(--lv7); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* "This search" over the facets (Nov 2026): what the search counted and why, in the doc panel's tones. */
+.indx-search-explain {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 4px 12px 12px;
+}
+
+.indx-search-explain-headline {
+    margin: 0;
+    font: var(--text-sm);
+    color: var(--lv7);
+}
+
+.indx-search-explain-levels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+.indx-search-explain-level strong {
+    font-weight: var(--med);
+    color: var(--lv6);
+}
+
+/* The level counted: the results come from it. */
+.indx-search-explain-level--counted,
+.indx-search-explain-level--counted strong {
+    color: var(--lv8);
+}
+
+.indx-search-explain-note {
+    margin: 0;
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+/* "How it matched" in the document panel: a query word, then how and where it was met. */
+.indx-doc-match {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 2px 0;
+    font: var(--text-xs);
+}
+
+.indx-doc-match-word {
+    min-width: 80px;
+    color: var(--lv8);
+    font-weight: var(--med);
+    overflow-wrap: anywhere;
+}
+
+.indx-doc-match-how {
+    color: var(--lv6);
+}
+
+.indx-doc-match--missing .indx-doc-match-word,
+.indx-doc-match--missing .indx-doc-match-how {
+    color: var(--lv4);
+}
