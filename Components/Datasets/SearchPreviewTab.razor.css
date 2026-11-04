@@ -363,13 +363,15 @@
 
 .indx-search-explain-inline {
     display: inline-flex;
-    gap: 8px;
-    margin-left: 8px;
+    gap: 4px;
+    margin-left: 10px;
     min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    font: var(--text-xs);
-    color: var(--lv5);
+}
+
+.indx-search-explain-chip {
+    display: inline-flex;
+    flex: none;
 }
 
 .indx-search-explain {
@@ -384,21 +386,9 @@
 .indx-search-explain-levels {
     display: flex;
     flex-wrap: wrap;
-    gap: 4px 12px;
-    font: var(--text-xs);
-    color: var(--lv5);
+    gap: 4px;
 }
 
-.indx-search-explain-level strong {
-    font-weight: var(--med);
-    color: var(--lv6);
-}
-
-/* The level counted: the results come from it. */
-.indx-search-explain-level--counted,
-.indx-search-explain-level--counted strong {
-    color: var(--lv8);
-}
 
 .indx-search-explain-note {
     margin: 0;

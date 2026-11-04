@@ -128,7 +128,7 @@
                     <span class="indx-search-explain-inline">
                         @foreach (var level in summary.Levels)
                         {
-                            <span class="@(level.Counted ? "indx-search-explain-level indx-search-explain-level--counted" : "indx-search-explain-level")">· @level.Name <strong>@level.Records.ToString("N0")</strong></span>
+                            @LevelChip(level)
                         }
                     </span>
                 }
@@ -139,10 +139,7 @@
                     <div class="indx-search-explain-levels">
                         @foreach (var level in summary.Levels)
                         {
-                            <span class="@(level.Counted ? "indx-search-explain-level indx-search-explain-level--counted" : "indx-search-explain-level")"
-                                  title="@(level.Counted ? "The level counted: these are the results" : "Records holding every word on this level or a nearer one")">
-                                @level.Name <strong>@level.Records.ToString("N0")</strong>
-                            </span>
+                            @LevelChip(level)
                         }
                     </div>
                 }
@@ -535,6 +532,17 @@ else
     /// <summary>Longest value shown in full; past it the panel says how much was left out, so a
     /// document of whole books does not put megabytes into the page.</summary>
     private const int ValueChars = 5000;
+
+    /// <summary>A typo level as a chip, the facets' chips: its name, then its count in the fainter
+    /// tone. The level counted, which the results come from, a step darker.</summary>
+    private static RenderFragment LevelChip(SearchExplanation.Level level) => __builder =>
+    {
+        <span class="indx-search-explain-chip" title="@(level.Counted ? "The level counted: these are the results" : "Records holding every word on this level or a nearer one")">
+            <Chip Color="@(level.Counted ? "var(--lv3)" : "var(--lv2)")" TextColor="@(level.Counted ? "var(--lv8)" : "var(--lv6)")">
+                <span class="indx-facet-value">@level.Name</span><span class="indx-facet-count">@level.Records.ToString("N0")</span>
+            </Chip>
+        </span>
+    };
 
     /// <summary>The caption's icon for a kind of match: the query as typed for a strong match, a
     /// fuzzy search for one within typos, the plain search glass for the others.</summary>
