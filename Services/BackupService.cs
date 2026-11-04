@@ -224,21 +224,30 @@ namespace IndxServer.Services
 
         /// <summary>
         /// Count-based retention per database (newest <paramref name="keep"/> stay — the
-        /// timestamped names sort chronologically), then the emergency brake: while the folder
-        /// exceeds <paramref name="maxTotalMb"/>, oldest copies go first, whatever database they
-        /// belong to.
+        /// timestamped names sort chronologically within a database), then the emergency brake:
+        /// while the folder exceeds <paramref name="maxTotalMb"/>, the oldest copies go first by
+        /// the time in their names, whatever database they belong to, and each database keeps its
+        /// newest copy. Until Nov 2026 the brake went by the whole name, so <c>identity-</c> sorted
+        /// before <c>indx-</c> and <c>stats-</c>: a large stats.db had every identity copy deleted,
+        /// the one just made included, while week-old statistics stayed.
         /// </summary>
         internal void Rotate(string folder, int keep, int maxTotalMb)
         {
             var files = Directory.GetFiles(folder, "*.db")
                 .Select(p => new FileInfo(p))
-                .OrderBy(fi => fi.Name, StringComparer.Ordinal)
+                .Where(fi => fi.Name.Contains('-'))
                 .ToList();
 
             // The base name is everything before the first '-': ours carry none, the timestamp two.
-            foreach (var group in files.GroupBy(fi => fi.Name[..fi.Name.IndexOf('-')]))
+            static string Database(FileInfo fi) => fi.Name[..fi.Name.IndexOf('-')];
+            static string Stamp(FileInfo fi) => fi.Name[(fi.Name.IndexOf('-') + 1)..];
+
+            var newest = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var group in files.GroupBy(Database).ToList())
             {
-                foreach (var old in group.SkipLast(keep))
+                var ordered = group.OrderBy(fi => fi.Name, StringComparer.Ordinal).ToList();
+                newest.Add(ordered[^1].Name);
+                foreach (var old in ordered.SkipLast(keep))
                 {
                     old.Delete();
                     files.Remove(old);
@@ -247,14 +256,20 @@ namespace IndxServer.Services
             }
 
             long budget = (long)maxTotalMb * 1024 * 1024;
-            while (files.Count > 1 && files.Sum(fi => fi.Length) > budget)
+            var candidates = files.Where(fi => !newest.Contains(fi.Name))
+                .OrderBy(Stamp, StringComparer.Ordinal).ThenBy(fi => fi.Name, StringComparer.Ordinal)
+                .ToList();
+            foreach (var oldest in candidates)
             {
-                var oldest = files[0];
-                files.RemoveAt(0);
+                if (files.Sum(fi => fi.Length) <= budget) return;
+                files.Remove(oldest);
                 oldest.Delete();
                 logger.LogWarning("backup folder exceeded Backup:MaxTotalMB ({MaxMb} MB); deleted {Name}",
                     maxTotalMb, oldest.Name);
             }
+            if (files.Sum(fi => fi.Length) > budget)
+                logger.LogWarning("backup folder exceeds Backup:MaxTotalMB ({MaxMb} MB) with only the newest copy of each database left; raise it or move Backup:Folder",
+                    maxTotalMb);
         }
 
     }
