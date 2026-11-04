@@ -30,7 +30,14 @@ namespace IndxServer.Components.Datasets
             var notes = new List<string>();
             var levels = new List<Level>();
             string headline;
-            if (result.ToleranceCounts is null)
+            if (PatternOnly(result))
+            {
+                // Every record listed came in by pieces of words alone: the word lookup confirmed
+                // none of the query's words in any of them. Indx is only pattern searching.
+                headline = "Pattern matches";
+                notes.Add("None of the words was found in these records, only parts of them: BM25F's pieces, not whole words or typos of them.");
+            }
+            else if (result.ToleranceCounts is null)
             {
                 // The Bm25f mode: any of the words, or parts of them, is a candidate. Reranked unless
                 // the search says otherwise; the report the preview asks for is there only when it is.
@@ -76,6 +83,8 @@ namespace IndxServer.Components.Datasets
         /// "close match" or "pattern match", 5.x's words for either side of the truncation.</summary>
         public static (string Label, string Title) KindOf(Result result, int index)
         {
+            if (index < result.Records.Length && For(result, result.Records[index].DocumentKey) is { Count: > 0 } words && words.All(w => !w.Found))
+                return ("pattern match", "Found only by parts of words: none of the words was confirmed in this record");
             if (result.ToleranceCounts is null)
                 return ("broad match", "Holds some of the words or parts of them: the Bm25f mode, with no typo levels");
             if (result.IsFallback)
@@ -84,6 +93,15 @@ namespace IndxServer.Components.Datasets
                 return ("counted", "Holds every word on the level counted");
             return ("related", "Below the counted records: BM25F's best among the rest (Rest)");
         }
+
+        /// <summary>
+        /// Whether every listed record matched by pieces of words alone: the rerank report confirms
+        /// none of the query's words in any of them. Only known when the search was reranked, which
+        /// the preview asks for; false otherwise, and with nothing listed.
+        /// </summary>
+        public static bool PatternOnly(Result result) =>
+            result.Records.Length > 0 && result.RerankReport?.Matches is { Length: > 0 } matches
+            && matches.All(m => m.Words.All(w => w.How == WordMatch.NotFound));
 
         /// <summary>How the reranker met each query word in one record, in the query's order; null
         /// when the search was not reranked or the record is not in the report.</summary>

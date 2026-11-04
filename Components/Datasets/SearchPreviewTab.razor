@@ -550,7 +550,7 @@ else
         {
             case "Strong matches": <Indx.Systm.Blazor.Icons.SearchQuery Size="14" Color="currentColor" />; break;
             case "Fuzzy matches": <Indx.Systm.Blazor.Icons.FuzzySearch Size="14" Color="currentColor" />; break;
-            case "Partial matches": <Indx.Systm.Blazor.Icons.PatternRecognition Size="14" Color="currentColor" />; break;
+            case "Pattern matches": <Indx.Systm.Blazor.Icons.PatternRecognition Size="14" Color="currentColor" />; break;
             default: <Search Size="14" />; break;
         }
     };
@@ -561,6 +561,7 @@ else
         "Strong matches" => "Every word, as typed",
         "Fuzzy matches" => "Every word, within a typo or two: none held them all as typed",
         "Partial matches" => "Some of the words: no record holds them all",
+        "Pattern matches" => "Only parts of words matched: none of the words was found",
         _ => "Any of the words, or parts of them: no typo levels",
     };
 
