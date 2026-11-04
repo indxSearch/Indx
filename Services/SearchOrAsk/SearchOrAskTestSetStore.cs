@@ -8,20 +8,20 @@ using Microsoft.Data.Sqlite;
 
 namespace IndxServer.Services.SearchOrAsk
 {
-    /// <summary>One text an owner marked in Try it: a question, which an answer serves, or a search,
-    /// which the list serves, and for a question the record that answers it where they named one.
+    /// <summary>One question an owner marked in Try it, and the record that answers it where they
+    /// named one. <see cref="Label"/> is always <see cref="Question"/>: a mark for a search was tried
+    /// and dropped, since on the way to a question the list soon stops mattering; it stays in the
+    /// row so the replay file keeps its label column.
     /// What the judge said when it was marked is kept beside it, so a later judge or wording can be
     /// measured against the same text.</summary>
     public sealed record SearchOrAskMark(string Text, string Label, long? ExpectedKey, string? ExpectedTitle,
         double? P, string? Offer, string? Judge, DateTime MarkedUtc)
     {
         public const string Question = "question";
-        public const string Search = "search";
     }
 
     /// <summary>
-    /// A dataset's test set for Search or ask: texts marked in Try it as a question or a search
-    /// (4 Nov 2026). It changes nothing a visitor gets. It is the dataset's own labelled set, in its
+    /// A dataset's test set for Search or ask: questions marked in Try it (4 Nov 2026). It changes nothing a visitor gets. It is the dataset's own labelled set, in its
     /// own language and words, so a judge, a wording or a threshold can be measured on what this
     /// dataset's visitors type rather than on ours; exported, it is a JevProbe replay set. One JSON
     /// row per dataset in its own table inside indx.db, the pattern of <see cref="SearchOrAskStore"/>;
@@ -105,15 +105,14 @@ namespace IndxServer.Services.SearchOrAsk
         }
 
         /// <summary>The set as a JevProbe replay file: tab separated, id, lang, kind, label, query,
-        /// note. A search is the replay's <c>lookup</c>; a question with its record carries
-        /// <c>from {key}</c>, as the generated sets do. Tabs and line breaks in a text become spaces.</summary>
+        /// note. A question with its record carries <c>from {key}</c>, as the generated sets do. Tabs and line breaks in a text become spaces.</summary>
         public static string ToReplay(IReadOnlyList<SearchOrAskMark> marks)
         {
             static string Clean(string s) => s.Replace('\t', ' ').Replace('\r', ' ').Replace('\n', ' ').Trim();
             var b = new StringBuilder("id\tlang\tkind\tlabel\tquery\tnote\n");
             int n = 0;
             foreach (var m in marks.Reverse())
-                b.Append($"m{++n:000}\t\tmarked\t{(m.Label == SearchOrAskMark.Search ? "lookup" : "question")}\t{Clean(m.Text)}\t{(m.ExpectedKey is { } k ? $"from {k}" : "")}\n");
+                b.Append($"m{++n:000}\t\tmarked\tquestion\t{Clean(m.Text)}\t{(m.ExpectedKey is { } k ? $"from {k}" : "")}\n");
             return b.ToString();
         }
 
