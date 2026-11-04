@@ -100,7 +100,7 @@
                     @foreach (var c in all)
                     {
                         <button type="button" class="agent-history-row @(c.Id == _conversationId ? "agent-history-row--current" : null)" @onclick="() => Open(c.Id)">
-                            <span class="agent-history-title">@c.Title</span>
+                            <span class="agent-history-title" title="@c.Title">@c.Title</span>
                             <span class="agent-history-meta">@Where(c.TeamId, c.DatasetName) · <TimeAgo Value="c.LastUtc" TooltipPosition="left" /> · @c.Turns turns@(c.Id == _conversationId ? " · current" : "")</span>
                         </button>
                     }
