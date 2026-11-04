@@ -2,15 +2,21 @@
    and Save — which reindexes on a shadow engine when the change requires it, with progress. *@
 @using Indx.Api
 @using IndxServer.Models
+@using IndxServer.Services
 
 @inherits DatasetTabBase
 @inject IndxServer.Services.Observr.AgentPanelState Agent
 @inject IServiceProvider Services
+@inject IndxServer.Services.FieldProfileStore ProfileStore
 @if (!Active) { return; }
 
 @if (!Ctx.IsSaving)
 {
     <FieldConfigToolbar @bind-Filter="_filter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced">
+        @if (Ctx.IsEditor && Ctx.EditedFields != null)
+        {
+            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.ShowMore" @onclick="NewProfile">New profile</Button>
+        }
         <ObservrPageAction Label="Review my setup" OnClick="ReviewInAgent" Disabled="@Ctx.IsDirty" />
     </FieldConfigToolbar>
 }
@@ -31,7 +37,18 @@ else if (Ctx.EditedFields is { } fields)
 {
     <FieldConfigTable Fields="fields" Editable="@Ctx.IsEditor" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced" Filter="@_filter"
                       Scoring="@(Ctx.FindEngine()?.Scoring ?? ScoringSetup.Default)"
-                      @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged" />
+                      @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged"
+                      Profiles="@Ctx.EditedProfiles" OnEditProfile="EditProfile" />
+    @if (_editing is { } editing)
+    {
+        <FieldProfileModal Open="true" OpenChanged="@(o => { if (!o) _editing = null; })" Profile="editing"
+                           Before="@(_editingField == null && editing.Id.Length > 0 ? SavedProfile(editing.Id) : null)"
+                           CustomField="@_editingField?.FieldName"
+                           UsedBy="@(_editingField != null ? [_editingField.FieldName] : UsedBy(editing.Id, patternOnly: false))"
+                           UsedByPattern="@(_editingField != null ? (_editingField.PatternMatching == true ? [_editingField.FieldName] : []) : UsedBy(editing.Id, patternOnly: true))"
+                           Editable="@Ctx.IsEditor" OnSave="SaveProfile"
+                           OnDelete="@(_editingField == null && editing.Id.Length > 0 ? EventCallback.Factory.Create(this, DeleteProfile) : default)" />
+    }
     @* The page action pattern (app.css): Save / Cancel in a bar that appears once something
        changed and sticks to the window bottom, since this table is often taller than the screen.
        Export and import close the page. The document key follows below. *@
@@ -93,6 +110,62 @@ else if (Ctx.EditedFields is { } fields)
     private string? _saveError;
     private CancellationTokenSource? _pollCts;
 
+    // ── Field profiles (Nov 2026) ─────────────────────────────────────────
+    // The editor is open on this profile; with _editingField set, on that field's own values
+    // (Custom). Saving writes into the context's working copy, which Save sends on.
+    private FieldProfile? _editing;
+    private FieldProxy? _editingField;
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        if (Active && Ctx.EditedProfiles == null)
+            Ctx.SetSavedProfiles(ProfileStore.Load(Ctx.TeamId, Ctx.Name));
+    }
+
+    private FieldProfile? SavedProfile(string id) => FieldProfiles.All(Ctx.SavedProfiles).FirstOrDefault(p => p.Id == id);
+
+    /// <summary>The searched fields that have the profile; with patternOnly, those with
+    /// PatternMatching on, the ones that read its pattern setup.</summary>
+    private IReadOnlyList<string> UsedBy(string id, bool patternOnly) =>
+        (Ctx.EditedFields ?? []).Where(f => FieldProfiles.IsSearched(f) && (!patternOnly || f.PatternMatching == true)
+                                            && FieldProfiles.ProfileOf(f, Ctx.EditedProfiles)?.Id == id)
+                                .Select(f => f.FieldName).ToList();
+
+    private void NewProfile()
+    {
+        _editingField = null;
+        _editing = new FieldProfile { Id = "", Name = "" };
+    }
+
+    private void EditProfile(FieldProxy field)
+    {
+        var current = FieldProfiles.ProfileOf(field, Ctx.EditedProfiles);
+        _editingField = current == null ? field : null;
+        _editing = current ?? FieldProfiles.FromField(field);
+    }
+
+    private void SaveProfile(FieldProfile edited)
+    {
+        if (Ctx.EditedProfiles is { } own && Ctx.EditedFields is { } fields)
+            FieldProfiles.SaveEdit(own, fields, _editingField, edited);
+        _editing = null;
+        _editingField = null;
+        Ctx.NotifyChanged();
+    }
+
+    private void DeleteProfile()
+    {
+        if (_editing is { } p && Ctx.EditedProfiles is { } own && UsedBy(p.Id, patternOnly: false).Count == 0)
+        {
+            own.Profiles.RemoveAll(x => x.Id == p.Id);
+            foreach (var key in own.Assignments.Where(a => a.Value == p.Id).Select(a => a.Key).ToList())
+                own.Assignments.Remove(key);
+        }
+        _editing = null;
+        Ctx.NotifyChanged();
+    }
+
     private void Cancel()
     {
         Ctx.CancelEdits();
@@ -143,6 +216,12 @@ else if (Ctx.EditedFields is { } fields)
             });
 
             Ctx.RefreshFieldsFromEngine();
+            // The profiles after the fields: a profile names values the engine now has.
+            if (Ctx.EditedProfiles is { } profiles)
+            {
+                ProfileStore.Save(Ctx.TeamId, Ctx.Name, profiles);
+                Ctx.SetSavedProfiles(profiles);
+            }
         }
         catch (ShadowBusyException)
         {

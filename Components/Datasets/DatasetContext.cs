@@ -152,7 +152,26 @@ namespace IndxServer.Components.Datasets
         public void CancelEdits()
         {
             EditedFields = SavedFields?.Select(DeepCopy).ToArray();
+            EditedProfiles = SavedProfiles?.Copy();
         }
+
+        // ── Field profiles (Nov 2026) ─────────────────────────────────────────
+        /// <summary>The dataset's own profiles and assignments as stored (FieldProfileStore), the
+        /// baseline for the dirty check; an empty set when it has none. Null until the field tab
+        /// has read them.</summary>
+        public DatasetFieldProfiles? SavedProfiles { get; private set; }
+        /// <summary>The working copy: changed by the field table and the profile editor, saved
+        /// with the fields. A profile's values reach the engine through the fields that have it,
+        /// written onto <see cref="EditedFields"/> as they change.</summary>
+        public DatasetFieldProfiles? EditedProfiles { get; private set; }
+
+        public void SetSavedProfiles(DatasetFieldProfiles? profiles)
+        {
+            SavedProfiles = profiles?.Copy() ?? new DatasetFieldProfiles();
+            EditedProfiles = SavedProfiles.Copy();
+        }
+
+        private bool ProfilesDirty => EditedProfiles != null && !EditedProfiles.SameAs(SavedProfiles);
 
         public bool IsDirty
         {
@@ -160,6 +179,7 @@ namespace IndxServer.Components.Datasets
             {
                 var original = SavedFields;
                 var edited = EditedFields;
+                if (ProfilesDirty) return true;
                 if (original == null || edited == null) return false;
                 for (int i = 0; i < original.Length && i < edited.Length; i++)
                 {
@@ -177,6 +197,9 @@ namespace IndxServer.Components.Datasets
                     if (!(o.IndexSizes ?? []).SequenceEqual(e.IndexSizes ?? [])) return true;
                     if (o.NumberOfStartCharacters != e.NumberOfStartCharacters) return true;
                     if (o.NumberOfStopCharacters != e.NumberOfStopCharacters) return true;
+                    if (o.Tolerance != e.Tolerance) return true;
+                    if (o.RerankWeight != e.RerankWeight) return true;
+                    if ((o.CaseSensitive ?? false) != (e.CaseSensitive ?? false)) return true;
                 }
                 return false;
             }
@@ -209,6 +232,11 @@ namespace IndxServer.Components.Datasets
             IndexSizes = f.IndexSizes is { } sizes ? (int[])sizes.Clone() : null,
             NumberOfStartCharacters = f.NumberOfStartCharacters,
             NumberOfStopCharacters = f.NumberOfStopCharacters,
+            // A searched field's profile values (Nov 2026): carried so the profile shown is the
+            // engine's, and a save sends them back.
+            Tolerance = f.Tolerance,
+            RerankWeight = f.RerankWeight,
+            CaseSensitive = f.CaseSensitive,
         };
 
         // ── Upload hand-off ───────────────────────────────────────────────────

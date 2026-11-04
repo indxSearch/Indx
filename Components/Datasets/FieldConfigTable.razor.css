@@ -431,3 +431,21 @@ td:first-child:hover {
 .indx-cell-value-faint {
     color: var(--lv4);
 }
+
+/* The Profile column: the menu and the edit button beside it (Nov 2026). */
+.indx-col-profile {
+    width: 200px;
+    min-width: 170px;
+}
+
+.indx-profile-cell {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.indx-profile-cell ::deep .indx-select-wrapper {
+    flex: 1;
+    min-width: 0;
+}

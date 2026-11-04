@@ -815,6 +815,7 @@ namespace IndxServer.Engine
             _buryStore?.Delete(teamId, dataSetName);
             _metadataStore?.Delete(teamId, dataSetName);
             _queryParameterStore?.Delete(teamId, dataSetName);
+            _fieldProfileStore?.Delete(teamId, dataSetName);
             _searchOrAskStore?.Delete(teamId, dataSetName);
             _observrStore?.Delete(teamId, dataSetName);
             _observrConversations?.Delete(teamId, dataSetName);
@@ -1045,6 +1046,7 @@ namespace IndxServer.Engine
             _buryStore?.Rename(teamId, dataSetName, newName);
             _metadataStore?.Rename(teamId, dataSetName, newName);
             _queryParameterStore?.Rename(teamId, dataSetName, newName);
+            _fieldProfileStore?.Rename(teamId, dataSetName, newName);
             _searchOrAskStore?.Rename(teamId, dataSetName, newName);
             _observrStore?.Rename(teamId, dataSetName, newName);
             _observrConversations?.Rename(teamId, dataSetName, newName);
@@ -1093,6 +1095,7 @@ namespace IndxServer.Engine
             _buryStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _metadataStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _queryParameterStore?.Transfer(currentTeamId, newTeamId, dataSetName);
+            _fieldProfileStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _searchOrAskStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _observrStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _observrConversations?.Transfer(currentTeamId, newTeamId, dataSetName);
@@ -1480,6 +1483,12 @@ namespace IndxServer.Engine
 
         /// <summary>Attaches the query-parameter store to the search path (startup-only).</summary>
         internal void AttachQueryParameterStore(Services.QueryParameterStore store) => _queryParameterStore = store;
+
+        private Services.FieldProfileStore? _fieldProfileStore;
+
+        /// <summary>Attaches the field profile store, so a dataset's profiles follow it on delete,
+        /// rename and transfer (startup-only).</summary>
+        internal void AttachFieldProfileStore(Services.FieldProfileStore store) => _fieldProfileStore = store;
 
         // Per-dataset Search or ask settings: follow the dataset through delete, rename and transfer.
         private Services.SearchOrAsk.SearchOrAskStore? _searchOrAskStore;
