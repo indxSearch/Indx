@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
@@ -523,7 +523,7 @@ namespace IndxServer.Services.Observr
             var engine = engines.FindSearchEngine(dataSetName, teamId);
             if (engine == null || engine.Status.SystemState != SystemState.Ready || statistics.Store is not { } store)
                 return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
-            var label = StatisticsLabels.For(engine, store.LabelField(teamId, dataSetName));
+            var label = statistics.LabelsFor(engine, teamId, dataSetName);
             var results = (IndxServerInternalApi.Manager.Search(new QueryProxy { Text = q.QueryText, MaxNumberOfRecordsToReturn = 10, EnableCoverage = true }, dataSetName, teamId)
                 .Records ?? []).Select(r => new ObservrNamed(r.DocumentKey, label(r.DocumentKey) ?? r.DocumentKey.ToString())).ToList();
             var chosen = store.QueryDocuments(teamId, dataSetName, q.QueryText, fromDay, toDay, 10)
@@ -542,7 +542,7 @@ namespace IndxServer.Services.Observr
             if (engine == null || engine.Status.SystemState != SystemState.Ready || statistics.Store is not { } store)
                 return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
             var today = store.Today(teamId, dataSetName);
-            var label = StatisticsLabels.For(engine, store.LabelField(teamId, dataSetName));
+            var label = statistics.LabelsFor(engine, teamId, dataSetName);
             List<ObservrNamed> Near(string text) => (IndxServerInternalApi.Manager.Search(new QueryProxy
             {
                 Text = text, MaxNumberOfRecordsToReturn = 3, EnableCoverage = true,
@@ -593,7 +593,7 @@ namespace IndxServer.Services.Observr
             if (engine == null || engine.Status.SystemState != SystemState.Ready)
                 return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
             var review = BuildFieldReviewAsk(teamId, dataSetName, engine);
-            var label = StatisticsLabels.For(engine, statistics.Store?.LabelField(teamId, dataSetName));
+            var label = statistics.LabelsFor(engine, teamId, dataSetName);
             // Names from across the dataset, like the sample: the first dozen records say what the
             // file begins with, not what a record is.
             var names = Spread(teamId, dataSetName, SetupNames).Keys.Select(label).Where(n => !string.IsNullOrWhiteSpace(n)).Select(n => n!).ToList();
@@ -792,7 +792,7 @@ namespace IndxServer.Services.Observr
         /// not shown), and what each word finds alone. Searches here never reach the statistics.</summary>
         public ObservrZeroHitAsk BuildZeroHitAsk(string teamId, string dataSetName, IServerSearchEngine engine, string query, long searches)
         {
-            var label = StatisticsLabels.For(engine, statistics.Store?.LabelField(teamId, dataSetName));
+            var label = statistics.LabelsFor(engine, teamId, dataSetName);
             List<ObservrNamed> Named(IEnumerable<long> keys) => keys.Select(k => new ObservrNamed(k, label(k) ?? k.ToString())).ToList();
             List<long> Keys(string text, int take, bool strict) =>
                 (IndxServerInternalApi.Manager.Search(new QueryProxy
@@ -924,7 +924,7 @@ namespace IndxServer.Services.Observr
             var list = new SynonymList { Entries = [new SynonymEntry { Direction = SynonymDirection.Multidirectional, Terms = terms }] };
             var expanded = list.Expand(query);
             var result = IndxServerInternalApi.Manager.Search(new QueryProxy { Text = expanded, MaxNumberOfRecordsToReturn = 5, EnableCoverage = true }, dataSetName, teamId);
-            var label = StatisticsLabels.For(engine, statistics.Store?.LabelField(teamId, dataSetName));
+            var label = statistics.LabelsFor(engine, teamId, dataSetName);
             var records = result.Records ?? [];
             return new ObservrSynonymTest(records.Length, records.Select(r => label(r.DocumentKey) ?? r.DocumentKey.ToString()).ToList());
         }

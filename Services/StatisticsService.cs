@@ -1,4 +1,4 @@
-using IndxServer.Engine;
+﻿using IndxServer.Engine;
 
 namespace IndxServer.Services
 {
@@ -16,7 +16,8 @@ namespace IndxServer.Services
     /// chosen its own on the Options tab or in statistics/settings).
     /// </summary>
     public sealed class StatisticsService(IConfiguration configuration, ILoggerFactory loggerFactory,
-        BoostRuleStore? boostRules = null, QueryParameterStore? queryParameters = null)
+        BoostRuleStore? boostRules = null, QueryParameterStore? queryParameters = null,
+        SearchOrAsk.SearchOrAskStore? searchOrAsk = null)
         : IHostedService, IDisposable, IDatasetChangeSink
     {
         /// <summary>Roll up day D no earlier than D+2, so its selects and converts have arrived.</summary>
@@ -96,6 +97,17 @@ namespace IndxServer.Services
                 ? null : query.Filter.HashString;
         public StatisticsStore? Store { get; private set; }
         public StatisticsWriter? Writer { get; private set; }
+
+        /// <summary>The field a dataset's records are named by (<see cref="StatisticsLabels.ResolveField(IReadOnlyList{Indx.Api.FieldProxy}, string?, string?)"/>):
+        /// for a field list the engine does not hold yet, such as the preview's unsaved edits.</summary>
+        public string? NameField(IReadOnlyList<Indx.Api.FieldProxy> fields, string teamId, string dataSet) =>
+            StatisticsLabels.ResolveField(fields, Store?.LabelField(teamId, dataSet), searchOrAsk?.Load(teamId, dataSet)?.TitleField);
+
+        /// <summary>Names a dataset's records by key, by the one rule (<see cref="StatisticsLabels"/>);
+        /// null where a record has no name, or the engine is not loaded.</summary>
+        public Func<long, string?> LabelsFor(Indx.Api.IServerSearchEngine? engine, string teamId, string dataSet) =>
+            StatisticsLabels.For(engine, Store?.LabelField(teamId, dataSet), searchOrAsk?.Load(teamId, dataSet)?.TitleField);
+
         public int RetentionDays { get; private set; }
 
         public Task StartAsync(CancellationToken cancellationToken)

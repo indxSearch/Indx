@@ -1,13 +1,16 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Indx.Api;
 
 namespace IndxServer.Services
 {
     /// <summary>
-    /// A readable name for a document in the statistics, beside its key: the value of one field,
-    /// the one the dataset's owners chose (<see cref="StatisticsStore.LabelField"/>) or else the
-    /// first searchable field, which is usually the title. One rule for the HTTP reads and the
-    /// console, so both name a document the same way.
+    /// A readable name for a document, beside its key: the value of one field. Which field is one
+    /// rule for the statistics, Observr, the search preview and the category lists, so a record
+    /// reads the same everywhere: the label field the dataset's owners chose
+    /// (<see cref="StatisticsStore.LabelField"/>), else the title Search or ask is given, else the
+    /// heaviest searchable field. Until Nov 2026 the fallback was the FIRST searchable field and
+    /// the preview showed the first four: a dataset listing <c>authors</c> before <c>title</c>
+    /// named every record without an author by its id (gyldendal.no, the Salaby products).
     /// <para>Read from the engine only when it is loaded: a statistics read never wakes a
     /// hibernated dataset (the console's rule, CLAUDE.md "The collector must never resolve an
     /// engine"). Asleep, every label is null and the key stands alone.</para>
@@ -20,26 +23,34 @@ namespace IndxServer.Services
         /// <summary>How many values of an array field go into one label.</summary>
         private const int MaxArrayValues = 3;
 
+        /// <summary>The field to read, from the engine's configuration. Null when there is none.</summary>
+        public static string? ResolveField(IServerSearchEngine engine, string? configured, string? title = null) =>
+            ResolveField(engine.GetFieldConfiguration() ?? [], configured, title);
+
         /// <summary>The field to read: the configured one when the dataset still has it, else the
-        /// first searchable field. Null when there is neither.</summary>
-        public static string? ResolveField(IServerSearchEngine engine, string? configured)
+        /// Search or ask title when it has that, else the heaviest searchable field (the first of
+        /// equal weight, so it does not move between reads). Null when there is none of these.</summary>
+        public static string? ResolveField(IReadOnlyList<FieldProxy> fields, string? configured, string? title = null)
         {
-            var fields = engine.GetFieldConfiguration() ?? [];
             if (!string.IsNullOrEmpty(configured) && fields.Any(f => f.FieldName == configured))
                 return configured;
-            return fields.FirstOrDefault(f => f.Searchable == true)?.FieldName;
+            if (!string.IsNullOrEmpty(title) && fields.Any(f => f.FieldName == title))
+                return title;
+            return fields.Where(f => f.Searchable == true && f.Embeddable != true)
+                .OrderByDescending(f => f.Weight ?? 1f)
+                .FirstOrDefault()?.FieldName;
         }
 
         /// <summary>
         /// A labeller for one read: key to label, null where there is none. Never throws; an
         /// engine that is not there, not loaded or gone while reading gives nulls.
         /// </summary>
-        public static Func<long, string?> For(IServerSearchEngine? engine, string? configured)
+        public static Func<long, string?> For(IServerSearchEngine? engine, string? configured, string? title = null)
         {
             try
             {
                 if (engine == null || engine.IsDisposed) return _ => null;
-                var field = ResolveField(engine, configured);
+                var field = ResolveField(engine, configured, title);
                 if (field == null) return _ => null;
                 var cache = new Dictionary<long, string?>();
                 return key =>
