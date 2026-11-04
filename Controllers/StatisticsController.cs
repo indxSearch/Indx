@@ -258,8 +258,7 @@ namespace IndxServer.Controllers
         /// <summary>Key to label for one read (<see cref="StatisticsLabels"/>): from the engine when
         /// it is loaded, never waking it; asleep, every label is null.</summary>
         private Func<long, string?> Labels(string teamId, string dataSetName) =>
-            StatisticsLabels.For(IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, teamId),
-                statistics.Store!.LabelField(teamId, dataSetName));
+            statistics.LabelsFor(IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, teamId), teamId, dataSetName);
 
         /// <summary>Deletes the dataset's statistics. Bare, every row: the explicit purge, since
         /// statistics survive dataset delete/recreate and starting clean is a choice made here.

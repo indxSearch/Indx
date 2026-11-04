@@ -1,9 +1,10 @@
-@* Quick search against the live engine (with the dataset's boost rules applied, as real
+﻿@* Quick search against the live engine (with the dataset's boost rules applied, as real
    searches see them) plus an engine-side timing loop. Reads the edited field configuration
    from the context to pick which fields to show per hit. *@
 @using System.Text.Json
 @using Indx.Api
 @using IndxServer.Models
+@inject StatisticsService Stats
 
 @inherits DatasetTabBase
 @if (!Active) { return; }
@@ -395,11 +396,18 @@ else
     }
 
     /// <summary>
-    /// The (up to four) fields shown per hit: searchable first, then facetable, then the rest.
+    /// The (up to four) fields shown per hit: the record's name first (the field it is named by in
+    /// the statistics and Observr, <see cref="StatisticsLabels"/>), then searchable, facetable and
+    /// the rest. Until Nov 2026 the name was not first: the first four searchable fields in list
+    /// order were shown, and a title listed after them never appeared.
     /// Walks the configured fields, which already carry the parser's (dotted) names, and
     /// resolves each name as a path into the document — see <see cref="ResolveFieldValue(JsonElement,string)"/>.
     /// Enumerating the document's own top-level properties instead would miss every nested field.
     /// </summary>
+    // The name field, worked out once per field list rather than per hit: it reads two settings.
+    private FieldProxy[]? _nameFieldOf;
+    private string? _nameField;
+
     private IEnumerable<DisplayField> GetDisplayFields(JsonElement doc)
     {
         const int max = 4;
@@ -413,10 +421,16 @@ else
                 .Select(p => new DisplayField(p.Name, p.Value.ToString()))
                 .ToList();
 
+        if (!ReferenceEquals(_nameFieldOf, fields))
+        {
+            _nameField = Stats.NameField(fields, Ctx.TeamId, Ctx.Name);
+            _nameFieldOf = fields;
+        }
         static bool Searched(FieldProxy f) => f.WordMatching == true || f.PatternMatching == true;
-        var ordered = fields.Where(Searched)
-            .Concat(fields.Where(f => f.Facetable == true && !Searched(f)))
-            .Concat(fields.Where(f => !Searched(f) && f.Facetable != true));
+        var ordered = fields.Where(f => f.FieldName == _nameField)
+            .Concat(fields.Where(f => Searched(f) && f.FieldName != _nameField))
+            .Concat(fields.Where(f => f.Facetable == true && !Searched(f) && f.FieldName != _nameField))
+            .Concat(fields.Where(f => !Searched(f) && f.Facetable != true && f.FieldName != _nameField));
 
         var result = new List<DisplayField>(max);
         foreach (var f in ordered)

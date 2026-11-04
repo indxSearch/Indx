@@ -1,4 +1,4 @@
-@* A Ready dataset's Status page: what Observr found about it, to decide here, over its
+﻿@* A Ready dataset's Status page: what Observr found about it, to decide here, over its
    diagnostics (counts, timings, keep-alive, the engine's last error). The findings as cards in
    a grid under a bar that picks open or archive and a kind, the way the Statistics page has its
    bar over its content, below the diagnostics so those are always in view; Yes and No for
@@ -48,21 +48,21 @@
         <h3 class="status-heading@(string.IsNullOrEmpty(status.ErrorMessage) ? "" : " status-heading--section")">Index</h3>
         <StatGroup Columns="6">
             @{ var stateChip = DatasetStateChip.For(status.SystemState); }
-            @Tile("State", DatasetIcons.Status, @<Chip Size="large" Color="@stateChip.Color" TextColor="@stateChip.TextColor" Icon="@stateChip.Icon">@status.SystemState</Chip>)
-            @Tile("Documents", DatasetIcons.Documents, @<text>@status.DocumentCount.ToString("N0")</text>)
-            @Tile("Records on disk", DatasetIcons.Disk, @<text>@((ka?.RecordCount ?? 0).ToString("N0"))</text>)
-            @Tile("Last index build", DatasetIcons.Changes, @<TimeAgo Value="status.TimeOfLastIndexBuild" />)
-            @Tile("Seconds to index", DatasetIcons.HourGlass, @<text>@status.SecondsToIndex.ToString("0.##")s</text>)
-            @Tile("Instance created", DatasetIcons.Calendar, @<TimeAgo Value="status.TimeOfInstanceCreation" />)
+            @Tile("State", DatasetIcons.Status, "Ready: searches are answered. Loading and Indexing are on the way there. Created with records on disk: asleep.", @<Chip Size="large" Color="@stateChip.Color" TextColor="@stateChip.TextColor" Icon="@stateChip.Icon">@status.SystemState</Chip>)
+            @Tile("Documents", DatasetIcons.Documents, "The records in memory now: what a search sees. Deleted records are not counted.", @<text>@status.DocumentCount.ToString("N0")</text>)
+            @Tile("Records on disk", DatasetIcons.Disk, "The records kept in the server's database, which the dataset is loaded from after a restart or a sleep. The same as Documents once it is loaded and up to date.", @<text>@((ka?.RecordCount ?? 0).ToString("N0"))</text>)
+            @Tile("Last index build", DatasetIcons.Changes, "When the index was last built in full.", @<TimeAgo Value="status.TimeOfLastIndexBuild" />)
+            @Tile("Seconds to index", DatasetIcons.HourGlass, "How long that build took.", @<text>@status.SecondsToIndex.ToString("0.##")s</text>)
+            @Tile("Instance created", DatasetIcons.Calendar, "When the copy now in memory was made: at a server start, a wake from sleep, or a rebuild that swapped in a new index.", @<TimeAgo Value="status.TimeOfInstanceCreation" />)
         </StatGroup>
 
         <h3 class="status-heading status-heading--section">Usage</h3>
         <StatGroup Columns="3">
-            @Tile("Searches since load", DatasetIcons.Search, @<text>@status.SearchCounter.ToString("N0")</text>)
-            @Tile("Keep-alive", DatasetIcons.Hibernate, @<text>@KeepAliveLabel(ka)</text>)
+            @Tile("Searches since load", DatasetIcons.Search, "Every search the copy in memory has answered since it was made, the console's own included. Statistics count only your visitors.", @<text>@status.SearchCounter.ToString("N0")</text>)
+            @Tile("Keep-alive", DatasetIcons.Hibernate, "How long the dataset stays in memory without being used before it goes to sleep. Always on: it never sleeps. Client managed: never loaded or put to sleep on its own; you load and wake it yourself.", @<text>@KeepAliveLabel(ka)</text>)
             @if (ka?.LastUsedUtc is { } used)
             {
-                @Tile("Last used", DatasetIcons.Clock, @<TimeAgo At="used" />)
+                @Tile("Last used", DatasetIcons.Clock, "When the dataset was last used. The keep-alive counts from here.", @<TimeAgo At="used" />)
             }
         </StatGroup>
 
@@ -98,7 +98,10 @@
     private long _busy;
     private (long Id, string Text)? _failure;
 
-    private static RenderFragment Tile(string label, RenderFragment<int> icon, RenderFragment value) => @<Stat Label="@label" LabelIcon="icon" ValueContent="value" />;
+    /// <summary>A tile with its hint on the label (Stat.Hint): what the number counts, for an owner
+    /// who meets "Records on disk" beside "Documents" and asks how they differ.</summary>
+    private static RenderFragment Tile(string label, RenderFragment<int> icon, string hint, RenderFragment value) =>
+        @<Stat Label="@label" LabelIcon="icon" Hint="@hint" ValueContent="value" />;
 
     protected override void OnInitialized()
     {

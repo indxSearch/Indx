@@ -1,4 +1,4 @@
-@* The dataset's categories as a tree, across the width: a hierarchy group (fields that each hold
+﻿@* The dataset's categories as a tree, across the width: a hierarchy group (fields that each hold
    a level, "category.department › section › type") or a path field ("Apparel > Shoes > Running
    shoes") drawn on a TreeCanvas with the products in each category counted. The chosen category's
    products float in a panel over the canvas. Sources are found from the field configuration and
@@ -655,13 +655,10 @@
             };
             keys = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId).Records.Select(r => r.DocumentKey);
         }
-        var fields = Ctx.SavedFields ?? Array.Empty<FieldProxy>();
+        var name = Stats.LabelsFor(engine, Ctx.TeamId, Ctx.Name);
         var list = new List<Product>();
         foreach (var key in keys.Take(ProductsShown))
-        {
-            var json = engine.GetJsonDataOfKey(key);
-            list.Add(new Product(key, RecordTitle.Of(json, fields) ?? $"#{key}"));
-        }
+            list.Add(new Product(key, name(key) ?? $"#{key}"));
         return list;
     }
 

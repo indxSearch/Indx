@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Indx.Api;
@@ -200,7 +200,7 @@ namespace IndxServer.Services.Observr
             var ds = ctx.DataSetName!;
             var engine = engines.FindSearchEngine(ds, ctx.TeamId);
             if (engine == null || engine.Status.SystemState != SystemState.Ready) return "The dataset is not loaded, so it cannot be searched now.";
-            var label = StatisticsLabels.For(engine, statistics.Store?.LabelField(ctx.TeamId, ds));
+            var label = statistics.LabelsFor(engine, ctx.TeamId, ds);
             var result = IndxServerInternalApi.Manager.Search(new QueryProxy { Text = text, MaxNumberOfRecordsToReturn = take, Mode = SearchMode.EditDistance }, ds, ctx.TeamId);
             var records = result.Records ?? [];
             // The list a visitor sees: the counted matches first, and what follows them is what
@@ -280,7 +280,7 @@ namespace IndxServer.Services.Observr
             var to = store.Today(ctx.TeamId, ds);
             var from = to - (days - 1);
             var engine = engines.FindSearchEngine(ds, ctx.TeamId);
-            var label = engine != null && engine.Status.SystemState == SystemState.Ready ? StatisticsLabels.For(engine, store.LabelField(ctx.TeamId, ds)) : (Func<long, string?>)(_ => null);
+            var label = engine != null && engine.Status.SystemState == SystemState.Ready ? statistics.LabelsFor(engine, ctx.TeamId, ds) : (Func<long, string?>)(_ => null);
             string Q(QueryStat q)
             {
                 var chosen = q.MostChosenLabel ?? (q.MostChosenDocument is { } k ? label(k) : null);
@@ -335,7 +335,7 @@ namespace IndxServer.Services.Observr
             if (q.Value.Selects > 0) sb.Append($", average click position {N((double)q.Value.PositionSum / q.Value.Selects, "0.0")}");
             sb.AppendLine(".");
             var engine = engines.FindSearchEngine(ds, ctx.TeamId);
-            var label = engine != null && engine.Status.SystemState == SystemState.Ready ? StatisticsLabels.For(engine, store.LabelField(ctx.TeamId, ds)) : (Func<long, string?>)(_ => null);
+            var label = engine != null && engine.Status.SystemState == SystemState.Ready ? statistics.LabelsFor(engine, ctx.TeamId, ds) : (Func<long, string?>)(_ => null);
             var docs = store.QueryDocuments(ctx.TeamId, ds, text, from, to, 10);
             if (docs.Count > 0)
             {

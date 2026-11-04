@@ -1,4 +1,4 @@
-using Indx.Api;
+﻿using Indx.Api;
 using IndxServer.Engine;
 
 namespace IndxServer.Services.Observr
@@ -96,7 +96,7 @@ namespace IndxServer.Services.Observr
 
             var engine = engines.FindSearchEngine(dataSetName, teamId);
             var loaded = engine != null && engine.Status.SystemState == SystemState.Ready;
-            var label = loaded ? StatisticsLabels.For(engine!, store.LabelField(teamId, dataSetName)) : (Func<long, string?>)(_ => null);
+            var label = loaded ? statistics.LabelsFor(engine!, teamId, dataSetName) : (Func<long, string?>)(_ => null);
 
             ObservrSummaryQuery Query(QueryStat q) => new(q.QueryText, q.Searches, q.ZeroHits, q.ClickedSearches,
                 q.Selects > 0 ? Math.Round((double)q.PositionSum / q.Selects, 1) : null, q.MostChosenLabel ?? (q.MostChosenDocument is { } k ? label(k) : null));
