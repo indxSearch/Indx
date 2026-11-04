@@ -15,7 +15,9 @@ namespace IndxServer.Components.Datasets
         /// one, and whether it is the one counted.</summary>
         public sealed record Level(string Name, int Records, bool Counted);
 
-        /// <summary>The search as a whole: a sentence, the typo levels, and what else was said.</summary>
+        /// <summary>The search as a whole: what kind of matches the results are, the typo levels with
+        /// their counts, and what else was said. The headline names the kind and nothing more; the
+        /// numbers are the levels' (Nov 2026: a sentence with the count repeated the level under it).</summary>
         public sealed record Summary(string Headline, IReadOnlyList<Level> Levels, IReadOnlyList<string> Notes);
 
         /// <summary>One query word in one record: the field that confirmed it, and how.</summary>
@@ -27,23 +29,19 @@ namespace IndxServer.Components.Datasets
             var notes = new List<string>();
             var levels = new List<Level>();
             string headline;
-            if (result.ToleranceCounts is not { } counts)
+            if (result.ToleranceCounts is null)
             {
-                headline = $"{result.Count:N0} records score above 0 by BM25F: the Bm25f mode, with no typo levels.";
+                headline = "Ranked by relevance";
+                notes.Add($"{result.Count:N0} records score above 0 by BM25F: the Bm25f mode, with no typo levels.");
             }
             else if (result.IsFallback)
             {
-                headline = "No record holds every word. Listed: the records holding the most of them, then BM25F's best.";
+                headline = "Partial matches";
+                notes.Add("No record holds every word: the records holding the most of them, then BM25F's best.");
             }
             else
             {
-                headline = result.CountedTolerance switch
-                {
-                    Tolerance.Exact => $"{counts.Exact:N0} records hold every word as typed.",
-                    Tolerance.OneEdit => $"{counts.OneEdit ?? 0:N0} records hold every word within one typo. None held them all as typed.",
-                    Tolerance.TwoEdits => $"{counts.TwoEdits ?? 0:N0} records hold every word within two typos. None held them all within one.",
-                    _ => $"{result.Count:N0} records were counted.",
-                };
+                headline = result.CountedTolerance == Tolerance.Exact ? "Strong matches" : "Fuzzy matches";
             }
             if (result.ToleranceCounts is { } c)
             {

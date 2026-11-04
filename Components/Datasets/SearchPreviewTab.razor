@@ -123,7 +123,7 @@
                 <span class="indx-facets-caption-text">This search</span>
             </div>
             <div class="indx-search-explain">
-                <p class="indx-search-explain-headline">@summary.Headline</p>
+                <p class="indx-search-explain-headline" title="@HeadlineTitle(summary.Headline)">@summary.Headline</p>
                 @if (summary.Levels.Count > 0)
                 {
                     <div class="indx-search-explain-levels">
@@ -525,6 +525,15 @@ else
     /// <summary>Longest value shown in full; past it the panel says how much was left out, so a
     /// document of whole books does not put megabytes into the page.</summary>
     private const int ValueChars = 5000;
+
+    /// <summary>What a headline means, on hover: the level it names is the one marked below.</summary>
+    private static string HeadlineTitle(string headline) => headline switch
+    {
+        "Strong matches" => "Every word, as typed",
+        "Fuzzy matches" => "Every word, within a typo or two: none held them all as typed",
+        "Partial matches" => "Some of the words: no record holds them all",
+        _ => "BM25F's order, with no typo levels",
+    };
 
     private RenderFragment DocumentPanel(PreviewHit hit) => __builder =>
     {
