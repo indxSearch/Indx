@@ -507,6 +507,9 @@
     /// <summary>The edit button beside a field's Profile menu: edits its profile, or a Custom
     /// field's own values.</summary>
     [Parameter] public EventCallback<FieldProxy> OnEditProfile { get; set; }
+    /// <summary>"New profile" at the foot of a field's Profile menu, as the dataset switcher has
+    /// one: a new profile, which that field then has.</summary>
+    [Parameter] public EventCallback<FieldProxy> OnNewProfile { get; set; }
 
     private bool ShowProfiles => Profiles != null;
     private const string CustomProfile = "custom";
@@ -528,7 +531,8 @@
         if (current == null) options.Insert(0, new SelectField.SelectOption("Custom", CustomProfile));
         <div class="indx-profile-cell">
             <SelectField Size="micro" Variant="ghost" Value="@(current?.Id ?? CustomProfile)" Options="options" disabled="@(!Editable)"
-                         aria-label="@($"Profile: {field.FieldName}")" ValueChanged="@(v => ChooseProfile(field, v))" />
+                         aria-label="@($"Profile: {field.FieldName}")" ValueChanged="@(v => ChooseProfile(field, v))"
+                         ActionLabel="@(Editable ? "New profile" : null)" OnAction="() => OnNewProfile.InvokeAsync(field)" />
             <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Edit" Disabled="@(!Editable)"
                     aria-label="@(current != null ? $"Edit {current.Name}, the profile of {field.FieldName}" : $"Edit the settings of {field.FieldName}")"
                     title="@(current != null ? $"Edit {current.Name}" : "Edit this field's settings")"

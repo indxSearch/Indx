@@ -170,3 +170,11 @@
         background: var(--lv2) !important;
     }
 }
+
+/* The rule above the menu's action entry ("New …"), as the Breadcrumbs switcher's. */
+.indx-select-menu-divider {
+    flex-shrink: 0;
+    height: 1px;
+    background: var(--lv3);
+    margin: 4px 0;
+}

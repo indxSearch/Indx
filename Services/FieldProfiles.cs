@@ -159,9 +159,11 @@ namespace IndxServer.Services
         /// (<paramref name="customField"/>): its own values, or with a name a new profile it then
         /// has. A new profile (no id): added, given to no field yet. An existing one: every
         /// searched field that has it takes the new values, and a built-in edited here is kept as
-        /// this dataset's own copy under the built-in's id.
+        /// this dataset's own copy under the built-in's id. A new one made from a field's Profile
+        /// menu (<paramref name="newFor"/>) is that field's at once.
         /// </summary>
-        public static void SaveEdit(DatasetFieldProfiles own, IReadOnlyList<FieldProxy> fields, FieldProxy? customField, FieldProfile edited)
+        public static void SaveEdit(DatasetFieldProfiles own, IReadOnlyList<FieldProxy> fields, FieldProxy? customField, FieldProfile edited,
+                                    FieldProxy? newFor = null)
         {
             if (customField != null)
             {
@@ -179,7 +181,13 @@ namespace IndxServer.Services
             }
             if (edited.Id.Length == 0)
             {
-                own.Profiles.Add(edited with { Id = NewId(edited.Name, All(own)), BuiltIn = false });
+                var created = edited with { Id = NewId(edited.Name, All(own)), BuiltIn = false };
+                own.Profiles.Add(created);
+                if (newFor != null && IsSearched(newFor))
+                {
+                    own.Assignments[newFor.FieldName] = created.Id;
+                    Apply(newFor, created);
+                }
                 return;
             }
             // Read before the profile changes: a field has the profile whose values it has.

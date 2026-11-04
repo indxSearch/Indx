@@ -65,6 +65,16 @@
                         }
                     </Button>
                 }
+                @if (!string.IsNullOrEmpty(ActionLabel))
+                {
+                    @* An entry under the options, as the Breadcrumbs switcher's: "New …", which runs
+                       instead of choosing a value. *@
+                    <div class="indx-select-menu-divider" role="separator"></div>
+                    <Button Variant="ghost" Size="@Size" @onclick="RunAction" style="width:100%; justify-content:flex-start;">
+                        <IconLeft><Plus Size="@context" Color="currentColor" /></IconLeft>
+                        <ChildContent>@ActionLabel</ChildContent>
+                    </Button>
+                }
             </div>
         }
     </div>
@@ -85,6 +95,11 @@
     [Parameter] public string Variant { get; set; } = "default";
 
     [Parameter, EditorRequired] public IEnumerable<SelectOption> Options { get; set; } = [];
+
+    /// <summary>An entry below the options, typically "New …", as the Breadcrumbs switcher has:
+    /// shown when set, it closes the menu and raises <see cref="OnAction"/> instead of choosing.</summary>
+    [Parameter] public string? ActionLabel { get; set; }
+    [Parameter] public EventCallback OnAction { get; set; }
     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
 
     private bool _open;
@@ -116,6 +131,13 @@
 
     private void Toggle() => _open = !_open;
     private void Close() => _open = false;
+
+    private async Task RunAction()
+    {
+        _open = false;
+        _refocus = true;
+        await OnAction.InvokeAsync();
+    }
 
     private async Task Pick(string value)
     {
