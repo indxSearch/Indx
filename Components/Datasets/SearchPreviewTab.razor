@@ -116,14 +116,24 @@
         {
         @if (_summary is { } summary && !string.IsNullOrWhiteSpace(_text))
         {
-            @* How the search found what it found, as IndxWorkbench's summary line says it: the typo
-               level whose records were counted, the ranked share, the fallback and Rest. *@
-            <div class="indx-facets-caption">
+            @* How the search found what it found, as IndxWorkbench's summary line says it. The kind of
+               match is the caption itself, with no heading over it; the levels under it carry the
+               numbers. In a narrow preview (the facets under the box) it is one line, the levels
+               after the caption and the notes left out. *@
+            <div class="indx-facets-caption indx-search-explain-caption" title="@HeadlineTitle(summary.Headline)">
                 <span class="indx-facets-caption-icon"><Search Size="14" /></span>
-                <span class="indx-facets-caption-text">This search</span>
+                <span class="indx-facets-caption-text">@summary.Headline</span>
+                @if (summary.Levels.Count > 0)
+                {
+                    <span class="indx-search-explain-inline">
+                        @foreach (var level in summary.Levels)
+                        {
+                            <span class="@(level.Counted ? "indx-search-explain-level indx-search-explain-level--counted" : "indx-search-explain-level")">· @level.Name <strong>@level.Records.ToString("N0")</strong></span>
+                        }
+                    </span>
+                }
             </div>
             <div class="indx-search-explain">
-                <p class="indx-search-explain-headline" title="@HeadlineTitle(summary.Headline)">@summary.Headline</p>
                 @if (summary.Levels.Count > 0)
                 {
                     <div class="indx-search-explain-levels">

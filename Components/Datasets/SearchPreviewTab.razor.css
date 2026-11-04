@@ -344,16 +344,41 @@
 
 /* "This search" over the facets (Nov 2026): what the search counted and why, in the doc panel's tones. */
 .indx-search-explain {
-    display: flex;
     flex-direction: column;
     gap: 6px;
     padding: 4px 12px 12px;
 }
 
-.indx-search-explain-headline {
-    margin: 0;
-    font: var(--text-sm);
-    color: var(--lv7);
+/* Narrow first: the caption is one line, the kind of match and then the levels, cut at the end if
+   it does not fit; the block under it with the notes is left out. Wide, below, it is the other
+   way round. */
+.indx-search-explain-caption {
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.indx-search-explain-caption .indx-facets-caption-text {
+    flex: none;
+}
+
+.indx-search-explain-inline {
+    display: inline-flex;
+    gap: 8px;
+    margin-left: 8px;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+.indx-search-explain {
+    display: none;
+}
+
+@container (min-width: 900px) {
+    .indx-search-explain-inline { display: none; }
+    .indx-search-explain { display: flex; }
 }
 
 .indx-search-explain-levels {
