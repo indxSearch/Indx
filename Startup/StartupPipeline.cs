@@ -358,6 +358,9 @@ internal static class StartupPipeline
             var searchOrAskStore = app.Services.GetRequiredService<IndxServer.Services.SearchOrAsk.SearchOrAskStore>();
             searchOrAskStore.EnsureTable();
             IndxServerInternalApi.Manager.AttachSearchOrAskStore(searchOrAskStore);
+            var searchOrAskTestSets = app.Services.GetRequiredService<IndxServer.Services.SearchOrAsk.SearchOrAskTestSetStore>();
+            searchOrAskTestSets.EnsureTable();
+            IndxServerInternalApi.Manager.AttachSearchOrAskTestSetStore(searchOrAskTestSets);
             var observrStore = app.Services.GetRequiredService<IndxServer.Services.Observr.ObservrFindingStore>();
             observrStore.EnsureTable();
             IndxServerInternalApi.Manager.AttachObservrStore(observrStore);

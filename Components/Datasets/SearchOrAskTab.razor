@@ -12,6 +12,7 @@
 @using Icons = Indx.Systm.Blazor.Icons
 @inherits DatasetTabBase
 @inject SearchOrAskStore Store
+@inject SearchOrAskTestSetStore TestSet
 @inject BrowserFiles Files
 @inject SearchOrAskService Service
 @inject IndxServer.Services.Observr.AgentPanelState Agent
@@ -394,6 +395,33 @@
                                     @onclick="() => _showState = !_showState">What the judge was sent</Button>
                         </div>
                     }
+                    @if (_try != null && Ctx.IsEditor && _tryText?.Trim() is { Length: > 0 } markText)
+                    {
+                        @* The owner's word on what this text is, for the test set: it changes nothing a
+                           visitor gets, it is what the judge is measured against. *@
+                        var mark = TestSet.Find(Ctx.TeamId, Ctx.Name, markText);
+                        <div class="soa-try-mark">
+                            @if (mark == null)
+                            {
+                                <span class="soa-help">For the test set, this is</span>
+                                <Button Variant="ghost" Size="micro" IconLeft="Icon<Icons.Question>()" @onclick="() => MarkAs(markText, SearchOrAskMark.Question)">A question</Button>
+                                <Button Variant="ghost" Size="micro" IconLeft="Icon<Icons.Search>()" @onclick="() => MarkAs(markText, SearchOrAskMark.Search)">A search</Button>
+                            }
+                            else
+                            {
+                                <Chip Size="micro">In the test set as a @mark.Label</Chip>
+                                @if (mark.Label == SearchOrAskMark.Question)
+                                {
+                                    <Tooltip Content="The record that answers it, if it is among the results. Measures whether a search finds it, not only whether the judge sees a question.">
+                                        <div class="soa-select"><SelectField Size="micro" Options="AnsweredByOptions(mark)" Value="@(mark.ExpectedKey?.ToString(CultureInfo.InvariantCulture) ?? NoRecord)"
+                                                     ValueChanged="@(v => SetExpected(mark, v))" AriaLabel="Answered by" /></div>
+                                    </Tooltip>
+                                }
+                                <span class="soa-try-spacer"></span>
+                                <Button Variant="ghost" Size="micro" @onclick="() => Unmark(mark.Text)">Remove</Button>
+                            }
+                        </div>
+                    }
                     @if (_showState && _state != null)
                     {
                         <pre class="soa-state">@_state</pre>
@@ -457,6 +485,7 @@
                     }
                 }
             </section>
+            @TestSetSection()
         </aside>
     </div>
 
@@ -923,6 +952,121 @@
     }
 
     private void Cancel() => Reset(Store.Load(Ctx.TeamId, Ctx.Name));
+
+    // ── The test set: texts marked in Try it ─────────────────────────────────────────────
+
+    private const string NoRecord = "";
+    private const int TestSetShown = 100;
+    private string? _hitsText;
+    private IReadOnlyList<(long Key, string Title, string Section, string Snippet)> _hits = [];
+
+    /// <summary>The results for a text, as the judge reads them: what "Answered by" offers.</summary>
+    private IReadOnlyList<(long Key, string Title, string Section, string Snippet)> HitsFor(string text)
+    {
+        if (_hitsText != text && Ctx.FindEngine() is { } engine)
+        {
+            _hits = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit).Top;
+            _hitsText = text;
+        }
+        return _hits;
+    }
+
+    private IEnumerable<SelectField.SelectOption> AnsweredByOptions(SearchOrAskMark mark)
+    {
+        yield return new("Answered by: not named", NoRecord);
+        var hits = HitsFor(mark.Text);
+        foreach (var h in hits)
+            yield return new(h.Title.Length > 0 ? h.Title : h.Key.ToString(CultureInfo.InvariantCulture), h.Key.ToString(CultureInfo.InvariantCulture));
+        if (mark.ExpectedKey is { } k && hits.All(h => h.Key != k))
+            yield return new(mark.ExpectedTitle ?? k.ToString(CultureInfo.InvariantCulture), k.ToString(CultureInfo.InvariantCulture));
+    }
+
+    private void MarkAs(string text, string label)
+    {
+        if (!Ctx.IsEditor || _try is not { } j) return;
+        TestSet.Mark(Ctx.TeamId, Ctx.Name, new SearchOrAskMark(text, label, null, null, j.P, Seen(j), Service.Setup.JudgeProvider, DateTime.UtcNow));
+    }
+
+    private void SetExpected(SearchOrAskMark mark, string value)
+    {
+        if (!Ctx.IsEditor) return;
+        long? key = long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var k) ? k : null;
+        var title = key is { } x ? HitsFor(mark.Text).FirstOrDefault(h => h.Key == x).Title ?? mark.ExpectedTitle : null;
+        TestSet.Mark(Ctx.TeamId, Ctx.Name, mark with { ExpectedKey = key, ExpectedTitle = string.IsNullOrEmpty(title) ? null : title });
+    }
+
+    private void Unmark(string text)
+    {
+        if (Ctx.IsEditor) TestSet.Unmark(Ctx.TeamId, Ctx.Name, text);
+    }
+
+    /// <summary>Tries a marked text again, as if typed.</summary>
+    private async Task TryAgain(string text)
+    {
+        _tryText = text;
+        await OnTryInput();
+    }
+
+    private async Task ExportTestSet() =>
+        await Files.DownloadAsync($"{Ctx.Name}-test-set.tsv", SearchOrAskTestSetStore.ToReplay(TestSet.Load(Ctx.TeamId, Ctx.Name)), "text/tab-separated-values");
+
+    /// <summary>The marks under Try it, newest first: each text (tried again on a click), what it
+    /// was marked, the record that answers it, and what the judge scored it when it was marked.</summary>
+    private RenderFragment TestSetSection() => __builder =>
+    {
+        var marks = TestSet.Load(Ctx.TeamId, Ctx.Name);
+        int questions = marks.Count(m => m.Label == SearchOrAskMark.Question);
+        <section class="soa-testset" aria-label="Test set">
+            <div class="soa-try-head">
+                <div class="soa-try-head-row">
+                    <span class="soa-try-title">Test set</span>
+                    <span class="soa-try-spacer"></span>
+                    @if (marks.Count > 0)
+                    {
+                        <span class="soa-help">@questions @(questions == 1 ? "question" : "questions"), @(marks.Count - questions) @(marks.Count - questions == 1 ? "search" : "searches")</span>
+                    }
+                </div>
+                <span class="soa-help">What you mark in Try it, as a question or a search. Kept to measure the judge on this dataset's own words; nothing here changes what visitors get.</span>
+            </div>
+            @if (marks.Count == 0)
+            {
+                <span class="soa-help">Nothing marked yet. Type in Try it, then say what the text is.</span>
+            }
+            else
+            {
+                <ol class="soa-testset-list">
+                    @foreach (var m in marks.Take(TestSetShown))
+                    {
+                        var mark = m;
+                        <li class="soa-testset-row">
+                            <Tooltip Content="Try it again"><Button Variant="ghost" Size="micro" Class="soa-testset-text" @onclick="() => TryAgain(mark.Text)">@mark.Text</Button></Tooltip>
+                            <span class="soa-testset-meta">
+                                <Chip Size="micro">@mark.Label</Chip>
+                                @if (mark.ExpectedTitle is { } answeredBy) { <span>@answeredBy</span> }
+                                @if (mark.P is { } p)
+                                {
+                                    <Tooltip Content="@($"The judge's question score when it was marked{(mark.Offer is { } o ? $", and the offer it made ({o})" : "")}.")"><span class="soa-try-score">@Two(p)</span></Tooltip>
+                                }
+                                <TimeAgo Value="@mark.MarkedUtc" TooltipPosition="left" />
+                                <span class="soa-try-spacer"></span>
+                                @if (Ctx.IsEditor)
+                                {
+                                    <Button Variant="ghost" Size="micro" @onclick="() => Unmark(mark.Text)">Remove</Button>
+                                }
+                            </span>
+                        </li>
+                    }
+                </ol>
+                @if (marks.Count > TestSetShown)
+                {
+                    <span class="soa-help">And @(marks.Count - TestSetShown) older, all of them in the export.</span>
+                }
+                <div class="indx-file-actions">
+                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="ExportTestSet">Export for replay</Button>
+                </div>
+            }
+        </section>
+    };
 
     // ── The tester ────────────────────────────────────────────────────────────
 
