@@ -21,6 +21,12 @@
         <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset" title="New dataset">New</Button>
     }
     <span class="indx-datasets-heading-spacer"></span>
+    @* Top right (Nov 2026): a team with many sleeping datasets can show only the ones awake. Shown
+       while there is one to hide, or while it is on, so it cannot vanish under the hand. *@
+    @if (HibernatedCount > 0 || _hideHibernated)
+    {
+        <ToggleSwitch Label="@($"Hide hibernated ({HibernatedCount})")" Checked="_hideHibernated" CheckedChanged="@(v => _hideHibernated = v)" />
+    }
     @HeadingActions
 </div>
 
@@ -83,7 +89,7 @@
 else
 {
     <div class="indx-dataset-grid">
-        @foreach (var row in _rows)
+        @foreach (var row in VisibleRows)
         {
             <a class="indx-dataset-card" href="@TeamRoutes.Dataset(TeamName, row.Name)">
                 <span class="indx-dataset-card-head">
@@ -189,6 +195,10 @@ else
             </a>
         }
     </div>
+    @if (_hideHibernated && !VisibleRows.Any())
+    {
+        <p class="indx-datasets-all-hidden">All @HibernatedCount datasets are hibernated. Turn off Hide hibernated to see them.</p>
+    }
 }
 
 <Modal Open="_showNewDatasetForm" OpenChanged="@(open => { if (!open) CancelNewDataset(); })" Title="New dataset"
@@ -275,6 +285,11 @@ else
     private CancellationTokenSource? _describeCts;
 
     private List<Row> _rows = new();
+    private bool _hideHibernated;
+    /// <summary>Asleep, not on the way there or back: Hibernating and Waking are still shown.</summary>
+    private static bool IsHibernated(Row r) => r.Label == "Hibernated";
+    private int HibernatedCount => _rows.Count(IsHibernated);
+    private IEnumerable<Row> VisibleRows => _hideHibernated ? _rows.Where(r => !IsHibernated(r)) : _rows;
     private Dictionary<string, int> _open = new();
     private string _newDatasetName = string.Empty;
     private bool _showNewDatasetForm;
