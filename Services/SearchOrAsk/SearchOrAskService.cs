@@ -602,9 +602,11 @@ namespace IndxServer.Services.SearchOrAsk
         private static RefocusPick ChosenSearch(string dataSetName, string teamId, IReadOnlyList<RefocusCandidate> candidates, Func<string, double?> score)
         {
             var chosen = SearchOrAskRefocus.Choose(candidates, score);
+            var best = candidates.Where(c => c.Name != SearchOrAskRefocus.Kept).OrderByDescending(c => score(SearchOrAskRefocus.Prefix + c.Name) ?? 0).FirstOrDefault();
             return new RefocusPick(chosen.Text, chosen.Mode, score(SearchOrAskRefocus.Prefix + chosen.Name),
                 score(SearchOrAskRefocus.Prefix + SearchOrAskRefocus.Kept), chosen.Name != SearchOrAskRefocus.Kept,
-                Ranked(teamId, dataSetName, chosen.Text, chosen.Mode));
+                Ranked(teamId, dataSetName, chosen.Text, chosen.Mode),
+                best?.Text, best == null ? null : score(SearchOrAskRefocus.Prefix + best.Name));
         }
 
         /// <summary>The refocus experiment on one question, for the console's test set: the judge asked

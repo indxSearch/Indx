@@ -1204,9 +1204,10 @@
         }
         else
         {
+            var other = pick.Best is { } b ? $" The best other search, \"{b}\", {Two(pick.BestP ?? 0)}." : " There was no other search to weigh: no word left out still finds anything.";
             _refocusNote = pick.KeptP >= SearchOrAskRefocus.Sure
-                ? $"Kept BM25F: the judge {Two(pick.KeptP ?? 0)} that it holds what is asked."
-                : $"Kept BM25F: no search held it for the judge (best {Two(pick.P ?? 0)}).";
+                ? $"Kept BM25F: the judge {Two(pick.KeptP ?? 0)} that it holds what is asked.{other}"
+                : $"Kept BM25F, the judge {Two(pick.KeptP ?? 0)}: no search held what is asked for the judge.{other}";
         }
     }
 

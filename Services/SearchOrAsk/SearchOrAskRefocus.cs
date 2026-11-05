@@ -9,8 +9,11 @@ namespace IndxServer.Services.SearchOrAsk
 
     /// <summary>What the judge chose for a question: the search the list would show
     /// (<paramref name="Searched"/> in <paramref name="Mode"/>), its score, the kept BM25F search's
-    /// score, whether it switched, and the keys the chosen search lists.</summary>
-    public sealed record RefocusPick(string Searched, SearchMode Mode, double? P, double? KeptP, bool Switched, IReadOnlyList<long> Keys);
+    /// score, whether it switched, the keys the chosen search lists, and the best of the other
+    /// searches (<paramref name="Best"/>, <paramref name="BestP"/>), so a kept list says what it
+    /// was weighed against.</summary>
+    public sealed record RefocusPick(string Searched, SearchMode Mode, double? P, double? KeptP, bool Switched, IReadOnlyList<long> Keys,
+        string? Best = null, double? BestP = null);
 
     /// <summary>
     /// Refocusing a question with the judge, an experiment in the console only (5 Nov 2026,
