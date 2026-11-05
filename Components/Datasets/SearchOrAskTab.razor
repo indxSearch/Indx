@@ -136,21 +136,13 @@
                     <TableRow>
                         <TableCell Class="soa-cell soa-cell--section">
                             <span class="soa-subhead">Whole question</span>
-                            <span class="soa-help">The judge's second score: has the visitor finished the question, or does it stop on a word still waiting for more? Below the line the visitor gets the invitation instead of the answer offer, however sure the first score is.</span>
-                            @WholeScale()
+                            <span class="soa-help">The judge's second score, from 0 to 1: has the visitor finished the question, or does it stop on a word still waiting for more? Until it reaches this line the visitor gets the invitation, however sure the first score is. Proactive answers on its own only from here too. 0 offers an answer on any sure question.</span>
+                            <div class="soa-thresholds soa-whole">
+                                @Line("Answer offer from", "The finished score the answer offer needs.",
+                                    _edit.Thresholds.Finished, 0.05, v => _edit.Thresholds.Finished = v, "Whole question: answer offer from")
+                            </div>
                         </TableCell>
                     </TableRow>
-                    @Row(Icon<Icons.Quote>(), "Whole from", "The answer offer waits for this score. 0 offers an answer on any sure question score, as before 5 Nov 2026.",
-                         _edit.Thresholds.Finished != DefaultFinished,
-                         @<div class="soa-thresholds">
-                             @Line("Whole from", "The finished score the answer offer needs, and proactive before it answers on its own.",
-                                 _edit.Thresholds.Finished, 0.05, v => _edit.Thresholds.Finished = v, "Whole question: from")
-                             <ul class="soa-examples">
-                                 <li><span>hvilken</span><span class="soa-example-score">0.09</span></li>
-                                 <li><span>what type is</span><span class="soa-example-score">0.06</span></li>
-                                 <li><span>hvilken skole er størst i narvik</span><span class="soa-example-score">0.90</span></li>
-                             </ul>
-                         </div>)
                 </tbody>
             </Table>
             </div>
@@ -627,24 +619,6 @@
     /// starts. Redrawn as the sliders move.</summary>
     // The scale above the thresholds, with the lines the tester's question meter has in this mode:
     // the hint where the mode sweeps, the invitation unless strict, the full offer.
-    /// <summary>The finished score's own scale: cut off at 0, whole at 1, and the line the answer
-    /// offer waits for. Below it the invitation, above it the answer offer.</summary>
-    private RenderFragment WholeScale() => __builder =>
-    {
-        var line = Math.Clamp(_edit.Thresholds.Finished, 0, 1);
-        <div class="soa-scale" aria-hidden="true">
-            <div class="soa-scale-bar">
-                <span class="soa-scale-invite" style="@($"width:{Pct(line)}")"></span>
-                <span class="soa-scale-strong" style="@($"width:{Pct(1 - line)}")"></span>
-            </div>
-            <div class="soa-scale-ticks">
-                <span>0 · cut off</span>
-                <span class="soa-scale-mark" style="@($"left:{Pct(line)}")">@Two(line)</span>
-                <span>whole · 1</span>
-            </div>
-        </div>
-    };
-
     private RenderFragment Scale() => __builder =>
     {
         var t = _edit.Thresholds.Resolved(_edit.Kind, Judge);
