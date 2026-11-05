@@ -66,7 +66,15 @@
                                     <span class="indx-search-result-field"><span class="indx-search-result-key">@prop.Name</span> @prop.Value</span>
                                 }
                             </span>
-                            <span class="indx-search-result-score" title="Relevance score">@hit.Score</span>
+                            @* The score at the top of the right edge; the pin at the bottom while the
+                               document is kept in the panel. *@
+                            <span class="indx-search-result-side">
+                                <span class="indx-search-result-score" title="Relevance score">@hit.Score</span>
+                                @if (_pinned?.Key == hit.Key)
+                                {
+                                    <span class="indx-search-result-pin" aria-hidden="true"><Indx.Systm.Blazor.Icons.Pin Size="14" Color="currentColor" /></span>
+                                }
+                            </span>
                         </div>
                     }
                 </div>
@@ -120,12 +128,17 @@
                match is the caption itself, with no heading over it; the levels under it carry the
                numbers. In a narrow preview (the facets under the box) it is one line, the levels
                after the caption and the notes left out. *@
-            <div class="indx-facets-caption indx-search-explain-caption" title="@HeadlineTitle(summary.Headline)">
-                <span class="indx-facets-caption-icon">@HeadlineIcon(summary.Headline)</span>
-                <span class="indx-facets-caption-text">@summary.Headline</span>
+            <div class="indx-facets-caption indx-search-explain-caption">
+                <Tooltip Content="@HeadlineTitle(summary.Headline)" Position="bottom">
+                    <span class="indx-search-explain-headline" tabindex="0">
+                        <span class="indx-facets-caption-icon">@HeadlineIcon(summary.Headline)</span>
+                        <span class="indx-facets-caption-text">@summary.Headline</span>
+                    </span>
+                </Tooltip>
                 @if (summary.Levels.Count > 0)
                 {
                     <span class="indx-search-explain-inline">
+                        <span class="indx-search-explain-label">every word</span>
                         @foreach (var level in summary.Levels)
                         {
                             @LevelChip(level)
@@ -137,6 +150,7 @@
                 @if (summary.Levels.Count > 0)
                 {
                     <div class="indx-search-explain-levels">
+                        <span class="indx-search-explain-label">@SearchExplanation.LevelsLabel</span>
                         @foreach (var level in summary.Levels)
                         {
                             @LevelChip(level)
@@ -532,14 +546,17 @@ else
     private const int ValueChars = 5000;
 
     /// <summary>A typo level as a chip, the facets' chips: its name, then its count in the fainter
-    /// tone. The level counted, which the results come from, a step darker.</summary>
+    /// tone. The level counted, which the results come from, a step darker. What it counts on hover
+    /// (SearchExplanation.Level.Hint).</summary>
     private static RenderFragment LevelChip(SearchExplanation.Level level) => __builder =>
     {
-        <span class="indx-search-explain-chip" title="@(level.Counted ? "The level counted: these are the results" : "Records holding every word on this level or a nearer one")">
-            <Chip Color="@(level.Counted ? "var(--lv3)" : "var(--lv2)")" TextColor="@(level.Counted ? "var(--lv8)" : "var(--lv6)")">
-                <span class="indx-facet-value">@level.Name</span><span class="indx-facet-count">@level.Records.ToString("N0")</span>
-            </Chip>
-        </span>
+        <Tooltip Content="@level.Hint" Position="bottom">
+            <span class="indx-search-explain-chip" tabindex="0">
+                <Chip Color="@(level.Counted ? "var(--lv3)" : "var(--lv2)")" TextColor="@(level.Counted ? "var(--lv8)" : "var(--lv6)")">
+                    <span class="indx-facet-value">@level.Name</span><span class="indx-facet-count">@level.Records.ToString("N0")</span>
+                </Chip>
+            </span>
+        </Tooltip>
     };
 
     /// <summary>The caption's icon for a kind of match: the query as typed for a strong match, a
@@ -560,11 +577,11 @@ else
     /// <summary>What a headline means, on hover: the level it names is the one marked below.</summary>
     private static string HeadlineTitle(string headline) => headline switch
     {
-        "Strong matches" => "Every word, as typed",
-        "Fuzzy matches" => "Every word, within a typo or two: none held them all as typed",
-        "Partial matches" => "Some of the words: no record holds them all",
-        "Pattern matches" => "Only parts of words matched: none of the words was found",
-        _ => "Any of the words, or parts of them: no typo levels",
+        "Strong matches" => "Every word is found as typed.",
+        "Fuzzy matches" => "Every word is found, some of them within a typo.",
+        "Partial matches" => "Some of the words: no record holds them all.",
+        "Pattern matches" => "Only parts of words matched: none of the words was found.",
+        _ => "Any of the words, or parts of them: no typo levels.",
     };
 
     private RenderFragment DocumentPanel(PreviewHit hit) => __builder =>
@@ -573,13 +590,13 @@ else
         <p class="indx-doc-meta">
             <span>#@hit.Rank</span>
             <span>score @hit.Score.ToString("N0")</span>
-            <span title="@hit.Kind.Title">@hit.Kind.Label</span>
+            <Tooltip Content="@hit.Kind.Title"><span tabindex="0">@hit.Kind.Label</span></Tooltip>
         </p>
         @if (hit.Matches is { Count: > 0 } words)
         {
             @* How the reranker met each query word here, as IndxWorkbench's record pane shows it. *@
             <div class="indx-doc-section">
-                <div class="indx-doc-section-title">How it matched</div>
+                <div class="indx-doc-section-title">How each word matched</div>
                 @foreach (var word in words)
                 {
                     <div class="indx-doc-match @(word.Found ? null : "indx-doc-match--missing")">

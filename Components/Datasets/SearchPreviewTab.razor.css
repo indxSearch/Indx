@@ -188,6 +188,16 @@
     font: var(--text-xs);
     white-space: nowrap;
 }
+.indx-search-result-side {
+    flex: none;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 4px;
+}
+.indx-search-result-pin { display: flex; color: var(--lv7); }
 .indx-search-not-ready { color: var(--lv5); margin-top: 16px; }
 
 .indx-perf-sep { margin: 0 6px; color: var(--lv4); }
@@ -375,6 +385,24 @@
     flex: none;
 }
 
+.indx-search-explain-caption ::deep .indx-tooltip-wrapper {
+    flex: none;
+}
+
+.indx-search-explain-headline {
+    display: inline-flex;
+    align-items: center;
+    gap: inherit;
+}
+
+/* "Records with every word": what the levels after it count. */
+.indx-search-explain-label {
+    flex: none;
+    align-self: center;
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
 .indx-search-explain {
     display: none;
 }
@@ -397,7 +425,7 @@
     color: var(--lv5);
 }
 
-/* "How it matched" in the document panel: a query word, then how and where it was met. */
+/* "How each word matched" in the document panel: a query word, then how and where it was met. */
 .indx-doc-match {
     display: flex;
     align-items: baseline;

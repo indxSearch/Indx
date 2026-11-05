@@ -13,8 +13,19 @@ namespace IndxServer.Components.Datasets
     public static class SearchExplanation
     {
         /// <summary>One typo level: its name, how many records hold every word on it or a nearer
-        /// one, and whether it is the one counted.</summary>
-        public sealed record Level(string Name, int Records, bool Counted);
+        /// one, and whether it is the one counted. The preview puts the levels after "Records with
+        /// every word", so the names finish that phrase (Nov 2026: "As typed 0" beside a result whose
+        /// first word was whole read as a count that had missed it).</summary>
+        public sealed record Level(string Name, int Records, bool Counted)
+        {
+            /// <summary>What the level counts, on hover: a record is on the level of its weakest word.</summary>
+            public string Hint => Counted ? "These are the results. A record counts on the level of its weakest word."
+                : Records == 0 ? "No record holds every word this way."
+                : "Records where each word is met on this level or a nearer one.";
+        }
+
+        /// <summary>The words before the levels, which say what they count.</summary>
+        public const string LevelsLabel = "Records with every word";
 
         /// <summary>The search as a whole: what kind of matches the results are, the typo levels with
         /// their counts, and what else was said. The headline names the kind and nothing more; the
@@ -57,9 +68,9 @@ namespace IndxServer.Components.Datasets
             }
             if (result.ToleranceCounts is { } c)
             {
-                levels.Add(new Level("As typed", c.Exact, result.CountedTolerance == Tolerance.Exact && !result.IsFallback));
-                if (c.OneEdit is { } one) levels.Add(new Level("Within one typo", one, result.CountedTolerance == Tolerance.OneEdit && !result.IsFallback));
-                if (c.TwoEdits is { } two) levels.Add(new Level("Within two typos", two, result.CountedTolerance == Tolerance.TwoEdits && !result.IsFallback));
+                levels.Add(new Level("as typed", c.Exact, result.CountedTolerance == Tolerance.Exact && !result.IsFallback));
+                if (c.OneEdit is { } one) levels.Add(new Level("within one typo", one, result.CountedTolerance == Tolerance.OneEdit && !result.IsFallback));
+                if (c.TwoEdits is { } two) levels.Add(new Level("within two typos", two, result.CountedTolerance == Tolerance.TwoEdits && !result.IsFallback));
                 if (c.Rest is { } rest && !result.IsFallback)
                 {
                     int counted = result.CountedTolerance switch
