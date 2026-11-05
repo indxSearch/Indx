@@ -6,18 +6,22 @@
 @using Indx.Api
 @using IndxServer.Services
 
+@* The Modal is this component's root, so a wrapper carries the scope for its width (::deep). *@
+<div class="fpm-host">
 <Modal Open="@Open" OpenChanged="OpenChanged" Title="Profile manager" Class="fpm-modal"
        Description="A profile is a searched field's typos, rerank weight and pattern setup under one name. Editing one changes every field that has it.">
-    <div class="indx-modal-form fpm">
+    <div class="fpm">
+        @* Plain cells: a TableCell with a Label lays the label out inside the cell, for a table
+           of label and value pairs, which this is not. *@
         <Table AriaLabel="Profiles" Class="fpm-table">
             <thead>
                 <tr>
-                    <th>Profile</th>
-                    <th><Tooltip Content="Field.Tolerance: the typos a word may have and still match.">Typos</Tooltip></th>
-                    <th><Tooltip Content="Field.RerankWeight, against the heaviest searched field. Marked when it is not 1.">Weight</Tooltip></th>
-                    <th><Tooltip Content="PatternMatchingSetup: index sizes, start and stop characters. Read only by fields with PatternMatching on.">Pattern</Tooltip></th>
-                    <th>Fields</th>
-                    <th><span class="fpm-sr">Actions</span></th>
+                    <th>@Head(DatasetIcons.Profiles, "Profile", null)</th>
+                    <th>@Head(EditDistanceIcon, "Typos", "Field.Tolerance: the typos a word may have and still match.")</th>
+                    <th>@Head(DatasetIcons.WeightMedium, "Weight", "Field.RerankWeight, against the heaviest searched field. Marked when it is not 1.")</th>
+                    <th>@Head(PatternIcon, "Pattern", "PatternMatchingSetup: index sizes, start and stop characters. Read only by fields with PatternMatching on. Marked when it is not the default.")</th>
+                    <th>@Head(DatasetIcons.Fields, "Fields", "The searched fields that have the profile.")</th>
+                    <th class="fpm-actions"><span class="fpm-sr">Actions</span></th>
                 </tr>
             </thead>
             <tbody>
@@ -25,46 +29,48 @@
                 {
                     var having = FieldProfiles.FieldsWith(p.Id, Fields, Profiles);
                     var edited = FieldProfiles.IsEditedBuiltIn(p.Id, Profiles);
-                    <TableRow Class="@(_deleting?.Id == p.Id ? "fpm-row--deleting" : null)">
-                        <TableCell Label="Profile">
+                    <tr class="@(_deleting?.Id == p.Id ? "fpm-row--deleting" : null)">
+                        <td class="fpm-profile">
                             <span class="fpm-name">@p.Name
                                 @if (edited) { <Chip>Edited</Chip> }
                                 else if (!FieldProfiles.IsBuiltInId(p.Id)) { <Chip>This dataset</Chip> }
                             </span>
                             @if (p.About.Length > 0) { <span class="fpm-about">@p.About</span> }
-                        </TableCell>
-                        <TableCell Label="Typos">
-                            <span class="fpm-with-icon"><Indx.Systm.Blazor.TableIcon ChildContent="DatasetIcons.ForTolerance(p.Tolerance)" />@ToleranceName(p.Tolerance)</span>
-                        </TableCell>
-                        <TableCell Label="Weight">
+                        </td>
+                        <td>
+                            <span class="fpm-with-icon">@DatasetIcons.ForTolerance(p.Tolerance)(14)<span>@ToleranceName(p.Tolerance)</span></span>
+                        </td>
+                        <td>
                             @if (DatasetIcons.ForRerankWeight(p.RerankWeight) is { } w)
                             {
-                                <span class="fpm-with-icon fpm-marked"><Indx.Systm.Blazor.TableIcon AriaLabel="@WeightNote(p.RerankWeight)" ChildContent="w" />@Num(p.RerankWeight)</span>
+                                <Tooltip Content="@WeightNote(p.RerankWeight)"><span class="fpm-with-icon fpm-marked" tabindex="0">@w(14)<span>@Num(p.RerankWeight)</span></span></Tooltip>
                             }
                             else { <span class="fpm-plain">1</span> }
-                        </TableCell>
-                        <TableCell Label="Pattern">
-                            <span class="@(IsDefaultPattern(p) ? "fpm-plain" : "fpm-marked")">@PatternLabel(p)</span>
-                        </TableCell>
-                        <TableCell Label="Fields">
+                        </td>
+                        <td>
+                            <span class="fpm-pattern @(IsDefaultPattern(p) ? "fpm-plain" : "fpm-marked")">@PatternLabel(p)</span>
+                        </td>
+                        <td>
                             @if (having.Count == 0) { <span class="fpm-plain">Not used</span> }
                             else { <span class="fpm-fields">@string.Join(", ", having.Select(f => f.FieldName))</span> }
-                        </TableCell>
-                        <TableCell Label="Actions" Class="fpm-actions">
+                        </td>
+                        <td class="fpm-actions">
                             @if (Editable)
                             {
-                                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Edit" aria-label="@($"Edit {p.Name}")" @onclick="() => OnEdit.InvokeAsync(p.Id)" />
-                                @if (edited)
-                                {
-                                    <Tooltip Content="Back to the built-in values, on its fields too."><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Restore" aria-label="@($"Reset {p.Name}")" @onclick="() => Reset(p)" /></Tooltip>
-                                }
-                                else if (!FieldProfiles.IsBuiltInId(p.Id))
-                                {
-                                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Delete" aria-label="@($"Delete {p.Name}")" @onclick="() => StartDelete(p)" />
-                                }
+                                <span class="fpm-buttons">
+                                    <Tooltip Content="@($"Edit {p.Name}")"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Edit" aria-label="@($"Edit {p.Name}")" @onclick="() => OnEdit.InvokeAsync(p.Id)" /></Tooltip>
+                                    @if (edited)
+                                    {
+                                        <Tooltip Content="Reset: back to the built-in values, on its fields too."><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Restore" aria-label="@($"Reset {p.Name}")" @onclick="() => Reset(p)" /></Tooltip>
+                                    }
+                                    else if (!FieldProfiles.IsBuiltInId(p.Id))
+                                    {
+                                        <Tooltip Content="@($"Delete {p.Name}")"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Delete" aria-label="@($"Delete {p.Name}")" @onclick="() => StartDelete(p)" /></Tooltip>
+                                    }
+                                </span>
                             }
-                        </TableCell>
-                    </TableRow>
+                        </td>
+                    </tr>
                 }
             </tbody>
         </Table>
@@ -105,8 +111,18 @@
         </div>
     </div>
 </Modal>
+</div>
 
 @code {
+    private static readonly RenderFragment<int> EditDistanceIcon = size => b => { b.OpenComponent<Indx.Systm.Blazor.Icons.EditDistance>(0); b.AddAttribute(1, "Size", size); b.CloseComponent(); };
+    private static readonly RenderFragment<int> PatternIcon = size => b => { b.OpenComponent<Indx.Systm.Blazor.Icons.PatternRecognition>(0); b.AddAttribute(1, "Size", size); b.CloseComponent(); };
+
+    private static RenderFragment Head(RenderFragment<int> icon, string text, string? help) => __builder =>
+    {
+        if (help == null) { <span class="fpm-head">@icon(14)<span>@text</span></span> }
+        else { <Tooltip Content="@help"><span class="fpm-head" tabindex="0">@icon(14)<span>@text</span></span></Tooltip> }
+    };
+
     [Parameter] public bool Open { get; set; }
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
     /// <summary>The dataset's profiles, the working copy: delete and reset change it.</summary>

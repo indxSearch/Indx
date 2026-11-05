@@ -1,14 +1,26 @@
-::deep .fpm-modal { max-width: 920px; width: 92vw; }
+/* display: contents keeps the wrapper out of the layout; it is here for the scope (::deep). */
+.fpm-host { display: contents; }
+.fpm-host ::deep .fpm-modal { max-width: 1120px; width: 94vw; gap: 16px; }
 .fpm { display: flex; flex-direction: column; gap: 16px; }
-.fpm-name { display: inline-flex; align-items: center; gap: 6px; color: var(--lv8); }
-.fpm-about { display: block; font: var(--text-xs); color: var(--lv5); margin-top: 2px; }
-.fpm-with-icon { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+
+.fpm ::deep .fpm-table th,
+.fpm ::deep .fpm-table td { height: auto; padding: 10px 14px; vertical-align: top; }
+.fpm ::deep .fpm-table th { white-space: nowrap; font-weight: var(--med); color: var(--lv7); vertical-align: middle; }
+.fpm-head { display: inline-flex; align-items: center; gap: 6px; }
+.fpm ::deep .fpm-profile { min-width: 220px; }
+.fpm-name { display: inline-flex; align-items: center; gap: 8px; color: var(--lv8); font-weight: var(--med); }
+.fpm-about { display: block; font: var(--text-xs); color: var(--lv5); margin-top: 4px; line-height: 1.4; }
+.fpm-with-icon { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; color: var(--lv7); }
 .fpm-plain { color: var(--lv5); }
 .fpm-marked { color: var(--lv8); }
-.fpm-fields { color: var(--lv7); }
-::deep .fpm-actions { white-space: nowrap; text-align: right; }
+.fpm-pattern { font-family: var(--font-mono); font-size: 12px; white-space: nowrap; }
+.fpm-fields { color: var(--lv7); line-height: 1.4; }
+.fpm ::deep .fpm-actions { width: 1%; white-space: nowrap; text-align: right; vertical-align: middle; }
+.fpm-buttons { display: inline-flex; gap: 2px; }
+.fpm ::deep .fpm-row--deleting td { background: var(--lv2); }
 .fpm-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-.fpm-delete { display: flex; flex-direction: column; gap: 10px; padding: 12px; background: var(--lv1); border-radius: var(--radius, 4px); }
-.fpm-delete-text { margin: 0; color: var(--lv8); }
+
+.fpm-delete { display: flex; flex-direction: column; gap: 10px; padding: 14px; background: var(--lv2); border-radius: var(--radius); }
+.fpm-delete-text { margin: 0; color: var(--lv8); line-height: 1.5; }
 .fpm-select { max-width: 280px; }
-.fpm-note { margin: 0; font: var(--text-xs); color: var(--lv6); }
+.fpm-note { margin: 0; font: var(--text-xs); color: var(--lv6); line-height: 1.5; }
