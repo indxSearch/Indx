@@ -15,8 +15,8 @@
     }
     <div @ref="_ruler" class="indx-scrub-ruler"
          style="@RulerStyle(Value)" role="slider" tabindex="@(Disabled ? -1 : 0)"
-         aria-label="@(AriaLabel ?? Label)" aria-valuenow="@Fmt(Value)" aria-valuemin="@(Min is { } mn ? Fmt(mn) : null)"
-         aria-valuemax="@(Max is { } mx ? Fmt(mx) : null)" aria-valuetext="@ValueText(Value)" aria-disabled="@(Disabled ? "true" : null)">
+         aria-label="@(AriaLabel ?? Label)" aria-valuenow="@Fmt(Shown)" aria-valuemin="@(Min is { } mn ? Fmt(mn) : null)"
+         aria-valuemax="@(Max is { } mx ? Fmt(mx) : null)" aria-valuetext="@ValueText(Shown)" aria-disabled="@(Disabled ? "true" : null)">
         <div class="indx-scrub-ticks" aria-hidden="true"></div>
         @foreach (var mark in Marks ?? [])
         {
@@ -27,7 +27,7 @@
     </div>
     <div class="indx-scrub-field" style="width:@FieldWidth">
         <InputField Id="@_id" inputmode="decimal" aria-label="@(Label is { } l ? $"{l}, value" : AriaLabel)" disabled="@Disabled"
-                    Value="@Fmt(Value)" ValueChanged="Typed" ValueExpression="() => _typed" />
+                    Value="@Fmt(Shown)" ValueChanged="Typed" ValueExpression="() => _typed" />
     </div>
 </div>
 
@@ -84,6 +84,10 @@
         return Math.Round(v, Decimals);
     }
 
+    /// <summary>The value at the step's decimals: a caller that keeps it as a float hands back 2.7 as
+    /// 2.700000047683716, which the field showed as "2.70000005" (Nov 2026).</summary>
+    private double Shown => Math.Round(Value, Decimals);
+
     private static string Fmt(double v) => v.ToString("0.########", CultureInfo.InvariantCulture);
     private double ToPx(double at, double value) => (at - value) / Step * TickSpacing;
 
@@ -125,7 +129,7 @@
             return;
         }
         var next = Clamp(parsed);
-        if (next == Value) { StateHasChanged(); return; }
+        if (next == Shown) { StateHasChanged(); return; }
         Value = next;
         if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(next);
         if (FinalChanged.HasDelegate) await FinalChanged.InvokeAsync(next);
@@ -146,7 +150,7 @@
             // value and the settings after every render, and ignores the value mid-drag.
             if (_module != null)
             {
-                await _module.InvokeVoidAsync("sync", _ruler, _self, new { value = Value, step = Step, min = Min, max = Max, disabled = Disabled, decimals = Decimals, tick = TickSpacing, major = MajorEvery });
+                await _module.InvokeVoidAsync("sync", _ruler, _self, new { value = Shown, step = Step, min = Min, max = Max, disabled = Disabled, decimals = Decimals, tick = TickSpacing, major = MajorEvery });
             }
         }
         catch (JSDisconnectedException) { }
