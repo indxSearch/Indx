@@ -222,6 +222,13 @@ namespace IndxServer.Services.SearchOrAsk
         /// but one still reaching it, the first offer of any kind where it was, and no lookup
         /// changed. 0 is the old rule.</summary>
         public double Finished { get; set; } = 0.5;
+        /// <summary>Under the full offer the page dims its list, with a line above it, when the judge's
+        /// <see cref="SearchOrAskRecipes.Found"/> is below this: what the visitor asks about is not in
+        /// it. The page applies it, as it applies the offer's lines. Measured 5 Nov 2026 on four
+        /// generated sets: below 0.3 it dimmed 7 of 370 lists that held the right record and left 56
+        /// of 324 plain that did not. 0 is off. A judgement without the score (the Decisions API is not
+        /// asked it yet) dims nothing.</summary>
+        public double Found { get; set; } = 0.3;
 
         /// <summary>Jev's, measured on the docs set (Notes/search-or-ask.md): no lookup scored above
         /// 0.22 there, and the lowest question that was not missed 0.47.</summary>
@@ -251,7 +258,7 @@ namespace IndxServer.Services.SearchOrAsk
             {
                 Strong = Strong ?? d.Strong, StrongHide = StrongHide ?? d.StrongHide,
                 Invite = Invite ?? d.Invite, InviteHide = InviteHide ?? d.InviteHide,
-                Hint = Hint ?? HintFor(kind, judge), Finished = Finished,
+                Hint = Hint ?? HintFor(kind, judge), Finished = Finished, Found = Found,
             };
         }
 
@@ -278,6 +285,7 @@ namespace IndxServer.Services.SearchOrAsk
                 if (v is { } x && (double.IsNaN(x) || x < 0 || x > 1))
                     return $"thresholds.{name} must be between 0 and 1.";
             if (double.IsNaN(Finished) || Finished < 0 || Finished > 1) return "thresholds.finished must be between 0 and 1.";
+            if (double.IsNaN(Found) || Found < 0 || Found > 1) return "thresholds.found must be between 0 and 1.";
             var r = Resolved(kind, judge);
             if (r.StrongHide > r.Strong) return "thresholds.strongHide cannot be above thresholds.strong.";
             if (r.InviteHide > r.Invite) return "thresholds.inviteHide cannot be above thresholds.invite.";
