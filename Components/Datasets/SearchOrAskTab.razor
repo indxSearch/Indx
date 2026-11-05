@@ -268,9 +268,6 @@
                         <span class="soa-try-spacer"></span>
                         @* The hits, as on the demo page: off by default, since the judgement is the point here. *@
                         <ToggleSwitch Label="Show results" Checked="@_showResults" CheckedChanged="OnShowResults" />
-                        <Tooltip Content="An experiment, here only: the list as BM25F finds the question while it is typed, and on each pause the judge choosing between a few searches of it. Today's list beside it. Visitors get today's.">
-                            <ToggleSwitch Label="Refocus" Checked="@_refocus" CheckedChanged="OnRefocus" />
-                        </Tooltip>
                     </div>
                     <span class="soa-help">Type as a visitor would. Uses the settings below, saved or not. Each pause is one call against the budget.</span>
                     @if (!_edit.Enabled)
@@ -333,16 +330,7 @@
                             <span class="soa-help">@_tryMessage</span>
                         }
                     </div>
-                    @if (_refocus && _results is { } today)
-                    {
-                        @* The experiment: today's list and the refocused one, one above the other, so
-                           the difference is seen while typing. *@
-                        <div class="soa-try-results">
-                            @HitList("Today", today, null)
-                            @HitList("Refocused", _refocused, _refocusNote)
-                        </div>
-                    }
-                    else if (_showResults && _results is { } found)
+                    @if (_showResults && _results is { } found)
                     {
                         @* What the search finds, as the judge reads it: title, section, snippet. *@
                         <div class="soa-try-results">
@@ -922,74 +910,6 @@
     /// <summary>The text changed and the pause has not passed; then the judge is reading.</summary>
     private bool _typingNow, _judging;
 
-    // ── The refocus experiment (SearchOrAskRefocus): here only, never saved ─────────────────────
-
-    private bool _refocus;
-    private SearchOrAskService.SearchSummary? _refocused;
-    private string? _refocusNote;
-
-    private void OnRefocus(bool on)
-    {
-        _refocus = on;
-        _refocused = null;
-        _refocusNote = null;
-        if (on && _tryText?.Trim() is { Length: > 0 } text && Ctx.FindEngine() is { } engine)
-        {
-            _results = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit);
-            RefocusWhileTyping(engine, text);
-        }
-        else if (!_showResults) _results = null;
-    }
-
-    /// <summary>Between pauses the list is BM25F on what the question is about: no model.</summary>
-    private void RefocusWhileTyping(IServerSearchEngine engine, string text)
-    {
-        _refocused = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit, SearchMode.Bm25f);
-        _refocusNote = "BM25F on the text, while typing.";
-    }
-
-    /// <summary>On the pause, the judge's choice: the list switches only when it reads BM25F's as
-    /// not holding what is asked and another search as holding it.</summary>
-    private void RefocusOnPause(IServerSearchEngine engine, RefocusPick pick)
-    {
-        if (pick.Switched)
-        {
-            _refocused = Service.ResultsOf(Ctx.TeamId, Ctx.Name, engine, pick.Searched, pick.Mode, _edit);
-            _refocusNote = $"Switched to \"{pick.Searched}\": the judge {Two(pick.P ?? 0)} that it holds what is asked, BM25F's {Two(pick.KeptP ?? 0)}.";
-        }
-        else
-        {
-            var other = pick.Best is { } b ? $" The best other search, \"{b}\", {Two(pick.BestP ?? 0)}." : " There was no other search to weigh: no word left out still finds anything.";
-            _refocusNote = pick.KeptP >= SearchOrAskRefocus.Sure
-                ? $"Kept BM25F: the judge {Two(pick.KeptP ?? 0)} that it holds what is asked.{other}"
-                : $"Kept BM25F, the judge {Two(pick.KeptP ?? 0)}: no search held what is asked for the judge.{other}";
-        }
-    }
-
-    private static RenderFragment HitList(string heading, SearchOrAskService.SearchSummary? found, string? note) => __builder =>
-    {
-        <div class="soa-try-list">
-            <span class="soa-try-list-head">@heading</span>
-            @if (note != null) { <span class="soa-help">@note</span> }
-            @if (found == null || found.Top.Count == 0)
-            {
-                <span class="soa-help">No results.</span>
-            }
-            else
-            {
-                <ol class="soa-try-hits">
-                    @foreach (var hit in found.Top)
-                    {
-                        <li class="soa-try-hit">
-                            <span class="soa-try-hit-title">@(hit.Title.Length > 0 ? hit.Title : hit.Key.ToString())</span>
-                            @if (hit.Section.Length > 0) { <span class="soa-try-hit-section">@hit.Section</span> }
-                        </li>
-                    }
-                </ol>
-            }
-        </div>
-    };
-
     private void OnShowResults(bool on)
     {
         _showResults = on;
@@ -1088,7 +1008,7 @@
 
     private async Task JudgeAheadAsync(IServerSearchEngine engine, string text)
     {
-        try { await Service.IntentAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, CancellationToken.None, trial: _edit, prefetch: true, refocus: _refocus); }
+        try { await Service.IntentAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, CancellationToken.None, trial: _edit, prefetch: true); }
         catch (Exception) { } // the pause asks for itself
         _ahead = null;
         var now = _tryText?.Trim() ?? "";
@@ -1103,13 +1023,12 @@
         _typing?.Cancel();
         var typing = _typing = new CancellationTokenSource();
         var text = _tryText?.Trim() ?? "";
-        if (text.Length == 0) { _try = null; _tryMessage = null; _state = null; _results = null; _refocused = null; _refocusNote = null; _typingNow = _judging = false; return; }
+        if (text.Length == 0) { _try = null; _tryMessage = null; _state = null; _results = null; _typingNow = _judging = false; return; }
         var engine = Ctx.FindEngine();
         if (engine == null) return;
         // The hits on every keystroke, as the Search preview searches: milliseconds, no model
         // behind them. Only the judge waits for the pause.
-        if (_showResults || _refocus) _results = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit);
-        if (_refocus) RefocusWhileTyping(engine, text);
+        if (_showResults) _results = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit);
         JudgeAhead(text);
         _typingNow = true;
         try { await Task.Delay(PauseMs, typing.Token); }
@@ -1127,7 +1046,7 @@
             if (_ahead is { } reading && reading.Text == text) await reading.Done;
             if (typing.IsCancellationRequested) return;
             outcome = await Service.IntentAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, typing.Token,
-                trial: _edit, onState: s => state = s.ToJsonString(Pretty), refocus: _refocus);
+                trial: _edit, onState: s => state = s.ToJsonString(Pretty));
         }
         finally { if (!typing.IsCancellationRequested) _judging = false; }
         if (typing.IsCancellationRequested) return; // a newer pause has asked since
@@ -1139,7 +1058,6 @@
             _ => (null, "Search or ask cannot run on this instance."),
         };
         _state = state;
-        if (_refocus && _try?.Refocus is { } pick) RefocusOnPause(engine, pick);
         _callsToday = Service.CallsToday(Ctx.TeamId, Ctx.Name);
         _answer = "";
         _answerError = null;
