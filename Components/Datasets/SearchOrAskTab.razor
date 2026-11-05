@@ -133,16 +133,16 @@
                         t => t.StrongHide, (t, v) => t.StrongHide = v, Defaults.StrongHide!.Value)
                     @* The second score, a scale of its own (5 Nov 2026): it was a line in the answer offer's row,
                        and read as a point on the question score above, which it is not. *@
-                    <TableRow>
-                        <TableCell Class="soa-cell soa-cell--section">
-                            <span class="soa-subhead">Whole question</span>
-                            <span class="soa-help">The judge's second score, from 0 to 1: has the visitor finished the question, or does it stop on a word still waiting for more? Until it reaches this line the visitor gets the invitation, however sure the first score is. Proactive answers on its own only from here too. 0 offers an answer on any sure question.</span>
-                            <div class="soa-thresholds soa-whole">
-                                @Line("Answer offer from", "The finished score the answer offer needs.",
-                                    _edit.Thresholds.Finished, 0.05, v => _edit.Thresholds.Finished = v, "Whole question: answer offer from")
-                            </div>
-                        </TableCell>
-                    </TableRow>
+                    @* The judge's second score as its own setting (5 Nov 2026): a switch, and the line it
+                       holds the answer offer to. Off is the threshold at 0, the rule before the gate. *@
+                    @Row(Icon<Icons.FinishedQuestion>(), "Whole question", "Holds the answer offer until the judge reads the question as finished; the invitation until then.",
+                         _edit.Thresholds.Finished != DefaultFinished,
+                         @<div class="soa-thresholds">
+                             <ToggleSwitch Label="Judge on whether the question is finished" Checked="@WaitsForWhole" CheckedChanged="SetWaitsForWhole" />
+                             @Line("Answer offer from", "The finished score the answer offer needs, from 0 (stops on a word still waiting for more) to 1 (whole). Proactive answers on its own only from here too.",
+                                 WaitsForWhole ? _edit.Thresholds.Finished : _finishedOn, 0.05, v => _edit.Thresholds.Finished = v, "Whole question: answer offer from",
+                                 min: 0.05, disabled: !WaitsForWhole)
+                         </div>)
                 </tbody>
             </Table>
             </div>
@@ -555,6 +555,21 @@
     private SearchOrAskThresholds Defaults => SearchOrAskThresholds.For(Judge);
     private static readonly double DefaultFinished = new SearchOrAskThresholds().Finished;
 
+    /// <summary>Whether the answer offer waits for a whole question: the finished threshold above 0.</summary>
+    private bool WaitsForWhole => _edit.Thresholds.Finished > 0;
+    /// <summary>The line the switch brings back: the last one set, else the default.</summary>
+    private double _finishedOn = DefaultFinished;
+
+    private void SetWaitsForWhole(bool on)
+    {
+        if (on) _edit.Thresholds.Finished = _finishedOn > 0 ? _finishedOn : DefaultFinished;
+        else
+        {
+            if (_edit.Thresholds.Finished > 0) _finishedOn = _edit.Thresholds.Finished;
+            _edit.Thresholds.Finished = 0;
+        }
+    }
+
     private static RenderFragment<int> Icon<T>() where T : IComponent => size => builder =>
     {
         builder.OpenComponent<T>(0);
@@ -669,11 +684,12 @@
     };
 
     /// <summary>One line of an offer: its name (explained on hover), a slider from 0 to 1, the value.</summary>
-    private RenderFragment Line(string name, string explained, double value, double step, Action<double> set, string ariaLabel) => __builder =>
+    private RenderFragment Line(string name, string explained, double value, double step, Action<double> set, string ariaLabel,
+        double min = 0, bool disabled = false) => __builder =>
     {
-        <div class="soa-threshold">
+        <div class="soa-threshold @(disabled ? "soa-threshold--off" : null)">
             <span class="soa-threshold-label"><Tooltip Content="@explained">@name</Tooltip></span>
-            <Slider Min="0" Max="1" Step="step" Value="@value" ValueChanged="@(v => set(Math.Round(v, 2)))" AriaLabel="@ariaLabel" Class="soa-slider" />
+            <Slider Min="min" Max="1" Step="step" Value="@value" ValueChanged="@(v => set(Math.Round(v, 2)))" AriaLabel="@ariaLabel" Class="soa-slider" Disabled="disabled" />
             <span class="soa-threshold-value">@Two(value)</span>
         </div>
     };
@@ -819,6 +835,7 @@
         ["Title"] = "The field that names a result, as the judge and the answers refer to it. Automatic picks the dataset's most title-like field.",
         ["Section"] = "Fields that say where a result belongs, such as a category, a year or a chapter. The judge reads them beside the title; leave them empty when the records have none.",
         ["Snippet"] = "The prose fields the judge reads and the answers are written from: a description, a body text. Not identifiers or links, which tell the model nothing.",
+        ["Whole question"] = "The judge gives a second score on each pause: whether the visitor has finished the question, or it stops on a word still waiting for more. On, the answer offer waits until that score reaches Answer offer from, and the visitor gets the invitation until then; proactive waits for it before answering on its own. Off, the answer offer comes on the question score alone.",
         ["Answer offer"] = "The full offer, \"Ask the assistant\": Enter asks. It needs two lines: the question score reaches Show from, and the judge reads the question as whole (Whole question from); until then the visitor gets the invitation. Once up, it stays while the score is above Keep down to, so it does not blink as the visitor types on.",
         ["Invitation"] = "The quiet \"Ask about this\" under the field, for a score that may be a question. Clicking it asks; Enter still searches.",
         ["The list"] = "While the full offer is up, keep only results scoring at least Share of top of the best result, and show any only when the best scores at least Top at least. A question's words match many records loosely; this keeps the ones that match it. Off keeps the whole list.",
