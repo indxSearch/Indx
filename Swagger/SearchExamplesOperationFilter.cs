@@ -72,7 +72,7 @@ namespace IndxServer.Swagger
                     ["Full"] = new OpenApiExample
                     {
                         Summary = "Full Search",
-                        Description = "Every parameter at its default value, with a coverage setup spelled out",
+                        Description = "Every parameter at its default value, the match, candidate and ranking settings spelled out",
                         Value = full?.DeepClone()
                     }
                 };
