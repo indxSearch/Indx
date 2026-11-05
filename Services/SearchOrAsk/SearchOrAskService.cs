@@ -22,14 +22,14 @@ namespace IndxServer.Services.SearchOrAsk
     /// the thresholds. A client that keeps what it has shown applies the thresholds itself (enter
     /// at one value, leave below the lower), which is why they travel with every answer.
     /// <c>reason</c> says why the judge was not asked or did not answer: identifier, timeout,
-    /// failed (with the provider's status). <c>cutWhileAsking</c> is the dataset's setting for the
-    /// list under a strong offer (coverage hits only), carried with every answer like the thresholds.
+    /// failed (with the provider's status). <c>cutWhileAsking</c> is always false, for published
+    /// clients that read a missing value as on (<see cref="SearchOrAskSettings.CutWhileAsking"/>).
     /// </summary>
     /// <summary><c>Criteria</c>, for a catalogue: the probability the visitor describes what to list,
     /// which the page turns into filters (POST filters) when it reaches the strong threshold.</summary>
     public sealed record IntentResult(double P, double? Answerable, string Offer, SearchOrAskThresholds Thresholds,
-        bool Cached, long Ms, string? Reason = null, double? Criteria = null, bool CutWhileAsking = true,
-        double CutShareOfTop = 0.5, double CutTopFloor = 0.2, bool StrictCoverageWhileAsking = true, string FiltersWhileTyping = "off",
+        bool Cached, long Ms, string? Reason = null, double? Criteria = null, bool CutWhileAsking = false,
+        bool StrictCoverageWhileAsking = true, string FiltersWhileTyping = "off",
         string Mode = SearchOrAskSettings.ModeSoft, double? Finished = null);
 
     /// <summary>One source handed to the answer model, as the visitor's client sees it.</summary>
@@ -444,7 +444,7 @@ namespace IndxServer.Services.SearchOrAsk
                 double? finished = null)
             {
                 var result = new IntentResult(p, answerable, settings.OfferFor(judge, p, criteria, finished), settings.Thresholds.Resolved(settings.Kind, judge), cached, Ms(), reason, criteria,
-                    settings.CutWhileAsking, settings.CutShareOfTop, settings.CutTopFloor, settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping,
+                    settings.CutWhileAsking, settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping,
                     EffectiveMode(teamId, dataSetName, settings), finished);
                 // A judgement is recorded once the judge or its cache answered for it, a failing
                 // judge included (its reason says so); an identifier never reaches here. A prefetch

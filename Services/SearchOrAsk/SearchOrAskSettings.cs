@@ -59,21 +59,13 @@ namespace IndxServer.Services.SearchOrAsk
         public string OfferFor(string? judge, double p, double? criteria = null, double? finished = null) =>
             Thresholds.Resolved(Kind, judge).OfferFor(p, criteria, finished) is var offer && Mode == ModeStrict && offer == "invite" ? "none" : offer;
 
-        /// <summary>While the offer is strong (the judge says the visitor is asking), the page shows
-        /// the result list only up to the truncation point: the coverage hits stay, the pattern
-        /// tail goes, and with nothing confirmed the offer stands alone. The rule runs in the
-        /// client, which has the offer's hysteresis and the truncation index; this only says
-        /// whether to apply it. Off keeps the whole list (decided 14 Oct 2026, the "mixer").</summary>
-        public bool CutWhileAsking { get; set; } = true;
-
-        /// <summary>The cut's two lines, on the scores (14 Oct 2026: the truncation index alone was
-        /// too lenient, coverage confirms a record on a two-letter word). While asking, a result is
-        /// kept while it scores at least <see cref="CutShareOfTop"/> of the top result, and only when
-        /// the top result itself scores at least <see cref="CutTopFloor"/> of the scale; a flat, low
-        /// list is nothing. Both 0 to 1; measured on the replay's labelled sequences. The truncation
-        /// index the client bounds by is the position of the last confirmed result, -1 for none.</summary>
-        public double CutShareOfTop { get; set; } = 0.5;
-        public double CutTopFloor { get; set; } = 0.2;
+        /// <summary>Always false: "Strong matches only" (cutWhileAsking, cutShareOfTop, cutTopFloor)
+        /// was removed 5 Nov 2026. It kept the counted results only, and a question is nearly always a
+        /// fallback with none counted: on 1,944 generated texts it emptied the list under 666 of 678
+        /// strong offers on questions, 362 of them with the right record in the top five
+        /// (Notes/search-or-ask.md, "Strong matches only, removed"). Published intrface reads a missing value as on, so the server still says
+        /// off; a client that sends the old settings is not refused, and they are not kept.</summary>
+        public bool CutWhileAsking => false;
 
         /// <summary>While asking, the page's own searches run with coverage on whole words only (no
         /// fuzzy, prefix or joined matching, words of three letters or more), and the list is
@@ -179,9 +171,6 @@ namespace IndxServer.Services.SearchOrAsk
                 return $"answerModel is at most {MaxAnswerModel} characters.";
             if (FiltersWhileTyping is not (FiltersOff or FiltersFromFacets or FiltersWithModel))
                 return $"filtersWhileTyping must be {FiltersOff}, {FiltersFromFacets} or {FiltersWithModel}.";
-            foreach (var (name, v) in new[] { ("cutShareOfTop", CutShareOfTop), ("cutTopFloor", CutTopFloor) })
-                if (double.IsNaN(v) || v < 0 || v > 1)
-                    return $"{name} must be between 0 and 1.";
             if (FilterNotes is { Length: > MaxFilterNotes })
                 return $"filterNotes is at most {MaxFilterNotes} characters.";
             if (AnswerInstructions is { Length: > MaxAnswerInstructions })

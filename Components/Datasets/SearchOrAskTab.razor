@@ -156,26 +156,6 @@
                             <span class="soa-help">What the page does with its list while a full offer is up.</span>
                         </TableCell>
                     </TableRow>
-                    @Row(DatasetIcons.QueryParameters, "The list", "Keep only the results that still match the question.",
-                         _edit.CutWhileAsking != true || _edit.CutShareOfTop != 0.5 || _edit.CutTopFloor != 0.2,
-                         @<div class="soa-stack">
-                             <ToggleSwitch Label="Strong matches only" Checked="@_edit.CutWhileAsking" CheckedChanged="@(v => _edit.CutWhileAsking = v)" />
-                             @if (_edit.CutWhileAsking)
-                             {
-                                 <div class="soa-thresholds">
-                                     <div class="soa-threshold">
-                                         <span class="soa-threshold-label">Share of top</span>
-                                         <Slider Min="0" Max="1" Step="0.05" Value="@_edit.CutShareOfTop" ValueChanged="@(v => _edit.CutShareOfTop = Math.Round(v, 2))" AriaLabel="Keep results scoring at least this share of the top" Class="soa-slider" />
-                                         <span class="soa-threshold-value">@Two(_edit.CutShareOfTop)</span>
-                                     </div>
-                                     <div class="soa-threshold">
-                                         <span class="soa-threshold-label">Top at least</span>
-                                         <Slider Min="0" Max="1" Step="0.05" Value="@_edit.CutTopFloor" ValueChanged="@(v => _edit.CutTopFloor = Math.Round(v, 2))" AriaLabel="Show the list only when the top result scores at least this" Class="soa-slider" />
-                                         <span class="soa-threshold-value">@Two(_edit.CutTopFloor)</span>
-                                     </div>
-                                 </div>
-                             }
-                         </div>)
                     @Row(Icon<Icons.TextSize>(), "Matching", "The page's own searches match whole words only.",
                          !_edit.StrictCoverageWhileAsking, @<ToggleSwitch Label="Whole words only" Checked="@_edit.StrictCoverageWhileAsking" CheckedChanged="@(v => _edit.StrictCoverageWhileAsking = v)" />)
                     @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
