@@ -817,7 +817,6 @@ namespace IndxServer.Engine
             _queryParameterStore?.Delete(teamId, dataSetName);
             _fieldProfileStore?.Delete(teamId, dataSetName);
             _searchOrAskStore?.Delete(teamId, dataSetName);
-            _searchOrAskTestSets?.Delete(teamId, dataSetName);
             _observrStore?.Delete(teamId, dataSetName);
             _observrConversations?.Delete(teamId, dataSetName);
             _webhookStore?.DeleteDataset(teamId, dataSetName);
@@ -1049,7 +1048,6 @@ namespace IndxServer.Engine
             _queryParameterStore?.Rename(teamId, dataSetName, newName);
             _fieldProfileStore?.Rename(teamId, dataSetName, newName);
             _searchOrAskStore?.Rename(teamId, dataSetName, newName);
-            _searchOrAskTestSets?.Rename(teamId, dataSetName, newName);
             _observrStore?.Rename(teamId, dataSetName, newName);
             _observrConversations?.Rename(teamId, dataSetName, newName);
             _webhookStore?.Rename(teamId, dataSetName, newName);
@@ -1099,7 +1097,6 @@ namespace IndxServer.Engine
             _queryParameterStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _fieldProfileStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _searchOrAskStore?.Transfer(currentTeamId, newTeamId, dataSetName);
-            _searchOrAskTestSets?.Transfer(currentTeamId, newTeamId, dataSetName);
             _observrStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _observrConversations?.Transfer(currentTeamId, newTeamId, dataSetName);
             _webhookStore?.Transfer(currentTeamId, newTeamId, dataSetName);
@@ -1498,12 +1495,6 @@ namespace IndxServer.Engine
 
         /// <summary>Attaches the Search or ask store (startup-only).</summary>
         internal void AttachSearchOrAskStore(Services.SearchOrAsk.SearchOrAskStore store) => _searchOrAskStore = store;
-
-        // Per-dataset Search or ask test sets: follow the dataset through delete, rename and transfer.
-        private Services.SearchOrAsk.SearchOrAskTestSetStore? _searchOrAskTestSets;
-
-        /// <summary>Attaches the Search or ask test set store (startup-only).</summary>
-        internal void AttachSearchOrAskTestSetStore(Services.SearchOrAsk.SearchOrAskTestSetStore store) => _searchOrAskTestSets = store;
 
         // Observr's findings follow the dataset the same way.
         private Services.Observr.ObservrFindingStore? _observrStore;

@@ -12,7 +12,6 @@
 @using Icons = Indx.Systm.Blazor.Icons
 @inherits DatasetTabBase
 @inject SearchOrAskStore Store
-@inject SearchOrAskTestSetStore TestSet
 @inject BrowserFiles Files
 @inject SearchOrAskService Service
 @inject IndxServer.Services.Observr.AgentPanelState Agent
@@ -68,8 +67,19 @@
                     @Row(DatasetIcons.SearchOrAsk, "Offer answers",
                          $"Sends what visitors type to {Service.Setup.Receivers}, and their questions to the answer model. Name this in your privacy notice.",
                          _edit.Enabled, @<ToggleSwitch Label="Enabled" Variant="positive" Checked="@_edit.Enabled" CheckedChanged="@(v => _edit.Enabled = v)" />)
-                    @* The mode, second on the page: it decides more of what a visitor meets than any
-                       other setting (27 Oct 2026, moved up from When to offer). *@
+                    @Row(Icon<Icons.Book>(), "Kind of site", "How the judge tells a question from a lookup.",
+                         false, @<div class="soa-select"><SelectField Size="micro" Options="KindOptions" Value="@_edit.Kind" ValueChanged="@(v => _edit.Kind = v ?? SearchOrAskRecipes.Documentation)" /></div>)
+                    @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold. Empty uses the dataset's description.",
+                         !string.IsNullOrWhiteSpace(_edit.SiteDescription),
+                         @<Textarea Rows="3" @bind-Value="_edit.SiteDescription" placeholder="@_effectiveSite" />)
+                    @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                    {
+                        @Row(Icon<Icons.Filter>(), "About the fields", "What the values mean here, one per line.",
+                             !string.IsNullOrWhiteSpace(_edit.FilterNotes),
+                             @<Textarea Rows="4" @bind-Value="_edit.FilterNotes" placeholder="friskole: private" />)
+                    }
+                    @* The mode last in the group, right above When to offer (5 Nov 2026): it says how
+                       forward the offers are, and the thresholds below say when each one comes. *@
                     @Row(Icon<Icons.SlidersHorizontal>(), "Mode", "How forward the offer is, from the most careful to the most forward.",
                          _edit.Mode != SearchOrAskSettings.ModeSoft,
                          @<div class="soa-mode">
@@ -82,17 +92,6 @@
                              _proactiveText != null,
                              @<div class="soa-number"><InputField @bind-Value="_proactiveText" @bind-Value:after="SetProactive" Error="@_proactiveError" inputmode="numeric" placeholder="500" /></div>)
                     }
-                    @Row(Icon<Icons.Book>(), "Kind of site", "How the judge tells a question from a lookup.",
-                         false, @<div class="soa-select"><SelectField Size="micro" Options="KindOptions" Value="@_edit.Kind" ValueChanged="@(v => _edit.Kind = v ?? SearchOrAskRecipes.Documentation)" /></div>)
-                    @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold. Empty uses the dataset's description.",
-                         !string.IsNullOrWhiteSpace(_edit.SiteDescription),
-                         @<Textarea Rows="3" @bind-Value="_edit.SiteDescription" placeholder="@_effectiveSite" />)
-                    @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
-                    {
-                        @Row(Icon<Icons.Filter>(), "About the fields", "What the values mean here, one per line.",
-                             !string.IsNullOrWhiteSpace(_edit.FilterNotes),
-                             @<Textarea Rows="4" @bind-Value="_edit.FilterNotes" placeholder="friskole: private" />)
-                    }
                 </tbody>
             </Table>
             </div>
@@ -101,36 +100,40 @@
             <Table AriaLabel="When to offer" Class="soa-table">
                 @Head("When to offer")
                 <tbody>
+                    @* A ladder, in the order a visitor meets the offers (5 Nov 2026): each row one offer,
+                       with every line it needs. The judge gives two scores on each pause: how sure
+                       it is the visitor is asking, and whether the question is finished. *@
                     <TableRow>
                         <TableCell Class="soa-cell">
-                            <span class="soa-help">On each pause the judge scores what is typed from 0, a lookup, to 1, a question. On a catalogue a sure description of what to list earns the full offer too. The defaults are measured for the judge this instance uses, @JudgeName: switch the judge and its own come along, and only what you set here stays.</span>
+                            <span class="soa-help">On each pause the judge scores what is typed: 0 is a lookup, 1 a question. Each offer starts at its line on that score, and the answer offer also waits until the question is whole. Defaults measured for @JudgeName.</span>
                             @Scale()
                         </TableCell>
                     </TableRow>
-                    @ThresholdRow(Icon<Icons.ClickButton>(), "Answer offer", "A full offer to answer. Enter asks.",
-                        t => t.Strong, (t, v) => t.Strong = v, Defaults.Strong!.Value,
-                        t => t.StrongHide, (t, v) => t.StrongHide = v, Defaults.StrongHide!.Value)
-                    @ThresholdRow(Icon<Icons.CommentChatMessage>(), "Invitation", "A quieter \"Ask about this\".",
-                        t => t.Invite, (t, v) => t.Invite = v, Defaults.Invite!.Value,
-                        t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide!.Value)
-                    @Row(Icon<Icons.Quote>(), "Whole question", "The full offer only once the judge reads the question as finished; the invitation before. Proactive answers on its own from the same line.",
-                         _edit.Thresholds.Finished != DefaultFinished,
-                         @<div class="soa-threshold">
-                             <span class="soa-threshold-label"><Tooltip Content="The judge's finished score the full offer needs. 0 offers it on any sure score, as before 5 Nov 2026.">From</Tooltip></span>
-                             <Slider Min="0" Max="1" Step="0.05" Value="@_edit.Thresholds.Finished" ValueChanged="@(v => _edit.Thresholds.Finished = Math.Round(v, 2))" AriaLabel="Whole question: from" Class="soa-slider" />
-                             <span class="soa-threshold-value">@Two(_edit.Thresholds.Finished)</span>
-                         </div>)
                     @if (_edit.Mode is SearchOrAskSettings.ModeInviting or SearchOrAskSettings.ModeProactive)
                     {
                         var hint = _edit.Thresholds.Hint ?? SearchOrAskThresholds.HintFor(_edit.Kind, Judge);
-                        @Row(Icon<Icons.Spark>(), "Hint", "\"For a quick answer, type a bit more\", from this score. Low: it shows early that the field answers.",
+                        @Row(Icon<Icons.Spark>(), "Hint", "First: \"For a quick answer, type a bit more\". Low, so it shows early that the field answers.",
                              _edit.Thresholds.Hint != null,
-                             @<div class="soa-threshold">
-                                 <span class="soa-threshold-label">Show from</span>
-                                 <Slider Min="0" Max="1" Step="0.01" Value="@hint" ValueChanged="@(v => _edit.Thresholds.Hint = Math.Round(v, 2) == SearchOrAskThresholds.HintFor(_edit.Kind, Judge) ? null : Math.Round(v, 2))" AriaLabel="Hint: show from" Class="soa-slider" />
-                                 <span class="soa-threshold-value">@Two(hint)</span>
+                             @<div class="soa-thresholds">
+                                 @Line("Show from", "The question score the hint needs.", hint, 0.01,
+                                     v => _edit.Thresholds.Hint = v == SearchOrAskThresholds.HintFor(_edit.Kind, Judge) ? null : v, "Hint: show from")
                              </div>)
                     }
+                    @if (_edit.Mode != SearchOrAskSettings.ModeStrict)
+                    {
+                        @ThresholdRow(Icon<Icons.CommentChatMessage>(), "Invitation", "Then: \"Ask about this\", quieter than the answer offer.",
+                            t => t.Invite, (t, v) => t.Invite = v, Defaults.Invite!.Value,
+                            t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide!.Value)
+                    }
+                    @ThresholdRow(Icon<Icons.ClickButton>(), "Answer offer",
+                        _edit.Mode == SearchOrAskSettings.ModeProactive
+                            ? "Last: \"Ask the assistant\", Enter asks. Proactive starts the answer itself once the visitor stops."
+                            : "Last: \"Ask the assistant\", Enter asks.",
+                        t => t.Strong, (t, v) => t.Strong = v, Defaults.Strong!.Value,
+                        t => t.StrongHide, (t, v) => t.StrongHide = v, Defaults.StrongHide!.Value,
+                        Line("Whole question from", "The judge's finished score the answer offer also needs: until the question is whole, the visitor gets the invitation. \"hvilken\" is sure to be a question starting (0.71) and unfinished (0.09). 0 offers an answer on any sure score.",
+                            _edit.Thresholds.Finished, 0.05, v => _edit.Thresholds.Finished = v, "Answer offer: whole question from"),
+                        _edit.Thresholds.Finished != DefaultFinished)
                 </tbody>
             </Table>
             </div>
@@ -388,30 +391,6 @@
                                     @onclick="() => _showState = !_showState">What the judge was sent</Button>
                         </div>
                     }
-                    @if (_try != null && Ctx.IsEditor && _tryText?.Trim() is { Length: > 0 } markText)
-                    {
-                        @* The owner's word that this text is a question, for the test set: it changes
-                           nothing a visitor gets, it is what the judge is measured against. Only
-                           questions: on the way to one, the list soon stops mattering ("who wrote
-                           the" finds nothing worth marking as a search). *@
-                        var mark = TestSet.Find(Ctx.TeamId, Ctx.Name, markText);
-                        <div class="soa-try-mark">
-                            @if (mark == null)
-                            {
-                                <Button Variant="ghost" Size="micro" IconLeft="Icon<Icons.Question>()" @onclick="() => MarkAs(markText)">This is a question</Button>
-                            }
-                            else
-                            {
-                                <Chip Size="micro">In the test set</Chip>
-                                <Tooltip Content="The record that answers it, if it is among the results. Measures whether a search finds it, not only whether the judge sees a question.">
-                                    <div class="soa-select"><SelectField Size="micro" Options="AnsweredByOptions(mark)" Value="@(mark.ExpectedKey?.ToString(CultureInfo.InvariantCulture) ?? NoRecord)"
-                                                 ValueChanged="@(v => SetExpected(mark, v))" AriaLabel="Answered by" /></div>
-                                </Tooltip>
-                                <span class="soa-try-spacer"></span>
-                                <Button Variant="ghost" Size="micro" @onclick="() => Unmark(mark.Text)">Remove</Button>
-                            }
-                        </div>
-                    }
                     @if (_showState && _state != null)
                     {
                         <pre class="soa-state">@_state</pre>
@@ -475,7 +454,6 @@
                     }
                 }
             </section>
-            @TestSetSection()
         </aside>
     </div>
 
@@ -677,26 +655,30 @@
     /// default given); moved back onto it, it is unset again, so it follows a switch of judge.</summary>
     private RenderFragment ThresholdRow(RenderFragment<int> icon, string label, string help,
         Func<SearchOrAskThresholds, double?> getShow, Action<SearchOrAskThresholds, double?> setShowValue, double showDefault,
-        Func<SearchOrAskThresholds, double?> getKeep, Action<SearchOrAskThresholds, double?> setKeepValue, double keepDefault) => __builder =>
+        Func<SearchOrAskThresholds, double?> getKeep, Action<SearchOrAskThresholds, double?> setKeepValue, double keepDefault,
+        RenderFragment? extra = null, bool extraSet = false) => __builder =>
     {
         var t = _edit.Thresholds;
         double show(SearchOrAskThresholds x) => getShow(x) ?? showDefault;
         double keep(SearchOrAskThresholds x) => getKeep(x) ?? keepDefault;
         void setShow(SearchOrAskThresholds x, double v) => setShowValue(x, v == showDefault ? null : v);
         void setKeep(SearchOrAskThresholds x, double v) => setKeepValue(x, v == keepDefault ? null : v);
-        @Row(icon, label, help, getShow(t) != null || getKeep(t) != null,
+        @Row(icon, label, help, getShow(t) != null || getKeep(t) != null || extraSet,
             @<div class="soa-thresholds">
-                <div class="soa-threshold">
-                    <span class="soa-threshold-label"><Tooltip Content="The score the offer needs to appear.">Show from</Tooltip></span>
-                    <Slider Min="0" Max="1" Step="0.05" Value="@show(t)" ValueChanged="@(v => setShow(_edit.Thresholds, Math.Round(v, 2)))" AriaLabel="@($"{label}: show from")" Class="soa-slider" />
-                    <span class="soa-threshold-value">@Two(show(t))</span>
-                </div>
-                <div class="soa-threshold">
-                    <span class="soa-threshold-label"><Tooltip Content="Once up, the offer stays while the score is at least this, so it does not blink as the visitor types. Applied on the visitor's page, which remembers what it showed; the tester has no memory and uses Show from alone.">Keep down to</Tooltip></span>
-                    <Slider Min="0" Max="1" Step="0.05" Value="@keep(t)" ValueChanged="@(v => setKeep(_edit.Thresholds, Math.Round(v, 2)))" AriaLabel="@($"{label}: keep down to")" Class="soa-slider" />
-                    <span class="soa-threshold-value">@Two(keep(t))</span>
-                </div>
+                @Line("Show from", "The question score the offer needs to appear.", show(t), 0.05, v => setShow(_edit.Thresholds, v), $"{label}: show from")
+                @Line("Keep down to", "Once up, the offer stays while the score is at least this, so it does not blink as the visitor types. Applied on the visitor's page, which remembers what it showed; the tester has no memory and uses Show from alone.", keep(t), 0.05, v => setKeep(_edit.Thresholds, v), $"{label}: keep down to")
+                @extra
             </div>)
+    };
+
+    /// <summary>One line of an offer: its name (explained on hover), a slider from 0 to 1, the value.</summary>
+    private RenderFragment Line(string name, string explained, double value, double step, Action<double> set, string ariaLabel) => __builder =>
+    {
+        <div class="soa-threshold">
+            <span class="soa-threshold-label"><Tooltip Content="@explained">@name</Tooltip></span>
+            <Slider Min="0" Max="1" Step="step" Value="@value" ValueChanged="@(v => set(Math.Round(v, 2)))" AriaLabel="@ariaLabel" Class="soa-slider" />
+            <span class="soa-threshold-value">@Two(value)</span>
+        </div>
     };
 
     private bool _loaded;
@@ -840,8 +822,7 @@
         ["Title"] = "The field that names a result, as the judge and the answers refer to it. Automatic picks the dataset's most title-like field.",
         ["Section"] = "Fields that say where a result belongs, such as a category, a year or a chapter. The judge reads them beside the title; leave them empty when the records have none.",
         ["Snippet"] = "The prose fields the judge reads and the answers are written from: a description, a body text. Not identifiers or links, which tell the model nothing.",
-        ["Answer offer"] = "The full offer, \"Ask the assistant\": Enter asks. Shown when the judge's score reaches Show from and the question is whole (Whole question), and kept while it stays above Keep down to, so it does not blink as the visitor types on.",
-        ["Whole question"] = "\"hvilken\" is sure to be a question starting (0.71) and holds nothing to answer yet: the judge reads it as unfinished (0.09). Until the question is whole, the visitor gets the invitation; once a sure question shows the full offer, typing on keeps it.",
+        ["Answer offer"] = "The full offer, \"Ask the assistant\": Enter asks. It needs two lines: the question score reaches Show from, and the judge reads the question as whole (Whole question from); until then the visitor gets the invitation. Once up, it stays while the score is above Keep down to, so it does not blink as the visitor types on.",
         ["Invitation"] = "The quiet \"Ask about this\" under the field, for a score that may be a question. Clicking it asks; Enter still searches.",
         ["The list"] = "While the full offer is up, keep only results scoring at least Share of top of the best result, and show any only when the best scores at least Top at least. A question's words match many records loosely; this keeps the ones that match it. Off keeps the whole list.",
         ["Matching"] = "While the full offer is up, the page's searches match whole words only: no typos, prefixes or joined words, which a long question otherwise picks up everywhere. The answer still searches with the full setup, so a typo in a name still finds the record.",
@@ -930,201 +911,6 @@
     }
 
     private void Cancel() => Reset(Store.Load(Ctx.TeamId, Ctx.Name));
-
-    // ── The test set: texts marked in Try it ─────────────────────────────────────────────
-
-    private const string NoRecord = "";
-    private const int TestSetShown = 100;
-    private string? _hitsText;
-    private IReadOnlyList<(long Key, string Title, string Section, string Snippet)> _hits = [];
-
-    /// <summary>The results for a text, as the judge reads them: what "Answered by" offers.</summary>
-    private IReadOnlyList<(long Key, string Title, string Section, string Snippet)> HitsFor(string text)
-    {
-        if (_hitsText != text && Ctx.FindEngine() is { } engine)
-        {
-            _hits = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit).Top;
-            _hitsText = text;
-        }
-        return _hits;
-    }
-
-    private IEnumerable<SelectField.SelectOption> AnsweredByOptions(SearchOrAskMark mark)
-    {
-        yield return new("Answered by: not named", NoRecord);
-        var hits = HitsFor(mark.Text);
-        foreach (var h in hits)
-            yield return new(h.Title.Length > 0 ? h.Title : h.Key.ToString(CultureInfo.InvariantCulture), h.Key.ToString(CultureInfo.InvariantCulture));
-        if (mark.ExpectedKey is { } k && hits.All(h => h.Key != k))
-            yield return new(mark.ExpectedTitle ?? k.ToString(CultureInfo.InvariantCulture), k.ToString(CultureInfo.InvariantCulture));
-    }
-
-    private void MarkAs(string text)
-    {
-        if (!Ctx.IsEditor || _try is not { } j) return;
-        TestSet.Mark(Ctx.TeamId, Ctx.Name, new SearchOrAskMark(text, SearchOrAskMark.Question, null, null, j.P, Seen(j), Service.Setup.JudgeProvider, DateTime.UtcNow));
-    }
-
-    private void SetExpected(SearchOrAskMark mark, string value)
-    {
-        if (!Ctx.IsEditor) return;
-        long? key = long.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var k) ? k : null;
-        var title = key is { } x ? HitsFor(mark.Text).FirstOrDefault(h => h.Key == x).Title ?? mark.ExpectedTitle : null;
-        TestSet.Mark(Ctx.TeamId, Ctx.Name, mark with { ExpectedKey = key, ExpectedTitle = string.IsNullOrEmpty(title) ? null : title });
-    }
-
-    private void Unmark(string text)
-    {
-        if (Ctx.IsEditor) TestSet.Unmark(Ctx.TeamId, Ctx.Name, text);
-    }
-
-    /// <summary>Tries a marked text again, as if typed.</summary>
-    private async Task TryAgain(string text)
-    {
-        _tryText = text;
-        await OnTryInput();
-    }
-
-    /// <summary>Where a marked question's record lands: today's search, BM25F alone, and the judge's
-    /// refocus. Kept for this session only.</summary>
-    private sealed record Measured(int? Today, int? Bm25f, int? Refocused, RefocusPick? Pick, string? Reason);
-    private readonly Dictionary<string, Measured> _measured = [];
-    private bool _measuring;
-    private int _measureDone, _measureOf;
-
-    private static int? RankOf(IReadOnlyList<long> keys, long key) => keys.ToList().IndexOf(key) is var i and >= 0 ? i + 1 : null;
-
-    /// <summary>Runs every marked question with its record through today's search, BM25F and the
-    /// judge's refocus. One judge call per question, from today's budget.</summary>
-    private async Task MeasureTestSet()
-    {
-        if (_measuring || Ctx.FindEngine() is not { } engine) return;
-        var marks = TestSet.Load(Ctx.TeamId, Ctx.Name).Where(m => m.ExpectedKey != null).ToList();
-        _measuring = true;
-        _measured.Clear();
-        _measureDone = 0;
-        _measureOf = marks.Count;
-        try
-        {
-            foreach (var m in marks)
-            {
-                if (!_measuring) break;
-                var searched = m.Text;
-                var key = m.ExpectedKey!.Value;
-                var today = RankOf(SearchOrAskService.Ranked(Ctx.TeamId, Ctx.Name, searched, SearchMode.EditDistance), key);
-                var bm25f = RankOf(SearchOrAskService.Ranked(Ctx.TeamId, Ctx.Name, searched, SearchMode.Bm25f), key);
-                var (pick, reason) = await Service.RefocusAsync(Ctx.TeamId, Ctx.Name, engine, m.Text, _edit, CancellationToken.None);
-                _measured[SearchOrAskTestSetStore.Normalise(m.Text)] = new(today, bm25f, pick == null ? null : RankOf(pick.Keys, key), pick, reason);
-                _measureDone++;
-                StateHasChanged();
-                if (reason == "Today's budget is spent.") break;
-            }
-        }
-        finally
-        {
-            _measuring = false;
-            _callsToday = Service.CallsToday(Ctx.TeamId, Ctx.Name);
-        }
-    }
-
-    private static string Place(int? rank) => rank is { } r ? $"{r}" : "not in the top 10";
-
-    /// <summary>"6 of 18": how many measured questions put the record first, or in the top five.</summary>
-    private string Tally(Func<Measured, int?> rank, int within) =>
-        $"{_measured.Values.Count(m => rank(m) is { } r && r <= within)}";
-
-    private async Task ExportTestSet() =>
-        await Files.DownloadAsync($"{Ctx.Name}-test-set.tsv", SearchOrAskTestSetStore.ToReplay(TestSet.Load(Ctx.TeamId, Ctx.Name)), "text/tab-separated-values");
-
-    /// <summary>The marks under Try it, newest first: each question (tried again on a click), the
-    /// record that answers it, and what the judge scored it when it was marked.</summary>
-    private RenderFragment TestSetSection() => __builder =>
-    {
-        var marks = TestSet.Load(Ctx.TeamId, Ctx.Name);
-        <section class="soa-testset" aria-label="Test set">
-            <div class="soa-try-head">
-                <div class="soa-try-head-row">
-                    <span class="soa-try-title">Test set</span>
-                    <span class="soa-try-spacer"></span>
-                    @if (marks.Count > 0)
-                    {
-                        <span class="soa-help">@marks.Count @(marks.Count == 1 ? "question" : "questions")</span>
-                    }
-                </div>
-                <span class="soa-help">The questions you mark in Try it, with the record that answers each where you name it. Kept to measure the judge on this dataset's own words; nothing here changes what visitors get.</span>
-            </div>
-            @if (marks.Count == 0)
-            {
-                <span class="soa-help">Nothing marked yet. Type a question in Try it, then mark it.</span>
-            }
-            else
-            {
-                <ol class="soa-testset-list">
-                    @foreach (var m in marks.Take(TestSetShown))
-                    {
-                        var mark = m;
-                        <li class="soa-testset-row">
-                            <Tooltip Content="Try it again"><Button Variant="ghost" Size="micro" Class="soa-testset-text" @onclick="() => TryAgain(mark.Text)">@mark.Text</Button></Tooltip>
-                            <span class="soa-testset-meta">
-                                @if (mark.ExpectedTitle is { } answeredBy) { <span>@answeredBy</span> }
-                                @if (mark.P is { } p)
-                                {
-                                    <Tooltip Content="@($"The judge's question score when it was marked{(mark.Offer is { } o ? $", and the offer it made ({o})" : "")}.")"><span class="soa-try-score">@Two(p)</span></Tooltip>
-                                }
-                                <TimeAgo Value="@mark.MarkedUtc" TooltipPosition="left" />
-                                @if (_measured.TryGetValue(SearchOrAskTestSetStore.Normalise(mark.Text), out var measured))
-                                {
-                                    <Chip Size="micro">Today @Place(measured.Today)</Chip>
-                                    <Chip Size="micro">BM25F @Place(measured.Bm25f)</Chip>
-                                    @if (measured.Reason is { } why)
-                                    {
-                                        <span>@why</span>
-                                    }
-                                    else
-                                    {
-                                        <Tooltip Content="@(measured.Pick is { Switched: true } chose ? $"The judge chose \"{chose.Searched}\"" : "The judge kept BM25F")"><Chip Size="micro">Refocused @Place(measured.Refocused)</Chip></Tooltip>
-                                    }
-                                }
-                                <span class="soa-try-spacer"></span>
-                                @if (Ctx.IsEditor)
-                                {
-                                    <Button Variant="ghost" Size="micro" @onclick="() => Unmark(mark.Text)">Remove</Button>
-                                }
-                            </span>
-                        </li>
-                    }
-                </ol>
-                @if (marks.Count > TestSetShown)
-                {
-                    <span class="soa-help">And @(marks.Count - TestSetShown) older, all of them in the export.</span>
-                }
-                @if (_measured.Count > 0)
-                {
-                    <div class="soa-measure-totals">
-                        <span class="soa-help">@(_measuring ? $"Measuring {_measureDone} of {_measureOf}…" : $"Measured {_measured.Count} questions with their record.")</span>
-                        <span class="soa-help">First: today @Tally(m => m.Today, 1), BM25F @Tally(m => m.Bm25f, 1), refocused @Tally(m => m.Refocused, 1).</span>
-                        <span class="soa-help">In the top five: today @Tally(m => m.Today, 5), BM25F @Tally(m => m.Bm25f, 5), refocused @Tally(m => m.Refocused, 5).</span>
-                    </div>
-                }
-                <div class="indx-file-actions">
-                    @if (marks.Any(m => m.ExpectedKey != null) && Ctx.IsEditor)
-                    {
-                        @if (_measuring)
-                        {
-                            <Button Variant="ghost" Size="micro" @onclick="() => _measuring = false">Stop</Button>
-                        }
-                        else
-                        {
-                            <Tooltip Content="@($"Where each question's record lands today, with BM25F alone, and refocused by the judge. One judge call per question with a record ({marks.Count(m => m.ExpectedKey != null)}), from today's budget. Questions without a record are left out.")">
-                                <Button Variant="ghost" Size="micro" @onclick="MeasureTestSet">Measure</Button>
-                            </Tooltip>
-                        }
-                    }
-                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" @onclick="ExportTestSet">Export for replay</Button>
-                </div>
-            }
-        </section>
-    };
 
     // ── The tester ────────────────────────────────────────────────────────────
 

@@ -76,31 +76,6 @@
     border-radius: var(--radius);
 }
 .soa-try-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 2px; }
-/* The owner's mark for the test set, under the judge's scores. */
-/* The refocus experiment's two lists, one above the other. */
-.soa-try-list { display: flex; flex-direction: column; gap: 4px; }
-.soa-try-list + .soa-try-list { padding-top: 8px; border-top: 1px solid var(--lv2); }
-.soa-try-list-head { font: var(--text-xs); font-weight: var(--med); color: var(--lv7); }
-.soa-measure-totals { display: flex; flex-direction: column; gap: 2px; padding-top: 6px; border-top: 1px solid var(--lv2); }
-.soa-try-mark { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 8px; border-top: 1px solid var(--lv2); }
-/* The test set under Try it, drawn as the tester is: a panel of its own in the same column. */
-.soa-testset {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    box-sizing: border-box;
-    margin-bottom: 24px;
-    padding: 12px;
-    background: var(--lv0);
-    border: 0.5px solid var(--lv3);
-    border-radius: var(--radius);
-}
-.soa-testset-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; }
-.soa-testset-row { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; border-top: 1px solid var(--lv2); }
-.soa-testset-row:first-child { border-top: none; }
-/* The text is the button that tries it again: left aligned and wrapping, as a sentence. */
-::deep .soa-testset-text { justify-content: flex-start; text-align: left; white-space: normal; height: auto; min-height: 0; }
-.soa-testset-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font: var(--text-xs); color: var(--lv6); }
 .soa-try-head-row { display: flex; align-items: center; gap: 12px; }
 /* The hits, as the judge reads them: title, section, one line of snippet. */
 .soa-try-results { display: flex; flex-direction: column; gap: 6px; }
@@ -169,7 +144,7 @@
 /* One offer's pair of sliders. */
 .soa-thresholds { display: flex; flex-direction: column; gap: 6px; width: 100%; }
 .soa-stack { display: flex; flex-direction: column; gap: 10px; width: 100%; }
-.soa-threshold { display: grid; grid-template-columns: 96px 1fr 40px; align-items: center; gap: 10px; }
+.soa-threshold { display: grid; grid-template-columns: 120px 1fr 40px; align-items: center; gap: 10px; width: 100%; }
 .soa-threshold-label { font: var(--text-xs); color: var(--lv6); }
 .soa-threshold-value { font: var(--text-sm); color: var(--lv8); font-variant-numeric: tabular-nums; text-align: right; }
 .soa-threshold ::deep .soa-slider { width: 100%; }

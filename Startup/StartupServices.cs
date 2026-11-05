@@ -134,7 +134,6 @@ internal static class StartupServices
         builder.Services.AddHttpClient(IndxServer.Services.SearchOrAsk.SearchOrAskModelClients.HttpClientName,
             client => client.Timeout = TimeSpan.FromSeconds(120));
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskStore>();
-        builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.SearchOrAskTestSetStore>();
         builder.Services.AddSingleton<IndxServer.Services.SearchOrAsk.ISearchOrAskSwitch, IndxServer.Services.SearchOrAsk.InstanceSearchOrAskSwitch>();
         // Where each call goes (the customer's provider and key): one resolved setup, read by the
         // service and the clients alike, so a request sees one consistent choice.

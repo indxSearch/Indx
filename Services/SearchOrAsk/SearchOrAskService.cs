@@ -594,34 +594,6 @@ namespace IndxServer.Services.SearchOrAsk
                 best?.Text, best == null ? null : score(SearchOrAskRefocus.Prefix + best.Name));
         }
 
-        /// <summary>The refocus experiment on one question, for the console's test set: the judge asked
-        /// only which search holds what is asked, one call off the day's budget. Null with a reason
-        /// when no call could be made or the judge failed.</summary>
-        public async Task<(RefocusPick? Pick, string? Reason)> RefocusAsync(string teamId, string dataSetName, IServerSearchEngine engine,
-            string text, SearchOrAskSettings settings, CancellationToken ct)
-        {
-            if (!JudgeAvailable) return (null, "Needs the instance's model key.");
-            if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget)) return (null, "Today's budget is spent.");
-            var fields = Fields(settings, engine.GetFieldList());
-            var candidates = RefocusCandidates(engine, dataSetName, teamId, text);
-            var state = new JsonObject
-            {
-                ["site"] = SiteDescription(teamId, dataSetName, settings),
-                ["request"] = text,
-                ["candidates"] = SearchOrAskRefocus.State(candidates, c => Search(engine, dataSetName, teamId, c.Text, fields, mode: c.Mode).Top),
-            };
-            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            timeout.CancelAfter(_options.JudgeTimeoutMs * 3);
-            try
-            {
-                var answer = await _models.JudgeAsync(state, SearchOrAskRefocus.Questions(candidates), timeout.Token);
-                return (ChosenSearch(dataSetName, teamId, candidates, n => answer[n]), null);
-            }
-            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return (null, "The judge did not answer in time."); }
-            catch (SearchOrAskModelException ex) { return (null, ex.Message); }
-            catch (HttpRequestException ex) { return (null, ex.Message); }
-        }
-
         /// <summary>Runs the search the visitor's client already ran, here, so the judge sees the
         /// same results without the client sending results it could forge. Through the manager
         /// directly: not a visitor's search, so it never reaches the statistics.</summary>
