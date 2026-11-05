@@ -460,7 +460,7 @@ namespace IndxServer.Services.SearchOrAsk
             IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null, double? criteria = null,
                 double? finished = null, RefocusPick? pick = null)
             {
-                var result = new IntentResult(p, answerable, settings.OfferFor(judge, p, criteria), settings.Thresholds.Resolved(settings.Kind, judge), cached, Ms(), reason, criteria,
+                var result = new IntentResult(p, answerable, settings.OfferFor(judge, p, criteria, finished), settings.Thresholds.Resolved(settings.Kind, judge), cached, Ms(), reason, criteria,
                     settings.CutWhileAsking, settings.CutShareOfTop, settings.CutTopFloor, settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping, searchText,
                     settings.RefocusWhileTyping, settings.InviteOnAskPhrase, EffectiveMode(teamId, dataSetName, settings), finished) { Refocus = pick };
                 // A judgement is recorded once the judge or its cache answered for it, a failing

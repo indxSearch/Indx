@@ -54,10 +54,10 @@ namespace IndxServer.Services.SearchOrAsk
         /// catalogue), so this is the spend proactive adds.</summary>
         public int DailyProactiveAnswers { get; set; } = 500;
 
-        /// <summary>The offer for one judgement on its own (<see cref="SearchOrAskThresholds.OfferFor(double, double?)"/>),
+        /// <summary>The offer for one judgement on its own (<see cref="SearchOrAskThresholds.OfferFor(double, double?, double?)"/>),
         /// on this judge's thresholds, in this mode: strict has no quiet offer.</summary>
-        public string OfferFor(string? judge, double p, double? criteria = null) =>
-            Thresholds.Resolved(Kind, judge).OfferFor(p, criteria) is var offer && Mode == ModeStrict && offer == "invite" ? "none" : offer;
+        public string OfferFor(string? judge, double p, double? criteria = null, double? finished = null) =>
+            Thresholds.Resolved(Kind, judge).OfferFor(p, criteria, finished) is var offer && Mode == ModeStrict && offer == "invite" ? "none" : offer;
 
         /// <summary>While the offer is strong (the judge says the visitor is asking), the page shows
         /// the result list only up to the truncation point: the coverage hits stay, the pattern
@@ -239,8 +239,13 @@ namespace IndxServer.Services.SearchOrAsk
         /// school-register lookups got the hint, at 0.25 4, every question still reaching it; on
         /// films 1 of 59 either way; on the docs 0.31 gives 4 of 29, all 40 questions.</summary>
         public double? Hint { get; set; }
-        /// <summary>Proactive answers on its own only from this "finished" score up, so "what type is"
-        /// waits for the rest.</summary>
+        /// <summary>The full offer only from this "finished" score up, in every mode: until the judge
+        /// reads the question as whole it is the invitation, so "hvilken" (asking 0.71, finished 0.09)
+        /// is not offered an answer to one word. Proactive answers on its own from the same line. Until
+        /// 5 Nov 2026 only proactive read it; replayed word by word on the docs, tmdb23k and the school
+        /// register, it took the full offer off 589 texts the judge read as unfinished, every question
+        /// but one still reaching it, the first offer of any kind where it was, and no lookup
+        /// changed. 0 is the old rule.</summary>
         public double Finished { get; set; } = 0.5;
 
         /// <summary>Jev's, measured on the docs set (Notes/search-or-ask.md): no lookup scored above
@@ -312,9 +317,11 @@ namespace IndxServer.Services.SearchOrAsk
         /// filters and a summary, so a sure one (at <see cref="Strong"/>) earns the full offer, as
         /// intrface has read it from the start; a middling one earns nothing, since a description
         /// scores more generously than a question and inviting on it made "skole" an invitation (19
-        /// Oct 2026). Below that the asking score decides alone.</summary>
-        public string OfferFor(double p, double? criteria = null) =>
-            criteria >= Strong ? "strong" : OfferFor(p);
+        /// Oct 2026). Below that the asking score decides alone. Either way the full offer waits for
+        /// <paramref name="finished"/> to reach <see cref="Finished"/>, the invitation until then; a
+        /// judgement without the score (a judge that left it out) is not held back.</summary>
+        public string OfferFor(double p, double? criteria = null, double? finished = null) =>
+            (criteria >= Strong ? "strong" : OfferFor(p)) is var offer && offer == "strong" && finished < Finished ? "invite" : offer;
         private string OfferFor(double p) => p >= Strong ? "strong" : p >= Invite ? "invite" : "none";
     }
 

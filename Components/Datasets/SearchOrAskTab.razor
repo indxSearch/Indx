@@ -114,6 +114,13 @@
                     @ThresholdRow(Icon<Icons.CommentChatMessage>(), "Invitation", "A quieter \"Ask about this\".",
                         t => t.Invite, (t, v) => t.Invite = v, Defaults.Invite!.Value,
                         t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide!.Value)
+                    @Row(Icon<Icons.Quote>(), "Whole question", "The full offer only once the judge reads the question as finished; the invitation before. Proactive answers on its own from the same line.",
+                         _edit.Thresholds.Finished != DefaultFinished,
+                         @<div class="soa-threshold">
+                             <span class="soa-threshold-label"><Tooltip Content="The judge's finished score the full offer needs. 0 offers it on any sure score, as before 5 Nov 2026.">From</Tooltip></span>
+                             <Slider Min="0" Max="1" Step="0.05" Value="@_edit.Thresholds.Finished" ValueChanged="@(v => _edit.Thresholds.Finished = Math.Round(v, 2))" AriaLabel="Whole question: from" Class="soa-slider" />
+                             <span class="soa-threshold-value">@Two(_edit.Thresholds.Finished)</span>
+                         </div>)
                     @if (_edit.Mode is SearchOrAskSettings.ModeInviting or SearchOrAskSettings.ModeProactive)
                     {
                         var hint = _edit.Thresholds.Hint ?? SearchOrAskThresholds.HintFor(_edit.Kind, Judge);
@@ -393,7 +400,7 @@
                                    the lines that decide the offer, not only its number. *@
                                 @Score("question", QuestionHelp, j.P, QuestionMarks(j))
                                 @if (j.Criteria is { } c) { @Score("description", DescriptionHelp, c, [new(j.Thresholds.Strong!.Value, "Answer offer")]) }
-                                @if (j.Finished is { } f) { @Score("finished", FinishedHelp, f, [new(j.Thresholds.Finished, "Answers on its own from")]) }
+                                @if (j.Finished is { } f) { @Score("finished", FinishedHelp, f, [new(j.Thresholds.Finished, "Full offer from")]) }
                                 @if (j.Answerable is { } a) { @Score("answerable", AnswerableHelp, a, []) }
                                 <Tooltip Content="@(j.Cached ? "The judge answered this text before; the cached answer, no call made." : "How long the judge took. A visitor's page waits at most 3 seconds.")">@(j.Cached ? "cached" : $"{j.Ms} ms")</Tooltip>
                                 @if (j.Reason is { } why) { <text> · @why</text> }
@@ -597,6 +604,7 @@
     private string Judge => Service.Setup.JudgeProvider;
     private string JudgeName => Judge == SearchOrAskProviders.OpenAiDecisions ? "OpenAI's Decisions API" : "Jev";
     private SearchOrAskThresholds Defaults => SearchOrAskThresholds.For(Judge);
+    private static readonly double DefaultFinished = new SearchOrAskThresholds().Finished;
 
     private static RenderFragment<int> Icon<T>() where T : IComponent => size => builder =>
     {
@@ -872,7 +880,8 @@
         ["Phrases"] = "The words a question is built with, in four groups taken off in order: a lead-in (\"help me find\"), what is asked for (\"the movie\"), the link to the rest (\"about\") and an article. \"help me find the movie about the green ogre\" searches \"green ogre\". Nothing is taken unless the start has a question's shape and a word of substance is left. A dataset without its own runs with the English defaults; Edit Ask phrases opens them all, with a Try it that shows what a question comes to.",
         ["Refocus the search"] = "The phrases above come off the text before it is searched, on every keystroke, and the judge reads those results. Off: the list searches the text as typed, and the judge reads that.",
         ["Invite on an Ask phrase"] = "The invitation, on the keystroke a phrase matches, before the judge has read the text: \"Ask about this\", or in the inviting modes \"For a quick answer, type a bit more\". It only invites: the full offer and an answer that starts on its own still wait for the judge, which confirms or takes it back on the next pause. Strict ignores it. Off: every offer waits for the judge.",
-        ["Answer offer"] = "The full offer, \"Ask the assistant\": Enter asks. Shown when the judge's score reaches Show from, and kept while it stays above Keep down to, so it does not blink as the visitor types on.",
+        ["Answer offer"] = "The full offer, \"Ask the assistant\": Enter asks. Shown when the judge's score reaches Show from and the question is whole (Whole question), and kept while it stays above Keep down to, so it does not blink as the visitor types on.",
+        ["Whole question"] = "\"hvilken\" is sure to be a question starting (0.71) and holds nothing to answer yet: the judge reads it as unfinished (0.09). Until the question is whole, the visitor gets the invitation; once a sure question shows the full offer, typing on keeps it.",
         ["Invitation"] = "The quiet \"Ask about this\" under the field, for a score that may be a question. Clicking it asks; Enter still searches.",
         ["The list"] = "While the full offer is up, keep only results scoring at least Share of top of the best result, and show any only when the best scores at least Top at least. A question's words match many records loosely; this keeps the ones that match it. Off keeps the whole list.",
         ["Matching"] = "While the full offer is up, the page's searches match whole words only: no typos, prefixes or joined words, which a long question otherwise picks up everywhere. The answer still searches with the full setup, so a typo in a name still finds the record.",
@@ -1291,7 +1300,6 @@
     /// still being typed is the hint, and the hint below the invitation where the score reaches it.</summary>
     private static string Seen(IntentResult j) => (j.Offer, j.Mode) switch
     {
-        ("strong", SearchOrAskSettings.ModeProactive) when !(j.Finished >= j.Thresholds.Finished) => "invite",
         ("none", _) when Sweeps(j.Mode) && j.P >= (j.Thresholds.Hint ?? 1) => "invite",
         _ => j.Offer,
     };
