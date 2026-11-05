@@ -127,15 +127,16 @@
                         <span class="indx-chart-tooltip-value">@FormatValue(tip.Index < _totals.Length ? _totals[tip.Index] : 0)</span>
                     </div>
                 }
-                @if (Markers != null)
+                @foreach (var m in TipMarkers(tip))
                 {
-                    @foreach (var m in Markers.Where(m => m.Index == tip.Index))
-                    {
-                        <div class="indx-chart-tooltip-row indx-chart-tooltip-marker">
-                            <span class="indx-chart-tooltip-dot indx-chart-tooltip-marker-dot"></span>
-                            <span class="indx-chart-tooltip-name">@m.Label</span>
-                        </div>
-                    }
+                    <div class="indx-chart-tooltip-row indx-chart-tooltip-marker">
+                        <span class="indx-chart-tooltip-dot indx-chart-tooltip-marker-dot" style="@(m.Label == null ? "visibility: hidden;" : null)"></span>
+                        <span class="indx-chart-tooltip-name">@(m.Label ?? $"and {m.Count} more")</span>
+                        @if (m.Label != null && m.Count > 1)
+                        {
+                            <span class="indx-chart-tooltip-value">×@m.Count</span>
+                        }
+                    </div>
                 }
             </div>
         }
@@ -551,18 +552,16 @@
             : (tip.Index + 1).ToString(CultureInfo.InvariantCulture);
 
     // Kept inside the frame, which clips. The box's size is estimated from its rows and its
-    // longest name (a row is 20px, a character about 6.5px), since it is not measured before it
-    // is drawn: below the pointer when that fits, else above, else pinned to the top.
+    // longest name (a row is 20px, a marker's 22, a character about 6.5px), since it is not
+    // measured before it is drawn: below the pointer when that fits, else above, else pinned to
+    // the top. TipMarkers keeps the rows few enough to fit.
     private string TooltipStyle(TooltipState tip)
     {
-        int rows = Series.Count
-            + Series.Count(s => s.HasBand && tip.Index < s.Low!.Count && tip.Index < s.High!.Count)
-            + (IsStacked && Series.Count > 1 ? 1 : 0)
-            + (Markers?.Count(m => m.Index == tip.Index) ?? 0);
+        var markers = TipMarkers(tip);
         int longest = Math.Max(TooltipLabel(tip).Length,
-            Math.Max(Series.Count > 0 ? Series.Max(s => s.Label.Length + 8) : 0, Markers is { Count: > 0 } ? Markers.Max(m => m.Label.Length) : 0));
+            Math.Max(Series.Count > 0 ? Series.Max(s => s.Label.Length + 8) : 0, markers.Count > 0 ? markers.Max(m => (m.Label?.Length ?? 12) + 6) : 0));
         double tipW = Math.Min(Math.Max(90, longest * 6.5 + 36), Math.Max(120, _containerWidth - 16));
-        double tipH = 30 + rows * 20;
+        double tipH = 30 + SeriesRows(tip) * 20 + markers.Count * MarkerRowHeight;
         // Beside the pointed column, never on it: to its right when the box fits there, else to
         // its left, and at the pointer's height, kept inside the frame. Above or below the pointer
         // it covered the columns and lines it describes, in a short chart every time.
@@ -572,6 +571,35 @@
         double left = tip.X + half + gap + tipW <= _containerWidth - 4 ? tip.X + half + gap : Math.Max(4, tip.X - half - gap - tipW);
         double top = Math.Max(4, Math.Min(tip.Y - tipH / 2, Height - tipH - 4));
         return $"left:{F(left)}px;top:{F(top)}px;";
+    }
+
+    // A marker row is a series row with 4px above it (.indx-chart-tooltip-marker).
+    private const double MarkerRowHeight = 22;
+
+    /// <summary>The tooltip's rows above the markers: each series, its range, the total.</summary>
+    private int SeriesRows(TooltipState tip) => Series.Count
+        + Series.Count(s => s.HasBand && tip.Index < s.Low!.Count && tip.Index < s.High!.Count)
+        + (IsStacked && Series.Count > 1 ? 1 : 0);
+
+    /// <summary>A point's markers as the tooltip lists them: one row per label with how many
+    /// times it happened, in the order they came, and no more rows than the frame has room for,
+    /// the last then saying how many were left out (a null label). Until Nov 2026 every marker
+    /// was a row, and a dataset woken twenty times in a day ran the box out of the frame,
+    /// which clips it.</summary>
+    private List<(string? Label, int Count)> TipMarkers(TooltipState tip)
+    {
+        var rows = new List<(string? Label, int Count)>();
+        if (Markers == null) return rows;
+        foreach (var group in Markers.Where(m => m.Index == tip.Index).GroupBy(m => m.Label))
+            rows.Add((group.Key, group.Count()));
+        int room = Math.Max(1, (int)((Height - 8 - 30 - SeriesRows(tip) * 20) / MarkerRowHeight));
+        if (rows.Count > room)
+        {
+            int kept = room - 1;
+            int left = rows.Skip(kept).Sum(r => r.Count);
+            rows = [.. rows.Take(kept), (null, left)];
+        }
+        return rows;
     }
 
     private void OnMouseMove(MouseEventArgs e)
