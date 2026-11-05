@@ -439,8 +439,12 @@ namespace IndxServer.Services.SearchOrAsk
 
             var started = Stopwatch.GetTimestamp();
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-            // The judge reads the results of the text as typed, the search the visitor's list made.
+            // The judge reads the results of the text as typed, and with whole words only where the
+            // page searches so while asking: the list it says found of is the list under the offer.
+            // Replayed 5 Nov 2026 on 1,944 generated texts, both lists: the offers moved on a handful
+            // either way, and the whole-words list held the right record more often on all four sets.
             var searched = text;
+            var wholeWords = settings.StrictCoverageWhileAsking;
             IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null, double? criteria = null,
                 double? finished = null, double? found = null)
             {
@@ -471,14 +475,14 @@ namespace IndxServer.Services.SearchOrAsk
             var site = SiteDescription(teamId, dataSetName, settings);
             var fields = Fields(settings, engine.GetFieldList());
             var cacheKey = string.Join('\0', teamId, dataSetName, settings.Kind, judge, site, fields.TitleField,
-                string.Join(',', fields.SectionFields), string.Join(',', fields.SnippetFields), Normalise(text));
+                string.Join(',', fields.SectionFields), string.Join(',', fields.SnippetFields), wholeWords ? "whole" : "", Normalise(text));
             if (_cache.TryGetValue(cacheKey, out var hit))
             {
                 // Only the console's tester asks for the state; a cached answer used to come back
                 // without one, and "What the judge was sent" was empty for a text tried before.
                 // The search only when someone reads it: the tester's state.
                 if (onState != null)
-                    onState(State(site, text, Search(engine, dataSetName, teamId, searched, fields)));
+                    onState(State(site, text, Search(engine, dataSetName, teamId, searched, fields, wholeWords: wholeWords)));
                 return new IntentOutcome(IntentStatus.Ok, Result(hit[SearchOrAskRecipes.Asking] ?? 0, hit[SearchOrAskRecipes.Answerable], true,
                     criteria: hit[SearchOrAskRecipes.Criteria], finished: hit[SearchOrAskRecipes.Finished], found: hit[SearchOrAskRecipes.Found]));
             }
@@ -489,7 +493,7 @@ namespace IndxServer.Services.SearchOrAsk
             if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget, prefetch ? settings.DailyCallBudget / 5 * 4 : null))
                 return new IntentOutcome(IntentStatus.BudgetSpent, RetryAfterSeconds: SecondsToUtcMidnight());
 
-            var searchedFor = Search(engine, dataSetName, teamId, searched, fields);
+            var searchedFor = Search(engine, dataSetName, teamId, searched, fields, wholeWords: wholeWords);
             var state = State(site, text, searchedFor);
             var questions = SearchOrAskRecipes.Questions(settings.Kind, judge);
             onState?.Invoke(state);
@@ -540,7 +544,7 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>What the search finds for a text, as the judge reads it, for the console's
         /// tester: the hits by title, section and snippet. No model call, so it costs nothing.</summary>
         public SearchSummary Results(string teamId, string dataSetName, IServerSearchEngine engine, string text, SearchOrAskSettings settings) =>
-            Search(engine, dataSetName, teamId, text, Fields(settings, engine.GetFieldList()));
+            Search(engine, dataSetName, teamId, text, Fields(settings, engine.GetFieldList()), wholeWords: settings.StrictCoverageWhileAsking);
 
         /// <summary>Runs the search the visitor's client already ran, here, so the judge sees the
         /// same results without the client sending results it could forge. Through the manager
@@ -551,13 +555,15 @@ namespace IndxServer.Services.SearchOrAsk
         /// kept one record on the docs, and not Licensing). The answer model reads the sources and
         /// decides what is relevant, so it gets the best ranked eight either way.</remarks>
         private static SearchSummary Search(IServerSearchEngine engine, string dataSetName, string teamId, string text,
-            SearchOrAskFields fields, int top = ResultsForJudge, bool truncate = true)
+            SearchOrAskFields fields, int top = ResultsForJudge, bool truncate = true, bool wholeWords = false)
         {
             var result = IndxServerInternalApi.Manager.Search(new QueryProxy
             {
                 Text = text,
                 MaxNumberOfRecordsToReturn = 10,
                 Mode = SearchMode.EditDistance,
+                // The page's matching while asking (intrface's STRICT_MATCH): no typo, prefix or joined words.
+                Match = wholeWords ? new MatchProxy { Tolerance = Tolerance.Exact, TypingPrefixFrom = 0, JoinedWords = false } : null,
                 // Not truncated: the rest below the counted (6.0; until then Truncate off).
                 Candidates = truncate ? null : new CandidateProxy { Rest = true },
                 // How each listed record's words were met, for the judge (Nov 2026): it reads the ten
