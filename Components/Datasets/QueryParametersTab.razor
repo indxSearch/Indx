@@ -21,16 +21,26 @@
 
     @* Each table has one column: a setting's name and help, and its control on the last line
        under them. The groups sit side by side where there is room, one under the other where
-       there is not. *@
+       there is not. On the front what an owner reaches for when a search feels wrong, the typos,
+       the word being typed and the result list; under Advanced how documents are fetched and the
+       ranking's weights, right as they are for nearly every dataset (Nov 2026: the typo lengths
+       were under Advanced, the mode and the candidates on the front). *@
     <ReadOnlyArea Editable="@Ctx.IsEditor">
     <div class="qp-groups">
-        <Table AriaLabel="Search" Class="qp-table">
-            @Head("Search")
+        <Table AriaLabel="Typos" Class="qp-table">
+            @Head("Typos")
             <tbody>
-                @ChoiceRow(ModeParam)
-                @BoolRow(RerankParam)
                 @ChoiceRow(ToleranceParam)
-                @foreach (var p in MatchingParams) { @BoolRow(p) }
+                @foreach (var p in TypoParams) { @IntRow(p) }
+                @BoolRow(RungsParam)
+            </tbody>
+        </Table>
+
+        <Table AriaLabel="Typing" Class="qp-table">
+            @Head("Typing")
+            <tbody>
+                @foreach (var p in TypingParams) { @IntRow(p) }
+                @BoolRow(JoinedWordsParam)
             </tbody>
         </Table>
 
@@ -38,7 +48,6 @@
             @Head("Result list")
             <tbody>
                 @foreach (var p in ResultParams) { @BoolRow(p) }
-                @foreach (var p in BoundParams) { @IntRow(p) }
             </tbody>
         </Table>
     </div>
@@ -47,17 +56,33 @@
     <div class="qp-advanced">
         <Button Variant="ghost" Size="micro" IconRight="@(ShowAdvanced ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)"
                 @onclick="() => _showAdvanced = !ShowAdvanced">Advanced</Button>
+        @if (!ShowAdvanced && FetchingChanged is { } changed)
+        {
+            @* The two biggest switches are out of sight here, so a changed one is said on the front. *@
+            <span class="qp-advanced-note">@changed</span>
+        }
     </div>
     @if (ShowAdvanced)
     {
         <ReadOnlyArea Editable="@Ctx.IsEditor">
-        <Table AriaLabel="Advanced" Class="qp-table">
-            @Head("Advanced")
-            <tbody>
-                @foreach (var p in AdvancedParams) { @IntRow(p) }
-                @foreach (var p in AdvancedBoolParams) { @BoolRow(p) }
-            </tbody>
-        </Table>
+        <div class="qp-groups">
+            <Table AriaLabel="Fetching" Class="qp-table">
+                @Head("Fetching")
+                <tbody>
+                    @ChoiceRow(ModeParam)
+                    @BoolRow(RerankParam)
+                    @foreach (var p in FetchingParams) { @IntRow(p) }
+                </tbody>
+            </Table>
+
+            <Table AriaLabel="Ranking weights" Class="qp-table">
+                @Head("Ranking weights")
+                <tbody>
+                    @foreach (var p in RankingParams) { @IntRow(p) }
+                    @foreach (var p in RankingBoolParams) { @BoolRow(p) }
+                </tbody>
+            </Table>
+        </div>
         </ReadOnlyArea>
     }
 
@@ -135,13 +160,27 @@
         [new("Exact", nameof(Tolerance.Exact)), new("One edit", nameof(Tolerance.OneEdit)), new("Two edits", nameof(Tolerance.TwoEdits))],
         p => p.Match?.Tolerance?.ToString(), (p, v) => M(p).Tolerance = v == null ? null : Enum.Parse<Tolerance>(v));
 
-    private static readonly BoolParam[] MatchingParams =
-    [
-        new("JoinedWords", "Joined and split words", "Matches words written together or apart, so \"head set\" finds \"headset\" and the other way round.",
-            MatchDefaults.JoinedWords, p => p.Match?.JoinedWords, (p, v) => M(p).JoinedWords = v),
+    private static readonly BoolParam RungsParam =
         new("Rungs", "Every typo level", "Counts the exact matches and those within one and two typos together, the exact first. Off, a search stops at the first level that finds anything.",
             MatchDefaults.Rungs == Rungs.All, p => p.Match?.Rungs is { } r ? r == Rungs.All : null,
-            (p, v) => M(p).Rungs = v is { } on ? (on ? Rungs.All : Rungs.Fewest) : null),
+            (p, v) => M(p).Rungs = v is { } on ? (on ? Rungs.All : Rungs.Fewest) : null);
+
+    private static readonly BoolParam JoinedWordsParam =
+        new("JoinedWords", "Joined and split words", "Matches words written together or apart, so \"head set\" finds \"headset\" and the other way round.",
+            MatchDefaults.JoinedWords, p => p.Match?.JoinedWords, (p, v) => M(p).JoinedWords = v);
+
+    private static readonly IntParam[] TypoParams =
+    [
+        new("oneEditFrom", "One typo from", "The shortest query word allowed one typo. 0 is never.",
+            MatchDefaults.OneEditFrom, 0, 64, p => p.Match?.OneEditFrom, (p, v) => M(p).OneEditFrom = v),
+        new("twoEditsFrom", "Two typos from", "The shortest query word allowed two typos. 0 is never.",
+            MatchDefaults.TwoEditsFrom, 0, 64, p => p.Match?.TwoEditsFrom, (p, v) => M(p).TwoEditsFrom = v),
+    ];
+
+    private static readonly IntParam[] TypingParams =
+    [
+        new("typingPrefixFrom", "Start of a word from", "The word being typed also finds longer words it starts, from this many characters. 0 is never.",
+            MatchDefaults.TypingPrefixFrom, 0, 64, p => p.Match?.TypingPrefixFrom, (p, v) => M(p).TypingPrefixFrom = v),
     ];
 
     private static readonly BoolParam[] ResultParams =
@@ -152,24 +191,18 @@
             CandidateDefaults.Rest, p => p.Candidates?.Rest, (p, v) => C(p).Rest = v),
     ];
 
-    private static readonly IntParam[] BoundParams =
+    private static readonly IntParam[] FetchingParams =
     [
-        new("candidatesPerRow", "Candidates per row", "How many documents are ranked for each row a search asks for, at least 100 and at most 5,000 in all.",
-            CandidateDefaults.CandidatesPerRow, 1, 1000, p => p.Candidates?.CandidatesPerRow, (p, v) => C(p).CandidatesPerRow = v),
         new("maxCandidates", "Candidates", "How many documents are ranked, in place of the rows times the candidates per row. Higher ranks more of a large match, and every search pays for it.",
             0, 1, QueryParameterResolution.MaxCandidates, p => p.Candidates?.MaxCandidates, (p, v) => C(p).MaxCandidates = v),
+        new("candidatesPerRow", "Candidates per row", "How many documents are ranked for each row a search asks for, at least 100 and at most 5,000 in all.",
+            CandidateDefaults.CandidatesPerRow, 1, 1000, p => p.Candidates?.CandidatesPerRow, (p, v) => C(p).CandidatesPerRow = v),
+        new("typingPrefixOneEditFrom", "Start of a word with a typo from", "The start of a word being typed, within one typo, from this many characters. 0 is never.",
+            MatchDefaults.TypingPrefixOneEditFrom, 0, 64, p => p.Match?.TypingPrefixOneEditFrom, (p, v) => M(p).TypingPrefixOneEditFrom = v),
     ];
 
-    private static readonly IntParam[] AdvancedParams =
+    private static readonly IntParam[] RankingParams =
     [
-        new("oneEditFrom", "One typo from", "The shortest query word allowed one typo. 0 is never.",
-            MatchDefaults.OneEditFrom, 0, 64, p => p.Match?.OneEditFrom, (p, v) => M(p).OneEditFrom = v),
-        new("twoEditsFrom", "Two typos from", "The shortest query word allowed two typos. 0 is never.",
-            MatchDefaults.TwoEditsFrom, 0, 64, p => p.Match?.TwoEditsFrom, (p, v) => M(p).TwoEditsFrom = v),
-        new("typingPrefixFrom", "Start of a word from", "The word being typed also finds longer words it starts, from this many characters. 0 is never.",
-            MatchDefaults.TypingPrefixFrom, 0, 64, p => p.Match?.TypingPrefixFrom, (p, v) => M(p).TypingPrefixFrom = v),
-        new("typingPrefixOneEditFrom", "Start of a word with a typo from", "That start within one typo, from this many characters. 0 is never.",
-            MatchDefaults.TypingPrefixOneEditFrom, 0, 64, p => p.Match?.TypingPrefixOneEditFrom, (p, v) => M(p).TypingPrefixOneEditFrom = v),
         new("share", "Reranking's share", "How much the reranking weighs against pattern recognition in the order, in percent.",
             Percent(RankingDefaults.Share) ?? 0, 0, 100, p => Percent(p.Ranking?.Share), (p, v) => R(p).Share = Share(v), "%"),
         new("typingShift", "Share moved while typing", "How much of the share moves to the start of words while the last word is being typed, in percent.",
@@ -180,11 +213,13 @@
             Percent(RankingDefaults.LongFieldWeightFloor) ?? 0, 0, 100, p => Percent(p.Ranking?.LongFieldWeightFloor), (p, v) => R(p).LongFieldWeightFloor = Share(v), "%"),
     ];
 
-    private static readonly BoolParam[] AdvancedBoolParams =
+    private static readonly BoolParam[] RankingBoolParams =
     [
         new("WholeQueryFloor", "Whole query first", "A document holding the whole query as typed ranks above one holding its words apart.",
             RankingDefaults.WholeQueryFloor, p => p.Ranking?.WholeQueryFloor, (p, v) => R(p).WholeQueryFloor = v),
     ];
+
+    private static readonly IntParam[] IntParams = [.. TypoParams, .. TypingParams, .. FetchingParams, .. RankingParams];
 
     /// <summary>"maxCandidates" → "MaxCandidates": the name as the C# API spells it, as the toggles show.</summary>
     private static string ParamName(IntParam p) => char.ToUpperInvariant(p.Key[0]) + p.Key[1..];
@@ -232,7 +267,7 @@
         _edit = from == null ? new() : JsonSerializer.Deserialize<DatasetQueryParameters>(Json(from), JsonOpts)!;
         _text.Clear();
         _textErrors.Clear();
-        foreach (var p in AdvancedParams.Concat(BoundParams))
+        foreach (var p in IntParams)
             _text[p.Key] = new NumberEntry { Text = p.Get(_edit)?.ToString() };
         _error = null;
     }
@@ -248,7 +283,21 @@
 
     private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _textErrors.Count > 0);
     private bool AnySet => QueryParameterResolution.SetNames(_edit).Count > 0;
-    private bool AdvancedSet => AdvancedParams.Any(p => p.Get(_edit) != null) || AdvancedBoolParams.Any(p => p.Get(_edit) != null);
+    private bool AdvancedSet => ModeParam.Get(_edit) != null || RerankParam.Get(_edit) != null
+        || FetchingParams.Concat(RankingParams).Any(p => p.Get(_edit) != null) || RankingBoolParams.Any(p => p.Get(_edit) != null);
+
+    /// <summary>The mode or the reranking as this dataset sets them, for the line beside a closed
+    /// Advanced; null while both are the engine's.</summary>
+    private string? FetchingChanged
+    {
+        get
+        {
+            var said = new List<string>();
+            if (ModeParam.Get(_edit) is { } mode) said.Add($"fetched with {mode}");
+            if (RerankParam.Get(_edit) is { } rerank) said.Add(rerank ? "reranked" : "not reranked");
+            return said.Count == 0 ? null : string.Join(", ", said);
+        }
+    }
     // Open by default when something in it is set, so a set value is never out of sight.
     private bool? _showAdvanced;
     private bool ShowAdvanced => _showAdvanced ?? AdvancedSet;

@@ -1,7 +1,7 @@
 .qp-tab { margin-top: 0; }
 .qp-intro { max-width: 640px; }
 ::deep .qp-table { max-width: 640px; margin-bottom: 24px; }
-/* Matching and Result list: two columns once each can have 380px, else one. Each table keeps
+/* The groups: side by side once each can have 380px, else one under the other. Each table keeps
    its own height; the shorter one does not stretch to match. */
 .qp-groups {
     display: grid;
@@ -24,5 +24,7 @@
 .qp-param-name { font: var(--text-sm); color: var(--lv7); }
 /* Keeps the restore button's place, so the row does not change height when a value is set. */
 .qp-restore-placeholder { display: inline-block; width: 28px; height: 28px; }
-.qp-advanced { margin-bottom: 8px; }
+.qp-advanced { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+/* The mode or the reranking changed while Advanced is closed. */
+.qp-advanced-note { font: var(--text-xs); color: var(--lv6); }
 .qp-error { color: var(--CSignal); font: var(--text-sm); margin-top: 10px; }
