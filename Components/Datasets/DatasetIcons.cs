@@ -23,6 +23,16 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> Fields = Of<Icons.Field>();
         /// <summary>Editing something in place: a field's profile (Nov 2026).</summary>
         public static readonly RenderFragment<int> Edit = Of<Icons.Compose>();
+        /// <summary>A field profile's typos at a glance (Nov 2026): ld0 a whole line, ld1 one gap, ld2 two.</summary>
+        public static RenderFragment<int> ForTolerance(Indx.Api.Tolerance t) => t switch
+        {
+            Indx.Api.Tolerance.Exact => Ld0,
+            Indx.Api.Tolerance.TwoEdits => Ld2,
+            _ => Ld1,
+        };
+        private static readonly RenderFragment<int> Ld0 = Of<Icons.Ld0>();
+        private static readonly RenderFragment<int> Ld1 = Of<Icons.Ld1>();
+        private static readonly RenderFragment<int> Ld2 = Of<Icons.Ld2>();
         public static readonly RenderFragment<int> Categories = Of<Icons.NodeTree>();   // the Trees pixl once it is published
         public static readonly RenderFragment<int> NeverSelected = Of<Icons.Ghost>();
         public static readonly RenderFragment<int> NeverPurchased = Of<Icons.EmptyBox>();

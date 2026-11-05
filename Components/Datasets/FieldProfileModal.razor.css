@@ -54,12 +54,18 @@
     color: var(--lv5);
 }
 
+.fp-steps > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
 .fp-steps > :nth-child(2) {
-    text-align: center;
+    justify-self: center;
 }
 
 .fp-steps > :last-child {
-    text-align: right;
+    justify-self: end;
 }
 
 .fp-step-on {

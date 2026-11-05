@@ -532,8 +532,11 @@
             return;
         }
         var current = FieldProfiles.ProfileOf(field, Profiles);
-        var options = FieldProfiles.All(Profiles).Select(p => new SelectField.SelectOption(p.Name, p.Id)).ToList();
-        if (current == null) options.Insert(0, new SelectField.SelectOption("Custom", CustomProfile));
+        // Each profile with its typos as an icon, so the column shows them from the top (Nov 2026).
+        var options = FieldProfiles.All(Profiles)
+            .Select(p => new SelectField.SelectOption(p.Name, p.Id) { Icon = DatasetIcons.ForTolerance(p.Tolerance) }).ToList();
+        if (current == null)
+            options.Insert(0, new SelectField.SelectOption("Custom", CustomProfile) { Icon = DatasetIcons.ForTolerance(FieldProfiles.FromField(field).Tolerance) });
         @* Every profile in the menu can be edited from there, chosen or not, and the field's own
            settings while it is Custom; "New profile" at its foot. *@
         <div class="indx-profile-cell">

@@ -21,7 +21,7 @@
             <div class="fp-steps">
                 @foreach (var t in Enum.GetValues<Tolerance>())
                 {
-                    <span class="@(t == _draft.Tolerance ? "fp-step-on" : null)">@t</span>
+                    <span class="@(t == _draft.Tolerance ? "fp-step-on" : null)">@DatasetIcons.ForTolerance(t)(14) @t</span>
                 }
             </div>
             <p class="fp-hint">@ToleranceAbout(_draft.Tolerance)</p>
