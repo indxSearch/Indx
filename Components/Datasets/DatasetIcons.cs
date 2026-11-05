@@ -87,6 +87,8 @@ namespace IndxServer.Components.Datasets
         // The Statistics tab's sections.
         public static readonly RenderFragment<int> TopQueries = Of<Icons.SearchQuery>();
         public static readonly RenderFragment<int> FuzzySearch = Of<Icons.FuzzySearch>();
+        /// <summary>Searches no record held every word of: Statistics' Partial matches (6 Nov 2026).</summary>
+        public static readonly RenderFragment<int> PartialSearch = Of<Icons.PartialSearch>();
         public static readonly RenderFragment<int> TopDocuments = Of<Icons.SortAscending>();
         public static readonly RenderFragment<int> Browsing = Of<Icons.InternetBrowser>();
         public static readonly RenderFragment<int> Changes = Of<Icons.Update>();

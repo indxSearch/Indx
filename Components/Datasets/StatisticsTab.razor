@@ -1,7 +1,7 @@
 ﻿@* The statistics dashboard for one dataset (Notes/statistics-design.md, "Presentation"):
    hero tiles for the window's totals and rates, one time-series chart (one axis - searches and
    selects share the unit), then one section at a time behind a tab bar, each with its own view
-   settings: top queries, fuzzy search, top documents, browsing and changes. All reads go
+   settings: top queries, partial matches, top documents, browsing and changes. All reads go
    through StatisticsStore (the N-tier rule: no SQL here), on a background thread. Document
    titles come from the engine WITHOUT waking it: FindEngine only, a hibernated dataset shows
    keys - never resolve an engine from a dashboard. *@
@@ -113,7 +113,7 @@ else
             <div class="stats-overview-block">
             <StatGroup Columns="@(HasConversions ? 5 : 4)" Class="stats-overview-tiles">
                 <Stat Label="Searches" LabelIcon="DatasetIcons.Search" Hint="Every search with text in the window, keystrokes collapsed."><ValueContent>@N(_overview.Searches)</ValueContent></Stat>
-                <Stat Label="Fuzzy finds" LabelIcon="DatasetIcons.FuzzySearch" Hint="Searches with typos too large for an exact match, where the visitor still chose a result fuzzy search found."><ValueContent>@N(_overview.UncoveredChosen)</ValueContent></Stat>
+                <Stat Label="Partial finds" LabelIcon="DatasetIcons.PartialSearch" Hint="Searches no record held every word of, where the visitor still chose one of the nearest results the search showed."><ValueContent>@N(_overview.UncoveredChosen)</ValueContent></Stat>
                 <Stat Label="Click-through" LabelIcon="DatasetIcons.ClickThrough" Hint="Share of searches that ended in a chosen result."><ValueContent>@Pct(_overview.ClickedSearches, _overview.Searches)</ValueContent></Stat>
                 <Stat Label="Avg. click position" LabelIcon="DatasetIcons.ClickPosition" Hint="Mean position of the chosen result. Lower means the right hit is nearer the top."><ValueContent>@AvgPos()</ValueContent></Stat>
                 @if (HasConversions)
@@ -332,23 +332,25 @@ else
 
         @if (_section == "fuzzy")
         {
-            @* What fuzzy search found that an exact match could not: coverage confirmed nothing, and
-               the visitor chose a result anyway. One of the things Indx does that others do not, so
-               the section leads with the finds; "All" adds the searches nothing was chosen from. *@
+            @* The searches no record held every word of (6.0: the fallback; a typo within the
+               tolerance is a match, so this is not "fuzzy" any more, the preview's Partial matches),
+               where the visitor chose one of the nearest anyway: what they meant, in words the
+               records do not have together. The section leads with those finds; "All" adds the
+               searches nothing was chosen from. Its id stays "fuzzy", for links to it. *@
             <div class="stats-view">
-                <SegmentedControl Items="FuzzyItems" Value="@(_fuzzyAll ? "all" : "selected")" ValueChanged="SetFuzzyView" AriaLabel="Fuzzy searches shown" />
+                <SegmentedControl Items="FuzzyItems" Value="@(_fuzzyAll ? "all" : "selected")" ValueChanged="SetFuzzyView" AriaLabel="Partial matches shown" />
                 @if (_listsLoading) { <span class="stats-view-busy" aria-live="polite"><Spinner Size="14" /> Loading…</span> }
             </div>
             <p class="stats-help">
-                @if (_fuzzyAll) { <text>Every search with typos too large for an exact match, the ones nothing was chosen from included.</text> }
-                else { <text>Searches with typos too large for an exact match, where fuzzy search still found what the visitor was looking for: @N(_overview.UncoveredChosen) of @N(_overview.Uncovered) such searches in this period.</text> }
+                @if (_fuzzyAll) { <text>Every search no record held every word of, the ones nothing was chosen from included.</text> }
+                else { <text>Searches no record held every word of, where the visitor still chose one of the nearest results: @N(_overview.UncoveredChosen) of @N(_overview.Uncovered) such searches in this period. Each is what someone meant in words the records do not have together: a synonym, a word the content lacks, or a misspelling past the typos allowed.</text> }
             </p>
             @if (_fuzzy.Count == 0)
             {
-                <p class="stats-empty">@(_fuzzyAll ? "Every search in this period had an exact or near-exact match." : "No fuzzy finds in this period.")</p>
+                <p class="stats-empty">@(_fuzzyAll ? "Every search in this period found records holding every word." : "No partial finds in this period.")</p>
             }
             else {
-            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Fuzzy search" Class="stats-table">
+            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Partial matches" Class="stats-table">
                 <thead><tr><th>Query</th><th class="stats-num">Searches</th><th class="stats-num">Chosen</th><th>Most chosen result</th></tr></thead>
                 <tbody>
                     @foreach (var q in _fuzzy)
@@ -972,7 +974,7 @@ else
     [
         new("Overview", "overview", DatasetIcons.Statistics),
         new("Top queries", "queries", DatasetIcons.TopQueries),
-        new("Fuzzy search", "fuzzy", DatasetIcons.FuzzySearch),
+        new("Partial matches", "fuzzy", DatasetIcons.PartialSearch),
         new("Top documents", "documents", DatasetIcons.TopDocuments),
         .. SearchOrAskSection,
         new("Browsing", "browsing", DatasetIcons.Browsing),

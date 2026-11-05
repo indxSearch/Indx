@@ -1,7 +1,8 @@
 @* Per-dataset ranking rules, boost and bury in one list (Nov 2026; two tabs of this component from
    25 Oct 2026). Each rule's strength is one scale from Bury high to Boost high, so a rule changes
    direction by its slider; the rules are still kept apart where they are stored (BoostRuleStore,
-   BuryRuleStore) and searched (enableBoost, enableBury), as the HTTP API has them. The condition
+   BuryRuleStore), as the HTTP API has them. They apply to every search (6.0; until then only to
+   one sent with enableBoost or enableBury). The condition
    builder reads the *edited* field configuration from the context, so an unsaved Filterable toggle
    in the Fields tab immediately changes what can be picked here. *@
 @using IndxServer.Models
@@ -16,7 +17,7 @@
 
 <div class="boost-tab">
     <p class="boost-intro">
-        Ranking rules that lift matching documents, or bury them, when a search runs with <code>enableBoost</code> or <code>enableBury</code>. Conditions use filterable fields; rules stack.
+        Ranking rules lift matching documents, or bury them, in every search of this dataset. Conditions use filterable fields; rules stack.
     </p>
 
     @{ var fieldOpts = FieldOptions(); }

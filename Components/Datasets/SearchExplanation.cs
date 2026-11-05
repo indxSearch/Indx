@@ -84,7 +84,7 @@ namespace IndxServer.Components.Datasets
                 }
             }
             if (result.Count > result.Ranked)
-                notes.Add($"The best {result.Ranked:N0} of the {result.Count:N0} were ranked: the candidate bound. The rest are counted, and in the facets, but not ordered.");
+                notes.Add($"{result.Ranked:N0} of the {result.Count:N0} were ranked: the candidate bound, taken by BM25F, the records holding a word itself before those met only by its start. The others are counted, and in the facets, but cannot come into the list. Candidates under Query parameters ranks more.");
             return new Summary(headline, levels, notes);
         }
 

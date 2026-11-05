@@ -30,7 +30,7 @@
                     <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
                     <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Filter bitsets are pre-computed at load time for faster filtering on large datasets.">PreloadFilters</span></th>
                 }
-                <th class="@(ShowAdvanced ? "indx-col-num" : "indx-col-weight")"><span class="indx-th-tip" data-tooltip="Relevance weight for this field (recommended range 0.5–3.0). Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0.">Weight</span></th>
+                <th class="@(ShowAdvanced ? "indx-col-num" : "indx-col-weight")"><span class="indx-th-tip" data-tooltip="BM25F's weight for this field: it decides which records are candidates and most of their order. The reranker's weight is the profile's RerankWeight. Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0, from 0.5 to 3.0.">Weight</span></th>
                 @if (ShowAdvanced)
                 {
                     <th class="indx-col-num"><span class="indx-th-tip" data-tooltip="Length normalisation (0–1). Higher values penalise longer fields more.">BM25b</span></th>

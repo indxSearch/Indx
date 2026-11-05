@@ -205,9 +205,9 @@
     [
         new("share", "Reranking's share", "How much the reranking weighs against pattern recognition in the order, in percent.",
             Percent(RankingDefaults.Share) ?? 0, 0, 100, p => Percent(p.Ranking?.Share), (p, v) => R(p).Share = Share(v), "%"),
-        new("typingShift", "Share moved while typing", "How much of the share moves to the start of words while the last word is being typed, in percent.",
+        new("typingShift", "Share moved while typing", "How far the share moves towards the reranker while the last word is being typed, in percent: the reranker reads where a word starts, which is what is being typed.",
             Percent(RankingDefaults.TypingShift) ?? 0, 0, 100, p => Percent(p.Ranking?.TypingShift), (p, v) => R(p).TypingShift = Share(v), "%"),
-        new("longFieldFrom", "Long field from", "A field with more words than this counts for less, down to the floor below. 0 is never.",
+        new("longFieldFrom", "Long field from", "A field longer on average than this many characters counts for less in the reranker, down to the floor below. 0 is never.",
             RankingDefaults.LongFieldFrom, 0, 100_000, p => p.Ranking?.LongFieldFrom, (p, v) => R(p).LongFieldFrom = v),
         new("longFieldWeightFloor", "Long field floor", "The least a long field counts for, in percent of its weight.",
             Percent(RankingDefaults.LongFieldWeightFloor) ?? 0, 0, 100, p => Percent(p.Ranking?.LongFieldWeightFloor), (p, v) => R(p).LongFieldWeightFloor = Share(v), "%"),

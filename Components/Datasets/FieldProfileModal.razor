@@ -169,11 +169,11 @@
     private static string ToleranceAbout(Tolerance t) => t switch
     {
         Tolerance.Exact => "No typos: words must match as written. For codes, numbers and long text, where a typo confirms the wrong record.",
-        Tolerance.TwoEdits => "Two typos, from six letters. For titles and names people misspell.",
-        _ => "One typo: a letter added, dropped or changed, or two neighbours swapped. From three letters.",
+        Tolerance.TwoEdits => "Two typos, from six letters by default. For titles and names people misspell.",
+        _ => "One typo: a letter added, dropped or changed, or two neighbours swapped. From three letters by default.",
     };
 
-    private const string ToleranceHelp = "Field.Tolerance: how far a typed word may be from the word in the field. Exact: \"poter\" does not match Potter. OneEdit: it does, one letter is missing. TwoEdits: \"ashwaghanda\" matches ashwagandha. One edit from three letters, two from six. A search may lower it, never raise it.";
+    private const string ToleranceHelp = "Field.Tolerance: how far a typed word may be from the word in the field. Exact: \"poter\" does not match Potter. OneEdit: it does, one letter is missing. TwoEdits: \"ashwaghanda\" matches ashwagandha. One edit from three letters and two from six by default; the dataset's query parameters can move both. A search may lower it, never raise it.";
     private const string RerankWeightHelp = "Field.RerankWeight: how much a match here counts when the results are reordered, against the heaviest searched field, so only the ratios matter: title 1 and text 0.5 is the same as 4 and 2. With those, \"dark knight\" in a title ranks above the same words in a description. 0 leaves the fields out of the reranker and the word lookup.";
     private const string PatternHelp = "How PatternMatching cuts the text into pieces. A field with PatternMatching on is scored by pieces of its words as well as whole words. That score orders the records inside each typo level, blended with the reranker's score, and brings records in for the fallback, Rest and Bm25f mode. In the default mode it does not decide on its own which records match.";
     private const string IndexSizesHelp = "The piece lengths. 3: \"potter\" gives pot, ott, tte, ter. 2 and 3 adds po, ot, tt, te, er, so short and partial values score better, at about twice the memory.";

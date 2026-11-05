@@ -577,7 +577,7 @@ else
     /// <summary>What a headline means, on hover: the level it names is the one marked below.</summary>
     private static string HeadlineTitle(string headline) => headline switch
     {
-        "Strong matches" => "Every word is found as typed.",
+        "Strong matches" => "Every word is found as typed, the word still being typed also as the start of a longer one.",
         "Fuzzy matches" => "Every word is found, some of them within a typo.",
         "Partial matches" => "Some of the words: no record holds them all.",
         "Pattern matches" => "Only parts of words matched: none of the words was found.",
