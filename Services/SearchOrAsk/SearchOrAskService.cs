@@ -31,7 +31,13 @@ namespace IndxServer.Services.SearchOrAsk
         bool Cached, long Ms, string? Reason = null, double? Criteria = null, bool CutWhileAsking = true,
         double CutShareOfTop = 0.5, double CutTopFloor = 0.2, bool StrictCoverageWhileAsking = true, string FiltersWhileTyping = "off",
         string? SearchText = null, bool RefocusWhileTyping = true, bool InviteOnAskPhrase = true,
-        string Mode = SearchOrAskSettings.ModeSoft, double? Finished = null);
+        string Mode = SearchOrAskSettings.ModeSoft, double? Finished = null)
+    {
+        /// <summary>The console's refocus experiment: the search the judge chose for the list, when
+        /// it was asked (<see cref="SearchOrAskRefocus"/>). Never set for a visitor.</summary>
+        [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+        public RefocusPick? Refocus { get; init; }
+    }
 
     /// <summary>One source handed to the answer model, as the visitor's client sees it.</summary>
     public sealed record AskSource(int N, long DocumentKey, string Title);
@@ -424,11 +430,12 @@ namespace IndxServer.Services.SearchOrAsk
         /// (27 Oct 2026): it fills the cache, so the pause's own call answers at once, and is not a
         /// judgement in the statistics, since the visitor may type on before it is shown. It has a
         /// rate limit of its own beside the pause's, and leaves the day's last fifth of the budget
-        /// to the pauses.</summary>
+        /// to the pauses. <c>refocus</c>, the console's experiment only, asks the judge in the same
+        /// call which of a few searches the list should show (<see cref="SearchOrAskRefocus"/>).</summary>
         public async Task<IntentOutcome> IntentAsync(string teamId, string dataSetName, IServerSearchEngine engine,
             string text, string clientAddress, CancellationToken ct,
             SearchOrAskSettings? trial = null, Action<JsonObject>? onState = null, SearchOrAskOrigin? origin = null,
-            bool prefetch = false)
+            bool prefetch = false, bool refocus = false)
         {
             if (!JudgeAvailable) return new IntentOutcome(IntentStatus.Unavailable);
             var settings = trial ?? Settings(teamId, dataSetName);
@@ -451,11 +458,11 @@ namespace IndxServer.Services.SearchOrAsk
             string? askPhrase = taken.Count > 0 ? string.Join(' ', taken) : null;
             int? focusedHits = null;
             IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null, double? criteria = null,
-                double? finished = null)
+                double? finished = null, RefocusPick? pick = null)
             {
                 var result = new IntentResult(p, answerable, settings.OfferFor(judge, p, criteria), settings.Thresholds.Resolved(settings.Kind, judge), cached, Ms(), reason, criteria,
                     settings.CutWhileAsking, settings.CutShareOfTop, settings.CutTopFloor, settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping, searchText,
-                    settings.RefocusWhileTyping, settings.InviteOnAskPhrase, EffectiveMode(teamId, dataSetName, settings), finished);
+                    settings.RefocusWhileTyping, settings.InviteOnAskPhrase, EffectiveMode(teamId, dataSetName, settings), finished) { Refocus = pick };
                 // A judgement is recorded once the judge or its cache answered for it, a failing
                 // judge included (its reason says so); an identifier never reaches here. A prefetch
                 // is not: the pause that follows is recorded, from the cache it filled.
@@ -480,7 +487,11 @@ namespace IndxServer.Services.SearchOrAsk
             var site = SiteDescription(teamId, dataSetName, settings);
             var fields = Fields(settings, engine.GetFieldList());
             var cacheKey = string.Join('\0', teamId, dataSetName, settings.Kind, judge, site, fields.TitleField,
-                string.Join(',', fields.SectionFields), string.Join(',', fields.SnippetFields), Normalise(text));
+                string.Join(',', fields.SectionFields), string.Join(',', fields.SnippetFields), Normalise(text), refocus ? "refocus" : "");
+            // The searches the judge chooses between, the same for the same text, so a cached answer
+            // still names one of them.
+            var candidates = refocus ? RefocusCandidates(engine, dataSetName, teamId, searched) : null;
+            RefocusPick? Pick(JudgeAnswer answer) => candidates == null ? null : ChosenSearch(dataSetName, teamId, candidates, n => answer[n]);
             if (_cache.TryGetValue(cacheKey, out var hit))
             {
                 // Only the console's tester asks for the state; a cached answer used to come back
@@ -493,7 +504,7 @@ namespace IndxServer.Services.SearchOrAsk
                     onState?.Invoke(State(site, text, found));
                 }
                 return new IntentOutcome(IntentStatus.Ok, Result(hit[SearchOrAskRecipes.Asking] ?? 0, hit[SearchOrAskRecipes.Answerable], true,
-                    criteria: hit[SearchOrAskRecipes.Criteria], finished: hit[SearchOrAskRecipes.Finished]));
+                    criteria: hit[SearchOrAskRecipes.Criteria], finished: hit[SearchOrAskRecipes.Finished], pick: Pick(hit)));
             }
 
             using (var lease = _intentLimiter.AttemptAcquire(prefetch ? clientAddress + "\0prefetch" : clientAddress))
@@ -505,17 +516,24 @@ namespace IndxServer.Services.SearchOrAsk
             var searchedFor = Search(engine, dataSetName, teamId, searched, fields);
             if (askPhrase != null) focusedHits = searchedFor.Hits;
             var state = State(site, text, searchedFor);
+            var questions = SearchOrAskRecipes.Questions(settings.Kind, judge);
+            if (candidates != null)
+            {
+                // In the same call: measured, the asking score moves 0.01 to 0.025 with them beside it.
+                state["candidates"] = SearchOrAskRefocus.State(candidates, c => Search(engine, dataSetName, teamId, c.Text, fields, mode: c.Mode).Top);
+                foreach (var (name, question) in SearchOrAskRefocus.Questions(candidates)) questions[name] = question;
+            }
             onState?.Invoke(state);
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
             timeout.CancelAfter(_options.JudgeTimeoutMs);
             try
             {
-                var answer = await _models.JudgeAsync(state, SearchOrAskRecipes.Questions(settings.Kind, judge), timeout.Token);
+                var answer = await _models.JudgeAsync(state, questions, timeout.Token);
                 if (_cache.Count > MaxCached) _cache.Clear();
                 _cache[cacheKey] = answer;
                 Succeeded("judge");
                 return new IntentOutcome(IntentStatus.Ok, Result(answer[SearchOrAskRecipes.Asking] ?? 0, answer[SearchOrAskRecipes.Answerable], false,
-                    cost: answer.Cost, criteria: answer[SearchOrAskRecipes.Criteria], finished: answer[SearchOrAskRecipes.Finished]));
+                    cost: answer.Cost, criteria: answer[SearchOrAskRecipes.Criteria], finished: answer[SearchOrAskRecipes.Finished], pick: Pick(answer)));
             }
             // A judge that is slow, out of credit or down means no offer, never a failed search:
             // p = 0 with the reason, and the search the visitor already has is untouched.
@@ -552,8 +570,71 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>What the search finds for a text, as the judge reads it, for the console's
         /// tester: the hits by title, section and snippet. No model call, so it costs nothing.</summary>
-        public SearchSummary Results(string teamId, string dataSetName, IServerSearchEngine engine, string text, SearchOrAskSettings settings) =>
-            Search(engine, dataSetName, teamId, SearchTextFor(text, settings), Fields(settings, engine.GetFieldList()));
+        public SearchSummary Results(string teamId, string dataSetName, IServerSearchEngine engine, string text, SearchOrAskSettings settings,
+            SearchMode mode = SearchMode.EditDistance) =>
+            Search(engine, dataSetName, teamId, SearchTextFor(text, settings), Fields(settings, engine.GetFieldList()), mode: mode);
+
+        /// <summary>What one search finds, its text searched as it stands: the refocus experiment's
+        /// chosen search, for the console's tester.</summary>
+        public SearchSummary ResultsOf(string teamId, string dataSetName, IServerSearchEngine engine, string searched, SearchMode mode,
+            SearchOrAskSettings settings) =>
+            Search(engine, dataSetName, teamId, searched, Fields(settings, engine.GetFieldList()), mode: mode);
+
+        // ── Refocusing with the judge: the console's experiment (SearchOrAskRefocus) ─────────────
+
+        /// <summary>How many records hold every word of a text: the exact count, as a word's
+        /// informativeness is read.</summary>
+        private static int CountOf(string dataSetName, string teamId, string text)
+        {
+            var r = IndxServerInternalApi.Manager.Search(new QueryProxy { Text = text, MaxNumberOfRecordsToReturn = 1, Mode = SearchMode.EditDistance },
+                dataSetName, teamId);
+            return r.ToleranceCounts?.Exact ?? r.Count;
+        }
+
+        /// <summary>The keys a search lists, at most ten, best first.</summary>
+        public static IReadOnlyList<long> Ranked(string teamId, string dataSetName, string searched, SearchMode mode) =>
+            (IndxServerInternalApi.Manager.Search(new QueryProxy { Text = searched, MaxNumberOfRecordsToReturn = 10, Mode = mode }, dataSetName, teamId)
+                .Records ?? []).Select(r => r.DocumentKey).ToList();
+
+        private static List<RefocusCandidate> RefocusCandidates(IServerSearchEngine engine, string dataSetName, string teamId, string searched) =>
+            SearchOrAskRefocus.Candidates(searched, t => CountOf(dataSetName, teamId, t), engine.Status.DocumentCount);
+
+        private static RefocusPick ChosenSearch(string dataSetName, string teamId, IReadOnlyList<RefocusCandidate> candidates, Func<string, double?> score)
+        {
+            var chosen = SearchOrAskRefocus.Choose(candidates, score);
+            return new RefocusPick(chosen.Text, chosen.Mode, score(SearchOrAskRefocus.Prefix + chosen.Name),
+                score(SearchOrAskRefocus.Prefix + SearchOrAskRefocus.Kept), chosen.Name != SearchOrAskRefocus.Kept,
+                Ranked(teamId, dataSetName, chosen.Text, chosen.Mode));
+        }
+
+        /// <summary>The refocus experiment on one question, for the console's test set: the judge asked
+        /// only which search holds what is asked, one call off the day's budget. Null with a reason
+        /// when no call could be made or the judge failed.</summary>
+        public async Task<(RefocusPick? Pick, string? Reason)> RefocusAsync(string teamId, string dataSetName, IServerSearchEngine engine,
+            string text, SearchOrAskSettings settings, CancellationToken ct)
+        {
+            if (!JudgeAvailable) return (null, "Needs the instance's model key.");
+            if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget)) return (null, "Today's budget is spent.");
+            var searched = SearchTextFor(text, settings);
+            var fields = Fields(settings, engine.GetFieldList());
+            var candidates = RefocusCandidates(engine, dataSetName, teamId, searched);
+            var state = new JsonObject
+            {
+                ["site"] = SiteDescription(teamId, dataSetName, settings),
+                ["request"] = text,
+                ["candidates"] = SearchOrAskRefocus.State(candidates, c => Search(engine, dataSetName, teamId, c.Text, fields, mode: c.Mode).Top),
+            };
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(_options.JudgeTimeoutMs * 3);
+            try
+            {
+                var answer = await _models.JudgeAsync(state, SearchOrAskRefocus.Questions(candidates), timeout.Token);
+                return (ChosenSearch(dataSetName, teamId, candidates, n => answer[n]), null);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return (null, "The judge did not answer in time."); }
+            catch (SearchOrAskModelException ex) { return (null, ex.Message); }
+            catch (HttpRequestException ex) { return (null, ex.Message); }
+        }
 
         /// <summary>What the list searches for a typed text: what the question is about, its Ask
         /// phrases taken off, while <see cref="SearchOrAskSettings.RefocusWhileTyping"/> is on; else
@@ -570,13 +651,13 @@ namespace IndxServer.Services.SearchOrAsk
         /// kept one record on the docs, and not Licensing). The answer model reads the sources and
         /// decides what is relevant, so it gets the best ranked eight either way.</remarks>
         private static SearchSummary Search(IServerSearchEngine engine, string dataSetName, string teamId, string text,
-            SearchOrAskFields fields, int top = ResultsForJudge, bool truncate = true)
+            SearchOrAskFields fields, int top = ResultsForJudge, bool truncate = true, SearchMode mode = SearchMode.EditDistance)
         {
             var result = IndxServerInternalApi.Manager.Search(new QueryProxy
             {
                 Text = text,
                 MaxNumberOfRecordsToReturn = 10,
-                Mode = SearchMode.EditDistance,
+                Mode = mode,
                 // Not truncated: the rest below the counted (6.0; until then Truncate off).
                 Candidates = truncate ? null : new CandidateProxy { Rest = true },
                 // How each listed record's words were met, for the judge (Nov 2026): it reads the ten

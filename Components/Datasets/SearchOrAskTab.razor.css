@@ -77,6 +77,11 @@
 }
 .soa-try-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 2px; }
 /* The owner's mark for the test set, under the judge's scores. */
+/* The refocus experiment's two lists, one above the other. */
+.soa-try-list { display: flex; flex-direction: column; gap: 4px; }
+.soa-try-list + .soa-try-list { padding-top: 8px; border-top: 1px solid var(--lv2); }
+.soa-try-list-head { font: var(--text-xs); font-weight: var(--med); color: var(--lv7); }
+.soa-measure-totals { display: flex; flex-direction: column; gap: 2px; padding-top: 6px; border-top: 1px solid var(--lv2); }
 .soa-try-mark { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 8px; border-top: 1px solid var(--lv2); }
 /* The test set under Try it, drawn as the tester is: a panel of its own in the same column. */
 .soa-testset {
