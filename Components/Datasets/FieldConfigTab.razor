@@ -15,7 +15,7 @@
     <FieldConfigToolbar @bind-Filter="_filter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced">
         @if (Ctx.IsEditor && Ctx.EditedFields != null)
         {
-            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Sliders" @onclick="() => _managing = true">Profile manager</Button>
+            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Profiles" @onclick="() => _managing = true">Profile manager</Button>
         }
         <ObservrPageAction Label="Review my setup" OnClick="ReviewInAgent" Disabled="@Ctx.IsDirty" />
     </FieldConfigToolbar>

@@ -23,6 +23,8 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> Fields = Of<Icons.Field>();
         /// <summary>Editing something in place: a field's profile (Nov 2026).</summary>
         public static readonly RenderFragment<int> Edit = Of<Icons.Compose>();
+        /// <summary>The profile manager (Nov 2026).</summary>
+        public static readonly RenderFragment<int> Profiles = Of<Icons.FieldProfileTemplate>();
         /// <summary>A field profile's typos at a glance (Nov 2026): ld0 a whole line, ld1 one gap, ld2 two.</summary>
         public static RenderFragment<int> ForTolerance(Indx.Api.Tolerance t) => t switch
         {
