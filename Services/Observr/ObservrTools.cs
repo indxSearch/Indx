@@ -247,7 +247,7 @@ namespace IndxServer.Services.Observr
             if (outcome.Result is { } j)
             {
                 var offer = j.Offer switch { "strong" => "the full offer to answer", "invite" => "the quieter \"Ask about this\"", _ => "no offer: the results and nothing more" };
-                sb.AppendLine($"The judge: question {N(j.P)}{(j.Criteria is { } c ? $", description {N(c)}" : "")}{(j.Answerable is { } a ? $", answerable {N(a)}" : "")}{(j.Reason != null ? $" ({j.Reason})" : "")}. The visitor would get {offer}.");
+                sb.AppendLine($"The judge: question {N(j.P)}{(j.Criteria is { } c ? $", description {N(c)}" : "")}{(j.Answerable is { } a ? $", answerable {N(a)}" : "")}{(j.Found is { } fd ? $", found in the results {N(fd)}" : "")}{(j.Reason != null ? $" ({j.Reason})" : "")}. The visitor would get {offer}.");
             }
             else sb.AppendLine($"The judge did not answer: {outcome.Status}.");
             return sb.ToString();

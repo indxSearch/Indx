@@ -356,6 +356,7 @@
                                 @if (j.Criteria is { } c) { @Score("description", DescriptionHelp, c, [new(j.Thresholds.Strong!.Value, "Answer offer")]) }
                                 @if (j.Finished is { } f) { @Score("finished", FinishedHelp, f, [new(j.Thresholds.Finished, "Full offer from")]) }
                                 @if (j.Answerable is { } a) { @Score("answerable", AnswerableHelp, a, []) }
+                                @if (j.Found is { } fd) { @Score("found", FoundHelp, fd, []) }
                                 <Tooltip Content="@(j.Cached ? "The judge answered this text before; the cached answer, no call made." : "How long the judge took. A visitor's page waits at most 3 seconds.")">@(j.Cached ? "cached" : $"{j.Ms} ms")</Tooltip>
                                 @if (j.Reason is { } why) { <text> · @why</text> }
                             </span>
@@ -950,6 +951,8 @@
         "or asks for a recommendation of a kind. At the full offer's Show from it earns the offer, since the catalogue answers it with filters and a summary.";
     private const string AnswerableHelp = "Whether the results on the page could answer it: one of them holds what is asked closely enough to write from. " +
         "It does not decide the offer; the statistics use it to show offers the records could not answer.";
+    private const string FoundHelp = "Whether what the visitor asks about is among the results on the page, even when none of them holds the answer. " +
+        "Low under an answer offer: the list only shares words with the question. It does not decide the offer.";
 
     private static RenderFragment Score(string label, string help, double value, IReadOnlyList<ScoreMeter.Mark> marks) => __builder =>
     {

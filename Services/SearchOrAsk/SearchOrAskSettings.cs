@@ -59,13 +59,11 @@ namespace IndxServer.Services.SearchOrAsk
         public string OfferFor(string? judge, double p, double? criteria = null, double? finished = null) =>
             Thresholds.Resolved(Kind, judge).OfferFor(p, criteria, finished) is var offer && Mode == ModeStrict && offer == "invite" ? "none" : offer;
 
-        /// <summary>Always false: "Strong matches only" (cutWhileAsking, cutShareOfTop, cutTopFloor)
-        /// was removed 5 Nov 2026. It kept the counted results only, and a question is nearly always a
-        /// fallback with none counted: on 1,944 generated texts it emptied the list under 666 of 678
-        /// strong offers on questions, 362 of them with the right record in the top five
-        /// (Notes/search-or-ask.md, "Strong matches only, removed"). Published intrface reads a missing value as on, so the server still says
-        /// off; a client that sends the old settings is not refused, and they are not kept.</summary>
-        public bool CutWhileAsking => false;
+        // "Strong matches only" (cutWhileAsking, cutShareOfTop, cutTopFloor) was removed 5 Nov 2026.
+        // It kept the counted results only, and a question is nearly always a fallback with none
+        // counted: on 1,944 generated texts it emptied the list under 666 of 678 strong offers on
+        // questions, 362 of them with the right record in the top five (Notes/search-or-ask.md,
+        // "Strong matches only, removed"). A client that sends the old settings is not refused.
 
         /// <summary>While asking, the page's own searches run with coverage on whole words only (no
         /// fuzzy, prefix or joined matching, words of three letters or more), and the list is

@@ -33,6 +33,21 @@ namespace IndxServer.Services.SearchOrAsk
         /// requests 0.71 to 0.93, the same cut off mid-sentence 0.06 to 0.38, in Norwegian and English,
         /// "hvem driver" 0.43 the one between. No word list: the judge reads any language.</summary>
         public const string Finished = "finished";
+        /// <summary>Is what the visitor asks about among the results, answer or not? Measured 5 Nov
+        /// 2026 on four generated sets (JevProbe/search-or-ask/believe): on the questions offered for,
+        /// it told a list with the right record in the top five from one without at 0.92 to 1.00
+        /// (area under the curve), where <see cref="Answerable"/> is 0.89 to 0.96 and dims the
+        /// school register's right lists ("hvor mange ansatte har frogner skole" is 0.13 with the
+        /// school first: the count is not in what the judge reads). Below 0.3 it dimmed 7 of 370
+        /// right lists. Jev's wording only: the Decisions API is not asked it until it is measured.</summary>
+        public const string Found = "found";
+
+        private static JsonObject FoundQuestion(string thing) => Noul(
+            "`request` is what a visitor has typed so far into the search field of `site`, and `search.results` are " +
+            $"what the search found for it. Is the {thing} the visitor is asking about, or looking for, among these results?",
+            $"One of the results is the {thing} the visitor asks about, names or describes, even if the result does not " +
+            "hold the answer itself.",
+            $"None of the results is that {thing}: they only share some words with the request.");
 
         private static JsonObject FinishedQuestion() => Noul(
             "`request` is what a visitor has typed so far into the search field of `site`, and may still be typing. " +
@@ -51,8 +66,11 @@ namespace IndxServer.Services.SearchOrAsk
         {
             var questions = JevQuestions(kind);
             if (judge == SearchOrAskProviders.OpenAiDecisions)
+            {
                 foreach (var (name, question) in DecisionsQuestions(kind))
                     questions[name] = question;
+                questions.Remove(Found);
+            }
             return questions;
         }
 
@@ -109,6 +127,7 @@ namespace IndxServer.Services.SearchOrAsk
                     "be written from them.",
                     "None of the results covers it, or the visitor is not asking anything that needs an answer."),
                 [Finished] = FinishedQuestion(),
+                [Found] = FoundQuestion("page"),
             },
             Catalogue => new()
             {
@@ -141,6 +160,7 @@ namespace IndxServer.Services.SearchOrAsk
                     "be written from it.",
                     "None of the results holds it, or the visitor is not asking anything that needs an answer."),
                 [Finished] = FinishedQuestion(),
+                [Found] = FoundQuestion("item"),
             },
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Unknown Search or ask kind."),
         };

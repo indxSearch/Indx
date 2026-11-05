@@ -22,15 +22,16 @@ namespace IndxServer.Services.SearchOrAsk
     /// the thresholds. A client that keeps what it has shown applies the thresholds itself (enter
     /// at one value, leave below the lower), which is why they travel with every answer.
     /// <c>reason</c> says why the judge was not asked or did not answer: identifier, timeout,
-    /// failed (with the provider's status). <c>cutWhileAsking</c> is always false, for published
-    /// clients that read a missing value as on (<see cref="SearchOrAskSettings.CutWhileAsking"/>).
+    /// failed (with the provider's status). <c>found</c> is the judge's probability that what the
+    /// visitor asks about is among the results, so a page can tell a list worth showing under a
+    /// strong offer from one that only shares words with the question; null from a judge not asked it.
     /// </summary>
     /// <summary><c>Criteria</c>, for a catalogue: the probability the visitor describes what to list,
     /// which the page turns into filters (POST filters) when it reaches the strong threshold.</summary>
     public sealed record IntentResult(double P, double? Answerable, string Offer, SearchOrAskThresholds Thresholds,
-        bool Cached, long Ms, string? Reason = null, double? Criteria = null, bool CutWhileAsking = false,
+        bool Cached, long Ms, string? Reason = null, double? Criteria = null,
         bool StrictCoverageWhileAsking = true, string FiltersWhileTyping = "off",
-        string Mode = SearchOrAskSettings.ModeSoft, double? Finished = null);
+        string Mode = SearchOrAskSettings.ModeSoft, double? Finished = null, double? Found = null);
 
     /// <summary>One source handed to the answer model, as the visitor's client sees it.</summary>
     public sealed record AskSource(int N, long DocumentKey, string Title);
@@ -441,11 +442,11 @@ namespace IndxServer.Services.SearchOrAsk
             // The judge reads the results of the text as typed, the search the visitor's list made.
             var searched = text;
             IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null, double? criteria = null,
-                double? finished = null)
+                double? finished = null, double? found = null)
             {
                 var result = new IntentResult(p, answerable, settings.OfferFor(judge, p, criteria, finished), settings.Thresholds.Resolved(settings.Kind, judge), cached, Ms(), reason, criteria,
-                    settings.CutWhileAsking, settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping,
-                    EffectiveMode(teamId, dataSetName, settings), finished);
+                    settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping,
+                    EffectiveMode(teamId, dataSetName, settings), finished, found);
                 // A judgement is recorded once the judge or its cache answered for it, a failing
                 // judge included (its reason says so); an identifier never reaches here. A prefetch
                 // is not: the pause that follows is recorded, from the cache it filled.
@@ -479,7 +480,7 @@ namespace IndxServer.Services.SearchOrAsk
                 if (onState != null)
                     onState(State(site, text, Search(engine, dataSetName, teamId, searched, fields)));
                 return new IntentOutcome(IntentStatus.Ok, Result(hit[SearchOrAskRecipes.Asking] ?? 0, hit[SearchOrAskRecipes.Answerable], true,
-                    criteria: hit[SearchOrAskRecipes.Criteria], finished: hit[SearchOrAskRecipes.Finished]));
+                    criteria: hit[SearchOrAskRecipes.Criteria], finished: hit[SearchOrAskRecipes.Finished], found: hit[SearchOrAskRecipes.Found]));
             }
 
             using (var lease = _intentLimiter.AttemptAcquire(prefetch ? clientAddress + "\0prefetch" : clientAddress))
@@ -501,7 +502,7 @@ namespace IndxServer.Services.SearchOrAsk
                 _cache[cacheKey] = answer;
                 Succeeded("judge");
                 return new IntentOutcome(IntentStatus.Ok, Result(answer[SearchOrAskRecipes.Asking] ?? 0, answer[SearchOrAskRecipes.Answerable], false,
-                    cost: answer.Cost, criteria: answer[SearchOrAskRecipes.Criteria], finished: answer[SearchOrAskRecipes.Finished]));
+                    cost: answer.Cost, criteria: answer[SearchOrAskRecipes.Criteria], finished: answer[SearchOrAskRecipes.Finished], found: answer[SearchOrAskRecipes.Found]));
             }
             // A judge that is slow, out of credit or down means no offer, never a failed search:
             // p = 0 with the reason, and the search the visitor already has is untouched.
