@@ -38,7 +38,8 @@ else if (Ctx.EditedFields is { } fields)
     <FieldConfigTable Fields="fields" Editable="@Ctx.IsEditor" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced" Filter="@_filter"
                       Scoring="@(Ctx.FindEngine()?.Scoring ?? ScoringSetup.Default)"
                       @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged"
-                      Profiles="@Ctx.EditedProfiles" OnEditProfile="EditProfile" OnNewProfile="NewProfileFor" />
+                      Profiles="@Ctx.EditedProfiles" OnEditProfile="EditProfile" OnNewProfile="NewProfileFor"
+                      Saved="@Ctx.SavedFields" SavedProfiles="@Ctx.SavedProfiles" />
     @if (_editing is { } editing)
     {
         <FieldProfileModal Open="true" OpenChanged="@(o => { if (!o) { _editing = null; _newFor = null; BackToManager(); } })" Profile="editing"

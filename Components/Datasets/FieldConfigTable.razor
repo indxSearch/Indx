@@ -91,21 +91,21 @@
                     {
                     @foreach (var cap in VisibleCaps.Take(2))
                     {
-                        <td class="indx-table-check">@CapBox(field, cap)</td>
+                        <td class="indx-table-check @Mark(CapChanged(field, cap))">@CapBox(field, cap)</td>
                     }
                     @if (ShowProfiles)
                     {
-                        <td class="indx-col-profile">@ProfileCell(field)</td>
+                        <td class="indx-col-profile @Mark(ProfileChanged(field))">@ProfileCell(field)</td>
                     }
                     @foreach (var cap in VisibleCaps.Skip(2))
                     {
-                        <td class="indx-table-check">@CapBox(field, cap)</td>
+                        <td class="indx-table-check @Mark(CapChanged(field, cap))">@CapBox(field, cap)</td>
                     }
-                    <td>@WeightControl(field, "t")</td>
+                    <td class="@Mark(Changed(field, f => f.Weight ?? 1f))">@WeightControl(field, "t")</td>
                     @if (ShowAdvanced)
                     {
-                        <td>@Bm25bControl(field, "t")</td>
-                        <td>@Bm25k1Control(field, "t")</td>
+                        <td class="@Mark(Changed(field, f => f.BM25b))">@Bm25bControl(field, "t")</td>
+                        <td class="@Mark(Changed(field, f => f.BM25k1))">@Bm25k1Control(field, "t")</td>
                     }
                     }
                 </tr>
@@ -167,24 +167,24 @@
                                     <TableRow>
                                         @foreach (var cap in pair)
                                         {
-                                            <TableCell Label="@cap.Label" colspan="@(pair.Length == 1 ? 2 : null)">@CapBox(field, cap)</TableCell>
+                                            <TableCell Label="@cap.Label" Class="@Mark(CapChanged(field, cap))" colspan="@(pair.Length == 1 ? 2 : null)">@CapBox(field, cap)</TableCell>
                                         }
                                     </TableRow>
                                 }
                                 @if (ShowProfiles)
                                 {
                                     <TableRow>
-                                        <TableCell Label="Profile" colspan="2">@ProfileCell(field)</TableCell>
+                                        <TableCell Label="Profile" Class="@Mark(ProfileChanged(field))" colspan="2">@ProfileCell(field)</TableCell>
                                     </TableRow>
                                 }
                                 <TableRow>
-                                    <TableCell Label="Weight" colspan="2">@WeightControl(field, "c")</TableCell>
+                                    <TableCell Label="Weight" Class="@Mark(Changed(field, f => f.Weight ?? 1f))" colspan="2">@WeightControl(field, "c")</TableCell>
                                 </TableRow>
                                 @if (ShowAdvanced)
                                 {
                                     <TableRow>
-                                        <TableCell Label="BM25b">@Bm25bControl(field, "c")</TableCell>
-                                        <TableCell Label="BM25k1">@Bm25k1Control(field, "c")</TableCell>
+                                        <TableCell Label="BM25b" Class="@Mark(Changed(field, f => f.BM25b))">@Bm25bControl(field, "c")</TableCell>
+                                        <TableCell Label="BM25k1" Class="@Mark(Changed(field, f => f.BM25k1))">@Bm25k1Control(field, "c")</TableCell>
                                     </TableRow>
                                 }
                             </tbody>
@@ -512,6 +512,20 @@
     /// <summary>The dataset's profiles and which field has which (the context's working copy). Null
     /// for an analyzed upload, which has no profiles yet: the column is left out.</summary>
     [Parameter] public DatasetFieldProfiles? Profiles { get; set; }
+    /// <summary>The configuration as saved, and its profiles: a cell whose value differs from it is
+    /// outlined until Save or Cancel (Nov 2026). Null (an upload being configured) marks nothing.</summary>
+    [Parameter] public IReadOnlyList<FieldProxy>? Saved { get; set; }
+    [Parameter] public DatasetFieldProfiles? SavedProfiles { get; set; }
+
+    private FieldProxy? SavedOf(FieldProxy f) => Saved?.FirstOrDefault(s => s.FieldName == f.FieldName);
+    private static string? Mark(bool changed) => changed ? "indx-cell-changed" : null;
+    private bool Changed<T>(FieldProxy f, Func<FieldProxy, T> read) =>
+        SavedOf(f) is { } s && !EqualityComparer<T>.Default.Equals(read(s), read(f));
+    private bool CapChanged(FieldProxy f, Cap cap) => Changed(f, x => cap.Get(x) ?? false);
+    /// <summary>The profile chosen, or any value a profile sets: typos, rerank weight, pattern setup.</summary>
+    private bool ProfileChanged(FieldProxy f) =>
+        SavedOf(f) is { } s && (FieldProfiles.ProfileOf(s, SavedProfiles)?.Id != FieldProfiles.ProfileOf(f, Profiles)?.Id
+                                || !FieldProfiles.FromField(s).Equals(FieldProfiles.FromField(f)));
     /// <summary>Edit on a row of a field's Profile menu: that profile, chosen for the field or not, or
     /// with no id the field's own values while it is Custom.</summary>
     [Parameter] public EventCallback<ProfileEdit> OnEditProfile { get; set; }

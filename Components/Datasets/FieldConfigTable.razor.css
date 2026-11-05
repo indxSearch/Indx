@@ -463,3 +463,10 @@ td:first-child:hover {
     width: 100%;
     justify-content: space-between;
 }
+
+/* A cell whose value is not the saved one, until Save or Cancel: the confirmed accent (blue in
+   the light theme, teal in the dark), as an outline inside the cell, since the design has no shadows. */
+::deep .indx-cell-changed {
+    outline: 1.5px solid var(--CConfirmed);
+    outline-offset: -3px;
+}
