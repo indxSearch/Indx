@@ -309,13 +309,21 @@
 
     private RenderFragment WeightControl(FieldProxy field, string scope) => __builder =>
     {
-        @if (!ShowAdvanced && IsSliderWeight(field.Weight))
+        @* The slider moves in quarter steps between 0.5 and 3; the number beside it takes any
+           value, typed or stepped by 0.1 with the arrow keys, and the slider follows as far as it
+           reaches (Nov 2026). Until then a value off the slider's grid swapped the slider for a
+           plain number box. *@
+        @if (!ShowAdvanced)
         {
+            var weight = field.Weight ?? 1.0f;
             <div class="indx-weight-slider">
                 <Slider Min="0.5" Max="3" Step="0.25" AriaLabel="@($"Weight: {field.FieldName}")" Disabled="@(!Editable)"
-                        Value="@(field.Weight ?? 1.0f)"
-                        ValueChanged="@(v => Set(() => field.Weight = (float)v))" />
-                <span class="indx-weight-value">@((field.Weight ?? 1.0f).ToString("0.0#", CultureInfo.InvariantCulture))</span>
+                        Value="@Math.Clamp(weight, 0.5f, 3f)"
+                        ValueChanged="@(v => Set(() => field.Weight = (float)Math.Round(v * 4) / 4))" />
+                <InputField Variant="ghost" type="number" step="0.1" min="0" class="indx-weight-input" disabled="@(!Editable)"
+                            aria-label="@($"Weight value: {field.FieldName}")" @key="@($"{scope}-weightv-{field.FieldName}-{_clampTick}")"
+                            Value="@weight.ToString("0.0##", CultureInfo.InvariantCulture)" ValueExpression="() => _typedWeight"
+                            ValueChanged="@(v => Set(() => field.Weight = ParseFloat(v, 0f, null) ?? field.Weight))" />
             </div>
         }
         else
@@ -594,6 +602,7 @@
     /// last rendered — type 2 into a BM25b already at 1 and the model holds 1 while the box keeps
     /// showing 2. Changing the key recreates the element, so the box shows what was applied.</summary>
     private int _clampTick;
+    private string? _typedWeight;
 
     private float? ParseFloat(string? s, float? min = null, float? max = null)
     {
@@ -635,15 +644,4 @@
     /// field is not configurable: without a type there is nothing to index or filter on, and
     /// the row renders a note in place of its controls, like a container.</summary>
     private bool HasNoValue(FieldProxy f) => f.FieldType == null && !IsContainer(f);
-
-    // The simple-mode weight slider (0.5-3.0, step 0.25) only renders values it can show
-    // truthfully; anything off-grid or out of range (advanced mode, imported configs, the
-    // API) keeps the numeric input so a stored value is never silently rounded.
-    private static bool IsSliderWeight(float? weight)
-    {
-        var v = weight ?? 1.0f;
-        if (v < 0.5f || v > 3.0f) return false;
-        var quartered = v * 4f;
-        return Math.Abs(quartered - Math.Round(quartered)) < 0.001f;
-    }
 }

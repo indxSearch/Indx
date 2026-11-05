@@ -66,6 +66,7 @@ else
         {
             var cls = "indx-input";
             if (Variant == "borderBottom") cls += " indx-input-border-bottom";
+            else if (Variant == "ghost") cls += " indx-input-ghost";
             if (HasError) cls += " indx-input-error";
             if (!string.IsNullOrEmpty(_callerClass)) cls += " " + _callerClass;
             return cls;

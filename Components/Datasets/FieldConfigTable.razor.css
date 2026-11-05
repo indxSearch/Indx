@@ -81,12 +81,20 @@
     flex: 1;
 }
 
-.indx-weight-value {
-    font: var(--text-xs);
+/* The number beside the weight slider: a ghost InputField that reads as the number it was until
+   pointed at, so the pair looks as the slider and its value always did. */
+.indx-weight-slider ::deep .indx-weight-input {
+    width: 48px;
+    flex-shrink: 0;
+    height: 26px;
+    padding: 0 6px;
     color: var(--lv5);
     font-variant-numeric: tabular-nums;
-    min-width: 30px;
     text-align: right;
+}
+
+.indx-weight-slider ::deep .indx-weight-input:focus {
+    color: var(--lv8);
 }
 
 
