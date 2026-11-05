@@ -18,8 +18,8 @@ namespace IndxServer.Services.SearchOrAsk
     /// <summary>
     /// Refocusing a question with the judge, an experiment in the console only (5 Nov 2026,
     /// Notes/search-or-ask.md "Refocusing a question"). Nothing a visitor gets uses it. The list
-    /// searches the stripped text in BM25F, which ranks by the words that match instead of requiring
-    /// all of them. On the pause a few more searches are made, the stripped text in EditDistance and
+    /// searches the text in BM25F, which ranks by the words that match instead of requiring
+    /// all of them. On the pause a few more searches are made, the text in EditDistance and
     /// with one or two of its informative words left out ("rat paris" for "rat living in paris"), and
     /// the judge is asked one yes/no per search. The list switches only when the judge reads the
     /// BM25F list as not holding what is asked and another as holding it: letting the highest score
@@ -32,7 +32,7 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>From this score the judge is taken to have found what is asked in a list.</summary>
         public const double Sure = 0.5;
         public const int MaxCandidates = 10;
-        /// <summary>The kept search: the stripped text in BM25F, what the list shows while typing.</summary>
+        /// <summary>The kept search: the text in BM25F, what the list shows while typing.</summary>
         public const string Kept = "bm25f";
         /// <summary>The judge's questions for the searches are named with this, beside its own.</summary>
         public const string Prefix = "refocus_";
@@ -40,20 +40,20 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>The searches to choose between. A word is informative when it has three letters
         /// or more and is held by at least one record and at most a sixth of them (or 50, on a
         /// small dataset); <paramref name="count"/> is how many records hold every word of a text.</summary>
-        public static List<RefocusCandidate> Candidates(string stripped, Func<string, int> count, int documents)
+        public static List<RefocusCandidate> Candidates(string text, Func<string, int> count, int documents)
         {
             var limit = Math.Max(50, documents / 6);
-            var words = Regex.Matches(stripped.ToLowerInvariant(), @"[\w']+").Select(m => m.Value).Distinct()
+            var words = Regex.Matches(text.ToLowerInvariant(), @"[\w']+").Select(m => m.Value).Distinct()
                 .Where(w => w.Length >= 3 && count(w) is > 0 and var c && c <= limit).ToList();
-            var list = new List<RefocusCandidate> { new(Kept, stripped, SearchMode.Bm25f), new("edit", stripped, SearchMode.EditDistance) };
+            var list = new List<RefocusCandidate> { new(Kept, text, SearchMode.Bm25f), new("edit", text, SearchMode.EditDistance) };
             foreach (var size in new[] { words.Count - 1, words.Count - 2 })
             {
                 if (size < 1) continue;
                 foreach (var subset in Subsets(words, size))
                 {
                     if (list.Count >= MaxCandidates) return list;
-                    var text = string.Join(' ', subset);
-                    if (count(text) > 0) list.Add(new($"w{list.Count}", text, SearchMode.EditDistance));
+                    var left = string.Join(' ', subset);
+                    if (count(left) > 0) list.Add(new($"w{list.Count}", left, SearchMode.EditDistance));
                 }
             }
             return list;

@@ -152,21 +152,11 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary><see cref="Searches"/> resolved.</summary>
         public string SearchesResolved() => Searches ?? (Answers == FastAnswers ? OneSearch : SeveralSearches);
 
-        /// <summary>The words a question is built with, taken off its start so the list searches what
-        /// it is about while the visitor types (<see cref="SearchOrAskPhrases"/>). Null: the default
-        /// English list; the GET's <c>effective.askPhrases</c> is what applies.</summary>
-        public SearchOrAskPhrases? AskPhrases { get; set; }
-
-        /// <summary>While a question is typed, the list searches what it is about: the Ask phrases
-        /// are taken off the typed text before it is searched, on every keystroke, and the judge
-        /// reads the results of the same text. Off searches the text as typed and the phrases do
-        /// nothing to the list.</summary>
-        public bool RefocusWhileTyping { get; set; } = true;
-
-        /// <summary>The quiet offer ("Ask about this") the moment the typed text takes a question's
-        /// shape (an Ask phrase matched), before the judge has read it; the judge's word on the pause
-        /// confirms it or takes it back. Off leaves every offer to the judge.</summary>
-        public bool InviteOnAskPhrase { get; set; } = true;
+        // Ask phrases (askPhrases, refocusWhileTyping, inviteOnAskPhrase) were removed 5 Nov 2026: the
+        // list and the judge search what is typed. Replayed on 1,944 generated queries in three
+        // languages, the phrases changed 26 of them, and on 352 labelled texts word by word they never
+        // invited before the judge did (Notes/search-or-ask.md, "Ask phrases, removed"). A saved row
+        // that still holds them is read without them; an older intrface, sent none, strips nothing.
 
         /// <summary>Judge calls per dataset per UTC day. Spend is bounded, not hoped for.</summary>
         public int DailyCallBudget { get; set; } = 5000;
@@ -206,8 +196,6 @@ namespace IndxServer.Services.SearchOrAsk
                 return $"mode must be one of: {string.Join(", ", Modes)}.";
             if (DailyProactiveAnswers < 0)
                 return "dailyProactiveAnswers cannot be negative.";
-            if (AskPhrases?.Validate() is { } badPhrases)
-                return badPhrases;
             if (Thresholds == null)
                 return "thresholds are required.";
             return Thresholds.Validate(Kind, judge);
@@ -342,11 +330,10 @@ namespace IndxServer.Services.SearchOrAsk
     /// <param name="TitleField">The field a result is titled by for the judge (<see cref="SearchOrAskFields"/>).</param>
     /// <param name="SectionFields">The fields a result's section is read from.</param>
     /// <param name="SnippetFields">The fields a result's snippet is read from.</param>
-    /// <param name="AskPhrases">The Ask phrases in force: the dataset's, else the defaults.</param>
     /// <param name="AnswerModel">The model the answers are written with.</param>
     /// <param name="Searches">How a catalogue's question is answered: several or one.</param>
     /// <param name="AnswerModels">The models the instance offers for <c>answerModel</c>.</param>
     public sealed record SearchOrAskEffective(string SiteDescription, string? TitleField,
-        IReadOnlyList<string> SectionFields, IReadOnlyList<string> SnippetFields, SearchOrAskPhrases AskPhrases,
+        IReadOnlyList<string> SectionFields, IReadOnlyList<string> SnippetFields,
         string? AnswerModel = null, string? Searches = null, IReadOnlyList<string>? AnswerModels = null);
 }

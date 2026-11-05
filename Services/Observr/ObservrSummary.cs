@@ -103,13 +103,11 @@ namespace IndxServer.Services.Observr
             ObservrSummaryTotals Totals(OverviewStat o) => new(o.Searches, o.ZeroHits, o.ClickedSearches, o.Uncovered);
 
             var ask = store.AskOverview(teamId, dataSetName, from, to);
-            var askSettings = searchOrAskStore.Load(teamId, dataSetName);
             var (again, rephrased) = store.AskedAgain(teamId, dataSetName, from, to, Rephrased);
             var searchOrAsk = ask.Judged == 0 && ask.Asks == 0 ? null : new ObservrSummaryAsk(ask.Judged, ask.Offers, ask.Asks, ask.Answered, ask.NothingFound,
                 ask.Unanswered, store.TopQuestions(teamId, dataSetName, from, to, Unanswered).Where(q => q.Unanswered > 0 || q.NothingFound > 0).Select(q => q.Question).ToList(),
-                [.. (askSettings?.AskPhrases ?? SearchOrAsk.SearchOrAskPhrases.Default).LeadIns],
-                store.LeadInCandidates(teamId, dataSetName, from, to).Select(c => new ObservrSummaryLeadIn(c.Words, c.Searches, c.Example)).ToList(),
-                store.RefocusMisses(teamId, dataSetName, from, to).Select(m => new ObservrSummaryRefocusMiss(m.Phrase, m.Searched, m.Times)).ToList(),
+                // Ask phrases were removed 5 Nov 2026: their three fields stay on the wire, empty.
+                null, null, null,
                 again.AskedAgain, rephrased.Select(r => new ObservrSummaryRephrasing(r.First, r.Again, r.Times, r.AgainOpened)).ToList(),
                 ask.Failed, Provider());
 

@@ -30,7 +30,6 @@ namespace IndxServer.Services.SearchOrAsk
     public sealed record IntentResult(double P, double? Answerable, string Offer, SearchOrAskThresholds Thresholds,
         bool Cached, long Ms, string? Reason = null, double? Criteria = null, bool CutWhileAsking = true,
         double CutShareOfTop = 0.5, double CutTopFloor = 0.2, bool StrictCoverageWhileAsking = true, string FiltersWhileTyping = "off",
-        string? SearchText = null, bool RefocusWhileTyping = true, bool InviteOnAskPhrase = true,
         string Mode = SearchOrAskSettings.ModeSoft, double? Finished = null)
     {
         /// <summary>The console's refocus experiment: the search the judge chose for the list, when
@@ -446,23 +445,14 @@ namespace IndxServer.Services.SearchOrAsk
 
             var started = Stopwatch.GetTimestamp();
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
-            // The judge reads the results of what the question is about (Ask phrases), not of its
-            // words: "help me find the movie about the green ogre" is judged on Shrek, not on films
-            // called Movie. The request it reads stays the text as typed.
-            var (searched, taken) = settings.RefocusWhileTyping
-                ? SearchOrAskPhrases.Strip(text, settings.AskPhrases ?? SearchOrAskPhrases.Default)
-                : (text, (IReadOnlyList<string>)[]);
-            string? searchText = searched == text ? null : searched;
-            // For the statistics: the phrases taken, and what the rest found, so Observr can see which
-            // questions no phrase catches and which phrase left nothing to find.
-            string? askPhrase = taken.Count > 0 ? string.Join(' ', taken) : null;
-            int? focusedHits = null;
+            // The judge reads the results of the text as typed, the search the visitor's list made.
+            var searched = text;
             IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null, double? criteria = null,
                 double? finished = null, RefocusPick? pick = null)
             {
                 var result = new IntentResult(p, answerable, settings.OfferFor(judge, p, criteria, finished), settings.Thresholds.Resolved(settings.Kind, judge), cached, Ms(), reason, criteria,
-                    settings.CutWhileAsking, settings.CutShareOfTop, settings.CutTopFloor, settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping, searchText,
-                    settings.RefocusWhileTyping, settings.InviteOnAskPhrase, EffectiveMode(teamId, dataSetName, settings), finished) { Refocus = pick };
+                    settings.CutWhileAsking, settings.CutShareOfTop, settings.CutTopFloor, settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping,
+                    EffectiveMode(teamId, dataSetName, settings), finished) { Refocus = pick };
                 // A judgement is recorded once the judge or its cache answered for it, a failing
                 // judge included (its reason says so); an identifier never reaches here. A prefetch
                 // is not: the pause that follows is recorded, from the cache it filled.
@@ -471,7 +461,7 @@ namespace IndxServer.Services.SearchOrAsk
                 if (!prefetch && reason is not ("identifier" or Paused) && origin != null && Writer is { } w)
                     w.RecordAskIntent(new AskIntentEventRow(teamId, dataSetName, Blank(origin.QueryId), p, answerable,
                         result.Offer, cached, reason, cost, Blank(origin.Subject), Blank(origin.Session), origin.Source,
-                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted, askPhrase, focusedHits));
+                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted));
                 return result;
             }
 
@@ -496,13 +486,9 @@ namespace IndxServer.Services.SearchOrAsk
             {
                 // Only the console's tester asks for the state; a cached answer used to come back
                 // without one, and "What the judge was sent" was empty for a text tried before.
-                // The search only when someone reads it: the tester's state, or a refocus to count.
-                if (onState != null || askPhrase != null)
-                {
-                    var found = Search(engine, dataSetName, teamId, searched, fields);
-                    if (askPhrase != null) focusedHits = found.Hits;
-                    onState?.Invoke(State(site, text, found));
-                }
+                // The search only when someone reads it: the tester's state.
+                if (onState != null)
+                    onState(State(site, text, Search(engine, dataSetName, teamId, searched, fields)));
                 return new IntentOutcome(IntentStatus.Ok, Result(hit[SearchOrAskRecipes.Asking] ?? 0, hit[SearchOrAskRecipes.Answerable], true,
                     criteria: hit[SearchOrAskRecipes.Criteria], finished: hit[SearchOrAskRecipes.Finished], pick: Pick(hit)));
             }
@@ -514,7 +500,6 @@ namespace IndxServer.Services.SearchOrAsk
                 return new IntentOutcome(IntentStatus.BudgetSpent, RetryAfterSeconds: SecondsToUtcMidnight());
 
             var searchedFor = Search(engine, dataSetName, teamId, searched, fields);
-            if (askPhrase != null) focusedHits = searchedFor.Hits;
             var state = State(site, text, searchedFor);
             var questions = SearchOrAskRecipes.Questions(settings.Kind, judge);
             if (candidates != null)
@@ -572,7 +557,7 @@ namespace IndxServer.Services.SearchOrAsk
         /// tester: the hits by title, section and snippet. No model call, so it costs nothing.</summary>
         public SearchSummary Results(string teamId, string dataSetName, IServerSearchEngine engine, string text, SearchOrAskSettings settings,
             SearchMode mode = SearchMode.EditDistance) =>
-            Search(engine, dataSetName, teamId, SearchTextFor(text, settings), Fields(settings, engine.GetFieldList()), mode: mode);
+            Search(engine, dataSetName, teamId, text, Fields(settings, engine.GetFieldList()), mode: mode);
 
         /// <summary>What one search finds, its text searched as it stands: the refocus experiment's
         /// chosen search, for the console's tester.</summary>
@@ -617,9 +602,8 @@ namespace IndxServer.Services.SearchOrAsk
         {
             if (!JudgeAvailable) return (null, "Needs the instance's model key.");
             if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget)) return (null, "Today's budget is spent.");
-            var searched = SearchTextFor(text, settings);
             var fields = Fields(settings, engine.GetFieldList());
-            var candidates = RefocusCandidates(engine, dataSetName, teamId, searched);
+            var candidates = RefocusCandidates(engine, dataSetName, teamId, text);
             var state = new JsonObject
             {
                 ["site"] = SiteDescription(teamId, dataSetName, settings),
@@ -637,12 +621,6 @@ namespace IndxServer.Services.SearchOrAsk
             catch (SearchOrAskModelException ex) { return (null, ex.Message); }
             catch (HttpRequestException ex) { return (null, ex.Message); }
         }
-
-        /// <summary>What the list searches for a typed text: what the question is about, its Ask
-        /// phrases taken off, while <see cref="SearchOrAskSettings.RefocusWhileTyping"/> is on; else
-        /// the text as typed. The page and the judge search the same.</summary>
-        public static string SearchTextFor(string text, SearchOrAskSettings settings) =>
-            settings.RefocusWhileTyping ? SearchOrAskPhrases.Strip(text, settings.AskPhrases ?? SearchOrAskPhrases.Default).Text : text;
 
         /// <summary>Runs the search the visitor's client already ran, here, so the judge sees the
         /// same results without the client sending results it could forge. Through the manager

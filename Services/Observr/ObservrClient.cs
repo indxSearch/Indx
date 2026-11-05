@@ -41,8 +41,7 @@ namespace IndxServer.Services.Observr
     public sealed record ObservrSearchOrAskCurrent(bool Shown, bool Enabled, string Kind, string? SiteDescription, string EffectiveSite,
         string? TitleField, List<string>? SectionFields, List<string>? SnippetFields, string? EffectiveTitle, List<string> EffectiveSection,
         List<string> EffectiveSnippet, string? FilterNotes, string Answers, string? AnswerInstructions, string? AnswerLanguage, double Strong, double Invite,
-        int? CoverageDepth, bool? Truncate, SearchOrAsk.SearchOrAskPhrases AskPhrases, bool AskPhrasesAreDefault,
-        bool RefocusWhileTyping, bool InviteOnAskPhrase);
+        int? CoverageDepth, bool? Truncate);
 
     /// <summary>"Help me set this up" on the Search or ask tab: the dataset as the field review sees it,
     /// a few record names, the queries, and the settings as they stand. No record bodies.</summary>
@@ -90,12 +89,10 @@ namespace IndxServer.Services.Observr
         List<ObservrDay> Before, List<ObservrDay> After, List<ObservrSummaryQuery> TopBefore, List<ObservrSummaryQuery> TopAfter);
 
     /// <summary>A change to the dataset's Search or ask settings: null leaves that setting as it is.
-    /// Never the switches (Shown, Enabled, the budget): switching on stays the owner's. Ask phrases only
-    /// grow: <see cref="AddLeadIns"/> and <see cref="AddFrames"/> join the list in effect, so an owner's
-    /// own edits are never undone and a yes means just the phrases named.</summary>
+    /// Never the switches (Shown, Enabled, the budget): switching on stays the owner's. Ask phrases were
+    /// removed (5 Nov 2026): this server no longer announces them, so Observr proposes none.</summary>
     public sealed record ObservrSearchOrAskChange(string? Kind, string? SiteDescription, string? TitleField, List<string>? SectionFields,
-        List<string>? SnippetFields, string? FilterNotes, string? Answers, string? AnswerInstructions = null, string? AnswerLanguage = null,
-        List<string>? AddLeadIns = null, List<string>? AddFrames = null)
+        List<string>? SnippetFields, string? FilterNotes, string? Answers, string? AnswerInstructions = null, string? AnswerLanguage = null)
     {
         [JsonIgnore]
         public IEnumerable<string> Parts
@@ -111,8 +108,6 @@ namespace IndxServer.Services.Observr
                 if (SiteDescription != null) yield return "about the site";
                 if (FilterNotes != null) yield return "notes about the fields";
                 if (AnswerInstructions != null) yield return "answer instructions";
-                if (AddLeadIns is { Count: > 0 }) yield return $"Ask phrases: start with {string.Join(", ", AddLeadIns.Select(p => $"\"{p}\""))}";
-                if (AddFrames is { Count: > 0 }) yield return $"Ask phrases: ask for {string.Join(", ", AddFrames.Select(p => $"\"{p}\""))}";
             }
         }
     }
@@ -147,7 +142,7 @@ namespace IndxServer.Services.Observr
         /// shipped. Observr is deployed ahead of every installed server and narrows what it proposes
         /// to this list. A part added here must be applied in the same change, or Observr sends it
         /// and a yes leaves it out.</summary>
-        public static readonly string[] Accepted = [Synonym, FieldKind, SearchOrAskKind, QueryParametersKind, "searchOrAsk.askPhrases"];
+        public static readonly string[] Accepted = [Synonym, FieldKind, SearchOrAskKind, QueryParametersKind];
 
         /// <summary>What this server can carry out right now: <see cref="Accepted"/>, and a support
         /// ticket while support is on (it is sent through the Portal, which an instance with support
@@ -612,8 +607,7 @@ namespace IndxServer.Services.Observr
             var current = new ObservrSearchOrAskCurrent(settings.Shown, settings.Enabled, settings.Kind, settings.SiteDescription,
                 searchOrAskService.SiteDescription(teamId, dataSetName, settings), settings.TitleField, settings.SectionFields, settings.SnippetFields,
                 effective.TitleField, effective.SectionFields.ToList(), effective.SnippetFields.ToList(), settings.FilterNotes, settings.Answers,
-                settings.AnswerInstructions, settings.AnswerLanguage, thresholds.Strong!.Value, thresholds.Invite!.Value, qp?.Candidates?.MaxCandidates, !qp?.Candidates?.Rest,
-                settings.AskPhrases ?? SearchOrAsk.SearchOrAskPhrases.Default, settings.AskPhrases == null, settings.RefocusWhileTyping, settings.InviteOnAskPhrase);
+                settings.AnswerInstructions, settings.AnswerLanguage, thresholds.Strong!.Value, thresholds.Invite!.Value, qp?.Candidates?.MaxCandidates, !qp?.Candidates?.Rest);
             var ask = new ObservrSearchOrAskSetupAsk(SetupKind, teamId, dataSetName, review.Site, review.FieldEvidence.Select(f => f.Name).ToList(),
                 review.Records, review.Sampled, review.FieldEvidence, names, top, zero, current);
             return await SendAsync(token, teamId, dataSetName, SetupKind, "", ask, ct);
@@ -1182,21 +1176,6 @@ namespace IndxServer.Services.Observr
             if (c.Answers != null) s.Answers = c.Answers;
             if (c.AnswerInstructions != null) s.AnswerInstructions = c.AnswerInstructions.Trim().Length == 0 ? null : c.AnswerInstructions.Trim();
             if (c.AnswerLanguage != null) s.AnswerLanguage = c.AnswerLanguage.Trim().Length == 0 ? null : c.AnswerLanguage.Trim();
-            if (c.AddLeadIns is { Count: > 0 } || c.AddFrames is { Count: > 0 })
-            {
-                // Onto the list in effect: the dataset's own, or the defaults it then makes its own.
-                var basis = s.AskPhrases ?? SearchOrAsk.SearchOrAskPhrases.Default;
-                static List<string> Grow(List<string> have, List<string>? add) =>
-                    [.. have, .. (add ?? []).Select(p => p.Trim().ToLowerInvariant()).Where(p => p.Length > 0)
-                        .Distinct().Where(p => !have.Contains(p, StringComparer.OrdinalIgnoreCase))];
-                s.AskPhrases = new SearchOrAsk.SearchOrAskPhrases
-                {
-                    LeadIns = Grow(basis.LeadIns, c.AddLeadIns),
-                    Frames = Grow(basis.Frames, c.AddFrames),
-                    Links = [.. basis.Links],
-                    Articles = [.. basis.Articles],
-                };
-            }
             if (s.Validate() is { } invalid) return invalid;
             searchOrAsk.Save(teamId, dataSetName, s);
             return null;

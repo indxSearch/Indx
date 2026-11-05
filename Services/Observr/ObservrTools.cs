@@ -53,15 +53,13 @@ namespace IndxServer.Services.Observr
             [
                 new("search", "Search the dataset as a visitor would, and see how many records match and the first ones by name. Use it to check what a query finds, or what a word the visitor used finds.",
                     Schema(new { type = "object", properties = new { text = new { type = "string", description = "The search text." }, take = new { type = "integer", description = "Names to return, up to 20." } }, required = new[] { "text" } })),
-                new("search_or_ask", "Type a text into the dataset's search box as a visitor would, with Search or ask: what the list searches (the Ask phrases taken off a question), the first results by name, and the judge's reading of it (a question, a description, how answerable from these results) with the offer the visitor would get. To try Ask phrases before proposing them, give them here: they apply to this try only, nothing is saved. Each call is one judge call against the dataset's daily budget, and none reaches the statistics.",
+                new("search_or_ask", "Type a text into the dataset's search box as a visitor would, with Search or ask: the first results by name, and the judge's reading of it (a question, a description, how answerable from these results) with the offer the visitor would get. Nothing is saved. Each call is one judge call against the dataset's daily budget, and none reaches the statistics.",
                     Schema(new
                     {
                         type = "object",
                         properties = new
                         {
                             text = new { type = "string", description = "What the visitor types." },
-                            try_lead_ins = new { type = "array", items = new { type = "string" }, description = "Lead-ins to try on top of the list in effect, for this try only." },
-                            try_frames = new { type = "array", items = new { type = "string" }, description = "What visitors call a record (\"the movie\"), to try on top of the list in effect, for this try only." },
                         },
                         required = new[] { "text" },
                     })),
@@ -143,7 +141,7 @@ namespace IndxServer.Services.Observr
                     "findings" => Findings(ctx, Int(input, "limit", 10, 1, 30)),
                     "datasets" => Datasets(ctx),
                     "search" => Search(ctx, Text(input, "text"), Int(input, "take", 10, 1, SearchMax)),
-                    "search_or_ask" => TrySearchOrAsk(ctx, Text(input, "text"), Strings(input, "try_lead_ins"), Strings(input, "try_frames")),
+                    "search_or_ask" => TrySearchOrAsk(ctx, Text(input, "text")),
                     "statistics" => Statistics(ctx, Int(input, "days", 7, 1, 90)),
                     "query" => QueryStatistics(ctx, Text(input, "text"), Int(input, "days", 7, 1, 90)),
                     "fields" => Fields(ctx),
@@ -218,9 +216,9 @@ namespace IndxServer.Services.Observr
         }
 
         /// <summary>A text typed into the dataset's search box with Search or ask, as the console's
-        /// tester runs it: the trial settings (the stored ones, with any phrases to try on top), the
-        /// refocus, the judge. Nothing is saved and nothing reaches the statistics.</summary>
-        private string TrySearchOrAsk(ObservrChatContext ctx, string text, List<string> tryLeadIns, List<string> tryFrames)
+        /// tester runs it, on the stored settings: the search and the judge. Nothing is saved and nothing
+        /// reaches the statistics.</summary>
+        private string TrySearchOrAsk(ObservrChatContext ctx, string text)
         {
             if (text.Length == 0) return "The text is empty.";
             var ds = ctx.DataSetName!;
@@ -229,30 +227,13 @@ namespace IndxServer.Services.Observr
             if (!searchOrAskService.Available) return "Search or ask cannot run on this instance: it has no model key.";
             var stored = searchOrAsk.Load(ctx.TeamId, ds);
             var trial = JsonSerializer.Deserialize<SearchOrAsk.SearchOrAskSettings>(JsonSerializer.Serialize(stored ?? new SearchOrAsk.SearchOrAskSettings(), Json), Json)!;
-            if (tryLeadIns.Count > 0 || tryFrames.Count > 0)
-            {
-                var basis = trial.AskPhrases ?? SearchOrAsk.SearchOrAskPhrases.Default;
-                static List<string> With(List<string> have, List<string> add) =>
-                    [.. have, .. add.Select(p => p.Trim().ToLowerInvariant()).Where(p => p.Length > 0 && !have.Contains(p, StringComparer.OrdinalIgnoreCase)).Distinct()];
-                trial.AskPhrases = new SearchOrAsk.SearchOrAskPhrases
-                {
-                    LeadIns = With(basis.LeadIns, tryLeadIns), Frames = With(basis.Frames, tryFrames),
-                    Links = [.. basis.Links], Articles = [.. basis.Articles],
-                };
-                if (trial.AskPhrases.Validate() is { } bad) return bad;
-            }
-            var (searched, taken) = trial.RefocusWhileTyping
-                ? SearchOrAsk.SearchOrAskPhrases.Strip(text, trial.AskPhrases ?? SearchOrAsk.SearchOrAskPhrases.Default)
-                : (text, (IReadOnlyList<string>)[]);
 
             System.Text.Json.Nodes.JsonObject? state = null;
             var outcome = searchOrAskService.IntentAsync(ctx.TeamId, ds, engine, text, "observr", CancellationToken.None,
                 trial, s => state = s).GetAwaiter().GetResult();
 
             var sb = new StringBuilder();
-            sb.AppendLine(taken.Count > 0
-                ? $"\"{text}\": the list searches \"{searched}\" (Ask phrases taken off: {string.Join(" + ", taken.Select(t => $"\"{t}\""))})."
-                : $"\"{text}\": the list searches it as typed{(trial.RefocusWhileTyping ? " (no Ask phrase matched)" : " (refocus while typing is off)")}.");
+            sb.AppendLine($"\"{text}\":");
             if (state?["search"] is System.Text.Json.Nodes.JsonObject search)
             {
                 var results = search["results"] as System.Text.Json.Nodes.JsonArray ?? [];
@@ -390,10 +371,6 @@ namespace IndxServer.Services.Observr
             sb.AppendLine($"Query parameters: {(qp == null ? "the defaults" : JsonSerializer.Serialize(qp, Json))}");
             var soa = searchOrAsk.Load(ctx.TeamId, ds);
             sb.AppendLine($"Search or ask: {(soa == null ? "not set up" : JsonSerializer.Serialize(soa, Json))}");
-            // Ask phrases in effect: a dataset with no list of its own runs the defaults, which the
-            // settings above show as null.
-            var phrases = soa?.AskPhrases ?? SearchOrAsk.SearchOrAskPhrases.Default;
-            sb.AppendLine($"Ask phrases{(soa?.AskPhrases == null ? " (the defaults)" : "")}: {JsonSerializer.Serialize(phrases, Json)}; refocus while typing {(soa?.RefocusWhileTyping ?? true ? "on" : "off")}, invite at once {(soa?.InviteOnAskPhrase ?? true ? "on" : "off")}.");
             return sb.ToString();
         }
 

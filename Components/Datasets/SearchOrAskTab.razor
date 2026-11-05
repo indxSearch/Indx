@@ -21,7 +21,6 @@
 @if (!Active) { return; }
 
 <div class="soa-tab">
-    <AskPhrasesModal Open="_phrasesOpen" OpenChanged="@(v => _phrasesOpen = v)" Phrases="_edit.AskPhrases" OnApply="@(p => _edit.AskPhrases = p)" />
     @* What the tab is, the chip that says it may still change, and Observr's action at the
        row's right end. *@
     <div class="soa-intro">
@@ -221,25 +220,6 @@
             @* Ask phrases: the words a question is built with, which the page takes off its start
                so the list searches what the question is about while it is typed. *@
             <div class="soa-group">
-            <Table AriaLabel="Ask phrases" Class="soa-table">
-                @Head("Ask phrases")
-                <tbody>
-                    @* The phrases are edited in a modal of their own, a tab a group with each phrase a field, and a
-                       Try it (AskPhrasesModal); here, what the dataset runs with. *@
-                    @Row(Icon<Icons.Question>(), "Phrases", PhrasesSummary(),
-                         _edit.AskPhrases != null,
-                         @<Button Variant="secondary" Size="micro" @onclick="() => _phrasesOpen = true">Edit Ask phrases</Button>)
-                    @Row(Icon<Icons.Search>(), "Refocus the search", "While a question is typed, the list searches what it is about.",
-                         !_edit.RefocusWhileTyping,
-                         @<ToggleSwitch Label="Search what the question is about" Checked="@_edit.RefocusWhileTyping" CheckedChanged="@(v => _edit.RefocusWhileTyping = v)" />)
-                    @Row(DatasetIcons.SearchOrAsk, "Invite on an Ask phrase", "The invitation the moment a phrase matches, before the judge has read the text.",
-                         !_edit.InviteOnAskPhrase,
-                         @<ToggleSwitch Label="Offer to ask on a question's shape" Checked="@_edit.InviteOnAskPhrase" CheckedChanged="@(v => _edit.InviteOnAskPhrase = v)" />)
-                </tbody>
-            </Table>
-            </div>
-
-            <div class="soa-group">
             <Table AriaLabel="What the judge sees" Class="soa-table">
                 @Head("What the judge sees of a result")
                 <tbody>
@@ -350,12 +330,6 @@
                             <span class="soa-help">@_tryMessage</span>
                         }
                     </div>
-                    @* As intrface says it over the list: the Ask phrases came off, and this is what
-                       the list and the judge search. Under the offer row, results shown or not. *@
-                    @if (_tryText?.Trim() is { Length: > 0 } typed && SearchOrAskService.SearchTextFor(typed, _edit) is var focused && focused != typed)
-                    {
-                        <span class="soa-help soa-searching-for">Searching for <strong>@focused</strong></span>
-                    }
                     @if (_refocus && _results is { } today)
                     {
                         @* The experiment: today's list and the refocused one, one above the other, so
@@ -833,8 +807,7 @@
         var engine = Ctx.FindEngine();
         var fields = SearchOrAskService.Fields(_edit, engine?.DocumentFields == null ? null : engine.GetFieldList());
         _effectiveSite = Service.SiteDescription(Ctx.TeamId, Ctx.Name, new SearchOrAskSettings());
-        _effective = new SearchOrAskEffective(_effectiveSite, fields.TitleField, fields.SectionFields, fields.SnippetFields,
-            _edit.AskPhrases ?? SearchOrAskPhrases.Default);
+        _effective = new SearchOrAskEffective(_effectiveSite, fields.TitleField, fields.SectionFields, fields.SnippetFields);
         _callsToday = Service.CallsToday(Ctx.TeamId, Ctx.Name);
         if (Services.GetService(typeof(IndxServer.Services.StatisticsService)) is IndxServer.Services.StatisticsService { Store: { } store })
         {
@@ -845,16 +818,6 @@
 
     private static string Json(SearchOrAskSettings s) => JsonSerializer.Serialize(s, JsonOpts);
 
-    /// <summary>One Ask phrase group as lines, of the working copy's own list or (for a placeholder) the defaults.</summary>
-    private bool _phrasesOpen;
-
-    /// <summary>What the dataset runs with, in a line: its own phrases or the English defaults, and how many.</summary>
-    private string PhrasesSummary()
-    {
-        var p = _edit.AskPhrases ?? SearchOrAskPhrases.Default;
-        var counts = $"{p.LeadIns.Count} lead-ins, {p.Frames.Count} asked for, {p.Links.Count} links, {p.Articles.Count} articles";
-        return _edit.AskPhrases == null ? $"The English defaults: {counts}." : $"This dataset's own: {counts}.";
-    }
     private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _budgetError != null || _proactiveError != null);
 
 
@@ -877,9 +840,6 @@
         ["Title"] = "The field that names a result, as the judge and the answers refer to it. Automatic picks the dataset's most title-like field.",
         ["Section"] = "Fields that say where a result belongs, such as a category, a year or a chapter. The judge reads them beside the title; leave them empty when the records have none.",
         ["Snippet"] = "The prose fields the judge reads and the answers are written from: a description, a body text. Not identifiers or links, which tell the model nothing.",
-        ["Phrases"] = "The words a question is built with, in four groups taken off in order: a lead-in (\"help me find\"), what is asked for (\"the movie\"), the link to the rest (\"about\") and an article. \"help me find the movie about the green ogre\" searches \"green ogre\". Nothing is taken unless the start has a question's shape and a word of substance is left. A dataset without its own runs with the English defaults; Edit Ask phrases opens them all, with a Try it that shows what a question comes to.",
-        ["Refocus the search"] = "The phrases above come off the text before it is searched, on every keystroke, and the judge reads those results. Off: the list searches the text as typed, and the judge reads that.",
-        ["Invite on an Ask phrase"] = "The invitation, on the keystroke a phrase matches, before the judge has read the text: \"Ask about this\", or in the inviting modes \"For a quick answer, type a bit more\". It only invites: the full offer and an answer that starts on its own still wait for the judge, which confirms or takes it back on the next pause. Strict ignores it. Off: every offer waits for the judge.",
         ["Answer offer"] = "The full offer, \"Ask the assistant\": Enter asks. Shown when the judge's score reaches Show from and the question is whole (Whole question), and kept while it stays above Keep down to, so it does not blink as the visitor types on.",
         ["Whole question"] = "\"hvilken\" is sure to be a question starting (0.71) and holds nothing to answer yet: the judge reads it as unfinished (0.09). Until the question is whole, the visitor gets the invitation; once a sure question shows the full offer, typing on keeps it.",
         ["Invitation"] = "The quiet \"Ask about this\" under the field, for a score that may be a question. Clicking it asks; Enter still searches.",
@@ -1049,7 +1009,7 @@
             foreach (var m in marks)
             {
                 if (!_measuring) break;
-                var searched = SearchOrAskService.SearchTextFor(m.Text, _edit);
+                var searched = m.Text;
                 var key = m.ExpectedKey!.Value;
                 var today = RankOf(SearchOrAskService.Ranked(Ctx.TeamId, Ctx.Name, searched, SearchMode.EditDistance), key);
                 var bm25f = RankOf(SearchOrAskService.Ranked(Ctx.TeamId, Ctx.Name, searched, SearchMode.Bm25f), key);
@@ -1199,7 +1159,7 @@
     private void RefocusWhileTyping(IServerSearchEngine engine, string text)
     {
         _refocused = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit, SearchMode.Bm25f);
-        _refocusNote = $"BM25F on \"{SearchOrAskService.SearchTextFor(text, _edit)}\", while typing.";
+        _refocusNote = "BM25F on the text, while typing.";
     }
 
     /// <summary>On the pause, the judge's choice: the list switches only when it reads BM25F's as

@@ -82,7 +82,7 @@ namespace IndxServer.Controllers
             var fields = SearchOrAskService.Fields(settings, engine?.DocumentFields == null ? null : engine.GetFieldList());
             return new SearchOrAskSettingsResponse(settings,
                 new SearchOrAskEffective(service.SiteDescription(ctx.OwnerKey, dataSetName, settings),
-                    fields.TitleField, fields.SectionFields, fields.SnippetFields, settings.AskPhrases ?? SearchOrAskPhrases.Default,
+                    fields.TitleField, fields.SectionFields, fields.SnippetFields,
                     service.Setup.ModelFor(settings), settings.SearchesResolved(), service.Setup.OfferedModels),
                 service.Available);
         }
