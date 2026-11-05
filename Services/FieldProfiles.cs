@@ -202,6 +202,58 @@ namespace IndxServer.Services
             }
         }
 
+        /// <summary>The searched fields that have the profile (<see cref="ProfileOf"/>).</summary>
+        public static IReadOnlyList<FieldProxy> FieldsWith(string id, IEnumerable<FieldProxy> fields, DatasetFieldProfiles? own) =>
+            fields.Where(f => IsSearched(f) && ProfileOf(f, own)?.Id == id).ToList();
+
+        /// <summary>The searched fields whose values are their own: no profile chosen, or changed since.</summary>
+        public static IReadOnlyList<FieldProxy> CustomFields(IEnumerable<FieldProxy> fields, DatasetFieldProfiles? own) =>
+            fields.Where(f => IsSearched(f) && ProfileOf(f, own) == null).ToList();
+
+        /// <summary>
+        /// Deletes one of the dataset's own profiles (a built-in cannot be deleted) and gives its
+        /// fields <paramref name="replacementId"/>: its values written onto them and the choice kept,
+        /// so a profile in use goes in one step rather than field by field (Nov 2026). With no
+        /// replacement, or one that is not there, the fields keep their values and become Custom.
+        /// </summary>
+        public static void DeleteReplacing(DatasetFieldProfiles own, IEnumerable<FieldProxy> fields, string id, string? replacementId)
+        {
+            if (IsBuiltInId(id)) return;
+            var replacement = replacementId == id ? null : All(own).FirstOrDefault(p => p.Id == replacementId);
+            foreach (var f in FieldsWith(id, fields, own))
+            {
+                if (replacement == null) continue;
+                Apply(f, replacement);
+                own.Assignments[f.FieldName] = replacement.Id;
+            }
+            own.Profiles.RemoveAll(p => p.Id == id);
+            foreach (var key in own.Assignments.Where(a => a.Value == id).Select(a => a.Key).ToList())
+                own.Assignments.Remove(key);
+        }
+
+        /// <summary>A built-in this dataset edited, back to the shipped values, on its fields too.</summary>
+        public static void ResetBuiltIn(DatasetFieldProfiles own, IEnumerable<FieldProxy> fields, string id)
+        {
+            if (BuiltIn.FirstOrDefault(b => b.Id == id) is not { } shipped) return;
+            var having = FieldsWith(id, fields, own);
+            own.Profiles.RemoveAll(p => p.Id == id);
+            foreach (var f in having) Apply(f, shipped);
+        }
+
+        /// <summary>Whether this dataset changed the built-in with this id.</summary>
+        public static bool IsEditedBuiltIn(string id, DatasetFieldProfiles? own) =>
+            IsBuiltInId(id) && own?.Profiles.Any(p => p.Id == id) == true;
+
+        /// <summary>The profile a deleted one's fields most likely want: the same typos and weight,
+        /// else the same typos, else Name, the library's own defaults.</summary>
+        public static string SuggestedReplacement(FieldProfile deleted, DatasetFieldProfiles? own)
+        {
+            var others = All(own).Where(p => p.Id != deleted.Id).ToList();
+            return (others.FirstOrDefault(p => p.Tolerance == deleted.Tolerance && p.RerankWeight == deleted.RerankWeight)
+                    ?? others.FirstOrDefault(p => p.Tolerance == deleted.Tolerance)
+                    ?? others.First(p => p.Id == "name")).Id;
+        }
+
         /// <summary>An id for a new profile from its name, unique among the profiles.</summary>
         public static string NewId(string name, IEnumerable<FieldProfile> existing)
         {

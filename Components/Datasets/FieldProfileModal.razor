@@ -83,7 +83,7 @@
             <Button Variant="secondary" Size="micro" @onclick="() => OpenChanged.InvokeAsync(false)">Cancel</Button>
             @if (Editable && OnDelete.HasDelegate && !_draft.BuiltIn && !FieldProfiles.IsBuiltInId(_draft.Id))
             {
-                <span class="fp-delete" title="@(UsedBy.Count > 0 ? "Choose another profile for its fields first" : null)">
+                <span class="fp-delete" title="@(UsedBy.Count > 0 ? "In use: delete it in the Profile manager, which gives its fields another profile" : null)">
                     <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Delete" Disabled="@(UsedBy.Count > 0)" @onclick="() => OnDelete.InvokeAsync()">Delete</Button>
                 </span>
             }

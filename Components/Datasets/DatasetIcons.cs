@@ -30,6 +30,9 @@ namespace IndxServer.Components.Datasets
             Indx.Api.Tolerance.TwoEdits => Ld2,
             _ => Ld1,
         };
+        /// <summary>A rerank weight that is not the default 1: lighter, heavier, or 0, which confirms no words.</summary>
+        public static RenderFragment<int>? ForRerankWeight(float w) =>
+            w == 0 ? Warning : w < 1 ? WeightLow : w > 1 ? WeightHigh : null;
         private static readonly RenderFragment<int> Ld0 = Of<Icons.Ld0>();
         private static readonly RenderFragment<int> Ld1 = Of<Icons.Ld1>();
         private static readonly RenderFragment<int> Ld2 = Of<Icons.Ld2>();
