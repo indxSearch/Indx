@@ -88,10 +88,12 @@ public sealed class MeterView : View
         var (cpuLit, cpuDim) = Bar(cpu, BarWidth(width, cpuFigures));
 
         long avail = Math.Max(p.AvailableMb, 1);
-        double mem = p.AvailableMb > 0 ? (double)p.WorkingSetMb / avail : 0;
+        // What the process holds, not only what is in RAM: an idle process is compressed or swapped.
+        double mem = p.AvailableMb > 0 ? (double)p.HeldMb / avail : 0;
+        string inRam = p.PackedAway ? string.Create(Inv, $", {Mb(p.WorkingSetMb)} in RAM") : "";
         string memFigures = p.AvailableMb > 0
-            ? string.Create(Inv, $"  {mem * 100,3:0}%  {Mb(p.WorkingSetMb)} of {Mb(p.AvailableMb)}")
-            : string.Create(Inv, $"  {Mb(p.WorkingSetMb)} resident");
+            ? string.Create(Inv, $"  {mem * 100,3:0}%  {Mb(p.HeldMb)} of {Mb(p.AvailableMb)}{inRam}")
+            : string.Create(Inv, $"  {Mb(p.HeldMb)} {(p.FootprintMb > 0 ? "held" : "resident")}{inRam}");
         var (memLit, memDim) = Bar(mem, BarWidth(width, memFigures));
 
         string rateFigures = s.SearchesPerMinute >= 0.05

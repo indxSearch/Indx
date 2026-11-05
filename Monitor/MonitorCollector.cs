@@ -299,7 +299,8 @@ namespace IndxServer.Monitor
                 NativeBlocks: Indx.Utilities.NativeMemoryDiagnostics.OutstandingBlocks,
                 NativePoolMb: Indx.Utilities.NativeMemoryDiagnostics.OutstandingPoolBytes / 1024 / 1024,
                 CpuPercent: cpuPercent,
-                AvailableMb: availableMb);
+                AvailableMb: availableMb,
+                FootprintMb: (ProcessFootprint.Bytes(process) ?? 0) / 1024 / 1024);
         }
     }
 }

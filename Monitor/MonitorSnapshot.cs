@@ -64,7 +64,18 @@ namespace IndxServer.Monitor
         long NativeBlocks,
         long NativePoolMb,
         double CpuPercent = 0,
-        long AvailableMb = 0);
+        long AvailableMb = 0,
+        long FootprintMb = 0)
+    {
+        /// <summary>What the process holds, in RAM or packed away (<see cref="ProcessFootprint"/>);
+        /// the working set where the system offers no such figure.</summary>
+        public long HeldMb => FootprintMb > 0 ? FootprintMb : WorkingSetMb;
+
+        /// <summary>Whether a good part of it is not in RAM: the working set under four fifths of
+        /// the footprint. Compressed or swapped on macOS and Linux; on Windows also memory committed
+        /// and not yet touched, which private bytes count and the working set does not.</summary>
+        public bool PackedAway => FootprintMb > 0 && WorkingSetMb < FootprintMb * 4 / 5;
+    }
 
     /// <summary>
     /// How unloaded filters are being materialised, and what dynamic ops cost the filter cache.

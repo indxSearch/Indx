@@ -327,6 +327,7 @@ namespace IndxServer.Monitor
                 string.Create(Inv, $"{s.TakenUtc.UtcDateTime:HH:mm:ss}   datasets {s.Datasets.Count} ({s.LoadedCount} loaded)   ") +
                 string.Create(Inv, $"docs {s.TotalDocuments:N0}   {s.DescribeSearches()}   ") +
                 string.Create(Inv, $"heap {p.GcHeapMb:N0}MB{priv}   ws {p.WorkingSetMb:N0}MB   ") +
+                (p.FootprintMb > 0 ? string.Create(Inv, $"held {p.FootprintMb:N0}MB   ") : "") +
                 string.Create(Inv, $"gc {p.Gen0}/{p.Gen1}/{p.Gen2}   native {p.NativeBlocks:N0} blk");
 
             _filters.Text = s.Filters.Describe();
