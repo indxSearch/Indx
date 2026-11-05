@@ -104,6 +104,10 @@ namespace IndxServer.Components.Datasets
         private AskBudgetStat _askBudget;
         private List<AskQuestionStat> _askQuestions = [];
         private List<AskOfferStat> _askOffers = [];
+        /// <summary>Full offers whose list did not hold what was asked (the judge's found below the
+        /// dataset's line), and the line read against.</summary>
+        private AskListMissedStat _listMissed;
+        private double _foundLine;
         private string _askView = "overview";
         // The section's pictures: the window day by day, the budget day by day, and when people ask.
         private List<AskDayStat> _askDays = [];
@@ -148,6 +152,11 @@ namespace IndxServer.Components.Datasets
             _needDenials = HasSearchOrAsk ? store.SameNeedDenials(team, ds) : [];
             _askRepeats = HasSearchOrAsk ? store.AskRepeats(team, ds, fromDay, toDay, source) : default;
             _askOffers = HasSearchOrAsk ? store.TopOffers(team, ds, fromDay, toDay, 25, source) : [];
+            // The dataset's line; off (0) reads against the default, since the count is about the
+            // list either way, not about whether the page dims it.
+            var line = SearchOrAsk.Settings(team, ds).Thresholds.Found;
+            _foundLine = line > 0 ? line : new SearchOrAskThresholds().Found;
+            _listMissed = HasSearchOrAsk ? store.ListMissed(team, ds, fromDay, toDay, _foundLine, source) : default;
             (_askFromDay, _askToDay) = (fromDay, toDay);
             _askDays = HasSearchOrAsk ? store.AsksByDay(team, ds, fromDay, toDay, source) : [];
             _askBudgetDays = HasSearchOrAsk ? store.BudgetByDay(team, ds, fromDay, toDay) : [];
@@ -215,6 +224,10 @@ namespace IndxServer.Components.Datasets
             _askBudget.DaysRunOut > 0 ? $"ran out on {_askBudget.DaysRunOut} {(_askBudget.DaysRunOut == 1 ? "day" : "days")}, {N(_askBudget.Refused)} turned away"
             : _askBudget.PeakBudget > 0 ? $"busiest day {N(_askBudget.PeakCalls)} of {N(_askBudget.PeakBudget)}"
             : "";
+
+        private const string AnswerableColumnHelp = "Whether the sources the answer was written from could answer it, as the judge read them; below 0.50 the question counts as not answered.";
+        private const string FoundColumnHelp = "Whether what was asked about was in the list it was asked from, answer or not. Beside Answerable it says what to fix: found high and answerable low, the right record was there without the fact (add the field the answer reads, or Knowledge); both low, the search missed it or the content is not there. Marked below the dataset's line.";
+        private const string FoundOffersHelp = "The lowest found under an answer offer: whether what the visitor asked about was in the list. Marked below the dataset's line, the list missed it.";
 
         private static string Score(double? p) => p is double v ? v.ToString("0.00") : "–";
 

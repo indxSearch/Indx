@@ -459,7 +459,7 @@ namespace IndxServer.Services.SearchOrAsk
                 if (!prefetch && reason is not ("identifier" or Paused) && origin != null && Writer is { } w)
                     w.RecordAskIntent(new AskIntentEventRow(teamId, dataSetName, Blank(origin.QueryId), p, answerable,
                         result.Offer, cached, reason, cost, Blank(origin.Subject), Blank(origin.Session), origin.Source,
-                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted));
+                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted, found));
                 return result;
             }
 

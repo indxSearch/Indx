@@ -398,8 +398,13 @@ else
             @* Search or ask (Notes/search-or-ask-server.md). The questions the content did not
                answer lead: they are what to write next. Offers lists the texts an offer was shown
                beside, so a false one can be found. Code in StatisticsTab.SearchOrAsk.cs. *@
-            <StatGroup Columns="@((CitesSources ? 7 : 6) + (_ask.ProactiveAnswers > 0 ? 1 : 0))">
+            <StatGroup Columns="@((CitesSources ? 7 : 6) + (_ask.ProactiveAnswers > 0 ? 1 : 0) + (_listMissed.Judged > 0 ? 1 : 0))">
                 <Stat Label="Offers shown" LabelIcon="DatasetIcons.AskOffers" Hint="Searches an offer to ask was shown beside, each once however many pauses judged it."><ValueContent>@N(_ask.Offers)</ValueContent></Stat>
+                @* Only once judgements carry found (5 Nov 2026 on; not from the Decisions API). *@
+                @if (_listMissed.Judged > 0)
+                {
+                    <Stat Label="List missed" LabelIcon="DatasetIcons.AskListMissed" Hint="@($"Searches an answer offer was shown beside whose list did not hold what the visitor asked about: the judge's found below {Score(_foundLine)}, the line under While asking, The list. A list that misses is the search's to fix (fields, synonyms, weights) or content that is not there. Out of the {N(_listMissed.Judged)} full offers the judge said found for.")"><ValueContent>@N(_listMissed.Missed) <span class="stats-tile-sub">@Pct(_listMissed.Missed, _listMissed.Judged)</span></ValueContent></Stat>
+                }
                 <Stat Label="Questions asked" LabelIcon="DatasetIcons.AskQuestions" Hint="Questions asked, and how many per offer shown."><ValueContent>@N(_ask.Asks) <span class="stats-tile-sub">@Pct(_ask.Asks, _ask.Offers)</span></ValueContent></Stat>
                 @* Only once the proactive mode has written one: the answers no visitor asked for. *@
                 @if (_ask.ProactiveAnswers > 0)
@@ -622,7 +627,7 @@ else
                 @if (_askQuestions.Count == 0) { <p class="stats-empty">No questions asked in this period.</p> }
                 else {
                 <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Questions asked" Class="stats-table">
-                    <thead><tr><th>Question</th><th class="stats-num">Asked</th><th>Outcome</th><th class="stats-num">Answerable</th>@if (CitesSources) {<th class="stats-num">Sources opened</th>}</tr></thead>
+                    <thead><tr><th>Question</th><th class="stats-num">Asked</th><th>Outcome</th><th class="stats-num"><Tooltip Content="@AnswerableColumnHelp">Answerable</Tooltip></th><th class="stats-num"><Tooltip Content="@FoundColumnHelp">Found</Tooltip></th>@if (CitesSources) {<th class="stats-num">Sources opened</th>}</tr></thead>
                     <tbody>
                         @foreach (var q in _askQuestions)
                         {
@@ -649,6 +654,7 @@ else
                                 <td class="stats-num">@N(q.Asks)</td>
                                 <td>@QuestionOutcome(q)</td>
                                 <td class="stats-num">@Score(q.Answerability)</td>
+                                <td class="stats-num @(q.Found < _foundLine ? "stats-low" : null)">@Score(q.Found)</td>
                                 @if (CitesSources) { <td class="stats-num">@(q.SourcesOpened > 0 ? N(q.SourcesOpened) : "–")</td> }
                             </tr>
                         }
@@ -683,7 +689,7 @@ else
                 @if (_askOffers.Count == 0) { <p class="stats-empty">No offers shown in this period.</p> }
                 else {
                 <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Offers shown" Class="stats-table">
-                    <thead><tr><th>Typed</th><th class="stats-num">Offers</th><th class="stats-num">Strong</th><th class="stats-num">Highest score</th><th class="stats-num">Asked</th></tr></thead>
+                    <thead><tr><th>Typed</th><th class="stats-num">Offers</th><th class="stats-num">Strong</th><th class="stats-num">Highest score</th><th class="stats-num"><Tooltip Content="@FoundOffersHelp">Found</Tooltip></th><th class="stats-num">Asked</th></tr></thead>
                     <tbody>
                         @foreach (var o in _askOffers)
                         {
@@ -692,6 +698,7 @@ else
                                 <td class="stats-num">@N(o.Offers)</td>
                                 <td class="stats-num">@N(o.Strong)</td>
                                 <td class="stats-num">@Score(o.MaxP)</td>
+                                <td class="stats-num @(o.MinFound < _foundLine ? "stats-low" : null)">@Score(o.MinFound)</td>
                                 <td class="stats-num">@(o.Asked > 0 ? N(o.Asked) : "–")</td>
                             </tr>
                         }

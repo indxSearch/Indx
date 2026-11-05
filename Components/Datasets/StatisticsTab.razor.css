@@ -293,3 +293,7 @@
 @media (max-width: 720px) {
     .stats-paths ::deep .stats-path-panel { left: 12px; right: 12px; width: auto; top: auto; bottom: 12px; max-height: 60%; }
 }
+
+/* A found score below the dataset's line: the list missed what was asked. In the ink and
+   heavier, not in a colour: a low score is a finding, not an error. */
+.stats-tab ::deep .stats-num.stats-low { color: var(--lv8); font-weight: var(--med); }

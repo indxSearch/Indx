@@ -293,31 +293,38 @@ SELECT lower(trim(a.Question)) AS Q, COUNT(*),
        SUM(CASE WHEN a.Outcome = 'nothingFound' THEN 1 ELSE 0 END),
        SUM(CASE WHEN a.Outcome = 'nothingFound' OR a.Answerable < $floor THEN 1 ELSE 0 END) AS Unanswered,
        SUM(a.Answerable), COUNT(a.Answerable),
+       SUM(f.Found), COUNT(f.Found),
        (SELECT COUNT(*) FROM SelectEvents x JOIN AskEvents b ON x.QueryId = b.AskId
          WHERE b.TeamId = $t AND b.DataSet = $d AND lower(trim(b.Question)) = lower(trim(a.Question)) AND x.Counted = 1
            AND b.Timestamp >= $from AND b.Timestamp < $to),
        MAX(a.Timestamp)
   FROM AskEvents a
+  -- The judge's found on the search the question was asked from (5 Nov 2026).
+  LEFT JOIN (SELECT QueryId, MIN(Found) AS Found FROM AskIntentEvents
+              WHERE TeamId = $t AND DataSet = $d AND Found IS NOT NULL AND QueryId IS NOT NULL GROUP BY QueryId) f
+         ON f.QueryId = a.QueryId
  WHERE a.TeamId = $t AND a.DataSet = $d AND a.Timestamp >= $from AND a.Timestamp < $to AND a.Counted = 1" +
                 (source == null ? "" : " AND a.Source = $src") + @"
  GROUP BY Q";
             AddWindow(cmd, teamId, dataSet, from, to, source);
-            var byNeed = new Dictionary<string, List<(string Q, long Asks, long Answered, long Nothing, long Unanswered, double AnswerableSum, long Judged, long Opened, long Last)>>(StringComparer.Ordinal);
+            var byNeed = new Dictionary<string, List<(string Q, long Asks, long Answered, long Nothing, long Unanswered, double AnswerableSum, long Judged, double FoundSum, long FoundJudged, long Opened, long Last)>>(StringComparer.Ordinal);
             using (var r = cmd.ExecuteReader())
                 while (r.Read())
                 {
                     var q = r.GetString(0);
                     var root = groups.Find(SearchOrAskRephrasing.Normalise(q));
                     if (!byNeed.TryGetValue(root, out var rows)) byNeed[root] = rows = [];
-                    rows.Add((q, r.GetInt64(1), r.GetInt64(2), r.GetInt64(3), r.GetInt64(4), r.IsDBNull(5) ? 0 : r.GetDouble(5), r.GetInt64(6), r.GetInt64(7), r.GetInt64(8)));
+                    rows.Add((q, r.GetInt64(1), r.GetInt64(2), r.GetInt64(3), r.GetInt64(4), r.IsDBNull(5) ? 0 : r.GetDouble(5), r.GetInt64(6),
+                        r.IsDBNull(7) ? 0 : r.GetDouble(7), r.GetInt64(8), r.GetInt64(9), r.GetInt64(10)));
                 }
             return byNeed.Values.Select(rows =>
                 {
                     var ordered = rows.OrderByDescending(x => x.Asks).ThenByDescending(x => x.Last).ToList();
-                    long judged = rows.Sum(x => x.Judged);
+                    long judged = rows.Sum(x => x.Judged), foundJudged = rows.Sum(x => x.FoundJudged);
                     return new AskQuestionStat(ordered[0].Q, rows.Sum(x => x.Asks), rows.Sum(x => x.Answered), rows.Sum(x => x.Nothing),
                         rows.Sum(x => x.Unanswered), judged > 0 ? rows.Sum(x => x.AnswerableSum) / judged : null,
-                        rows.Sum(x => x.Opened), rows.Max(x => x.Last), ordered.Skip(1).Select(x => x.Q).ToList());
+                        rows.Sum(x => x.Opened), rows.Max(x => x.Last), ordered.Skip(1).Select(x => x.Q).ToList(),
+                        foundJudged > 0 ? rows.Sum(x => x.FoundSum) / foundJudged : null);
                 })
                 .OrderByDescending(q => q.Unanswered).ThenByDescending(q => q.Asks).ThenByDescending(q => q.LastAsked)
                 .Take(limit).ToList();

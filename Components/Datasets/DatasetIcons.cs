@@ -102,6 +102,8 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> AskQuestions = Of<Icons.Question>();
         public static readonly RenderFragment<int> AskNeeds = Of<Icons.Layers>();
         public static readonly RenderFragment<int> AskOffers = Of<Icons.LightBulb>();
+        /// <summary>Full offers whose list did not hold what was asked (the judge's found), the list's icon under While asking.</summary>
+        public static readonly RenderFragment<int> AskListMissed = Of<Icons.Results>();
         public static readonly RenderFragment<int> AskProactive = Of<Icons.Spark>();
         public static readonly RenderFragment<int> FuzzyAll = Of<Icons.SearchAsYouType>();
         public static readonly RenderFragment<int> ShowMore = Of<Icons.Plus>();

@@ -6,11 +6,12 @@ namespace IndxServer.Services
     /// the probability, answerability and the server's offer. It holds no text: <see cref="QueryId"/>
     /// names the search the page showed beside it, and the text is that search's. Recorded when the
     /// judge or its cache answered; an identifier, a refusal or a disabled dataset records nothing.
-    /// Cost is the judge call's, null from the cache.</summary>
+    /// Cost is the judge call's, null from the cache. Found: whether what was asked about is among
+    /// the results (Nov 2026), null from a judge not asked it.</summary>
     public readonly record struct AskIntentEventRow(
         string TeamId, string DataSet, string? QueryId, double P, double? Answerable, string Offer, bool Cached,
         string? Reason, double? Cost, string? Subject, string? Session, string? Source, long Timestamp,
-        bool Counted = true);
+        bool Counted = true, double? Found = null);
 
     /// <summary>One question asked. The question is stored (it is new text, not a search); the
     /// answer is not (decided 11 Oct 2026). FollowUp: asked with the conversation so far, so it
@@ -58,11 +59,19 @@ namespace IndxServer.Services
 
     /// <summary>One question over a window, as asked (case and spacing folded), with the other
     /// wordings of its need counted in (<see cref="StatisticsStore.TopQuestions"/>).</summary>
+    /// <remarks>Found is the mean over its asks of the judge's found on the search it was asked from:
+    /// whether the list held what was asked. Null where no judgement carried it.</remarks>
     public readonly record struct AskQuestionStat(string Question, long Asks, long Answered, long NothingFound,
-        long Unanswered, double? Answerability, long SourcesOpened, long LastAsked, IReadOnlyList<string>? OtherWordings = null);
+        long Unanswered, double? Answerability, long SourcesOpened, long LastAsked, IReadOnlyList<string>? OtherWordings = null,
+        double? Found = null);
 
-    /// <summary>One text an offer was shown beside, from the searches the intents name.</summary>
-    public readonly record struct AskOfferStat(string Text, long Offers, long Strong, double MaxP, long Asked);
+    /// <summary>One text an offer was shown beside, from the searches the intents name. MinFound is
+    /// the lowest found under a full offer: the list did not hold what was asked. Null without one.</summary>
+    public readonly record struct AskOfferStat(string Text, long Offers, long Strong, double MaxP, long Asked, double? MinFound = null);
+
+    /// <summary>The searches a full offer was shown beside whose judgements carried found, and how
+    /// many of them had it below the line: the list did not hold what was asked.</summary>
+    public readonly record struct AskListMissedStat(long Judged, long Missed);
 
     public sealed partial class StatisticsStore
     {
@@ -150,7 +159,8 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
             cmd.ExecuteNonQuery();
             // Ask phrases (Oct 2026): what was taken off the typed text, and what the rest found. Nothing
             // writes them since the phrases were removed (5 Nov 2026); the columns keep older rows.
-            foreach (var column in new[] { "AskPhrase TEXT NULL", "FocusedHits INTEGER NULL" })
+            // And whether what was asked about is among the results (5 Nov 2026, the judge's found).
+            foreach (var column in new[] { "AskPhrase TEXT NULL", "FocusedHits INTEGER NULL", "Found REAL NULL" })
             {
                 try
                 {
@@ -202,8 +212,8 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = @"INSERT INTO AskIntentEvents
-                    (TeamId, DataSet, QueryId, P, Answerable, Offer, Cached, Reason, Cost, Subject, Session, Source, Timestamp, Counted)
-                    VALUES ($t, $d, $q, $p, $a, $o, $c, $r, $cost, $subj, $sess, $src, $ts, $cnt)";
+                    (TeamId, DataSet, QueryId, P, Answerable, Offer, Cached, Reason, Cost, Subject, Session, Source, Timestamp, Counted, Found)
+                    VALUES ($t, $d, $q, $p, $a, $o, $c, $r, $cost, $subj, $sess, $src, $ts, $cnt, $found)";
                 cmd.Parameters.AddWithValue("$t", r.TeamId);
                 cmd.Parameters.AddWithValue("$d", r.DataSet);
                 cmd.Parameters.AddWithValue("$q", (object?)r.QueryId ?? DBNull.Value);
@@ -218,6 +228,7 @@ CREATE TABLE IF NOT EXISTS AskBudgetDays (
                 cmd.Parameters.AddWithValue("$src", (object?)r.Source ?? DBNull.Value);
                 cmd.Parameters.AddWithValue("$ts", r.Timestamp);
                 cmd.Parameters.AddWithValue("$cnt", r.Counted ? 1 : 0);
+                cmd.Parameters.AddWithValue("$found", (object?)r.Found ?? DBNull.Value);
                 cmd.ExecuteNonQuery();
             }
             foreach (var r in asks)
@@ -489,6 +500,7 @@ SELECT
             cmd.CommandText = @"
 SELECT lower(trim(s.QueryText)) AS T, COUNT(DISTINCT i.QueryId),
        COUNT(DISTINCT CASE WHEN i.Offer = 'strong' THEN i.QueryId END), MAX(i.P),
+       MIN(CASE WHEN i.Offer = 'strong' THEN i.Found END),
        (SELECT COUNT(*) FROM AskEvents a WHERE a.Proactive = 0 AND a.QueryId IN (
             SELECT j.QueryId FROM AskIntentEvents j JOIN SearchEvents t ON t.QueryId = j.QueryId
              WHERE j.TeamId = $t AND j.DataSet = $d AND lower(trim(t.QueryText)) = lower(trim(s.QueryText))))
@@ -503,8 +515,31 @@ SELECT lower(trim(s.QueryText)) AS T, COUNT(DISTINCT i.QueryId),
             var list = new List<AskOfferStat>();
             using var r = cmd.ExecuteReader();
             while (r.Read())
-                list.Add(new AskOfferStat(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetDouble(3), r.GetInt64(4)));
+                list.Add(new AskOfferStat(r.GetString(0), r.GetInt64(1), r.GetInt64(2), r.GetDouble(3), r.GetInt64(5),
+                    r.IsDBNull(4) ? null : r.GetDouble(4)));
             return list;
+        }
+
+        /// <summary>The searches a full offer was shown beside whose judgements carried found, and
+        /// those of them with found below <paramref name="line"/> (thresholds.found): the list did not
+        /// hold what was asked. A search judged at several pauses counts once, by its lowest. From the
+        /// raw rows, read against the line given, so moving the line re-reads the window.</summary>
+        public AskListMissedStat ListMissed(string teamId, string dataSet, long fromDay, long toDay, double line, string? source = null)
+        {
+            var tz = ZoneOf(teamId, dataSet);
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"
+SELECT COUNT(*), COALESCE(SUM(CASE WHEN f < $line THEN 1 ELSE 0 END), 0) FROM (
+  SELECT COALESCE(i.QueryId, 'row' || i.rowid) AS Q, MIN(i.Found) AS f
+    FROM AskIntentEvents i
+   WHERE i.TeamId = $t AND i.DataSet = $d AND i.Timestamp >= $from AND i.Timestamp < $to AND i.Counted = 1
+     AND i.Offer = 'strong' AND i.Found IS NOT NULL" + (source == null ? "" : " AND i.Source = $src") + @"
+   GROUP BY Q)";
+            AddWindow(cmd, teamId, dataSet, StatisticsDays.Start(tz, fromDay), StatisticsDays.Start(tz, toDay + 1), source);
+            cmd.Parameters.AddWithValue("$line", line);
+            using var r = cmd.ExecuteReader();
+            return r.Read() ? new AskListMissedStat(r.GetInt64(0), r.GetInt64(1)) : default;
         }
 
         private static void AddWindow(SqliteCommand cmd, string teamId, string dataSet, long fromMs, long toMsExcl, string? source)
