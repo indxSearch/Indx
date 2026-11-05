@@ -288,3 +288,5 @@
     -webkit-box-orient: vertical;
     overflow: hidden;
 }
+
+.indx-datasets-all-hidden { margin: 0; font: var(--text-sm); color: var(--lv5); }
