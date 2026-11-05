@@ -1,4 +1,4 @@
-@* The way into the command palette, shaped like a search field so it reads as one: the search
+@* The way into the command palette, shaped like a search field so it reads as one: the jump-to
    icon, "Jump to…" and the shortcut in a key cap (⌘K on a Mac, Ctrl K elsewhere, asked of the
    browser once). It opens the palette (ConsolePalette, in the layout) through ConsolePaletteState.
    Two places (2 Nov 2026): at the top of the side column (InColumn), the full width, the icon
@@ -29,12 +29,12 @@ else
     [Parameter] public bool PhoneOnly { get; set; }
 
     private RenderFragment JumpButton(string? title) =>
-        @<Button Variant="secondary" Size="micro" IconLeft="_iconSearch" title="@title" aria-label="Jump to a dataset or page" aria-keyshortcuts="@(_mac ? "Meta+K" : "Control+K")" @onclick="() => Palette.Set(true)">
+        @<Button Variant="secondary" Size="micro" IconLeft="_iconJump" title="@title" aria-label="Jump to a dataset or page" aria-keyshortcuts="@(_mac ? "Meta+K" : "Control+K")" @onclick="() => Palette.Set(true)">
             <span class="nav-jump-label">Jump to…</span>
             <Kbd Class="nav-jump-kbd" Keys="@_shortcut" />
         </Button>;
 
-    private static readonly RenderFragment<int> _iconSearch = size => @<Indx.Systm.Blazor.Icons.Search Size="size" Color="currentColor" />;
+    private static readonly RenderFragment<int> _iconJump = size => @<Indx.Systm.Blazor.Icons.SearchJumpTo Size="size" Color="currentColor" />;
 
     private bool _mac = true;
     private string _shortcut => _mac ? "⌘K" : "Ctrl K";
