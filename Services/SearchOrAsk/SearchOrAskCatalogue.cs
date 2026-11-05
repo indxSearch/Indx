@@ -127,6 +127,12 @@ namespace IndxServer.Services.SearchOrAsk
                 MaxNumberOfRecordsToReturn = cap,
                 EnableFacets = true,
                 Mode = text.Length > 0 ? SearchMode.EditDistance : SearchMode.Bm25f,
+                // Words narrow the list to the records holding them all, finished words: nothing
+                // holding them all is an empty list, not the fallback's nearest, so the summary's
+                // retries with fewer conditions run and the agent is not told near records "match"
+                // (6 Nov 2026; with the fallback on by default the list was never empty).
+                Match = text.Length > 0 ? new MatchProxy { CursorAt = 0 } : null,
+                Candidates = text.Length > 0 ? new CandidateProxy { Fallback = false } : null,
                 // An order asked for ("the largest") puts those first: what is read first is what leads.
                 SortBy = sort?.Field ?? string.Empty,
                 SortAscending = sort is { Descending: false },

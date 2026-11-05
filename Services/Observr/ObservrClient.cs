@@ -385,6 +385,11 @@ namespace IndxServer.Services.Observr
         SearchOrAsk.SearchOrAskService searchOrAskService, QueryParameterStore queryParameters, ILogger<ObservrClient> logger,
         Support.SupportOptions supportOptions, Support.SupportClient support, Support.SupportState supportState)
     {
+        /// <summary>The match of a search the server runs on a finished text (a recorded query, a
+        /// word, a synonym's expansion): no word is being typed, so none is met as the start of a
+        /// longer one. 6.0 reads an open last word as typed (MatchSetup.CursorAt).</summary>
+        private static MatchProxy Finished => new() { CursorAt = 0 };
+
         public const string HttpClientName = "Observr";
         public const string ZeroHitKind = "zeroHitQuery";
         public const string FieldReviewKind = "fieldReview";
@@ -519,7 +524,7 @@ namespace IndxServer.Services.Observr
             if (engine == null || engine.Status.SystemState != SystemState.Ready || statistics.Store is not { } store)
                 return new ObservrOutcome(ObservrStatus.Failed, Reason: "datasetNotReady");
             var label = statistics.LabelsFor(engine, teamId, dataSetName);
-            var results = (IndxServerInternalApi.Manager.Search(new QueryProxy { Text = q.QueryText, MaxNumberOfRecordsToReturn = 10, Mode = SearchMode.EditDistance }, dataSetName, teamId)
+            var results = (IndxServerInternalApi.Manager.Search(new QueryProxy { Text = q.QueryText, MaxNumberOfRecordsToReturn = 10, Match = Finished }, dataSetName, teamId)
                 .Records ?? []).Select(r => new ObservrNamed(r.DocumentKey, label(r.DocumentKey) ?? r.DocumentKey.ToString())).ToList();
             var chosen = store.QueryDocuments(teamId, dataSetName, q.QueryText, fromDay, toDay, 10)
                 .Select(d => new ObservrChosen(d.DocumentKey, d.Label ?? label(d.DocumentKey) ?? d.DocumentKey.ToString(), d.Selects,
@@ -540,7 +545,7 @@ namespace IndxServer.Services.Observr
             var label = statistics.LabelsFor(engine, teamId, dataSetName);
             List<ObservrNamed> Near(string text) => (IndxServerInternalApi.Manager.Search(new QueryProxy
             {
-                Text = text, MaxNumberOfRecordsToReturn = 3, Mode = SearchMode.EditDistance,
+                Text = text, MaxNumberOfRecordsToReturn = 3, Mode = SearchMode.EditDistance, Match = Finished,
                 // The nearest, counted or not: the rest below the counted, and the fallback (6.0;
                 // until then Truncate off and IncludePatternMatches on).
                 Candidates = new CandidateProxy { Rest = true, Fallback = true },
@@ -797,6 +802,7 @@ namespace IndxServer.Services.Observr
                     Text = text,
                     MaxNumberOfRecordsToReturn = take,
                     Mode = SearchMode.EditDistance,
+                    Match = Finished,
                     Candidates = strict ? null : new CandidateProxy { Rest = true, Fallback = true },
                 }, dataSetName, teamId).Records ?? []).Select(r => r.DocumentKey).ToList();
 
@@ -920,7 +926,7 @@ namespace IndxServer.Services.Observr
             if (engine == null) return new ObservrSynonymTest(0, []);
             var list = new SynonymList { Entries = [new SynonymEntry { Direction = SynonymDirection.Multidirectional, Terms = terms }] };
             var expanded = list.Expand(query);
-            var result = IndxServerInternalApi.Manager.Search(new QueryProxy { Text = expanded, MaxNumberOfRecordsToReturn = 5, Mode = SearchMode.EditDistance }, dataSetName, teamId);
+            var result = IndxServerInternalApi.Manager.Search(new QueryProxy { Text = expanded, MaxNumberOfRecordsToReturn = 5, Mode = SearchMode.EditDistance, Match = Finished }, dataSetName, teamId);
             var label = statistics.LabelsFor(engine, teamId, dataSetName);
             var records = result.Records ?? [];
             return new ObservrSynonymTest(records.Length, records.Select(r => label(r.DocumentKey) ?? r.DocumentKey.ToString()).ToList());
@@ -1200,17 +1206,26 @@ namespace IndxServer.Services.Observr
         {
             var engine = engines.FindSearchEngine(dataSetName, teamId);
             if (engine == null || engine.Status.SystemState != SystemState.Ready) return "The dataset is not ready.";
-            var proposed = changes.GroupBy(c => c.Name).Select(g => new FieldProxy
+            var searchedNow = engine.GetFieldList().Where(f => f.WordMatching || f.PatternMatching != null)
+                .Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
+            var proposed = changes.GroupBy(c => c.Name).Select(g =>
             {
-                FieldName = g.Key,
-                // Observr proposes "searchable" (5.0's role): searched by its words, as an older
-                // client's Searchable is read (FieldProxy.LegacySearchable); not searched at all.
-                WordMatching = g.Select(c => c.Searchable).LastOrDefault(v => v != null),
-                PatternMatching = g.Select(c => c.Searchable).LastOrDefault(v => v != null) == false ? false : null,
-                Filterable = g.Select(c => c.Filterable).LastOrDefault(v => v != null),
-                Facetable = g.Select(c => c.Facetable).LastOrDefault(v => v != null),
-                Sortable = g.Select(c => c.Sortable).LastOrDefault(v => v != null),
-                Weight = g.Select(c => c.Weight).LastOrDefault(v => v != null),
+                var searchable = g.Select(c => c.Searchable).LastOrDefault(v => v != null);
+                return new FieldProxy
+                {
+                    FieldName = g.Key,
+                    // Observr proposes "searchable" (5.0's role, which searched a field by its words
+                    // and inside them). A field not searched yet gets both, as the migration guide
+                    // maps it (WordMatching plus the default pattern setup, 6 Nov 2026; word matching
+                    // alone until then); one already searched keeps the roles its owner chose.
+                    // Turned off, neither.
+                    WordMatching = searchable == true && searchedNow.Contains(g.Key) ? null : searchable,
+                    PatternMatching = searchable == true && searchedNow.Contains(g.Key) ? null : searchable,
+                    Filterable = g.Select(c => c.Filterable).LastOrDefault(v => v != null),
+                    Facetable = g.Select(c => c.Facetable).LastOrDefault(v => v != null),
+                    Sortable = g.Select(c => c.Sortable).LastOrDefault(v => v != null),
+                    Weight = g.Select(c => c.Weight).LastOrDefault(v => v != null),
+                };
             }).ToArray();
             try
             {

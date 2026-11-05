@@ -561,9 +561,15 @@ namespace IndxServer.Services.SearchOrAsk
             {
                 Text = text,
                 MaxNumberOfRecordsToReturn = 10,
-                Mode = SearchMode.EditDistance,
+                // The judge's search (truncate) is the visitor's: the dataset's mode and the text as
+                // being typed. An answer's searches are the server's own, on finished texts (the
+                // question, its keywords, the context), EditDistance as measured, and no word met as
+                // the start of a longer one (6 Nov 2026; until then the judge forced EditDistance and
+                // every text kept its last word open).
+                Mode = truncate ? null : SearchMode.EditDistance,
                 // The page's matching while asking (intrface's STRICT_MATCH): no typo, prefix or joined words.
-                Match = wholeWords ? new MatchProxy { Tolerance = Tolerance.Exact, TypingPrefixFrom = 0, JoinedWords = false } : null,
+                Match = wholeWords ? new MatchProxy { Tolerance = Tolerance.Exact, TypingPrefixFrom = 0, JoinedWords = false }
+                    : truncate ? null : new MatchProxy { CursorAt = 0 },
                 // Not truncated: the rest below the counted (6.0; until then Truncate off).
                 Candidates = truncate ? null : new CandidateProxy { Rest = true },
                 // How each listed record's words were met, for the judge (Nov 2026): it reads the ten

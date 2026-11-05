@@ -24,8 +24,9 @@ namespace IndxServer.Mcp
         DatasetMetadataStore metadata)
     {
         // Default match semantics for agents: precise near-exact only (EditDistance reranked, the
-        // fallback's pattern matches off). A query with no near-exact hit returns nothing rather
-        // than fuzzy noise.
+        // fallback and the rest off). A query with no near-exact hit returns nothing rather than
+        // fuzzy noise. EditDistance is chosen here whatever the dataset's mode: an agent's search is
+        // judged on whether it found the thing, not on a visitor's ordering.
         private const int DefaultLimit = 10;
         private const int MaxResponseBytes = 80_000; // size guardrail for the context window
         private const int MaxFacetValues = 25;
@@ -140,7 +141,8 @@ namespace IndxServer.Mcp
                      "know the field names and the values that exist. An empty result is meaningful here: matching is precise by " +
                      "default (near-exact only, incl. typo tolerance) — an empty result means nothing matches well, " +
                      "which is a trustworthy 'not found' (don't retry with looser wording unless you set broaden=true). " +
-                     "count is the hits returned, total how many documents match in all (report total as the number of matches). " +
+                     "count is the hits returned, total how many documents hold every query word (report total as the number of matches). " +
+                     "With broaden=true, isFallback true means no document held every word: the hits are the nearest, not matches. " +
                      "Saved boost rules are applied. Use filters for structured constraints on filterable fields, and filter " +
                      "(an expression) for OR, NOT, IN or open ranges (get valid fields/values from describe_dataset).")]
         public async Task<McpSearchResult> Search(
@@ -178,6 +180,10 @@ namespace IndxServer.Mcp
                 Text = query ?? "",
                 MaxNumberOfRecordsToReturn = Math.Clamp(limit, 1, 100),
                 Mode = SearchMode.EditDistance,
+                // An agent's text is finished: no word in it is being typed, so none is met as the
+                // start of a longer one (6.0 reads an open last word as typed, and "mel" found
+                // melon before the flour on a large catalogue, 5 Nov 2026).
+                Match = new MatchProxy { CursorAt = 0 },
                 // broaden: the pattern matches below the counted (Rest, 3 Nov 2026) and, when nothing
                 // is counted, the fallback's.
                 Candidates = new CandidateProxy { Fallback = broaden, Rest = broaden },
@@ -212,7 +218,7 @@ namespace IndxServer.Mcp
             }
 
             var res = IndxServerInternalApi.Manager.Search(queryProxy, dataset, ownerKey);
-            return ShapeResult(engine, res, fields);
+            return ShapeResult(engine, res, fields, broaden);
         }
 
         [McpServerTool(Name = "get_document", UseStructuredContent = false, ReadOnly = true)]
@@ -464,6 +470,12 @@ namespace IndxServer.Mcp
             return engine;
         }
 
+        /// <summary>The documents holding every word: the tolerance counts at the counted rung,
+        /// Result.Count where the search had no word lookup to count with.</summary>
+        private static int CountedOf(Result res) => res.ToleranceCounts is { } t && res.CountedTolerance is { } at
+            ? at switch { Tolerance.Exact => t.Exact, Tolerance.OneEdit => t.OneEdit ?? t.Exact, _ => t.TwoEdits ?? t.OneEdit ?? t.Exact }
+            : res.Count;
+
         /// <summary>Match-all via an empty query sorted by any sortable field (empty text alone returns nothing).</summary>
         private static Result? TryMatchAll(string dataset, string ownerKey, FieldProxy[] fieldCfg, bool withFacets)
         {
@@ -481,7 +493,7 @@ namespace IndxServer.Mcp
             return IndxServerInternalApi.Manager.Search(q, dataset, ownerKey);
         }
 
-        private static McpSearchResult ShapeResult(IServerSearchEngine engine, Result res, string[]? fields)
+        private static McpSearchResult ShapeResult(IServerSearchEngine engine, Result res, string[]? fields, bool broaden = false)
         {
             var outp = new McpSearchResult();
             int bytes = 0;
@@ -500,9 +512,13 @@ namespace IndxServer.Mcp
                 outp.Hits.Add(new McpSearchHit { Key = rec.DocumentKey, Score = rec.Score, Document = doc });
             }
             outp.Count = outp.Hits.Count;
-            // How many documents answer the query (Result.Count, 2 Nov 2026), beyond the hits
-            // returned: what an agent says when it reports "N matches".
-            outp.Total = res.Count;
+            // How many documents hold every word (the counted set, 2 Nov 2026), beyond the hits
+            // returned: what an agent says when it reports "N matches". Not Result.Count, which with
+            // broaden also takes in the rest, or is the fallback's count when nothing was counted.
+            // Said only when the hits are the fallback's: without broaden the fallback is off and an
+            // empty list is the answer (the library reports IsFallback for any search that counted nothing).
+            outp.IsFallback = res.IsFallback && broaden;
+            outp.Total = res.IsFallback ? 0 : CountedOf(res);
 
             if (res.Facets != null)
             {

@@ -199,18 +199,23 @@ namespace IndxServer.Services.Observr
             var engine = engines.FindSearchEngine(ds, ctx.TeamId);
             if (engine == null || engine.Status.SystemState != SystemState.Ready) return "The dataset is not loaded, so it cannot be searched now.";
             var label = statistics.LabelsFor(engine, ctx.TeamId, ds);
-            var result = IndxServerInternalApi.Manager.Search(new QueryProxy { Text = text, MaxNumberOfRecordsToReturn = take, Mode = SearchMode.EditDistance }, ds, ctx.TeamId);
+            // The list a visitor sees for the finished text: the dataset's mode and parameters (until
+            // 6 Nov 2026 EditDistance whatever the dataset set), and no word met as the start of a
+            // longer one.
+            var result = IndxServerInternalApi.Manager.Search(new QueryProxy { Text = text, MaxNumberOfRecordsToReturn = take, Match = new MatchProxy { CursorAt = 0 } }, ds, ctx.TeamId);
             var records = result.Records ?? [];
-            // The list a visitor sees: the counted matches first, and what follows them is what
-            // pattern matching found (6.0; until then up to the truncation point).
+            // The counted matches first, and what follows them holds only some of the words: the
+            // rest, or the fallback when nothing held them all (6.0; until then up to the truncation point).
             var sb = new StringBuilder();
             if (records.Length == 0) sb.AppendLine($"\"{text}\" finds nothing.");
             else
             {
                 var trusted = result.CountedInList();
-                sb.AppendLine($"\"{text}\": {records.Length} records returned (the first {take} asked for), {trusted} of them matches the search trusts; by name:");
+                sb.AppendLine(result.IsFallback
+                    ? $"\"{text}\": no record holds every word; {records.Length} nearest returned (the first {take} asked for), by name:"
+                    : $"\"{text}\": {records.Length} records returned (the first {take} asked for), {trusted} of them hold every word; by name:");
                 for (var i = 0; i < records.Length; i++)
-                    sb.AppendLine($"- {label(records[i].DocumentKey) ?? records[i].DocumentKey.ToString()}{(i >= trusted ? " (beyond the truncation)" : "")}");
+                    sb.AppendLine($"- {label(records[i].DocumentKey) ?? records[i].DocumentKey.ToString()}{(i >= trusted && !result.IsFallback ? " (not every word)" : "")}");
             }
             return sb.ToString();
         }

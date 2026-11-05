@@ -84,10 +84,13 @@ namespace IndxServer.Services
 
         /// <summary>Whether the search counted any result: a document holding every query word
         /// within the tolerance (<see cref="Indx.Api.Result.CountedTolerance"/>); false when what
-        /// was shown is the fallback, the most words and pattern matches. Null in BM25F alone,
-        /// which counts nothing. Until 6.0 read from Result.TruncationIndex, -1 for none.</summary>
+        /// was shown is the fallback, the most words and pattern matches. Null when the search had
+        /// no word lookup to count with: BM25F, from the request or the dataset's parameters, a
+        /// query with no word long enough, or a dataset with no field matched by its words. Read
+        /// from the result, not the request (6 Nov 2026: a dataset set to Bm25f, or a one-letter
+        /// query, read as uncovered). Until 6.0 read from Result.TruncationIndex, -1 for none.</summary>
         public static bool? CoverageConfirmed(Indx.Http.QueryProxy query, Indx.Api.Result result) =>
-            query.Mode != Indx.Api.SearchMode.Bm25f ? result.CountedTolerance != null : null;
+            result.ToleranceCounts == null ? null : result.CountedTolerance != null;
 
         /// <summary>The filter key to store with a search: the key of the filter it ran with
         /// (<paramref name="resolvedKey"/>, its token and filter expression ANDed - a key IS the

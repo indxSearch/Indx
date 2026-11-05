@@ -80,8 +80,12 @@ namespace IndxServer.Mcp
     {
         /// <summary>The hits returned.</summary>
         public int Count { get; set; }
-        /// <summary>How many documents answer the query, beyond the hits returned (Result.Count).</summary>
+        /// <summary>How many documents hold every query word, beyond the hits returned; 0 for a
+        /// fallback.</summary>
         public int Total { get; set; }
+        /// <summary>True when no document held every word and the hits are the nearest (only with
+        /// broaden, which turns the fallback on).</summary>
+        public bool IsFallback { get; set; }
         public List<McpSearchHit> Hits { get; set; } = new();
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
