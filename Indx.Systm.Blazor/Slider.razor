@@ -1,6 +1,6 @@
 @using System.Globalization
 
-<div class="indx-slider @Class">
+<div class="indx-slider @(Disabled ? "indx-slider--disabled" : null) @Class">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label for="@_id" class="indx-slider-label">@Label</label>

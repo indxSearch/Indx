@@ -125,13 +125,18 @@
     border-radius: 1px;
 }
 
+/* Disabled as indx-systm shows it everywhere (Button, Checkbox, BarSlider): the whole slider at
+   half opacity, not allowed. The thumb keeps its own colour; in the fill's colour it vanished
+   into the fill, which read as broken rather than off. */
+.indx-slider--disabled {
+    opacity: 0.5;
+}
+
 .indx-slider-input:disabled::-webkit-slider-thumb {
-    background-color: var(--lv5);
     cursor: not-allowed;
 }
 
 .indx-slider-input:disabled::-moz-range-thumb {
-    background-color: var(--lv5);
     cursor: not-allowed;
 }
 
