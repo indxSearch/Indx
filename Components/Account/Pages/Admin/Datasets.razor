@@ -146,7 +146,19 @@ else
                             <span style="color: var(--lv4);">—</span>
                         }
                     </td>
-                    <td style="text-align: right;">
+                    <td style="text-align: right; white-space: nowrap;">
+                        @* Hibernate now (6 Nov 2026): frees the memory of a loaded dataset that is not
+                           pinned. A pinned one is kept loaded on purpose; a timed one wakes again on
+                           its next search, so the tooltip says which. *@
+                        @if (row.State == SystemState.Ready && row.KeepAliveTimeHrs != int.MaxValue)
+                        {
+                            <Tooltip Content="@(row.KeepAliveTimeHrs == 0
+                                ? "Hibernate: unload it from memory now. The data stays on disk; it stays asleep until someone wakes it."
+                                : "Hibernate: unload it from memory now. The data stays on disk; it wakes again on its next search.")">
+                                <Button Variant="ghost" Size="micro" IconLeft="_iconHibernate" aria-label="@($"Hibernate {row.DataSetName}")"
+                                        Loading="@(_hibernating == row.Key)" Disabled="@(_hibernating != null)" @onclick="() => HibernateRow(row)" />
+                            </Tooltip>
+                        }
                         <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" title="Delete dataset" @onclick="() => { _deleting = row; _deleteOpen = true; }" />
                     </td>
                 </tr>
@@ -161,6 +173,7 @@ else
 
 @code {
     private RenderFragment<int> _iconDelete  => size => @<Delete Size="size" />;
+    private RenderFragment<int> _iconHibernate => size => @<Indx.Systm.Blazor.Icons.Hibernate Size="size" />;
     private RenderFragment<int> _iconRefresh => size => @<Refresh Size="size" />;
 
     private record DatasetRow(
@@ -362,6 +375,30 @@ else
             }
         }
         finally { _saving = false; }
+    }
+
+    /// <summary>The row being put to sleep, so its button spins and the others wait.</summary>
+    private string? _hibernating;
+
+    private async Task HibernateRow(DatasetRow row)
+    {
+        _message = null; _errorMessage = null;
+        _hibernating = row.Key;
+        try
+        {
+            // Unloading takes a moment on a large dataset; off the circuit, so the spinner paints.
+            await Task.Run(() => IndxServerInternalApi.Manager.SleepDataSetInstance(row.DataSetName, row.TeamId));
+            IndxServerInternalApi.Manager.ReportChange(row.DataSetName, row.TeamId, IndxServer.Services.DatasetChangeKind.Hibernate, new { reason = "admin" });
+            Logger.LogInformation("Admin hibernated dataset {DataSetName} of team {Team}", row.DataSetName, row.TeamName ?? row.TeamId);
+            _message = $"Dataset \"{row.DataSetName}\" hibernated.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Admin hibernate of {DataSetName} failed", row.DataSetName);
+            _errorMessage = $"Could not hibernate \"{row.DataSetName}\": {ex.Message}";
+        }
+        finally { _hibernating = null; }
+        await Load();
     }
 
     private async Task DeleteDataset(string dataSetName, string teamId)
