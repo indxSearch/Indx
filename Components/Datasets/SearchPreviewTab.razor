@@ -279,6 +279,7 @@ else
     {
         _searches.Begin(); // a search still running was made against the old documents
         _facetRuns.Begin();
+        _facetsWanted = null;
         _facets = null;
         _facetsFor = null;
         _results = null; _summary = null;
@@ -304,10 +305,10 @@ else
             if (!ReferenceEquals(_facetsFields, Ctx.SavedFields) && HasFilters)
             {
                 DropUnfilterable();
-                _ = RunQuickSearchAsync(_text, facetsNow: true);
+                _ = RunQuickSearchAsync(_text);
             }
             else if (_facetsFor != _text || !ReferenceEquals(_facetsFields, Ctx.SavedFields))
-                _ = RunFacetsAsync(_text, immediately: true);
+                _ = RunFacetsAsync(_text);
         }
         _wasActive = Active;
     }
@@ -327,7 +328,7 @@ else
         _hovered = _pinned = null;
         _perf = null;
         // The filters stay: with the box empty they list what they hold.
-        _ = RunQuickSearchAsync(string.Empty, facetsNow: true);
+        _ = RunQuickSearchAsync(string.Empty);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -346,14 +347,13 @@ else
 
     /// <summary>One search per keystroke, the newest answer wins (see LatestOnly). The search
     /// runs off the circuit, so the next keystroke is not kept waiting behind it; a result that
-    /// has been overtaken by then is dropped. When the preview grows facets, the facet query is
-    /// the part to debounce, as indx-intrface does: this text search stays immediate.</summary>
-    private async Task RunQuickSearchAsync(string text, bool facetsNow = false)
+    /// has been overtaken by then is dropped. The facets follow on their own (RunFacetsAsync).</summary>
+    private async Task RunQuickSearchAsync(string text)
     {
         var ticket = _searches.Begin();
         _text = text;
         _perf = null;
-        _ = RunFacetsAsync(text, facetsNow);
+        _ = RunFacetsAsync(text);
         if (string.IsNullOrWhiteSpace(text) && !HasFilters)
         {
             _results = null; _summary = null;
@@ -389,37 +389,53 @@ else
     private IReadOnlyList<FacetPreview.Row>? _facets;
     private string? _facetsFor;      // the text the shown facets belong to
     private object? _facetsFields;   // the saved field configuration they were counted under
-    private static readonly TimeSpan FacetDelay = TimeSpan.FromMilliseconds(350);
+
+    // What the facets should be counted for next, and whether a count is running.
+    private sealed record FacetRequest(string Text, FilterState Filters, object? Fields);
+    private FacetRequest? _facetsWanted;
+    private bool _facetsRunning;
 
     private bool HasFacetableFields => Ctx.SavedFields?.Any(f => f.Facetable == true) == true;
 
-    /// <summary>The facet query is the expensive half of a search, so it waits until typing
-    /// pauses, as indx-intrface does; the hits above stay immediate. Until the new counts arrive
-    /// the previous ones stay on screen, which in a fixed-height base moves nothing.</summary>
-    private async Task RunFacetsAsync(string text, bool immediately = false)
+    /// <summary>One facet count in flight, always for the newest text (Nov 2026). A keystroke
+    /// starts one at once when none is running; while one runs, keystrokes only note what they
+    /// want, and when it ends the newest is counted next. A count overtaken while it ran is
+    /// dropped, and until the new counts arrive the previous ones stay on screen, which in a
+    /// fixed-height base moves nothing. The engine cannot cancel a search, so this is what keeps
+    /// fast typing on a large dataset from queueing counts; on LWIN (199k) the worst in-engine
+    /// count was well under the 350 ms the preview used to wait before starting one. The hits
+    /// above never wait for it.</summary>
+    private async Task RunFacetsAsync(string text)
     {
         if (!HasFacetableFields) return;
-        var ticket = _facetRuns.Begin();
-        var countedUnder = Ctx.SavedFields;
-        var filters = FiltersNow();
+        _facetsWanted = new FacetRequest(text, FiltersNow(), Ctx.SavedFields);
+        if (_facetsRunning) return; // the running count takes it up when it ends
+        _facetsRunning = true;
         try
         {
-            if (!immediately) await Task.Delay(FacetDelay);
-            if (!_facetRuns.IsCurrent(ticket)) return;
-            var rows = await Task.Run(() => SearchFacets(text, filters));
-            if (!_facetRuns.IsCurrent(ticket)) return;
-            _facets = rows ?? [];
-            _facetsFor = text;
-            _facetsFields = countedUnder;
-            await InvokeAsync(StateHasChanged);
+            while (_facetsWanted is { } want)
+            {
+                var ticket = _facetRuns.Begin();
+                IReadOnlyList<FacetPreview.Row>? rows;
+                try { rows = await Task.Run(() => SearchFacets(want.Text, want.Filters)); }
+                catch (ObjectDisposedException) { return; }
+                catch (Exception ex)
+                {
+                    // A glance that fails must not take the circuit down with it.
+                    Console.WriteLine($"[SearchPreview] facets failed for {Ctx.Name}: {ex.Message}");
+                    rows = [];
+                }
+                // Overtaken by a newer text or filter (count that one next), or by a Replace
+                // (Invalidate: nothing is wanted any more).
+                if (!_facetRuns.IsCurrent(ticket) || !ReferenceEquals(_facetsWanted, want)) continue;
+                _facetsWanted = null;
+                _facets = rows ?? [];
+                _facetsFor = want.Text;
+                _facetsFields = want.Fields;
+                await InvokeAsync(StateHasChanged);
+            }
         }
-        catch (ObjectDisposedException) { }
-        catch (Exception ex)
-        {
-            // A glance that fails must not take the circuit down with it.
-            Console.WriteLine($"[SearchPreview] facets failed for {Ctx.Name}: {ex.Message}");
-            if (_facetRuns.IsCurrent(ticket)) { _facets = []; _ = InvokeAsync(StateHasChanged); }
-        }
+        finally { _facetsRunning = false; }
     }
 
     private IReadOnlyList<FacetPreview.Row>? SearchFacets(string text, FilterState filters)
@@ -474,7 +490,7 @@ else
         if (from == null && to == null) _ranges.Remove(field);
         else _ranges[field] = (from, to);
         _hovered = null;
-        return RunQuickSearchAsync(_text, facetsNow: true);
+        return RunQuickSearchAsync(_text);
     }
     private bool IsPicked(string field, string value) => _filters.TryGetValue(field, out var values) && values.Contains(value);
 
@@ -484,14 +500,14 @@ else
         if (!values.Remove(value)) values.Add(value);
         if (values.Count == 0) _filters.Remove(field);
         _hovered = null;
-        return RunQuickSearchAsync(_text, facetsNow: true);
+        return RunQuickSearchAsync(_text);
     }
 
     private Task ClearFilters()
     {
         _filters.Clear();
         _ranges.Clear();
-        return RunQuickSearchAsync(_text, facetsNow: true);
+        return RunQuickSearchAsync(_text);
     }
 
     /// <summary>A saved field configuration can take a field's Filterable away; a filter on it
