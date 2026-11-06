@@ -726,6 +726,13 @@ internal static class StartupServices
             options.AllowSynchronousIO = true;
         });
 
+        // The most one request body may hold (Indx:MaxUploadBytes, 2 GB by default): the global
+        // limits below and the whole-dataset routes ([UploadSizeLimit]) read the same number.
+        var uploadLimit = Services.UploadLimit.From(builder.Configuration);
+        builder.Services.AddSingleton(uploadLimit);
+        if (uploadLimit.Bytes > Services.UploadLimit.IisMaximum && OperatingSystem.IsWindows())
+            Console.WriteLine($"ℹ {Services.UploadLimit.Setting} is {uploadLimit.Bytes:N0} bytes; under IIS, request filtering allows at most {Services.UploadLimit.IisMaximum:N0}.");
+
         builder.Services.Configure<IISServerOptions>(options =>
         {
             options.AllowSynchronousIO = true;
@@ -733,7 +740,7 @@ internal static class StartupServices
             // not apply; this one does, and it defaults to 30,000,000 bytes. Left unset it refused a
             // 79 MB analyze on cloud.indx.co (Oct 2026) on every route without its own
             // [RequestSizeLimit]. web.config raises IIS's request filtering, the limit in front.
-            options.MaxRequestBodySize = 2_000_000_000;
+            options.MaxRequestBodySize = uploadLimit.Bytes;
         });
 
         // CORS: any origin outside Production; in Production the origins set on the instance
@@ -750,7 +757,7 @@ internal static class StartupServices
         builder.WebHost.ConfigureKestrel(serverOptions =>
         {
             serverOptions.Limits.RequestHeadersTimeout = TimeSpan.FromMinutes(5);
-            serverOptions.Limits.MaxRequestBodySize = 2_000_000_000;
+            serverOptions.Limits.MaxRequestBodySize = uploadLimit.Bytes;
             serverOptions.AllowSynchronousIO = true;
         });
 

@@ -27,7 +27,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// As Analyze but handles a stream as input text.
         /// </summary>
-        [RequestSizeLimit(2_000_000_000)]
+        [UploadSizeLimit]
         [HttpPost(DataSetRoute + "/analyze")]
         public async Task<ActionResult<SystemStatus>> AnalyzeStreamAsync(string teamName, string dataSetName)
         {
@@ -57,7 +57,7 @@ namespace IndxServer.Controllers
         /// Analyze the fields of a string containing json. Since json may be invalid, which will cause
         /// a 400 error, it is sent as plain text.
         /// </summary>
-        [RequestSizeLimit(2_000_000_000)]
+        [UploadSizeLimit]
         [HttpPost(DataSetRoute + "/analyze/text")]
         public ActionResult<SystemStatus> AnalyzeString(string teamName, string dataSetName, [FromBody] string jsonData)
         {
@@ -264,7 +264,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// Loads the jsonData into search engine as a stream.
         /// </summary>
-        [RequestSizeLimit(2_000_000_000)]
+        [UploadSizeLimit]
         [HttpPost(DataSetRoute + "/load")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public ActionResult LoadStreamAsync(string teamName, string dataSetName)
@@ -301,7 +301,7 @@ namespace IndxServer.Controllers
         /// is Ready, hibernated or idle-evicted (the old documents are never reloaded). Returns a
         /// summary of how the new schema differed from the previous field configuration.
         /// </summary>
-        [RequestSizeLimit(2_000_000_000)]
+        [UploadSizeLimit]
         [HttpPost(DataSetRoute + "/replace")]
         public ActionResult<ReplaceSchemaChange> Replace(string teamName, string dataSetName)
         {
@@ -337,7 +337,7 @@ namespace IndxServer.Controllers
         /// <summary>
         /// Loads the jsonData into search engine as a string.
         /// </summary>
-        [RequestSizeLimit(2_000_000_000)]
+        [UploadSizeLimit]
         [HttpPost(DataSetRoute + "/load/text")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public IActionResult LoadString(string teamName, string dataSetName, [FromBody] string jsonData)

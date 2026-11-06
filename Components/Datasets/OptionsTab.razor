@@ -6,6 +6,7 @@
 @using IndxServer.Engine
 @inherits DatasetTabBase
 @inject DatasetMetadataStore DatasetMeta
+@inject IndxServer.Services.UploadLimit UploadLimit
 @inject StatisticsService Stats
 @inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
 @inject IndxServer.Services.SearchOrAsk.SearchOrAskStore SearchOrAskStore
@@ -599,6 +600,8 @@
         var file = _replaceFile;
         _replaceFile = null;
         _replaceResult = _replaceWarning = _replaceError = null;
+        // Said before a byte is sent: past the limit the browser stream fails with an IO error.
+        if (UploadLimit.Refusal(file.Size) is { } tooLarge) { _replaceError = tooLarge; return; }
         _replaceBusy = true;
         _replaceProgress = new ReplaceProgress(ReplaceStep.Uploading, 0);
         _replaceTransferCts?.Dispose();
@@ -623,7 +626,7 @@
             var buffer = new byte[65536];
             long totalRead = 0;
             var ct = _replaceTransferCts.Token;
-            await using (var stream = file.OpenReadStream(maxAllowedSize: 2_000_000_000L, ct))
+            await using (var stream = file.OpenReadStream(maxAllowedSize: UploadLimit.Bytes, ct))
             {
                 int read;
                 while ((read = await stream.ReadAsync(buffer, ct)) > 0)

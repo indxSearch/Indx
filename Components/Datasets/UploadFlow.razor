@@ -8,6 +8,7 @@
 
 @inherits DatasetTabBase
 @inject IndxServer.Services.FieldProfileStore ProfileStore
+@inject IndxServer.Services.UploadLimit UploadLimit
 @if (!Active || !Ctx.HasStatus) { return; }
 
 @{
@@ -360,6 +361,13 @@ else if (Ctx.IsLoadIndexing)
         if (_selectedFile == null) return;
         var file = _selectedFile;
         _selectedFile = null;
+        // Said before a byte is sent: past the limit the browser stream fails with an IO error.
+        if (UploadLimit.Refusal(file.Size) is { } tooLarge)
+        {
+            Ctx.OperationError = tooLarge;
+            Ctx.NotifyChanged();
+            return;
+        }
         Ctx.OperationError = null;
         Ctx.LoadFailure = null;
         Ctx.AnalyzeNotes = null;
@@ -378,7 +386,7 @@ else if (Ctx.IsLoadIndexing)
             const int chunkSize = 65536;
             var buffer = new byte[chunkSize];
             long totalRead = 0;
-            await using var stream = file.OpenReadStream(maxAllowedSize: 2_000_000_000L);
+            await using var stream = file.OpenReadStream(maxAllowedSize: UploadLimit.Bytes);
             int bytesRead;
             while ((bytesRead = await stream.ReadAsync(buffer, _uploadCts.Token)) > 0)
             {
