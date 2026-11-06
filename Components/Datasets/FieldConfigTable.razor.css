@@ -71,30 +71,7 @@
 }
 
 .indx-weight-slider {
-    display: flex;
-    align-items: center;
-    gap: 10px;
     min-width: 110px;
-}
-
-.indx-weight-slider > :first-child {
-    flex: 1;
-}
-
-/* The number beside the weight slider: a ghost InputField that reads as the number it was until
-   pointed at, so the pair looks as the slider and its value always did. */
-.indx-weight-slider ::deep .indx-weight-input {
-    width: 48px;
-    flex-shrink: 0;
-    height: 26px;
-    padding: 0 6px;
-    color: var(--lv5);
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-}
-
-.indx-weight-slider ::deep .indx-weight-input:focus {
-    color: var(--lv8);
 }
 
 

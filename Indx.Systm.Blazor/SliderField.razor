@@ -1,0 +1,60 @@
+@* A slider and the number it holds, side by side (Nov 2026). The slider moves in its steps between
+   Min and Max; the number takes any value from FieldMin to FieldMax, typed or stepped by FieldStep
+   with the arrow keys, and the slider follows as far as it reaches. The number is a ghost field: no
+   stroke until it is being edited, a ghost button's tint when pointed at. A field's weight in the
+   console is the first. *@
+@using System.Globalization
+
+<div class="indx-slider-field @Class">
+    <Slider Min="Min" Max="Max" Step="Step" Value="@Math.Clamp(Value, Min, Max)" Disabled="Disabled" AriaLabel="@AriaLabel"
+            ValueChanged="Slid" />
+    <InputField Variant="ghost" type="number" step="@Fmt(FieldStep ?? Step)" min="@(FieldMin is { } mn ? Fmt(mn) : null)"
+                max="@(FieldMax is { } mx ? Fmt(mx) : null)" class="indx-slider-field-number" disabled="@Disabled"
+                aria-label="@(AriaLabel is { } a ? $"{a}, value" : null)" @key="_tick"
+                Value="@Value.ToString(Format, CultureInfo.InvariantCulture)" ValueExpression="() => _typed" ValueChanged="Typed" />
+</div>
+
+@code {
+    [Parameter] public double Value { get; set; }
+    [Parameter] public EventCallback<double> ValueChanged { get; set; }
+    /// <summary>The slider's range. The number may hold a value beyond it; the slider then rests at its end.</summary>
+    [Parameter] public double Min { get; set; } = 0;
+    [Parameter] public double Max { get; set; } = 100;
+    /// <summary>The slider's step: a value it gives is rounded to it.</summary>
+    [Parameter] public double? Step { get; set; }
+    /// <summary>The number's own range, none by default.</summary>
+    [Parameter] public double? FieldMin { get; set; }
+    [Parameter] public double? FieldMax { get; set; }
+    /// <summary>What the arrow keys add in the number. The slider's step by default.</summary>
+    [Parameter] public double? FieldStep { get; set; }
+    /// <summary>How the number is written, invariant culture.</summary>
+    [Parameter] public string Format { get; set; } = "0.###";
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? AriaLabel { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    private string? _typed;
+    // A typed value that was refused or moved into range leaves the model as it was, so nothing
+    // would rewrite the box: a new key recreates it, showing what was applied.
+    private int _tick;
+
+    private static string? Fmt(double? v) => v?.ToString(CultureInfo.InvariantCulture) ?? "any";
+
+    private Task Slid(double v)
+    {
+        if (Step is { } s and > 0) v = Math.Round(Min + Math.Round((v - Min) / s) * s, 10);
+        return ValueChanged.InvokeAsync(v);
+    }
+
+    private Task Typed(string? text)
+    {
+        if (!double.TryParse(text?.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out var v) || !double.IsFinite(v))
+        {
+            _tick++;
+            return Task.CompletedTask;
+        }
+        var kept = Math.Clamp(v, FieldMin ?? double.MinValue, FieldMax ?? double.MaxValue);
+        if (kept != v) _tick++;
+        return ValueChanged.InvokeAsync(kept);
+    }
+}

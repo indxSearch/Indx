@@ -1,0 +1,27 @@
+/* slider | number, on one line. The port of the React SliderField's stylesheet. */
+.indx-slider-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+}
+
+.indx-slider-field ::deep .indx-slider {
+    flex: 1;
+    min-width: 0;
+}
+
+.indx-slider-field ::deep .indx-slider-field-number {
+    flex: none;
+    width: 40px;
+    height: 26px;
+    padding: 0 4px;
+    color: var(--lv5);
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.indx-slider-field ::deep .indx-slider-field-number:focus {
+    color: var(--lv8);
+}
