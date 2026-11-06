@@ -27,6 +27,20 @@
             <p class="fp-hint">@ToleranceAbout(_draft.Tolerance)</p>
         </div>
 
+        @* The start of a word later than the search (6 Nov 2026, Field.TypingPrefixFrom): an override
+           that can only make it later, off on every profile until switched on, the number shown
+           only then. *@
+        <div class="fp-group">
+            <span class="fp-legend">@Hinted("TypingPrefixFrom", StartsHelp)</span>
+            <ToggleSwitch Label="Start of a word later than the search" Checked="@(_draft.TypingPrefixFrom != null)" CheckedChanged="SetStarts" Disabled="@(!Editable)" />
+            @if (_draft.TypingPrefixFrom is { } from)
+            {
+                <ScrubSlider AriaLabel="TypingPrefixFrom" Min="0" Max="64" Step="1" Value="@from" Disabled="@(!Editable)" Marks="NeverMark"
+                             ValueChanged="@(v => Set(_draft with { TypingPrefixFrom = (int)Math.Round(v) }))" />
+                <p class="fp-hint">@StartsAbout(from)</p>
+            }
+        </div>
+
         <div class="fp-group">
             <span class="fp-legend">@Hinted("RerankWeight", RerankWeightHelp)</span>
             <p class="fp-hint">How much a match here counts when the results are reordered, against the heaviest field.</p>
@@ -154,7 +168,7 @@
                     || before.NumberOfStartCharacters != _draft.NumberOfStartCharacters
                     || before.NumberOfStopCharacters != _draft.NumberOfStopCharacters));
             if (rebuild) return "Saving rebuilds the index in the background.";
-            if (before.Tolerance != _draft.Tolerance || before.RerankWeight != _draft.RerankWeight) return "Takes effect at the next search.";
+            if (before.Tolerance != _draft.Tolerance || before.RerankWeight != _draft.RerankWeight || before.TypingPrefixFrom != _draft.TypingPrefixFrom) return "Takes effect at the next search.";
             return "A change applies to all of them.";
         }
     }
@@ -165,6 +179,27 @@
     private static readonly IReadOnlyList<SegmentedControl.Item> IndexSizeItems = [new("3", "3"), new("2,3", "2 and 3")];
     private static readonly IReadOnlyList<SegmentedControl.Item> StartItems = [new("0", "0"), new("1", "1"), new("2", "2")];
     private static readonly IReadOnlyList<SegmentedControl.Item> StopItems = [new("0", "0"), new("1", "1")];
+
+    /// <summary>The number the switch brings back: the last one set, else 5.</summary>
+    private int _startsOn = 5;
+
+    private void SetStarts(bool on)
+    {
+        if (on) Set(_draft with { TypingPrefixFrom = _startsOn });
+        else
+        {
+            if (_draft.TypingPrefixFrom is { } n) _startsOn = n;
+            Set(_draft with { TypingPrefixFrom = null });
+        }
+    }
+
+    private static readonly IReadOnlyList<ScrubSlider.ScrubMark> NeverMark = [new(0, null, "never")];
+
+    private static string StartsAbout(int from) => from == 0
+        ? "Never: a word being typed is met only as a whole word, within its typos. For codes and numbers, found by the whole code."
+        : $"From {from} letters: a word being typed meets the longer words it starts once it has {from}, or the search's own number when that is larger.";
+
+    private const string StartsHelp = "Field.TypingPrefixFrom: the word still being typed also finds the longer words it starts (\"mat\" finds Matrix), from the search's number of letters, 3 by default (Start of a word from, under Query parameters). Here a field can only start later, or never: the larger number wins. Off, the field follows the search.";
 
     private static string ToleranceAbout(Tolerance t) => t switch
     {

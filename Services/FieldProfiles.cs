@@ -24,6 +24,11 @@ namespace IndxServer.Services
         public int[] IndexSizes { get; init; } = [3];
         public int NumberOfStartCharacters { get; init; } = 2;
         public int NumberOfStopCharacters { get; init; }
+        /// <summary>Field.TypingPrefixFrom (6 Nov 2026): from how many letters the word being typed
+        /// meets the longer words it starts in the field, later than the search says, never earlier
+        /// (the larger of the two wins), 0 never. Null, the default on every profile, follows the
+        /// search.</summary>
+        public int? TypingPrefixFrom { get; init; }
 
         /// <summary>Equal by value, the index sizes element by element (a record compares an
         /// array by reference).</summary>
@@ -32,7 +37,8 @@ namespace IndxServer.Services
             && Tolerance == other.Tolerance && RerankWeight == other.RerankWeight
             && IndexSizes.AsSpan().SequenceEqual(other.IndexSizes)
             && NumberOfStartCharacters == other.NumberOfStartCharacters
-            && NumberOfStopCharacters == other.NumberOfStopCharacters;
+            && NumberOfStopCharacters == other.NumberOfStopCharacters
+            && TypingPrefixFrom == other.TypingPrefixFrom;
 
         public override int GetHashCode() => HashCode.Combine(Id, Name, Tolerance, RerankWeight);
     }
@@ -96,6 +102,10 @@ namespace IndxServer.Services
                     .. mine.Where(p => !BuiltIn.Any(b => b.Id == p.Id))];
         }
 
+        /// <summary>A field's own TypingPrefixFrom, null when it follows the search (unset, or the
+        /// negative a working copy holds after a profile set it back).</summary>
+        public static int? StartsOf(FieldProxy f) => f.TypingPrefixFrom is int n && n >= 0 ? n : null;
+
         /// <summary>The default when a dataset names none: Name, whose values are the library's
         /// own defaults, so a field given it searches as it did without a profile.</summary>
         public const string DefaultBuiltIn = "name";
@@ -136,6 +146,7 @@ namespace IndxServer.Services
         {
             if ((f.Tolerance ?? Tolerance.OneEdit) != p.Tolerance) return false;
             if (Math.Abs((f.RerankWeight ?? 1f) - p.RerankWeight) > 0.0001f) return false;
+            if (StartsOf(f) != p.TypingPrefixFrom) return false;
             if (f.PatternMatching == true)
             {
                 if (!(f.IndexSizes ?? [3]).AsSpan().SequenceEqual(p.IndexSizes)) return false;
@@ -163,6 +174,8 @@ namespace IndxServer.Services
         {
             f.Tolerance = p.Tolerance;
             f.RerankWeight = p.RerankWeight;
+            // Null follows the search; FieldProxy takes a negative number for that (null leaves it).
+            f.TypingPrefixFrom = p.TypingPrefixFrom ?? -1;
             if (f.PatternMatching == true)
             {
                 f.IndexSizes = (int[])p.IndexSizes.Clone();
@@ -179,6 +192,7 @@ namespace IndxServer.Services
             Name = "",
             Tolerance = f.Tolerance ?? Tolerance.OneEdit,
             RerankWeight = f.RerankWeight ?? 1f,
+            TypingPrefixFrom = StartsOf(f),
             IndexSizes = f.IndexSizes is { Length: > 0 } sizes ? (int[])sizes.Clone() : [3],
             NumberOfStartCharacters = f.NumberOfStartCharacters ?? 2,
             NumberOfStopCharacters = f.NumberOfStopCharacters ?? 0,
@@ -310,6 +324,8 @@ namespace IndxServer.Services
                     if (float.IsNaN(p.RerankWeight) || p.RerankWeight < 0) return (null, $"Profile '{p.Id}': rerankWeight cannot be negative.");
                     if (p.IndexSizes is not { Length: > 0 } || p.IndexSizes.Any(n => n is < 1 or > 8))
                         return (null, $"Profile '{p.Id}': indexSizes must be one or more lengths from 1 to 8.");
+                    if (p.TypingPrefixFrom is < 0 or > 64)
+                        return (null, $"Profile '{p.Id}': typingPrefixFrom is from 0 (never) to 64, or null to follow the search.");
                     if (p.NumberOfStartCharacters is < 0 or > 8 || p.NumberOfStopCharacters is < 0 or > 8)
                         return (null, $"Profile '{p.Id}': numberOfStartCharacters and numberOfStopCharacters are from 0 to 8.");
                 }

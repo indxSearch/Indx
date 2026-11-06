@@ -41,6 +41,10 @@
                         </td>
                         <td>
                             <span class="fpm-with-icon">@DatasetIcons.ForTolerance(p.Tolerance)(14)<span>@ToleranceName(p.Tolerance)</span></span>
+                            @if (p.TypingPrefixFrom is { } from)
+                            {
+                                <span class="fpm-about">@(from == 0 ? "No word starts" : $"Word starts from {from} letters")</span>
+                            }
                         </td>
                         <td>
                             @if (DatasetIcons.ForRerankWeight(p.RerankWeight) is { } w)

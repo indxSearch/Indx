@@ -199,6 +199,7 @@ namespace IndxServer.Components.Datasets
                     if (o.NumberOfStopCharacters != e.NumberOfStopCharacters) return true;
                     if (o.Tolerance != e.Tolerance) return true;
                     if (o.RerankWeight != e.RerankWeight) return true;
+                    if (FieldProfiles.StartsOf(o) != FieldProfiles.StartsOf(e)) return true;
                     if ((o.CaseSensitive ?? false) != (e.CaseSensitive ?? false)) return true;
                 }
                 return false;
@@ -236,6 +237,7 @@ namespace IndxServer.Components.Datasets
             // engine's, and a save sends them back.
             Tolerance = f.Tolerance,
             RerankWeight = f.RerankWeight,
+            TypingPrefixFrom = f.TypingPrefixFrom,
             CaseSensitive = f.CaseSensitive,
         };
 
