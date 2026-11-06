@@ -192,6 +192,24 @@
                    plain chip. *@
                 @foreach (var row in _facets!)
                 {
+                    @if (row.Numbers is { } numbers)
+                    {
+                        @* A number field is picked by range, on its histogram or typed (Nov 2026). *@
+                        var range = _ranges.TryGetValue(row.Field, out var r) ? r : ((double?)null, (double?)null);
+                        <div class="indx-facet-row indx-facet-row--range">
+                            <span class="indx-facet-field" title="@row.Field">
+                                @row.Field
+                                @if (range.Item1 != null || range.Item2 != null)
+                                {
+                                    <span class="indx-facet-count">@CountIn(numbers, range.Item1, range.Item2).ToString("N0")</span>
+                                }
+                            </span>
+                            <HistogramRange Values="numbers" From="range.Item1" To="range.Item2" AriaLabel="@row.Field"
+                                            Step="@(numbers.All(n => n.Key == Math.Floor(n.Key)) ? 1 : 0.1)"
+                                            RangeChanged="@(v => SetRange(row.Field, v.From, v.To))" />
+                        </div>
+                        continue;
+                    }
                     var filterable = IsFilterable(row.Field);
                     <div class="indx-facet-row">
                         <span class="indx-facet-field" title="@row.Field">@row.Field</span>
@@ -404,18 +422,19 @@ else
         }
     }
 
-    private IReadOnlyList<FacetPreview.Row>? SearchFacets(string text, Dictionary<string, List<string>> filters)
+    private IReadOnlyList<FacetPreview.Row>? SearchFacets(string text, FilterState filters)
     {
         // Empty text with facets enabled is a valid query: the whole dataset's counts. Every field
         // is counted under all the filters, except that a field with picked values is counted
         // under the others only, so its other values can still be picked (as a shop's panel does):
         // one more query for each such field.
-        var facets = new Dictionary<string, KeyValuePair<string, int>[]>(FacetsOf(text, FacetFilter.Expression(filters, TypeOf)) ?? []);
-        foreach (var field in filters.Keys)
-            if (FacetsOf(text, FacetFilter.Expression(filters, TypeOf, except: field)) is { } own)
+        var facets = new Dictionary<string, KeyValuePair<string, int>[]>(FacetsOf(text, filters.Expression(TypeOf)) ?? []);
+        foreach (var field in filters.Values.Keys.Concat(filters.Ranges.Keys).Distinct())
+            if (FacetsOf(text, filters.Expression(TypeOf, except: field)) is { } own)
                 facets[field] = own.TryGetValue(field, out var values) ? values : [];
         var order = Ctx.SavedFields?.Where(f => f.Facetable == true).Select(f => f.FieldName ?? "");
-        return FacetPreview.Build(facets, order, selected: filters);
+        var numberFields = Ctx.SavedFields?.Where(f => f.Facetable == true && IsRangeField(f.FieldName ?? "")).Select(f => f.FieldName ?? "").ToHashSet();
+        return FacetPreview.Build(facets, order, selected: filters.Values, numberFields: numberFields, keep: filters.Ranges.Keys);
     }
 
     private Dictionary<string, KeyValuePair<string, int>[]>? FacetsOf(string text, string? filterExpression)
@@ -429,13 +448,34 @@ else
 
     // ── Filters: facet values picked ────────────────────────────────────────────
 
-    // By field, in the order picked. Read on the circuit only; a search off it takes a copy.
+    // By field, in the order picked: values on a text field, a range on a number field. Read on
+    // the circuit only; a search off it takes a copy.
     private readonly Dictionary<string, List<string>> _filters = new();
-    private bool HasFilters => _filters.Count > 0;
-    private Dictionary<string, List<string>> FiltersNow() => _filters.ToDictionary(f => f.Key, f => f.Value.ToList());
+    private readonly Dictionary<string, (double? From, double? To)> _ranges = new();
+    private bool HasFilters => _filters.Count > 0 || _ranges.Count > 0;
+
+    private sealed record FilterState(Dictionary<string, List<string>> Values, Dictionary<string, (double? From, double? To)> Ranges)
+    {
+        public string? Expression(Func<string, string?> typeOf, string? except = null) =>
+            FacetFilter.Expression(Values, typeOf, except, Ranges);
+    }
+    private FilterState FiltersNow() => new(_filters.ToDictionary(f => f.Key, f => f.Value.ToList()), new(_ranges));
 
     private string? TypeOf(string field) => Ctx.SavedFields?.FirstOrDefault(f => f.FieldName == field)?.FieldType;
     private bool IsFilterable(string field) => Ctx.SavedFields?.Any(f => f.FieldName == field && f.Filterable == true) == true;
+    /// <summary>A filterable number field: picked by range on its histogram, not value by value.</summary>
+    private bool IsRangeField(string field) => IsFilterable(field) && TypeOf(field) == "Number";
+
+    private static int CountIn(IReadOnlyList<KeyValuePair<double, int>> numbers, double? from, double? to) =>
+        numbers.Where(n => (from is not { } f || n.Key >= f) && (to is not { } t || n.Key <= t)).Sum(n => n.Value);
+
+    private Task SetRange(string field, double? from, double? to)
+    {
+        if (from == null && to == null) _ranges.Remove(field);
+        else _ranges[field] = (from, to);
+        _hovered = null;
+        return RunQuickSearchAsync(_text, facetsNow: true);
+    }
     private bool IsPicked(string field, string value) => _filters.TryGetValue(field, out var values) && values.Contains(value);
 
     private Task ToggleFilter(string field, string value)
@@ -450,6 +490,7 @@ else
     private Task ClearFilters()
     {
         _filters.Clear();
+        _ranges.Clear();
         return RunQuickSearchAsync(_text, facetsNow: true);
     }
 
@@ -459,9 +500,11 @@ else
     {
         foreach (var field in _filters.Keys.Where(f => !IsFilterable(f)).ToList())
             _filters.Remove(field);
+        foreach (var field in _ranges.Keys.Where(f => !IsRangeField(f)).ToList())
+            _ranges.Remove(field);
     }
 
-    private (List<PreviewHit> Hits, SearchExplanation.Summary? Summary)? Search(string text, Dictionary<string, List<string>> filters)
+    private (List<PreviewHit> Hits, SearchExplanation.Summary? Summary)? Search(string text, FilterState filters)
     {
         var engine = Ctx.FindEngine();
         if (engine == null) return null;
@@ -474,7 +517,7 @@ else
         var query = new global::Indx.Http.QueryProxy
         {
             Text = text ?? string.Empty, MaxNumberOfRecordsToReturn = PreviewHits, EnableMatchReport = true,
-            EnableFacets = string.IsNullOrWhiteSpace(text), FilterExpression = FacetFilter.Expression(filters, TypeOf),
+            EnableFacets = string.IsNullOrWhiteSpace(text), FilterExpression = filters.Expression(TypeOf),
         };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         var hits = new List<PreviewHit>();

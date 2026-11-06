@@ -15,7 +15,10 @@ namespace IndxServer.Components.Datasets
         /// <param name="Field">The facetable field.</param>
         /// <param name="Values">Its most frequent values with their counts.</param>
         /// <param name="MoreValues">How many further values were left out of <paramref name="Values"/>.</param>
-        public sealed record Row(string Field, IReadOnlyList<KeyValuePair<string, int>> Values, int MoreValues);
+        /// <param name="Numbers">For a number field picked by range: every value with its count,
+        /// for its histogram; null for a field picked by value.</param>
+        public sealed record Row(string Field, IReadOnlyList<KeyValuePair<string, int>> Values, int MoreValues,
+            IReadOnlyList<KeyValuePair<double, int>>? Numbers = null);
 
         /// <param name="facets">As returned on <c>Result.Facets</c>; null when no field is facetable.</param>
         /// <param name="fieldOrder">The order to list fields in (the field configuration's). Fields
@@ -26,26 +29,43 @@ namespace IndxServer.Components.Datasets
         /// shown, after the most frequent ones when it is not among them and with 0 when the
         /// result does not hold it, so it can be unpicked; a field with a picked value is listed
         /// even when the result carries none of its values.</param>
+        /// <param name="numberFields">Number fields picked by range: their rows carry every value
+        /// as a number (<see cref="Row.Numbers"/>) in place of the chips.</param>
+        /// <param name="keep">Fields listed even when the result carries none of their values (a
+        /// range is picked on them).</param>
         public static IReadOnlyList<Row> Build(
             IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? facets,
             IEnumerable<string>? fieldOrder = null,
             int valuesPerField = DefaultValuesPerField,
-            IReadOnlyDictionary<string, List<string>>? selected = null)
+            IReadOnlyDictionary<string, List<string>>? selected = null,
+            IReadOnlySet<string>? numberFields = null,
+            IEnumerable<string>? keep = null)
         {
             var all = new Dictionary<string, KeyValuePair<string, int>[]>();
             foreach (var (field, values) in facets ?? new Dictionary<string, KeyValuePair<string, int>[]>())
                 all[field] = values ?? [];
             foreach (var (field, picked) in selected ?? new Dictionary<string, List<string>>())
                 if (picked.Count > 0 && !all.ContainsKey(field)) all[field] = [];
+            var kept = new HashSet<string>(keep ?? []);
+            foreach (var field in kept)
+                all.TryAdd(field, []);
             if (all.Count == 0) return [];
             var rank = (fieldOrder ?? []).Select((name, i) => (name, i)).GroupBy(x => x.name).ToDictionary(g => g.Key, g => g.First().i);
             return all
-                .Where(f => f.Value.Length > 0 || Picked(selected, f.Key).Count > 0) // a field nothing in the result carries says nothing
+                .Where(f => f.Value.Length > 0 || Picked(selected, f.Key).Count > 0 || kept.Contains(f.Key)) // a field nothing in the result carries says nothing
                 .OrderBy(f => rank.TryGetValue(f.Key, out var i) ? i : int.MaxValue)
                 .ThenBy(f => f.Key, StringComparer.OrdinalIgnoreCase)
-                .Select(f => RowOf(f.Key, f.Value, valuesPerField, Picked(selected, f.Key)))
+                .Select(f => numberFields?.Contains(f.Key) == true
+                    ? new Row(f.Key, [], 0, NumbersOf(f.Value))
+                    : RowOf(f.Key, f.Value, valuesPerField, Picked(selected, f.Key)))
                 .ToList();
         }
+
+        private static IReadOnlyList<KeyValuePair<double, int>> NumbersOf(KeyValuePair<string, int>[] values) =>
+            values.Select(v => (ok: double.TryParse(v.Key, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var n), n, v.Value))
+                .Where(v => v.ok && double.IsFinite(v.n))
+                .Select(v => new KeyValuePair<double, int>(v.n, v.Value))
+                .ToList();
 
         private static List<string> Picked(IReadOnlyDictionary<string, List<string>>? selected, string field) =>
             selected != null && selected.TryGetValue(field, out var picked) ? picked : [];
