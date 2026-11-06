@@ -338,21 +338,28 @@ namespace IndxServer.Monitor
             _stateIcon.Color = color;
         }
 
-        /// <summary>The same icon and colour per state as the console's dataset chips.</summary>
-        private static (string Icon, Color Color) Appearance(DatasetLine d) =>
-            d.ErrorMessage is not null || d.State == SystemState.Error ? ("Warning", Signal)
+        /// <summary>The same icon and colour per state as the console's dataset chips. Red is the
+        /// Error state only. A last error on a dataset that serves (a request the engine refused,
+        /// such as an empty search without facets) is amber, as the console's "Last error" alert:
+        /// until Nov 2026 it turned the row and the header red, so one bad request from a client
+        /// made the instance look broken.</summary>
+        internal static (string Icon, Color Color) Appearance(DatasetLine d) =>
+            d.State == SystemState.Error ? ("Warning", Signal)
+            : d.ErrorMessage is not null ? ("Warning", Warn)
             : d.State == SystemState.Loading ? ("Trolley", Warn)
             : d.State == SystemState.Indexing ? ("HourGlass", Warn)
             : d.Ready ? ("Flag", Teal)
             : d.Hibernated ? ("Empty", LightBlue)
             : ("Empty", Slate);
 
-        private static (string Icon, Color Color) Worst(IReadOnlyList<DatasetLine> datasets)
+        internal static (string Icon, Color Color) Worst(IReadOnlyList<DatasetLine> datasets)
         {
-            if (datasets.Any(d => d.ErrorMessage is not null || d.State == SystemState.Error))
+            if (datasets.Any(d => d.State == SystemState.Error))
                 return ("Warning", Signal);
             if (datasets.Any(d => d.State is SystemState.Loading or SystemState.Indexing))
                 return ("HourGlass", Warn);
+            if (datasets.Any(d => d.ErrorMessage is not null))
+                return ("Warning", Warn);
             if (datasets.Any(d => d.Ready))
                 return ("Flag", Teal);
             return ("Empty", LightBlue);

@@ -92,7 +92,8 @@ namespace IndxServer.Monitor
             if (d.IndexedTextTruncated)
                 sb.Append("  [text truncated]");
             if (d.ErrorMessage is { } error)
-                sb.Append(Inv, $"  ERROR {Truncate(error, 60)}");
+                // ERROR is the Error state; on a dataset that serves it is a refused request.
+                sb.Append(Inv, $"  {(d.State == SystemState.Error ? "ERROR" : "last error")} {Truncate(error, 60)}");
 
             return sb.ToString();
         }
