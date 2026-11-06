@@ -50,6 +50,7 @@ namespace IndxServer.Services
             Note(rc?.CandidatesPerRow != null, dc?.CandidatesPerRow != null, "candidates.candidatesPerRow");
             Note(rc?.MaxCandidates != null, dc?.MaxCandidates != null, "candidates.maxCandidates");
             Note(rc?.Fallback != null, dc?.Fallback != null, "candidates.fallback");
+            Note(rc?.FillWithMostWords != null, dc?.FillWithMostWords != null, "candidates.fillWithMostWords");
             Note(rc?.Rest != null, dc?.Rest != null, "candidates.rest");
             Note(rr?.Rerank != null, dr?.Rerank != null, "ranking.rerank");
             Note(rr?.Share != null, dr?.Share != null, "ranking.share");
@@ -89,6 +90,7 @@ namespace IndxServer.Services
                     CandidatesPerRow = e.Candidates.CandidatesPerRow,
                     MaxCandidates = e.Candidates.MaxCandidates,
                     Fallback = e.Candidates.Fallback,
+                    FillWithMostWords = e.Candidates.FillWithMostWords,
                     Rest = e.Candidates.Rest,
                 },
                 Ranking = new RankingProxy

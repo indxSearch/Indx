@@ -187,6 +187,8 @@
     [
         new("Fallback", "Closest when nothing matches", "When no document holds every query word, return those holding the most of them. Off returns nothing instead.",
             CandidateDefaults.Fallback, p => p.Candidates?.Fallback, (p, v) => C(p).Fallback = v),
+        new("FillWithMostWords", "Fill a short page", "When too few documents hold every query word to fill the page, list those holding most of the words below them, shown and not counted. Off keeps a title search to the one record it names.",
+            CandidateDefaults.FillWithMostWords, p => p.Candidates?.FillWithMostWords, (p, v) => C(p).FillWithMostWords = v),
         new("Rest", "Related below the matches", "Below the documents holding every word, the best of the rest by pattern recognition.",
             CandidateDefaults.Rest, p => p.Candidates?.Rest, (p, v) => C(p).Rest = v),
     ];
