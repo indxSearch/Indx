@@ -286,6 +286,58 @@ namespace IndxServer.Services
                     ?? others.First(p => p.Id == "name")).Id;
         }
 
+        /// <summary>
+        /// The profiles a PUT fields/profiles asks for, merged onto the dataset's (6 Nov 2026): the
+        /// whole own list when given, the assignments named, the default. Checked whole before
+        /// anything is returned; the reason when refused. <paramref name="searched"/> and
+        /// <paramref name="exists"/> answer for a field name.
+        /// </summary>
+        public static (DatasetFieldProfiles? Merged, string? Refused) Merge(DatasetFieldProfiles current,
+            List<FieldProfile>? profiles, Dictionary<string, string?>? assignments, string? defaultProfileId,
+            Func<string, bool> exists, Func<string, bool> searched)
+        {
+            var merged = current.Copy();
+            if (profiles != null)
+            {
+                var ids = new HashSet<string>(StringComparer.Ordinal);
+                foreach (var p in profiles)
+                {
+                    if (string.IsNullOrWhiteSpace(p.Id) || !System.Text.RegularExpressions.Regex.IsMatch(p.Id, "^[a-z0-9][a-z0-9-]{0,63}$"))
+                        return (null, $"Profile id '{p.Id}' is not a valid id: lowercase letters, digits and dashes, at most 64.");
+                    if (!ids.Add(p.Id)) return (null, $"Profile id '{p.Id}' appears twice.");
+                    if (string.IsNullOrWhiteSpace(p.Name)) return (null, $"Profile '{p.Id}' has no name.");
+                    if (!Enum.IsDefined(p.Tolerance)) return (null, $"Profile '{p.Id}': tolerance must be Exact, OneEdit or TwoEdits.");
+                    if (float.IsNaN(p.RerankWeight) || p.RerankWeight < 0) return (null, $"Profile '{p.Id}': rerankWeight cannot be negative.");
+                    if (p.IndexSizes is not { Length: > 0 } || p.IndexSizes.Any(n => n is < 1 or > 8))
+                        return (null, $"Profile '{p.Id}': indexSizes must be one or more lengths from 1 to 8.");
+                    if (p.NumberOfStartCharacters is < 0 or > 8 || p.NumberOfStopCharacters is < 0 or > 8)
+                        return (null, $"Profile '{p.Id}': numberOfStartCharacters and numberOfStopCharacters are from 0 to 8.");
+                }
+                // The fields of a profile that goes keep their values, as their own.
+                foreach (var gone in merged.Assignments.Where(a => !IsBuiltInId(a.Value) && !ids.Contains(a.Value)).Select(a => a.Key).ToList())
+                    merged.Assignments.Remove(gone);
+                merged.Profiles = profiles.Select(p => p with { BuiltIn = false, Name = p.Name.Trim(), About = p.About?.Trim() ?? "" }).ToList();
+            }
+            if (assignments != null)
+                foreach (var (field, id) in assignments)
+                {
+                    if (!exists(field)) return (null, $"Field '{field}' does not exist in this dataset.");
+                    if (id == null) { merged.Assignments.Remove(field); continue; }
+                    if (!All(merged).Any(p => p.Id == id)) return (null, $"Field '{field}': there is no profile '{id}'.");
+                    if (!searched(field))
+                        return (null, $"Field '{field}' is not searched: turn on wordMatching or patternMatching in fields/configuration first.");
+                    merged.Assignments[field] = id;
+                }
+            if (defaultProfileId != null)
+            {
+                if (!All(merged).Any(p => p.Id == defaultProfileId)) return (null, $"There is no profile '{defaultProfileId}' to be the default.");
+                merged.DefaultProfileId = defaultProfileId == DefaultBuiltIn ? null : defaultProfileId;
+            }
+            else if (merged.DefaultProfileId != null && !All(merged).Any(p => p.Id == merged.DefaultProfileId))
+                merged.DefaultProfileId = null;
+            return (merged, null);
+        }
+
         /// <summary>An id for a new profile from its name, unique among the profiles.</summary>
         public static string NewId(string name, IEnumerable<FieldProfile> existing)
         {

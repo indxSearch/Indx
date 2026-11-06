@@ -97,7 +97,7 @@ namespace IndxServer.Services
             }
         }
 
-        /// <summary>Replaces the dataset's profiles and assignments. None of either removes the row.
+        /// <summary>Replaces the dataset's profiles, assignments and default. None of any removes the row.
         /// A built-in as shipped is never stored: it is code. One this dataset edited is, under the
         /// built-in's id, and takes its place here (FieldProfiles.All).</summary>
         public void Save(string teamId, string dataSetName, DatasetFieldProfiles profiles)
@@ -106,8 +106,11 @@ namespace IndxServer.Services
             {
                 Profiles = profiles.Profiles.Where(p => !p.BuiltIn).ToList(),
                 Assignments = new Dictionary<string, string>(profiles.Assignments, StringComparer.Ordinal),
+                // The default chosen (6 Nov 2026). Left out of the copy that day, so a default set in
+                // the Profile manager was back to Name once the cache was read again.
+                DefaultProfileId = profiles.DefaultProfileId,
             };
-            if (stored.Profiles.Count == 0 && stored.Assignments.Count == 0)
+            if (stored.Profiles.Count == 0 && stored.Assignments.Count == 0 && stored.DefaultProfileId == null)
             {
                 Delete(teamId, dataSetName);
                 return;
