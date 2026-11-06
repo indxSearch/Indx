@@ -83,15 +83,19 @@ namespace IndxServer.Components.Datasets
                         notes.Add($"{rest - counted:N0} related records below them, holding some of the words (Rest).");
                 }
             }
+            if (Filled(result) is > 0 and var filled)
+                notes.Add($"{filled:N0} {(filled == 1 ? "record" : "records")} below them fill the page from the next typo level, not counted: the level counted held fewer than the rows asked for.");
             if (result.Count > result.Ranked)
                 notes.Add($"{result.Ranked:N0} of the {result.Count:N0} were ranked: the candidate bound, taken by BM25F, the records holding a word itself before those met only by its start. The others are counted, and in the facets, but cannot come into the list. Candidates under Query parameters ranks more.");
             return new Summary(headline, levels, notes);
         }
 
         /// <summary>What one listed record is, by its place in the list: counted (it holds every word on
-        /// the counted level), related (BM25F's best below them, Rest), partial (the fallback), or broad
-        /// (the Bm25f mode). The label and what it means, on hover. Until Nov 2026 the preview said
-        /// "close match" or "pattern match", 5.x's words for either side of the truncation.</summary>
+        /// the counted level), filling the page (every word on a further level, below the counted when
+        /// they are fewer than the rows), related (BM25F's best below them, Rest), partial (the
+        /// fallback), or broad (the Bm25f mode). The label and what it means, on hover. Until Nov 2026
+        /// the preview said "close match" or "pattern match", 5.x's words for either side of the
+        /// truncation.</summary>
         public static (string Label, string Title) KindOf(Result result, int index)
         {
             if (index < result.Records.Length && For(result, result.Records[index].DocumentKey) is { Count: > 0 } words && words.All(w => !w.Found))
@@ -102,8 +106,31 @@ namespace IndxServer.Components.Datasets
                 return ("partial", "Holds some of the words: no record holds them all, so the fallback lists those with the most");
             if (index < result.CountedInList())
                 return ("counted", "Holds every word on the level counted");
+            if (IsFilling(result, index))
+                return ("fills the page", "Holds every word on the next typo level, shown because the level counted held fewer records than the rows asked for; not counted");
             return ("related", "Below the counted records: BM25F's best among the rest (Rest)");
         }
+
+        /// <summary>
+        /// Whether a record below the counted ones fills the page (6.0, WordLadder.Fill, 6 Nov 2026):
+        /// the engine takes the next typo levels' records when the counted level is short of the
+        /// rows, and they come right after the counted, before any Rest. The result does not mark
+        /// them, so it is read from the record: it holds every word (the match report finds each
+        /// one), where a Rest record lacks one. Without Rest every record there fills; with Rest
+        /// and no report, it cannot be told and is called related.
+        /// </summary>
+        public static bool IsFilling(Result result, int index)
+        {
+            if (result.IsFallback || result.ToleranceCounts is null || index < result.CountedInList() || index >= result.Records.Length)
+                return false;
+            if (result.ToleranceCounts.Rest is null)
+                return true;
+            return For(result, result.Records[index].DocumentKey) is { Count: > 0 } words && words.All(w => w.Found);
+        }
+
+        /// <summary>How many listed records fill the page (<see cref="IsFilling"/>).</summary>
+        public static int Filled(Result result) =>
+            Enumerable.Range(0, result.Records.Length).Count(i => IsFilling(result, i));
 
         /// <summary>
         /// The kind of match as one word, for Search or ask's judge (Nov 2026): strong (every word

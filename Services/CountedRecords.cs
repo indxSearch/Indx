@@ -4,8 +4,9 @@ namespace IndxServer.Services
 {
     /// <summary>
     /// How many of a result's records are matches the search counted (6.0): the documents holding
-    /// every query word on the rung counted, which come first in the list. What follows them is the
-    /// rest (<c>Candidates.Rest</c>), and a fallback or a Bm25f search counted none. Until 6.0 this
+    /// every query word on the rung counted, which come first in the list. What follows them is not
+    /// counted: the next rungs' records filling the page when the counted rung is short of the rows
+    /// (6 Nov 2026), then the rest (<c>Candidates.Rest</c>). A fallback or a Bm25f search counted none. Until 6.0 this
     /// was read from <c>TruncationIndex</c>, the last record above the cut.
     /// </summary>
     public static class CountedRecords
