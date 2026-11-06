@@ -16,6 +16,7 @@
     flex: none;
     width: 40px;
     height: 26px;
+    min-height: 26px;
     padding: 0 4px;
     color: var(--lv5);
     font-variant-numeric: tabular-nums;

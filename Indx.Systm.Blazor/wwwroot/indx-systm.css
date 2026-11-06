@@ -157,12 +157,14 @@ svg[viewBox="0 0 7 5"] {
 .indx-input-border-bottom.indx-input-error { border-bottom-color: var(--CSignal); }
 /* Ghost: reads as its text until it is edited, for a value that sits inline (the number in a
    SliderField). Pointed at, it takes a ghost button's tint; the stroke comes only while it is being
-   edited. Each rule has the specificity of the box's own, so it wins by coming after. */
-.indx-input-ghost { border-color: transparent; }
+   edited. Each rule has the specificity of the box's own, so it wins by coming after; the resting
+   one is doubled, because an app's own input[type=number] rule (the console's app.css) outranks a
+   single class and drew the stroke back. */
+.indx-input.indx-input-ghost { border-color: transparent; }
 .indx-input-ghost:not(:disabled):hover { border-color: transparent; background: var(--lv2); }
 .indx-input-ghost:not(:disabled):active { border-color: transparent; }
 .indx-input-ghost:not(:disabled):focus { border-color: var(--lv5); background: transparent; }
-.indx-input-ghost.indx-input-error,
+.indx-input.indx-input-ghost.indx-input-error,
 .indx-input-ghost.indx-input-error:not(:disabled):hover,
 .indx-input-ghost.indx-input-error:not(:disabled):focus { border-color: var(--CSignal); }
 .indx-input-border-bottom.indx-input-error:focus { border-bottom-color: var(--CSignal); }
