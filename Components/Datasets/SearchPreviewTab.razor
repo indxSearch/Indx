@@ -216,7 +216,7 @@ else
 
     // Rank is the 1-based place in the list. Kind: counted, related, partial or broad, with what it
     // means (SearchExplanation.KindOf; 5.x's close and pattern match until Nov 2026). Matches: how the
-    // reranker met each query word in this record (Result.RerankReport).
+    // reranker met each query word in this record (Result.MatchReport).
     private record PreviewHit(JsonElement Doc, ushort Score, long Key, int Rank, (string Label, string Title) Kind, IReadOnlyList<SearchExplanation.Word>? Matches);
     private record PerfTestResult(int Iterations, double MedianMs, double P95Ms, double MinMs, double MaxMs, double PerSecond);
     private record DisplayField(string Name, string Value);
@@ -386,9 +386,9 @@ else
         if (engine == null) return null;
         // The dataset's saved boost rules are applied server-side in FromQueryProxy, as in every
         // search, so the preview matches what real searches return.
-        // With the rerank report, as IndxWorkbench asks: it reads the rows returned once more, which
+        // With the match report, as IndxWorkbench asks: it reads the rows returned once more, which
         // for the preview's few hits costs little, and says how each word was met.
-        var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = PreviewHits, EnableRerankReport = true };
+        var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = PreviewHits, EnableMatchReport = true };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         var hits = new List<PreviewHit>();
         for (int i = 0; i < result.Records.Length; i++)

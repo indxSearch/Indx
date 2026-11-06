@@ -536,7 +536,7 @@ namespace IndxServer.Services.SearchOrAsk
         /// <param name="Levels">Records holding every word per typo level, cumulative; null with no
         /// word lookup.</param>
         /// <param name="Met">Per listed record, by key: how the reranker met each query word, and in
-        /// which field (Result.RerankReport).</param>
+        /// which field (Result.MatchReport).</param>
         public sealed record SearchSummary(int Hits, bool CloseMatch, IReadOnlyList<(long Key, string Title, string Section, string Snippet)> Top,
             int? Count = null, string? Match = null, ToleranceCounts? Levels = null,
             IReadOnlyDictionary<long, IReadOnlyList<IndxServer.Components.Datasets.SearchExplanation.Word>>? Met = null);
@@ -574,7 +574,7 @@ namespace IndxServer.Services.SearchOrAsk
                 Candidates = truncate ? null : new CandidateProxy { Rest = true },
                 // How each listed record's words were met, for the judge (Nov 2026): it reads the ten
                 // returned once more, which costs little.
-                EnableRerankReport = true,
+                EnableMatchReport = true,
             }, dataSetName, teamId);
             var records = result.Records ?? [];
             var hits = records.Take(top).Select(r => Describe(engine, r.DocumentKey, fields, SnippetChars, forAnswer: false)).ToList();

@@ -7,7 +7,7 @@ namespace IndxServer.Components.Datasets
     /// What the search preview says about how a search found what it found (Nov 2026), in the words
     /// IndxWorkbench's summary line and record pane use: the typo level whose records were counted,
     /// how many of them were ranked, the fallback and the related records below, and per record how
-    /// each query word was met (Result.RerankReport). Kept apart from the tab so the wording can be
+    /// each query word was met (Result.MatchReport). Kept apart from the tab so the wording can be
     /// tested without rendering it.
     /// </summary>
     public static class SearchExplanation
@@ -51,10 +51,11 @@ namespace IndxServer.Components.Datasets
             else if (result.ToleranceCounts is null)
             {
                 // The Bm25f mode: any of the words, or parts of them, is a candidate. Reranked unless
-                // the search says otherwise; the report the preview asks for is there only when it is.
+                // the search says otherwise (Result.Reranked, 6 Nov 2026: until then read from the
+                // report, which came only with a reranked search).
                 headline = "Broad matches";
                 notes.Add($"{result.Count:N0} records hold any of the words or parts of them: the Bm25f mode, with no typo levels.");
-                if (result.RerankReport == null && result.Records.Length > 0)
+                if (!result.Reranked && result.Records.Length > 0)
                     notes.Add("BM25F's order, not reranked.");
             }
             else if (result.IsFallback)
@@ -146,19 +147,19 @@ namespace IndxServer.Components.Datasets
             : "fuzzy";
 
         /// <summary>
-        /// Whether every listed record matched by pieces of words alone: the rerank report confirms
+        /// Whether every listed record matched by pieces of words alone: the match report confirms
         /// none of the query's words in any of them. Only known when the search was reranked, which
         /// the preview asks for; false otherwise, and with nothing listed.
         /// </summary>
         public static bool PatternOnly(Result result) =>
-            result.Records.Length > 0 && result.RerankReport?.Matches is { Length: > 0 } matches
+            result.Records.Length > 0 && result.MatchReport?.Matches is { Length: > 0 } matches
             && matches.All(m => m.Words.All(w => w.How == WordMatch.NotFound));
 
         /// <summary>How the reranker met each query word in one record, in the query's order; null
         /// when the search was not reranked or the record is not in the report.</summary>
         public static IReadOnlyList<Word>? For(Result result, long documentKey)
         {
-            var match = result.RerankReport?.Matches?.FirstOrDefault(m => m.DocumentKey == documentKey);
+            var match = result.MatchReport?.Matches?.FirstOrDefault(m => m.DocumentKey == documentKey);
             return match?.Words.Select(w => new Word(w.Word, w.Field, How(w.How), w.How != WordMatch.NotFound)).ToList();
         }
 
