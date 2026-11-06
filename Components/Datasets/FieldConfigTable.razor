@@ -288,7 +288,7 @@
         var refused = why != null;
         <span title="@why">
             <Checkbox Checked="@(cap.Get(field) == true)" Disabled="@(!Editable || refused)" aria-label="@($"{cap.Label}: {field.FieldName}")"
-                      CheckedChanged="@(v => Set(() => { cap.Put(field, v); if (cap.IsSearchable) { SearchableTouched = true; ReapplyProfile(field); } }))" />
+                      CheckedChanged="@(v => Set(() => { var was = FieldProfiles.IsSearched(field); cap.Put(field, v); if (cap.IsSearchable) { SearchableTouched = true; if (!was && Profiles != null) FieldProfiles.GiveDefault(field, Profiles); ReapplyProfile(field); } }))" />
         </span>
     };
 

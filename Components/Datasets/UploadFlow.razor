@@ -7,6 +7,7 @@
 @using IndxServer.Engine
 
 @inherits DatasetTabBase
+@inject IndxServer.Services.FieldProfileStore ProfileStore
 @if (!Active || !Ctx.HasStatus) { return; }
 
 @{
@@ -242,13 +243,20 @@ else if (state == SystemState.Error)
 @* ── Analyzed: configure + Load and Index ── *@
 @if (state != SystemState.Ready && Ctx.IsAnalyzed && !Ctx.IsUploading && !Ctx.IsLoadIndexing && Ctx.EditedFields is { } editedFields)
 {
-    <FieldConfigToolbar @bind-Filter="_fieldFilter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced" />
+    @* Profiles from the first configuration on (6 Nov 2026): the dataset's, the built-ins until it
+       has its own, the default given to a field as it becomes searched; saved at Load and index. *@
+    var profiles = UploadProfiles(editedFields);
+    <FieldConfigToolbar @bind-Filter="_fieldFilter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced">
+        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Profiles" @onclick="() => _profileDialogs?.OpenManager()">Profile manager</Button>
+    </FieldConfigToolbar>
     @if (!string.IsNullOrEmpty(Ctx.OperationError))
     {
         <p class="up-error up-error--wide">@Ctx.OperationError</p>
     }
     <FieldConfigTable Fields="editedFields" Editable="true" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced" Filter="@_fieldFilter"
-                      @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged" />
+                      @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged"
+                      Profiles="profiles" OnEditProfile="e => _profileDialogs?.Edit(e)" OnNewProfile="f => _profileDialogs?.NewFor(f)" />
+    <FieldProfileDialogs @ref="_profileDialogs" Fields="editedFields" Profiles="profiles" Editable="true" OnChanged="Ctx.NotifyChanged" />
     @* Same layout as the Ready field configuration (FieldConfigTab): the way forward in a
        SaveBar that sticks to the window bottom, since the table is often taller than the screen.
        Always visible, because until Load and Index there is no dataset to leave unchanged. *@
@@ -497,6 +505,12 @@ else if (Ctx.IsLoadIndexing)
             var df = engine?.DocumentFields;
             if (df != null && engine?.Persistence != null)
                 engine.Persistence.SaveDocumentFields(df.GetSerialized());
+            // The profile choices with the fields, as the Ready tab's Save keeps them.
+            if (Ctx.EditedProfiles is { } profiles)
+            {
+                ProfileStore.Save(Ctx.TeamId, Ctx.Name, profiles);
+                Ctx.SetSavedProfiles(profiles);
+            }
         }
 
         BeginProgress();
@@ -611,6 +625,24 @@ else if (Ctx.IsLoadIndexing)
     /// <summary>A page opened (or re-opened) while a wake is running picks it up here. Subscribed
     /// ahead of the base class so the attach happens before the render the same notification
     /// triggers: the returning visitor never sees the plain "in progress" panel first.</summary>
+    private FieldProfileDialogs? _profileDialogs;
+    private FieldProxy[]? _defaultedFor;
+
+    /// <summary>The profiles the upload's field table works on: the dataset's, read once (the
+    /// built-ins until it has its own), and each field the analysis left searched given the
+    /// default once per analysis. A field ticked afterwards gets it in the table.</summary>
+    private DatasetFieldProfiles UploadProfiles(FieldProxy[] fields)
+    {
+        if (Ctx.EditedProfiles == null) Ctx.SetSavedProfiles(ProfileStore.Load(Ctx.TeamId, Ctx.Name));
+        var own = Ctx.EditedProfiles!;
+        if (!ReferenceEquals(_defaultedFor, fields))
+        {
+            foreach (var f in fields) FieldProfiles.GiveDefault(f, own);
+            _defaultedFor = fields;
+        }
+        return own;
+    }
+
     protected override void OnInitialized()
     {
         Ctx.Changed += AttachToRunningWake;

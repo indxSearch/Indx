@@ -15,7 +15,7 @@
     <FieldConfigToolbar @bind-Filter="_filter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced">
         @if (Ctx.IsEditor && Ctx.EditedFields != null)
         {
-            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Profiles" @onclick="() => _managing = true">Profile manager</Button>
+            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Profiles" @onclick="() => _dialogs?.OpenManager()">Profile manager</Button>
         }
         <ObservrPageAction Label="Review my setup" OnClick="ReviewInAgent" Disabled="@Ctx.IsDirty" />
     </FieldConfigToolbar>
@@ -38,22 +38,11 @@ else if (Ctx.EditedFields is { } fields)
     <FieldConfigTable Fields="fields" Editable="@Ctx.IsEditor" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced" Filter="@_filter"
                       Scoring="@(Ctx.FindEngine()?.Scoring ?? ScoringSetup.Default)"
                       @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged"
-                      Profiles="@Ctx.EditedProfiles" OnEditProfile="EditProfile" OnNewProfile="NewProfileFor"
+                      Profiles="@Ctx.EditedProfiles" OnEditProfile="e => _dialogs?.Edit(e)" OnNewProfile="f => _dialogs?.NewFor(f)"
                       Saved="@Ctx.SavedFields" SavedProfiles="@Ctx.SavedProfiles" />
-    @if (_editing is { } editing)
+    @if (Ctx.EditedProfiles is { } own)
     {
-        <FieldProfileModal Open="true" OpenChanged="@(o => { if (!o) { _editing = null; _newFor = null; BackToManager(); } })" Profile="editing"
-                           Before="@(_editingField == null && editing.Id.Length > 0 ? SavedProfile(editing.Id) : null)"
-                           CustomField="@_editingField?.FieldName"
-                           UsedBy="@(_editingField != null ? [_editingField.FieldName] : UsedBy(editing.Id, patternOnly: false))"
-                           UsedByPattern="@(_editingField != null ? (_editingField.PatternMatching == true ? [_editingField.FieldName] : []) : UsedBy(editing.Id, patternOnly: true))"
-                           Editable="@Ctx.IsEditor" OnSave="SaveProfile"
-                           OnDelete="@(_editingField == null && editing.Id.Length > 0 ? EventCallback.Factory.Create(this, DeleteProfile) : default)" />
-    }
-    @if (_managing && Ctx.EditedProfiles is { } own)
-    {
-        <FieldProfileManagerModal Open="true" OpenChanged="@(o => _managing = o)" Profiles="own" Fields="fields" Editable="@Ctx.IsEditor"
-                                  OnEdit="EditFromManager" OnNew="NewFromManager" OnChanged="Ctx.NotifyChanged" />
+        <FieldProfileDialogs @ref="_dialogs" Fields="fields" Profiles="own" SavedProfiles="@Ctx.SavedProfiles" Editable="@Ctx.IsEditor" OnChanged="Ctx.NotifyChanged" />
     }
     @* The page action pattern (app.css): Save / Cancel in a bar that appears once something
        changed and sticks to the window bottom, since this table is often taller than the screen.
@@ -117,109 +106,14 @@ else if (Ctx.EditedFields is { } fields)
     private CancellationTokenSource? _pollCts;
 
     // ── Field profiles (Nov 2026) ─────────────────────────────────────────
-    // The editor is open on this profile; with _editingField set, on that field's own values
-    // (Custom). Saving writes into the context's working copy, which Save sends on.
-    private FieldProfile? _editing;
-    private FieldProxy? _editingField;
-    // A new profile started from a field's Profile menu: that field has it once it is made.
-    private FieldProxy? _newFor;
-    // The profile manager is open; with _fromManager, the editor was opened from it and closing
-    // the editor goes back to it.
-    private bool _managing;
-    private bool _fromManager;
-
-    private void EditFromManager(string id)
-    {
-        if (FieldProfiles.All(Ctx.EditedProfiles).FirstOrDefault(p => p.Id == id) is not { } profile) return;
-        _managing = false;
-        _fromManager = true;
-        _editingField = null;
-        _newFor = null;
-        _editing = profile;
-    }
-
-    private void NewFromManager()
-    {
-        _managing = false;
-        _fromManager = true;
-        NewProfile();
-    }
-
-    private void BackToManager()
-    {
-        if (!_fromManager) return;
-        _fromManager = false;
-        _managing = true;
-    }
+    // The editor and the manager are FieldProfileDialogs, shared with the upload (6 Nov 2026).
+    private FieldProfileDialogs? _dialogs;
 
     protected override void OnParametersSet()
     {
         base.OnParametersSet();
         if (Active && Ctx.EditedProfiles == null)
             Ctx.SetSavedProfiles(ProfileStore.Load(Ctx.TeamId, Ctx.Name));
-    }
-
-    private FieldProfile? SavedProfile(string id) => FieldProfiles.All(Ctx.SavedProfiles).FirstOrDefault(p => p.Id == id);
-
-    /// <summary>The searched fields that have the profile; with patternOnly, those with
-    /// PatternMatching on, the ones that read its pattern setup.</summary>
-    private IReadOnlyList<string> UsedBy(string id, bool patternOnly) =>
-        (Ctx.EditedFields ?? []).Where(f => FieldProfiles.IsSearched(f) && (!patternOnly || f.PatternMatching == true)
-                                            && FieldProfiles.ProfileOf(f, Ctx.EditedProfiles)?.Id == id)
-                                .Select(f => f.FieldName).ToList();
-
-    private void NewProfile()
-    {
-        _editingField = null;
-        _newFor = null;
-        _editing = new FieldProfile { Id = "", Name = "" };
-    }
-
-    private void NewProfileFor(FieldProxy field)
-    {
-        NewProfile();
-        _newFor = field;
-    }
-
-    /// <summary>Edit in a field's Profile menu: the profile on that row, chosen for the field or
-    /// not; with no id, the field's own values while it is Custom.</summary>
-    private void EditProfile(FieldConfigTable.ProfileEdit edit)
-    {
-        _newFor = null;
-        if (edit.ProfileId is { } id && FieldProfiles.All(Ctx.EditedProfiles).FirstOrDefault(p => p.Id == id) is { } profile)
-        {
-            _editingField = null;
-            _editing = profile;
-        }
-        else
-        {
-            _editingField = edit.Field;
-            _editing = FieldProfiles.FromField(edit.Field);
-        }
-    }
-
-    private void SaveProfile(FieldProfile edited)
-    {
-        if (Ctx.EditedProfiles is { } own && Ctx.EditedFields is { } fields)
-            FieldProfiles.SaveEdit(own, fields, _editingField, edited, _newFor);
-        _editing = null;
-        _editingField = null;
-        _newFor = null;
-        BackToManager();
-        Ctx.NotifyChanged();
-    }
-
-    private void DeleteProfile()
-    {
-        if (_editing is { } p && Ctx.EditedProfiles is { } own && UsedBy(p.Id, patternOnly: false).Count == 0)
-        {
-            own.Profiles.RemoveAll(x => x.Id == p.Id);
-            foreach (var key in own.Assignments.Where(a => a.Value == p.Id).Select(a => a.Key).ToList())
-                own.Assignments.Remove(key);
-        }
-        _editing = null;
-        BackToManager();
-        Ctx.NotifyChanged();
     }
 
     private void Cancel()

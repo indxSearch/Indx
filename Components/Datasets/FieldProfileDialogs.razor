@@ -1,0 +1,142 @@
+@* The profile editor and the profile manager, and what opens them (Nov 2026), for every page that
+   shows the field table with profiles: the Ready dataset's field configuration and the upload's.
+   Until 6 Nov 2026 they lived in FieldConfigTab alone, and an upload had no Profile column. Every
+   change goes into the working copies it is handed, which the page saves with the fields. *@
+@using Indx.Api
+@using IndxServer.Services
+
+@if (_editing is { } editing)
+{
+    <FieldProfileModal Open="true" OpenChanged="@(o => { if (!o) { _editing = null; _newFor = null; BackToManager(); } })" Profile="editing"
+                       Before="@(_editingField == null && editing.Id.Length > 0 ? SavedProfile(editing.Id) : null)"
+                       CustomField="@_editingField?.FieldName"
+                       UsedBy="@(_editingField != null ? [_editingField.FieldName] : UsedBy(editing.Id, patternOnly: false))"
+                       UsedByPattern="@(_editingField != null ? (_editingField.PatternMatching == true ? [_editingField.FieldName] : []) : UsedBy(editing.Id, patternOnly: true))"
+                       Editable="@Editable" OnSave="SaveProfile"
+                       OnDelete="@(_editingField == null && editing.Id.Length > 0 ? EventCallback.Factory.Create(this, DeleteProfile) : default)" />
+}
+@if (_managing)
+{
+    <FieldProfileManagerModal Open="true" OpenChanged="@(o => _managing = o)" Profiles="Profiles" Fields="Fields" Editable="@Editable"
+                              OnEdit="EditFromManager" OnNew="NewFromManager" OnChanged="OnChanged" />
+}
+
+@code {
+    /// <summary>The fields, the working copy: a profile saved or deleted writes onto them.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<FieldProxy> Fields { get; set; } = [];
+    /// <summary>The dataset's profiles, the working copy.</summary>
+    [Parameter, EditorRequired] public DatasetFieldProfiles Profiles { get; set; } = default!;
+    /// <summary>The profiles as saved, for saying what a change costs; null where none are (an upload).</summary>
+    [Parameter] public DatasetFieldProfiles? SavedProfiles { get; set; }
+    [Parameter] public bool Editable { get; set; } = true;
+    /// <summary>After any change to the working copies.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    // The editor is open on this profile; with _editingField set, on that field's own values
+    // (Custom). A new profile started from a field's Profile menu is that field's once it is made.
+    private FieldProfile? _editing;
+    private FieldProxy? _editingField;
+    private FieldProxy? _newFor;
+    // The profile manager is open; with _fromManager, the editor was opened from it and closing
+    // the editor goes back to it.
+    private bool _managing;
+    private bool _fromManager;
+
+    /// <summary>The profile manager, from the page's toolbar.</summary>
+    public void OpenManager()
+    {
+        _managing = true;
+        StateHasChanged();
+    }
+
+    /// <summary>"New profile" at the foot of a field's Profile menu: a new profile that field then has.</summary>
+    public void NewFor(FieldProxy field)
+    {
+        NewProfile();
+        _newFor = field;
+        StateHasChanged();
+    }
+
+    /// <summary>Edit in a field's Profile menu: the profile on that row, chosen for the field or
+    /// not; with no id, the field's own values while it is Custom.</summary>
+    public void Edit(FieldConfigTable.ProfileEdit edit)
+    {
+        _newFor = null;
+        if (edit.ProfileId is { } id && FieldProfiles.All(Profiles).FirstOrDefault(p => p.Id == id) is { } profile)
+        {
+            _editingField = null;
+            _editing = profile;
+        }
+        else
+        {
+            _editingField = edit.Field;
+            _editing = FieldProfiles.FromField(edit.Field);
+        }
+        StateHasChanged();
+    }
+
+    private void EditFromManager(string id)
+    {
+        if (FieldProfiles.All(Profiles).FirstOrDefault(p => p.Id == id) is not { } profile) return;
+        _managing = false;
+        _fromManager = true;
+        _editingField = null;
+        _newFor = null;
+        _editing = profile;
+    }
+
+    private void NewFromManager()
+    {
+        _managing = false;
+        _fromManager = true;
+        NewProfile();
+    }
+
+    private void BackToManager()
+    {
+        if (!_fromManager) return;
+        _fromManager = false;
+        _managing = true;
+    }
+
+    private void NewProfile()
+    {
+        _editingField = null;
+        _newFor = null;
+        _editing = new FieldProfile { Id = "", Name = "" };
+    }
+
+    private FieldProfile? SavedProfile(string id) =>
+        SavedProfiles == null ? null : FieldProfiles.All(SavedProfiles).FirstOrDefault(p => p.Id == id);
+
+    /// <summary>The searched fields that have the profile; with patternOnly, those with
+    /// PatternMatching on, the ones that read its pattern setup.</summary>
+    private IReadOnlyList<string> UsedBy(string id, bool patternOnly) =>
+        Fields.Where(f => FieldProfiles.IsSearched(f) && (!patternOnly || f.PatternMatching == true)
+                          && FieldProfiles.ProfileOf(f, Profiles)?.Id == id)
+              .Select(f => f.FieldName).ToList();
+
+    private async Task SaveProfile(FieldProfile edited)
+    {
+        FieldProfiles.SaveEdit(Profiles, Fields, _editingField, edited, _newFor);
+        _editing = null;
+        _editingField = null;
+        _newFor = null;
+        BackToManager();
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task DeleteProfile()
+    {
+        if (_editing is { } p && UsedBy(p.Id, patternOnly: false).Count == 0)
+        {
+            Profiles.Profiles.RemoveAll(x => x.Id == p.Id);
+            foreach (var key in Profiles.Assignments.Where(a => a.Value == p.Id).Select(a => a.Key).ToList())
+                Profiles.Assignments.Remove(key);
+            if (Profiles.DefaultProfileId == p.Id) Profiles.DefaultProfileId = null;
+        }
+        _editing = null;
+        BackToManager();
+        await OnChanged.InvokeAsync();
+    }
+}

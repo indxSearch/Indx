@@ -24,3 +24,5 @@
 .fpm-delete-text { margin: 0; color: var(--lv8); line-height: 1.5; }
 .fpm-select { max-width: 280px; }
 .fpm-note { margin: 0; font: var(--text-xs); color: var(--lv6); line-height: 1.5; }
+.fpm-default { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fpm-default-label { color: var(--lv7); }

@@ -47,15 +47,19 @@ namespace IndxServer.Services
         public List<FieldProfile> Profiles { get; set; } = [];
         /// <summary>Field name to profile id.</summary>
         public Dictionary<string, string> Assignments { get; set; } = new(StringComparer.Ordinal);
+        /// <summary>The profile a field gets when it becomes searched (6 Nov 2026); null is
+        /// <see cref="FieldProfiles.DefaultBuiltIn"/>.</summary>
+        public string? DefaultProfileId { get; set; }
 
         public DatasetFieldProfiles Copy() => new()
         {
             Profiles = [.. Profiles],
             Assignments = new Dictionary<string, string>(Assignments, StringComparer.Ordinal),
+            DefaultProfileId = DefaultProfileId,
         };
 
         public bool SameAs(DatasetFieldProfiles? other) =>
-            other != null && Profiles.SequenceEqual(other.Profiles)
+            other != null && Profiles.SequenceEqual(other.Profiles) && DefaultProfileId == other.DefaultProfileId
             && Assignments.Count == other.Assignments.Count
             && Assignments.All(a => other.Assignments.TryGetValue(a.Key, out var id) && id == a.Value);
     }
@@ -90,6 +94,32 @@ namespace IndxServer.Services
             var mine = own?.Profiles ?? [];
             return [.. BuiltIn.Select(b => mine.FirstOrDefault(p => p.Id == b.Id) ?? b),
                     .. mine.Where(p => !BuiltIn.Any(b => b.Id == p.Id))];
+        }
+
+        /// <summary>The default when a dataset names none: Name, whose values are the library's
+        /// own defaults, so a field given it searches as it did without a profile.</summary>
+        public const string DefaultBuiltIn = "name";
+
+        /// <summary>The profile a field gets when it becomes searched: the dataset's choice, else Name.</summary>
+        public static FieldProfile DefaultOf(DatasetFieldProfiles? own)
+        {
+            var all = All(own);
+            return all.FirstOrDefault(p => p.Id == own?.DefaultProfileId) ?? all.First(p => p.Id == DefaultBuiltIn);
+        }
+
+        /// <summary>
+        /// Gives a searched field with no profile chosen the dataset's default: its values written
+        /// onto the field and the choice kept (6 Nov 2026). For a field that becomes searched, and
+        /// the fields an upload's analysis found; a field already Custom is left alone, as nothing
+        /// changes a profile by itself. Returns whether it did.
+        /// </summary>
+        public static bool GiveDefault(FieldProxy f, DatasetFieldProfiles own)
+        {
+            if (!IsSearched(f) || own.Assignments.ContainsKey(f.FieldName)) return false;
+            var profile = DefaultOf(own);
+            own.Assignments[f.FieldName] = profile.Id;
+            Apply(f, profile);
+            return true;
         }
 
         /// <summary>Whether the id is one of the five built-ins, edited here or not.</summary>
@@ -229,6 +259,8 @@ namespace IndxServer.Services
             own.Profiles.RemoveAll(p => p.Id == id);
             foreach (var key in own.Assignments.Where(a => a.Value == id).Select(a => a.Key).ToList())
                 own.Assignments.Remove(key);
+            // The default goes with it: to the replacement, else back to Name.
+            if (own.DefaultProfileId == id) own.DefaultProfileId = replacement?.Id;
         }
 
         /// <summary>A built-in this dataset edited, back to the shipped values, on its fields too.</summary>
