@@ -84,16 +84,22 @@ namespace IndxServer.Components.Datasets
                         notes.Add($"{rest - counted:N0} related records below them, holding some of the words (Rest).");
                 }
             }
-            if (Filled(result) is > 0 and var filled)
-                notes.Add($"{filled:N0} {(filled == 1 ? "record" : "records")} below them fill the page from the next typo level, not counted: the level counted held fewer than the rows asked for.");
+            if (!result.IsFallback && result.Fill is { } fill)
+            {
+                static string Records(int n) => $"{n:N0} {(n == 1 ? "record" : "records")}";
+                if (fill.NextRungs > 0)
+                    notes.Add($"{Records(fill.NextRungs)} below them {(fill.NextRungs == 1 ? "holds" : "hold")} every word within a typo or two, shown to fill the page, not counted.");
+                if (fill.MostWords > 0)
+                    notes.Add($"{Records(fill.MostWords)} below {(fill.NextRungs > 0 ? "those" : "them")} {(fill.MostWords == 1 ? "holds" : "hold")} most of the words, shown to fill the page, not counted.");
+            }
             if (result.Count > result.Ranked)
                 notes.Add($"{result.Ranked:N0} of the {result.Count:N0} were ranked: the candidate bound, taken by BM25F, the records holding a word itself before those met only by its start. The others are counted, and in the facets, but cannot come into the list. Candidates under Query parameters ranks more.");
             return new Summary(headline, levels, notes);
         }
 
         /// <summary>What one listed record is, by its place in the list: counted (it holds every word on
-        /// the counted level), filling the page (every word on a further level, below the counted when
-        /// they are fewer than the rows), related (BM25F's best below them, Rest), partial (the
+        /// the counted level), filling a short page (every word within a typo, or most of the words:
+        /// <see cref="FillOf"/>), related (BM25F's best below them, Rest), partial (the
         /// fallback), or broad (the Bm25f mode). The label and what it means, on hover. Until Nov 2026
         /// the preview said "close match" or "pattern match", 5.x's words for either side of the
         /// truncation.</summary>
@@ -107,31 +113,34 @@ namespace IndxServer.Components.Datasets
                 return ("partial", "Holds some of the words: no record holds them all, so the fallback lists those with the most");
             if (index < result.CountedInList())
                 return ("counted", "Holds every word on the level counted");
-            if (IsFilling(result, index))
-                return ("fills the page", "Holds every word on the next typo level, shown because the level counted held fewer records than the rows asked for; not counted");
-            return ("related", "Below the counted records: BM25F's best among the rest (Rest)");
+            return FillOf(result, index) switch
+            {
+                Filling.NextLevel => ("fills the page", "Holds every word, within a typo or two. Shown because too few records hold every word on the level counted; not counted"),
+                Filling.MostWords => ("fills the page", "Holds most of the words. Shown because too few records hold every word; not counted"),
+                _ => ("related", "Below the counted records: BM25F's best among the rest (Rest)"),
+            };
         }
+
+        /// <summary>How a record below the counted ones came into the list.</summary>
+        public enum Filling { None, NextLevel, MostWords }
 
         /// <summary>
-        /// Whether a record below the counted ones fills the page (6.0, WordLadder.Fill, 6 Nov 2026):
-        /// the engine takes the next typo levels' records when the counted level is short of the
-        /// rows, and they come right after the counted, before any Rest. The result does not mark
-        /// them, so it is read from the record: it holds every word (the match report finds each
-        /// one), where a Rest record lacks one. Without Rest every record there fills; with Rest
-        /// and no report, it cannot be told and is called related.
+        /// Whether a record below the counted ones fills a short page, and how (6.0, 6 Nov 2026): the
+        /// engine says how many listed records came from the next typo levels and how many with the
+        /// most of the words (Result.Fill), and the list's bands fix the order: the counted, the next
+        /// levels, the most words, then Rest. So a record's kind is its place. Until Result.Fill the
+        /// preview guessed from the match report, and could not tell a most-words record from Rest.
         /// </summary>
-        public static bool IsFilling(Result result, int index)
+        public static Filling FillOf(Result result, int index)
         {
-            if (result.IsFallback || result.ToleranceCounts is null || index < result.CountedInList() || index >= result.Records.Length)
-                return false;
-            if (result.ToleranceCounts.Rest is null)
-                return true;
-            return For(result, result.Records[index].DocumentKey) is { Count: > 0 } words && words.All(w => w.Found);
+            if (result.IsFallback || result.Fill is not { } fill || index >= result.Records.Length)
+                return Filling.None;
+            int counted = result.CountedInList();
+            if (index < counted) return Filling.None;
+            if (index < counted + fill.NextRungs) return Filling.NextLevel;
+            if (index < counted + fill.NextRungs + fill.MostWords) return Filling.MostWords;
+            return Filling.None;
         }
-
-        /// <summary>How many listed records fill the page (<see cref="IsFilling"/>).</summary>
-        public static int Filled(Result result) =>
-            Enumerable.Range(0, result.Records.Length).Count(i => IsFilling(result, i));
 
         /// <summary>
         /// The kind of match as one word, for Search or ask's judge (Nov 2026): strong (every word
