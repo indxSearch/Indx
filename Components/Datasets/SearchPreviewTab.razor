@@ -16,7 +16,7 @@
     <div class="indx-search-layout" data-fill-viewport>
     <div class="indx-search-grid">
     <div class="indx-search-panel">
-        @if (string.IsNullOrEmpty(_text))
+        @if (string.IsNullOrEmpty(_text) && _results == null)
         {
             <svg class="indx-search-bg-logo" viewBox="0 0 203 146" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
                 <path d="M58.4248 145.003V145.503H58.9248V145.003H58.4248ZM29.7109 145.003H29.2109V145.503H29.7109V145.003ZM29.7109 116.203V115.703H29.2109V116.203H29.7109ZM58.4248 116.203H58.9248V115.703H58.4248V116.203ZM173.284 145.003V145.503H173.784V145.003H173.284ZM144.57 145.003H144.07V145.503H144.57V145.003ZM144.57 116.203V115.703H144.07V116.203H144.57ZM173.284 116.203H173.784V115.703H173.284V116.203ZM29.7139 116.198V116.698H30.2139V116.198H29.7139ZM1 116.198H0.5V116.698H1V116.198ZM1 87.3984V86.8984H0.5V87.3984H1ZM29.7139 87.3984H30.2139V86.8984H29.7139V87.3984ZM202.003 116.198V116.698H202.503V116.198H202.003ZM173.289 116.198H172.789V116.698H173.289V116.198ZM173.289 87.3984V86.8984H172.789V87.3984H173.289ZM202.003 87.3984H202.503V86.8984H202.003V87.3984ZM144.565 87.4014V87.9014H145.065V87.4014H144.565ZM58.4297 87.4014H57.9297V87.9014H58.4297V87.4014ZM58.4297 58.6016V58.1016H57.9297V58.6016H58.4297ZM144.565 58.6016H145.065V58.1016H144.565V58.6016ZM58.4248 29.7998V30.2998H58.9248V29.7998H58.4248ZM29.7139 29.7998V29.2998H29.2139V29.7998H29.7139ZM29.7139 58.5967V59.0967H30.2139V58.5967H29.7139ZM1 58.5967H0.5V59.0967H1V58.5967ZM1 29.7969V29.2969H0.5V29.7969H1ZM29.7109 29.7969V30.2969H30.2109V29.7969H29.7109ZM29.7109 1V0.5H29.2109V1H29.7109ZM58.4248 1H58.9248V0.5H58.4248V1ZM202.003 58.5967V59.0967H202.503V58.5967H202.003ZM173.289 58.5967H172.789V59.0967H173.289V58.5967ZM173.289 29.7969V29.2969H172.789V29.7969H173.289ZM202.003 29.7969H202.503V29.2969H202.003V29.7969ZM173.284 29.7998V30.2998H173.784V29.7998H173.284ZM144.57 29.7998H144.07V30.2998H144.57V29.7998ZM144.57 1V0.5H144.07V1H144.57ZM173.284 1H173.784V0.5H173.284V1ZM58.4248 145.003V144.503H29.7109V145.003V145.503H58.4248V145.003ZM29.7109 145.003H30.2109V116.203H29.7109H29.2109V145.003H29.7109ZM29.7109 116.203V116.703H58.4248V116.203V115.703H29.7109V116.203ZM58.4248 116.203H57.9248V145.003H58.4248H58.9248V116.203H58.4248ZM173.284 145.003V144.503H144.57V145.003V145.503H173.284V145.003ZM144.57 145.003H145.07V116.203H144.57H144.07V145.003H144.57ZM144.57 116.203V116.703H173.284V116.203V115.703H144.57V116.203ZM173.284 116.203H172.784V145.003H173.284H173.784V116.203H173.284ZM29.7139 116.198V115.698H1V116.198V116.698H29.7139V116.198ZM1 116.198H1.5V87.3984H1H0.5V116.198H1ZM1 87.3984V87.8984H29.7139V87.3984V86.8984H1V87.3984ZM29.7139 87.3984H29.2139V116.198H29.7139H30.2139V87.3984H29.7139ZM202.003 116.198V115.698H173.289V116.198V116.698H202.003V116.198ZM173.289 116.198H173.789V87.3984H173.289H172.789V116.198H173.289ZM173.289 87.3984V87.8984H202.003V87.3984V86.8984H173.289V87.3984ZM202.003 87.3984H201.503V116.198H202.003H202.503V87.3984H202.003ZM144.565 87.4014V86.9014H58.4297V87.4014V87.9014H144.565V87.4014ZM58.4297 87.4014H58.9297V58.6016H58.4297H57.9297V87.4014H58.4297ZM58.4297 58.6016V59.1016H144.565V58.6016V58.1016H58.4297V58.6016ZM144.565 58.6016H144.065V87.4014H144.565H145.065V58.6016H144.565ZM58.4248 29.7998V29.2998H29.7139V29.7998V30.2998H58.4248V29.7998ZM29.7139 29.7998H29.2139V58.5967H29.7139H30.2139V29.7998H29.7139ZM29.7139 58.5967V58.0967H1V58.5967V59.0967H29.7139V58.5967ZM1 58.5967H1.5V29.7969H1H0.5V58.5967H1ZM1 29.7969V30.2969H29.7109V29.7969V29.2969H1V29.7969ZM29.7109 29.7969H30.2109V1H29.7109H29.2109V29.7969H29.7109ZM29.7109 1V1.5H58.4248V1V0.5H29.7109V1ZM58.4248 1H57.9248V29.7998H58.4248H58.9248V1H58.4248ZM202.003 58.5967V58.0967H173.289V58.5967V59.0967H202.003V58.5967ZM173.289 58.5967H173.789V29.7969H173.289H172.789V58.5967H173.289ZM173.289 29.7969V30.2969H202.003V29.7969V29.2969H173.289V29.7969ZM202.003 29.7969H201.503V58.5967H202.003H202.503V29.7969H202.003ZM173.284 29.7998V29.2998H144.57V29.7998V30.2998H173.284V29.7998ZM144.57 29.7998H145.07V1H144.57H144.07V29.7998H144.57ZM144.57 1V1.5H173.284V1V0.5H144.57V1ZM173.284 1H172.784V29.7998H173.284H173.784V1H173.284Z" fill="currentColor" />
@@ -43,7 +43,7 @@
         </div>
         @if (_results != null)
         {
-            @if (_results.Count == 0 && !string.IsNullOrEmpty(_text))
+            @if (_results.Count == 0 && (!string.IsNullOrEmpty(_text) || HasFilters))
             {
                 <p class="indx-search-empty">No results</p>
             }
@@ -166,6 +166,10 @@
         <div class="indx-facets-caption">
             <span class="indx-facets-caption-icon"><Indx.Systm.Blazor.Icons.Filter Size="14" Color="currentColor" /></span>
             <span class="indx-facets-caption-text">Facets</span>
+            @if (HasFilters)
+            {
+                <span class="indx-doc-unpin"><Button Variant="ghost" Size="micro" @onclick="ClearFilters">Clear filters</Button></span>
+            }
         </div>
         <div class="indx-facets-body">
             @if (!HasFacetableFields)
@@ -183,14 +187,27 @@
             }
             else
             {
+                @* A value of a filterable field is a toggle: picked, it filters the hits and the
+                   other fields' counts (Nov 2026). A facetable field that is not filterable stays a
+                   plain chip. *@
                 @foreach (var row in _facets!)
                 {
+                    var filterable = IsFilterable(row.Field);
                     <div class="indx-facet-row">
                         <span class="indx-facet-field" title="@row.Field">@row.Field</span>
                         <span class="indx-facet-values">
                             @foreach (var value in row.Values)
                             {
-                                <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span class="indx-facet-value" title="@value.Key">@value.Key</span><span class="indx-facet-count">@value.Value.ToString("N0")</span></Chip>
+                                @if (filterable)
+                                {
+                                    var picked = IsPicked(row.Field, value.Key);
+                                    <Chip Selected="picked" Title="@(picked ? "Remove this filter" : "Filter on this value")"
+                                          OnClick="@(() => ToggleFilter(row.Field, value.Key))"><span class="indx-facet-value">@value.Key</span><span class="indx-facet-count">@value.Value.ToString("N0")</span></Chip>
+                                }
+                                else
+                                {
+                                    <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span class="indx-facet-value" title="@value.Key">@value.Key</span><span class="indx-facet-count">@value.Value.ToString("N0")</span></Chip>
+                                }
                             }
                             @if (row.MoreValues > 0)
                             {
@@ -266,7 +283,12 @@ else
             // Recount when the text moved on, and when the field configuration was saved since
             // (SetSavedFields hands out a new array): a save can add or drop facetable fields,
             // and the counts on screen would otherwise be those of the old configuration.
-            if (_facetsFor != _text || !ReferenceEquals(_facetsFields, Ctx.SavedFields))
+            if (!ReferenceEquals(_facetsFields, Ctx.SavedFields) && HasFilters)
+            {
+                DropUnfilterable();
+                _ = RunQuickSearchAsync(_text, facetsNow: true);
+            }
+            else if (_facetsFor != _text || !ReferenceEquals(_facetsFields, Ctx.SavedFields))
                 _ = RunFacetsAsync(_text, immediately: true);
         }
         _wasActive = Active;
@@ -281,12 +303,13 @@ else
     private void Clear()
     {
         _searches.Begin(); // a search still running must not bring its hits back
-        _ = RunFacetsAsync(string.Empty, immediately: true);
         _focusBox = _box.Set(string.Empty);
         _text = string.Empty;
         _results = null; _summary = null;
         _hovered = _pinned = null;
         _perf = null;
+        // The filters stay: with the box empty they list what they hold.
+        _ = RunQuickSearchAsync(string.Empty, facetsNow: true);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -307,18 +330,27 @@ else
     /// runs off the circuit, so the next keystroke is not kept waiting behind it; a result that
     /// has been overtaken by then is dropped. When the preview grows facets, the facet query is
     /// the part to debounce, as indx-intrface does: this text search stays immediate.</summary>
-    private async Task RunQuickSearchAsync(string text)
+    private async Task RunQuickSearchAsync(string text, bool facetsNow = false)
     {
         var ticket = _searches.Begin();
         _text = text;
         _perf = null;
-        _ = RunFacetsAsync(text);
-        if (string.IsNullOrWhiteSpace(text))
+        _ = RunFacetsAsync(text, facetsNow);
+        if (string.IsNullOrWhiteSpace(text) && !HasFilters)
         {
             _results = null; _summary = null;
             return;
         }
-        var searched = await Task.Run(() => Search(text));
+        var filters = FiltersNow();
+        (List<PreviewHit> Hits, SearchExplanation.Summary? Summary)? searched;
+        try { searched = await Task.Run(() => Search(text, filters)); }
+        catch (Exception ex) when (ex is not ObjectDisposedException)
+        {
+            // A filter the engine refuses (a field configuration saved meanwhile) must not take
+            // the circuit down: the preview shows no hits for it.
+            Console.WriteLine($"[SearchPreview] search failed for {Ctx.Name}: {ex.Message}");
+            searched = ([], null);
+        }
         var hits = searched?.Hits;
         MarkStep("try");
         if (!_searches.IsCurrent(ticket)) return; // a newer keystroke, Clear or Replace overtook this one
@@ -351,11 +383,12 @@ else
         if (!HasFacetableFields) return;
         var ticket = _facetRuns.Begin();
         var countedUnder = Ctx.SavedFields;
+        var filters = FiltersNow();
         try
         {
             if (!immediately) await Task.Delay(FacetDelay);
             if (!_facetRuns.IsCurrent(ticket)) return;
-            var rows = await Task.Run(() => SearchFacets(text));
+            var rows = await Task.Run(() => SearchFacets(text, filters));
             if (!_facetRuns.IsCurrent(ticket)) return;
             _facets = rows ?? [];
             _facetsFor = text;
@@ -371,16 +404,64 @@ else
         }
     }
 
-    private IReadOnlyList<FacetPreview.Row>? SearchFacets(string text)
+    private IReadOnlyList<FacetPreview.Row>? SearchFacets(string text, Dictionary<string, List<string>> filters)
     {
-        // Empty text with facets enabled is a valid query: the whole dataset's counts.
-        var query = new global::Indx.Http.QueryProxy { Text = text ?? string.Empty, MaxNumberOfRecordsToReturn = 1, EnableFacets = true };
-        var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
+        // Empty text with facets enabled is a valid query: the whole dataset's counts. Every field
+        // is counted under all the filters, except that a field with picked values is counted
+        // under the others only, so its other values can still be picked (as a shop's panel does):
+        // one more query for each such field.
+        var facets = new Dictionary<string, KeyValuePair<string, int>[]>(FacetsOf(text, FacetFilter.Expression(filters, TypeOf)) ?? []);
+        foreach (var field in filters.Keys)
+            if (FacetsOf(text, FacetFilter.Expression(filters, TypeOf, except: field)) is { } own)
+                facets[field] = own.TryGetValue(field, out var values) ? values : [];
         var order = Ctx.SavedFields?.Where(f => f.Facetable == true).Select(f => f.FieldName ?? "");
-        return FacetPreview.Build(result.Facets, order);
+        return FacetPreview.Build(facets, order, selected: filters);
     }
 
-    private (List<PreviewHit> Hits, SearchExplanation.Summary? Summary)? Search(string text)
+    private Dictionary<string, KeyValuePair<string, int>[]>? FacetsOf(string text, string? filterExpression)
+    {
+        var query = new global::Indx.Http.QueryProxy
+        {
+            Text = text ?? string.Empty, MaxNumberOfRecordsToReturn = 1, EnableFacets = true, FilterExpression = filterExpression,
+        };
+        return Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId).Facets;
+    }
+
+    // ── Filters: facet values picked ────────────────────────────────────────────
+
+    // By field, in the order picked. Read on the circuit only; a search off it takes a copy.
+    private readonly Dictionary<string, List<string>> _filters = new();
+    private bool HasFilters => _filters.Count > 0;
+    private Dictionary<string, List<string>> FiltersNow() => _filters.ToDictionary(f => f.Key, f => f.Value.ToList());
+
+    private string? TypeOf(string field) => Ctx.SavedFields?.FirstOrDefault(f => f.FieldName == field)?.FieldType;
+    private bool IsFilterable(string field) => Ctx.SavedFields?.Any(f => f.FieldName == field && f.Filterable == true) == true;
+    private bool IsPicked(string field, string value) => _filters.TryGetValue(field, out var values) && values.Contains(value);
+
+    private Task ToggleFilter(string field, string value)
+    {
+        if (!_filters.TryGetValue(field, out var values)) _filters[field] = values = [];
+        if (!values.Remove(value)) values.Add(value);
+        if (values.Count == 0) _filters.Remove(field);
+        _hovered = null;
+        return RunQuickSearchAsync(_text, facetsNow: true);
+    }
+
+    private Task ClearFilters()
+    {
+        _filters.Clear();
+        return RunQuickSearchAsync(_text, facetsNow: true);
+    }
+
+    /// <summary>A saved field configuration can take a field's Filterable away; a filter on it
+    /// would then be refused, so it goes.</summary>
+    private void DropUnfilterable()
+    {
+        foreach (var field in _filters.Keys.Where(f => !IsFilterable(f)).ToList())
+            _filters.Remove(field);
+    }
+
+    private (List<PreviewHit> Hits, SearchExplanation.Summary? Summary)? Search(string text, Dictionary<string, List<string>> filters)
     {
         var engine = Ctx.FindEngine();
         if (engine == null) return null;
@@ -388,7 +469,13 @@ else
         // search, so the preview matches what real searches return.
         // With the match report, as IndxWorkbench asks: it reads the rows returned once more, which
         // for the preview's few hits costs little, and says how each word was met.
-        var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = PreviewHits, EnableMatchReport = true };
+        // An empty text is a valid search only with facets on: with filters picked, the box empty
+        // lists the records they hold.
+        var query = new global::Indx.Http.QueryProxy
+        {
+            Text = text ?? string.Empty, MaxNumberOfRecordsToReturn = PreviewHits, EnableMatchReport = true,
+            EnableFacets = string.IsNullOrWhiteSpace(text), FilterExpression = FacetFilter.Expression(filters, TypeOf),
+        };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         var hits = new List<PreviewHit>();
         for (int i = 0; i < result.Records.Length; i++)

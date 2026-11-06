@@ -284,6 +284,10 @@
     vertical-align: bottom;
 }
 .indx-facet-count { margin-left: 6px; color: var(--lv5); font-variant-numeric: tabular-nums; }
+/* A filterable field's values are toggles (systm Chip with OnClick): the text in the plain chip's
+   ink until picked, the count lighter on the picked chip's dark ground. */
+.indx-facet-values ::deep .indx-chip--toggle:not(.indx-chip--selected) { color: var(--lv7); }
+.indx-facet-values ::deep .indx-chip--selected .indx-facet-count { color: var(--lv4); }
 .indx-facet-more { font: var(--text-xs); color: var(--lv5); white-space: nowrap; margin-left: 2px; }
 
 /* On a phone the field name goes above its values, which then get the full width. */

@@ -1,10 +1,22 @@
-<span class="indx-chip @(Size == "large" ? "indx-chip-large" : null) @Class" style="@_style">@if (Icon != null) { @Icon(14) }@ChildContent</span>
+@* A label, or with OnClick a toggle: a button that says whether it is Selected (aria-pressed), for
+   values that can be picked, as a facet's are in the console's search preview (Nov 2026). *@
+@if (OnClick.HasDelegate)
+{
+    <button type="button" class="indx-chip indx-chip--toggle @(Selected ? "indx-chip--selected" : null) @(Size == "large" ? "indx-chip-large" : null) @Class"
+            style="@_style" aria-pressed="@(Selected ? "true" : "false")" disabled="@Disabled" title="@Title"
+            @onclick="OnClick">@if (Icon != null) { @Icon(14) }@ChildContent</button>
+}
+else
+{
+    <span class="indx-chip @(Size == "large" ? "indx-chip-large" : null) @Class" style="@_style" title="@Title">@if (Icon != null) { @Icon(14) }@ChildContent</span>
+}
 
 @code {
     [Parameter] public RenderFragment? ChildContent { get; set; }
     [Parameter] public string? Color { get; set; }
     [Parameter] public string? TextColor { get; set; }
     [Parameter] public string? Class { get; set; }
+    [Parameter] public string? Title { get; set; }
 
     /// <summary>Optional leading icon. Sized and coloured (currentColor) to match the chip text.</summary>
     [Parameter] public RenderFragment<int>? Icon { get; set; }
@@ -12,14 +24,20 @@
     /// <summary>"default" (compact) or "large" (taller, more padding; suits a leading icon).</summary>
     [Parameter] public string Size { get; set; } = "default";
 
-    private string _style
+    /// <summary>Makes the chip a toggle button. Without it the chip is a label.</summary>
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+    /// <summary>A toggle's state: ink on the ground, as a picked value reads.</summary>
+    [Parameter] public bool Selected { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+
+    private string? _style
     {
         get
         {
             var parts = new List<string>();
             if (!string.IsNullOrEmpty(Color))     parts.Add($"background-color:{Color}");
             if (!string.IsNullOrEmpty(TextColor)) parts.Add($"color:{TextColor}");
-            return string.Join(";", parts);
+            return parts.Count == 0 ? null : string.Join(";", parts);
         }
     }
 }
