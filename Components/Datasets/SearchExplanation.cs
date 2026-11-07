@@ -65,7 +65,11 @@ namespace IndxServer.Components.Datasets
             }
             else
             {
-                headline = result.CountedTolerance == Tolerance.Exact ? "Strong matches" : "Fuzzy matches";
+                // Fuzzy only when a typo brought a record in: with every typo level (Rungs.All) the
+                // level counted is the farthest worked out, and its count holds the exact ones too
+                // (7 Nov 2026: "hansa mango ipa" on millum, 7 as typed and 7 within one typo, read
+                // as fuzzy).
+                headline = result.ToleranceCounts is { } t && CountOn(t, result.CountedTolerance) > t.Exact ? "Fuzzy matches" : "Strong matches";
             }
             if (result.ToleranceCounts is { } c)
             {
@@ -74,12 +78,7 @@ namespace IndxServer.Components.Datasets
                 if (c.TwoEdits is { } two) levels.Add(new Level("within two typos", two, result.CountedTolerance == Tolerance.TwoEdits && !result.IsFallback));
                 if (c.Rest is { } rest && !result.IsFallback)
                 {
-                    int counted = result.CountedTolerance switch
-                    {
-                        Tolerance.OneEdit => c.OneEdit ?? 0,
-                        Tolerance.TwoEdits => c.TwoEdits ?? 0,
-                        _ => c.Exact,
-                    };
+                    int counted = CountOn(c, result.CountedTolerance);
                     if (rest > counted)
                         notes.Add($"{rest - counted:N0} related records below them, holding some of the words (Rest).");
                 }
@@ -96,6 +95,14 @@ namespace IndxServer.Components.Datasets
                 notes.Add($"{result.Ranked:N0} of the {result.Count:N0} were ranked: the candidate bound, taken by BM25F, the records holding a word itself before those met only by its start. The others are counted, and in the facets, but cannot come into the list. Candidates under Query parameters ranks more.");
             return new Summary(headline, levels, notes);
         }
+
+        /// <summary>The records holding every word on a level or a nearer one.</summary>
+        private static int CountOn(ToleranceCounts counts, Tolerance? level) => level switch
+        {
+            Tolerance.OneEdit => counts.OneEdit ?? 0,
+            Tolerance.TwoEdits => counts.TwoEdits ?? 0,
+            _ => counts.Exact,
+        };
 
         /// <summary>What one listed record is, by its place in the list: counted (it holds every word on
         /// the counted level), filling a short page (every word within a typo, or most of the words:
