@@ -197,6 +197,8 @@
     [
         new("maxCandidates", "Candidates", "How many documents are ranked, in place of the rows times the candidates per row. Higher ranks more of a large match, and every search pays for it.",
             0, 1, QueryParameterResolution.MaxCandidates, p => p.Candidates?.MaxCandidates, (p, v) => C(p).MaxCandidates = v),
+        new("fillReach", "Fill a short page from typos", "When too few documents hold every word on the level counted, fill the page from this many typo levels above it, shown below them and not counted. 0 never, the default. 1 helps a product search with few hits (\"chili\" finds \"chilli\" below it). 2 reaches two typos.",
+            CandidateDefaults.FillReach, 0, 2, p => p.Candidates?.FillReach, (p, v) => C(p).FillReach = v),
         new("candidatesPerRow", "Candidates per row", "How many documents are ranked for each row a search asks for, at least 100 and at most 5,000 in all.",
             CandidateDefaults.CandidatesPerRow, 1, 1000, p => p.Candidates?.CandidatesPerRow, (p, v) => C(p).CandidatesPerRow = v),
         new("typingPrefixOneEditFrom", "Start of a word with a typo from", "The start of a word being typed, within one typo, from this many characters. 0 is never.",
