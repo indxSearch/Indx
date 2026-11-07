@@ -1,0 +1,529 @@
+@* The dataset's records as a table (Nov 2026): a column per chosen field, filters on the Filterable
+   fields, an order by a Sortable one, an optional search, and one record laid out against the
+   field configuration beside the list. Read-only. One search with facets answers it all: the keys
+   in order, how many match and the values the filters offer. The engine has no offset yet, so the
+   list stops at Cap records and says so when more match (Notes/Jens/skip-for-browsing-2026-11-06.md);
+   the pages are cut from those keys, and only the page's records are read. Needs the built index,
+   so the section is disabled until the dataset is Ready, and nothing here wakes one. *@
+@using System.Globalization
+@using System.Text.Json
+@using Indx.Api
+@using Indx.Http
+@inherits DatasetTabBase
+
+@if (!Active) { return; }
+
+<div class="records-tab">
+    <div class="indx-list-toolbar records-toolbar">
+        <div class="records-search">
+            <SearchField Size="micro" Placeholder="Search the records" Value="@_text" ValueChanged="OnTextChanged" aria-label="Search the records" />
+        </div>
+        <Popover AriaLabel="Add a filter" Open="_filterOpen" OpenChanged="OnFilterOpenChanged" Align="start" Class="records-menu">
+            <Trigger>
+                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Filter" Disabled="@(FilterFields.Count == 0)"
+                        title="@(FilterFields.Count == 0 ? "No field is Filterable. Mark one in Field configuration to filter by it." : null)">Add filter</Button>
+            </Trigger>
+            <ChildContent>
+                <div class="records-menu-row">
+                    <span class="records-label">Field</span>
+                    <SelectField Size="micro" Options="FilterFieldOptions" Value="@_draftField" ValueChanged="OnDraftFieldChanged" aria-label="The field to filter by" />
+                </div>
+                @if (DraftField is { } draft)
+                {
+                    @if (IsNumber(draft))
+                    {
+                        <div class="records-menu-row records-menu-pair">
+                            <InputField Label="From" @bind-Value="_draftMin" Immediate inputmode="decimal" />
+                            <InputField Label="To" @bind-Value="_draftMax" Immediate inputmode="decimal" />
+                        </div>
+                    }
+                    else if (ValueOptions(draft) is { Count: > 0 } values)
+                    {
+                        <div class="records-menu-row">
+                            <span class="records-label">Value</span>
+                            <Combobox Size="micro" Options="values" Value="@_draftValue" ValueChanged="v => _draftValue = v" SearchPlaceholder="Search the values" AriaLabel="Value" />
+                        </div>
+                    }
+                    else
+                    {
+                        <InputField Label="Value" @bind-Value="_draftValue" Immediate />
+                    }
+                    @if (_draftError != null)
+                    {
+                        <p class="records-error">@_draftError</p>
+                    }
+                    <div class="records-menu-actions">
+                        <Button Variant="primary" Size="micro" @onclick="AddFilter">Add</Button>
+                    </div>
+                }
+            </ChildContent>
+        </Popover>
+        <div class="records-order">
+            <SelectField Size="micro" Options="OrderOptions" Value="@_sortField" ValueChanged="OnSortChanged" aria-label="Order" />
+            @if (_sortField.Length > 0)
+            {
+                <SegmentedControl Size="micro" AriaLabel="Direction" Value="@(_ascending ? "asc" : "desc")" ValueChanged="OnDirectionChanged" Items="_directions" />
+            }
+        </div>
+        <Popover AriaLabel="Columns" Align="start" Class="records-menu records-columns">
+            <Trigger>
+                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Records">Columns</Button>
+            </Trigger>
+            <ChildContent>
+                @foreach (var f in Fields)
+                {
+                    <Checkbox Label="@f.FieldName" Checked="@_columns.Contains(f.FieldName)" CheckedChanged="on => ToggleColumn(f.FieldName, on)" />
+                }
+            </ChildContent>
+        </Popover>
+        <span class="indx-list-toolbar-end records-count">@CountText</span>
+    </div>
+
+    @if (_filters.Count > 0)
+    {
+        <div class="records-filters" aria-label="Filters">
+            @foreach (var c in _filters)
+            {
+                <Chip Size="default" OnClick="() => RemoveFilter(c)" Title="Remove this filter">@c.Label ✕</Chip>
+            }
+            <Button Variant="ghost" Size="micro" @onclick="ClearFilters">Clear all</Button>
+        </div>
+    }
+
+    @if (_error != null)
+    {
+        <Alert Variant="warning"><Title>The records could not be read</Title><Description>@_error</Description></Alert>
+    }
+    else if (_count > _keys.Length && _keys.Length == Cap)
+    {
+        <p class="records-note">@_count.ToString("N0", Inv) records match. The first @Cap.ToString("N0", Inv) are listed: narrow them with a filter or the search, or change the order, to reach the others.</p>
+    }
+
+    <div class="records-split @(_open != null ? "records-split--open" : null)">
+        <div class="records-list">
+            @if (_keys.Length == 0 && !_loading && _error == null)
+            {
+                <EmptyState Icon="DatasetIcons.Records" Title="No records match">
+                    @(_filters.Count > 0 || _text.Length > 0 ? "Remove a filter or change the search." : "The dataset holds no records.")
+                </EmptyState>
+            }
+            else
+            {
+                <Table Scrollable StickyFirstColumn AriaLabel="Records">
+                    <thead>
+                        <tr>
+                            <th>Key</th>
+                            @foreach (var col in _columns)
+                            {
+                                <th class="@(IsNumber(FieldOf(col)) ? "records-num" : null)">@col</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in _rows)
+                        {
+                            var key = row.Key;
+                            <tr @key="key" class="@(_open?.Key == key ? "records-row--open" : null)">
+                                <td>
+                                    <Button Variant="ghost" Size="micro" Class="records-key" aria-pressed="@(_open?.Key == key ? "true" : "false")" @onclick="() => Open(key)">@key.ToString(Inv)</Button>
+                                </td>
+                                @foreach (var col in _columns)
+                                {
+                                    var value = row.Cells.GetValueOrDefault(col);
+                                    <td class="@(value == null ? "records-missing" : IsNumber(FieldOf(col)) ? "records-num" : null)" title="@(value is { Length: > CellChars } ? value : null)">@(value == null ? "missing" : Short(value))</td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </Table>
+                @if (Pages > 1)
+                {
+                    <div class="records-pager">
+                        <span class="records-count">@((_page * PageSize + 1).ToString("N0", Inv)) to @(Math.Min(_keys.Length, (_page + 1) * PageSize).ToString("N0", Inv)) of @_keys.Length.ToString("N0", Inv)</span>
+                        <Button Variant="ghost" Size="micro" Disabled="@(_page == 0)" @onclick="() => GoTo(_page - 1)">Previous</Button>
+                        <Button Variant="ghost" Size="micro" Disabled="@(_page >= Pages - 1)" @onclick="() => GoTo(_page + 1)">Next</Button>
+                    </div>
+                }
+            }
+        </div>
+
+        @if (_open is { } open)
+        {
+            <section class="records-detail" aria-label="@($"Record {open.Key}")">
+                <div class="records-detail-head">
+                    <span class="records-detail-key">@open.Key.ToString(Inv)</span>
+                    <SegmentedControl Size="micro" AriaLabel="View" @bind-Value="_detailView" Items="_detailViews" />
+                    <Button Variant="ghost" Size="micro" Class="records-detail-close" @onclick="() => _open = null">Close</Button>
+                </div>
+                @if (open.Json == null)
+                {
+                    <p class="records-note">This record is no longer in the dataset.</p>
+                }
+                else if (_detailView == "json")
+                {
+                    <pre class="records-json">@open.Json</pre>
+                }
+                else
+                {
+                    @foreach (var (title, group) in DetailGroups())
+                    {
+                        <div class="records-group">
+                            <h4 class="records-group-title">@title</h4>
+                            @foreach (var f in group)
+                            {
+                                var value = open.Values.GetValueOrDefault(f.FieldName);
+                                <div class="records-field">
+                                    <span class="records-field-name">@f.FieldName</span>
+                                    <span class="@(value == null ? "records-missing" : "records-field-value")">@(value ?? (IsSearched(f) ? $"Missing: this record cannot be found by its {f.FieldName}" : "Missing"))</span>
+                                </div>
+                            }
+                        </div>
+                    }
+                }
+            </section>
+        }
+    </div>
+</div>
+
+@code {
+    /// <summary>The most records one search lists. The engine returns the top N and has no offset,
+    /// so this is also as deep as the pages go.</summary>
+    internal const int Cap = 1000;
+    internal const int PageSize = 50;
+    private const int CellChars = 80;
+    private const int ReadTimeoutMs = 10_000;
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+
+    private static readonly SegmentedControl.Item[] _directions =
+        { new("asc", null, DatasetIcons.SortAscending, "Ascending"), new("desc", null, DatasetIcons.SortDescending, "Descending") };
+    private static readonly SegmentedControl.Item[] _detailViews = { new("fields", "Fields"), new("json", "JSON", DatasetIcons.Json) };
+
+    /// <summary>One filter: a value, or a range on a number field (either end may be open).</summary>
+    internal sealed record Condition(string Field, string? Value, double? Min, double? Max)
+    {
+        public string Label => Value != null ? $"{Field}: {Value}"
+            : Min != null && Max != null ? $"{Field}: {Min.Value.ToString(Inv)} to {Max.Value.ToString(Inv)}"
+            : Min != null ? $"{Field}: from {Min.Value.ToString(Inv)}"
+            : $"{Field}: up to {Max!.Value.ToString(Inv)}";
+    }
+
+    private sealed record Row(long Key, IReadOnlyDictionary<string, string> Cells);
+    private sealed record OpenRecord(long Key, string? Json, IReadOnlyDictionary<string, string> Values);
+
+    private string _text = "";
+    private readonly List<Condition> _filters = new();
+    private string _sortField = "";
+    private bool _ascending = true;
+    private List<string> _columns = new();
+    private bool _columnsChosen;
+
+    private long[] _keys = Array.Empty<long>();
+    private int _count;
+    private IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? _facets;
+    private IReadOnlyList<Row> _rows = Array.Empty<Row>();
+    private int _page;
+    private bool _loading;
+    private string? _error;
+    private int _seq;
+    private bool _wasActive;
+    private CancellationTokenSource? _typing;
+
+    private OpenRecord? _open;
+    private string _detailView = "fields";
+
+    private bool _filterOpen;
+    private string? _draftField;
+    private string? _draftValue;
+    private string? _draftMin;
+    private string? _draftMax;
+    private string? _draftError;
+
+    /// <summary>The fields with a value to show: every analyzed field but containers and those no
+    /// document gave a value, in the configuration's order.</summary>
+    private IReadOnlyList<FieldProxy> Fields => (Ctx.SavedFields ?? Array.Empty<FieldProxy>()).Where(f => f.FieldType != null).ToList();
+    private IReadOnlyList<FieldProxy> FilterFields => Fields.Where(f => f.Filterable == true).ToList();
+    private FieldProxy? FieldOf(string name) => Fields.FirstOrDefault(f => f.FieldName == name);
+    private FieldProxy? DraftField => _draftField == null ? null : FieldOf(_draftField);
+    private int Pages => Math.Max(1, (_keys.Length + PageSize - 1) / PageSize);
+
+    private static bool IsNumber(FieldProxy? f) => string.Equals(f?.FieldType, nameof(JsonValueKind.Number), StringComparison.OrdinalIgnoreCase);
+    private static bool IsSearched(FieldProxy f) => f.WordMatching == true || f.PatternMatching == true;
+
+    private IEnumerable<SelectField.SelectOption> FilterFieldOptions =>
+        FilterFields.Where(f => !_filters.Any(c => c.Field == f.FieldName && c.Value == null)).Select(f => new SelectField.SelectOption(f.FieldName, f.FieldName));
+
+    private IEnumerable<SelectField.SelectOption> OrderOptions
+    {
+        get
+        {
+            yield return new(_text.Trim().Length > 0 ? "Best match" : "Stored order", "");
+            foreach (var f in Fields.Where(f => f.Sortable == true))
+                yield return new($"By {f.FieldName}", f.FieldName);
+        }
+    }
+
+    /// <summary>A facetable field's values under what is chosen now, with their counts, from the
+    /// last search's facets; empty for one that is not facetable.</summary>
+    private IReadOnlyList<SelectField.SelectOption> ValueOptions(FieldProxy f) =>
+        _facets?.GetValueOrDefault(f.FieldName) is { } values
+            ? values.Where(v => !string.IsNullOrEmpty(v.Key)).Select(v => new SelectField.SelectOption($"{v.Key} ({v.Value.ToString("N0", Inv)})", v.Key)).ToList()
+            : Array.Empty<SelectField.SelectOption>();
+
+    private string CountText =>
+        _loading && _keys.Length == 0 ? "Reading…"
+        : _error != null ? ""
+        : _count == 0 ? "No records"
+        : _count == 1 ? "1 record" : $"{_count.ToString("N0", Inv)} records";
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Read again each time the section is opened: a webhook or an upload may have changed the records.
+        var opening = Active && !_wasActive;
+        _wasActive = Active;
+        if (!opening) return;
+        Ctx.EnsureFieldsLoaded();
+        if (!_columnsChosen) _columns = DefaultColumns(Fields);
+        await RunAsync(keepPage: true);
+    }
+
+    /// <summary>Up to four columns: the searched fields first, then the filterable, then the rest.</summary>
+    internal static List<string> DefaultColumns(IReadOnlyList<FieldProxy> fields) =>
+        fields.OrderBy(f => IsSearched(f) ? 0 : f.Filterable == true || f.Facetable == true ? 1 : 2)
+              .Take(4).Select(f => f.FieldName).ToList();
+
+    private async Task OnTextChanged(string? text)
+    {
+        _text = text ?? "";
+        // Wait for a pause in the typing: on a large dataset each search lists and counts it all.
+        _typing?.Cancel();
+        var typing = _typing = new CancellationTokenSource();
+        try { await Task.Delay(250, typing.Token); } catch (TaskCanceledException) { return; }
+        await RunAsync();
+    }
+
+    private async Task OnSortChanged(string? field)
+    {
+        _sortField = field ?? "";
+        await RunAsync();
+    }
+
+    private async Task OnDirectionChanged(string value)
+    {
+        _ascending = value == "asc";
+        await RunAsync();
+    }
+
+    private void ToggleColumn(string name, bool on)
+    {
+        _columnsChosen = true;
+        if (on && !_columns.Contains(name))
+            _columns = Fields.Select(f => f.FieldName).Where(n => n == name || _columns.Contains(n)).ToList();
+        else if (!on) _columns.Remove(name);
+        _ = ReadPageAsync(_seq);
+    }
+
+    private void OnFilterOpenChanged(bool open)
+    {
+        _filterOpen = open;
+        if (open) { _draftField ??= FilterFields.FirstOrDefault()?.FieldName; ResetDraft(); }
+    }
+
+    private void OnDraftFieldChanged(string? field)
+    {
+        _draftField = field;
+        ResetDraft();
+    }
+
+    private void ResetDraft() { _draftValue = null; _draftMin = null; _draftMax = null; _draftError = null; }
+
+    private async Task AddFilter()
+    {
+        if (DraftField is not { } field) return;
+        Condition condition;
+        if (IsNumber(field))
+        {
+            double? min = null, max = null;
+            if (!string.IsNullOrWhiteSpace(_draftMin))
+            {
+                if (!double.TryParse(_draftMin, NumberStyles.Float, Inv, out var m)) { _draftError = "From is not a number."; return; }
+                min = m;
+            }
+            if (!string.IsNullOrWhiteSpace(_draftMax))
+            {
+                if (!double.TryParse(_draftMax, NumberStyles.Float, Inv, out var m)) { _draftError = "To is not a number."; return; }
+                max = m;
+            }
+            if (min == null && max == null) { _draftError = "Give a From, a To or both."; return; }
+            if (min > max) { _draftError = "From is above To."; return; }
+            condition = new Condition(field.FieldName, null, min, max);
+        }
+        else
+        {
+            if (string.IsNullOrEmpty(_draftValue)) { _draftError = "Choose a value."; return; }
+            condition = new Condition(field.FieldName, _draftValue, null, null);
+        }
+        _filters.RemoveAll(c => c == condition);
+        _filters.Add(condition);
+        _filterOpen = false;
+        ResetDraft();
+        await RunAsync();
+    }
+
+    private async Task RemoveFilter(Condition c)
+    {
+        _filters.Remove(c);
+        await RunAsync();
+    }
+
+    private async Task ClearFilters()
+    {
+        _filters.Clear();
+        await RunAsync();
+    }
+
+    private async Task GoTo(int page)
+    {
+        _page = Math.Clamp(page, 0, Pages - 1);
+        await ReadPageAsync(_seq);
+    }
+
+    /// <summary>Searches with what is chosen and reads the first page (or the same page, when the
+    /// section is opened again). A newer search makes an older one's answer stale, and it is dropped.</summary>
+    private async Task RunAsync(bool keepPage = false)
+    {
+        var seq = ++_seq;
+        _loading = true;
+        _error = null;
+        if (!keepPage) _page = 0;
+        var text = _text.Trim();
+        var filters = _filters.ToList();
+        var sort = _sortField;
+        var ascending = _ascending;
+        try
+        {
+            var (keys, count, facets) = await Task.Run(() => Search(text, filters, sort, ascending));
+            if (seq != _seq) return;
+            _keys = keys;
+            _count = count;
+            _facets = facets;
+            _page = Math.Clamp(_page, 0, Pages - 1);
+            await ReadPageAsync(seq);
+        }
+        catch (Exception ex)
+        {
+            if (seq != _seq) return;
+            _keys = Array.Empty<long>();
+            _rows = Array.Empty<Row>();
+            _count = 0;
+            _error = ex.Message;
+        }
+        finally
+        {
+            if (seq == _seq) _loading = false;
+        }
+    }
+
+    private (long[] Keys, int Count, IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? Facets) Search(
+        string text, IReadOnlyList<Condition> conditions, string sort, bool ascending)
+    {
+        var engine = Ctx.FindEngine() ?? throw new InvalidOperationException("The dataset is not loaded.");
+        global::Indx.Api.Filter? filter = null;
+        foreach (var c in conditions)
+        {
+            string? error;
+            // A number field takes a range, equal ends for one value; a value filter is refused on it.
+            var one = c.Value != null
+                ? engine.CreateValueFilter(c.Field, c.Value, isCaseSensitive: false, out error)
+                : engine.CreateRangeFilter(c.Field, c.Min ?? double.MinValue, c.Max ?? double.MaxValue, out error);
+            if (one == null) throw new InvalidOperationException(error ?? $"No filter could be made on {c.Field}.");
+            filter = filter == null ? one : filter & one;
+        }
+        var query = new QueryProxy
+        {
+            Text = text, MaxNumberOfRecordsToReturn = Cap, EnableFacets = true, TimeOutLimitMilliseconds = ReadTimeoutMs,
+            Filter = filter == null ? null : new FilterProxy(filter.SerializedKey),
+            SortBy = sort, SortAscending = ascending,
+        };
+        var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
+        if (result.Reason is { } reason) throw new InvalidOperationException(reason.Message);
+        if (result.DidTimeOut) throw new InvalidOperationException("The search took too long. Narrow it with a filter or the search.");
+        return (result.Records.Select(r => r.DocumentKey).ToArray(), result.Count, result.Facets);
+    }
+
+    /// <summary>Reads the open page's records, and only those, off the circuit.</summary>
+    private async Task ReadPageAsync(int seq)
+    {
+        var keys = _keys.Skip(_page * PageSize).Take(PageSize).ToArray();
+        var columns = _columns.ToList();
+        var rows = await Task.Run(() => keys.Select(k => new Row(k, Values(ReadJson(k), columns))).ToList());
+        if (seq != _seq) return;
+        _rows = rows;
+        StateHasChanged();
+    }
+
+    private async Task Open(long key)
+    {
+        if (_open?.Key == key) { _open = null; return; }
+        var names = Fields.Select(f => f.FieldName).ToList();
+        _open = await Task.Run(() =>
+        {
+            var json = ReadJson(key);
+            return new OpenRecord(key, json == null ? null : Pretty(json), Values(json, names));
+        });
+    }
+
+    private string? ReadJson(long key)
+    {
+        var json = Ctx.FindEngine()?.GetJsonDataOfKey(key);
+        return string.IsNullOrEmpty(json) ? null : json;
+    }
+
+    /// <summary>The named fields' values in a record, an array's joined; a field the record lacks or
+    /// leaves empty is not in the result.</summary>
+    internal static IReadOnlyDictionary<string, string> Values(string? json, IReadOnlyList<string> fields)
+    {
+        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (json == null) return values;
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            foreach (var f in fields)
+            {
+                var found = DocumentInspection.Values(doc.RootElement, f);
+                if (found.Count > 0 && found.Any(v => v.Length > 0)) values[f] = string.Join(", ", found);
+            }
+        }
+        catch (JsonException) { }
+        return values;
+    }
+
+    private static string Pretty(string json)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            return JsonSerializer.Serialize(doc.RootElement, Indented);
+        }
+        catch (JsonException) { return json; }
+    }
+
+    private static string Short(string value) => value.Length > CellChars ? value[..(CellChars - 1)] + "…" : value;
+
+    /// <summary>The record's fields as the field configuration groups them, empty groups left out.</summary>
+    private IEnumerable<(string Title, IReadOnlyList<FieldProxy> Fields)> DetailGroups()
+    {
+        var searched = Fields.Where(IsSearched).ToList();
+        var roles = Fields.Where(f => !IsSearched(f) && (f.Filterable == true || f.Facetable == true || f.Sortable == true)).ToList();
+        var stored = Fields.Where(f => !IsSearched(f) && f.Filterable != true && f.Facetable != true && f.Sortable != true).ToList();
+        if (searched.Count > 0) yield return ("Searched", searched);
+        if (roles.Count > 0) yield return ("Filter, facet and sort", roles);
+        if (stored.Count > 0) yield return ("Stored only", stored);
+    }
+
+    public override void Dispose()
+    {
+        _typing?.Cancel();
+        base.Dispose();
+    }
+}

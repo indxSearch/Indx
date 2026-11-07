@@ -131,6 +131,12 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> DynamicJson = Of<Icons.DynamicJsonField>();
         public static readonly RenderFragment<int> Search = Of<Icons.Search>();
         public static readonly RenderFragment<int> Sliders = Of<Icons.SlidersHorizontal>();
+        // The Records section (Nov 2026): the section, a filter, the columns.
+        public static readonly RenderFragment<int> Records = Of<Icons.TableIcon>();
+        public static readonly RenderFragment<int> Filter = Of<Icons.Filter>();
+        public static readonly RenderFragment<int> Json = Of<Icons.Json>();
+        public static readonly RenderFragment<int> SortAscending = Of<Icons.SortAscending>();
+        public static readonly RenderFragment<int> SortDescending = Of<Icons.SortDescending>();
         public static readonly RenderFragment<int> Eye = Of<Icons.Eye>();
         public static readonly RenderFragment<int> Lock = Of<Icons.Lock>();
         public static readonly RenderFragment<int> Tag = Of<Icons.Tag>();

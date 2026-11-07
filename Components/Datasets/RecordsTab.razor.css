@@ -1,0 +1,55 @@
+.records-tab { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.records-toolbar { align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 0; }
+.records-search { flex: 1 1 200px; max-width: 320px; }
+.records-order { display: inline-flex; align-items: center; gap: 6px; }
+.records-count { color: var(--lv5); font: var(--text-xs); white-space: nowrap; }
+.records-label { color: var(--lv5); font: var(--text-xs); white-space: nowrap; }
+.records-note { color: var(--lv5); font: var(--text-sm); margin: 0; }
+.records-error { color: var(--CSignal); font: var(--text-xs); margin: 0; }
+
+/* The filter and column menus: a systm Popover, each control a row of its own. */
+.records-tab ::deep .records-menu { width: 300px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+.records-tab ::deep .records-columns { max-height: 360px; overflow-y: auto; gap: 6px; }
+.records-menu-row { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.records-menu-pair { flex-direction: row; gap: 8px; }
+.records-menu-actions { display: flex; justify-content: flex-start; }
+
+.records-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+/* The list, and the chosen record beside it once one is open. */
+.records-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+.records-split--open { grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); }
+@media (max-width: 900px) { .records-split--open { grid-template-columns: minmax(0, 1fr); } }
+.records-list { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+
+.records-num { text-align: right; font-variant-numeric: tabular-nums; }
+.records-missing { color: var(--lv4); font-style: italic; }
+.records-tab ::deep .records-key { font-family: var(--font-mono); }
+.records-row--open { background: var(--lv1); }
+
+.records-pager { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
+.records-pager .records-count { margin-right: 8px; }
+
+.records-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+    border: 1px solid var(--lv2);
+    border-radius: var(--radius);
+    background: var(--lv0);
+    min-width: 0;
+    max-height: calc(100vh - 160px);
+    overflow-y: auto;
+    position: sticky;
+    top: 16px;
+}
+.records-detail-head { display: flex; align-items: center; gap: 8px; }
+.records-detail-key { font: var(--text-sm); font-family: var(--font-mono); color: var(--lv8); margin-right: auto; overflow-wrap: anywhere; }
+.records-json { margin: 0; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; color: var(--lv7); white-space: pre-wrap; overflow-wrap: anywhere; }
+.records-group { display: flex; flex-direction: column; gap: 6px; }
+.records-group-title { margin: 0; color: var(--lv5); font: var(--text-xs); font-weight: var(--med); }
+.records-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.records-field-name { color: var(--lv5); font: var(--text-xs); font-family: var(--font-mono); }
+.records-field-value { color: var(--lv8); font: var(--text-sm); overflow-wrap: anywhere; white-space: pre-wrap; }
