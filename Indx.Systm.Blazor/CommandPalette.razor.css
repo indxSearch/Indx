@@ -1,5 +1,5 @@
 /* Over the page, a fifth of the way down, as a search sheet: the overlay dims, the panel on the
-   raised tone with a hairline. No shadow and no motion: it is simply there. */
+   raised tone, no outline (6 Nov 2026, as the Modal). No shadow and no motion: it is simply there. */
 .indx-palette-overlay {
     position: fixed;
     inset: 0;
@@ -17,7 +17,6 @@
     width: 100%;
     max-width: 560px;
     max-height: 60vh;
-    border: 1px solid var(--lv3);
     border-radius: var(--radius);
     background: var(--lv1);
     overflow: hidden;
