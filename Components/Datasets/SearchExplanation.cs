@@ -76,6 +76,7 @@ namespace IndxServer.Components.Datasets
                 levels.Add(new Level("as typed", c.Exact, result.CountedTolerance == Tolerance.Exact && !result.IsFallback));
                 if (c.OneEdit is { } one) levels.Add(new Level("within one typo", one, result.CountedTolerance == Tolerance.OneEdit && !result.IsFallback));
                 if (c.TwoEdits is { } two) levels.Add(new Level("within two typos", two, result.CountedTolerance == Tolerance.TwoEdits && !result.IsFallback));
+                if (c.ThreeEdits is { } three) levels.Add(new Level("within three typos", three, result.CountedTolerance == Tolerance.ThreeEdits && !result.IsFallback));
                 if (c.Rest is { } rest && !result.IsFallback)
                 {
                     int counted = CountOn(c, result.CountedTolerance);
@@ -101,6 +102,7 @@ namespace IndxServer.Components.Datasets
         {
             Tolerance.OneEdit => counts.OneEdit ?? 0,
             Tolerance.TwoEdits => counts.TwoEdits ?? 0,
+            Tolerance.ThreeEdits => counts.ThreeEdits ?? 0,
             _ => counts.Exact,
         };
 
@@ -188,6 +190,7 @@ namespace IndxServer.Components.Datasets
             WordMatch.RunTogether => "several words typed as one",
             WordMatch.OneEdit => "within one typo",
             WordMatch.TwoEdits => "within two typos",
+            WordMatch.ThreeEdits => "within three typos",
             _ => "not confirmed",
         };
     }

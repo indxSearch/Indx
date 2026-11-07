@@ -157,11 +157,11 @@
     private static readonly ChoiceParam ToleranceParam = new("Tolerance", "Typos",
         "The most a query word may differ from a word in a document. A field can allow fewer, never more.",
         nameof(Tolerance.TwoEdits),
-        [new("Exact", nameof(Tolerance.Exact)), new("One edit", nameof(Tolerance.OneEdit)), new("Two edits", nameof(Tolerance.TwoEdits))],
+        [new("Exact", nameof(Tolerance.Exact)), new("One edit", nameof(Tolerance.OneEdit)), new("Two edits", nameof(Tolerance.TwoEdits)), new("Three edits", nameof(Tolerance.ThreeEdits))],
         p => p.Match?.Tolerance?.ToString(), (p, v) => M(p).Tolerance = v == null ? null : Enum.Parse<Tolerance>(v));
 
     private static readonly BoolParam RungsParam =
-        new("Rungs", "Every typo level", "Counts the exact matches and those within one and two typos together, the exact first. Off, a search stops at the first level that finds anything.",
+        new("Rungs", "Every typo level", "Counts the exact matches and those within each typo level together, the exact first. Off, a search stops at the first level that finds anything.",
             MatchDefaults.Rungs == Rungs.All, p => p.Match?.Rungs is { } r ? r == Rungs.All : null,
             (p, v) => M(p).Rungs = v is { } on ? (on ? Rungs.All : Rungs.Fewest) : null);
 
@@ -175,6 +175,8 @@
             MatchDefaults.OneEditFrom, 0, 64, p => p.Match?.OneEditFrom, (p, v) => M(p).OneEditFrom = v),
         new("twoEditsFrom", "Two typos from", "The shortest query word allowed two typos. 0 is never.",
             MatchDefaults.TwoEditsFrom, 0, 64, p => p.Match?.TwoEditsFrom, (p, v) => M(p).TwoEditsFrom = v),
+        new("threeEditsFrom", "Three typos from", "The shortest query word allowed three typos, where the typos and the field allow three. 0 is never.",
+            MatchDefaults.ThreeEditsFrom, 0, 64, p => p.Match?.ThreeEditsFrom, (p, v) => M(p).ThreeEditsFrom = v),
     ];
 
     private static readonly IntParam[] TypingParams =
@@ -197,6 +199,8 @@
     [
         new("maxCandidates", "Candidates", "How many documents are ranked, in place of the rows times the candidates per row. Higher ranks more of a large match, and every search pays for it.",
             0, 1, QueryParameterResolution.MaxCandidates, p => p.Candidates?.MaxCandidates, (p, v) => C(p).MaxCandidates = v),
+        new("fillReach", "Fill a short page from typos", "When too few documents hold every word on the level counted, fill the page from this many typo levels above it, shown below them and not counted. 0 never, the default. 1 helps a product search with few hits (\"chili\" finds \"chilli\" below it). 2 reaches two typos.",
+            CandidateDefaults.FillReach, 0, 2, p => p.Candidates?.FillReach, (p, v) => C(p).FillReach = v),
         new("candidatesPerRow", "Candidates per row", "How many documents are ranked for each row a search asks for, at least 100 and at most 5,000 in all.",
             CandidateDefaults.CandidatesPerRow, 1, 1000, p => p.Candidates?.CandidatesPerRow, (p, v) => C(p).CandidatesPerRow = v),
         new("typingPrefixOneEditFrom", "Start of a word with a typo from", "The start of a word being typed, within one typo, from this many characters. 0 is never.",
