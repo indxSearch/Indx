@@ -44,6 +44,7 @@ namespace IndxServer.Services
             Note(rm?.Rungs != null, dm?.Rungs != null, "match.rungs");
             Note(rm?.OneEditFrom != null, dm?.OneEditFrom != null, "match.oneEditFrom");
             Note(rm?.TwoEditsFrom != null, dm?.TwoEditsFrom != null, "match.twoEditsFrom");
+            Note(rm?.ThreeEditsFrom != null, dm?.ThreeEditsFrom != null, "match.threeEditsFrom");
             Note(rm?.TypingPrefixFrom != null, dm?.TypingPrefixFrom != null, "match.typingPrefixFrom");
             Note(rm?.TypingPrefixOneEditFrom != null, dm?.TypingPrefixOneEditFrom != null, "match.typingPrefixOneEditFrom");
             Note(rm?.JoinedWords != null, dm?.JoinedWords != null, "match.joinedWords");
@@ -82,6 +83,7 @@ namespace IndxServer.Services
                     Rungs = e.Match.Rungs,
                     OneEditFrom = e.Match.OneEditFrom,
                     TwoEditsFrom = e.Match.TwoEditsFrom,
+                    ThreeEditsFrom = e.Match.ThreeEditsFrom,
                     TypingPrefixFrom = e.Match.TypingPrefixFrom,
                     TypingPrefixOneEditFrom = e.Match.TypingPrefixOneEditFrom,
                     JoinedWords = e.Match.JoinedWords,
@@ -120,7 +122,7 @@ namespace IndxServer.Services
             {
                 if (m.CursorAt != null)
                     return "match.cursorAt is a search's own: a dataset cannot set it.";
-                foreach (var (name, value) in new[] { ("oneEditFrom", m.OneEditFrom), ("twoEditsFrom", m.TwoEditsFrom),
+                foreach (var (name, value) in new[] { ("oneEditFrom", m.OneEditFrom), ("twoEditsFrom", m.TwoEditsFrom), ("threeEditsFrom", m.ThreeEditsFrom),
                     ("typingPrefixFrom", m.TypingPrefixFrom), ("typingPrefixOneEditFrom", m.TypingPrefixOneEditFrom) })
                     if (value is < 0 or > 64)
                         return $"match.{name} must be between 0 and 64.";

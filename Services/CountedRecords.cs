@@ -22,7 +22,8 @@ namespace IndxServer.Services
             {
                 Tolerance.Exact => counts.Exact,
                 Tolerance.OneEdit => counts.OneEdit ?? 0,
-                _ => counts.TwoEdits ?? 0,
+                Tolerance.TwoEdits => counts.TwoEdits ?? 0,
+                _ => counts.ThreeEdits ?? 0,
             };
             return Math.Min(shown, counted);
         }

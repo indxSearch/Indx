@@ -157,11 +157,11 @@
     private static readonly ChoiceParam ToleranceParam = new("Tolerance", "Typos",
         "The most a query word may differ from a word in a document. A field can allow fewer, never more.",
         nameof(Tolerance.TwoEdits),
-        [new("Exact", nameof(Tolerance.Exact)), new("One edit", nameof(Tolerance.OneEdit)), new("Two edits", nameof(Tolerance.TwoEdits))],
+        [new("Exact", nameof(Tolerance.Exact)), new("One edit", nameof(Tolerance.OneEdit)), new("Two edits", nameof(Tolerance.TwoEdits)), new("Three edits", nameof(Tolerance.ThreeEdits))],
         p => p.Match?.Tolerance?.ToString(), (p, v) => M(p).Tolerance = v == null ? null : Enum.Parse<Tolerance>(v));
 
     private static readonly BoolParam RungsParam =
-        new("Rungs", "Every typo level", "Counts the exact matches and those within one and two typos together, the exact first. Off, a search stops at the first level that finds anything.",
+        new("Rungs", "Every typo level", "Counts the exact matches and those within each typo level together, the exact first. Off, a search stops at the first level that finds anything.",
             MatchDefaults.Rungs == Rungs.All, p => p.Match?.Rungs is { } r ? r == Rungs.All : null,
             (p, v) => M(p).Rungs = v is { } on ? (on ? Rungs.All : Rungs.Fewest) : null);
 
@@ -175,6 +175,8 @@
             MatchDefaults.OneEditFrom, 0, 64, p => p.Match?.OneEditFrom, (p, v) => M(p).OneEditFrom = v),
         new("twoEditsFrom", "Two typos from", "The shortest query word allowed two typos. 0 is never.",
             MatchDefaults.TwoEditsFrom, 0, 64, p => p.Match?.TwoEditsFrom, (p, v) => M(p).TwoEditsFrom = v),
+        new("threeEditsFrom", "Three typos from", "The shortest query word allowed three typos, where the typos and the field allow three. 0 is never.",
+            MatchDefaults.ThreeEditsFrom, 0, 64, p => p.Match?.ThreeEditsFrom, (p, v) => M(p).ThreeEditsFrom = v),
     ];
 
     private static readonly IntParam[] TypingParams =

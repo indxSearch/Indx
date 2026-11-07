@@ -473,7 +473,7 @@ namespace IndxServer.Mcp
         /// <summary>The documents holding every word: the tolerance counts at the counted rung,
         /// Result.Count where the search had no word lookup to count with.</summary>
         private static int CountedOf(Result res) => res.ToleranceCounts is { } t && res.CountedTolerance is { } at
-            ? at switch { Tolerance.Exact => t.Exact, Tolerance.OneEdit => t.OneEdit ?? t.Exact, _ => t.TwoEdits ?? t.OneEdit ?? t.Exact }
+            ? at switch { Tolerance.Exact => t.Exact, Tolerance.OneEdit => t.OneEdit ?? t.Exact, Tolerance.TwoEdits => t.TwoEdits ?? t.OneEdit ?? t.Exact, _ => t.ThreeEdits ?? t.TwoEdits ?? t.OneEdit ?? t.Exact }
             : res.Count;
 
         /// <summary>Match-all via an empty query sorted by any sortable field (empty text alone returns nothing).</summary>

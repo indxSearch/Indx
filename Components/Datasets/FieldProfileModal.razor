@@ -16,7 +16,7 @@
         <div class="fp-group">
             <span class="fp-legend">@Hinted("Tolerance", ToleranceHelp)</span>
             @* The edits as a step slider, the names of the steps under it. *@
-            <Slider Min="0" Max="2" Step="1" Value="@((int)_draft.Tolerance)" Disabled="@(!Editable)" AriaLabel="Tolerance"
+            <Slider Min="0" Max="3" Step="1" Value="@((int)_draft.Tolerance)" Disabled="@(!Editable)" AriaLabel="Tolerance"
                     ValueChanged="@(v => Set(_draft with { Tolerance = (Tolerance)(int)Math.Round(v) }))" />
             <div class="fp-steps">
                 @foreach (var t in Enum.GetValues<Tolerance>())
@@ -205,10 +205,11 @@
     {
         Tolerance.Exact => "No typos: words must match as written. For codes, numbers and long text, where a typo confirms the wrong record.",
         Tolerance.TwoEdits => "Two typos, from six letters by default. For titles and names people misspell.",
+        Tolerance.ThreeEdits => "Three typos, from nine letters by default, where the search allows three too. For long names and compounds; a short word keeps to two.",
         _ => "One typo: a letter added, dropped or changed, or two neighbours swapped. From three letters by default.",
     };
 
-    private const string ToleranceHelp = "Field.Tolerance: how far a typed word may be from the word in the field. Exact: \"poter\" does not match Potter. OneEdit: it does, one letter is missing. TwoEdits: \"ashwaghanda\" matches ashwagandha. One edit from three letters and two from six by default; the dataset's query parameters can move both. A search may lower it, never raise it.";
+    private const string ToleranceHelp = "Field.Tolerance: how far a typed word may be from the word in the field. Exact: \"poter\" does not match Potter. OneEdit: it does, one letter is missing. TwoEdits: \"ashwaghanda\" matches ashwagandha. ThreeEdits: \"papikjompvniet\" matches papirkompaniet, where the search allows three. One edit from three letters, two from six and three from nine by default; the dataset's query parameters can move them. A search may lower it, never raise it.";
     private const string RerankWeightHelp = "Field.RerankWeight: how much a match here counts when the results are reordered, against the heaviest searched field, so only the ratios matter: title 1 and text 0.5 is the same as 4 and 2. With those, \"dark knight\" in a title ranks above the same words in a description. 0 leaves the fields out of the reranker and the word lookup.";
     private const string PatternHelp = "How PatternMatching cuts the text into pieces. A field with PatternMatching on is scored by pieces of its words as well as whole words. That score orders the records inside each typo level, blended with the reranker's score, and brings records in for the fallback, Rest and Bm25f mode. In the default mode it does not decide on its own which records match.";
     private const string IndexSizesHelp = "The piece lengths. 3: \"potter\" gives pot, ott, tte, ter. 2 and 3 adds po, ot, tt, te, er, so short and partial values score better, at about twice the memory.";

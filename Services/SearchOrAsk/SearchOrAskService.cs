@@ -633,7 +633,7 @@ namespace IndxServer.Services.SearchOrAsk
         public static JsonObject State(string site, string text, SearchSummary search)
         {
             var levels = search.Levels is { } c
-                ? new JsonObject { ["exact"] = c.Exact, ["oneEdit"] = c.OneEdit, ["twoEdits"] = c.TwoEdits }
+                ? new JsonObject { ["exact"] = c.Exact, ["oneEdit"] = c.OneEdit, ["twoEdits"] = c.TwoEdits, ["threeEdits"] = c.ThreeEdits }
                 : null;
             var searchState = new JsonObject
             {
