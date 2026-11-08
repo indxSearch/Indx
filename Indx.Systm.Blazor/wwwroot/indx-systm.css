@@ -276,6 +276,52 @@ svg[viewBox="0 0 7 5"] {
     }
 }
 
+/* ResizableColumns: fixed widths, set per column by Table.razor.js, and a handle at each header's
+   right edge. The handle is the column's own border, widened for the pointer: nothing shows until
+   it is pointed at or focused, then the line darkens. The cells cut what does not fit. The React
+   Table's resizableColumns (Table.module.css) is the same. */
+.indx-table-resizable { table-layout: fixed; }
+/* A width is the column's whole width, padding and all, as the reader dragged it. */
+.indx-table-resizable th { position: relative; box-sizing: border-box; }
+/* One line per cell, as data grids do: a narrow column cuts its text instead of making its row
+   tall. A cell that should wrap (an opened row's detail) says white-space: normal itself. */
+.indx-table-resizable th,
+.indx-table-resizable td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.indx-table-column-handle {
+    /* The right 8px of the cell, which cuts what overflows; the next header's left 6px is its lead
+       (data-lead), so the border is a 14px target from both sides, as Resizable's line is. */
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 8px;
+    z-index: 3;
+    touch-action: none;
+}
+.indx-table-column-handle[data-lead] { right: auto; left: 0; width: 6px; }
+.indx-table-column-handle::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 1px;
+    background: transparent;
+}
+.indx-table-column-handle[data-lead]::after { content: none; }
+.indx-table-column-handle:hover::after,
+.indx-table-column-handle[data-hot]::after,
+.indx-table-column-handle:focus-visible::after,
+.indx-table-column-handle[data-dragging]::after { background: var(--lv6); }
+.indx-table-column-handle:focus-visible { outline: none; }
+/* The pixl resize cursor, as Resizable has it, on the handles and over the whole table while a
+   column is dragged; important, so cursors.css's arrow and I-beam do not win. */
+.indx-table-column-handle, .indx-table-resizable[data-resizing], .indx-table-resizable[data-resizing] * { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%231A1A21"/></svg>') 10 10, col-resize !important; }
+.indx-table-resizable[data-resizing] { user-select: none; }
+@media (prefers-color-scheme: dark) {
+    .indx-table-column-handle, .indx-table-resizable[data-resizing], .indx-table-resizable[data-resizing] * { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%23EFEFEF"/></svg>') 10 10, col-resize !important; }
+}
+
 /* ── Spinner keyframes (generated) ── */
 @keyframes indx-spinner-2 {
   0% { opacity: 1; }

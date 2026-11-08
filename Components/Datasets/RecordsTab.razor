@@ -187,21 +187,23 @@
     }
     else
     {
-        @* Fixed widths, set by each column's field rather than by the page's values: measured from the
-           page, the columns moved with every search (8 Nov 2026). A cut value ends in an ellipsis and
-           its tooltip shows more. *@
-        <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Records" WrapperClass="records-frame" Class="records-table">
+        @* Resizable columns, each with a first width by its field's type rather than the page's
+           values: measured from the page, the columns moved with every search (8 Nov 2026). The
+           reader's widths are kept per dataset. A cut value ends in an ellipsis and its tooltip
+           shows more. *@
+        <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Records" WrapperClass="records-frame" Class="records-table"
+               ResizableColumns ColumnStorageKey="@($"records:{Ctx.TeamId}:{Ctx.Name}")">
             <thead>
                 <tr>
-                    <th class="records-key-head" style="width:@(KeyWidth)px"><span class="records-head-row">@DatasetIcons.Key(14)<span class="records-head-name">Key</span></span></th>
+                    <th class="records-key-head" data-column="key" data-width="140"><span class="records-head-row">@DatasetIcons.Key(14)<span class="records-head-name">Key</span></span></th>
                     @if (_matches != null)
                     {
-                        <th class="records-key-head" style="width:180px">Matched</th>
+                        <th class="records-key-head" data-column="matched" data-width="180">Matched</th>
                     }
                     @foreach (var col in _columns)
                     {
                         var f = FieldOf(col);
-                        <th class="records-head @(IsNumber(f) ? "records-head--num" : null)" style="width:@(WidthOf(f))px">
+                        <th class="records-head @(IsNumber(f) ? "records-head--num" : null)" data-column="@col" data-width="@WidthOf(f)">
                             @if (f != null) { @HeaderMenu(f) } else { @col }
                         </th>
                     }
@@ -952,11 +954,8 @@
         </Tooltip>
     };
 
-    /// <summary>The key column: the chevron, the longest key listed in the mono face, and room for
-    /// the cut and fixed marks. Read from every listed key, not the page's, so paging keeps it.</summary>
-    private int KeyWidth => 74 + 8 * Math.Max(4, _keys.Length == 0 ? 0 : _keys.Max(k => k.ToString(Inv).Length));
-
-    /// <summary>A column's width by its field's type: a number or a flag narrow, text wide.</summary>
+    /// <summary>A column's first width by its field's type: a number or a flag narrow, text wide. The
+    /// key's is a constant (140), not the longest key's: that changed with the search.</summary>
     private static int WidthOf(FieldProxy? f) =>
         f == null ? 200
         : IsNumber(f) ? 130

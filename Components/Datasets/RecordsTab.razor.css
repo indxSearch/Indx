@@ -91,8 +91,6 @@
 .records-word-text { color: var(--lv8); font-weight: var(--med); }
 .records-word--missing .records-word-text { color: var(--lv5); font-weight: var(--reg); text-decoration: line-through; }
 
-/* Fixed column widths (the header's width holds), the table at least as wide as its frame. A value
-   longer than its column ends in an ellipsis. The open record's cell is not a column: it wraps. */
-.records-tab ::deep .records-table { table-layout: fixed; }
-.records-tab ::deep .records-table td, .records-tab ::deep .records-table th { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The Table's ResizableColumns fix the widths and cut what overflows; a value stays on one line.
+   The open record's cell is not a column: it wraps, and shows all of itself. */
 .records-tab ::deep .records-table .records-expanded > td { overflow: visible; white-space: normal; }
