@@ -30,7 +30,7 @@
 else if (Ctx.EditedFields is { } fields)
 {
     <FieldConfigTable Fields="fields" Editable="@Ctx.IsEditor" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced" Filter="@_filter"
-                      @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged" />
+                      @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged" Saved="@Ctx.SavedFields" />
     @* The page action pattern (app.css): Save / Cancel in a bar that appears once something
        changed and sticks to the window bottom, since this table is often taller than the screen.
        Export and import close the page. The document key follows below. *@

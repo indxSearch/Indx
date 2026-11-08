@@ -384,7 +384,7 @@
         {
             if (IsContainer(f)) continue;               // emitted above its children, not in place
             if (matches != null) { if (!matches.Contains(f.FieldName)) continue; }
-            else if (!ShowUnused && IsUnused(f)) continue;
+            else if (!ShowUnused && IsUnused(f) && !UsedWhenSaved(f)) continue;
 
             foreach (var ancestor in Ancestors(f.FieldName))
             {
@@ -457,6 +457,8 @@
     [Parameter] public bool Editable { get; set; } = true;
     /// <summary>Also list fields with no capability ticked.</summary>
     [Parameter] public bool ShowUnused { get; set; }
+    /// <summary>The configuration as saved; null (an upload being configured) keeps nothing.</summary>
+    [Parameter] public IReadOnlyList<FieldProxy>? Saved { get; set; }
     /// <summary>Show the WordIndexing / Embeddable / PreloadFilters / HighResolution / BM25 columns
     /// and switch the weight control from slider to number input.</summary>
     [Parameter] public bool ShowAdvanced { get; set; }
@@ -474,6 +476,11 @@
         if (SearchableTouched != touchedBefore) await SearchableTouchedChanged.InvokeAsync(SearchableTouched);
         await OnChanged.InvokeAsync();
     }
+
+    /// <summary>A field used in the configuration as saved stays in the list after its last role
+    /// is switched off, until Save or Cancel (8 Nov 2026): it vanished under the pointer.</summary>
+    private bool UsedWhenSaved(FieldProxy f) =>
+        Saved?.FirstOrDefault(s => s.FieldName == f.FieldName) is { } saved && !IsUnused(saved);
 
     public static bool IsUnused(FieldProxy f) =>
         f.Searchable != true && f.Filterable != true && f.Facetable != true &&
