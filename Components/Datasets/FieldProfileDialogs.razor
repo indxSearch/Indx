@@ -12,6 +12,8 @@
                        CustomField="@_editingField?.FieldName"
                        UsedBy="@(_editingField != null ? [_editingField.FieldName] : UsedBy(editing.Id, patternOnly: false))"
                        UsedByPattern="@(_editingField != null ? (_editingField.PatternMatching == true ? [_editingField.FieldName] : []) : UsedBy(editing.Id, patternOnly: true))"
+                       UsedByWords="@(_editingField != null ? (_editingField.WordMatching == true ? [_editingField.FieldName] : []) : UsedBy(editing.Id, patternOnly: false, wordsOnly: true))"
+                       FallbackOff="@FallbackOff"
                        Editable="@Editable" OnSave="SaveProfile"
                        OnDelete="@(_editingField == null && editing.Id.Length > 0 ? EventCallback.Factory.Create(this, DeleteProfile) : default)" />
 }
@@ -29,6 +31,8 @@
     /// <summary>The profiles as saved, for saying what a change costs; null where none are (an upload).</summary>
     [Parameter] public DatasetFieldProfiles? SavedProfiles { get; set; }
     [Parameter] public bool Editable { get; set; } = true;
+    /// <summary>The dataset's query parameters turn the fallback off, said under the tolerance.</summary>
+    [Parameter] public bool FallbackOff { get; set; }
     /// <summary>After any change to the working copies.</summary>
     [Parameter] public EventCallback OnChanged { get; set; }
 
@@ -110,9 +114,10 @@
         SavedProfiles == null ? null : FieldProfiles.All(SavedProfiles).FirstOrDefault(p => p.Id == id);
 
     /// <summary>The searched fields that have the profile; with patternOnly, those with
-    /// PatternMatching on, the ones that read its pattern setup.</summary>
-    private IReadOnlyList<string> UsedBy(string id, bool patternOnly) =>
-        Fields.Where(f => FieldProfiles.IsSearched(f) && (!patternOnly || f.PatternMatching == true)
+    /// PatternMatching on, the ones that read its pattern setup; with wordsOnly, those with
+    /// WordMatching on, the ones its tolerance applies to.</summary>
+    private IReadOnlyList<string> UsedBy(string id, bool patternOnly, bool wordsOnly = false) =>
+        Fields.Where(f => FieldProfiles.IsSearched(f) && (!patternOnly || f.PatternMatching == true) && (!wordsOnly || f.WordMatching == true)
                           && FieldProfiles.ProfileOf(f, Profiles)?.Id == id)
               .Select(f => f.FieldName).ToList();
 

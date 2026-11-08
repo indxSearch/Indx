@@ -27,6 +27,7 @@
                 }
             </div>
             <p class="fp-hint">@ToleranceAbout(_draft.Tolerance)</p>
+            <p class="fp-hint">@BeyondTypos</p>
         </div>
 
         @* The start of a word later than the search (6 Nov 2026, Field.TypingPrefixFrom): an override
@@ -121,6 +122,10 @@
     [Parameter] public IReadOnlyList<string> UsedBy { get; set; } = [];
     /// <summary>Those of them with PatternMatching on, the ones that read the pattern setup.</summary>
     [Parameter] public IReadOnlyList<string> UsedByPattern { get; set; } = [];
+    /// <summary>Those of them with WordMatching on, the ones the tolerance applies to.</summary>
+    [Parameter] public IReadOnlyList<string> UsedByWords { get; set; } = [];
+    /// <summary>The dataset's query parameters turn the fallback off (Candidates.Fallback).</summary>
+    [Parameter] public bool FallbackOff { get; set; }
     [Parameter] public bool Editable { get; set; } = true;
     [Parameter] public EventCallback<FieldProfile> OnSave { get; set; }
     [Parameter] public EventCallback OnDelete { get; set; }
@@ -211,6 +216,34 @@
         Tolerance.ThreeEdits => "Three typos, from nine letters by default, where the search allows three too. For long names and compounds; a short word keeps to two.",
         _ => "One typo: a letter added, dropped or changed, or two neighbours swapped. From three letters by default.",
     };
+
+    /// <summary>What happens past the tolerance on the fields with the profile (8 Nov 2026): the
+    /// fallback is not a level a profile picks but follows from each field's pattern matching and
+    /// the dataset's Fallback, so it is said under the slider rather than offered on it.</summary>
+    private string BeyondTypos
+    {
+        get
+        {
+            if (FallbackOff)
+                return "Beyond this nothing is found: the fallback is off in this dataset's query parameters.";
+            var withPatterns = UsedByWords.Where(UsedByPattern.Contains).ToList();
+            var wordsOnly = UsedByWords.Where(f => !UsedByPattern.Contains(f)).ToList();
+            var patternOnly = UsedByPattern.Where(f => !UsedByWords.Contains(f)).ToList();
+            if (withPatterns.Count + wordsOnly.Count + patternOnly.Count == 0)
+                return "Larger typos: a field with pattern matching still finds them when no record matches every word, shown and not counted. A field without finds nothing beyond this.";
+            var said = new List<string>();
+            if (withPatterns.Count > 0)
+                said.Add($"Larger typos are still found on {Names(withPatterns)} by pattern matching, when no record matches every word: shown, not counted.");
+            if (wordsOnly.Count > 0)
+                said.Add($"On {Names(wordsOnly)} nothing is found beyond this.");
+            if (patternOnly.Count > 0)
+                said.Add($"{Names(patternOnly)} {(patternOnly.Count == 1 ? "is" : "are")} matched by pattern only, so typos do not apply: {(patternOnly.Count == 1 ? "it orders" : "they order")} the results and can bring records in when no record matches every word.");
+            return string.Join(" ", said);
+        }
+    }
+
+    private static string Names(IReadOnlyList<string> fields) =>
+        fields.Count == 1 ? fields[0] : string.Join(", ", fields.Take(fields.Count - 1)) + " and " + fields[^1];
 
     private const string ToleranceHelp = "Field.Tolerance: how far a typed word may be from the word in the field. Exact: \"poter\" does not match Potter. OneEdit: it does, one letter is missing. TwoEdits: \"ashwaghanda\" matches ashwagandha. ThreeEdits: \"papikjompvniet\" matches papirkompaniet, where the search allows three. One edit from three letters, two from six and three from nine by default; the dataset's query parameters can move them. A search may lower it, never raise it.";
     private const string RerankWeightHelp = "Field.RerankWeight: how much a match here counts when the results are reordered, against the heaviest searched field, so only the ratios matter: title 1 and text 0.5 is the same as 4 and 2. With those, \"dark knight\" in a title ranks above the same words in a description. 0 leaves the fields out of the reranker and the word lookup.";

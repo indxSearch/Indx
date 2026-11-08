@@ -8,6 +8,7 @@
 @inject IndxServer.Services.Observr.AgentPanelState Agent
 @inject IServiceProvider Services
 @inject IndxServer.Services.FieldProfileStore ProfileStore
+@inject IndxServer.Services.QueryParameterStore QueryParameters
 @if (!Active) { return; }
 
 @if (!Ctx.IsSaving)
@@ -42,7 +43,8 @@ else if (Ctx.EditedFields is { } fields)
                       Saved="@Ctx.SavedFields" SavedProfiles="@Ctx.SavedProfiles" />
     @if (Ctx.EditedProfiles is { } own)
     {
-        <FieldProfileDialogs @ref="_dialogs" Fields="fields" Profiles="own" SavedProfiles="@Ctx.SavedProfiles" Editable="@Ctx.IsEditor" OnChanged="Ctx.NotifyChanged" />
+        <FieldProfileDialogs @ref="_dialogs" Fields="fields" Profiles="own" SavedProfiles="@Ctx.SavedProfiles" Editable="@Ctx.IsEditor" OnChanged="Ctx.NotifyChanged"
+                             FallbackOff="@(QueryParameters.Load(Ctx.TeamId, Ctx.Name)?.Candidates?.Fallback == false)" />
     }
     @* The page action pattern (app.css): Save / Cancel in a bar that appears once something
        changed and sticks to the window bottom, since this table is often taller than the screen.
