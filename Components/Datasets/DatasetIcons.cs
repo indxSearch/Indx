@@ -99,6 +99,8 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> User = Of<Icons.User>();
         public static readonly RenderFragment<int> Team = Of<Icons.UserGroup>();
         public static readonly RenderFragment<int> Key = Of<Icons.Key>();
+        /// <summary>Records' Matched column, beside Key: which fields a search found a record by.</summary>
+        public static readonly RenderFragment<int> Matched = Of<Icons.SearchQuery>();
         public static readonly RenderFragment<int> AskedAgain = Of<Icons.Loop>();
         public static readonly RenderFragment<int> FuzzySelected = Of<Icons.ClickSelect>();
         // The Search or ask views: the pictures, the questions asked, the offers shown.
