@@ -1,0 +1,176 @@
+@* The scan of a dataset's records and its report (Nov 2026). Before a scan it says what the scan
+   reads and what that costs; while it runs, how many records it has read of how many; once done,
+   the report: a table of the fields, the searched ones first, each with how many records lack it,
+   worst first, and a button that lists those records. A field-by-field table, not one count of
+   records missing any searched field: on tmdb23k that count was 20,650 of 23,439, nearly all films
+   with no collection or tagline, and it hid the 20 without a description. The scan runs on the
+   server, so the modal can be closed while it works. *@
+@using System.Globalization
+@using IndxServer.Services
+@using IndxServer.Components.Shared
+
+<div class="data-check-host">
+<Modal Open="Open" OpenChanged="OpenChanged" Title="@(Progress is { Running: true } ? "Scanning the records" : Standing != null ? "Report" : "Scan the records")" Class="data-check-modal">
+    @if (Progress is { Running: true } p)
+    {
+        <div class="data-check-progress">
+            <ProgressBar Value="p.Percent" />
+            <div class="data-check-progress-line">
+                <span>@p.Read.ToString("N0", Inv) of @p.Total.ToString("N0", Inv) records</span>
+                <span class="data-check-pct">@Math.Floor(p.Percent).ToString(Inv)%</span>
+            </div>
+            <p class="data-check-faint">You can close this window: the scan goes on, and the report waits here.</p>
+        </div>
+        @if (CanRun)
+        {
+            <div class="indx-form-actions">
+                <Button Variant="secondary" @onclick="OnStop">Stop</Button>
+            </div>
+        }
+    }
+    else if (Standing is { } s)
+    {
+        var r = s.Report;
+        <p class="data-check-when">
+            @r.Records.ToString("N0", Inv) records, scanned <TimeAgo Value="r.CheckedUtc" />.
+            @if (s.OutdatedBecause(Fingerprint) is { } why) { <span class="data-check-outdated">Out of date: @why.</span> }
+            else if (s.ChangedSince > 0) { <span>@Records(s.ChangedSince) changed since.</span> }
+        </p>
+        @if (Progress?.Error is { } error)
+        {
+            <p class="data-check-error">@error</p>
+        }
+        @FieldTable("Searched fields", "A record without one cannot be found by it.", r, r.Fields.Where(f => f.Searched))
+        <div class="data-check-finding">
+            @if (r.Cut == 0)
+            {
+                <span class="data-check-faint">No searched text is cut at indexing.</span>
+            }
+            else
+            {
+                <div class="data-check-finding-text">
+                    <span class="data-check-finding-head">@Records(r.Cut) @(r.Cut == 1 ? "has" : "have") text cut at indexing</span>
+                    <span class="data-check-faint">A search reads the first @DataCheck.TextCeiling.ToString("N0", Inv) characters of a value. The records are stored whole.</span>
+                </div>
+                <Button Variant="ghost" Size="micro" Disabled="Outdated" @onclick="() => OnShow.InvokeAsync(RecordsTab.ListCut)">Show them</Button>
+            }
+        </div>
+        @FieldTable("Other fields", "Filtered, ordered or only stored: a missing value hides nothing from a search.", r, r.Fields.Where(f => !f.Searched))
+        <div class="indx-form-actions">
+            @if (Outdated && CanRun)
+            {
+                <Button Variant="primary" @onclick="OnStart">Run scan again</Button>
+                <Button Variant="secondary" @onclick="() => OpenChanged.InvokeAsync(false)">Close</Button>
+            }
+            else
+            {
+                <Button Variant="primary" @onclick="() => OpenChanged.InvokeAsync(false)">Done</Button>
+                @if (CanRun)
+                {
+                    <Button Variant="secondary" @onclick="OnStart">Run scan again</Button>
+                }
+            }
+            @if (CanRun)
+            {
+                <span class="data-check-clear">
+                    <ConfirmButton Label="Clear report" Prompt="Clear the report? The records are not touched." ConfirmLabel="Clear" OnConfirm="OnClear" />
+                </span>
+            }
+        </div>
+    }
+    else
+    {
+        @if (Progress?.Error is { } error)
+        {
+            <p class="data-check-error">@error</p>
+        }
+        <p class="data-check-text">
+            Reads all @Records(RecordCount) once and reports, field by field, how many records lack a value
+            and how many values it has, and which records have text cut at indexing. A record without a
+            searched field cannot be found by it.
+        </p>
+        <p class="data-check-faint">On a dataset of millions this takes a while and keeps one processor core busy. Searches go on as usual.</p>
+        <div class="indx-form-actions">
+            @if (CanRun)
+            {
+                <Button Variant="primary" @onclick="OnStart">Run scan</Button>
+            }
+            <Button Variant="secondary" @onclick="() => OpenChanged.InvokeAsync(false)">Cancel</Button>
+        </div>
+    }
+</Modal>
+</div>
+
+@code {
+    private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    /// <summary>The scan running or last run, or null.</summary>
+    [Parameter] public DataCheckService.Progress? Progress { get; set; }
+    /// <summary>The last report and what has happened since, or null when never scanned.</summary>
+    [Parameter] public DataCheckStanding? Standing { get; set; }
+    /// <summary>The dataset's searched fields and text ceiling now (DataCheck.Fingerprint).</summary>
+    [Parameter] public string Fingerprint { get; set; } = "";
+    /// <summary>How many records the dataset holds, for the text before a first scan.</summary>
+    [Parameter] public long RecordCount { get; set; }
+    /// <summary>Whether the reader may run, stop and clear a scan: an editor. A scan keeps a core
+    /// busy, so a viewer reads the report and nothing more.</summary>
+    [Parameter] public bool CanRun { get; set; }
+    [Parameter] public EventCallback OnStart { get; set; }
+    [Parameter] public EventCallback OnStop { get; set; }
+    /// <summary>Forgets the report and its findings, as before a first scan.</summary>
+    [Parameter] public EventCallback OnClear { get; set; }
+    /// <summary>Lists records in the table: RecordsTab.ListCut, or a field's (RecordsTab.FieldListPrefix + name).</summary>
+    [Parameter] public EventCallback<string> OnShow { get; set; }
+
+    private bool Outdated => Standing?.OutdatedBecause(Fingerprint) != null;
+
+    private static string Records(long n) => n == 1 ? "1 record" : $"{n.ToString("N0", Inv)} records";
+
+    /// <summary>The share of the records a count is, "79%", or "under 1%" for a few.</summary>
+    private static string Share(long n, long of) =>
+        n == 0 || of == 0 ? "" : n * 100 < of ? "under 1%" : $"{Math.Round(100.0 * n / of).ToString(Inv)}%";
+
+    /// <summary>A table of fields, the most records without a value first, each a button to list them.</summary>
+    private RenderFragment FieldTable(string title, string note, DataCheckReport r, IEnumerable<DataCheckField> fields) => __builder =>
+    {
+        var rows = fields.OrderByDescending(f => f.Without).ThenBy(f => f.Name, StringComparer.Ordinal).ToList();
+        if (rows.Count == 0) return;
+        <div class="data-check-section">
+            <div class="data-check-section-head">
+                <span class="data-check-finding-head">@title</span>
+                <span class="data-check-faint">@note</span>
+            </div>
+            <Table AriaLabel="@title">
+                <thead>
+                    <tr>
+                        <th>Field</th>
+                        <th class="data-check-num">Without a value</th>
+                        <th class="data-check-num">Share</th>
+                        <th class="data-check-num">Values</th>
+                        <th><span class="data-check-sr">Records</span></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var f in rows)
+                    {
+                        var name = f.Name;
+                        <tr>
+                            <td class="data-check-field">@name</td>
+                            <td class="data-check-num">@f.Without.ToString("N0", Inv)</td>
+                            <td class="data-check-num data-check-share">@Share(f.Without, r.Records)</td>
+                            <td class="data-check-num">@f.Distinct.ToString("N0", Inv)@(f.DistinctCapped ? " or more" : "")</td>
+                            <td class="data-check-action">
+                                @if (f.Without > 0)
+                                {
+                                    <Button Variant="ghost" Size="micro" Disabled="Outdated" @onclick="() => OnShow.InvokeAsync(RecordsTab.FieldListPrefix + name)">Show</Button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </Table>
+        </div>
+    };
+}

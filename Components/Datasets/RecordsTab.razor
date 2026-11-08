@@ -1,70 +1,111 @@
-@* The dataset's records as a table (Nov 2026): a column per chosen field, filters on the Filterable
-   fields, an order by a Sortable one, an optional search, and one record laid out against the
-   field configuration beside the list. Read-only. One search with facets answers it all: the keys
-   in order, how many match and the values the filters offer. The engine has no offset yet, so the
-   list stops at Cap records and says so when more match (Notes/Jens/skip-for-browsing-2026-11-06.md);
-   the pages are cut from those keys, and only the page's records are read. Needs the built index,
-   so the section is disabled until the dataset is Ready, and nothing here wakes one. *@
+@* The dataset's records as a table (Nov 2026; mockup D in indx-react apps/components,
+   /records-browser): a column per chosen field, filters on the Filterable fields, an order by a
+   Sortable one, a search, and rows that open in place to the record laid out against the field
+   configuration. Read-only. One search with facets answers it all: the keys in order, how many
+   match and the values the filters offer. The engine has no offset yet, so the list stops at Cap
+   records and says so when more match (Notes/Jens/skip-for-browsing-2026-11-06.md); the pages are
+   cut from those keys, and only the page's records are read. Needs the built index, so the section
+   is disabled until the dataset is Ready, and nothing here wakes one.
+
+   What the data lacks comes in two kinds. A searched field missing in a row on the page is marked
+   at no cost: the page's records are read anyway. What needs every record read (how many records
+   lack each field, text cut at indexing) comes from a scan (DataCheck), which the owner runs and
+   reads as a report in a modal, judged by what changed since, not by its age. A list the report
+   opens replaces the search while it is shown, and each row on the page is checked again as it is
+   read, so a record fixed since says so. A scan keeps a core busy, so only an editor runs or
+   clears one; anyone who can open the dataset reads the report.
+
+   With a search, the engine says how it met each query word in each record (Result.MatchReport):
+   a Matched column names the fields, the words are marked where a cell holds them as typed, and
+   an open record says word by word how it was met, as the Search preview does. *@
 @using System.Globalization
 @using System.Text.Json
 @using Indx.Api
 @using Indx.Http
+@using IndxServer.Components.Shared
+@using IndxServer.Services
+@inject DataCheckService DataChecks
 @inherits DatasetTabBase
 
 @if (!Active) { return; }
 
 <div class="records-tab">
     <div class="indx-list-toolbar records-toolbar">
-        <div class="records-search">
-            <SearchField Size="micro" Placeholder="Search the records" Value="@_text" ValueChanged="OnTextChanged" aria-label="Search the records" />
-        </div>
-        <Popover AriaLabel="Add a filter" Open="_filterOpen" OpenChanged="OnFilterOpenChanged" Align="start" Class="records-menu">
-            <Trigger>
-                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Filter" Disabled="@(FilterFields.Count == 0)"
-                        title="@(FilterFields.Count == 0 ? "No field is Filterable. Mark one in Field configuration to filter by it." : null)">Add filter</Button>
-            </Trigger>
-            <ChildContent>
-                <div class="records-menu-row">
-                    <span class="records-label">Field</span>
-                    <SelectField Size="micro" Options="FilterFieldOptions" Value="@_draftField" ValueChanged="OnDraftFieldChanged" aria-label="The field to filter by" />
-                </div>
-                @if (DraftField is { } draft)
-                {
-                    @if (IsNumber(draft))
-                    {
-                        <div class="records-menu-row records-menu-pair">
-                            <InputField Label="From" @bind-Value="_draftMin" Immediate inputmode="decimal" />
-                            <InputField Label="To" @bind-Value="_draftMax" Immediate inputmode="decimal" />
-                        </div>
-                    }
-                    else if (ValueOptions(draft) is { Count: > 0 } values)
-                    {
-                        <div class="records-menu-row">
-                            <span class="records-label">Value</span>
-                            <Combobox Size="micro" Options="values" Value="@_draftValue" ValueChanged="v => _draftValue = v" SearchPlaceholder="Search the values" AriaLabel="Value" />
-                        </div>
-                    }
-                    else
-                    {
-                        <InputField Label="Value" @bind-Value="_draftValue" Immediate />
-                    }
-                    @if (_draftError != null)
-                    {
-                        <p class="records-error">@_draftError</p>
-                    }
-                    <div class="records-menu-actions">
-                        <Button Variant="primary" Size="micro" @onclick="AddFilter">Add</Button>
+        @if (InList)
+        {
+            <span class="records-note">@ListTitle. The search, filters and order do not apply to it.</span>
+        }
+        else
+        {
+            <Popover AriaLabel="Add a filter" Open="_filterOpen" OpenChanged="OnFilterOpenChanged" Align="start" Class="records-menu">
+                <Trigger>
+                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Filter" Disabled="@(FilterFields.Count == 0)"
+                            title="@(FilterFields.Count == 0 ? "No field is Filterable. Mark one in Field configuration to filter by it." : null)">Add filter</Button>
+                </Trigger>
+                <ChildContent>
+                    <div class="records-menu-row">
+                        <span class="records-label">Field</span>
+                        <SelectField Size="micro" Options="FilterFieldOptions" Value="@_draftField" ValueChanged="OnDraftFieldChanged" aria-label="The field to filter by" />
                     </div>
+                    @if (DraftField is { } draft)
+                    {
+                        @if (IsNumber(draft))
+                        {
+                            <div class="records-menu-row records-menu-pair">
+                                <InputField Label="From" @bind-Value="_draftMin" Immediate inputmode="decimal" />
+                                <InputField Label="To" @bind-Value="_draftMax" Immediate inputmode="decimal" />
+                            </div>
+                            @if (_draftError != null)
+                            {
+                                <p class="records-error">@_draftError</p>
+                            }
+                            <div class="records-menu-actions">
+                                <Button Variant="primary" Size="micro" @onclick="AddRange">Add</Button>
+                            </div>
+                        }
+                        else if (_facets?.GetValueOrDefault(draft.FieldName) is { } all)
+                        {
+                            var matching = Narrow(all, _valueQuery);
+                            <SearchField Size="micro" Placeholder="@($"Search {all.Length.ToString("N0", Inv)} {(all.Length == 1 ? "value" : "values")}")"
+                                         Value="@_valueQuery" ValueChanged="v => _valueQuery = v ?? string.Empty" aria-label="Search the values" />
+                            <div class="records-values">
+                                @foreach (var v in matching.Take(ShownValues))
+                                {
+                                    var value = v.Key;
+                                    <Button Variant="ghost" Size="micro" style="width:100%; justify-content:space-between; gap:12px; text-align:left;"
+                                            @onclick="() => AddValue(draft.FieldName, value)">
+                                        <span class="records-value-text">@value</span><span class="records-count">@v.Value.ToString("N0", Inv)</span>
+                                    </Button>
+                                }
+                            </div>
+                            <p class="records-faint">
+                                @(matching.Count == 0 ? "No value holds that."
+                                  : matching.Count > ShownValues ? $"The {ShownValues} commonest of {matching.Count.ToString("N0", Inv)}. Type to narrow."
+                                  : matching.Count == 1 ? "1 value." : $"{matching.Count.ToString("N0", Inv)} values.")
+                            </p>
+                        }
+                        else
+                        {
+                            <InputField Label="Value" @bind-Value="_draftValue" Immediate />
+                            @if (_draftError != null)
+                            {
+                                <p class="records-error">@_draftError</p>
+                            }
+                            <div class="records-menu-actions">
+                                <Button Variant="primary" Size="micro" @onclick="() => AddValue(draft.FieldName, _draftValue)">Add</Button>
+                            </div>
+                        }
+                    }
+                </ChildContent>
+            </Popover>
+            <div class="records-order">
+                <SelectField Size="micro" Variant="ghost" Options="OrderOptions" Value="@_sortField" ValueChanged="OnSortChanged" aria-label="Order" />
+                @if (_sortField.Length > 0)
+                {
+                    <SegmentedControl Size="micro" AriaLabel="Direction" Value="@(_ascending ? "asc" : "desc")" ValueChanged="OnDirectionChanged" Items="_directions" />
                 }
-            </ChildContent>
-        </Popover>
-        <div class="records-order">
-            <SelectField Size="micro" Options="OrderOptions" Value="@_sortField" ValueChanged="OnSortChanged" aria-label="Order" />
-            @if (_sortField.Length > 0)
-            {
-                <SegmentedControl Size="micro" AriaLabel="Direction" Value="@(_ascending ? "asc" : "desc")" ValueChanged="OnDirectionChanged" Items="_directions" />
-            }
-        </div>
+            </div>
+        }
         <Popover AriaLabel="Columns" Align="start" Class="records-menu records-columns">
             <Trigger>
                 <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Records">Columns</Button>
@@ -76,10 +117,45 @@
                 }
             </ChildContent>
         </Popover>
-        <span class="indx-list-toolbar-end records-count">@CountText</span>
+        @if (!InList)
+        {
+            <div class="records-search">
+                <SearchField Size="micro" Placeholder="Search the records" Value="@_text" ValueChanged="OnTextChanged" aria-label="Search the records" />
+            </div>
+        }
+        <span class="indx-list-toolbar-end records-end">
+            <span class="records-count">@CountText</span>
+            @if (_standing != null || _progress is { Running: true } || Ctx.IsEditor)
+            {
+                <Button Variant="ghost" Size="micro" @onclick="() => _checkOpen = true">
+                    @(_progress is { Running: true } p ? $"Scanning, {Math.Floor(p.Percent).ToString(Inv)}%" : _standing != null ? "Open report" : "Run scan")
+                </Button>
+            }
+        </span>
     </div>
 
-    @if (_filters.Count > 0)
+    <DataCheckModal Open="_checkOpen" OpenChanged="v => _checkOpen = v" Progress="_progress" Standing="_standing"
+                    Fingerprint="@Fingerprint" CanRun="Ctx.IsEditor" RecordCount="@(Ctx.Status?.DocumentCount ?? 0)"
+                    OnStart="StartCheck" OnStop="StopCheck" OnClear="ClearCheck" OnShow="ShowList" />
+
+    @if (_standing is { } standing && standing.OutdatedBecause(Fingerprint) is { } why)
+    {
+        <p class="records-note">
+            The report from <TimeAgo Value="standing.Report.CheckedUtc" /> is out of date: @why.
+            @if (Ctx.IsEditor)
+            {
+                <Button Variant="ghost" Size="micro" @onclick="() => _checkOpen = true">Run scan again</Button>
+            }
+        </p>
+    }
+
+    @if (InList)
+    {
+        <div class="records-filters">
+            <Chip Size="default" OnClick="() => ShowList(ListAll)" Title="Back to all records">@ListChip ✕</Chip>
+        </div>
+    }
+    else if (_filters.Count > 0 && !InList)
     {
         <div class="records-filters" aria-label="Filters">
             @foreach (var c in _filters)
@@ -96,93 +172,157 @@
     }
     else if (_count > _keys.Length && _keys.Length == Cap)
     {
-        <p class="records-note">@_count.ToString("N0", Inv) records match. The first @Cap.ToString("N0", Inv) are listed: narrow them with a filter or the search, or change the order, to reach the others.</p>
+        <p class="records-note">
+            @(InList
+                ? $"{_count.ToString("N0", Inv)} records are in this list. The first {Cap.ToString("N0", Inv)} by key are listed."
+                : $"{_count.ToString("N0", Inv)} records match. The first {Cap.ToString("N0", Inv)} are listed: narrow them with a filter or the search, or change the order, to reach the others.")
+        </p>
     }
 
-    <div class="records-split @(_open != null ? "records-split--open" : null)">
-        <div class="records-list">
-            @if (_keys.Length == 0 && !_loading && _error == null)
-            {
-                <EmptyState Icon="DatasetIcons.Records" Title="No records match">
-                    @(_filters.Count > 0 || _text.Length > 0 ? "Remove a filter or change the search." : "The dataset holds no records.")
-                </EmptyState>
-            }
-            else
-            {
-                <Table Scrollable StickyFirstColumn AriaLabel="Records">
-                    <thead>
-                        <tr>
-                            <th>Key</th>
+    @if (_keys.Length == 0 && !_loading && _error == null)
+    {
+        <EmptyState Icon="DatasetIcons.Records" Title="No records match">
+            @(InList ? "The scan found none." : _filters.Count > 0 || _text.Length > 0 ? "Remove a filter or change the search." : "The dataset holds no records.")
+        </EmptyState>
+    }
+    else
+    {
+        <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Records" WrapperClass="records-frame">
+            <thead>
+                <tr>
+                    <th class="records-key-head">Key</th>
+                    @if (_matches != null)
+                    {
+                        <th class="records-key-head">Matched</th>
+                    }
+                    @foreach (var col in _columns)
+                    {
+                        var f = FieldOf(col);
+                        <th class="records-head @(IsNumber(f) ? "records-num" : null)">
+                            @if (f != null) { @HeaderMenu(f) } else { @col }
+                        </th>
+                    }
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _rows)
+                {
+                    var key = row.Key;
+                    var isOpen = _open.ContainsKey(key);
+                    <tr @key="key" class="records-row @(isOpen ? "records-row--open" : null)" tabindex="0" aria-expanded="@(isOpen ? "true" : "false")"
+                        @onclick="() => Toggle(key)" @onkeydown="e => OnRowKey(e, key)">
+                        <td>
+                            <span class="records-key">
+                                @(isOpen ? DatasetIcons.RowOpen(14) : DatasetIcons.RowClosed(14))
+                                @key.ToString(Inv)
+                                @if (row.Cut) { <span title="A searched value is longer than the index takes, and was cut">@DatasetIcons.Cut(14)</span> }
+                                @if (FixedSinceCheck(row)) { <span class="records-fixed">fixed since the scan</span> }
+                            </span>
+                        </td>
+                        @if (_matches != null)
+                        {
+                            <td>@MatchedCell(_matches.GetValueOrDefault(key))</td>
+                        }
+                        @if (row.Gone)
+                        {
+                            <td class="records-missing" colspan="@_columns.Count">No longer in the dataset</td>
+                        }
+                        else
+                        {
                             @foreach (var col in _columns)
                             {
-                                <th class="@(IsNumber(FieldOf(col)) ? "records-num" : null)">@col</th>
-                            }
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var row in _rows)
-                        {
-                            var key = row.Key;
-                            <tr @key="key" class="@(_open?.Key == key ? "records-row--open" : null)">
-                                <td>
-                                    <Button Variant="ghost" Size="micro" Class="records-key" aria-pressed="@(_open?.Key == key ? "true" : "false")" @onclick="() => Open(key)">@key.ToString(Inv)</Button>
-                                </td>
-                                @foreach (var col in _columns)
+                                var f = FieldOf(col);
+                                var value = row.Cells.GetValueOrDefault(col);
+                                if (value == null && f != null && IsSearched(f))
                                 {
-                                    var value = row.Cells.GetValueOrDefault(col);
-                                    <td class="@(value == null ? "records-missing" : IsNumber(FieldOf(col)) ? "records-num" : null)" title="@(value is { Length: > CellChars } ? value : null)">@(value == null ? "missing" : Short(value))</td>
+                                    <td><span class="records-issue" title="@($"A search cannot find this record by its {col}")">@DatasetIcons.Lacking(14)missing</span></td>
                                 }
-                            </tr>
-                        }
-                    </tbody>
-                </Table>
-                @if (Pages > 1)
-                {
-                    <div class="records-pager">
-                        <span class="records-count">@((_page * PageSize + 1).ToString("N0", Inv)) to @(Math.Min(_keys.Length, (_page + 1) * PageSize).ToString("N0", Inv)) of @_keys.Length.ToString("N0", Inv)</span>
-                        <Button Variant="ghost" Size="micro" Disabled="@(_page == 0)" @onclick="() => GoTo(_page - 1)">Previous</Button>
-                        <Button Variant="ghost" Size="micro" Disabled="@(_page >= Pages - 1)" @onclick="() => GoTo(_page + 1)">Next</Button>
-                    </div>
-                }
-            }
-        </div>
-
-        @if (_open is { } open)
-        {
-            <section class="records-detail" aria-label="@($"Record {open.Key}")">
-                <div class="records-detail-head">
-                    <span class="records-detail-key">@open.Key.ToString(Inv)</span>
-                    <SegmentedControl Size="micro" AriaLabel="View" @bind-Value="_detailView" Items="_detailViews" />
-                    <Button Variant="ghost" Size="micro" Class="records-detail-close" @onclick="() => _open = null">Close</Button>
-                </div>
-                @if (open.Json == null)
-                {
-                    <p class="records-note">This record is no longer in the dataset.</p>
-                }
-                else if (_detailView == "json")
-                {
-                    <pre class="records-json">@open.Json</pre>
-                }
-                else
-                {
-                    @foreach (var (title, group) in DetailGroups())
-                    {
-                        <div class="records-group">
-                            <h4 class="records-group-title">@title</h4>
-                            @foreach (var f in group)
-                            {
-                                var value = open.Values.GetValueOrDefault(f.FieldName);
-                                <div class="records-field">
-                                    <span class="records-field-name">@f.FieldName</span>
-                                    <span class="@(value == null ? "records-missing" : "records-field-value")">@(value ?? (IsSearched(f) ? $"Missing: this record cannot be found by its {f.FieldName}" : "Missing"))</span>
-                                </div>
+                                else if (value == null)
+                                {
+                                    <td class="records-missing">missing</td>
+                                }
+                                else
+                                {
+                                    var marked = MarkedWords(key, col);
+                                    <td class="@(IsNumber(f) ? "records-num" : null)">
+                                        @if (value.Length > CellChars)
+                                        {
+                                            <Tooltip Content="@Short(value, TipChars)" Class="records-tip"><span class="records-cell">@Marked(Short(value, CellChars), marked)</span></Tooltip>
+                                        }
+                                        else
+                                        {
+                                            <span class="records-cell">@Marked(value, marked)</span>
+                                        }
+                                    </td>
+                                }
                             }
-                        </div>
+                        }
+                    </tr>
+                    @if (isOpen && _open[key] is { } open)
+                    {
+                        <tr class="records-expanded">
+                            <td colspan="@(_columns.Count + (_matches != null ? 2 : 1))">
+                                <div class="records-detail">
+                                    <SegmentedControl Size="micro" AriaLabel="View" Value="@(_jsonRows.Contains(key) ? "json" : "fields")"
+                                                      ValueChanged="v => SetView(key, v)" Items="_detailViews" />
+                                    @if (open.Json == null)
+                                    {
+                                        <p class="records-note">This record is no longer in the dataset.</p>
+                                    }
+                                    else if (_jsonRows.Contains(key))
+                                    {
+                                        <pre class="records-json">@open.Json</pre>
+                                    }
+                                    else
+                                    {
+                                        @if (_matches?.GetValueOrDefault(key) is { Count: > 0 } words)
+                                        {
+                                            <div class="records-words">
+                                                <h4 class="records-group-title">How each word matched</h4>
+                                                @foreach (var w in words)
+                                                {
+                                                    <div class="records-word @(w.Found ? null : "records-word--missing")">
+                                                        <span class="records-word-text">@w.Text</span>
+                                                        <span class="records-faint">@w.How@if (w.Field != null) { <span> in </span><span class="records-field-name">@w.Field</span> }</span>
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
+                                        <div class="records-groups">
+                                            @foreach (var (title, group) in DetailGroups())
+                                            {
+                                                <div class="records-group">
+                                                    <h4 class="records-group-title">@title</h4>
+                                                    @foreach (var f in group)
+                                                    {
+                                                        var value = open.Values.GetValueOrDefault(f.FieldName);
+                                                        <div class="records-field">
+                                                            <span class="records-field-name">@f.FieldName</span>
+                                                            <span class="@(value == null ? "records-missing" : "records-field-value")">@(value ?? (IsSearched(f) ? $"Missing: this record cannot be found by its {f.FieldName}" : "Missing"))</span>
+                                                        </div>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    }
+                                </div>
+                            </td>
+                        </tr>
                     }
                 }
-            </section>
-        }
-    </div>
+            </tbody>
+        </Table>
+        <div class="records-pager">
+            <SelectField Size="micro" Variant="ghost" Options="_perPageOptions" Value="@_perPage.ToString(Inv)" ValueChanged="OnPerPageChanged" aria-label="Records per page" />
+            <span class="records-spacer"></span>
+            @if (_keys.Length > 0)
+            {
+                <span class="records-count">@((_page * _perPage + 1).ToString("N0", Inv)) to @(Math.Min(_keys.Length, (_page + 1) * _perPage).ToString("N0", Inv)) of @_keys.Length.ToString("N0", Inv)</span>
+            }
+            <Button Variant="ghost" Size="micro" Disabled="@(_page == 0)" @onclick="() => GoTo(_page - 1)">Previous</Button>
+            <Button Variant="ghost" Size="micro" Disabled="@(_page >= Pages - 1)" @onclick="() => GoTo(_page + 1)">Next</Button>
+        </div>
+    }
 </div>
 
 @code {
@@ -190,14 +330,25 @@
     /// so this is also as deep as the pages go.</summary>
     internal const int Cap = 1000;
     internal const int PageSize = 50;
-    private const int CellChars = 80;
+    /// <summary>How many values the filter menu lists at once: a field with thousands (an actors
+    /// field) is searched, not scrolled, and a list that long cost a render per keystroke.</summary>
+    internal const int ShownValues = 50;
+    private const int CellChars = 60;
+    private const int TipChars = 400;
     private const int ReadTimeoutMs = 10_000;
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
 
+    /// <summary>The lists a scan's report opens, shown instead of a search.</summary>
+    internal const string ListAll = "all";
+    internal const string ListCut = "cut";
+    internal const string FieldListPrefix = "field:";
+
     private static readonly SegmentedControl.Item[] _directions =
         { new("asc", null, DatasetIcons.SortAscending, "Ascending"), new("desc", null, DatasetIcons.SortDescending, "Descending") };
     private static readonly SegmentedControl.Item[] _detailViews = { new("fields", "Fields"), new("json", "JSON", DatasetIcons.Json) };
+    private static readonly SelectField.SelectOption[] _perPageOptions =
+        { new("20 per page", "20"), new("50 per page", "50"), new("100 per page", "100") };
 
     /// <summary>One filter: a value, or a range on a number field (either end may be open).</summary>
     internal sealed record Condition(string Field, string? Value, double? Min, double? Max)
@@ -208,8 +359,10 @@
             : $"{Field}: up to {Max!.Value.ToString(Inv)}";
     }
 
-    private sealed record Row(long Key, IReadOnlyDictionary<string, string> Cells);
-    private sealed record OpenRecord(long Key, string? Json, IReadOnlyDictionary<string, string> Values);
+    /// <summary>A row on the page: its cells, whether it has a cut value now, and whether it is gone
+    /// (deleted since a report listed it).</summary>
+    private sealed record Row(long Key, IReadOnlyDictionary<string, string> Cells, bool Cut, bool Gone);
+    private sealed record OpenRecord(string? Json, IReadOnlyDictionary<string, string> Values);
 
     private string _text = "";
     private readonly List<Condition> _filters = new();
@@ -217,10 +370,14 @@
     private bool _ascending = true;
     private List<string> _columns = new();
     private bool _columnsChosen;
+    private int _perPage = PageSize;
+    private string _list = ListAll;
 
     private long[] _keys = Array.Empty<long>();
-    private int _count;
+    private long _count;
     private IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? _facets;
+    /// <summary>How the search met each query word, per listed record; null without a search text.</summary>
+    private IReadOnlyDictionary<long, IReadOnlyList<SearchExplanation.Word>>? _matches;
     private IReadOnlyList<Row> _rows = Array.Empty<Row>();
     private int _page;
     private bool _loading;
@@ -229,8 +386,8 @@
     private bool _wasActive;
     private CancellationTokenSource? _typing;
 
-    private OpenRecord? _open;
-    private string _detailView = "fields";
+    private readonly Dictionary<long, OpenRecord?> _open = new();
+    private readonly HashSet<long> _jsonRows = new();
 
     private bool _filterOpen;
     private string? _draftField;
@@ -238,6 +395,12 @@
     private string? _draftMin;
     private string? _draftMax;
     private string? _draftError;
+    private string _valueQuery = "";
+
+    private DataCheckStanding? _standing;
+    private DataCheckService.Progress? _progress;
+    private bool _checkOpen;
+    private CancellationTokenSource? _polling;
 
     /// <summary>The fields with a value to show: every analyzed field but containers and those no
     /// document gave a value, in the configuration's order.</summary>
@@ -245,10 +408,16 @@
     private IReadOnlyList<FieldProxy> FilterFields => Fields.Where(f => f.Filterable == true).ToList();
     private FieldProxy? FieldOf(string name) => Fields.FirstOrDefault(f => f.FieldName == name);
     private FieldProxy? DraftField => _draftField == null ? null : FieldOf(_draftField);
-    private int Pages => Math.Max(1, (_keys.Length + PageSize - 1) / PageSize);
+    private int Pages => Math.Max(1, (_keys.Length + _perPage - 1) / _perPage);
+    private bool InList => _list != ListAll;
 
     private static bool IsNumber(FieldProxy? f) => string.Equals(f?.FieldType, nameof(JsonValueKind.Number), StringComparison.OrdinalIgnoreCase);
     private static bool IsSearched(FieldProxy f) => f.WordMatching == true || f.PatternMatching == true;
+
+    private IReadOnlyList<DataCheck.CheckedField> CheckedFields => Fields.Select(f => new DataCheck.CheckedField(f.FieldName, IsSearched(f))).ToList();
+    private string Fingerprint => DataCheck.Fingerprint(CheckedFields, DataCheck.TextCeiling);
+    /// <summary>The report when it still holds (current, or with some records changed since); null otherwise.</summary>
+    private DataCheckReport? Report => _standing is { } s && s.OutdatedBecause(Fingerprint) == null ? s.Report : null;
 
     private IEnumerable<SelectField.SelectOption> FilterFieldOptions =>
         FilterFields.Where(f => !_filters.Any(c => c.Field == f.FieldName && c.Value == null)).Select(f => new SelectField.SelectOption(f.FieldName, f.FieldName));
@@ -263,18 +432,18 @@
         }
     }
 
-    /// <summary>A facetable field's values under what is chosen now, with their counts, from the
-    /// last search's facets; empty for one that is not facetable.</summary>
-    private IReadOnlyList<SelectField.SelectOption> ValueOptions(FieldProxy f) =>
-        _facets?.GetValueOrDefault(f.FieldName) is { } values
-            ? values.Where(v => !string.IsNullOrEmpty(v.Key)).Select(v => new SelectField.SelectOption($"{v.Key} ({v.Value.ToString("N0", Inv)})", v.Key)).ToList()
-            : Array.Empty<SelectField.SelectOption>();
-
     private string CountText =>
         _loading && _keys.Length == 0 ? "Reading…"
         : _error != null ? ""
-        : _count == 0 ? "No records"
-        : _count == 1 ? "1 record" : $"{_count.ToString("N0", Inv)} records";
+        : Plural(_count, "record");
+
+    private string ListTitle => _list == ListCut
+        ? "Records with text cut at indexing, from the report"
+        : $"Records without {_list[FieldListPrefix.Length..]}, from the report";
+
+    private string ListChip => _list == ListCut ? "Text cut at indexing" : $"{_list[FieldListPrefix.Length..]} is missing";
+
+    private static string Plural(long n, string noun) => n == 1 ? $"1 {noun}" : $"{n.ToString("N0", Inv)} {noun}s";
 
     protected override async Task OnParametersSetAsync()
     {
@@ -284,6 +453,8 @@
         if (!opening) return;
         Ctx.EnsureFieldsLoaded();
         if (!_columnsChosen) _columns = DefaultColumns(Fields);
+        ReadCheck();
+        if (_progress is { Running: true }) PollCheck();
         await RunAsync(keepPage: true);
     }
 
@@ -291,6 +462,64 @@
     internal static List<string> DefaultColumns(IReadOnlyList<FieldProxy> fields) =>
         fields.OrderBy(f => IsSearched(f) ? 0 : f.Filterable == true || f.Facetable == true ? 1 : 2)
               .Take(4).Select(f => f.FieldName).ToList();
+
+    // ── The column header and its menu ─────────────────────────────────────────
+
+    private RenderFragment HeaderMenu(FieldProxy f) => __builder =>
+    {
+        var stats = Report?.Field(f.FieldName);
+        var issue = stats is { Without: > 0 } && IsSearched(f);
+        var facetValues = _facets?.GetValueOrDefault(f.FieldName);
+        <Popover AriaLabel="@($"{f.FieldName}: order, filter, find the records without it")" Align="start" Class="records-menu">
+            <Trigger>
+                <Button Variant="ghost" Size="micro" IconRight="SortIconOf(f)">@f.FieldName</Button>
+            </Trigger>
+            <ChildContent>
+                @if (issue)
+                {
+                    <p class="records-faint">A search cannot find the @Plural(stats!.Without, "record") without it by their @f.FieldName.</p>
+                }
+                @if (f.Sortable == true && !InList)
+                {
+                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.SortAscending" @onclick="() => SortBy(f.FieldName, true)">Lowest first</Button>
+                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.SortDescending" @onclick="() => SortBy(f.FieldName, false)">Highest first</Button>
+                }
+                @if (f.Filterable == true && !IsNumber(f) && !InList && facetValues != null)
+                {
+                    @foreach (var v in facetValues.Where(v => v.Key.Length > 0).Take(5))
+                    {
+                        var value = v.Key;
+                        <Button Variant="ghost" Size="micro" @onclick="() => AddValue(f.FieldName, value)">Only @Short(value, 24) (@v.Value.ToString("N0", Inv))</Button>
+                    }
+                }
+                @if (stats != null)
+                {
+                    <Button Variant="ghost" Size="micro" Disabled="@(stats.Without == 0)" @onclick="() => ShowList(FieldListPrefix + f.FieldName)">Records without it (@stats.Without.ToString("N0", Inv))</Button>
+                }
+                else if (Ctx.IsEditor)
+                {
+                    <Button Variant="ghost" Size="micro" @onclick="() => _checkOpen = true">Records without it: run a scan</Button>
+                }
+                <Button Variant="ghost" Size="micro" @onclick="() => ToggleColumn(f.FieldName, false)">Hide the column</Button>
+            </ChildContent>
+        </Popover>
+        @if (stats != null || facetValues != null)
+        {
+            var values = stats?.Distinct ?? facetValues!.Length;
+            var parts = new List<string>();
+            if (stats != null) parts.Add(stats.Without == 0 ? "in all" : $"{stats.Without.ToString("N0", Inv)} without");
+            parts.Add($"{values.ToString("N0", Inv)}{(stats?.DistinctCapped == true ? "+" : "")} {(values == 1 ? "value" : "values")}");
+            <span class="@(issue ? "records-issue" : "records-head-note")">
+                @if (issue) { @DatasetIcons.Lacking(14) }
+                @string.Join(" · ", parts)
+            </span>
+        }
+    };
+
+    private RenderFragment<int>? SortIconOf(FieldProxy f) =>
+        _sortField != f.FieldName || InList ? null : _ascending ? DatasetIcons.SortAscending : DatasetIcons.SortDescending;
+
+    // ── Changing what is listed ─────────────────────────────────────────────────
 
     private async Task OnTextChanged(string? text)
     {
@@ -314,6 +543,20 @@
         await RunAsync();
     }
 
+    private async Task SortBy(string field, bool ascending)
+    {
+        _sortField = field;
+        _ascending = ascending;
+        await RunAsync();
+    }
+
+    private async Task OnPerPageChanged(string? value)
+    {
+        _perPage = int.TryParse(value, NumberStyles.Integer, Inv, out var n) && n > 0 ? n : PageSize;
+        _page = 0;
+        await ReadPageAsync(_seq);
+    }
+
     private void ToggleColumn(string name, bool on)
     {
         _columnsChosen = true;
@@ -335,34 +578,45 @@
         ResetDraft();
     }
 
-    private void ResetDraft() { _draftValue = null; _draftMin = null; _draftMax = null; _draftError = null; }
+    private void ResetDraft() { _draftValue = null; _draftMin = null; _draftMax = null; _draftError = null; _valueQuery = ""; }
 
-    private async Task AddFilter()
+    /// <summary>The values that start with what was typed, then those that hold it, each in count order.</summary>
+    internal static IReadOnlyList<KeyValuePair<string, int>> Narrow(KeyValuePair<string, int>[] values, string query)
+    {
+        var all = values.Where(v => v.Key.Length > 0);
+        var q = query.Trim();
+        if (q.Length == 0) return all.ToList();
+        var starts = all.Where(v => v.Key.StartsWith(q, StringComparison.OrdinalIgnoreCase)).ToList();
+        return starts.Concat(all.Where(v => !v.Key.StartsWith(q, StringComparison.OrdinalIgnoreCase) && v.Key.Contains(q, StringComparison.OrdinalIgnoreCase))).ToList();
+    }
+
+    private async Task AddValue(string field, string? value)
+    {
+        if (string.IsNullOrEmpty(value)) { _draftError = "Give a value."; return; }
+        await Add(new Condition(field, value, null, null));
+    }
+
+    private async Task AddRange()
     {
         if (DraftField is not { } field) return;
-        Condition condition;
-        if (IsNumber(field))
+        double? min = null, max = null;
+        if (!string.IsNullOrWhiteSpace(_draftMin))
         {
-            double? min = null, max = null;
-            if (!string.IsNullOrWhiteSpace(_draftMin))
-            {
-                if (!double.TryParse(_draftMin, NumberStyles.Float, Inv, out var m)) { _draftError = "From is not a number."; return; }
-                min = m;
-            }
-            if (!string.IsNullOrWhiteSpace(_draftMax))
-            {
-                if (!double.TryParse(_draftMax, NumberStyles.Float, Inv, out var m)) { _draftError = "To is not a number."; return; }
-                max = m;
-            }
-            if (min == null && max == null) { _draftError = "Give a From, a To or both."; return; }
-            if (min > max) { _draftError = "From is above To."; return; }
-            condition = new Condition(field.FieldName, null, min, max);
+            if (!double.TryParse(_draftMin, NumberStyles.Float, Inv, out var m)) { _draftError = "From is not a number."; return; }
+            min = m;
         }
-        else
+        if (!string.IsNullOrWhiteSpace(_draftMax))
         {
-            if (string.IsNullOrEmpty(_draftValue)) { _draftError = "Choose a value."; return; }
-            condition = new Condition(field.FieldName, _draftValue, null, null);
+            if (!double.TryParse(_draftMax, NumberStyles.Float, Inv, out var m)) { _draftError = "To is not a number."; return; }
+            max = m;
         }
+        if (min == null && max == null) { _draftError = "Give a From, a To or both."; return; }
+        if (min > max) { _draftError = "From is above To."; return; }
+        await Add(new Condition(field.FieldName, null, min, max));
+    }
+
+    private async Task Add(Condition condition)
+    {
         _filters.RemoveAll(c => c == condition);
         _filters.Add(condition);
         _filterOpen = false;
@@ -388,8 +642,52 @@
         await ReadPageAsync(_seq);
     }
 
-    /// <summary>Searches with what is chosen and reads the first page (or the same page, when the
-    /// section is opened again). A newer search makes an older one's answer stale, and it is dropped.</summary>
+    /// <summary>Shows one of the report's lists in place of the search, or the search again.</summary>
+    private async Task ShowList(string list)
+    {
+        _list = list;
+        _checkOpen = false;
+        await RunAsync();
+    }
+
+    // ── Rows ────────────────────────────────────────────────────────────────────
+
+    private async Task Toggle(long key)
+    {
+        if (_open.Remove(key)) { _jsonRows.Remove(key); return; }
+        _open[key] = null;
+        var names = Fields.Select(f => f.FieldName).ToList();
+        var open = await Task.Run(() =>
+        {
+            var json = ReadJson(key);
+            return new OpenRecord(json == null ? null : Pretty(json), Values(json, names));
+        });
+        if (_open.ContainsKey(key)) _open[key] = open;
+    }
+
+    private async Task OnRowKey(KeyboardEventArgs e, long key)
+    {
+        if (e.Key is "Enter" or " ") await Toggle(key);
+    }
+
+    private void SetView(long key, string view)
+    {
+        if (view == "json") _jsonRows.Add(key); else _jsonRows.Remove(key);
+    }
+
+    /// <summary>Whether a row the report listed has been put right since: the report is old news for it.</summary>
+    private bool FixedSinceCheck(Row row) => !row.Gone && _list switch
+    {
+        ListCut => !row.Cut,
+        ListAll => false,
+        _ => row.Cells.ContainsKey(_list[FieldListPrefix.Length..]),
+    };
+
+    // ── Searching and reading ───────────────────────────────────────────────────
+
+    /// <summary>Searches with what is chosen, or takes a list from the report, and reads the first
+    /// page (or the same page, when the section is opened again). A newer search makes an older
+    /// one's answer stale, and it is dropped.</summary>
     private async Task RunAsync(bool keepPage = false)
     {
         var seq = ++_seq;
@@ -402,11 +700,22 @@
         var ascending = _ascending;
         try
         {
-            var (keys, count, facets) = await Task.Run(() => Search(text, filters, sort, ascending));
-            if (seq != _seq) return;
-            _keys = keys;
-            _count = count;
-            _facets = facets;
+            if (InList && ListOf(_list) is { } list)
+            {
+                _keys = list.Keys;
+                _count = list.Count;
+                _matches = null;
+            }
+            else
+            {
+                _list = ListAll;
+                var (keys, count, facets, matches) = await Task.Run(() => Search(text, filters, sort, ascending));
+                if (seq != _seq) return;
+                _keys = keys;
+                _count = count;
+                _facets = facets;
+                _matches = matches;
+            }
             _page = Math.Clamp(_page, 0, Pages - 1);
             await ReadPageAsync(seq);
         }
@@ -424,7 +733,16 @@
         }
     }
 
-    private (long[] Keys, int Count, IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? Facets) Search(
+    /// <summary>A list from the report, while it holds: its first keys and how many it found.</summary>
+    private (long[] Keys, long Count)? ListOf(string list) => Report is not { } r ? null : list switch
+    {
+        ListCut => (r.CutKeys, r.Cut),
+        _ when list.StartsWith(FieldListPrefix, StringComparison.Ordinal) && r.Field(list[FieldListPrefix.Length..]) is { } f => (f.MissingKeys, f.Without),
+        _ => null,
+    };
+
+    private (long[] Keys, int Count, IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? Facets,
+        IReadOnlyDictionary<long, IReadOnlyList<SearchExplanation.Word>>? Matches) Search(
         string text, IReadOnlyList<Condition> conditions, string sort, bool ascending)
     {
         var engine = Ctx.FindEngine() ?? throw new InvalidOperationException("The dataset is not loaded.");
@@ -442,35 +760,43 @@
         var query = new QueryProxy
         {
             Text = text, MaxNumberOfRecordsToReturn = Cap, EnableFacets = true, TimeOutLimitMilliseconds = ReadTimeoutMs,
+            // How each word was met: the listed records are read once more for it, so only with a text.
+            EnableMatchReport = text.Length > 0,
             Filter = filter == null ? null : new FilterProxy(filter.SerializedKey),
             SortBy = sort, SortAscending = ascending,
         };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         if (result.Reason is { } reason) throw new InvalidOperationException(reason.Message);
         if (result.DidTimeOut) throw new InvalidOperationException("The search took too long. Narrow it with a filter or the search.");
-        return (result.Records.Select(r => r.DocumentKey).ToArray(), result.Count, result.Facets);
+        var matches = result.MatchReport?.Matches?.ToDictionary(m => m.DocumentKey,
+            m => (IReadOnlyList<SearchExplanation.Word>)m.Words.Select(w => new SearchExplanation.Word(w.Word, w.Field, SearchExplanation.How(w.How), w.How != WordMatch.NotFound)).ToList());
+        return (result.Records.Select(r => r.DocumentKey).ToArray(), result.Count, result.Facets, text.Length > 0 ? matches ?? new() : null);
     }
 
-    /// <summary>Reads the open page's records, and only those, off the circuit.</summary>
+    /// <summary>Reads the open page's records, and only those, off the circuit. Each is checked
+    /// again as it is read: a missing searched field and a cut value are marked from what it holds now.</summary>
     private async Task ReadPageAsync(int seq)
     {
-        var keys = _keys.Skip(_page * PageSize).Take(PageSize).ToArray();
+        var keys = _keys.Skip(_page * _perPage).Take(_perPage).ToArray();
         var columns = _columns.ToList();
-        var rows = await Task.Run(() => keys.Select(k => new Row(k, Values(ReadJson(k), columns))).ToList());
+        var fields = CheckedFields;
+        var ceiling = DataCheck.TextCeiling;
+        var rows = await Task.Run(() => keys.Select(k => ReadRow(k, ReadJson(k), columns, fields, ceiling)).ToList());
         if (seq != _seq) return;
         _rows = rows;
         StateHasChanged();
     }
 
-    private async Task Open(long key)
+    private static Row ReadRow(long key, string? json, IReadOnlyList<string> columns, IReadOnlyList<DataCheck.CheckedField> fields, int ceiling)
     {
-        if (_open?.Key == key) { _open = null; return; }
-        var names = Fields.Select(f => f.FieldName).ToList();
-        _open = await Task.Run(() =>
+        if (json == null) return new Row(key, new Dictionary<string, string>(), false, Gone: true);
+        try
         {
-            var json = ReadJson(key);
-            return new OpenRecord(key, json == null ? null : Pretty(json), Values(json, names));
-        });
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            return new Row(key, Values(root, columns), DataCheck.IsCut(root, fields, ceiling), Gone: false);
+        }
+        catch (JsonException) { return new Row(key, new Dictionary<string, string>(), false, Gone: false); }
     }
 
     private string? ReadJson(long key)
@@ -483,18 +809,23 @@
     /// leaves empty is not in the result.</summary>
     internal static IReadOnlyDictionary<string, string> Values(string? json, IReadOnlyList<string> fields)
     {
-        var values = new Dictionary<string, string>(StringComparer.Ordinal);
-        if (json == null) return values;
+        if (json == null) return new Dictionary<string, string>(StringComparer.Ordinal);
         try
         {
             using var doc = JsonDocument.Parse(json);
-            foreach (var f in fields)
-            {
-                var found = DocumentInspection.Values(doc.RootElement, f);
-                if (found.Count > 0 && found.Any(v => v.Length > 0)) values[f] = string.Join(", ", found);
-            }
+            return Values(doc.RootElement, fields);
         }
-        catch (JsonException) { }
+        catch (JsonException) { return new Dictionary<string, string>(StringComparer.Ordinal); }
+    }
+
+    private static IReadOnlyDictionary<string, string> Values(JsonElement root, IReadOnlyList<string> fields)
+    {
+        var values = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var f in fields)
+        {
+            var found = DocumentInspection.Values(root, f);
+            if (found.Count > 0 && found.Any(v => v.Length > 0)) values[f] = string.Join(", ", found);
+        }
         return values;
     }
 
@@ -508,7 +839,64 @@
         catch (JsonException) { return json; }
     }
 
-    private static string Short(string value) => value.Length > CellChars ? value[..(CellChars - 1)] + "…" : value;
+    /// <summary>The query words met in this record's field, to mark where the cell holds them.</summary>
+    private IReadOnlyList<string> MarkedWords(long key, string field) =>
+        _matches?.GetValueOrDefault(key) is { } words
+            ? words.Where(w => w.Found && w.Field == field).Select(w => w.Text).ToList()
+            : Array.Empty<string>();
+
+    /// <summary>The text with each place it holds one of the words as typed marked. A word met by a
+    /// typo is not in the text as typed and is not marked; the Matched column names its field.</summary>
+    private static RenderFragment Marked(string text, IReadOnlyList<string> words) => __builder =>
+    {
+        var spans = MarkSpans(text, words);
+        if (spans.Count == 0) { @text; return; }
+        var at = 0;
+        foreach (var (start, length) in spans)
+        {
+            @text[at..start]
+            <mark class="records-mark">@text.Substring(start, length)</mark>
+            at = start + length;
+        }
+        @text[at..]
+    };
+
+    /// <summary>Where the words occur in the text, ignoring case, overlaps merged, in order.</summary>
+    internal static List<(int Start, int Length)> MarkSpans(string text, IReadOnlyList<string> words)
+    {
+        var found = new List<(int Start, int End)>();
+        foreach (var w in words.Where(w => w.Length > 0))
+            for (var i = text.IndexOf(w, StringComparison.OrdinalIgnoreCase); i >= 0; i = text.IndexOf(w, i + w.Length, StringComparison.OrdinalIgnoreCase))
+                found.Add((i, i + w.Length));
+        var merged = new List<(int Start, int Length)>();
+        foreach (var (start, end) in found.OrderBy(f => f.Start))
+        {
+            if (merged.Count > 0 && start <= merged[^1].Start + merged[^1].Length)
+            {
+                var last = merged[^1];
+                merged[^1] = (last.Start, Math.Max(last.Start + last.Length, end) - last.Start);
+            }
+            else merged.Add((start, end - start));
+        }
+        return merged;
+    }
+
+    /// <summary>The fields the words were met in, in the query's order; a word met nowhere is said too.</summary>
+    private static RenderFragment MatchedCell(IReadOnlyList<SearchExplanation.Word>? words) => __builder =>
+    {
+        if (words == null || words.Count == 0) { <span class="records-missing">none</span>; return; }
+        var fields = words.Where(w => w.Found && w.Field != null).Select(w => w.Field!).Distinct().ToList();
+        var missing = words.Where(w => !w.Found).Select(w => w.Text).ToList();
+        var tip = string.Join("; ", words.Select(w => $"{w.Text}: {w.How}{(w.Field != null ? $" in {w.Field}" : "")}"));
+        <Tooltip Content="@tip">
+            <span class="records-matched">
+                @string.Join(", ", fields)
+                @if (missing.Count > 0) { <span class="records-missing">@((fields.Count > 0 ? " · " : "") + "not " + string.Join(", ", missing))</span> }
+            </span>
+        </Tooltip>
+    };
+
+    private static string Short(string value, int chars) => value.Length > chars ? value[..(chars - 1)] + "…" : value;
 
     /// <summary>The record's fields as the field configuration groups them, empty groups left out.</summary>
     private IEnumerable<(string Title, IReadOnlyList<FieldProxy> Fields)> DetailGroups()
@@ -521,9 +909,57 @@
         if (stored.Count > 0) yield return ("Stored only", stored);
     }
 
+    // ── The data check ──────────────────────────────────────────────────────────
+
+    private void ReadCheck()
+    {
+        _standing = DataChecks.Standing(Ctx.TeamId, Ctx.Name);
+        _progress = DataChecks.Get(Ctx.TeamId, Ctx.Name);
+    }
+
+    private void StartCheck()
+    {
+        if (!Ctx.IsEditor) return;
+        DataChecks.Start(Ctx.TeamId, Ctx.Name, CheckedFields);
+        _progress = DataChecks.Get(Ctx.TeamId, Ctx.Name);
+        PollCheck();
+    }
+
+    private async Task ClearCheck()
+    {
+        if (!Ctx.IsEditor) return;
+        DataChecks.Clear(Ctx.TeamId, Ctx.Name);
+        _polling?.Cancel();
+        ReadCheck();
+        _checkOpen = false;
+        if (InList) await ShowList(ListAll);
+    }
+
+    private void StopCheck()
+    {
+        DataChecks.Stop(Ctx.TeamId, Ctx.Name);
+        _polling?.Cancel();
+        ReadCheck();
+    }
+
+    /// <summary>Reads the check's progress four times a second until it is done, then its report.</summary>
+    private void PollCheck()
+    {
+        _polling?.Cancel();
+        var polling = _polling = new CancellationTokenSource();
+        _ = ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(250), () =>
+        {
+            _progress = DataChecks.Get(Ctx.TeamId, Ctx.Name);
+            if (_progress is { Running: true }) return true;
+            _standing = DataChecks.Standing(Ctx.TeamId, Ctx.Name);
+            return false;
+        }, () => InvokeAsync(StateHasChanged), polling.Token);
+    }
+
     public override void Dispose()
     {
         _typing?.Cancel();
+        _polling?.Cancel();
         base.Dispose();
     }
 }

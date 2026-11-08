@@ -17,7 +17,7 @@ namespace IndxServer.Services
     /// </summary>
     public sealed class StatisticsService(IConfiguration configuration, ILoggerFactory loggerFactory,
         BoostRuleStore? boostRules = null, BuryRuleStore? buryRules = null, QueryParameterStore? queryParameters = null,
-        SearchOrAsk.SearchOrAskStore? searchOrAsk = null)
+        SearchOrAsk.SearchOrAskStore? searchOrAsk = null, DataCheckStore? dataChecks = null)
         : IHostedService, IDisposable, IDatasetChangeSink
     {
         /// <summary>Roll up day D no earlier than D+2, so its selects and converts have arrived.</summary>
@@ -211,6 +211,8 @@ namespace IndxServer.Services
         public void RecordDocuments(string teamId, string dataSet, string operation,
             long inserted, long updated, long deleted, long datasetSize, bool byFilter = false)
         {
+            // The data check counts what changed since it ran, statistics on or off.
+            dataChecks?.RecordChanges(teamId, dataSet, inserted + updated + deleted);
             if (!Enabled || Writer == null) return;
             var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             if (inserted + updated + deleted > 0)

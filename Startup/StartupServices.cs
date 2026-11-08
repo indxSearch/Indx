@@ -123,6 +123,8 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.DemoDatasets>();
         builder.Services.AddSingleton<IndxServer.Services.QueryParameterStore>();
         builder.Services.AddSingleton<IndxServer.Services.FieldProfileStore>();
+        builder.Services.AddSingleton<IndxServer.Services.DataCheckStore>();
+        builder.Services.AddSingleton<IndxServer.Services.DataCheckService>();
 
         // Search or ask (Notes/search-or-ask-server.md): off unless a key is set (configuration or
         // console), and then only for datasets an owner switches on. The customer's own key with

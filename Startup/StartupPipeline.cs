@@ -355,6 +355,11 @@ internal static class StartupPipeline
             var fieldProfileStore = app.Services.GetRequiredService<IndxServer.Services.FieldProfileStore>();
             fieldProfileStore.EnsureTable();
             IndxServerInternalApi.Manager.AttachFieldProfileStore(fieldProfileStore);
+            // The data check's report follows its dataset, and a replace makes it out of date.
+            var dataCheckStore = app.Services.GetRequiredService<IndxServer.Services.DataCheckStore>();
+            dataCheckStore.EnsureTable();
+            IndxServerInternalApi.Manager.AttachDataCheckStore(dataCheckStore);
+            IndxServerInternalApi.Manager.AttachChangeSink(dataCheckStore);
             var searchOrAskStore = app.Services.GetRequiredService<IndxServer.Services.SearchOrAsk.SearchOrAskStore>();
             searchOrAskStore.EnsureTable();
             IndxServerInternalApi.Manager.AttachSearchOrAskStore(searchOrAskStore);

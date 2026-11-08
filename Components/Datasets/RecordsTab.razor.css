@@ -3,53 +3,78 @@
 .records-toolbar { align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 0; }
 .records-search { flex: 1 1 200px; max-width: 320px; }
 .records-order { display: inline-flex; align-items: center; gap: 6px; }
-.records-count { color: var(--lv5); font: var(--text-xs); white-space: nowrap; }
+.records-end { display: inline-flex; align-items: center; gap: 8px; }
+.records-count { color: var(--lv5); font: var(--text-xs); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .records-label { color: var(--lv5); font: var(--text-xs); white-space: nowrap; }
 .records-note { color: var(--lv5); font: var(--text-sm); margin: 0; }
+.records-faint { color: var(--lv5); font: var(--text-xs); margin: 0; }
 .records-error { color: var(--CSignal); font: var(--text-xs); margin: 0; }
+.records-spacer { flex: 1; }
 
-/* The filter and column menus: a systm Popover, each control a row of its own. */
-.records-tab ::deep .records-menu { width: 300px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+/* The filter, column and header menus: a systm Popover, each control a row of its own. */
+.records-tab ::deep .records-menu { width: 300px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
 .records-tab ::deep .records-columns { max-height: 360px; overflow-y: auto; gap: 6px; }
 .records-menu-row { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .records-menu-pair { flex-direction: row; gap: 8px; }
 .records-menu-actions { display: flex; justify-content: flex-start; }
+/* A field's values, the commonest first: searched, not scrolled through by the thousand. */
+.records-values { display: flex; flex-direction: column; gap: 1px; max-height: 260px; overflow-y: auto; }
+.records-value-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .records-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 
-/* The list, and the chosen record beside it once one is open. */
-.records-split { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
-.records-split--open { grid-template-columns: minmax(0, 1fr) minmax(280px, 380px); }
-@media (max-width: 900px) { .records-split--open { grid-template-columns: minmax(0, 1fr); } }
-.records-list { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-
+/* A column header: the field's menu, and under it what the check or the facets say of it. */
+.records-head { vertical-align: top; padding-top: 4px; padding-bottom: 4px; }
+.records-head-note { display: block; font: var(--text-xs); font-weight: var(--reg); color: var(--lv5); white-space: nowrap; padding: 0 2px; }
+.records-key-head { vertical-align: top; padding-top: 8px; }
 .records-num { text-align: right; font-variant-numeric: tabular-nums; }
+.records-num .records-head-note { text-align: right; }
 .records-missing { color: var(--lv4); font-style: italic; }
-.records-tab ::deep .records-key { font-family: var(--font-mono); }
-.records-row--open { background: var(--lv1); }
+/* Something a search treats badly: the ink, medium, with the warning icon. Never a colour. */
+.records-issue { display: inline-flex; align-items: center; gap: 4px; font: var(--text-xs); font-weight: var(--med); color: var(--lv8); white-space: nowrap; }
+.records-head .records-issue { padding: 0 2px; }
+.records-issue ::deep svg, .records-key ::deep svg { flex: none; }
 
-.records-pager { display: flex; align-items: center; justify-content: flex-end; gap: 4px; }
-.records-pager .records-count { margin-right: 8px; }
+/* The whole row opens its record in place, as a Search preview hit opens. */
+.records-row { cursor: pointer; }
+.records-row:hover > td, .records-row:focus-visible > td { background: var(--lv1); }
+.records-row:focus-visible { outline: none; }
+.records-row--open > td, .records-row--open:hover > td { background: var(--lv2); }
+.records-key { display: inline-flex; align-items: center; gap: 4px; font: var(--text-xs); font-family: var(--font-mono); color: var(--lv5); white-space: nowrap; }
+.records-fixed { font-family: var(--font-family); color: var(--lv6); margin-left: 4px; }
+.records-cell { white-space: nowrap; }
+/* A long value's tooltip: more of it than the standard measure takes. */
+.records-tab ::deep .indx-tooltip.records-tip { max-width: min(420px, calc(100vw - 32px)); font-weight: var(--reg); white-space: pre-wrap; }
 
+/* An open record stays in view while the table scrolls sideways under it. The table's first
+   column is sticky, and the open row's one cell is its first, so without the first rule the whole
+   table-wide cell was sticky and the record slid off with the columns. Instead the cell scrolls,
+   and the record inside it holds still at the frame's left edge, as wide as the frame shows
+   (100cqw: the frame is the size container). */
+.records-tab ::deep .records-frame { container-type: inline-size; }
+.records-expanded > td { position: static; background: var(--lv1); padding: 8px 0 12px; cursor: default; }
+.records-expanded > td::before, .records-expanded > td::after { display: none; }
 .records-detail {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    padding: 12px;
-    border: 1px solid var(--lv2);
-    border-radius: var(--radius);
-    background: var(--lv0);
-    min-width: 0;
-    max-height: calc(100vh - 160px);
-    overflow-y: auto;
-    position: sticky;
-    top: 16px;
+    /* The frame runs into the page's gutter (BleedEnd, as Field configuration's table), so the
+       record keeps the gutter clear on its right. */
+    position: sticky; left: 0; box-sizing: border-box; width: 100cqw; padding: 0 calc(var(--page-gutter) + 20px) 0 15px;
+    display: flex; flex-direction: column; gap: 10px; align-items: flex-start;
 }
-.records-detail-head { display: flex; align-items: center; gap: 8px; }
-.records-detail-key { font: var(--text-sm); font-family: var(--font-mono); color: var(--lv8); margin-right: auto; overflow-wrap: anywhere; }
-.records-json { margin: 0; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; color: var(--lv7); white-space: pre-wrap; overflow-wrap: anywhere; }
-.records-group { display: flex; flex-direction: column; gap: 6px; }
-.records-group-title { margin: 0; color: var(--lv5); font: var(--text-xs); font-weight: var(--med); }
+.records-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 24px; width: 100%; }
+.records-json { margin: 0; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; color: var(--lv7); white-space: pre-wrap; overflow-wrap: anywhere; width: 100%; }
+.records-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding-top: 6px; border-top: 0.5px solid var(--lv3); }
+.records-group-title { margin: 0; color: var(--lv7); font: var(--text-xs); font-weight: var(--med); }
 .records-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .records-field-name { color: var(--lv5); font: var(--text-xs); font-family: var(--font-mono); }
 .records-field-value { color: var(--lv8); font: var(--text-sm); overflow-wrap: anywhere; white-space: pre-wrap; }
+
+.records-pager { display: flex; align-items: center; gap: 4px; }
+.records-pager .records-count { margin-right: 8px; }
+
+/* A search's hits: the fields the words were met in, and each word marked where a cell holds it as typed. */
+.records-matched { font: var(--text-xs); color: var(--lv7); white-space: nowrap; }
+.records-mark { background: var(--lv3); color: var(--lv8); border-radius: 2px; padding: 0 1px; }
+.records-words { display: flex; flex-direction: column; gap: 4px; width: 100%; padding-bottom: 6px; }
+.records-word { display: flex; align-items: baseline; gap: 8px; font: var(--text-xs); }
+.records-word-text { color: var(--lv8); font-weight: var(--med); }
+.records-word--missing .records-word-text { color: var(--lv5); font-weight: var(--reg); text-decoration: line-through; }

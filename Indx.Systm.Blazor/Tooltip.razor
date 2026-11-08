@@ -7,7 +7,7 @@
    bubble (aria-describedby). Port of the React Tooltip (Radix there). *@
 <span class="indx-tooltip-wrapper" data-side="@Position">
     @ChildContent
-    <span class="indx-tooltip" role="tooltip" popover="manual">@Content</span>
+    <span class="@(Class == null ? "indx-tooltip" : $"indx-tooltip {Class}")" role="tooltip" popover="manual">@Content</span>
 </span>
 
 @code {
@@ -15,4 +15,6 @@
     /// <summary>"top" (the default), "bottom", "left" or "right" of the control; flipped when it has no room.</summary>
     [Parameter] public string Position { get; set; } = "top";
     [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>Classes on the bubble, as the React Tooltip's className: a page widens it for a long value.</summary>
+    [Parameter] public string? Class { get; set; }
 }

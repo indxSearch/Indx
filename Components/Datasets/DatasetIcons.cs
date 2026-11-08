@@ -139,6 +139,11 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> Json = Of<Icons.Json>();
         public static readonly RenderFragment<int> SortAscending = Of<Icons.SortAscending>();
         public static readonly RenderFragment<int> SortDescending = Of<Icons.SortDescending>();
+        // A row that opens in place, a searched field a record lacks, a text the index cut.
+        public static readonly RenderFragment<int> RowClosed = Of<Icons.ChevronRight>();
+        public static readonly RenderFragment<int> RowOpen = Of<Icons.ChevronDown>();
+        public static readonly RenderFragment<int> Lacking = Of<Icons.Warning>();
+        public static readonly RenderFragment<int> Cut = Of<Icons.Scissors>();
         public static readonly RenderFragment<int> Eye = Of<Icons.Eye>();
         public static readonly RenderFragment<int> Lock = Of<Icons.Lock>();
         public static readonly RenderFragment<int> Tag = Of<Icons.Tag>();

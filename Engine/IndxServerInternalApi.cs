@@ -816,6 +816,7 @@ namespace IndxServer.Engine
             _metadataStore?.Delete(teamId, dataSetName);
             _queryParameterStore?.Delete(teamId, dataSetName);
             _fieldProfileStore?.Delete(teamId, dataSetName);
+            _dataCheckStore?.Delete(teamId, dataSetName);
             _searchOrAskStore?.Delete(teamId, dataSetName);
             _observrStore?.Delete(teamId, dataSetName);
             _observrConversations?.Delete(teamId, dataSetName);
@@ -1047,6 +1048,7 @@ namespace IndxServer.Engine
             _metadataStore?.Rename(teamId, dataSetName, newName);
             _queryParameterStore?.Rename(teamId, dataSetName, newName);
             _fieldProfileStore?.Rename(teamId, dataSetName, newName);
+            _dataCheckStore?.Rename(teamId, dataSetName, newName);
             _searchOrAskStore?.Rename(teamId, dataSetName, newName);
             _observrStore?.Rename(teamId, dataSetName, newName);
             _observrConversations?.Rename(teamId, dataSetName, newName);
@@ -1096,6 +1098,7 @@ namespace IndxServer.Engine
             _metadataStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _queryParameterStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _fieldProfileStore?.Transfer(currentTeamId, newTeamId, dataSetName);
+            _dataCheckStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _searchOrAskStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _observrStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _observrConversations?.Transfer(currentTeamId, newTeamId, dataSetName);
@@ -1489,6 +1492,11 @@ namespace IndxServer.Engine
         /// <summary>Attaches the field profile store, so a dataset's profiles follow it on delete,
         /// rename and transfer (startup-only).</summary>
         internal void AttachFieldProfileStore(Services.FieldProfileStore store) => _fieldProfileStore = store;
+
+        // The dataset's last data check (server-owned), moved and deleted with the dataset.
+        private Services.DataCheckStore? _dataCheckStore;
+
+        internal void AttachDataCheckStore(Services.DataCheckStore store) => _dataCheckStore = store;
 
         // Per-dataset Search or ask settings: follow the dataset through delete, rename and transfer.
         private Services.SearchOrAsk.SearchOrAskStore? _searchOrAskStore;
