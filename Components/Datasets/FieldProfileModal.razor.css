@@ -47,25 +47,36 @@
 
 /* The tolerance's step names under the slider: three equal columns, so the middle name sits under
    the middle mark whatever the names' widths. */
+/* Each step's name under its stop: the native thumb is 18px wide, so its centre runs from 9px
+   to the width less 9px; --at is the step's place, 0 to 1. The ends are aligned to the edges
+   rather than centred, so they do not stick out past the track. */
 .fp-steps {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
+    position: relative;
+    height: 16px;
     font: var(--text-xs);
     color: var(--lv5);
 }
 
 .fp-steps > span {
+    position: absolute;
+    top: 0;
+    left: calc(9px + (100% - 18px) * var(--at));
+    transform: translateX(-50%);
     display: inline-flex;
     align-items: center;
     gap: 4px;
+    white-space: nowrap;
 }
 
-.fp-steps > :nth-child(2) {
-    justify-self: center;
+.fp-steps > :first-child {
+    left: 0;
+    transform: none;
 }
 
 .fp-steps > :last-child {
-    justify-self: end;
+    left: auto;
+    right: 0;
+    transform: none;
 }
 
 .fp-step-on {

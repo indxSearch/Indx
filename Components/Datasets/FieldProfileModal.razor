@@ -15,13 +15,15 @@
 
         <div class="fp-group">
             <span class="fp-legend">@Hinted("Tolerance", ToleranceHelp)</span>
-            @* The edits as a step slider, the names of the steps under it. *@
-            <Slider Min="0" Max="3" Step="1" Value="@((int)_draft.Tolerance)" Disabled="@(!Editable)" AriaLabel="Tolerance"
+            @* The edits as a step slider, the name of each step under its stop (8 Nov 2026: a
+               three-column grid put ThreeEdits on a row of its own). *@
+            <Slider Min="0" Max="@(Tolerances.Length - 1)" Step="1" Value="@((int)_draft.Tolerance)" Disabled="@(!Editable)" AriaLabel="Tolerance"
                     ValueChanged="@(v => Set(_draft with { Tolerance = (Tolerance)(int)Math.Round(v) }))" />
             <div class="fp-steps">
-                @foreach (var t in Enum.GetValues<Tolerance>())
+                @for (int i = 0; i < Tolerances.Length; i++)
                 {
-                    <span class="@(t == _draft.Tolerance ? "fp-step-on" : null)">@DatasetIcons.ForTolerance(t)(14) @t</span>
+                    var t = Tolerances[i];
+                    <span class="@(t == _draft.Tolerance ? "fp-step-on" : null)" style="--at: @((i / (double)(Tolerances.Length - 1)).ToString(System.Globalization.CultureInfo.InvariantCulture))">@DatasetIcons.ForTolerance(t)(14) @t</span>
                 }
             </div>
             <p class="fp-hint">@ToleranceAbout(_draft.Tolerance)</p>
@@ -175,6 +177,7 @@
 
     private Task SaveAsync() => OnSave.InvokeAsync(_draft with { Name = _name.Trim(), About = _about.Trim() });
 
+    private static readonly Tolerance[] Tolerances = Enum.GetValues<Tolerance>();
     private static readonly IReadOnlyList<ScrubSlider.ScrubMark> ZeroMark = [new(0, "warning", "these fields confirm no words")];
     private static readonly IReadOnlyList<SegmentedControl.Item> IndexSizeItems = [new("3", "3"), new("2,3", "2 and 3")];
     private static readonly IReadOnlyList<SegmentedControl.Item> StartItems = [new("0", "0"), new("1", "1"), new("2", "2")];
