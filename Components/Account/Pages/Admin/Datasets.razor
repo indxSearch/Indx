@@ -53,7 +53,11 @@ else
     @if (_rows.Any(r => r.RecordCount > 0))
     {
         <div class="admin-datasets-docs">
-            <span class="admin-datasets-docs-title">Documents by dataset</span>
+            @* The whole first, as a stat card states it: the bar shows the shares of it. *@
+            <div class="admin-datasets-docs-head">
+                <span class="admin-datasets-docs-title">Documents by dataset</span>
+                <span class="admin-datasets-docs-total">@_rows.Sum(r => (long)r.RecordCount).ToString("N0") documents</span>
+            </div>
             <BarMeter Segments="DocumentsByDataset()" Labels="legend" Format="@(v => v.ToString("N0"))" />
         </div>
     }
@@ -316,15 +320,17 @@ else
     }
 
     /// <summary>The largest four datasets by stored documents, the rest as one segment. A name may
-    /// recur in another team, so a repeated one says whose it is.</summary>
+    /// recur in another team, so a repeated one says whose it is. The four take the data-viz
+    /// colours in order, the rest the grey every chart gives Other.</summary>
     private List<BarMeter.Segment> DocumentsByDataset()
     {
         var rows = _rows!.Where(r => r.RecordCount > 0).OrderByDescending(r => r.RecordCount).ToList();
         var repeated = rows.GroupBy(r => r.DataSetName).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
-        var top = rows.Take(4).Select(r => new BarMeter.Segment(
-            repeated.Contains(r.DataSetName) ? $"{r.DataSetName} ({r.TeamName ?? r.TeamId})" : r.DataSetName, r.RecordCount)).ToList();
+        var top = rows.Take(4).Select((r, i) => new BarMeter.Segment(
+            repeated.Contains(r.DataSetName) ? $"{r.DataSetName} ({r.TeamName ?? r.TeamId})" : r.DataSetName, r.RecordCount,
+            $"var(--viz{i + 1})")).ToList();
         var rest = rows.Skip(4).Sum(r => (double)r.RecordCount);
-        if (rest > 0) top.Add(new("Others", rest));
+        if (rest > 0) top.Add(new("Others", rest, "var(--lv4)"));
         return top;
     }
 

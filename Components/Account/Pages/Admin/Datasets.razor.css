@@ -12,9 +12,24 @@
 @media (prefers-color-scheme: dark) { :where(:root:not([data-theme="light"])) .admin-datasets-docs { background: var(--lv1); } }
 :where(:root[data-theme="dark"]) .admin-datasets-docs { background: var(--lv1); }
 
+.admin-datasets-docs-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
 .admin-datasets-docs-title {
     font: var(--text-xs);
     color: var(--lv5);
+}
+
+.admin-datasets-docs-total {
+    font: var(--text-sm);
+    font-weight: var(--med);
+    color: var(--lv8);
+    font-variant-numeric: tabular-nums;
 }
 
 /* Cells keep to one line, so the row height stays even and a narrow screen scrolls the table
