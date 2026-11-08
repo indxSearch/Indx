@@ -83,8 +83,8 @@
         }
         else
         {
-            <Table AriaLabel="Support tickets">
-                <thead><tr><th>Subject</th><th>Kind</th><th>Status</th><th>Last activity</th><th>Written by</th></tr></thead>
+            <Table Scrollable ResizableColumns ColumnStorageKey="support-tickets" AriaLabel="Support tickets">
+                <thead><tr><th data-column="subject" data-width="300" data-fill>Subject</th><th data-column="kind" data-width="140">Kind</th><th data-column="status" data-width="130">Status</th><th data-column="last-activity" data-width="140">Last activity</th><th data-column="written-by" data-width="180">Written by</th></tr></thead>
                 <tbody>
                     @foreach (var t in list.Tickets)
                     {

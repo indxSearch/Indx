@@ -282,11 +282,14 @@ svg[viewBox="0 0 7 5"] {
    Table's resizableColumns (Table.module.css) is the same. */
 .indx-table-resizable { table-layout: fixed; }
 /* A width is the column's whole width, padding and all, as the reader dragged it. */
-.indx-table-resizable th { position: relative; box-sizing: border-box; }
+.indx-table-resizable > thead > tr > th { position: relative; box-sizing: border-box; }
 /* One line per cell, as data grids do: a narrow column cuts its text instead of making its row
-   tall. A cell that should wrap (an opened row's detail) says white-space: normal itself. */
-.indx-table-resizable th,
-.indx-table-resizable td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+   tall. A table nested in a cell (an opened row's detail) is its own; a cell
+   that should wrap says data-wrap, as data grids let a column wrap its text: give it room, as the
+   last column has. */
+.indx-table-resizable > thead > tr > th,
+.indx-table-resizable > tbody > tr > td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.indx-table-resizable > tbody > tr > td[data-wrap] { white-space: normal; overflow-wrap: anywhere; }
 .indx-table-column-handle {
     /* The right 8px of the cell, which cuts what overflows; the next header's left 6px is its lead
        (data-lead), so the border is a 14px target from both sides, as Resizable's line is. */

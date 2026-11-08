@@ -89,15 +89,15 @@
         @* systm Table: scrolls inside its own frame with the key name pinned. Squeezed into a phone's
            width the columns wrapped each value onto three or four lines. *@
         <div class="key-table-wrap">
-            <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" AriaLabel="Your API keys">
+            <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" ResizableColumns ColumnStorageKey="api-keys" AriaLabel="Your API keys">
                 <thead>
                     <tr>
-                        <th>Name</th>
-                        <th>Access</th>
-                        <th>Created</th>
-                        <th>Expires</th>
-                        <th>Status</th>
-                        <th aria-label="Actions"></th>
+                        <th data-column="name" data-width="220">Name</th>
+                        <th data-column="access" data-width="260" data-fill>Access</th>
+                        <th data-column="created" data-width="120">Created</th>
+                        <th data-column="expires" data-width="120">Expires</th>
+                        <th data-column="status" data-width="110">Status</th>
+                        <th data-column="actions" data-width="200" aria-label="Actions"></th>
                     </tr>
                 </thead>
                 <tbody>

@@ -19,10 +19,8 @@
 }
 .key-reveal-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
 
-/* The frame is systm Table's. Every cell keeps to one line except the access description, which
-   may take two but never gets squeezed below a readable width. */
-.key-table-wrap td, .key-table-wrap th { white-space: nowrap; }
-.key-table-wrap .key-scope { white-space: normal; min-width: 200px; }
+/* The frame is systm Table's, with ResizableColumns: every cell keeps to one line, and the access
+   description, the longest, fills what the others leave. */
 .key-scope { color: var(--lv6); }
 .key-actions { text-align: right; white-space: nowrap; }
 /* Show key and Revoke side by side, at the right: ConfirmButton renders a block of its own. */

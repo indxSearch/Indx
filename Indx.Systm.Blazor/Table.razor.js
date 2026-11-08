@@ -6,6 +6,7 @@
 //
 // A column is named by its header's data-column, or its place; its first width is the header's
 // data-width (px), or what it measured before the widths were fixed, or 160 for one that came later.
+// The column whose header says data-fill (else the last) takes what the frame has left.
 // Headers that change (a column shown, hidden or renamed) are picked up as they change. Blazor
 // renders no width on a header, so a render never undoes one set here.
 
@@ -48,17 +49,24 @@ export function enable(table, storageKey) {
 
     const save = () => { if (key) { try { localStorage.setItem(key, JSON.stringify(saved)); } catch { } } };
 
-    // Every width set at once, and the table as wide as their sum: wider than its frame it scrolls,
-    // narrower it ends where its last column does.
+    // Every width set at once but the filling column's (the header that says data-fill, else the
+    // last): that one takes what the frame has left, never narrower than its own width, so the table is
+    // as wide as its frame, or as wide as the widths add up to and scrolls. It has no handle: its width
+    // is what the others leave.
     const apply = () => {
+        const cells = headers();
+        const marked = cells.findIndex(th => th.dataset.fill !== undefined);
+        const fill = marked >= 0 ? marked : cells.length - 1;
         let total = 0;
-        headers().forEach((th, i) => {
+        cells.forEach((th, i) => {
             const id = idOf(th, i);
-        if (i === 0) th.querySelector(`:scope > .${HANDLE}[data-lead]`)?.remove(); // was second, before a column went
+            if (i === 0) th.querySelector(`:scope > .${HANDLE}[data-lead]`)?.remove(); // was second, before a column went
             const w = widthOf(id, th);
-            th.style.width = `${w}px`;
             total += w;
-            const handle = th.querySelector(`:scope > .${HANDLE}:not([data-lead])`) ?? addHandle(th);
+            const own = th.querySelector(`:scope > .${HANDLE}:not([data-lead])`);
+            if (i === fill) { th.style.width = ''; own?.remove(); th.nextElementSibling?.querySelector(`:scope > .${HANDLE}[data-lead]`)?.remove(); return; }
+            th.style.width = `${w}px`;
+            const handle = own ?? addHandle(th);
             // The next header's left edge grabs this column too, so the border is a target from both sides.
             const next = th.nextElementSibling;
             if (next) (next.querySelector(`:scope > .${HANDLE}[data-lead]`) ?? addLead(next)).dataset.column = id;
@@ -66,7 +74,7 @@ export function enable(table, storageKey) {
             handle.setAttribute('aria-label', `Resize ${nameOf(th)}`);
             handle.setAttribute('aria-valuenow', String(Math.round(w)));
         });
-        table.style.width = `${total}px`;
+        table.style.minWidth = `${total}px`;
     };
 
     const set = (id, w) => { saved[id] = Math.max(MIN, Math.round(w)); apply(); };
@@ -156,12 +164,12 @@ export function enable(table, storageKey) {
                 : r.attributeName !== 'style' && !(r.target instanceof HTMLElement && r.target.classList.contains(HANDLE))));
         if (theirs) apply();
     });
-    observer.observe(table, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-column', 'data-width'] });
+    observer.observe(table, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-column', 'data-width', 'data-fill'] });
 
     tables.set(table, () => {
         observer.disconnect();
         table.classList.remove(TABLE);
-        table.style.width = '';
+        table.style.minWidth = '';
         headers().forEach(th => { th.style.width = ''; th.querySelectorAll(`:scope > .${HANDLE}`).forEach(h => h.remove()); });
     });
 }

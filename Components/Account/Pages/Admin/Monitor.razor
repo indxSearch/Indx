@@ -83,9 +83,9 @@ else
            carry the scope attribute. systm Table renders its own wrapper, so without this there is
            no such ancestor and the whole stylesheet silently matches nothing. *@
         <div class="admin-monitor-table-wrap">
-        <Table Scrollable BleedEnd="var(--page-gutter)" AriaLabel="Server activity" Class="admin-monitor-table">
+        <Table Scrollable BleedEnd="var(--page-gutter)" ResizableColumns ColumnStorageKey="admin-monitor" AriaLabel="Server activity" Class="admin-monitor-table">
             <thead>
-                <tr><th scope="col">Time</th><th scope="col">Source</th><th scope="col">What</th></tr>
+                <tr><th scope="col" data-column="time" data-width="140">Time</th><th scope="col" data-column="source" data-width="180">Source</th><th scope="col" data-column="what" data-width="400">What</th></tr>
             </thead>
             <tbody>
                 @foreach (var item in _events)
@@ -95,7 +95,7 @@ else
                             <TimeAgo Value="@item.AtUtc.UtcDateTime" TooltipPosition="left" />
                         </td>
                         <td style="color: var(--lv5);">@item.Source</td>
-                        <td>@item.Text</td>
+                        <td data-wrap>@item.Text</td>
                     </tr>
                 }
             </tbody>

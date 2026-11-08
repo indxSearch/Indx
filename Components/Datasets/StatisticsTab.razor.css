@@ -102,8 +102,9 @@
 }
 
 /* The pinned query column wraps rather than widening: on a phone a long query would
-   otherwise take the whole frame and leave the numbers nowhere to scroll into. */
-.stats-tab ::deep .stats-table td:first-child {
+   otherwise take the whole frame and leave the numbers nowhere to scroll into. A list with
+   ResizableColumns has widths of its own and keeps each value on one line. */
+.stats-tab ::deep .stats-table:not(.indx-table-resizable) td:first-child {
     white-space: normal;
     overflow-wrap: anywhere;
     min-width: 12ch;

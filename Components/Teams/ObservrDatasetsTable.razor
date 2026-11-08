@@ -29,10 +29,10 @@ else if (_rows.Count == 0)
 }
 else
 {
-    <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" AriaLabel="Observr per dataset">
+    <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" ResizableColumns ColumnStorageKey="observr-datasets" AriaLabel="Observr per dataset">
         <thead>
             <tr>
-                <th scope="col">Dataset</th><th scope="col">Observr</th><th scope="col">Reports</th><th scope="col">Buttons in the tabs</th><th scope="col"></th>
+                <th scope="col" data-column="dataset" data-width="240" data-fill>Dataset</th><th scope="col" data-column="observr" data-width="120">Observr</th><th scope="col" data-column="reports" data-width="180">Reports</th><th scope="col" data-column="buttons" data-width="170">Buttons in the tabs</th><th scope="col" data-column="actions" data-width="170"></th>
             </tr>
         </thead>
         <tbody>

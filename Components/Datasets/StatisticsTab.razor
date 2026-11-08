@@ -276,8 +276,8 @@ else
             else {
             @if (_zeroHits)
             {
-            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Searches that found nothing" Class="stats-table">
-                <thead><tr><th>Query</th><th class="stats-num">Found nothing</th><th></th></tr></thead>
+            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" ResizableColumns ColumnStorageKey="stats:zero-hits" AriaLabel="Searches that found nothing" Class="stats-table">
+                <thead><tr><th data-column="query" data-width="240" data-fill>Query</th><th class="stats-num" data-column="found-nothing" data-width="120">Found nothing</th><th data-column="actions" data-width="160"></th></tr></thead>
                 <tbody>
                     @foreach (var q in _topQueries)
                     {
@@ -299,8 +299,8 @@ else
             else
             {
             var lowClick = _queryOrder == QueryOrder.LowestClickThrough && Ctx.IsEditor && (ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name));
-            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Top queries" Class="stats-table">
-                <thead><tr><th>Query</th><th class="stats-num">Searches</th><th class="stats-num">Click-through</th><th class="stats-num">Avg. position</th>@if (lowClick) { <th></th> }</tr></thead>
+            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" ResizableColumns ColumnStorageKey="stats:top-queries" AriaLabel="Top queries" Class="stats-table">
+                <thead><tr><th data-column="query" data-width="240" data-fill>Query</th><th class="stats-num" data-column="searches" data-width="100">Searches</th><th class="stats-num" data-column="click-through" data-width="110">Click-through</th><th class="stats-num" data-column="position" data-width="110">Avg. position</th>@if (lowClick) { <th data-column="actions" data-width="200"></th> }</tr></thead>
                 <tbody>
                     @foreach (var q in _topQueries)
                     {
@@ -350,8 +350,8 @@ else
                 <p class="stats-empty">@(_fuzzyAll ? "Every search in this period found records holding every word." : "No partial finds in this period.")</p>
             }
             else {
-            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Partial matches" Class="stats-table">
-                <thead><tr><th>Query</th><th class="stats-num">Searches</th><th class="stats-num">Chosen</th><th>Most chosen result</th></tr></thead>
+            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" ResizableColumns ColumnStorageKey="stats:partial" AriaLabel="Partial matches" Class="stats-table">
+                <thead><tr><th data-column="query" data-width="260">Query</th><th class="stats-num" data-column="searches" data-width="100">Searches</th><th class="stats-num" data-column="chosen" data-width="100">Chosen</th><th data-column="most-chosen" data-width="240">Most chosen result</th></tr></thead>
                 <tbody>
                     @foreach (var q in _fuzzy)
                     {
@@ -379,8 +379,8 @@ else
             @if (_topDocuments.Count == 0 && _documentsByConverts) { <p class="stats-empty">No conversions in this period. They arrive when the storefront sends them to <code>events/convert</code>.</p> }
             else if (_topDocuments.Count == 0) { <p class="stats-empty">No results were chosen in this period. Clicks arrive when the storefront sends them to <code>events/select</code>.</p> }
             else {
-            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Top documents" Class="stats-table">
-                <thead><tr><th>Document</th><th class="stats-num">Selects</th>@if (HasConversions) { <th class="stats-num">Conversions</th> }</tr></thead>
+            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" ResizableColumns ColumnStorageKey="stats:documents" AriaLabel="Top documents" Class="stats-table">
+                <thead><tr><th data-column="document" data-width="280" data-fill>Document</th><th class="stats-num" data-column="selects" data-width="100">Selects</th>@if (HasConversions) { <th class="stats-num" data-column="conversions" data-width="110">Conversions</th> }</tr></thead>
                 <tbody>
                     @foreach (var d in _topDocuments)
                     {
@@ -526,8 +526,8 @@ else
                 <p class="stats-help">What visitors wanted, in all the ways they asked it. The ones given up most come first; open one to see how it was asked and where it landed.</p>
                 @if (_needs.Count == 0) { <p class="stats-empty">No question was asked in more than one visit or in more than one way in this period.</p> }
                 else {
-                <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Needs" Class="stats-table">
-                    <thead><tr><th>Need</th><th class="stats-num">Asked as</th><th>Visits</th><th>Last asked</th></tr></thead>
+                <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" ResizableColumns ColumnStorageKey="stats:needs" AriaLabel="Needs" Class="stats-table">
+                    <thead><tr><th data-column="need" data-width="280" data-fill>Need</th><th class="stats-num" data-column="asked-as" data-width="100">Asked as</th><th data-column="visits" data-width="200">Visits</th><th data-column="last" data-width="130">Last asked</th></tr></thead>
                     <tbody>
                         @foreach (var need in _needs)
                         {
@@ -555,8 +555,8 @@ else
                        is the judge's, and so is every correction of it on show. *@
                     <h3 class="stats-subhead">Taken back</h3>
                     <p class="stats-help">Pairs an editor said are not the same. They are kept apart whatever the judge says; undo one to let the judge's word count again.</p>
-                    <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Links taken back" Class="stats-table">
-                        <thead><tr><th>Asked as</th><th>Not the same as</th><th>By</th><th>When</th>@if (Ctx.IsEditor) {<th></th>}</tr></thead>
+                    <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" ResizableColumns ColumnStorageKey="stats:taken-back" AriaLabel="Links taken back" Class="stats-table">
+                        <thead><tr><th data-column="asked-as" data-width="240">Asked as</th><th data-column="not-same-as" data-width="240" data-fill>Not the same as</th><th data-column="by" data-width="160">By</th><th data-column="when" data-width="130">When</th>@if (Ctx.IsEditor) {<th data-column="actions" data-width="100"></th>}</tr></thead>
                         <tbody>
                             @foreach (var d in _needDenials)
                             {
@@ -628,8 +628,8 @@ else
                 <p class="stats-help">The questions visitors asked. The ones the content did not answer come first: they are what to write next.</p>
                 @if (_askQuestions.Count == 0) { <p class="stats-empty">No questions asked in this period.</p> }
                 else {
-                <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Questions asked" Class="stats-table">
-                    <thead><tr><th>Question</th><th class="stats-num">Asked</th><th>Outcome</th><th class="stats-num"><Tooltip Content="@AnswerableColumnHelp">Answerable</Tooltip></th><th class="stats-num"><Tooltip Content="@FoundColumnHelp">Found</Tooltip></th>@if (CitesSources) {<th class="stats-num">Sources opened</th>}</tr></thead>
+                <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" ResizableColumns ColumnStorageKey="stats:questions" AriaLabel="Questions asked" Class="stats-table">
+                    <thead><tr><th data-column="question" data-width="300" data-fill>Question</th><th class="stats-num" data-column="asked" data-width="80">Asked</th><th data-column="outcome" data-width="160">Outcome</th><th class="stats-num" data-column="answerable" data-width="110"><Tooltip Content="@AnswerableColumnHelp">Answerable</Tooltip></th><th class="stats-num" data-column="found" data-width="90"><Tooltip Content="@FoundColumnHelp">Found</Tooltip></th>@if (CitesSources) {<th class="stats-num" data-column="sources-opened" data-width="120">Sources opened</th>}</tr></thead>
                     <tbody>
                         @foreach (var q in _askQuestions)
                         {
@@ -668,8 +668,8 @@ else
                     @* The visitor's own correction: how the question was meant, which is what to write for. *@
                     <h3 class="stats-subhead">Asked again in other words</h3>
                     <p class="stats-help">A question followed within five minutes by the same one in other words, in the same visit. The second wording says how it was meant; when its answer had a source opened, it landed where the first did not.</p>
-                    <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Questions asked again" Class="stats-table">
-                        <thead><tr><th>First asked</th><th>Asked again as</th><th class="stats-num">Times</th>@if (CitesSources) {<th class="stats-num">Then opened</th>}<th>Last</th></tr></thead>
+                    <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" ResizableColumns ColumnStorageKey="stats:asked-again" AriaLabel="Questions asked again" Class="stats-table">
+                        <thead><tr><th data-column="first" data-width="260">First asked</th><th data-column="again" data-width="260" data-fill>Asked again as</th><th class="stats-num" data-column="times" data-width="80">Times</th>@if (CitesSources) {<th class="stats-num" data-column="then-opened" data-width="110">Then opened</th>}<th data-column="last" data-width="130">Last</th></tr></thead>
                         <tbody>
                             @foreach (var r in _rephrased)
                             {
@@ -690,8 +690,8 @@ else
                 <p class="stats-help">What visitors had typed when an offer to ask was shown. A lookup high on this list is a false offer: raise the thresholds or sharpen the site description.</p>
                 @if (_askOffers.Count == 0) { <p class="stats-empty">No offers shown in this period.</p> }
                 else {
-                <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Offers shown" Class="stats-table">
-                    <thead><tr><th>Typed</th><th class="stats-num">Offers</th><th class="stats-num">Strong</th><th class="stats-num">Highest score</th><th class="stats-num"><Tooltip Content="@FoundOffersHelp">Found</Tooltip></th><th class="stats-num">Asked</th></tr></thead>
+                <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" ResizableColumns ColumnStorageKey="stats:offers" AriaLabel="Offers shown" Class="stats-table">
+                    <thead><tr><th data-column="typed" data-width="260" data-fill>Typed</th><th class="stats-num" data-column="offers" data-width="90">Offers</th><th class="stats-num" data-column="strong" data-width="90">Strong</th><th class="stats-num" data-column="highest" data-width="120">Highest score</th><th class="stats-num" data-column="found" data-width="90"><Tooltip Content="@FoundOffersHelp">Found</Tooltip></th><th class="stats-num" data-column="asked" data-width="90">Asked</th></tr></thead>
                     <tbody>
                         @foreach (var o in _askOffers)
                         {
@@ -799,11 +799,11 @@ else
             <p class="stats-help">What people narrowed the catalogue by, with or without typing, and how often it left them nothing.</p>
             @if (_topFilters.Count == 0) { <p class="stats-empty">No filters were used in this period, or Browsing is switched off on the Options tab.</p> }
             else {
-            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Browsing" Class="stats-table">
+            <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" ResizableColumns ColumnStorageKey="stats:browsing" AriaLabel="Browsing" Class="stats-table">
                 @* "Without results" only when something came back empty: a column of zeros says
                    nothing and takes the room. *@
                 @{ var anyEmpty = _topFilters.Any(f => f.ZeroHits > 0); }
-                <thead><tr><th>Filter</th><th class="stats-num">Uses</th>@if (anyEmpty) {<th class="stats-num">Without results</th>}</tr></thead>
+                <thead><tr><th data-column="filter" data-width="280" data-fill>Filter</th><th class="stats-num" data-column="uses" data-width="90">Uses</th>@if (anyEmpty) {<th class="stats-num" data-column="without-results" data-width="130">Without results</th>}</tr></thead>
                 <tbody>
                     @foreach (var f in _topFilters)
                     {
@@ -832,14 +832,14 @@ else
             @if (_changes.Count > 0)
             {
                 var askChange = Ctx.IsEditor && (ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name));
-                <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Changes" Class="stats-table">
-                    <thead><tr><th>When</th><th>What</th>@if (askChange) { <th></th> }</tr></thead>
+                <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" ResizableColumns ColumnStorageKey="stats:changes" AriaLabel="Changes" Class="stats-table">
+                    <thead><tr><th data-column="when" data-width="140">When</th><th data-column="what" data-width="360" data-fill>What</th>@if (askChange) { <th data-column="actions" data-width="140"></th> }</tr></thead>
                     <tbody>
                         @foreach (var c in Enumerable.Reverse(ShownChanges))
                         {
                             <tr>
                                 <td><TimeAgo Value="DateTimeOffset.FromUnixTimeMilliseconds(c.Timestamp).UtcDateTime" TooltipPosition="left" /></td>
-                                <td>@ChangeDescriptions.Describe(c.Kind, c.Summary)</td>
+                                <td data-wrap>@ChangeDescriptions.Describe(c.Kind, c.Summary)</td>
                                 @if (askChange)
                                 {
                                     <td class="stats-action">

@@ -50,7 +50,8 @@ else
     /// back. Every column gets a fixed width from the start, so the rows a page shows never move the
     /// columns: a longer value is cut instead. Name a column by its header's <c>data-column</c>, and
     /// give its first width as <c>data-width</c> (px); without them a column is named by its place
-    /// and keeps the width it first had. Never render a width on a header yourself: the browser half
+    /// and keeps the width it first had. The column whose header says <c>data-fill</c> (else the last)
+    /// takes what the frame has left. A cell stays on one line unless it says <c>data-wrap</c>. Never render a width on a header yourself: the browser half
     /// (Table.razor.js) owns them, and a render would undo a reader's. Port of the React Table's
     /// resizableColumns.</summary>
     [Parameter] public bool ResizableColumns { get; set; }

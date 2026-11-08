@@ -27,9 +27,8 @@
     overflow-x: auto;
 }
 
-/* The frame is systm Table's. Every cell keeps to one line except the access description. */
-.tk-table-wrap td, .tk-table-wrap th { white-space: nowrap; }
-.tk-table-wrap .tk-scope { white-space: normal; min-width: 200px; }
+/* The frame is systm Table's, with ResizableColumns: every cell keeps to one line, and the access
+   description, the longest, fills what the others leave. */
 .tk-scope { color: var(--lv6); }
 .tk-actions { text-align: right; white-space: nowrap; }
 /* Show key and Revoke side by side, at the right. ConfirmButton renders a block of its own, which
