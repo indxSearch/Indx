@@ -34,9 +34,12 @@
 }
 
 @media (prefers-color-scheme: dark) {
-    .indx-popover {
+    :where(:root:not([data-theme="light"])) .indx-popover {
         background: var(--lv1);
     }
+}
+:where(:root[data-theme="dark"]) .indx-popover {
+    background: var(--lv1);
 }
 
 /* A menu: a column of ghost Buttons, full width, labels from the left, the hover a step up from
@@ -59,10 +62,12 @@
 }
 
 @media (prefers-color-scheme: dark) {
-    .indx-popover.indx-popover-menu ::deep .indx-btn-ghost:hover:not(:disabled),
-    .indx-popover.indx-popover-menu ::deep .indx-btn-ghost:focus-visible {
+    :where(:root:not([data-theme="light"])) .indx-popover.indx-popover-menu ::deep .indx-btn-ghost:hover:not(:disabled), :where(:root:not([data-theme="light"])) .indx-popover.indx-popover-menu ::deep .indx-btn-ghost:focus-visible {
         background: var(--lv2);
     }
+}
+:where(:root[data-theme="dark"]) .indx-popover.indx-popover-menu ::deep .indx-btn-ghost:hover:not(:disabled), :where(:root[data-theme="dark"]) .indx-popover.indx-popover-menu ::deep .indx-btn-ghost:focus-visible {
+    background: var(--lv2);
 }
 
 /* A form inside a menu (log out posts) lays its Button out as a direct item. */

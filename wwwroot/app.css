@@ -66,9 +66,12 @@ a:hover {
 }
 
 @media (prefers-color-scheme: dark) {
-    a {
+    :where(:root:not([data-theme="light"])) a {
         color: var(--CLightBlue);
     }
+}
+:where(:root[data-theme="dark"]) a {
+    color: var(--CLightBlue);
 }
 
 /* Form Inputs - Global Styling */
@@ -873,13 +876,19 @@ a.btn-danger:hover {
 
 /* Dark mode: hide light, show dark */
 @media (prefers-color-scheme: dark) {
-    .unauth-logo-light {
+    :where(:root:not([data-theme="light"])) .unauth-logo-light {
         display: none;
     }
 
-    .unauth-logo-dark {
+    :where(:root:not([data-theme="light"])) .unauth-logo-dark {
         display: block;
     }
+}
+:where(:root[data-theme="dark"]) .unauth-logo-light {
+    display: none;
+}
+:where(:root[data-theme="dark"]) .unauth-logo-dark {
+    display: block;
 }
 
 /* Right Side - Content Panel */

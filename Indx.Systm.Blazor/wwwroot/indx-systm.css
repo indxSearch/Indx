@@ -1,4 +1,4 @@
-/* Systm Design Tokens — single source of truth for all Blazor apps.
+﻿/* Systm Design Tokens — single source of truth for all Blazor apps.
    Pair with fonts/fonts.css, which holds the @font-face rules and sets no variables.
    --font-family is set here and only here. Two files setting it on :root is how the Blazor apps
    ended up rendering the fallback while shipping a paid font: equal specificity, so the later link won. */
@@ -72,6 +72,19 @@
     --pattern-grid-24-light: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
     --pattern-grid-24-dark: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
 
+    /* DATA VIZ (Nov 2026): seven soft hues for series, parts and categories, taken in order and
+       never skipped; an eighth and beyond go under Other, in lv4. Each hue sits at its own
+       lightness, which keeps neighbours apart for colourblind readers. Light on white (about 2:1),
+       so a chart here always has a legend and labels. Text stays in the levels: the colour goes on
+       the marks. The mockup and the checks behind them: apps/components, /colors. */
+    --viz1: #5F96DC; /* blue */
+    --viz2: #F0AB64; /* apricot */
+    --viz3: #3CC5E2; /* cyan */
+    --viz4: #8D77C8; /* violet */
+    --viz5: #68DDB8; /* mint */
+    --viz6: #CB84C4; /* orchid */
+    --viz7: #7F9C45; /* moss */
+
     --light: 300;
     --book: 350;
     --reg: 400;
@@ -82,7 +95,7 @@
 
 /* Dark mode via system preference */
 @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
         --pattern-checkerboard-light: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='1' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
         --pattern-checkerboard-spaced-4-light: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
         --pattern-checkerboard-spaced-6-light: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
@@ -106,8 +119,57 @@
         --CConfirmed: var(--CTeal);
         --CPositive: var(--CTeal);
         --CPositiveHandle: #080809;
+
+        --viz1: #6DA0E0;
+        --viz2: #F6B676;
+        --viz3: #59CEE8;
+        --viz4: #9582CC;
+        --viz5: #7DE5C3;
+        --viz6: #D290CB;
+        --viz7: #89A556;
     }
 }
+:root[data-theme="dark"] {
+    --pattern-checkerboard-light: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='1' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-4-light: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-6-light: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-8-light: url("data:image/svg+xml,%3Csvg width='8' height='8' viewBox='0 0 8 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-10-light: url("data:image/svg+xml,%3Csvg width='10' height='10' viewBox='0 0 10 10' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='5' y='5' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-grid-6-light: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-grid-12-light: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-grid-24-light: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+
+    --lv0: #080809;
+    --lv1: #121215;
+    --lv2: #1A1A21;
+    --lv3: #393941;
+    --lv4: #565661;
+    --lv5: #8F8F97;
+    --lv6: #EFEFEF;
+    --lv7: #FBFBFB;
+    --lv8: #FFFFFF;
+
+    /* Teal reads well on dark backgrounds. */
+    --CConfirmed: var(--CTeal);
+    --CPositive: var(--CTeal);
+    --CPositiveHandle: #080809;
+
+    --viz1: #6DA0E0;
+    --viz2: #F6B676;
+    --viz3: #59CEE8;
+    --viz4: #9582CC;
+    --viz5: #7DE5C3;
+    --viz6: #D290CB;
+    --viz7: #89A556;
+}
+
+/* Light or dark, chosen per user in IndxServer (Nov 2026). With no data-theme the system decides, as
+   above; data-theme="light" or "dark" fixes it. Every dark rule in the systm and the apps is written
+   twice for this: in the media query, unless the page says light, and again for data-theme="dark".
+   A fixed theme also sets color-scheme, so scrollbars and native controls follow it. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
 
 /* Pixl icons are pixel art on a 7x5 grid. Text widths beside them (a label, a name) leave them on a
    fraction of a pixel, which a 1x screen draws as a soft edge; crispEdges snaps their edges to
@@ -321,9 +383,8 @@ svg[viewBox="0 0 7 5"] {
    column is dragged; important, so cursors.css's arrow and I-beam do not win. */
 .indx-table-column-handle, .indx-table-resizable[data-resizing], .indx-table-resizable[data-resizing] * { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%231A1A21"/></svg>') 10 10, col-resize !important; }
 .indx-table-resizable[data-resizing] { user-select: none; }
-@media (prefers-color-scheme: dark) {
-    .indx-table-column-handle, .indx-table-resizable[data-resizing], .indx-table-resizable[data-resizing] * { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%23EFEFEF"/></svg>') 10 10, col-resize !important; }
-}
+@media (prefers-color-scheme: dark) { :where(:root:not([data-theme="light"])) .indx-table-column-handle, :where(:root:not([data-theme="light"])) .indx-table-resizable[data-resizing], :where(:root:not([data-theme="light"])) .indx-table-resizable[data-resizing] * { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%23EFEFEF"/></svg>') 10 10, col-resize !important; } }
+:where(:root[data-theme="dark"]) .indx-table-column-handle, :where(:root[data-theme="dark"]) .indx-table-resizable[data-resizing], :where(:root[data-theme="dark"]) .indx-table-resizable[data-resizing] * { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%23EFEFEF"/></svg>') 10 10, col-resize !important; }
 
 /* ── Spinner keyframes (generated) ── */
 @keyframes indx-spinner-2 {

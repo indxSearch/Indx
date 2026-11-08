@@ -11,9 +11,8 @@
     border-radius: var(--radius);
 }
 
-@media (prefers-color-scheme: dark) {
-    .indx-stat { background: var(--lv1); }
-}
+@media (prefers-color-scheme: dark) { :where(:root:not([data-theme="light"])) .indx-stat { background: var(--lv1); } }
+:where(:root[data-theme="dark"]) .indx-stat { background: var(--lv1); }
 
 .indx-stat-label {
     display: inline-flex;

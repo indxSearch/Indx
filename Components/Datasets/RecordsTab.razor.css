@@ -95,7 +95,8 @@
 .records-matched { font: var(--text-xs); color: var(--lv7); white-space: nowrap; }
 .records-mark { background: var(--lv3); color: var(--lv8); border-radius: 2px; padding: 0 1px; }
 /* On the dark theme lv3 hardly parts from a row's tone: a notch up. */
-@media (prefers-color-scheme: dark) { .records-mark { background: var(--lv4); } }
+@media (prefers-color-scheme: dark) { :where(:root:not([data-theme="light"])) .records-mark { background: var(--lv4); } }
+:where(:root[data-theme="dark"]) .records-mark { background: var(--lv4); }
 .records-words { display: flex; flex-direction: column; gap: 4px; width: 100%; padding-bottom: 6px; }
 .records-word { display: flex; align-items: baseline; gap: 8px; font: var(--text-xs); }
 .records-word-text { color: var(--lv8); font-weight: var(--med); }

@@ -162,13 +162,19 @@
 }
 
 @media (prefers-color-scheme: dark) {
-    .indx-select-menu {
+    :where(:root:not([data-theme="light"])) .indx-select-menu {
         background: var(--lv1);
     }
 
-    .indx-select-menu ::deep .indx-btn-ghost:hover {
+    :where(:root:not([data-theme="light"])) .indx-select-menu ::deep .indx-btn-ghost:hover {
         background: var(--lv2) !important;
     }
+}
+:where(:root[data-theme="dark"]) .indx-select-menu {
+    background: var(--lv1);
+}
+:where(:root[data-theme="dark"]) .indx-select-menu ::deep .indx-btn-ghost:hover {
+    background: var(--lv2) !important;
 }
 
 /* The rule above the menu's action entry ("New …"), as the Breadcrumbs switcher's. */

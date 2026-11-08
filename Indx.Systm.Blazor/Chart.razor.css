@@ -21,13 +21,20 @@
 }
 
 @media (prefers-color-scheme: dark) {
-    .indx-chart {
+    :where(:root:not([data-theme="light"])) .indx-chart {
         --chart-bar: var(--lv4);
         --chart-column-hover: var(--lv2);
         --chart-midline: var(--lv2);
         --chart-baseline: var(--lv3);
         --chart-crosshair: var(--lv4);
     }
+}
+:where(:root[data-theme="dark"]) .indx-chart {
+    --chart-bar: var(--lv4);
+    --chart-column-hover: var(--lv2);
+    --chart-midline: var(--lv2);
+    --chart-baseline: var(--lv3);
+    --chart-crosshair: var(--lv4);
 }
 
 .indx-chart-svg {

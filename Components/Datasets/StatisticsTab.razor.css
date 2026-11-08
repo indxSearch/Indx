@@ -163,18 +163,20 @@
 }
 
 @media (prefers-color-scheme: dark) {
-    .stats-overview-item {
+    :where(:root:not([data-theme="light"])) .stats-overview-item {
         background: var(--lv1);
     }
+}
+:where(:root[data-theme="dark"]) .stats-overview-item {
+    background: var(--lv1);
 }
 
 
 /* On the light face (lv2) the heatmap's empty cells, lv2 themselves, vanished: they take the
    page's tone there, and keep lv2 on the dark face, which is lv1. */
 .stats-overview-item ::deep .indx-heatmap-cell { background: var(--lv0); }
-@media (prefers-color-scheme: dark) {
-    .stats-overview-item ::deep .indx-heatmap-cell { background: var(--lv2); }
-}
+@media (prefers-color-scheme: dark) { :where(:root:not([data-theme="light"])) .stats-overview-item ::deep .indx-heatmap-cell { background: var(--lv2); } }
+:where(:root[data-theme="dark"]) .stats-overview-item ::deep .indx-heatmap-cell { background: var(--lv2); }
 
 .stats-overview-item .stats-chart-head { margin-top: 0; margin-bottom: 0; }
 
@@ -195,9 +197,8 @@
 .stats-overview-item ::deep .indx-radar-axis { stroke: var(--lv3); }
 .stats-overview-item ::deep .indx-radar-rim { stroke: var(--lv4); }
 .stats-overview-item ::deep .indx-waffle-cell { background: var(--lv0); }
-@media (prefers-color-scheme: dark) {
-    .stats-overview-item ::deep .indx-waffle-cell { background: var(--lv2); }
-}
+@media (prefers-color-scheme: dark) { :where(:root:not([data-theme="light"])) .stats-overview-item ::deep .indx-waffle-cell { background: var(--lv2); } }
+:where(:root[data-theme="dark"]) .stats-overview-item ::deep .indx-waffle-cell { background: var(--lv2); }
 
 /* A chart on the face drops its own box (lv0 with a line), made to set the plot off the page: on
    the face it was a box within a box. The plot is the face, as the heatmap's and the clock's are. */

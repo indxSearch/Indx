@@ -1,0 +1,258 @@
+/* The indx cursors (Nov 2026), from indx-systm's globals/cursors.css: pixel cursors, 21x21, drawn
+   on the 3px grid of the icons. Opt in: nothing here applies unless the page says
+   data-cursors="indx" on <html>, which IndxServer sets for a user who turned them on. The dark ink
+   follows the theme as every dark rule does (data-theme, else the system). */
+
+/* Default: Arrow cursor */
+:root[data-cursors="indx"] * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3H15V6H18V9H12V15H9V12H6V6H3V0H9V3Z" fill="%231A1A21"/></svg>') 3 0, auto !important;
+}
+
+/* I-beam: Text elements */
+:root[data-cursors="indx"] p,
+:root[data-cursors="indx"] h1,
+:root[data-cursors="indx"] h2,
+:root[data-cursors="indx"] h3,
+:root[data-cursors="indx"] h4,
+:root[data-cursors="indx"] h5,
+:root[data-cursors="indx"] h6,
+:root[data-cursors="indx"] td,
+:root[data-cursors="indx"] th,
+:root[data-cursors="indx"] input,
+:root[data-cursors="indx"] textarea {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 18H6V15H9V18ZM15 18H12V15H15V18ZM12 15H9V6H12V15ZM9 6H6V3H9V6ZM15 6H12V3H15V6Z" fill="%231A1A21"/></svg>') 10 10, text !important;
+}
+
+/* Pointer: Interactive elements */
+:root[data-cursors="indx"] a,
+:root[data-cursors="indx"] button,
+:root[data-cursors="indx"] input[type="radio"],
+:root[data-cursors="indx"] input[type="checkbox"],
+:root[data-cursors="indx"] input[type="submit"],
+:root[data-cursors="indx"] input[type="button"],
+:root[data-cursors="indx"] input[type="range"],
+:root[data-cursors="indx"] select {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%231A1A21"/></svg>') 6 0, pointer !important;
+}
+
+/* Text inside clickable elements should have pointer */
+:root[data-cursors="indx"] a *,
+:root[data-cursors="indx"] button * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%231A1A21"/></svg>') 6 0, pointer !important;
+}
+
+/* Utility classes */
+:root[data-cursors="indx"] .cursor-pointer,
+:root[data-cursors="indx"] .cursor-pointer * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%231A1A21"/></svg>') 6 0, pointer !important;
+}
+
+:root[data-cursors="indx"] .cursor-text,
+:root[data-cursors="indx"] .cursor-text * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 18H6V15H9V18ZM15 18H12V15H15V18ZM12 15H9V6H12V15ZM9 6H6V3H9V6ZM15 6H12V3H15V6Z" fill="%231A1A21"/></svg>') 10 10, text !important;
+}
+
+:root[data-cursors="indx"] .cursor-resize-col,
+:root[data-cursors="indx"] .cursor-resize-col * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%231A1A21"/></svg>') 10 10, col-resize !important;
+}
+
+:root[data-cursors="indx"] .cursor-resize-ew,
+:root[data-cursors="indx"] .cursor-resize-ew * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 15H6V12H9V15ZM15 15H12V12H15V15ZM6 12H3V9H6V12ZM18 12H15V9H18V12ZM9 9H6V6H9V9ZM15 9H12V6H15V9Z" fill="%23080809"/></svg>') 10 10, ew-resize !important;
+}
+
+:root[data-cursors="indx"] .cursor-resize-ns,
+:root[data-cursors="indx"] .cursor-resize-ns * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V15H12V18ZM9 15H6V12H9V15ZM15 12V15H12V12H15ZM9 9H6V6H9V9ZM15 9H12V6H15V9ZM12 6H9V3H12V6Z" fill="%23080809"/></svg>') 10 10, ns-resize !important;
+}
+
+:root[data-cursors="indx"] .cursor-not-allowed,
+:root[data-cursors="indx"] .cursor-not-allowed * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 6H18V15H15V18H6V15H3V6H6V3H15V6ZM6 12H15V9H6V12Z" fill="%231A1A21"/></svg>') 10 10, not-allowed !important;
+}
+
+:root[data-cursors="indx"] .cursor-wait,
+:root[data-cursors="indx"] .cursor-wait * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M6 3H3V6H6V9H9V12H6V15H3V18H6H9H12H15H18V15H15V12H12V9H15V6H18V3H15H12H9H6ZM12 9H9V6H12V9Z" fill="%23080809"/></svg>') 10 10, wait !important;
+}
+
+:root[data-cursors="indx"] .cursor-help,
+:root[data-cursors="indx"] .cursor-help * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V15H12V18ZM12 12H9V9H12V12ZM15 9H12V6H15V9ZM12 3V6H6V3H12Z" fill="%23080809"/></svg>') 10 10, help !important;
+}
+
+:root[data-cursors="indx"] .cursor-move,
+:root[data-cursors="indx"] .cursor-move * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V15H12V18ZM6 12H3V9H6V12ZM12 12H9V9H12V12ZM18 12H15V9H18V12ZM12 6H9V3H12V6Z" fill="%23080809"/></svg>') 10 10, move !important;
+}
+
+:root[data-cursors="indx"] .cursor-crosshair,
+:root[data-cursors="indx"] .cursor-crosshair * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V12H12V18ZM9 12H3V9H9V12ZM18 9V12H12V9H18ZM12 9H9V3H12V9Z" fill="%23080809"/></svg>') 10 10, crosshair !important;
+}
+
+:root[data-cursors="indx"] .cursor-resize-nwse,
+:root[data-cursors="indx"] .cursor-resize-nwse * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 18H12V15H15V12H18V18ZM9 3V6H6V9H3V3H9Z" fill="%23080809"/></svg>') 10 10, nwse-resize !important;
+}
+
+:root[data-cursors="indx"] .cursor-resize-nesw,
+:root[data-cursors="indx"] .cursor-resize-nesw * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 15H9V18H3V12H6V15ZM18 9H15V6H12V3H18V9Z" fill="%23080809"/></svg>') 10 10, nesw-resize !important;
+}
+
+/* Disabled states */
+:root[data-cursors="indx"] input:disabled,
+:root[data-cursors="indx"] textarea:disabled,
+:root[data-cursors="indx"] button:disabled,
+:root[data-cursors="indx"] select:disabled,
+:root[data-cursors="indx"] .disabled,
+:root[data-cursors="indx"] .disabled * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 6H18V15H15V18H6V15H3V6H6V3H15V6ZM6 12H15V9H6V12Z" fill="%231A1A21"/></svg>') 10 10, not-allowed !important;
+}
+
+/* Dark: the same shapes in a light ink. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-cursors="indx"] * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3H15V6H18V9H12V15H9V12H6V6H3V0H9V3Z" fill="%23EFEFEF"/></svg>') 3 0, auto !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] p, :root:not([data-theme="light"])[data-cursors="indx"] h1, :root:not([data-theme="light"])[data-cursors="indx"] h2, :root:not([data-theme="light"])[data-cursors="indx"] h3, :root:not([data-theme="light"])[data-cursors="indx"] h4, :root:not([data-theme="light"])[data-cursors="indx"] h5, :root:not([data-theme="light"])[data-cursors="indx"] h6, :root:not([data-theme="light"])[data-cursors="indx"] td, :root:not([data-theme="light"])[data-cursors="indx"] th, :root:not([data-theme="light"])[data-cursors="indx"] input, :root:not([data-theme="light"])[data-cursors="indx"] textarea {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 18H6V15H9V18ZM15 18H12V15H15V18ZM12 15H9V6H12V15ZM9 6H6V3H9V6ZM15 6H12V3H15V6Z" fill="%23EFEFEF"/></svg>') 10 10, text !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] a, :root:not([data-theme="light"])[data-cursors="indx"] button, :root:not([data-theme="light"])[data-cursors="indx"] input[type="radio"], :root:not([data-theme="light"])[data-cursors="indx"] input[type="checkbox"], :root:not([data-theme="light"])[data-cursors="indx"] input[type="submit"], :root:not([data-theme="light"])[data-cursors="indx"] input[type="button"], :root:not([data-theme="light"])[data-cursors="indx"] input[type="range"], :root:not([data-theme="light"])[data-cursors="indx"] select {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%23EFEFEF"/></svg>') 6 0, pointer !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] a *, :root:not([data-theme="light"])[data-cursors="indx"] button * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%23EFEFEF"/></svg>') 6 0, pointer !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] .cursor-pointer, :root:not([data-theme="light"])[data-cursors="indx"] .cursor-pointer * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%23EFEFEF"/></svg>') 6 0, pointer !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] .cursor-text, :root:not([data-theme="light"])[data-cursors="indx"] .cursor-text * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 18H6V15H9V18ZM15 18H12V15H15V18ZM12 15H9V6H12V15ZM9 6H6V3H9V6ZM15 6H12V3H15V6Z" fill="%23EFEFEF"/></svg>') 10 10, text !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] .cursor-resize-col, :root:not([data-theme="light"])[data-cursors="indx"] .cursor-resize-col * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%23EFEFEF"/></svg>') 10 10, col-resize !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] .cursor-resize-ew, :root:not([data-theme="light"])[data-cursors="indx"] .cursor-resize-ew * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 15H6V12H9V15ZM15 15H12V12H15V15ZM6 12H3V9H6V12ZM18 12H15V9H18V12ZM9 9H6V6H9V9ZM15 9H12V6H15V9Z" fill="%23EFEFEF"/></svg>') 10 10, ew-resize !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] .cursor-resize-ns, :root:not([data-theme="light"])[data-cursors="indx"] .cursor-resize-ns * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V15H12V18ZM9 15H6V12H9V15ZM15 12V15H12V12H15ZM9 9H6V6H9V9ZM15 9H12V6H15V9ZM12 6H9V3H12V6Z" fill="%23EFEFEF"/></svg>') 10 10, ns-resize !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] .cursor-not-allowed, :root:not([data-theme="light"])[data-cursors="indx"] .cursor-not-allowed * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 6H18V15H15V18H6V15H3V6H6V3H15V6ZM6 12H15V9H6V12Z" fill="%23EFEFEF"/></svg>') 10 10, not-allowed !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] .cursor-wait, :root:not([data-theme="light"])[data-cursors="indx"] .cursor-wait * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M6 3H3V6H6V9H9V12H6V15H3V18H6H9H12H15H18V15H15V12H12V9H15V6H18V3H15H12H9H6ZM12 9H9V6H12V9Z" fill="%23EFEFEF"/></svg>') 10 10, wait !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] .cursor-help, :root:not([data-theme="light"])[data-cursors="indx"] .cursor-help * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V15H12V18ZM12 12H9V9H12V12ZM15 9H12V6H15V9ZM12 3V6H6V3H12Z" fill="%23EFEFEF"/></svg>') 10 10, help !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] .cursor-move, :root:not([data-theme="light"])[data-cursors="indx"] .cursor-move * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V15H12V18ZM6 12H3V9H6V12ZM12 12H9V9H12V12ZM18 12H15V9H18V12ZM12 6H9V3H12V6Z" fill="%23EFEFEF"/></svg>') 10 10, move !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] .cursor-crosshair, :root:not([data-theme="light"])[data-cursors="indx"] .cursor-crosshair * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V12H12V18ZM9 12H3V9H9V12ZM18 9V12H12V9H18ZM12 9H9V3H12V9Z" fill="%23EFEFEF"/></svg>') 10 10, crosshair !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] .cursor-resize-nwse, :root:not([data-theme="light"])[data-cursors="indx"] .cursor-resize-nwse * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 18H12V15H15V12H18V18ZM9 3V6H6V9H3V3H9Z" fill="%23EFEFEF"/></svg>') 10 10, nwse-resize !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] .cursor-resize-nesw, :root:not([data-theme="light"])[data-cursors="indx"] .cursor-resize-nesw * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 15H9V18H3V12H6V15ZM18 9H15V6H12V3H18V9Z" fill="%23EFEFEF"/></svg>') 10 10, nesw-resize !important;
+  }
+
+  :root:not([data-theme="light"])[data-cursors="indx"] input:disabled, :root:not([data-theme="light"])[data-cursors="indx"] textarea:disabled, :root:not([data-theme="light"])[data-cursors="indx"] button:disabled, :root:not([data-theme="light"])[data-cursors="indx"] select:disabled, :root:not([data-theme="light"])[data-cursors="indx"] .disabled, :root:not([data-theme="light"])[data-cursors="indx"] .disabled * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 6H18V15H15V18H6V15H3V6H6V3H15V6ZM6 12H15V9H6V12Z" fill="%23EFEFEF"/></svg>') 10 10, not-allowed !important;
+  }
+}
+:root[data-theme="dark"][data-cursors="indx"] * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 3H15V6H18V9H12V15H9V12H6V6H3V0H9V3Z" fill="%23EFEFEF"/></svg>') 3 0, auto !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] p, :root[data-theme="dark"][data-cursors="indx"] h1, :root[data-theme="dark"][data-cursors="indx"] h2, :root[data-theme="dark"][data-cursors="indx"] h3, :root[data-theme="dark"][data-cursors="indx"] h4, :root[data-theme="dark"][data-cursors="indx"] h5, :root[data-theme="dark"][data-cursors="indx"] h6, :root[data-theme="dark"][data-cursors="indx"] td, :root[data-theme="dark"][data-cursors="indx"] th, :root[data-theme="dark"][data-cursors="indx"] input, :root[data-theme="dark"][data-cursors="indx"] textarea {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 18H6V15H9V18ZM15 18H12V15H15V18ZM12 15H9V6H12V15ZM9 6H6V3H9V6ZM15 6H12V3H15V6Z" fill="%23EFEFEF"/></svg>') 10 10, text !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] a, :root[data-theme="dark"][data-cursors="indx"] button, :root[data-theme="dark"][data-cursors="indx"] input[type="radio"], :root[data-theme="dark"][data-cursors="indx"] input[type="checkbox"], :root[data-theme="dark"][data-cursors="indx"] input[type="submit"], :root[data-theme="dark"][data-cursors="indx"] input[type="button"], :root[data-theme="dark"][data-cursors="indx"] input[type="range"], :root[data-theme="dark"][data-cursors="indx"] select {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%23EFEFEF"/></svg>') 6 0, pointer !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] a *, :root[data-theme="dark"][data-cursors="indx"] button * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%23EFEFEF"/></svg>') 6 0, pointer !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] .cursor-pointer, :root[data-theme="dark"][data-cursors="indx"] .cursor-pointer * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%23EFEFEF"/></svg>') 6 0, pointer !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] .cursor-text, :root[data-theme="dark"][data-cursors="indx"] .cursor-text * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 18H6V15H9V18ZM15 18H12V15H15V18ZM12 15H9V6H12V15ZM9 6H6V3H9V6ZM15 6H12V3H15V6Z" fill="%23EFEFEF"/></svg>') 10 10, text !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] .cursor-resize-col, :root[data-theme="dark"][data-cursors="indx"] .cursor-resize-col * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%23EFEFEF"/></svg>') 10 10, col-resize !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] .cursor-resize-ew, :root[data-theme="dark"][data-cursors="indx"] .cursor-resize-ew * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M9 15H6V12H9V15ZM15 15H12V12H15V15ZM6 12H3V9H6V12ZM18 12H15V9H18V12ZM9 9H6V6H9V9ZM15 9H12V6H15V9Z" fill="%23EFEFEF"/></svg>') 10 10, ew-resize !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] .cursor-resize-ns, :root[data-theme="dark"][data-cursors="indx"] .cursor-resize-ns * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V15H12V18ZM9 15H6V12H9V15ZM15 12V15H12V12H15ZM9 9H6V6H9V9ZM15 9H12V6H15V9ZM12 6H9V3H12V6Z" fill="%23EFEFEF"/></svg>') 10 10, ns-resize !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] .cursor-not-allowed, :root[data-theme="dark"][data-cursors="indx"] .cursor-not-allowed * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 6H18V15H15V18H6V15H3V6H6V3H15V6ZM6 12H15V9H6V12Z" fill="%23EFEFEF"/></svg>') 10 10, not-allowed !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] .cursor-wait, :root[data-theme="dark"][data-cursors="indx"] .cursor-wait * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M6 3H3V6H6V9H9V12H6V15H3V18H6H9H12H15H18V15H15V12H12V9H15V6H18V3H15H12H9H6ZM12 9H9V6H12V9Z" fill="%23EFEFEF"/></svg>') 10 10, wait !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] .cursor-help, :root[data-theme="dark"][data-cursors="indx"] .cursor-help * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V15H12V18ZM12 12H9V9H12V12ZM15 9H12V6H15V9ZM12 3V6H6V3H12Z" fill="%23EFEFEF"/></svg>') 10 10, help !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] .cursor-move, :root[data-theme="dark"][data-cursors="indx"] .cursor-move * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V15H12V18ZM6 12H3V9H6V12ZM12 12H9V9H12V12ZM18 12H15V9H18V12ZM12 6H9V3H12V6Z" fill="%23EFEFEF"/></svg>') 10 10, move !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] .cursor-crosshair, :root[data-theme="dark"][data-cursors="indx"] .cursor-crosshair * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V12H12V18ZM9 12H3V9H9V12ZM18 9V12H12V9H18ZM12 9H9V3H12V9Z" fill="%23EFEFEF"/></svg>') 10 10, crosshair !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] .cursor-resize-nwse, :root[data-theme="dark"][data-cursors="indx"] .cursor-resize-nwse * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M18 18H12V15H15V12H18V18ZM9 3V6H6V9H3V3H9Z" fill="%23EFEFEF"/></svg>') 10 10, nwse-resize !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] .cursor-resize-nesw, :root[data-theme="dark"][data-cursors="indx"] .cursor-resize-nesw * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M6 15H9V18H3V12H6V15ZM18 9H15V6H12V3H18V9Z" fill="%23EFEFEF"/></svg>') 10 10, nesw-resize !important;
+}
+:root[data-theme="dark"][data-cursors="indx"] input:disabled, :root[data-theme="dark"][data-cursors="indx"] textarea:disabled, :root[data-theme="dark"][data-cursors="indx"] button:disabled, :root[data-theme="dark"][data-cursors="indx"] select:disabled, :root[data-theme="dark"][data-cursors="indx"] .disabled, :root[data-theme="dark"][data-cursors="indx"] .disabled * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M15 6H18V15H15V18H6V15H3V6H6V3H15V6ZM6 12H15V9H6V12Z" fill="%23EFEFEF"/></svg>') 10 10, not-allowed !important;
+}
+
+/* A switch, a checkbox or a radio inside its label (systm ToggleSwitch, Checkbox, RadioButton): the
+   whole label is the target, so it takes the pointer, which the catch-all above would deny it. */
+:root[data-cursors="indx"] label:has(> input[type="checkbox"]),
+:root[data-cursors="indx"] label:has(> input[type="checkbox"]) *,
+:root[data-cursors="indx"] label:has(> input[type="radio"]),
+:root[data-cursors="indx"] label:has(> input[type="radio"]) * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%231A1A21"/></svg>') 6 0, pointer !important;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-cursors="indx"] label:has(> input[type="checkbox"]),
+  :root:not([data-theme="light"])[data-cursors="indx"] label:has(> input[type="checkbox"]) *,
+  :root:not([data-theme="light"])[data-cursors="indx"] label:has(> input[type="radio"]),
+  :root:not([data-theme="light"])[data-cursors="indx"] label:has(> input[type="radio"]) * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%23EFEFEF"/></svg>') 6 0, pointer !important;
+  }
+}
+:root[data-theme="dark"][data-cursors="indx"] label:has(> input[type="checkbox"]),
+:root[data-theme="dark"][data-cursors="indx"] label:has(> input[type="checkbox"]) *,
+:root[data-theme="dark"][data-cursors="indx"] label:has(> input[type="radio"]),
+:root[data-theme="dark"][data-cursors="indx"] label:has(> input[type="radio"]) * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%23EFEFEF"/></svg>') 6 0, pointer !important;
+}

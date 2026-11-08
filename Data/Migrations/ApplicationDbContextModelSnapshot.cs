@@ -15,7 +15,7 @@ namespace IndxServer.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.3");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.13");
 
             modelBuilder.Entity("IndxServer.Data.ApiKey", b =>
                 {
@@ -91,6 +91,9 @@ namespace IndxServer.Data.Migrations
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("ColorScheme")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("TEXT");
@@ -106,6 +109,9 @@ namespace IndxServer.Data.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER")
                         .HasDefaultValue(true);
+
+                    b.Property<bool>("IndxCursors")
+                        .HasColumnType("INTEGER");
 
                     b.Property<Guid?>("LastTeamId")
                         .HasColumnType("TEXT");

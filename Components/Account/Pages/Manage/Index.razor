@@ -18,6 +18,7 @@
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IEmailSender EmailSender
 @inject NavigationManager NavigationManager
+@inject IJSRuntime JS
 @inject ILogger<Index> Logger
 @inject IndxServer.Services.InstanceSettingsService InstanceSettingsService
 
@@ -74,6 +75,21 @@
                     <Button Type="submit" Variant="ghost" Size="micro" IconLeft="_iconLogout">Log out</Button>
                 </form>
                 <Button Href="/account/change-password" Variant="ghost" Size="micro" IconLeft="_iconKey">Change password</Button>
+            </div>
+        </div>
+
+        <div style="margin-top: 28px;">
+            <h3 style="margin-bottom: 4px;">Display</h3>
+            <p style="font:var(--text-xs); color:var(--lv4); margin:0 0 16px;">
+                How the console looks for you. Changes apply at once.
+            </p>
+
+            <div class="appearance-rows">
+                <span class="appearance-label">Appearance</span>
+                <SegmentedControl Items="_schemeItems" Value="@(_appearance.Scheme ?? "auto")" ValueChanged="SetScheme" AriaLabel="Appearance" Size="default" />
+
+                <span class="appearance-label">Cursors</span>
+                <ToggleSwitch Label="Use pixl cursors" Checked="@_appearance.Cursors" CheckedChanged="SetCursors" />
             </div>
         </div>
 
@@ -149,6 +165,10 @@ else
     // Per-type notification channel state shown in the matrix.
     private sealed class ChannelState { public bool InApp; public bool Email; }
     private List<NotificationTypeInfo> _visibleNotificationTypes = new();
+
+    private Appearance _appearance = Appearance.Default;
+    private static readonly IReadOnlyList<SegmentedControl.Item> _schemeItems =
+        [new("auto", "Auto"), new("light", "Light"), new("dark", "Dark")];
     private Dictionary<NotificationType, ChannelState> _notificationPrefs = new();
 
 
@@ -165,6 +185,8 @@ else
 
         if (user != null)
         {
+            _appearance = Appearance.Of(user);
+
             // Admin-only event types are hidden from regular users (they never receive them).
             _visibleNotificationTypes = NotificationPreferences.Catalog
                 .Where(i => !i.AdminOnly || isAdmin)
@@ -261,5 +283,21 @@ else
         await UserManager.UpdateAsync(user);
 
         Toasts.Show("Notification preferences saved.", _iconSaved);
+    }
+
+    private Task SetScheme(string value) => SaveAppearance(_appearance with { Scheme = value == "auto" ? null : value });
+    private Task SetCursors(bool on) => SaveAppearance(_appearance with { Cursors = on });
+
+    // Applied to the page first, so the change shows while it is saved; the next page load renders
+    // the saved one (App.razor).
+    private async Task SaveAppearance(Appearance next)
+    {
+        if (user == null) return;
+        _appearance = Appearance.From(next.Scheme, next.Cursors);
+        await JS.InvokeVoidAsync("indxAppearance.apply", _appearance.DataTheme, _appearance.DataCursors);
+        user.ColorScheme = _appearance.Scheme;
+        user.IndxCursors = _appearance.Cursors;
+        await UserManager.UpdateAsync(user);
+        Toasts.Show("Appearance saved.", _iconSaved);
     }
 }

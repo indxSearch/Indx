@@ -164,13 +164,19 @@ a.indx-breadcrumbs-label:focus-visible {
 }
 
 @media (prefers-color-scheme: dark) {
-    .indx-breadcrumbs-menu {
+    :where(:root:not([data-theme="light"])) .indx-breadcrumbs-menu {
         background: var(--lv1);
     }
 
-    .indx-breadcrumbs-menu ::deep .indx-btn-ghost:hover {
+    :where(:root:not([data-theme="light"])) .indx-breadcrumbs-menu ::deep .indx-btn-ghost:hover {
         background: var(--lv2) !important;
     }
+}
+:where(:root[data-theme="dark"]) .indx-breadcrumbs-menu {
+    background: var(--lv1);
+}
+:where(:root[data-theme="dark"]) .indx-breadcrumbs-menu ::deep .indx-btn-ghost:hover {
+    background: var(--lv2) !important;
 }
 
 /* Overflow="truncate": one line, sized by the space the trail is given rather than by a

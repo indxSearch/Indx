@@ -1,6 +1,10 @@
 ﻿@inject IWebHostEnvironment Env
+@inject IndxServer.Data.ApplicationDbContext Db
+@using Microsoft.EntityFrameworkCore
 <!DOCTYPE html>
-<html lang="en">
+@* The signed-in user's appearance (Services/Appearance.cs): light, dark or the system's, and the
+   cursors. On the page from its first frame, so a chosen dark never flashes light. *@
+<html lang="en" data-theme="@_appearance.DataTheme" data-cursors="@_appearance.DataCursors">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -26,6 +30,7 @@
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="@V("_content/Indx.Systm.Blazor/fonts/fonts.css")" />
     <link rel="stylesheet" href="@V("_content/Indx.Systm.Blazor/indx-systm.css")" />
+    <link rel="stylesheet" href="@V("_content/Indx.Systm.Blazor/cursors.css")" />
     <link rel="stylesheet" href="@V("app.css")" />
     <link rel="stylesheet" href="@V("IndxServer.styles.css")" />
 </head>
@@ -53,10 +58,24 @@
     <script src="@V("js/reveal-current.js")"></script>
     <script src="@V("js/agent-thread.js")"></script>
     <script src="@V("js/fullscreen.js")"></script>
+    <script src="@V("js/appearance.js")"></script>
 </body>
 </html>
 
 @code {
+    [CascadingParameter] private HttpContext? HttpContext { get; set; }
+
+    private Appearance _appearance = Appearance.Default;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var userId = HttpContext?.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId == null) return;
+        var row = await Db.Users.AsNoTracking().Where(u => u.Id == userId)
+            .Select(u => new { u.ColorScheme, u.IndxCursors }).FirstOrDefaultAsync();
+        if (row != null) _appearance = Appearance.From(row.ColorScheme, row.IndxCursors);
+    }
+
     /// <summary>The file's address with its last change in the query, so a browser fetches a
     /// stylesheet or script again after a deploy or a restart instead of keeping the copy it has:
     /// the files are served without a cache lifetime, and Chrome kept a phone layout fix away

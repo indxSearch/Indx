@@ -29,5 +29,11 @@ namespace IndxServer.Data
         /// next visit. Validated against membership on read — a team the user has since left is
         /// ignored, so a stale value can never leak another team's datasets.</summary>
         public Guid? LastTeamId { get; set; }
+
+        /// <summary>Light or dark: null follows the system (auto), else "light" or "dark".</summary>
+        public string? ColorScheme { get; set; }
+
+        /// <summary>The indx pixel cursors in the console (Indx.Systm.Blazor's cursors.css). Off by default.</summary>
+        public bool IndxCursors { get; set; }
     }
 }

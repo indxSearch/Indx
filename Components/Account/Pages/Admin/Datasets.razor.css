@@ -9,9 +9,8 @@
     border-radius: var(--radius);
 }
 
-@media (prefers-color-scheme: dark) {
-    .admin-datasets-docs { background: var(--lv1); }
-}
+@media (prefers-color-scheme: dark) { :where(:root:not([data-theme="light"])) .admin-datasets-docs { background: var(--lv1); } }
+:where(:root[data-theme="dark"]) .admin-datasets-docs { background: var(--lv1); }
 
 .admin-datasets-docs-title {
     font: var(--text-xs);

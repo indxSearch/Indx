@@ -5,9 +5,12 @@
 }
 
 @media (prefers-color-scheme: dark) {
-    .indx-surface {
+    :where(:root:not([data-theme="light"])) .indx-surface {
         background: var(--lv1);
     }
+}
+:where(:root[data-theme="dark"]) .indx-surface {
+    background: var(--lv1);
 }
 
 .indx-surface-transparent {
@@ -15,7 +18,10 @@
 }
 
 @media (prefers-color-scheme: dark) {
-    .indx-surface-transparent {
+    :where(:root:not([data-theme="light"])) .indx-surface-transparent {
         background: transparent;
     }
+}
+:where(:root[data-theme="dark"]) .indx-surface-transparent {
+    background: transparent;
 }
