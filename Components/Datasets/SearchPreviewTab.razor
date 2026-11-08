@@ -551,7 +551,7 @@ else
                 catch { }
             }
         }
-        return (hits, SearchExplanation.Of(result));
+        return (hits, SearchExplanation.Of(result, wordMatching: Ctx.SavedFields?.Any(f => f.WordMatching == true) != false));
     }
 
     private async Task RunPerfTest()

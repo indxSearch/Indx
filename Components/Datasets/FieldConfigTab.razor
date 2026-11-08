@@ -36,6 +36,15 @@
 }
 else if (Ctx.EditedFields is { } fields)
 {
+    @* Pattern matching alone orders a list but cannot narrow it: only WordMatching fields are
+       counted (8 Nov 2026). Said from the working copy, so it goes as soon as one is switched on. *@
+    @if (Ctx.HasSearchable && !fields.Any(f => f.WordMatching == true))
+    {
+        <Alert Variant="info">
+            <Title>No field is matched by its words</Title>
+            <Description>Every search is broad: records are ordered, never narrowed to the ones that match. Turn on WordMatching on the name or title field.</Description>
+        </Alert>
+    }
     <FieldConfigTable Fields="fields" Editable="@Ctx.IsEditor" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced" Filter="@_filter"
                       Scoring="@(Ctx.FindEngine()?.Scoring ?? ScoringSetup.Default)"
                       @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged"

@@ -35,10 +35,19 @@ namespace IndxServer.Components.Datasets
         /// <summary>One query word in one record: the field that confirmed it, and how.</summary>
         public sealed record Word(string Text, string? Field, string How, bool Found);
 
-        public static Summary? Of(Result result)
+        /// <summary>Said when no searched field has WordMatching (8 Nov 2026): the word lookup reads
+        /// only those, so the list can be ordered but never narrowed to the records that match (a
+        /// pokedex matched by pattern alone listed 244 for "pikachu").</summary>
+        public const string NoWordMatching = "No field is matched by its words, so every search is broad: records are ordered, never narrowed to the ones that match. Turn on WordMatching on the name or title field, under Field configuration.";
+
+        /// <param name="wordMatching">Whether any searched field has WordMatching on; without one
+        /// the search says so first, and not that it chose the Bm25f mode.</param>
+        public static Summary? Of(Result result, bool wordMatching = true)
         {
             if (result.Reason != null) return null;
             var notes = new List<string>();
+            if (!wordMatching)
+                notes.Add(NoWordMatching);
             var levels = new List<Level>();
             string headline;
             if (PatternOnly(result))
@@ -54,7 +63,8 @@ namespace IndxServer.Components.Datasets
                 // the search says otherwise (Result.Reranked, 6 Nov 2026: until then read from the
                 // report, which came only with a reranked search).
                 headline = "Broad matches";
-                notes.Add($"{result.Count:N0} records hold any of the words or parts of them: the Bm25f mode, with no typo levels.");
+                notes.Add(wordMatching ? $"{result.Count:N0} records hold any of the words or parts of them: the Bm25f mode, with no typo levels."
+                    : $"{result.Count:N0} records hold any of the words or parts of them.");
                 if (!result.Reranked && result.Records.Length > 0)
                     notes.Add("BM25F's order, not reranked.");
             }
