@@ -419,7 +419,7 @@
         {
             if (IsContainer(f)) continue;               // emitted above its children, not in place
             if (matches != null) { if (!matches.Contains(f.FieldName)) continue; }
-            else if (!ShowUnused && IsUnused(f)) continue;
+            else if (!ShowUnused && IsUnused(f) && !UsedWhenSaved(f)) continue;
 
             foreach (var ancestor in Ancestors(f.FieldName))
             {
@@ -593,6 +593,11 @@
         if (SearchableTouched != touchedBefore) await SearchableTouchedChanged.InvokeAsync(SearchableTouched);
         await OnChanged.InvokeAsync();
     }
+
+    /// <summary>A field used in the configuration as saved stays in the list after its last role
+    /// is switched off, until Save or Cancel (8 Nov 2026): it vanished under the pointer.</summary>
+    private bool UsedWhenSaved(FieldProxy f) =>
+        Saved?.FirstOrDefault(s => s.FieldName == f.FieldName) is { } saved && !IsUnused(saved);
 
     public static bool IsUnused(FieldProxy f) =>
         f.WordMatching != true && f.PatternMatching != true && f.Filterable != true && f.Facetable != true &&
