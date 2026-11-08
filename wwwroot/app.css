@@ -849,6 +849,12 @@ a.btn-danger:hover {
     position: relative;
 }
 
+/* <indx-die> fills the column, over the logo (js/indx-die.js; hidden with the column on a phone) */
+.unauth-left indx-die {
+    position: absolute;
+    inset: 0;
+}
+
 .unauth-logo-container {
     position: relative;
     width: 175px;
