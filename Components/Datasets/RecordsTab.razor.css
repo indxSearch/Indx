@@ -1,6 +1,6 @@
 .records-tab { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
-.records-toolbar { align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 0; }
+.records-toolbar { align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 0; container: records-toolbar / inline-size; }
 .records-search { flex: 1 1 200px; max-width: 320px; }
 .records-order { display: inline-flex; align-items: center; gap: 6px; }
 .records-end { display: inline-flex; align-items: center; gap: 8px; }
@@ -10,6 +10,16 @@
 .records-faint { color: var(--lv5); font: var(--text-xs); margin: 0; }
 .records-error { color: var(--CSignal); font: var(--text-xs); margin: 0; }
 .records-spacer { flex: 1; }
+/* One row holds the toolbar down to about 700px. Narrower, wrapping left the search on a line of
+   its own in the middle with the count wherever it fell. So the search goes under the buttons, the
+   full width; narrower still the count and the scan go under it too, just above the table they
+   count. Measured on the toolbar, not the window: the side menu takes its share above 768px. */
+@container records-toolbar (max-width: 700px) {
+    .records-search { order: 1; flex: 1 1 100%; max-width: none; }
+}
+@container records-toolbar (max-width: 500px) {
+    .records-end { order: 2; flex: 1 1 100%; justify-content: space-between; margin-left: 0; }
+}
 
 /* The filter, column and header menus: a systm Popover, each control a row of its own. */
 .records-tab ::deep .records-menu { width: 300px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
