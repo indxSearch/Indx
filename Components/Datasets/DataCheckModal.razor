@@ -59,7 +59,7 @@
         <div class="indx-form-actions">
             @if (Outdated && CanRun)
             {
-                <Button Variant="primary" @onclick="OnStart">Run scan again</Button>
+                <Button Variant="primary" IconLeft="DatasetIcons.Scan" @onclick="OnStart">Run scan again</Button>
                 <Button Variant="secondary" @onclick="() => OpenChanged.InvokeAsync(false)">Close</Button>
             }
             else
@@ -67,7 +67,7 @@
                 <Button Variant="primary" @onclick="() => OpenChanged.InvokeAsync(false)">Done</Button>
                 @if (CanRun)
                 {
-                    <Button Variant="secondary" @onclick="OnStart">Run scan again</Button>
+                    <Button Variant="secondary" IconLeft="DatasetIcons.Scan" @onclick="OnStart">Run scan again</Button>
                 }
             }
             @if (CanRun)
@@ -93,7 +93,7 @@
         <div class="indx-form-actions">
             @if (CanRun)
             {
-                <Button Variant="primary" @onclick="OnStart">Run scan</Button>
+                <Button Variant="primary" IconLeft="DatasetIcons.Scan" @onclick="OnStart">Run scan</Button>
             }
             <Button Variant="secondary" @onclick="() => OpenChanged.InvokeAsync(false)">Cancel</Button>
         </div>

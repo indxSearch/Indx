@@ -144,6 +144,10 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> RowOpen = Of<Icons.ChevronDown>();
         public static readonly RenderFragment<int> Lacking = Of<Icons.Warning>();
         public static readonly RenderFragment<int> Cut = Of<Icons.Scissors>();
+        public static readonly RenderFragment<int> Fixed = Of<Icons.Check>();
+        // Running a scan of the records, and opening its report.
+        public static readonly RenderFragment<int> Scan = Of<Icons.TrendingSearch>();
+        public static readonly RenderFragment<int> Report = Of<Icons.DocumentFields>();
         public static readonly RenderFragment<int> Eye = Of<Icons.Eye>();
         public static readonly RenderFragment<int> Lock = Of<Icons.Lock>();
         public static readonly RenderFragment<int> Tag = Of<Icons.Tag>();

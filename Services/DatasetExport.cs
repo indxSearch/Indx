@@ -73,6 +73,26 @@ namespace IndxServer.Services
             return count;
         }
 
+        /// <summary>
+        /// The dataset's first <paramref name="count"/> document keys, in key order, from the store.
+        /// For listing records where the engine will not: an empty search lists nothing on a dataset
+        /// with no Facetable field (Notes/Jens/empty-search-without-facetable-field-2026-11-08.md).
+        /// </summary>
+        public static long[] FirstKeys(string teamId, string dataSetName, int count)
+        {
+            if (string.IsNullOrEmpty(DbPath) || !File.Exists(DbPath)) return [];
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT Id FROM JsonData WHERE Name = $d AND UserName = $t ORDER BY Id LIMIT $n";
+            cmd.Parameters.AddWithValue("$d", dataSetName);
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$n", count);
+            var keys = new List<long>(count);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read()) keys.Add(reader.GetInt64(0));
+            return keys.ToArray();
+        }
+
         /// <summary>A download file name from the dataset name — already a valid file name.</summary>
         public static string FileName(string dataSetName) => $"{dataSetName}.json";
     }

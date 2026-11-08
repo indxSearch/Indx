@@ -113,7 +113,15 @@
             <ChildContent>
                 @foreach (var f in Fields)
                 {
-                    <Checkbox Label="@f.FieldName" Checked="@_columns.Contains(f.FieldName)" CheckedChanged="on => ToggleColumn(f.FieldName, on)" />
+                    <div class="records-column-row">
+                        <Checkbox Label="@f.FieldName" Checked="@_columns.Contains(f.FieldName)" CheckedChanged="on => ToggleColumn(f.FieldName, on)" />
+                        <span class="records-roles">
+                            @foreach (var (role, title) in RolesOf(f))
+                            {
+                                <Chip Title="@title">@role</Chip>
+                            }
+                        </span>
+                    </div>
                 }
             </ChildContent>
         </Popover>
@@ -127,7 +135,7 @@
             <span class="records-count">@CountText</span>
             @if (_standing != null || _progress is { Running: true } || Ctx.IsEditor)
             {
-                <Button Variant="ghost" Size="micro" @onclick="() => _checkOpen = true">
+                <Button Variant="ghost" Size="micro" IconLeft="@(_standing != null && _progress is not { Running: true } ? DatasetIcons.Report : DatasetIcons.Scan)" @onclick="() => _checkOpen = true">
                     @(_progress is { Running: true } p ? $"Scanning, {Math.Floor(p.Percent).ToString(Inv)}%" : _standing != null ? "Open report" : "Run scan")
                 </Button>
             }
@@ -144,7 +152,7 @@
             The report from <TimeAgo Value="standing.Report.CheckedUtc" /> is out of date: @why.
             @if (Ctx.IsEditor)
             {
-                <Button Variant="ghost" Size="micro" @onclick="() => _checkOpen = true">Run scan again</Button>
+                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Scan" @onclick="() => _checkOpen = true">Run scan again</Button>
             }
         </p>
     }
@@ -170,14 +178,6 @@
     {
         <Alert Variant="warning"><Title>The records could not be read</Title><Description>@_error</Description></Alert>
     }
-    else if (_count > _keys.Length && _keys.Length == Cap)
-    {
-        <p class="records-note">
-            @(InList
-                ? $"{_count.ToString("N0", Inv)} records are in this list. The first {Cap.ToString("N0", Inv)} by key are listed."
-                : $"{_count.ToString("N0", Inv)} records match. The first {Cap.ToString("N0", Inv)} are listed: narrow them with a filter or the search, or change the order, to reach the others.")
-        </p>
-    }
 
     @if (_keys.Length == 0 && !_loading && _error == null)
     {
@@ -187,18 +187,21 @@
     }
     else
     {
-        <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Records" WrapperClass="records-frame">
+        @* Fixed widths, set by each column's field rather than by the page's values: measured from the
+           page, the columns moved with every search (8 Nov 2026). A cut value ends in an ellipsis and
+           its tooltip shows more. *@
+        <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Records" WrapperClass="records-frame" Class="records-table">
             <thead>
                 <tr>
-                    <th class="records-key-head">Key</th>
+                    <th class="records-key-head" style="width:@(KeyWidth)px"><span class="records-head-row">@DatasetIcons.Key(14)<span class="records-head-name">Key</span></span></th>
                     @if (_matches != null)
                     {
-                        <th class="records-key-head">Matched</th>
+                        <th class="records-key-head" style="width:180px">Matched</th>
                     }
                     @foreach (var col in _columns)
                     {
                         var f = FieldOf(col);
-                        <th class="records-head @(IsNumber(f) ? "records-num" : null)">
+                        <th class="records-head @(IsNumber(f) ? "records-head--num" : null)" style="width:@(WidthOf(f))px">
                             @if (f != null) { @HeaderMenu(f) } else { @col }
                         </th>
                     }
@@ -216,7 +219,7 @@
                                 @(isOpen ? DatasetIcons.RowOpen(14) : DatasetIcons.RowClosed(14))
                                 @key.ToString(Inv)
                                 @if (row.Cut) { <span title="A searched value is longer than the index takes, and was cut">@DatasetIcons.Cut(14)</span> }
-                                @if (FixedSinceCheck(row)) { <span class="records-fixed">fixed since the scan</span> }
+                                @if (FixedSinceCheck(row)) { <span class="records-fixed" title="Fixed since the scan">@DatasetIcons.Fixed(14)</span> }
                             </span>
                         </td>
                         @if (_matches != null)
@@ -317,7 +320,11 @@
             <span class="records-spacer"></span>
             @if (_keys.Length > 0)
             {
-                <span class="records-count">@((_page * _perPage + 1).ToString("N0", Inv)) to @(Math.Min(_keys.Length, (_page + 1) * _perPage).ToString("N0", Inv)) of @_keys.Length.ToString("N0", Inv)</span>
+                @* The cap is said here, under the table, not in a line above it: that line came and went
+                   with the count as one typed, and moved the table (8 Nov 2026). *@
+                <span class="records-count" title="@(Capped ? $"{_count.ToString("N0", Inv)} match. Narrow them with a filter or the search, or change the order, to reach the others." : null)">
+                    @((_page * _perPage + 1).ToString("N0", Inv)) to @(Math.Min(_keys.Length, (_page + 1) * _perPage).ToString("N0", Inv)) of @(Capped ? "the first " : "")@_keys.Length.ToString("N0", Inv)
+                </span>
             }
             <Button Variant="ghost" Size="micro" Disabled="@(_page == 0)" @onclick="() => GoTo(_page - 1)">Previous</Button>
             <Button Variant="ghost" Size="micro" Disabled="@(_page >= Pages - 1)" @onclick="() => GoTo(_page + 1)">Next</Button>
@@ -376,15 +383,17 @@
     private long[] _keys = Array.Empty<long>();
     private long _count;
     private IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? _facets;
-    /// <summary>How the search met each query word, per listed record; null without a search text.</summary>
-    private IReadOnlyDictionary<long, IReadOnlyList<SearchExplanation.Word>>? _matches;
+    /// <summary>How the search met each query word, per record read so far; null without a search text.
+    /// Filled page by page (MatchesUpTo), never for all the listed records at once.</summary>
+    private Dictionary<long, IReadOnlyList<SearchExplanation.Word>>? _matches;
+    /// <summary>The search that listed the keys, to ask it again for the match report of a page.</summary>
+    private QueryProxy? _query;
     private IReadOnlyList<Row> _rows = Array.Empty<Row>();
     private int _page;
     private bool _loading;
     private string? _error;
     private int _seq;
     private bool _wasActive;
-    private CancellationTokenSource? _typing;
 
     private readonly Dictionary<long, OpenRecord?> _open = new();
     private readonly HashSet<long> _jsonRows = new();
@@ -410,9 +419,22 @@
     private FieldProxy? DraftField => _draftField == null ? null : FieldOf(_draftField);
     private int Pages => Math.Max(1, (_keys.Length + _perPage - 1) / _perPage);
     private bool InList => _list != ListAll;
+    /// <summary>More match than are listed: the engine has no offset, so the list stops at Cap.</summary>
+    private bool Capped => _count > _keys.Length && _keys.Length == Cap;
 
     private static bool IsNumber(FieldProxy? f) => string.Equals(f?.FieldType, nameof(JsonValueKind.Number), StringComparison.OrdinalIgnoreCase);
     private static bool IsSearched(FieldProxy f) => f.WordMatching == true || f.PatternMatching == true;
+
+    /// <summary>The field's roles as Field configuration sets them, short, with the setting's name to hover.</summary>
+    internal static IEnumerable<(string Role, string Title)> RolesOf(FieldProxy f)
+    {
+        if (f.WordMatching == true) yield return ("Word", "WordMatching");
+        if (f.PatternMatching == true) yield return ("Pattern", "PatternMatching");
+        if (f.Filterable == true) yield return ("Filter", "Filterable");
+        if (f.Facetable == true) yield return ("Facet", "Facetable");
+        if (f.Sortable == true) yield return ("Sort", "Sortable");
+        if (f.Embeddable == true) yield return ("Vector", "Embeddable");
+    }
 
     private IReadOnlyList<DataCheck.CheckedField> CheckedFields => Fields.Select(f => new DataCheck.CheckedField(f.FieldName, IsSearched(f))).ToList();
     private string Fingerprint => DataCheck.Fingerprint(CheckedFields, DataCheck.TextCeiling);
@@ -470,9 +492,14 @@
         var stats = Report?.Field(f.FieldName);
         var issue = stats is { Without: > 0 } && IsSearched(f);
         var facetValues = _facets?.GetValueOrDefault(f.FieldName);
+        @* The name as the Key header is set, the menu a small button beside it, and under it, on
+           every column alike, what the report says of the field; nothing there without a report. *@
+        <div class="records-head-row">
+            <span class="records-head-name">@f.FieldName</span>
+            @if (SortIconOf(f) is { } sortIcon) { <span class="records-head-sort">@sortIcon(14)</span> }
         <Popover AriaLabel="@($"{f.FieldName}: order, filter, find the records without it")" Align="start" Class="records-menu">
             <Trigger>
-                <Button Variant="ghost" Size="micro" IconRight="SortIconOf(f)">@f.FieldName</Button>
+                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.RowOpen" aria-label="@($"{f.FieldName}: order, filter, hide")" title="Order, filter, hide" />
             </Trigger>
             <ChildContent>
                 @if (issue)
@@ -498,20 +525,17 @@
                 }
                 else if (Ctx.IsEditor)
                 {
-                    <Button Variant="ghost" Size="micro" @onclick="() => _checkOpen = true">Records without it: run a scan</Button>
+                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Scan" @onclick="() => _checkOpen = true">Records without it: run a scan</Button>
                 }
                 <Button Variant="ghost" Size="micro" @onclick="() => ToggleColumn(f.FieldName, false)">Hide the column</Button>
             </ChildContent>
         </Popover>
-        @if (stats != null || facetValues != null)
+        </div>
+        @if (stats != null)
         {
-            var values = stats?.Distinct ?? facetValues!.Length;
-            var parts = new List<string>();
-            if (stats != null) parts.Add(stats.Without == 0 ? "in all" : $"{stats.Without.ToString("N0", Inv)} without");
-            parts.Add($"{values.ToString("N0", Inv)}{(stats?.DistinctCapped == true ? "+" : "")} {(values == 1 ? "value" : "values")}");
-            <span class="@(issue ? "records-issue" : "records-head-note")">
+            <span class="records-head-note @(issue ? "records-issue" : null)">
                 @if (issue) { @DatasetIcons.Lacking(14) }
-                @string.Join(" · ", parts)
+                @(stats.Without == 0 ? "in all" : $"{stats.Without.ToString("N0", Inv)} without") · @stats.Distinct.ToString("N0", Inv)@(stats.DistinctCapped ? "+" : "") @(stats.Distinct == 1 ? "value" : "values")
             </span>
         }
     };
@@ -521,13 +545,12 @@
 
     // ── Changing what is listed ─────────────────────────────────────────────────
 
+    /// <summary>A search per keystroke, as the Search preview searches: no pause first. RunAsync
+    /// drops an answer a newer keystroke has outdated, so the list never walks back through what
+    /// was typed. Until 8 Nov 2026 it waited 250 ms for a pause, and felt slow beside the preview.</summary>
     private async Task OnTextChanged(string? text)
     {
         _text = text ?? "";
-        // Wait for a pause in the typing: on a large dataset each search lists and counts it all.
-        _typing?.Cancel();
-        var typing = _typing = new CancellationTokenSource();
-        try { await Task.Delay(250, typing.Token); } catch (TaskCanceledException) { return; }
         await RunAsync();
     }
 
@@ -705,16 +728,18 @@
                 _keys = list.Keys;
                 _count = list.Count;
                 _matches = null;
+                _query = null;
             }
             else
             {
                 _list = ListAll;
-                var (keys, count, facets, matches) = await Task.Run(() => Search(text, filters, sort, ascending));
+                var (keys, count, facets, query) = await Task.Run(() => Search(text, filters, sort, ascending));
                 if (seq != _seq) return;
                 _keys = keys;
                 _count = count;
                 _facets = facets;
-                _matches = matches;
+                _query = text.Length > 0 ? query : null;
+                _matches = text.Length > 0 ? new() : null;
             }
             _page = Math.Clamp(_page, 0, Pages - 1);
             await ReadPageAsync(seq);
@@ -741,11 +766,21 @@
         _ => null,
     };
 
-    private (long[] Keys, int Count, IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? Facets,
-        IReadOnlyDictionary<long, IReadOnlyList<SearchExplanation.Word>>? Matches) Search(
+    private (long[] Keys, int Count, IReadOnlyDictionary<string, KeyValuePair<string, int>[]>? Facets, QueryProxy Query) Search(
         string text, IReadOnlyList<Condition> conditions, string sort, bool ascending)
     {
         var engine = Ctx.FindEngine() ?? throw new InvalidOperationException("The dataset is not loaded.");
+        // An empty search lists nothing when no field is Facetable: the engine answers it through the
+        // facets (Notes/Jens/empty-search-without-facetable-field-2026-11-08.md). The plain list is read
+        // from the store in key order instead; a filter or an order needs the engine, so says why not.
+        if (text.Length == 0 && !Fields.Any(f => f.Facetable == true))
+        {
+            if (conditions.Count > 0 || sort.Length > 0)
+                throw new InvalidOperationException("With no Facetable field, the engine lists no records for a filter or an order alone. Type a search, or make a field Facetable in Field configuration.");
+            var stored = DatasetExport.FirstKeys(Ctx.TeamId, Ctx.Name, Cap);
+            var total = Ctx.Status?.DocumentCount ?? stored.Length;
+            return (stored, Math.Max(total, stored.Length), null, new QueryProxy { Text = text, MaxNumberOfRecordsToReturn = Cap });
+        }
         global::Indx.Api.Filter? filter = null;
         foreach (var c in conditions)
         {
@@ -760,17 +795,31 @@
         var query = new QueryProxy
         {
             Text = text, MaxNumberOfRecordsToReturn = Cap, EnableFacets = true, TimeOutLimitMilliseconds = ReadTimeoutMs,
-            // How each word was met: the listed records are read once more for it, so only with a text.
-            EnableMatchReport = text.Length > 0,
             Filter = filter == null ? null : new FilterProxy(filter.SerializedKey),
             SortBy = sort, SortAscending = ascending,
         };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         if (result.Reason is { } reason) throw new InvalidOperationException(reason.Message);
         if (result.DidTimeOut) throw new InvalidOperationException("The search took too long. Narrow it with a filter or the search.");
-        var matches = result.MatchReport?.Matches?.ToDictionary(m => m.DocumentKey,
-            m => (IReadOnlyList<SearchExplanation.Word>)m.Words.Select(w => new SearchExplanation.Word(w.Word, w.Field, SearchExplanation.How(w.How), w.How != WordMatch.NotFound)).ToList());
-        return (result.Records.Select(r => r.DocumentKey).ToArray(), result.Count, result.Facets, text.Length > 0 ? matches ?? new() : null);
+        return (result.Records.Select(r => r.DocumentKey).ToArray(), result.Count, result.Facets, query);
+    }
+
+    /// <summary>
+    /// How the search met each query word in its first <paramref name="upTo"/> records: the same
+    /// search again, without facets, with the match report. The report reads every record it covers
+    /// a second time, so it is asked for as far as the page shown and no further; asked with the
+    /// thousand listed it made each keystroke noticeably slower than the Search preview's 24.
+    /// </summary>
+    private IEnumerable<KeyValuePair<long, IReadOnlyList<SearchExplanation.Word>>> MatchesUpTo(QueryProxy listed, int upTo)
+    {
+        var query = new QueryProxy
+        {
+            Text = listed.Text, MaxNumberOfRecordsToReturn = upTo, EnableMatchReport = true, TimeOutLimitMilliseconds = ReadTimeoutMs,
+            Filter = listed.Filter, SortBy = listed.SortBy, SortAscending = listed.SortAscending,
+        };
+        var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
+        foreach (var m in result.MatchReport?.Matches ?? [])
+            yield return new(m.DocumentKey, m.Words.Select(w => new SearchExplanation.Word(w.Word, w.Field, SearchExplanation.How(w.How), w.How != WordMatch.NotFound)).ToList());
     }
 
     /// <summary>Reads the open page's records, and only those, off the circuit. Each is checked
@@ -781,8 +830,15 @@
         var columns = _columns.ToList();
         var fields = CheckedFields;
         var ceiling = DataCheck.TextCeiling;
-        var rows = await Task.Run(() => keys.Select(k => ReadRow(k, ReadJson(k), columns, fields, ceiling)).ToList());
+        // The page's match report, unless an earlier page's already covered it.
+        var query = _query != null && _matches != null && keys.Any(k => !_matches.ContainsKey(k)) ? _query : null;
+        var upTo = Math.Min(_keys.Length, (_page + 1) * _perPage);
+        var (rows, matches) = await Task.Run(() => (
+            keys.Select(k => ReadRow(k, ReadJson(k), columns, fields, ceiling)).ToList(),
+            query == null ? null : MatchesUpTo(query, upTo).ToList()));
         if (seq != _seq) return;
+        if (matches != null && _matches != null)
+            foreach (var (key, words) in matches) _matches[key] = words;
         _rows = rows;
         StateHasChanged();
     }
@@ -896,6 +952,19 @@
         </Tooltip>
     };
 
+    /// <summary>The key column: the chevron, the longest key listed in the mono face, and room for
+    /// the cut and fixed marks. Read from every listed key, not the page's, so paging keeps it.</summary>
+    private int KeyWidth => 74 + 8 * Math.Max(4, _keys.Length == 0 ? 0 : _keys.Max(k => k.ToString(Inv).Length));
+
+    /// <summary>A column's width by its field's type: a number or a flag narrow, text wide.</summary>
+    private static int WidthOf(FieldProxy? f) =>
+        f == null ? 200
+        : IsNumber(f) ? 130
+        // A flag's type is the JsonValueKind it was first seen as.
+        : string.Equals(f.FieldType, nameof(JsonValueKind.True), StringComparison.OrdinalIgnoreCase)
+          || string.Equals(f.FieldType, nameof(JsonValueKind.False), StringComparison.OrdinalIgnoreCase) ? 110
+        : 260;
+
     private static string Short(string value, int chars) => value.Length > chars ? value[..(chars - 1)] + "…" : value;
 
     /// <summary>The record's fields as the field configuration groups them, empty groups left out.</summary>
@@ -958,7 +1027,6 @@
 
     public override void Dispose()
     {
-        _typing?.Cancel();
         _polling?.Cancel();
         base.Dispose();
     }
