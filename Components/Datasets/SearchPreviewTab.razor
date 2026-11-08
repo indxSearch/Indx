@@ -551,7 +551,11 @@ else
                 catch { }
             }
         }
-        return (hits, SearchExplanation.Of(result, wordMatching: Ctx.SavedFields?.Any(f => f.WordMatching == true) != false));
+        // Too short for the lookup: every word below the shortest word token, read from the
+        // tokenizer the server builds every engine with (ConfigurationParameters.Default).
+        bool tooShort = !string.IsNullOrWhiteSpace(text) && text.Split(TokenizerSetup.Default.Delimiters, StringSplitOptions.RemoveEmptyEntries)
+            .All(w => w.Length < TokenizerSetup.Default.MinimumWordSize);
+        return (hits, SearchExplanation.Of(result, wordMatching: Ctx.SavedFields?.Any(f => f.WordMatching == true) != false, tooShort));
     }
 
     private async Task RunPerfTest()
@@ -726,7 +730,7 @@ else
         "Strong matches" => "Every word is found as typed, the word still being typed also as the start of a longer one.",
         "Fuzzy matches" => "Every word is found, some of them within a typo.",
         "Partial matches" => "Some of the words: no record holds them all.",
-        "Pattern matches" => "Only parts of words matched: none of the words was found.",
+        "Pattern matches" => "Found by parts of words, the pattern matcher's work: not by whole words or typos of them.",
         _ => "Any of the words, or parts of them: no typo levels.",
     };
 

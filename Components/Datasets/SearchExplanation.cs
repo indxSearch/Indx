@@ -40,17 +40,31 @@ namespace IndxServer.Components.Datasets
         /// pokedex matched by pattern alone listed 244 for "pikachu").</summary>
         public const string NoWordMatching = "No field is matched by its words, so every search is broad: records are ordered, never narrowed to the ones that match. Turn on WordMatching on the name or title field, under Field configuration.";
 
+        /// <summary>Said for a text with no word long enough to look up ("s"), in place of the rest
+        /// (8 Nov 2026: a single letter showed the pattern note and the candidate bound's).</summary>
+        public const string TooShort = "Too short to look up as a word: the records holding it as part of a word.";
+
         /// <param name="wordMatching">Whether any searched field has WordMatching on; without one
-        /// the search says so first, and not that it chose the Bm25f mode.</param>
-        public static Summary? Of(Result result, bool wordMatching = true)
+        /// the matches are the pattern matcher's, and the search says why first.</param>
+        /// <param name="tooShort">No word of the text is long enough for the word lookup
+        /// (TokenizerSetup.MinimumWordSize): the pattern matcher's alone, said in one line.</param>
+        public static Summary? Of(Result result, bool wordMatching = true, bool tooShort = false)
         {
             if (result.Reason != null) return null;
+            if (tooShort && result.ToleranceCounts is null)
+                return new Summary("Pattern matches", [], [TooShort]);
             var notes = new List<string>();
-            if (!wordMatching)
-                notes.Add(NoWordMatching);
             var levels = new List<Level>();
             string headline;
-            if (PatternOnly(result))
+            if (!wordMatching)
+            {
+                // No field matched by its words (8 Nov 2026): no lookup, so what is listed is the
+                // pattern matcher's work, ordered by BM25F over the pieces. Until then "Broad
+                // matches", the Bm25f mode's name, which hid that the pattern matcher found them.
+                headline = "Pattern matches";
+                notes.Add(NoWordMatching);
+            }
+            else if (PatternOnly(result))
             {
                 // Every record listed came in by pieces of words alone: the word lookup confirmed
                 // none of the query's words in any of them. Indx is only pattern searching.
@@ -63,8 +77,7 @@ namespace IndxServer.Components.Datasets
                 // the search says otherwise (Result.Reranked, 6 Nov 2026: until then read from the
                 // report, which came only with a reranked search).
                 headline = "Broad matches";
-                notes.Add(wordMatching ? $"{result.Count:N0} records hold any of the words or parts of them: the Bm25f mode, with no typo levels."
-                    : $"{result.Count:N0} records hold any of the words or parts of them.");
+                notes.Add($"{result.Count:N0} records hold any of the words or parts of them: the Bm25f mode, with no typo levels.");
                 if (!result.Reranked && result.Records.Length > 0)
                     notes.Add("BM25F's order, not reranked.");
             }
@@ -102,7 +115,9 @@ namespace IndxServer.Components.Datasets
                 if (fill.MostWords > 0)
                     notes.Add($"{Records(fill.MostWords)} below {(fill.NextRungs > 0 ? "those" : "them")} {(fill.MostWords == 1 ? "holds" : "hold")} most of the words, shown to fill the page, not counted.");
             }
-            if (result.Count > result.Ranked)
+            // The bound is said where there is a counted set it can leave out of the list; without
+            // one every record with a piece is "counted" and the note says nothing useful.
+            if (result.CountedTolerance != null && result.Count > result.Ranked)
                 notes.Add($"{result.Ranked:N0} of the {result.Count:N0} were ranked: the candidate bound, taken by BM25F, the records holding a word itself before those met only by its start. The others are counted, and in the facets, but cannot come into the list. Candidates under Query parameters ranks more.");
             return new Summary(headline, levels, notes);
         }
