@@ -49,9 +49,13 @@ namespace IndxServer.Services
             return $"{N(Start + i * Width)}–{N(Start + (i + 1) * Width)}";
         }
 
-        /// <summary>A limit that stands for no limit: a client asking for "100 or more" sends the largest
-        /// double (or infinity) as the top, which printed as 309 digits.</summary>
-        public static bool IsOpen(double v) => double.IsInfinity(v) || Math.Abs(v) >= 1e300;
+        /// <summary>A limit that stands for no limit: a client asking for "100 or more" sends a number
+        /// no field holds as the top. intrface sends JavaScript's Number.MAX_VALUE from an "and up"
+        /// bucket (printed as 309 digits) and Number.MAX_SAFE_INTEGER, 2^53 - 1, from a suggested
+        /// filter with an open end; anything from there up, or infinite, is open.</summary>
+        public static bool IsOpen(double v) => double.IsInfinity(v) || Math.Abs(v) >= MaxSafeInteger;
+
+        private const double MaxSafeInteger = 9007199254740991;
 
         private static string N(double v) => v.ToString(Math.Abs(v % 1) < 1e-9 ? "0" : "0.##", System.Globalization.CultureInfo.InvariantCulture);
 
