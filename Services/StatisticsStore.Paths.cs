@@ -52,8 +52,10 @@ namespace IndxServer.Services
         /// <summary>A limit that stands for no limit: a client asking for "100 or more" sends a number
         /// no field holds as the top. intrface sends JavaScript's Number.MAX_VALUE from an "and up"
         /// bucket (printed as 309 digits) and Number.MAX_SAFE_INTEGER, 2^53 - 1, from a suggested
-        /// filter with an open end; anything from there up, or infinite, is open.</summary>
-        public static bool IsOpen(double v) => double.IsInfinity(v) || Math.Abs(v) >= MaxSafeInteger;
+        /// filter with an open end; anything from there up, or infinite, is open. Below it only the
+        /// 32-bit limits a C# or Java client would send (int.MaxValue and the like), exactly.</summary>
+        public static bool IsOpen(double v) =>
+            double.IsInfinity(v) || Math.Abs(v) >= MaxSafeInteger || v is int.MaxValue or int.MinValue or uint.MaxValue;
 
         private const double MaxSafeInteger = 9007199254740991;
 
