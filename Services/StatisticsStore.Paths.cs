@@ -37,13 +37,21 @@ namespace IndxServer.Services
         /// <summary>No bands: the field was only ever searched with one range, which is then the step.</summary>
         public static readonly RangeBands Exact = new(0, 0, 0);
 
-        /// <summary>The band a range falls in, by its middle, as "a–b"; the range itself where there are no bands.</summary>
+        /// <summary>The band a range falls in, by its middle, as "a–b"; the range itself where there are no
+        /// bands. A range open at one end has no middle and reads "a or more", "up to b".</summary>
         public string Of(double min, double max)
         {
+            if (IsOpen(min) && IsOpen(max)) return "any";
+            if (IsOpen(max)) return $"{N(min)} or more";
+            if (IsOpen(min)) return $"up to {N(max)}";
             if (Count == 0) return $"{N(min)}–{N(max)}";
             var i = Math.Clamp((int)Math.Floor(((min + max) / 2 - Start) / Width), 0, Count - 1);
             return $"{N(Start + i * Width)}–{N(Start + (i + 1) * Width)}";
         }
+
+        /// <summary>A limit that stands for no limit: a client asking for "100 or more" sends the largest
+        /// double (or infinity) as the top, which printed as 309 digits.</summary>
+        public static bool IsOpen(double v) => double.IsInfinity(v) || Math.Abs(v) >= 1e300;
 
         private static string N(double v) => v.ToString(Math.Abs(v % 1) < 1e-9 ? "0" : "0.##", System.Globalization.CultureInfo.InvariantCulture);
 
@@ -124,6 +132,8 @@ namespace IndxServer.Services
             foreach (var key in keys.Keys)
                 foreach (var r in Ranges(key))
                 {
+                    // An open range has its own label and would stretch the bands to the largest double.
+                    if (RangeBands.IsOpen(r.Min) || RangeBands.IsOpen(r.Max)) continue;
                     var sp = spans.TryGetValue(r.Field, out var had) ? (Math.Min(had.Low, r.Min), Math.Max(had.High, r.Max), had.Seen) : (r.Min, r.Max, new HashSet<(double, double)>());
                     sp.Item3.Add((r.Min, r.Max));
                     spans[r.Field] = sp;
@@ -178,9 +188,13 @@ namespace IndxServer.Services
                     if (g.Any(o => o.Value.Length == 0))
                     {
                         var mine = ranges.Where(r => r.Field == g.Key).ToList();
-                        return bands != null && mine.Count == 1 && bands.TryGetValue(g.Key, out var b)
-                            ? $"{g.Key} {b.Of(mine[0].Min, mine[0].Max)}"
-                            : $"{g.Key} (range)";
+                        if (bands != null && mine.Count == 1)
+                        {
+                            var (lo, hi) = (mine[0].Min, mine[0].Max);
+                            if (RangeBands.IsOpen(lo) || RangeBands.IsOpen(hi)) return $"{g.Key} {RangeBands.Exact.Of(lo, hi)}";
+                            if (bands.TryGetValue(g.Key, out var b)) return $"{g.Key} {b.Of(lo, hi)}";
+                        }
+                        return $"{g.Key} (range)";
                     }
                     var values = g.Select(o => o.Value).Distinct(StringComparer.Ordinal).ToList();
                     return values.Count == 1 ? $"{g.Key} = {values[0]}" : $"{g.Key} ({values.Count} values)";
