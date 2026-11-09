@@ -11,7 +11,7 @@ namespace IndxServer.Services
     /// a woken one is read from its engine, so a count is kept for <see cref="Fresh"/> and Refresh
     /// counts again.
     /// </summary>
-    public static class DatasetRecordCounts
+    internal static class DatasetRecordCounts
     {
         /// <summary>How long a count of a sleeping dataset is used before it is taken again.</summary>
         public static readonly TimeSpan Fresh = TimeSpan.FromMinutes(10);
@@ -27,7 +27,10 @@ namespace IndxServer.Services
             var now = DateTime.UtcNow;
             // Never GetState: it wakes a hibernated dataset (see Admin/Datasets.razor).
             var engine = manager.FindSearchEngine(dataSet, teamId);
-            if (engine is { IsDisposed: false } && engine.Status is { SystemState: Indx.Api.SystemState.Ready } status)
+            // Not when the free limit cut it: the engine then holds the first 100,000 and the store
+            // the rest, and the store's count is the one that says it was cut.
+            if (engine is { IsDisposed: false } && engine.Status is { SystemState: Indx.Api.SystemState.Ready } status
+                && status.LicenseInfo?.DocumentLimitExceeded != true)
             {
                 Counts[(dataSet, teamId)] = (status.DocumentCount, now);
                 return status.DocumentCount;
@@ -38,5 +41,17 @@ namespace IndxServer.Services
             Counts[(dataSet, teamId)] = (counted, now);
             return counted;
         }
+
+        /// <summary>The engine's keep-alive view with its record count from here, not a COUNT(*) of
+        /// its own: what every page that opens a dataset or lists a team's asks for, often once a
+        /// second while a page is open.</summary>
+        public static IndxServerInternalApi.KeepAliveInfo KeepAlive(string dataSet, string teamId) =>
+            IndxServerInternalApi.Manager.GetKeepAliveInfo(dataSet, teamId, countRecordsOnDisk: false)
+                with { RecordCount = Get(dataSet, teamId) };
+
+        /// <summary>The count kept for a dataset is dropped when it is put to sleep, disposed or
+        /// deleted: the next read counts it again, once. A sleeping dataset's rows cannot change, so
+        /// after that the count is right until it wakes.</summary>
+        public static void Forget(string dataSet, string teamId) => Counts.TryRemove((dataSet, teamId), out _);
     }
 }

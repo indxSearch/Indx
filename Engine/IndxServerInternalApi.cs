@@ -571,6 +571,7 @@ namespace IndxServer.Engine
             }
 
             DisposeInstance(instance, key);
+            Services.DatasetRecordCounts.Forget(dataSetName, teamId);
             _lifecycleLogger.LogInformation("Disposed SearchEngine instance for team {Team}, dataset {DataSet}", TeamLabel(teamId), dataSetName);
         }
 
@@ -591,6 +592,7 @@ namespace IndxServer.Engine
             SaveEmbeddingsForSleep(engine, dataSetName, teamId);
             if (engine.Unload(out _))
             {
+                Services.DatasetRecordCounts.Forget(dataSetName, teamId);
                 _lifecycleLogger.LogInformation("Unloaded SearchEngine instance for team {Team}, dataset {DataSet} (sleep)", TeamLabel(teamId), dataSetName);
                 return;
             }
@@ -766,6 +768,7 @@ namespace IndxServer.Engine
                 _logger.LogInformation("{Prefix}idle-unload skipped: {Reason}", MakeLogPrefix(inst.TeamId, inst.DataSetName), unloadError);
                 return false;
             }
+            Services.DatasetRecordCounts.Forget(inst.DataSetName, inst.TeamId);
             _logger.LogInformation("{Prefix}idle-unloaded (keep-alive countdown elapsed); documents remain in the store", MakeLogPrefix(inst.TeamId, inst.DataSetName));
             ReportChange(inst.DataSetName, inst.TeamId, Services.DatasetChangeKind.Hibernate, new { reason = "idle" });
             return true;

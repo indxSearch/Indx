@@ -90,7 +90,9 @@ namespace IndxServer.Services
 
         public List<string> GetTeamDataSets(string teamId) => M.GetTeamDataSets(teamId);
         public SystemStatus? GetState(string d, string t) => M.GetState(d, t);
-        public IndxServerInternalApi.KeepAliveInfo GetKeepAliveInfo(string d, string t) => M.GetKeepAliveInfo(d, t);
+        // The record count from DatasetRecordCounts: opening a dataset asked for a COUNT(*) twice
+        // on every status refresh, and a team's list once per dataset per load (Nov 2026).
+        public IndxServerInternalApi.KeepAliveInfo GetKeepAliveInfo(string d, string t) => DatasetRecordCounts.KeepAlive(d, t);
         public bool SetKeepAliveHrs(string d, string t, int hrs) => M.SetKeepAliveHrs(d, t, hrs);
         public IServerSearchEngine? FindSearchEngine(string d, string t) => M.FindSearchEngine(d, t);
         public bool DeleteDataSet(string d, string t) => M.DeleteDataSet(d, t);
