@@ -4,8 +4,9 @@ All notable changes to the Indx server. The top section is the release notes for
 GitHub release: copy it as-is.
 
 Versions: the server has its own line (2.x). It bundles the Indx core library (`IndxSearchLib`,
-5.x up to beta.3, 6.x from beta.4) and serves the HTTP API contract `v2.0-beta`, which is the
-version in every URL. A server patch can pick up a newer core without changing the HTTP contract.
+5.x up to beta.3, 6.x from beta.4) and serves the HTTP API contract `v2.0-beta`, the name of its
+OpenAPI document (`/swagger/v2.0-beta/swagger.json`). A server patch can pick up a newer core
+without changing the HTTP contract.
 
 ## [2.0.0-beta.4] - Unreleased
 
