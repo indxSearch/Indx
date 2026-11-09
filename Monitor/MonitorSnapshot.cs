@@ -7,7 +7,8 @@ namespace IndxServer.Monitor
     /// One dataset as the monitor sees it: everything readable without resolving an engine.
     /// <para><see cref="State"/> is null when no engine instance is in memory at all. A dataset
     /// with rows on disk but no loaded engine (or one still in <see cref="SystemState.Created"/>)
-    /// is <see cref="Hibernated"/> — the same derivation the admin dataset list makes.</para>
+    /// is <see cref="Hibernated"/> — the same derivation the admin dataset list makes — unless
+    /// startup warm-up still has it on its list: then it is <see cref="Queued"/>, on its way up.</para>
     /// </summary>
     internal sealed record DatasetLine(
         string DataSetName,
@@ -24,7 +25,8 @@ namespace IndxServer.Monitor
         int? ProgressPercent,
         int SearchCounter,
         bool IndexedTextTruncated,
-        string? ErrorMessage)
+        string? ErrorMessage,
+        bool Queued = false)
     {
         /// <summary>Stable identity across ticks, for transition detection. The id, not the
         /// name: a rename must not read as a dataset appearing and another disappearing.</summary>
@@ -38,10 +40,12 @@ namespace IndxServer.Monitor
 
         /// <summary>
         /// The one word shown in a table and compared between ticks to raise a transition event.
-        /// Hibernated is checked before State because a hibernated dataset reports Created.
+        /// Hibernated is checked before State because a hibernated dataset reports Created; queued
+        /// before both, as warm-up hasn't made its engine yet or has only just.
         /// </summary>
         internal string Phase =>
-            Hibernated ? "Hibernated"
+            Queued ? "Queued"
+            : Hibernated ? "Hibernated"
             : State?.ToString() ?? "Unloaded";
     }
 

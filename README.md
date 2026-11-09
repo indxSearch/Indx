@@ -582,6 +582,15 @@ and its idle-eviction countdown. Below it, an event stream carries dataset state
 sweeps, background jobs and anything the server logs while the monitor is up. Datasets are coloured
 by state, with the same colours and icons as the chips in the web UI.
 
+The monitor opens with the indx mark in voxels, large on an empty screen, turning while the
+datasets that load at startup come in. Under it, what is happening right now ("loading films 38%,
+2 more"); at the foot, the server and core versions and the address. When the first dataset is
+ready, the mark flies to the header and lands as its logo, and the monitor's frame draws itself in
+round it. Datasets still waiting their turn in the startup load show as **Queued** in the table. Any key goes
+straight to the monitor; with nothing to load it takes about five seconds. If datasets are still
+loading when the monitor is up, and none is ready, the mark turns on in the dataset pane until the
+first one serves. On a terminal with only 16 colours it is drawn in shade characters.
+
 | Key | Does |
 |---|---|
 | `Ctrl+Q` | Detach the monitor. **The server keeps running.** |

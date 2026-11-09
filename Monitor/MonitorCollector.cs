@@ -146,7 +146,10 @@ namespace IndxServer.Monitor
             // like from outside: the data is persisted, the engine is not loaded. Not yet counted
             // reads as hibernated too: a dataset with no rows at all is the rare case, and calling
             // the many sleeping ones "Unloaded" for a tick would report each as a transition.
-            bool hibernated = recordsOnDisk != 0
+            // Except one warm-up has yet to reach: that one is queued, on its way up, and calling
+            // it hibernated at startup said the opposite of what was happening.
+            bool queued = manager.IsWarmUpPending(dataSetName, teamId);
+            bool hibernated = !queued && recordsOnDisk != 0
                               && status?.SystemState is null or SystemState.Created;
 
             return new DatasetLine(
@@ -164,7 +167,8 @@ namespace IndxServer.Monitor
                 ProgressPercent: manager.GetProgressPercent(dataSetName, teamId),
                 SearchCounter: status?.SearchCounter ?? 0,
                 IndexedTextTruncated: status?.IndexedTextTruncated ?? false,
-                ErrorMessage: string.IsNullOrWhiteSpace(status?.ErrorMessage) ? null : status!.ErrorMessage);
+                ErrorMessage: string.IsNullOrWhiteSpace(status?.ErrorMessage) ? null : status!.ErrorMessage,
+                Queued: queued);
         }
 
         /// <summary>Takes the queued counts, one dataset at a time, off the timer's thread.</summary>

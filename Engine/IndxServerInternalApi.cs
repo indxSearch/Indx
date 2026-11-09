@@ -216,6 +216,11 @@ namespace IndxServer.Engine
                    || _warmUpPending.ContainsKey(key);
         }
 
+        /// <summary>True while startup warm-up still has this dataset on its list and has not reached
+        /// it: on its way up, though nothing is working on it yet. The monitor shows it as queued.</summary>
+        internal bool IsWarmUpPending(string dataSetName, string teamId) =>
+            _warmUpPending.ContainsKey(MakeKey(dataSetName, teamId));
+
         /// <summary>Progress of whatever is running for this dataset, 0-100, or null when nothing is.
         /// Covers a load, an index build and a shadow rebuild; the caller does not need to know
         /// which.</summary>

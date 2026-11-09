@@ -36,11 +36,13 @@ namespace IndxServer.Monitor
         private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
         /// <summary>Rows taken by the header: air, three rows of logo, air, three rows of gauges, air.</summary>
-        private const int HeaderHeight = 9;
+        internal const int HeaderHeight = 9;
         /// <summary>Where the gauges start: under the logo's air.</summary>
         private const int MetersTop = 5;
         /// <summary>Below these a pane stops being worth having.</summary>
         private const int MinDatasets = 4, MinEvents = 3;
+        /// <summary>Where the logo sits in the window (MonitorIntro lands the mark there).</summary>
+        internal const int LogoX = 3, LogoY = 1;
 
         private readonly IApplication _app;
         private readonly Func<MonitorSnapshot?> _readLatest;
@@ -54,6 +56,7 @@ namespace IndxServer.Monitor
         private readonly TableView _datasets = new();
         private readonly TableView _events = new();
         private readonly FrameView _datasetsFrame;
+        private readonly VoxelMarkView _mark = new() { Visible = false };
 
         private readonly MonitorLayout _layout = MonitorLayout.Load();
         private bool _dragged;
@@ -81,8 +84,8 @@ namespace IndxServer.Monitor
             // ── Header ──
             // One row of air above the logo and three columns to its left; the state icon mirrors
             // it on the right, as in the workbench.
-            var logo = new PixlIconView { X = 3, Y = 1, Icon = "IndxLogo" };
-            int textLeft = 3 + PixlIcon.Width + 3;
+            var logo = new PixlIconView { X = LogoX, Y = LogoY, Icon = "IndxLogo" };
+            int textLeft = LogoX + PixlIcon.Width + 3;
             var heading = new Label { X = textLeft, Y = 1, Text = "indx monitor", HotKeySpecifier = NoHotKey };
 
             // The two figure lines sit under the heading and stop short of the state icon.
@@ -120,6 +123,11 @@ namespace IndxServer.Monitor
             // coloured word in one column is easy to miss at a glance.
             _datasets.Style.RowColorGetter = args => RowScheme(args.RowIndex);
             _datasetsFrame.Add(_datasets);
+            // The loading picture: the mark in voxels, under the table's rows while the first
+            // datasets load (ShowMark). Over the table's empty part rather than instead of the
+            // table, so the rows loading, with their percentages, stay in view.
+            _mark.X = 0; _mark.Width = Dim.Fill(); _mark.Height = Dim.Fill();
+            _datasetsFrame.Add(_mark);
 
             // ── Events ──
             var eventsFrame = new FrameView
@@ -161,6 +169,9 @@ namespace IndxServer.Monitor
 
             Refresh();
             _app.AddTimeout(TimeSpan.FromMilliseconds(250), () => { KeepDividerInBounds(); Refresh(); return true; });
+            // The mark's frames, at 20 a second: its own timer, as the figures' quarter second
+            // would make the turn stutter. Nothing is drawn while it is hidden.
+            _app.AddTimeout(TimeSpan.FromMilliseconds(50), () => { if (_mark.Visible) _mark.SetNeedsDraw(); return true; });
         }
 
         /// <summary>
@@ -211,8 +222,7 @@ namespace IndxServer.Monitor
             if (_datasetsFrame.Height is not DimAbsolute current)
                 return;
 
-            int available = Viewport.Height - HeaderHeight - 1;   // the status bar keeps a row
-            if (available < MinDatasets + MinEvents)
+            if (DatasetsHeight(Viewport.Height, current.Size) is not { } clamped)
                 return;   // too small to split sensibly; leave whatever is there
 
             // The built-in split, once the terminal size is actually known. Doing this at
@@ -222,12 +232,11 @@ namespace IndxServer.Monitor
                 _initialised = true;
                 if (_layout.DatasetsHeight is null)
                 {
-                    Apply(available / 2);
+                    Apply(DatasetsHeight(Viewport.Height, null)!.Value);
                     return;
                 }
             }
 
-            int clamped = Math.Clamp(current.Size, MinDatasets, available - MinEvents);
             if (clamped != current.Size)
             {
                 Apply(clamped);
@@ -249,6 +258,19 @@ namespace IndxServer.Monitor
                 SetNeedsLayout();
                 SetNeedsDraw();
             }
+        }
+
+        /// <summary>
+        /// The datasets pane's height in a window whose inside is <paramref name="viewportHeight"/>
+        /// rows: <paramref name="height"/> kept to what leaves both panes usable, or, with none, the
+        /// built-in half. Null when the window is too short to split. The intro (MonitorIntro)
+        /// draws the panes' frames in where this puts them.
+        /// </summary>
+        internal static int? DatasetsHeight(int viewportHeight, int? height)
+        {
+            int available = viewportHeight - HeaderHeight - 1;   // the status bar keeps a row
+            if (available < MinDatasets + MinEvents) return null;
+            return height is { } h ? Math.Clamp(h, MinDatasets, available - MinEvents) : available / 2;
         }
 
         /// <summary>Only once something was dragged: a pane on its built-in split keeps following
@@ -294,6 +316,8 @@ namespace IndxServer.Monitor
                 _datasets.SetNeedsDraw();
             }
 
+            ShowMark(snapshot);
+
             if (events.Count != _renderedEventCount)
             {
                 // Events render newest first, so N new ones push the selected line N rows down.
@@ -314,6 +338,24 @@ namespace IndxServer.Monitor
             _filters.SetNeedsDraw();
             _stateIcon.SetNeedsDraw();
             _meters.SetNeedsDraw();
+        }
+
+        /// <summary>
+        /// The loading picture is up while datasets load (or wait their turn at startup) and none is
+        /// ready yet: a cold start, the one wait long enough to want something to look at, and
+        /// before the first dataset is ready the pane has nothing else to show. Once one serves, the table is the picture; a
+        /// dataset loading later shows in its row and in the header's icon.
+        /// </summary>
+        internal static bool Loading(MonitorSnapshot s) =>
+            !s.Datasets.Any(d => d.Ready)
+            && s.Datasets.Any(d => d.State is SystemState.Loading or SystemState.Indexing || d.Queued);
+
+        private void ShowMark(MonitorSnapshot s)
+        {
+            bool show = Loading(s);
+            // Below the heading and the rows, with a row of air.
+            if (show) _mark.Y = s.Datasets.Count + 2;
+            if (_mark.Visible != show) _mark.Visible = show;
         }
 
         private void ShowHeader(MonitorSnapshot s)
@@ -349,6 +391,7 @@ namespace IndxServer.Monitor
             : d.ErrorMessage is not null ? ("Warning", Warn)
             : d.State == SystemState.Loading ? ("Trolley", Warn)
             : d.State == SystemState.Indexing ? ("HourGlass", Warn)
+            : d.Queued ? ("HourGlass", Slate)
             : d.Ready ? ("Flag", Teal)
             : d.Hibernated ? ("Empty", LightBlue)
             : ("Empty", Slate);
@@ -357,7 +400,7 @@ namespace IndxServer.Monitor
         {
             if (datasets.Any(d => d.State == SystemState.Error))
                 return ("Warning", Signal);
-            if (datasets.Any(d => d.State is SystemState.Loading or SystemState.Indexing))
+            if (datasets.Any(d => d.State is SystemState.Loading or SystemState.Indexing || d.Queued))
                 return ("HourGlass", Warn);
             if (datasets.Any(d => d.ErrorMessage is not null))
                 return ("Warning", Warn);

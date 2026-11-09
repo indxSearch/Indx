@@ -31,6 +31,11 @@ patch can pick up a newer core without changing the HTTP contract.
 - **Admin > Monitor** shows the process's CPU and memory against what the machine allows, the
   native memory pool, searches a minute over the last hour and every dataset's state at a glance.
   The terminal monitor has the same gauges.
+- **The terminal monitor opens with the indx mark.** It turns while the datasets load at startup,
+  then lands as the monitor's logo as the monitor draws itself in. It names the dataset loading
+  and how far it has got, and shows the versions and the address. Any key skips it.
+- The terminal monitor shows a dataset waiting its turn in the startup load as **Queued**, where
+  it said Hibernated.
 - **Update notices.** Once a day the server checks which Indx release is the latest and tells its
   admins once when a newer one is out: a notification in the console and a line under the version in
   the admin area, with how to get it. A security release says so and is emailed too; an ordinary one is

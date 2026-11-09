@@ -44,11 +44,18 @@ namespace IndxServer.Monitor
                 Console.OutputEncoding = System.Text.Encoding.UTF8;
                 using IApplication app = Application.Create().Init();
                 _app = app;
-                using var window = new MonitorWindow(app, () => state.Latest, state.Events,
-                                                    requestShutdown ?? (() => { }), _endpoints);
                 // Only now does the console belong to the screen. Until this point log lines --
                 // including whatever went wrong during startup -- print normally.
                 logProvider?.ScreenUp();
+                // The way in: the mark while the datasets load, landing as the window's logo and
+                // drawing its frame in (MonitorIntro). A stop during it (Ctrl+C) ends it, and
+                // then there is no window to show.
+                using (var intro = new MonitorIntro(app, () => state.Latest, _endpoints))
+                    app.Run(intro);
+                if (_stopped)
+                    return;
+                using var window = new MonitorWindow(app, () => state.Latest, state.Events,
+                                                    requestShutdown ?? (() => { }), _endpoints);
                 app.Run(window);
                 window.SaveLayout();
             }
