@@ -42,7 +42,7 @@ namespace IndxServer.Services.Observr
         List<ObservrSummaryQuery> TopQueries, List<ObservrSummaryQuery> ZeroHitQueries, List<ObservrSummaryQuery> LowClickThrough,
         List<ObservrSummaryQuery> FuzzyFinds, List<ObservrSummaryDocument> TopDocuments, List<ObservrSummaryChange> Changes,
         ObservrSummaryAsk? SearchOrAsk, List<ObservrSummaryField> Fields, List<string> RecentFindings,
-        List<string>? OwnerNotes = null)
+        List<string>? OwnerNotes = null, ObservrRecordsReport? RecordsReport = null)
     {
         public const int CurrentVersion = 1;
         public const int Days = 7;
@@ -52,7 +52,8 @@ namespace IndxServer.Services.Observr
     /// dataset is loaded, its engine. Never loads a dataset: a summary of a sleeping one has no field
     /// list, which is also a fact about it.</summary>
     internal sealed class ObservrSummaryBuilder(StatisticsService statistics, DatasetMetadataStore metadata, IDatasetEngines engines,
-        ObservrFindingStore findings, SearchOrAsk.SearchOrAskStore searchOrAskStore, SearchOrAsk.SearchOrAskService searchOrAsk)
+        ObservrFindingStore findings, SearchOrAsk.SearchOrAskStore searchOrAskStore, SearchOrAsk.SearchOrAskService searchOrAsk,
+        DataCheckStore dataChecks)
     {
         private const int TopQueries = 20;
         private const int ZeroHits = 15;
@@ -123,7 +124,9 @@ namespace IndxServer.Services.Observr
                 findings.ListForDataset(teamId, dataSetName, Findings).Select(f => $"{f.Kind}: {(f.Query.Length > 0 ? f.Query + ": " : "")}{f.Answer} ({f.Status})").ToList(),
                 // What the owner told Observr and declined (Notes/observr-agent-plan.md): a digest
                 // does not propose again what they turned down.
-                findings.NotesFor(teamId, dataSetName).Select(n => n.Text).ToList());
+                findings.NotesFor(teamId, dataSetName).Select(n => n.Text).ToList(),
+                // The records report the owner ran last, if any: what the records lack (Nov 2026).
+                ObservrRecordsReport.From(dataChecks.Load(teamId, dataSetName), loaded ? engine!.GetFieldConfiguration() : null));
         }
     }
 }

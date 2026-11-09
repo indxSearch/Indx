@@ -27,7 +27,7 @@ namespace IndxServer.Services.Observr
     /// </summary>
     internal sealed class ObservrTools(IDatasetEngines engines, StatisticsService statistics, DatasetMetadataStore metadata,
         ObservrFindingStore findings, QueryParameterStore queryParameters, SearchOrAsk.SearchOrAskStore searchOrAsk, ObservrClient client,
-        SearchOrAsk.SearchOrAskService searchOrAskService)
+        SearchOrAsk.SearchOrAskService searchOrAskService, DataCheckStore dataChecks)
     {
         private const int SearchMax = 20;
         private const int Top = 15;
@@ -71,6 +71,8 @@ namespace IndxServer.Services.Observr
                     Schema(new { type = "object", properties = new { } })),
                 new("synonyms", "The dataset's synonym list.", Schema(new { type = "object", properties = new { } })),
                 new("settings", "The dataset's settings: its description, its query parameters (as stored: mode; match with the typos allowed; candidates with how many are ranked, fallback, rest and fill reach; ranking with rerank; null where the dataset sets none and the default applies) and its Search or ask settings.",
+                    Schema(new { type = "object", properties = new { } })),
+                new("records_report", "The records report the owner ran last on the Records tab (Scan the records): how many records lack each field, the searched fields first, how many have searched text cut at indexing, distinct values per field, and whether the report still holds. Never starts a scan; when there is none, say the owner can run one.",
                     Schema(new { type = "object", properties = new { } })),
                 new("zero_hit_evidence", "For a query that found nothing: what the same search finds when records holding only some of the words may be listed, and what each of its words finds alone. The evidence for a synonym.",
                     Schema(new { type = "object", properties = new { query = new { type = "string" } }, required = new[] { "query" } })),
@@ -148,6 +150,7 @@ namespace IndxServer.Services.Observr
                     "synonyms" => Synonyms(ctx),
                     "settings" => Settings(ctx),
                     "zero_hit_evidence" => ZeroHit(ctx, Text(input, "query")),
+                    "records_report" => RecordsReport(ctx),
                     _ => $"There is no tool called {name}.",
                 };
             }
@@ -365,6 +368,15 @@ namespace IndxServer.Services.Observr
             if (list == null || list.Entries.Count == 0) return "No synonyms on this dataset.";
             return string.Join("\n", list.Entries.Select(e =>
                 e.Direction == SynonymDirection.OneWay ? $"- {e.Source} → {string.Join(", ", e.Terms)}" : $"- {string.Join(" = ", e.Terms)}"));
+        }
+
+        private string RecordsReport(ObservrChatContext ctx)
+        {
+            var ds = ctx.DataSetName!;
+            var engine = engines.FindSearchEngine(ds, ctx.TeamId);
+            var configuration = engine is { IsDisposed: false } && engine.Status.SystemState == SystemState.Ready ? engine.GetFieldConfiguration() : null;
+            return ObservrRecordsReport.From(dataChecks.Load(ctx.TeamId, ds), configuration)?.Describe()
+                ?? "No records report yet. The owner can run one on the Records tab (Scan the records); it reads every record once and keeps the report.";
         }
 
         private string Settings(ObservrChatContext ctx)

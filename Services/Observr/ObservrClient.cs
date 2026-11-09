@@ -35,7 +35,7 @@ namespace IndxServer.Services.Observr
     /// <summary>The dataset's setup for review: every field with its evidence, the key field, and
     /// what visitors searched for lately, which says what the fields are expected to answer.</summary>
     public sealed record ObservrFieldReviewAsk(string Kind, string Team, string Dataset, string Site, string KeyField, long Records,
-        int Sampled, List<ObservrFieldEvidence> FieldEvidence, List<string> TopQueries);
+        int Sampled, List<ObservrFieldEvidence> FieldEvidence, List<string> TopQueries, ObservrRecordsReport? RecordsReport = null);
 
     /// <summary>What Search or ask runs with today, for the setup help: the settings, the fields the
     /// judge sees once the automatic choice is applied, and the dataset's query parameters as stored
@@ -49,7 +49,7 @@ namespace IndxServer.Services.Observr
     /// a few record names, the queries, and the settings as they stand. No record bodies.</summary>
     public sealed record ObservrSearchOrAskSetupAsk(string Kind, string Team, string Dataset, string Site, List<string> Fields, long Records,
         int Sampled, List<ObservrFieldEvidence> FieldEvidence, List<string> Names, List<ObservrSummaryQuery> TopQueries,
-        List<string> ZeroHitQueries, ObservrSearchOrAskCurrent Current);
+        List<string> ZeroHitQueries, ObservrSearchOrAskCurrent Current, ObservrRecordsReport? RecordsReport = null);
 
     /// <summary>A change to one field's roles and settings (Indx 6): null leaves that one as it is.
     /// <see cref="Tolerance"/> is a <see cref="Indx.Api.Tolerance"/> by name.</summary>
@@ -439,7 +439,7 @@ namespace IndxServer.Services.Observr
         IConfiguration configuration, IDatasetEngines engines, DatasetMetadataStore metadata, StatisticsService statistics,
         ObservrFindingStore findings, ObservrSummaryBuilder summaries, SearchOrAsk.SearchOrAskStore searchOrAsk,
         SearchOrAsk.SearchOrAskService searchOrAskService, QueryParameterStore queryParameters, ILogger<ObservrClient> logger,
-        Support.SupportOptions supportOptions, Support.SupportClient support, Support.SupportState supportState)
+        Support.SupportOptions supportOptions, Support.SupportClient support, Support.SupportState supportState, DataCheckStore dataChecks)
     {
         /// <summary>The match of a search the server runs on a finished text (a recorded query, a
         /// word, a synonym's expansion): no word is being typed, so none is met as the start of a
@@ -670,7 +670,7 @@ namespace IndxServer.Services.Observr
                 effective.TitleField, effective.SectionFields.ToList(), effective.SnippetFields.ToList(), settings.FilterNotes, settings.Answers,
                 settings.AnswerInstructions, settings.AnswerLanguage, thresholds.Strong!.Value, thresholds.Invite!.Value, qp);
             var ask = new ObservrSearchOrAskSetupAsk(SetupKind, teamId, dataSetName, review.Site, review.FieldEvidence.Select(f => f.Name).ToList(),
-                review.Records, review.Sampled, review.FieldEvidence, names, top, zero, current);
+                review.Records, review.Sampled, review.FieldEvidence, names, top, zero, current, review.RecordsReport);
             return await SendAsync(token, teamId, dataSetName, SetupKind, "", ask, ct);
         }
 
@@ -922,7 +922,8 @@ namespace IndxServer.Services.Observr
             var queries = statistics.Store?.TopQueries(teamId, dataSetName, today - ReviewQueryDays, today, ReviewTopQueries)
                 .Select(q => q.QueryText).ToList() ?? [];
             return new ObservrFieldReviewAsk(FieldReviewKind, teamId, dataSetName, Site(teamId, dataSetName), engine.DocumentFields?.NameOfDocumentKeyField ?? "",
-                engine.Status.DocumentCount, docs.Count, evidence, queries);
+                engine.Status.DocumentCount, docs.Count, evidence, queries,
+                ObservrRecordsReport.From(dataChecks.Load(teamId, dataSetName), engine.GetFieldConfiguration()));
         }
 
         /// <summary>A value with its count, as the evidence lists it: "E-bok (10,595)".</summary>
