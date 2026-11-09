@@ -58,7 +58,12 @@
 
         <h3 class="status-heading status-heading--section">Usage</h3>
         <StatGroup Columns="3">
-            @Tile("Searches since load", DatasetIcons.Search, "Every search the copy in memory has answered since it was made, the console's own included. Statistics count only your visitors.", @<text>@status.SearchCounter.ToString("N0")</text>)
+            @{ var checks = IndxServer.Services.BenchmarkSearches.Of(Ctx.FindEngine()); }
+            <Stat Label="Searches since load" LabelIcon="DatasetIcons.Search"
+                  Hint="Every search the copy in memory has answered since it was made, the console's own included, apart from its performance checks, which are counted beside it. Statistics count only your visitors."
+                  Value="@Math.Max(0, status.SearchCounter - checks).ToString("N0")">
+                @if (checks > 0) { <text>and @checks.ToString("N0") from performance checks</text> }
+            </Stat>
             @Tile("Keep-alive", DatasetIcons.Hibernate, "How long the dataset stays in memory without being used before it goes to sleep. Always on: it never sleeps. Client managed: never loaded or put to sleep on its own; you load and wake it yourself.", @<text>@KeepAliveLabel(ka)</text>)
             @if (ka?.LastUsedUtc is { } used)
             {
