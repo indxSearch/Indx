@@ -14,7 +14,7 @@ namespace IndxServer.Services
     /// films with ten or more Wikipedia articles, built by tools/demo-data/build-films.py and embedded
     /// gzipped. The dataset is created, configured, loaded and indexed here, and ends Ready.
     /// </summary>
-    public sealed class DemoDatasets(DatasetMetadataStore metadata, ILogger<DemoDatasets> logger)
+    public sealed class DemoDatasets(DatasetMetadataStore metadata, FieldProfileStore profiles, ILogger<DemoDatasets> logger)
     {
         /// <summary>The name it gets, or with a number after it when a dataset of that name exists.</summary>
         public const string FilmsName = "films";
@@ -32,20 +32,40 @@ namespace IndxServer.Services
         /// people, then Wikidata's one-line description. Genres, countries and languages are what to
         /// narrow by; year and running time can also be sorted and ranged. One k1 for every
         /// searchable field, so the dataset takes the BM25F path, as nearly every dataset does.
+        /// Matched by pattern only where a part of a word is worth finding, the titles; the rest by
+        /// their words. Each searched field has its built-in profile (<see cref="FilmsProfileIds"/>),
+        /// so the demo starts as a dataset of one's own should (Nov 2026).
         /// </summary>
-        public static FieldProxy[] FilmsFields =>
-        [
-            new() { FieldName = "title", WordMatching = true, PatternMatching = true, Weight = 3f },
-            new() { FieldName = "originalTitle", WordMatching = true, PatternMatching = true, Weight = 2f },
-            new() { FieldName = "directors", WordMatching = true, PatternMatching = true, Filterable = true, Weight = 1.5f },
-            new() { FieldName = "cast", WordMatching = true, PatternMatching = true, Weight = 1.2f },
-            new() { FieldName = "description", WordMatching = true, PatternMatching = true, Weight = 0.8f },
+        public static FieldProxy[] FilmsFields
+        {
+            get
+            {
+                FieldProxy[] fields =
+                [
+                    new() { FieldName = "title", WordMatching = true, PatternMatching = true, Weight = 3f },
+                    new() { FieldName = "originalTitle", WordMatching = true, PatternMatching = true, Weight = 2f },
+                    new() { FieldName = "directors", WordMatching = true, Filterable = true, Weight = 1.5f },
+                    new() { FieldName = "cast", WordMatching = true, Weight = 1.2f },
+                    new() { FieldName = "description", WordMatching = true, Weight = 0.8f },
             new() { FieldName = "genres", Filterable = true, Facetable = true },
             new() { FieldName = "countries", Filterable = true, Facetable = true },
             new() { FieldName = "languages", Filterable = true, Facetable = true },
             new() { FieldName = "year", Filterable = true, Facetable = true, Sortable = true },
-            new() { FieldName = "durationMinutes", Filterable = true, Sortable = true },
-        ];
+                    new() { FieldName = "durationMinutes", Filterable = true, Sortable = true },
+                ];
+                foreach (var f in fields)
+                    if (FilmsProfileIds.TryGetValue(f.FieldName, out var id))
+                        FieldProfiles.Apply(f, FieldProfiles.BuiltIn.First(p => p.Id == id));
+                return fields;
+            }
+        }
+
+        /// <summary>The built-in profile of each searched field: Title for the titles, Name for the
+        /// people, Text for the description.</summary>
+        public static readonly IReadOnlyDictionary<string, string> FilmsProfileIds = new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["title"] = "title", ["originalTitle"] = "title", ["directors"] = "name", ["cast"] = "name", ["description"] = "text",
+        };
 
         /// <summary>Whether the films ship with this build (the resource is embedded).</summary>
         public static bool FilmsAvailable => typeof(DemoDatasets).Assembly.GetManifestResourceInfo(FilmsResource) != null;
@@ -79,6 +99,7 @@ namespace IndxServer.Services
             {
                 metadata.SaveKeyField(teamId, name, "id");
                 metadata.Save(teamId, name, FilmsDescription);
+                profiles.Save(teamId, name, new DatasetFieldProfiles { Assignments = new(FilmsProfileIds, StringComparer.Ordinal) });
 
                 using var films = OpenFilms();
                 if (await manager.InitFromStreamAsync(name, teamId, films) is { } initError)
@@ -116,6 +137,7 @@ namespace IndxServer.Services
             {
                 manager.DeleteDataSet(name, teamId);
                 metadata.Delete(teamId, name);
+                profiles.Delete(teamId, name);
                 throw;
             }
         }
