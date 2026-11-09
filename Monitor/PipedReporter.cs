@@ -81,7 +81,7 @@ namespace IndxServer.Monitor
                 return sb.ToString();
             }
 
-            sb.Append(Inv, $" {d.DocumentCount,11:N0} docs  disk {d.RecordsOnDisk,11:N0}");
+            sb.Append(Inv, $" {d.DocumentCount,11:N0} docs  disk {(d.RecordsOnDisk < 0 ? "…" : d.RecordsOnDisk.ToString("N0", Inv)),11}");
 
             if (d.LastUsedUtc is { } used && d.State is not null)
                 sb.Append(Inv, $"  used {Ago(now - used)}");

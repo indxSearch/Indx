@@ -412,7 +412,7 @@ namespace IndxServer.Monitor
                     d.TeamLabel,
                     d.Phase,
                     d.DocumentCount > 0 ? d.DocumentCount.ToString("N0", Inv) : "",
-                    d.RecordsOnDisk > 0 ? d.RecordsOnDisk.ToString("N0", Inv) : "",
+                    d.RecordsOnDisk > 0 ? d.RecordsOnDisk.ToString("N0", Inv) : d.RecordsOnDisk < 0 ? "…" : "",
                     d.LastUsedUtc is { } used && d.State is not null ? Short(s.TakenUtc - used) : "",
                     note,
                 ];

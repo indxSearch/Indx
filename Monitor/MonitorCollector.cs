@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using IndxServer.Engine;
 using Indx.Api;
 using IndxServer.Models;
@@ -49,6 +50,20 @@ namespace IndxServer.Monitor
         // is the truer number anyway. Steady state is no counting at all.
         private readonly Dictionary<string, int> _recordCounts = [];
 
+        // And never on the collector's own pass (Nov 2026). The first pass sees every dataset for
+        // the first time, so it counted them all before the screen could draw: 7.5 s on a 10 GB
+        // store with many datasets asleep. A count is now queued and taken off the timer's thread,
+        // one dataset after another; the pass draws at once with what it knows, an unknown count
+        // as -1, and takes the results on the next tick. Only the counting task writes _counted,
+        // only Collect reads it into _recordCounts.
+        private readonly ConcurrentDictionary<string, int> _counted = new();
+        private readonly ConcurrentQueue<(string Key, string DataSet, string Team)> _toCount = new();
+        private readonly HashSet<string> _queued = [];
+        private Task _counting = Task.CompletedTask;
+
+        /// <summary>The counting under way, for a test to wait for before the next pass.</summary>
+        internal Task Counting => _counting;
+
         // The engine state each dataset was last seen in, kept separately from _lastSeen because
         // that one holds DatasetLine.Phase -- which says "Hibernated", a word derived from the row
         // count we are deciding whether to fetch. Comparing against it would be circular, and
@@ -89,6 +104,9 @@ namespace IndxServer.Monitor
             foreach (var (dataSetName, teamId) in all)
                 lines.Add(ReadOne(dataSetName, teamId, names.GetValueOrDefault(teamId)));
 
+            if (_counting.IsCompleted && !_toCount.IsEmpty)
+                _counting = Task.Run(CountQueued);
+
             lines.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
 
             return Build(lines, now);
@@ -103,22 +121,32 @@ namespace IndxServer.Monitor
             var status = engine is { IsDisposed: false } ? engine.Status : null;
 
             // Count only when the answer can have moved: a dataset not seen before, or one whose
-            // phase changed since the last pass. See _recordCounts.
+            // phase changed since the last pass. See _recordCounts. A count finished since the
+            // last pass is taken first.
             string key = teamId + "/" + dataSetName;
+            if (_counted.TryRemove(key, out var fresh))
+            {
+                _recordCounts[key] = fresh;
+                _queued.Remove(key);
+            }
             string engineState = status?.SystemState.ToString() ?? "Unloaded";
             bool countNow = !_recordCounts.ContainsKey(key)
                             || !_lastEngineState.TryGetValue(key, out var was)
                             || was != engineState;
             _lastEngineState[key] = engineState;
 
-            var keepAlive = manager.GetKeepAliveInfo(dataSetName, teamId, countRecordsOnDisk: countNow);
-            int recordsOnDisk = keepAlive.RecordCount >= 0
-                ? _recordCounts[key] = keepAlive.RecordCount
-                : _recordCounts.GetValueOrDefault(key);
+            if (countNow && _queued.Add(key))
+                _toCount.Enqueue((key, dataSetName, teamId));
+
+            var keepAlive = manager.GetKeepAliveInfo(dataSetName, teamId, countRecordsOnDisk: false);
+            // The last count known, or -1 while the first is still being taken.
+            int recordsOnDisk = _recordCounts.TryGetValue(key, out var known) ? known : -1;
 
             // Rows on disk with no live engine (or one still in Created) is what hibernation looks
-            // like from outside: the data is persisted, the engine is not loaded.
-            bool hibernated = recordsOnDisk > 0
+            // like from outside: the data is persisted, the engine is not loaded. Not yet counted
+            // reads as hibernated too: a dataset with no rows at all is the rare case, and calling
+            // the many sleeping ones "Unloaded" for a tick would report each as a transition.
+            bool hibernated = recordsOnDisk != 0
                               && status?.SystemState is null or SystemState.Created;
 
             return new DatasetLine(
@@ -137,6 +165,25 @@ namespace IndxServer.Monitor
                 SearchCounter: status?.SearchCounter ?? 0,
                 IndexedTextTruncated: status?.IndexedTextTruncated ?? false,
                 ErrorMessage: string.IsNullOrWhiteSpace(status?.ErrorMessage) ? null : status!.ErrorMessage);
+        }
+
+        /// <summary>Takes the queued counts, one dataset at a time, off the timer's thread.</summary>
+        private void CountQueued()
+        {
+            while (_toCount.TryDequeue(out var item))
+            {
+                try
+                {
+                    var info = IndxServerInternalApi.Manager.GetKeepAliveInfo(item.DataSet, item.Team, countRecordsOnDisk: true);
+                    _counted[item.Key] = Math.Max(0, info.RecordCount);
+                }
+                catch (Exception)
+                {
+                    // A dataset deleted between the pass and the count, or the store busy: it is
+                    // counted again the next time its phase moves. The monitor must not crash.
+                    _counted[item.Key] = 0;
+                }
+            }
         }
 
         private List<MonitorEvent> DetectTransitions(List<DatasetLine> lines, DateTimeOffset now)
@@ -167,6 +214,7 @@ namespace IndxServer.Monitor
                 string label = _lastSeen[goneKey].Label;
                 _lastSeen.Remove(goneKey);
                 _recordCounts.Remove(goneKey);
+                _counted.TryRemove(goneKey, out _);
                 _lastEngineState.Remove(goneKey);
                 _lastSearchCount.Remove(goneKey);
                 if (!_first)
