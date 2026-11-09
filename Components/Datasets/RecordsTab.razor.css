@@ -44,6 +44,8 @@
 .records-head-row { display: flex; align-items: center; gap: 2px; min-height: 30px; }
 .records-head--num .records-head-row { justify-content: flex-end; }
 .records-head-name { white-space: nowrap; }
+/* Key and Matched lead with an icon; a little more room between it and the name. */
+.records-key-head .records-head-name { margin-left: 5px; }
 .records-head-sort { display: inline-flex; color: var(--lv6); }
 .records-head-note { display: flex; align-items: center; gap: 4px; padding-bottom: 6px; font: var(--text-xs); font-weight: var(--reg); color: var(--lv5); white-space: nowrap; }
 .records-head--num .records-head-note { justify-content: flex-end; }

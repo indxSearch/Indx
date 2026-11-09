@@ -263,3 +263,17 @@
 :root[data-theme="dark"][data-cursors="indx"] tr[aria-expanded] * {
   cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%23EFEFEF"/></svg>') 6 0, pointer !important;
 }
+
+/* A Table's column handles, and the whole table while a column is dragged: the column resize. The
+   Table's own rule names it too, but the catch-all and the I-beam on th above are more specific. */
+:root[data-cursors="indx"] .indx-table-column-handle, :root[data-cursors="indx"] .indx-table-resizable[data-resizing], :root[data-cursors="indx"] .indx-table-resizable[data-resizing] * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%231A1A21"/></svg>') 10 10, col-resize !important;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"])[data-cursors="indx"] .indx-table-column-handle, :root:not([data-theme="light"])[data-cursors="indx"] .indx-table-resizable[data-resizing], :root:not([data-theme="light"])[data-cursors="indx"] .indx-table-resizable[data-resizing] * {
+    cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%23EFEFEF"/></svg>') 10 10, col-resize !important;
+  }
+}
+:root[data-theme="dark"][data-cursors="indx"] .indx-table-column-handle, :root[data-theme="dark"][data-cursors="indx"] .indx-table-resizable[data-resizing], :root[data-theme="dark"][data-cursors="indx"] .indx-table-resizable[data-resizing] * {
+  cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%23EFEFEF"/></svg>') 10 10, col-resize !important;
+}
