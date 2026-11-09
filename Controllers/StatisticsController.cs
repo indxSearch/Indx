@@ -9,8 +9,8 @@ namespace IndxServer.Controllers
     /// <summary>
     /// Reads and lifecycle for search statistics. Aggregates merge the rolled-up daily tables
     /// with the raw rows not yet rolled (the store does the merging). Deleting statistics is the
-    /// EXPLICIT operation the design trades for survival across dataset delete/recreate — see
-    /// Notes/statistics-design.md. Statistics disabled on the instance answers 404 problem+json
+    /// EXPLICIT operation the design trades for survival across dataset delete/recreate.
+    /// Statistics disabled on the instance answers 404 problem+json
     /// with code <c>statisticsDisabled</c> on every route here.
     /// <para>The reads of searches, clicks and conversions take an optional <c>source</c>: the
     /// <c>?source=</c> the searches were sent with. With it they count that surface alone, read
@@ -181,8 +181,7 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>What the dataset's owners changed in the window, oldest first, and the daily
-        /// document totals: the why beside the numbers (Notes/statistics-design.md, "Change
-        /// events").</summary>
+        /// document totals: the why beside the numbers.</summary>
         [KeyAccess(ApiKeyLevel.Read)]
         [HttpGet(DataSetRoute + "/statistics/changes")]
         public ActionResult<StatisticsChangesResponse> Changes(string teamName, string dataSetName, int days = 30)

@@ -7,7 +7,7 @@ namespace IndxServer.Models
     /// 1-based in the result list. Subject is the optional general identity: a user, a session
     /// or a customer-defined segment. Count is false for a select that is not a visitor's (a
     /// probe, a test); a select on a search that was not counted is not counted either, whatever
-    /// it says. See Notes/statistics-design.md.
+    /// it says.
     /// </summary>
     public record SelectEventRequest(string? QueryId, long DocumentKey, int Position, string? Subject,
         bool? Count = null);

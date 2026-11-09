@@ -13,7 +13,7 @@ namespace IndxServer.Mcp
     /// before searching and advertised every tool, while a Search key — the level you issue for a
     /// search integration — can do neither. The mandated workflow was impossible for the most
     /// ordinary key there is, and the only way to find out was to call a tool and be refused, once
-    /// per tool. See <c>Notes/mcp-first-contact-2026-09-25.md</c>.</para>
+    /// per tool.</para>
     ///
     /// <para>Everything here is read-only. There is no MCP tool that changes anything, which is
     /// what makes "an MCP key cannot alter your data or your configuration" a sentence worth

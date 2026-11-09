@@ -25,8 +25,7 @@ namespace IndxServer.Controllers
     public class DocumentsController(TeamContextResolver resolver, StatisticsService statistics) : DatasetApiController(resolver)
     {
         /// <summary>
-        /// Counts a successful request's document changes into the dataset's statistics
-        /// (Notes/statistics-design.md, "Change events"): the day's totals, and an event of its
+        /// Counts a successful request's document changes into the dataset's statistics: the day's totals, and an event of its
         /// own for a mass change or a by-filter operation. Every mutating route calls it once,
         /// just before its success response; this controller is the only place documents change.
         /// </summary>

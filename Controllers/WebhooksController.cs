@@ -10,7 +10,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace IndxServer.Controllers
 {
     /// <summary>
-    /// A dataset's incoming webhooks (Notes/indx_webhooks.md): a shop or a CMS calls one when
+    /// A dataset's incoming webhooks: a shop or a CMS calls one when
     /// something changes, and the documents follow without code of the customer's own. Team admins
     /// manage them; the call itself is signed with the webhook's secret instead of a key.
     /// </summary>

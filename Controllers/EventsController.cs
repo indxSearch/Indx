@@ -11,7 +11,7 @@ namespace IndxServer.Controllers
     /// are queued and written in batches (<see cref="StatisticsWriter"/>), so the answer is 202.
     /// A Search-level key suffices: this is the key that already sits in the storefront.
     /// Team scoping, authentication and the error contract are declared on
-    /// <see cref="DatasetApiController"/>; the model is Notes/statistics-design.md.
+    /// <see cref="DatasetApiController"/>.
     /// </summary>
     public class EventsController(TeamContextResolver resolver, StatisticsService statistics)
         : DatasetApiController(resolver)

@@ -10,7 +10,7 @@ namespace IndxServer.Controllers
 {
     /// <summary>
     /// Search or ask: the dataset's settings, the intent judgement on a typing pause, and an answer
-    /// written from the dataset's records. Notes/search-or-ask-server.md.
+    /// written from the dataset's records.
     /// Team scoping, authentication and the error contract are declared on
     /// <see cref="DatasetApiController"/>.
     /// </summary>
