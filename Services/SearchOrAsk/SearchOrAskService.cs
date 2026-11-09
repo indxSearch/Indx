@@ -65,16 +65,21 @@ namespace IndxServer.Services.SearchOrAsk
     /// <summary>An earlier question and its answer in the same conversation, for a follow-up.</summary>
     public sealed record AskTurn(string Question, string Answer, AskShown? Shown = null);
 
-    /// <summary>On a catalogue, the list a turn put on the page: its filters, words and order. A
-    /// follow-up ("which is the largest?") is about that list.</summary>
-    public sealed record AskShown(FilterSuggestion[]? Filters, string? Text, SortSuggestion? Sort)
+    /// <summary>On a catalogue, the list a turn put on the page: its filters, words and order, or the
+    /// agent's picks. A follow-up ("which is the largest?") is about that list.</summary>
+    public sealed record AskShown(FilterSuggestion[]? Filters, string? Text, SortSuggestion? Sort, AskShownPick[]? Picks = null)
     {
         public override string ToString() =>
-            string.Join("; ", (Filters ?? []).Select(f => f.Value != null ? $"{f.Field} = {f.Value}"
-                : $"{f.Field} {f.Min?.ToString() ?? ""}..{f.Max?.ToString() ?? ""}"))
-            + (string.IsNullOrWhiteSpace(Text) ? "" : $"; words \"{Text}\"")
-            + (Sort == null ? "" : $"; sorted by {Sort.Field} {(Sort.Descending ? "descending" : "ascending")}");
+            Picks is { Length: > 0 } picks
+                ? "my picks, in order: " + string.Join(", ", picks.Select(p => $"{p.Title} [{p.DocumentKey}]"))
+                : string.Join("; ", (Filters ?? []).Select(f => f.Value != null ? $"{f.Field} = {f.Value}"
+                    : $"{f.Field} {f.Min?.ToString() ?? ""}..{f.Max?.ToString() ?? ""}"))
+                  + (string.IsNullOrWhiteSpace(Text) ? "" : $"; words \"{Text}\"")
+                  + (Sort == null ? "" : $"; sorted by {Sort.Field} {(Sort.Descending ? "descending" : "ascending")}");
     }
+
+    /// <summary>A pick an earlier turn put on the page.</summary>
+    public sealed record AskShownPick(long DocumentKey, string? Title);
 
     /// <summary>Where a judgement or an ask came from, for the statistics, as a search names it:
     /// the page's search behind it (<c>?queryId=</c>), its session, its surface, an optional

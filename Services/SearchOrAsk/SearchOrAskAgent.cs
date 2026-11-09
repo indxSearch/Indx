@@ -8,7 +8,10 @@ namespace IndxServer.Services.SearchOrAsk
 {
     /// <summary>
     /// A catalogue's answer with <c>answers: best</c>: an agent that searches until it has what the
-    /// visitor asked for, then puts that list on the page and says what it found. Measured against
+    /// visitor asked for, then puts its picks on the page and says what it found. The picks are
+    /// records it chose by reading them (9 Nov 2026), not a search the page runs: "find queer
+    /// movies" put a search for the word on the page, which found one such film and four about
+    /// queens, since no field of a film catalogue holds the property and only reading can tell. Measured against
     /// the quick summary on the school register (JevProbe --agent, 11 Oct 2026): it retries when a
     /// search finds nothing, compares, and notices what a single search cannot (a kulturskole is not an
     /// ordinary school), at about 10 s and 7 cents a question. It starts knowing the filter fields and
@@ -38,15 +41,20 @@ namespace IndxServer.Services.SearchOrAsk
                   "sort": {"type": "object", "properties": {"field": {"type": "string"}, "descending": {"type": "boolean"}}, "required": ["field"]}},
                   "required": ["filters"]}}},
               {"type": "function", "function": {
-                "name": "show_results",
-                "description": "Put a list on the visitor's page, below your answer: the search that best answers them, with its order. Call it once, in the message that answers: write your answer as that message's text and call this beside it, with the filters, text and sort of the list the answer talks about.",
+                "name": "show_picks",
+                "description": "Put your picks on the visitor's page, as its result list: the records that answer them, in the order you recommend them, each by the key in brackets from your searches and with a short reason. Call it once, in the message that answers: write your answer as that message's text and call this beside it. Cite pick n as [n], n being its place in picks. When the visitor asked for everything a search states exactly (every private school in a town), also give that search, so the page can offer all it found.",
                 "parameters": {"type": "object", "properties": {
-                  "filters": {"type": "array", "items": {"type": "object", "properties": {
-                    "field": {"type": "string"}, "value": {"type": "string"}, "min": {"type": "number"}, "max": {"type": "number"}},
-                    "required": ["field"]}},
-                  "text": {"type": "string"},
-                  "sort": {"type": "object", "properties": {"field": {"type": "string"}, "descending": {"type": "boolean"}}, "required": ["field"]}},
-                  "required": ["filters"]}}}
+                  "picks": {"type": "array", "items": {"type": "object", "properties": {
+                    "key": {"type": "integer"}, "why": {"type": "string"}},
+                    "required": ["key", "why"]}},
+                  "search": {"type": "object", "properties": {
+                    "filters": {"type": "array", "items": {"type": "object", "properties": {
+                      "field": {"type": "string"}, "value": {"type": "string"}, "min": {"type": "number"}, "max": {"type": "number"}},
+                      "required": ["field"]}},
+                    "text": {"type": "string"},
+                    "sort": {"type": "object", "properties": {"field": {"type": "string"}, "descending": {"type": "boolean"}}, "required": ["field"]}},
+                    "required": ["filters"]}},
+                  "required": ["picks"]}}}
             ]
             """)!;
 
@@ -71,12 +79,15 @@ namespace IndxServer.Services.SearchOrAsk
                 messages.Add(new JsonObject
                 {
                     ["role"] = "assistant",
-                    ["content"] = t.Shown is { } shown ? $"{t.Answer}\n\n(The list I put on the page: {shown}.)" : t.Answer,
+                    ["content"] = t.Shown is { } shown ? $"{t.Answer}\n\n(What I put on the page: {shown}.)" : t.Answer,
                 });
             }
             messages.Add(new JsonObject { ["role"] = "user", ["content"] = $"{question}\n\n{SearchOrAskRecipes.LanguageReminder(settings)}" });
             double cost = 0;
             List<long> shownKeys = [];
+            // Every record the agent has read, by key: a pick must be one of them, so a key it made
+            // up (or misread) never puts a stranger on the page.
+            var read = new Dictionary<long, string>();
             var titleOf = (JsonNode? doc) => doc != null && fields.TitleField != null ? ReadField(doc, fields.TitleField) ?? "" : "";
 
             // The agent answers in the message that puts its list on the page (show_results), so
@@ -135,7 +146,7 @@ namespace IndxServer.Services.SearchOrAsk
                 var answer = message["content"]?.GetValue<string>()?.Trim() ?? "";
                 // The last turn: no call, or the list with the answer beside it.
                 var last = calls.Count == 0
-                    || answer.Length > 0 && calls.All(call => call?["function"]?["name"]?.GetValue<string>() == "show_results");
+                    || answer.Length > 0 && calls.All(call => call?["function"]?["name"]?.GetValue<string>() == "show_picks");
                 if (!last)
                 {
                     held = null;
@@ -148,23 +159,34 @@ namespace IndxServer.Services.SearchOrAsk
                 {
                     var name = call!["function"]?["name"]?.GetValue<string>();
                     var argsJson = call["function"]?["arguments"]?.GetValue<string>() ?? "{}";
-                    // The arguments go through the same check as the quick summary's filters.
-                    var (filters, text, sort) = ParseFilters(argsJson, schema);
-                    var (used, keys) = RunFiltered(engine, teamId, dataSetName, filters, text, sort, CatalogueFound);
                     string result;
-                    if (name == "show_results")
+                    if (name == "show_picks")
                     {
+                        var (picks, dropped) = ParsePicks(argsJson, read);
+                        // The search behind the picks, when the visitor asked for all of something: the
+                        // page offers what it found beside the picks. Checked as every search is.
+                        object? search = null;
+                        var searchJson = JsonNode.Parse(argsJson)?["search"]?.ToJsonString();
+                        if (searchJson != null)
+                        {
+                            var (sf, st, ss) = ParseFilters(searchJson, schema);
+                            var (sUsed, sKeys) = RunFiltered(engine, teamId, dataSetName, sf, st, ss, CatalogueFound);
+                            search = new { filters = sUsed, text = st, sort = ss, found = sKeys.Count, more = sKeys.Count >= CatalogueFound };
+                        }
                         // Under an answer already on its way, the step would only flicker.
-                        if (streamed.Length == 0) await send("status", new { step = $"Showing {Count(keys)} on the page" });
-                        await send("filters", new { filters = used, text, sort, found = keys.Count, more = keys.Count >= CatalogueFound });
-                        shownKeys = keys.Take(CatalogueShown).ToList();
-                        var shown = shownKeys.Select((k, i) => new AskSource(i + 1, k, titleOf(Parse(engine.GetJsonDataOfKey(k))))).ToArray();
-                        await send("sources", shown);
+                        if (streamed.Length == 0) await send("status", new { step = $"Picked {picks.Count}" });
+                        await send("picks", new { picks, search });
+                        shownKeys = picks.Select(p => p.DocumentKey).ToList();
+                        await send("sources", picks.Select(p => new AskSource(p.N, p.DocumentKey, p.Title)).ToArray());
                         listShown = true;
-                        result = $"The page now shows these {Count(keys)}, in that order.";
+                        result = $"The page now lists your {picks.Count} picks, numbered in that order."
+                            + (dropped > 0 ? $" {dropped} were left out: their key was not one your searches returned." : "");
                     }
                     else
                     {
+                        // The arguments go through the same check as the quick summary's filters.
+                        var (filters, text, sort) = ParseFilters(argsJson, schema);
+                        var (used, keys) = RunFiltered(engine, teamId, dataSetName, filters, text, sort, CatalogueFound);
                         await send("status", new { step = $"Searching: {Step(used, text, sort)}" });
                         var docs = keys.Select(k => Parse(engine.GetJsonDataOfKey(k))).ToList();
                         var sb = new StringBuilder();
@@ -177,8 +199,11 @@ namespace IndxServer.Services.SearchOrAsk
                             sb.AppendLine("Summary of all found:");
                             foreach (var line in Summary(docs, schema.Fields)) sb.AppendLine($"- {line}");
                             sb.AppendLine($"The first {Math.Min(AgentRecordsPerSearch, docs.Count)}:");
-                            foreach (var doc in docs.Take(AgentRecordsPerSearch))
-                                sb.AppendLine($"- {titleOf(doc)}: {Facts(doc, schema.Fields, schema.Readable)}");
+                            foreach (var (doc, key) in docs.Zip(keys).Take(AgentRecordsPerSearch))
+                            {
+                                read[key] = titleOf(doc);
+                                sb.AppendLine($"- {titleOf(doc)} [{key}]: {Facts(doc, schema.Fields, schema.Readable)}");
+                            }
                         }
                         result = sb.ToString();
                     }
@@ -222,6 +247,34 @@ namespace IndxServer.Services.SearchOrAsk
                 ? $"When you answer, write in the language of the visitor's question: \"{question}\"."
                 : $"When you answer, write in {settings.AnswerLanguage.Trim()}.";
 
+        /// <summary>A pick on the page: its place (as the answer cites it), the record, and why.</summary>
+        private sealed record AgentPick(int N, long DocumentKey, string Title, string Why);
+
+        /// <summary>The most picks a page lists.</summary>
+        private const int MaxPicks = CatalogueShown;
+
+        /// <summary>The picks of a show_picks call, in its order, each a record the agent read; how many
+        /// it named that it had not read (or twice), which are left out.</summary>
+        private static (List<AgentPick> Picks, int Dropped) ParsePicks(string argsJson, IReadOnlyDictionary<long, string> read)
+        {
+            var picks = new List<AgentPick>();
+            var dropped = 0;
+            JsonArray items;
+            try { items = JsonNode.Parse(argsJson)?["picks"]?.AsArray() ?? []; }
+            catch (JsonException) { return (picks, 0); }
+            foreach (var item in items)
+            {
+                long.TryParse(item?["key"]?.ToString(), out var key);
+                if (!read.TryGetValue(key, out var title) || picks.Any(p => p.DocumentKey == key) || picks.Count >= MaxPicks)
+                {
+                    dropped++;
+                    continue;
+                }
+                picks.Add(new AgentPick(picks.Count + 1, key, title, (item?["why"]?.ToString() ?? "").Trim()));
+            }
+            return (picks, dropped);
+        }
+
         private static string Count(List<long> keys) => keys.Count >= CatalogueFound ? $"{CatalogueFound} or more" : keys.Count.ToString();
 
         /// <summary>A search as a step the visitor reads: the values, not the field names.</summary>
@@ -239,9 +292,11 @@ namespace IndxServer.Services.SearchOrAsk
             sb.AppendLine($"""
                 You answer a visitor who typed into the search field of a website. About the site: {site}
 
-                You can search its records with the search tool, as often as you need. Write no text in a message
-                that searches. When you know the answer, write it in one message that also calls show_results, once,
-                to put the list it talks about on the visitor's page. Search for what they
+                You can search its records with the search tool, as often as you need. Each record it returns has its
+                key in brackets. Write no text in a message that searches. When you know the answer, write it in one
+                message that also calls show_picks, once, with the records that answer the visitor, best first: the
+                page lists your picks as its results, so pick what you would recommend by reading the records, not
+                what merely contains their words. Give each a reason of a few words in the visitor's language. Search for what they
                 described with filters; when a search finds nothing or too little, try what is nearest (a wider
                 place, a looser condition) and say what you did. When the results mix kinds the visitor would want
                 apart (an arts school among ordinary schools), notice it, and filter it in or out as they meant.
@@ -266,8 +321,9 @@ namespace IndxServer.Services.SearchOrAsk
                 A filter is {"field", "value"} with a listed value (or true/false), or {"field", "min", "max"} for a number.
                 Then answer, as a short answer the visitor can act on: lead with how many you found, in their words for
                 what they asked; then what stands out (what most share, the largest and smallest, notable differences),
-                naming a few; if many, end with one sentence on how to narrow it down. Refer to the list on their page
-                rather than repeating all of it. Use only what your searches returned. Field names are internal: say
+                naming a few, each cited as [n] by its place in your picks; if many, end with one sentence on how to
+                narrow it down. Refer to the picks on their page rather than repeating all of them. Use only what your
+                searches returned. Field names are internal: say
                 "private" or "pupils", never ErPrivatskole or Elevtall. Markdown is rendered. Do not restate the
                 question, and do not close with an offer of more help.
                 """);

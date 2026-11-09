@@ -46,7 +46,8 @@ Runs on IndxSearchLib 5.0.6 or later.
   went next.
 - **Search or ask.** Five modes set how forward the offer is, from strict to proactive. Needs in
   its Statistics group the questions visitors asked in different words, across visits, with how
-  each ended. A catalogue's best answer streams. OpenAI is a provider of its own, each provider takes
+  each ended. A catalogue's best answer streams, and puts its own picks on the page as the result
+  list, each with why it was chosen, so asking for something no field holds still lists what fits. OpenAI is a provider of its own, each provider takes
   one key, models come from the provider's list, and an admin can offer more answer models for the
   owners to choose from.
 - **Observr's Agent** keeps whole conversations with a History, remembers a No per dataset, offers
