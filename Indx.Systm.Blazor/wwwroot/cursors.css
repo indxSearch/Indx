@@ -235,24 +235,31 @@
 }
 
 /* A switch, a checkbox or a radio inside its label (systm ToggleSwitch, Checkbox, RadioButton): the
-   whole label is the target, so it takes the pointer, which the catch-all above would deny it. */
+   whole label is the target, so it takes the pointer, which the catch-all above would deny it. So does
+   a table row that opens in place (Records, Admin > Teams), whose cells would otherwise take the I-beam. */
 :root[data-cursors="indx"] label:has(> input[type="checkbox"]),
 :root[data-cursors="indx"] label:has(> input[type="checkbox"]) *,
 :root[data-cursors="indx"] label:has(> input[type="radio"]),
-:root[data-cursors="indx"] label:has(> input[type="radio"]) * {
+:root[data-cursors="indx"] label:has(> input[type="radio"]) *,
+:root[data-cursors="indx"] tr[aria-expanded],
+:root[data-cursors="indx"] tr[aria-expanded] * {
   cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%231A1A21"/></svg>') 6 0, pointer !important;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"])[data-cursors="indx"] label:has(> input[type="checkbox"]),
   :root:not([data-theme="light"])[data-cursors="indx"] label:has(> input[type="checkbox"]) *,
   :root:not([data-theme="light"])[data-cursors="indx"] label:has(> input[type="radio"]),
-  :root:not([data-theme="light"])[data-cursors="indx"] label:has(> input[type="radio"]) * {
+  :root:not([data-theme="light"])[data-cursors="indx"] label:has(> input[type="radio"]) *,
+  :root:not([data-theme="light"])[data-cursors="indx"] tr[aria-expanded],
+  :root:not([data-theme="light"])[data-cursors="indx"] tr[aria-expanded] * {
     cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%23EFEFEF"/></svg>') 6 0, pointer !important;
   }
 }
 :root[data-theme="dark"][data-cursors="indx"] label:has(> input[type="checkbox"]),
 :root[data-theme="dark"][data-cursors="indx"] label:has(> input[type="checkbox"]) *,
 :root[data-theme="dark"][data-cursors="indx"] label:has(> input[type="radio"]),
-:root[data-theme="dark"][data-cursors="indx"] label:has(> input[type="radio"]) * {
+:root[data-theme="dark"][data-cursors="indx"] label:has(> input[type="radio"]) *,
+:root[data-theme="dark"][data-cursors="indx"] tr[aria-expanded],
+:root[data-theme="dark"][data-cursors="indx"] tr[aria-expanded] * {
   cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path fill-rule="evenodd" clip-rule="evenodd" d="M9 0V3V6V9V12H6V9H3V12H6V15H9H12H15H18V12V9V6H15H12V3V0H9Z" fill="%23EFEFEF"/></svg>') 6 0, pointer !important;
 }

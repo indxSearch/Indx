@@ -27,7 +27,7 @@
         <h2 style="margin-bottom: 4px;">Teams</h2>
         <p style="color: var(--lv5);">All teams on this instance, with their members, datasets and keys.</p>
     </div>
-    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Restore" style="margin-left: auto;" Loading="@_loading" @onclick="Load">Refresh</Button>
+    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Restore" style="margin-left: auto;" Loading="@_loading" @onclick="() => Load(recount: true)">Refresh</Button>
 </div>
 
 @if (_rows == null)
@@ -40,14 +40,18 @@ else if (_rows.Count == 0)
 }
 else
 {
+    @* One column, an even gap between its parts. Its own element too: the ::deep rules in
+       Teams.razor.css need an element of this page above the systm components they style. *@
     var findings = Findings();
+    var total = _rows.Sum(r => r.SearchTotal);
+    <div class="admin-teams">
     @* What an instance admin may want to act on, said as facts with the team named. Only this page
        sees every team at once, so it is the one place these can be caught. *@
     @if (findings.Count > 0)
     {
-        <Disclosure Class="admin-teams-findings">
+        <Disclosure>
             <Summary>
-                <span class="admin-teams-findings-summary"><Icons.Warning Size="14" Color="var(--CWarning)" /> Worth a look · @findings.Count</span>
+                <span class="admin-teams-findings-summary"><Icons.Warning Size="14" Color="var(--CWarning)" /> Worth a look <span class="admin-teams-count">@findings.Count</span></span>
             </Summary>
             <ChildContent>
                 <div class="admin-teams-block admin-teams-findings-list">
@@ -63,12 +67,18 @@ else
         </Disclosure>
     }
 
-    var total = _rows.Sum(r => r.SearchTotal);
-    <StatGroup Columns="4" Class="admin-teams-stats">
+    <StatGroup Columns="4">
         <Stat Label="Teams" LabelIcon="DatasetIcons.Team" Value="@_rows.Count.ToString("N0")" />
         <Stat Label="People" LabelIcon="DatasetIcons.User" Value="@_people.ToString("N0")">in one team or more</Stat>
         <Stat Label="Datasets" LabelIcon="DatasetIcons.Disk" Value="@_rows.Sum(r => r.Datasets.Count).ToString("N0")" />
-        <Stat Label="Searches, 30 days" LabelIcon="DatasetIcons.Search" Value="@(_statsOn ? total.ToString("N0") : "Off")" />
+        @if (_usage)
+        {
+            <Stat Label="Searches, 30 days" LabelIcon="DatasetIcons.Search" Value="@(_statsOn ? total.ToString("N0") : "Off")" />
+        }
+        else
+        {
+            <Stat Label="Searches, 30 days" LabelIcon="DatasetIcons.Search"><ValueContent><Skeleton Width="96px" Height="24px" /></ValueContent></Stat>
+        }
     </StatGroup>
 
     @* Carries the scope attribute that Teams.razor.css's ::deep rules need above the table. *@
@@ -98,14 +108,22 @@ else
                         <td class="admin-teams-faint" title="@string.Join(", ", row.Admins)">@string.Join(", ", row.Admins.Select(LocalPart))</td>
                         <td class="admin-teams-num">@row.Members.Count</td>
                         <td class="admin-teams-num">@row.Datasets.Count</td>
-                        <td class="admin-teams-num">@row.Documents.ToString("N0")</td>
-                        <td>
-                            <span class="admin-teams-activity">
-                                <Sparkline Values="row.Searches" Type="bar" Width="96px" Height="18" Color="var(--lv6)" IdleColor="var(--lv3)"
-                                           LastIsPartial AriaLabel="@($"Searches per day over the last 30 days for {name}")" />
-                                <span class="admin-teams-num">@row.SearchTotal.ToString("N0")</span>
-                            </span>
-                        </td>
+                        @if (_usage)
+                        {
+                            <td class="admin-teams-num">@row.Documents.ToString("N0")</td>
+                            <td>
+                                <span class="admin-teams-activity">
+                                    <Sparkline Values="row.Searches" Type="bar" Width="96px" Height="18" Color="var(--lv6)" IdleColor="var(--lv3)"
+                                               LastIsPartial AriaLabel="@($"Searches per day over the last 30 days for {name}")" />
+                                    <span class="admin-teams-num">@row.SearchTotal.ToString("N0")</span>
+                                </span>
+                            </td>
+                        }
+                        else
+                        {
+                            <td class="admin-teams-num"><Skeleton Width="64px" /></td>
+                            <td><Skeleton Width="152px" /></td>
+                        }
                         <td class="admin-teams-faint"><TimeAgo Value="row.CreatedAt" TooltipPosition="left" /></td>
                     </tr>
                     @if (isOpen)
@@ -148,7 +166,7 @@ else
                                             <div class="admin-teams-line">
                                                 <span class="admin-teams-line-main admin-teams-mono">@d.Name</span>
                                                 <span class="admin-teams-faint">@(d.Loaded ? "Ready" : "Sleeping")</span>
-                                                <span class="admin-teams-num">@d.Documents.ToString("N0")</span>
+                                                @if (_usage) { <span class="admin-teams-num">@d.Documents.ToString("N0")</span> } else { <Skeleton Width="48px" /> }
                                             </div>
                                         }
                                     </div>
@@ -174,6 +192,7 @@ else
                 }
             </tbody>
         </Table>
+    </div>
     </div>
 }
 
@@ -225,6 +244,9 @@ else
     private int _people;
     private bool _statsOn;
     private bool _loading;
+    /// <summary>The documents and the searches are in: the slow half of a load, which the page waits
+    /// for with skeletons rather than not showing.</summary>
+    private bool _usage;
     private readonly HashSet<string> _open = [];
     private List<ApplicationUser> _users = [];
     private (string Team, string Message)? _error;
@@ -241,7 +263,10 @@ else
 
     protected override async Task OnInitializedAsync() => await Load();
 
-    private async Task Load()
+    /// <summary>The teams, their members, keys and datasets first, which are quick, then the documents
+    /// and the searches, which are a count and a query per dataset. <paramref name="recount"/> counts
+    /// sleeping datasets again instead of using the counts kept (<see cref="DatasetRecordCounts"/>).</summary>
+    private async Task Load(bool recount = false)
     {
         _loading = true;
         try
@@ -262,40 +287,12 @@ else
                 .GroupBy(k => k.TeamId!.Value)
                 .ToDictionary(g => g.Key, g => g.OrderBy(k => k.Name, StringComparer.OrdinalIgnoreCase).ToList());
 
-            // Off the circuit thread: the record count is a COUNT(*) per dataset, and the searches a
-            // query per dataset. Never GetState, which wakes a hibernated dataset (see Datasets.razor).
-            _statsOn = Stats.Enabled;
-            var store = Stats.Enabled ? Stats.Store : null;
-            var byTeam = await Task.Run(() => IndxServerInternalApi.Manager.GetAllDataSets()
+            var manager = IndxServerInternalApi.Manager;
+            var datasetsByTeam = manager.GetAllDataSets()
                 .GroupBy(d => d.TeamId)
-                .ToDictionary(g => g.Key, g =>
-                {
-                    var datasets = new List<DatasetInfo>();
-                    var searches = new double[Days];
-                    long zeroHits = 0;
-                    var manager = IndxServerInternalApi.Manager;
-                    foreach (var d in g.OrderBy(d => d.DataSetName, StringComparer.OrdinalIgnoreCase))
-                    {
-                        var ka = manager.GetKeepAliveInfo(d.DataSetName, d.TeamId);
-                        var engine = manager.FindSearchEngine(d.DataSetName, d.TeamId);
-                        var error = engine is { IsDisposed: false } && engine.Status.SystemState == Indx.Api.SystemState.Error
-                            ? "is in an error state" : manager.ShadowBuildError(d.DataSetName, d.TeamId) != null ? "failed its last rebuild" : null;
-                        long own = 0;
-                        if (store != null)
-                        {
-                            // Each dataset counts its days in its own statistics zone; day i is i days before its today.
-                            long today = store.Today(d.TeamId, d.DataSetName), from = today - Days + 1;
-                            foreach (var s in store.TimeSeries(d.TeamId, d.DataSetName, from, today))
-                            {
-                                searches[s.Day - from] += s.Searches;
-                                own += s.Searches;
-                                zeroHits += s.ZeroHits;
-                            }
-                        }
-                        datasets.Add(new DatasetInfo(d.DataSetName, ka.Ready, ka.RecordCount, own, error));
-                    }
-                    return (datasets, searches, zeroHits);
-                }));
+                .ToDictionary(g => g.Key, g => g.OrderBy(d => d.DataSetName, StringComparer.OrdinalIgnoreCase)
+                    .Select(d => new DatasetInfo(d.DataSetName, manager.GetKeepAliveInfo(d.DataSetName, d.TeamId, countRecordsOnDisk: false).Ready, 0, 0, null))
+                    .ToList());
 
             var teams = await TeamService.GetAllAsync();
             _rows = [.. teams.Select(t =>
@@ -307,9 +304,44 @@ else
                     .OrderBy(m => RoleRank(m.Role))
                     .ThenBy(m => m.Email, StringComparer.OrdinalIgnoreCase)
                     .ToList();
-                var (datasets, searches, zeroHits) = byTeam.GetValueOrDefault(t.Id.ToString(), ([], new double[Days], 0));
-                return new TeamRow(t.Id, t.Name, t.CreatedAt, members, datasets, keysByTeam.GetValueOrDefault(t.Id) ?? [], searches, zeroHits);
+                return new TeamRow(t.Id, t.Name, t.CreatedAt, members, datasetsByTeam.GetValueOrDefault(t.Id.ToString()) ?? [],
+                    keysByTeam.GetValueOrDefault(t.Id) ?? [], new double[Days], 0);
             }).OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)];
+            _usage = false;
+            StateHasChanged();
+
+            // Off the circuit thread: a count per sleeping dataset not counted lately, and a query
+            // per dataset for its searches.
+            _statsOn = Stats.Enabled;
+            var store = Stats.Enabled ? Stats.Store : null;
+            var rows = _rows;
+            _rows = await Task.Run(() => rows.Select(r =>
+            {
+                var searches = new double[Days];
+                long zeroHits = 0;
+                var datasets = r.Datasets.Select(d =>
+                {
+                    string team = r.Id.ToString();
+                    var engine = manager.FindSearchEngine(d.Name, team);
+                    var error = engine is { IsDisposed: false } && engine.Status.SystemState == Indx.Api.SystemState.Error
+                        ? "is in an error state" : manager.ShadowBuildError(d.Name, team) != null ? "failed its last rebuild" : null;
+                    long own = 0;
+                    if (store != null)
+                    {
+                        // Each dataset counts its days in its own statistics zone; day i is i days before its today.
+                        long today = store.Today(team, d.Name), from = today - Days + 1;
+                        foreach (var s in store.TimeSeries(team, d.Name, from, today))
+                        {
+                            searches[s.Day - from] += s.Searches;
+                            own += s.Searches;
+                            zeroHits += s.ZeroHits;
+                        }
+                    }
+                    return d with { Documents = DatasetRecordCounts.Get(d.Name, team, recount), Searches = own, Error = error };
+                }).ToList();
+                return r with { Datasets = datasets, Searches = searches, ZeroHits = zeroHits };
+            }).ToList());
+            _usage = true;
         }
         finally { _loading = false; }
     }
@@ -335,13 +367,13 @@ else
             // Whether it is set up and working.
             if (r.Datasets.Count == 0 && now - r.CreatedAt > TimeSpan.FromDays(ExpiringDays))
                 found.Add(new(r.Name, "No datasets yet"));
-            foreach (var d in r.Datasets.Where(d => d.Error != null))
+            foreach (var d in r.Datasets.Where(d => _usage && d.Error != null))
                 found.Add(new(r.Name, $"Dataset {d.Name} {d.Error}"));
             if (r.Datasets.Count > 0 && r.Keys.Count == 0)
                 found.Add(new(r.Name, "Datasets but no keys: nothing outside the console can search them"));
 
             // Whether it is used, and finds what is asked.
-            if (_statsOn && r.Datasets.Count > 0)
+            if (_usage && _statsOn && r.Datasets.Count > 0)
             {
                 if (r.SearchTotal == 0)
                     found.Add(new(r.Name, $"No searches in {Days} days"));
