@@ -117,6 +117,9 @@
 @font-face {
   font-family: 'Geist Mono';
   src: url('./Geist-Mono-Variable.woff2') format('woff2');
+  /* Drawn at 93%: its x-height is 0.530 of the em, the brand font's 0.492, so at the same size a
+     dataset or key name stood taller than the text around it. 0.492 / 0.530 = 0.93. */
+  size-adjust: 93%;
   font-weight: 100 900;
   font-style: normal;
   font-display: swap;

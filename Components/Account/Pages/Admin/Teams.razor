@@ -2,13 +2,21 @@
 @rendermode @(new InteractiveServerRenderMode(prerender: false))
 @using Microsoft.AspNetCore.Authorization
 @using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
 @using IndxServer.Data
 @using IndxServer.Models
 @using IndxServer.Engine
 @using IndxServer.Services
+@using IndxServer.Components.Datasets
 @attribute [Authorize(Roles = "Admin")]
 @inject IndxServer.Services.TeamService TeamService
 @inject UserManager<ApplicationUser> UserManager
+@inject ApplicationDbContext Db
+@inject IndxServer.Services.StatisticsService Stats
+@inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
+@inject InstanceSettingsService InstanceSettingsService
+@inject Indx.Systm.Blazor.ToastService Toasts
+@inject ILogger<Teams> Logger
 
 <PageTitle>Admin — Teams</PageTitle>
 
@@ -17,14 +25,14 @@
 <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 40px;">
     <div>
         <h2 style="margin-bottom: 4px;">Teams</h2>
-        <p style="color: var(--lv5);">All teams created on this instance. <strong>Admins</strong> own and manage their team; Editors and Viewers are members.</p>
+        <p style="color: var(--lv5);">All teams on this instance, with their members, datasets and keys.</p>
     </div>
-    <Button Variant="ghost" Size="micro" IconLeft="_iconRefresh" style="margin-left: auto;" @onclick="Load">Refresh</Button>
+    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Restore" style="margin-left: auto;" Loading="@_loading" @onclick="Load">Refresh</Button>
 </div>
 
 @if (_rows == null)
 {
-    <p>Loading...</p>
+    <p class="admin-teams-loading"><Spinner Size="14" /> Loading teams…</p>
 }
 else if (_rows.Count == 0)
 {
@@ -32,87 +40,423 @@ else if (_rows.Count == 0)
 }
 else
 {
-    @foreach (var row in _rows)
+    var findings = Findings();
+    @* What an instance admin may want to act on, said as facts with the team named. Only this page
+       sees every team at once, so it is the one place these can be caught. *@
+    @if (findings.Count > 0)
     {
-        <div style="border: 1px solid var(--lv3); border-radius: var(--radius); background: var(--lv0); margin-bottom: 12px;">
-            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px 16px; padding: 12px 16px; border-bottom: 1px solid var(--lv2);">
-                @* The name never breaks mid-word; on a narrow screen the line wraps between its three parts. *@
-                <span style="font-family: var(--font-mono); color: var(--lv6); font-weight: 500; white-space: nowrap;">@row.Name</span>
-                <span style="color: var(--lv5); font-size: 12px; white-space: nowrap;">
-                    @row.Members.Count member@(row.Members.Count == 1 ? "" : "s") · @row.DatasetCount dataset@(row.DatasetCount == 1 ? "" : "s")
-                </span>
-                <span style="margin-left: auto; color: var(--lv5); font-size: 12px; white-space: nowrap;">created <TimeAgo Value="row.CreatedAt" TooltipPosition="left" /></span>
-            </div>
-
-            <div style="padding: 4px 16px 8px;">
-                @if (row.Members.Count == 0)
-                {
-                    <p style="color: var(--lv4); font-size: 13px; padding: 8px 0;">No members.</p>
-                }
-                else
-                {
-                    @foreach (var m in row.Members)
+        <Disclosure Class="admin-teams-findings">
+            <Summary>
+                <span class="admin-teams-findings-summary"><Icons.Warning Size="14" Color="var(--CWarning)" /> Worth a look · @findings.Count</span>
+            </Summary>
+            <ChildContent>
+                <div class="admin-teams-block admin-teams-findings-list">
+                    @foreach (var f in findings)
                     {
-                        <div style="display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--lv1);">
-                            <span style="min-width: 96px;">
-                                @if (m.Role == TeamRoles.Admin)
-                                {
-                                    <Chip Color="var(--CTeal)" TextColor="#080809">Owner · Admin</Chip>
-                                }
-                                else
-                                {
-                                    <Chip Color="var(--lv2)" TextColor="var(--lv5)">@m.Role</Chip>
-                                }
-                            </span>
-                            <span style="color: var(--lv6); font-size: 13px;">@m.Email</span>
+                        <div class="admin-teams-finding">
+                            <span class="admin-teams-mono">@f.Team</span>
+                            <span class="admin-teams-finding-text">@f.Text</span>
                         </div>
                     }
-                }
-            </div>
-        </div>
+                </div>
+            </ChildContent>
+        </Disclosure>
     }
+
+    var total = _rows.Sum(r => r.SearchTotal);
+    <StatGroup Columns="4" Class="admin-teams-stats">
+        <Stat Label="Teams" LabelIcon="DatasetIcons.Team" Value="@_rows.Count.ToString("N0")" />
+        <Stat Label="People" LabelIcon="DatasetIcons.User" Value="@_people.ToString("N0")">in one team or more</Stat>
+        <Stat Label="Datasets" LabelIcon="DatasetIcons.Disk" Value="@_rows.Sum(r => r.Datasets.Count).ToString("N0")" />
+        <Stat Label="Searches, 30 days" LabelIcon="DatasetIcons.Search" Value="@(_statsOn ? total.ToString("N0") : "Off")" />
+    </StatGroup>
+
+    @* Carries the scope attribute that Teams.razor.css's ::deep rules need above the table. *@
+    <div class="admin-teams-table-wrap">
+        <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" AriaLabel="All teams" Class="admin-teams-table">
+            <thead>
+                <tr>
+                    <th scope="col">Team</th>
+                    <th scope="col">Admins</th>
+                    <th scope="col" class="admin-teams-num">Members</th>
+                    <th scope="col" class="admin-teams-num">Datasets</th>
+                    <th scope="col" class="admin-teams-num">Documents</th>
+                    <th scope="col">Searches, 30 days</th>
+                    <th scope="col">Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var row in _rows)
+                {
+                    var name = row.Name;
+                    var isOpen = _open.Contains(name);
+                    <tr @key="name" class="admin-teams-row @(isOpen ? "admin-teams-row--open" : null)" tabindex="0" aria-expanded="@(isOpen ? "true" : "false")"
+                        @onclick="() => Toggle(name)" @onkeydown="e => OnRowKey(e, name)">
+                        <td>
+                            <span class="admin-teams-name">@(isOpen ? DatasetIcons.RowOpen(14) : DatasetIcons.RowClosed(14))@name</span>
+                        </td>
+                        <td class="admin-teams-faint" title="@string.Join(", ", row.Admins)">@string.Join(", ", row.Admins.Select(LocalPart))</td>
+                        <td class="admin-teams-num">@row.Members.Count</td>
+                        <td class="admin-teams-num">@row.Datasets.Count</td>
+                        <td class="admin-teams-num">@row.Documents.ToString("N0")</td>
+                        <td>
+                            <span class="admin-teams-activity">
+                                <Sparkline Values="row.Searches" Type="bar" Width="96px" Height="18" Color="var(--lv6)" IdleColor="var(--lv3)"
+                                           LastIsPartial AriaLabel="@($"Searches per day over the last 30 days for {name}")" />
+                                <span class="admin-teams-num">@row.SearchTotal.ToString("N0")</span>
+                            </span>
+                        </td>
+                        <td class="admin-teams-faint"><TimeAgo Value="row.CreatedAt" TooltipPosition="left" /></td>
+                    </tr>
+                    @if (isOpen)
+                    {
+                        <tr class="admin-teams-expanded">
+                            <td colspan="7">
+                                <div class="admin-teams-expanded-body">
+                                    @* A server admin manages any team's members from here, without joining it:
+                                       the role, removal and adding someone with an account. The team's own
+                                       rule holds: it never loses its last admin. Each change is logged. *@
+                                    <div class="admin-teams-block">
+                                        <span class="admin-teams-block-title">
+                                            @DatasetIcons.Team(14) @Count(row.Members.Count, "member")
+                                            <span class="admin-teams-add"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="() => OpenAdd(row)">Add user</Button></span>
+                                        </span>
+                                        @if (_error is { } err && err.Team == name)
+                                        {
+                                            <Alert Variant="destructive">@err.Message</Alert>
+                                        }
+                                        @if (row.Members.Count == 0) { <span class="admin-teams-faint">None.</span> }
+                                        @foreach (var m in row.Members)
+                                        {
+                                            <div class="admin-teams-line">
+                                                <span class="admin-teams-line-main" title="@m.Email">@m.Email</span>
+                                                <span class="admin-teams-faint">joined <TimeAgo Value="m.JoinedAt" TooltipPosition="left" /></span>
+                                                <div class="admin-teams-role">
+                                                    <SelectField Size="micro" Variant="ghost" Value="@m.Role" ValueChanged="@(v => ChangeRole(row, m, v))" Options="_roleOptions" />
+                                                </div>
+                                                <ConfirmButton Label="Remove" Title="@($"Remove {m.Email} from {name}?")"
+                                                               Prompt="They lose access to the team's datasets, and their personal keys for this team stop working."
+                                                               ConfirmLabel="Remove member" OnConfirm="() => Remove(row, m)" />
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="admin-teams-block">
+                                        <span class="admin-teams-block-title">@DatasetIcons.Disk(14) @Count(row.Datasets.Count, "dataset")</span>
+                                        @if (row.Datasets.Count == 0) { <span class="admin-teams-faint">None yet.</span> }
+                                        @foreach (var d in row.Datasets)
+                                        {
+                                            <div class="admin-teams-line">
+                                                <span class="admin-teams-line-main admin-teams-mono">@d.Name</span>
+                                                <span class="admin-teams-faint">@(d.Loaded ? "Ready" : "Sleeping")</span>
+                                                <span class="admin-teams-num">@d.Documents.ToString("N0")</span>
+                                            </div>
+                                        }
+                                    </div>
+                                    <div class="admin-teams-block">
+                                        <span class="admin-teams-block-title">@DatasetIcons.Key(14) @Count(row.Keys.Count, "key")</span>
+                                        @if (row.Keys.Count == 0) { <span class="admin-teams-faint">None.</span> }
+                                        @foreach (var k in row.Keys)
+                                        {
+                                            <div class="admin-teams-line">
+                                                <span class="admin-teams-line-main">@k.Name</span>
+                                                <span class="admin-teams-faint">
+                                                    @(k.IsTeamKey ? "Team" : "Personal"),
+                                                    @if (k.ExpiresAt is { } at) { <text>expires </text><TimeAgo Value="at" TooltipPosition="left" /> } else { <text>no expiry</text> }
+                                                </span>
+                                                <Chip Color="var(--lv2)" TextColor="var(--lv6)">@k.Level</Chip>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+                    }
+                }
+            </tbody>
+        </Table>
+    </div>
 }
 
-@code {
-    private RenderFragment<int> _iconRefresh => size => @<Refresh Size="size" />;
+@* ── Add someone with an account to a team (server admins) ── *@
+<Modal @bind-Open="_showAdd" Title="Add user" Description="@(_addTo is { } t ? $"Anyone with an account on this instance can be added to {t.Name}." : null)">
+    <div class="indx-modal-form">
+        @if (_userOptions.Count == 0)
+        {
+            <p class="admin-teams-faint">Everyone with an account is already on this team.</p>
+        }
+        else
+        {
+            <SelectField Size="micro" Label="User" Placeholder="Select a user…" @bind-Value="_addUserId" Options="_userOptions" />
+            <SelectField Size="micro" Label="Role" @bind-Value="_addRole" Options="_roleOptions" />
+        }
+        @if (_addError != null)
+        {
+            <Alert Variant="destructive">@_addError</Alert>
+        }
+        <div class="indx-form-actions">
+            <Button Variant="primary" Size="micro" Disabled="@string.IsNullOrEmpty(_addUserId)" Loading="@_adding" @onclick="Add">Add</Button>
+            <Button Variant="secondary" Size="micro" Disabled="@_adding" @onclick="() => _showAdd = false">Cancel</Button>
+        </div>
+    </div>
+</Modal>
 
-    private record MemberInfo(string Email, string Role);
-    private record TeamRow(string Name, int DatasetCount, DateTime CreatedAt, List<MemberInfo> Members);
+@code {
+    [CascadingParameter] private Task<AuthenticationState>? AuthState { get; set; }
+
+    private const int Days = 30;
+    /// <summary>A key this close to its expiry is worth a look.</summary>
+    private const int ExpiringDays = 14;
+    /// <summary>Below this many searches a share or a drop says nothing.</summary>
+    private const int FewSearches = 100;
+
+    private record MemberInfo(string UserId, string Email, string Role, DateTime JoinedAt, bool Confirmed);
+    /// <summary>Error: why the dataset is in an error state or its last rebuild failed, else null.</summary>
+    private record DatasetInfo(string Name, bool Loaded, int Documents, long Searches, string? Error);
+    private record TeamRow(Guid Id, string Name, DateTime CreatedAt, List<MemberInfo> Members, List<DatasetInfo> Datasets,
+        List<ApiKey> Keys, double[] Searches, long ZeroHits)
+    {
+        public long Documents => Datasets.Sum(d => (long)d.Documents);
+        public long SearchTotal => (long)Searches.Sum();
+        public List<string> Admins => [.. Members.Where(m => m.Role == TeamRoles.Admin).Select(m => m.Email)];
+    }
+    private record Finding(string Team, string Text);
 
     private List<TeamRow>? _rows;
+    private int _people;
+    private bool _statsOn;
+    private bool _loading;
+    private readonly HashSet<string> _open = [];
+    private List<ApplicationUser> _users = [];
+    private (string Team, string Message)? _error;
+
+    private static readonly List<SelectField.SelectOption> _roleOptions =
+        [.. TeamRoles.All.Select(r => new SelectField.SelectOption(r, r))];
+    private bool _showAdd;
+    private TeamRow? _addTo;
+    private List<SelectField.SelectOption> _userOptions = [];
+    private string _addUserId = "";
+    private string _addRole = TeamRoles.Viewer;
+    private string? _addError;
+    private bool _adding;
 
     protected override async Task OnInitializedAsync() => await Load();
 
     private async Task Load()
     {
-        // Dataset owner key is the team id (as string); count per team.
-        var datasetCounts = IndxServerInternalApi.Manager.GetAllDataSets()
-            .GroupBy(d => d.TeamId)
-            .ToDictionary(g => g.Key, g => g.Count());
-
-        // Resolve member user ids to emails in one pass.
-        var emailById = UserManager.Users.ToList()
-            .ToDictionary(u => u.Id, u => u.Email ?? u.UserName ?? u.Id);
-
-        var membersByTeam = (await TeamService.GetAllMembersAsync())
-            .GroupBy(m => m.TeamId)
-            .ToDictionary(g => g.Key, g => g.ToList());
-
-        var teams = await TeamService.GetAllAsync();
-        _rows = [.. teams.Select(t =>
+        _loading = true;
+        try
         {
-            var members = (membersByTeam.GetValueOrDefault(t.Id) ?? [])
-                .Select(m => new MemberInfo(emailById.GetValueOrDefault(m.UserId, m.UserId), m.Role))
-                .OrderBy(m => RoleRank(m.Role))
-                .ThenBy(m => m.Email, StringComparer.OrdinalIgnoreCase)
-                .ToList();
-            return new TeamRow(
-                t.Name,
-                datasetCounts.GetValueOrDefault(t.Id.ToString()),
-                t.CreatedAt,
-                members);
-        })];
+            var users = UserManager.Users.ToList();
+            _users = users;
+            var userById = users.ToDictionary(u => u.Id);
+
+            var allMembers = await TeamService.GetAllMembersAsync();
+            _people = allMembers.Select(m => m.UserId).Distinct().Count();
+            var membersByTeam = allMembers.GroupBy(m => m.TeamId).ToDictionary(g => g.Key, g => g.ToList());
+
+            // Keys that still work: neither revoked nor expired.
+            var now = DateTime.UtcNow;
+            var keysByTeam = (await Db.ApiKeys.AsNoTracking()
+                    .Where(k => k.TeamId != null && !k.IsRevoked && (k.ExpiresAt == null || k.ExpiresAt > now))
+                    .ToListAsync())
+                .GroupBy(k => k.TeamId!.Value)
+                .ToDictionary(g => g.Key, g => g.OrderBy(k => k.Name, StringComparer.OrdinalIgnoreCase).ToList());
+
+            // Off the circuit thread: the record count is a COUNT(*) per dataset, and the searches a
+            // query per dataset. Never GetState, which wakes a hibernated dataset (see Datasets.razor).
+            _statsOn = Stats.Enabled;
+            var store = Stats.Enabled ? Stats.Store : null;
+            var byTeam = await Task.Run(() => IndxServerInternalApi.Manager.GetAllDataSets()
+                .GroupBy(d => d.TeamId)
+                .ToDictionary(g => g.Key, g =>
+                {
+                    var datasets = new List<DatasetInfo>();
+                    var searches = new double[Days];
+                    long zeroHits = 0;
+                    var manager = IndxServerInternalApi.Manager;
+                    foreach (var d in g.OrderBy(d => d.DataSetName, StringComparer.OrdinalIgnoreCase))
+                    {
+                        var ka = manager.GetKeepAliveInfo(d.DataSetName, d.TeamId);
+                        var engine = manager.FindSearchEngine(d.DataSetName, d.TeamId);
+                        var error = engine is { IsDisposed: false } && engine.Status.SystemState == Indx.Api.SystemState.Error
+                            ? "is in an error state" : manager.ShadowBuildError(d.DataSetName, d.TeamId) != null ? "failed its last rebuild" : null;
+                        long own = 0;
+                        if (store != null)
+                        {
+                            // Each dataset counts its days in its own statistics zone; day i is i days before its today.
+                            long today = store.Today(d.TeamId, d.DataSetName), from = today - Days + 1;
+                            foreach (var s in store.TimeSeries(d.TeamId, d.DataSetName, from, today))
+                            {
+                                searches[s.Day - from] += s.Searches;
+                                own += s.Searches;
+                                zeroHits += s.ZeroHits;
+                            }
+                        }
+                        datasets.Add(new DatasetInfo(d.DataSetName, ka.Ready, ka.RecordCount, own, error));
+                    }
+                    return (datasets, searches, zeroHits);
+                }));
+
+            var teams = await TeamService.GetAllAsync();
+            _rows = [.. teams.Select(t =>
+            {
+                var members = (membersByTeam.GetValueOrDefault(t.Id) ?? [])
+                    .Select(m => userById.GetValueOrDefault(m.UserId) is { } u
+                        ? new MemberInfo(m.UserId, u.Email ?? u.UserName ?? u.Id, m.Role, m.CreatedAt, u.EmailConfirmed)
+                        : new MemberInfo(m.UserId, m.UserId, m.Role, m.CreatedAt, true))
+                    .OrderBy(m => RoleRank(m.Role))
+                    .ThenBy(m => m.Email, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                var (datasets, searches, zeroHits) = byTeam.GetValueOrDefault(t.Id.ToString(), ([], new double[Days], 0));
+                return new TeamRow(t.Id, t.Name, t.CreatedAt, members, datasets, keysByTeam.GetValueOrDefault(t.Id) ?? [], searches, zeroHits);
+            }).OrderBy(r => r.Name, StringComparer.OrdinalIgnoreCase)];
+        }
+        finally { _loading = false; }
     }
+
+    /// <summary>What an instance admin may want to act on, each a fact with the team named: who can
+    /// reach the team, whether its datasets work and are used, and keys that are about to stop or
+    /// hold more than they should. One admin for many members is not here: a server admin can
+    /// always step in.</summary>
+    private List<Finding> Findings()
+    {
+        var now = DateTime.UtcNow;
+        var found = new List<Finding>();
+        foreach (var r in _rows!)
+        {
+            // Who can reach it.
+            if (r.Members.Count == 0)
+                found.Add(new(r.Name, "No members: nobody can open its datasets in the console"));
+            else if (r.Admins.Count == 0)
+                found.Add(new(r.Name, "No admin: nobody can manage its members or keys"));
+            foreach (var m in r.Members.Where(m => !m.Confirmed))
+                found.Add(new(r.Name, $"{m.Email} has not confirmed their email"));
+
+            // Whether it is set up and working.
+            if (r.Datasets.Count == 0 && now - r.CreatedAt > TimeSpan.FromDays(ExpiringDays))
+                found.Add(new(r.Name, "No datasets yet"));
+            foreach (var d in r.Datasets.Where(d => d.Error != null))
+                found.Add(new(r.Name, $"Dataset {d.Name} {d.Error}"));
+            if (r.Datasets.Count > 0 && r.Keys.Count == 0)
+                found.Add(new(r.Name, "Datasets but no keys: nothing outside the console can search them"));
+
+            // Whether it is used, and finds what is asked.
+            if (_statsOn && r.Datasets.Count > 0)
+            {
+                if (r.SearchTotal == 0)
+                    found.Add(new(r.Name, $"No searches in {Days} days"));
+                else
+                {
+                    foreach (var d in r.Datasets.Where(d => d.Searches == 0))
+                        found.Add(new(r.Name, $"Dataset {d.Name} had no searches in {Days} days"));
+                    if (r.SearchTotal >= FewSearches && r.ZeroHits > r.SearchTotal / 5)
+                        found.Add(new(r.Name, $"{Math.Round(100.0 * r.ZeroHits / r.SearchTotal)}% of its searches found nothing"));
+                    // The last full week against the weeks before it; today is left out, being partway.
+                    double lastWeek = r.Searches[(Days - 8)..(Days - 1)].Sum();
+                    double weekBefore = r.Searches[..(Days - 8)].Sum() / (Days - 8) * 7;
+                    if (weekBefore * 3 >= FewSearches && lastWeek < weekBefore / 2)
+                        found.Add(new(r.Name, $"Searches fell by {Math.Round(100 * (1 - lastWeek / weekBefore))}% in the last week"));
+                }
+            }
+
+            // Keys.
+            foreach (var k in r.Keys)
+            {
+                if (k.ExpiresAt is { } at && at - now < TimeSpan.FromDays(ExpiringDays))
+                    found.Add(new(r.Name, $"Key \"{k.Name}\" expires in {Count(Math.Max(1, (int)Math.Ceiling((at - now).TotalDays)), "day")}"));
+                if (k.Level == "Full")
+                    found.Add(new(r.Name, k.IsTeamKey
+                        ? $"Team key \"{k.Name}\" is Full: it can write to every dataset in the team"
+                        : $"Personal Full key \"{k.Name}\" stops working if its owner leaves the team"));
+            }
+        }
+        return found;
+    }
+
+    private async Task<string> Me() =>
+        AuthState == null ? "unknown" : (await AuthState).User.Identity?.Name ?? "unknown";
+
+    private async Task ChangeRole(TeamRow team, MemberInfo m, string? role)
+    {
+        if (string.IsNullOrEmpty(role) || role == m.Role) return;
+        _error = null;
+        try { await TeamService.ChangeRoleAsync(team.Id, m.UserId, role); }
+        catch (TeamService.TeamException ex) { _error = (team.Name, ex.Message); await Load(); return; }
+        Logger.LogInformation("Server admin {Admin} changed {Member}'s role in team {Team} from {From} to {To}",
+            await Me(), m.Email, team.Name, m.Role, role);
+        Toasts.Show($"{m.Email} is now {role} in {team.Name}.", DatasetIcons.Team);
+        await Load();
+    }
+
+    private async Task Remove(TeamRow team, MemberInfo m)
+    {
+        _error = null;
+        try { await TeamService.RemoveMemberAsync(team.Id, m.UserId); }
+        catch (TeamService.TeamException ex) { _error = (team.Name, ex.Message); return; }
+        Logger.LogInformation("Server admin {Admin} removed {Member} ({Role}) from team {Team}",
+            await Me(), m.Email, m.Role, team.Name);
+        Toasts.Show($"Removed {m.Email} from {team.Name}.", DatasetIcons.Team);
+        await Load();
+    }
+
+    private void OpenAdd(TeamRow team)
+    {
+        var members = team.Members.Select(m => m.UserId).ToHashSet();
+        _userOptions = [.. _users.Where(u => !members.Contains(u.Id))
+            .OrderBy(u => u.Email, StringComparer.OrdinalIgnoreCase)
+            .Select(u => new SelectField.SelectOption(u.Email ?? u.UserName ?? u.Id, u.Id))];
+        _addTo = team;
+        _addUserId = "";
+        _addRole = TeamRoles.Viewer;
+        _addError = null;
+        _showAdd = true;
+    }
+
+    private async Task Add()
+    {
+        if (_addTo is not { } team || string.IsNullOrEmpty(_addUserId)) return;
+        _adding = true;
+        try
+        {
+            try { await TeamService.AddMemberAsync(team.Id, _addUserId, _addRole); }
+            catch (TeamService.TeamException ex) { _addError = ex.Message; return; }
+            var added = _users.FirstOrDefault(u => u.Id == _addUserId);
+            var email = added?.Email ?? _addUserId;
+            Logger.LogInformation("Server admin {Admin} added {Member} to team {Team} as {Role}",
+                await Me(), email, team.Name, _addRole);
+            // The same notice team settings sends when someone is added there.
+            if (!string.IsNullOrEmpty(added?.Email))
+            {
+                try
+                {
+                    var instanceName = InstanceSettingsService.Load().InstanceName;
+                    await EmailSender.SendEmailAsync(added.Email,
+                        EmailTemplates.Subject(instanceName, $"You've been added to team \"{team.Name}\""),
+                        EmailTemplates.Notice(instanceName,
+                            $"Added to {team.Name}",
+                            $"You have been added to the team <strong>{team.Name}</strong> as <strong>{_addRole}</strong>."));
+                }
+                catch { /* email failure is non-fatal */ }
+            }
+            _showAdd = false;
+            Toasts.Show($"Added {email} to {team.Name} as {_addRole}.", DatasetIcons.Team);
+            await Load();
+        }
+        finally { _adding = false; }
+    }
+
+    private void Toggle(string name)
+    {
+        if (!_open.Remove(name)) _open.Add(name);
+    }
+
+    private void OnRowKey(KeyboardEventArgs e, string name)
+    {
+        if (e.Key is "Enter" or " ") Toggle(name);
+    }
+
+    private static string Count(int n, string one) => $"{n:N0} {one}{(n == 1 ? "" : "s")}";
+    private static string LocalPart(string email) => email.Split('@')[0];
 
     // Admins (owners) first, then Editors, then Viewers.
     private static int RoleRank(string role) => role switch
