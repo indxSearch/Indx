@@ -1,5 +1,7 @@
-/* API keys. One column; sections spaced by the shared heading rhythm, no borders or shadows. */
-.key-page { max-width: 880px; }
+/* API keys. One column, as wide as the page like every console page: the table needs the room (it
+   scrolled sideways inside an 880px cap with the window half empty, Nov 2026). The text keeps its
+   own reading width below. Sections spaced by the shared heading rhythm, no borders or shadows. */
+.key-page { min-width: 0; }
 .key-intro { color: var(--lv5); font: var(--text-sm); max-width: 640px; margin-bottom: calc(var(--spacing) * 6); }
 .key-muted { color: var(--lv5); }
 .key-suffix { margin-left: 8px; color: var(--lv5); font: 12px var(--font-mono); }

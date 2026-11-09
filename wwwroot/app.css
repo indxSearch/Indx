@@ -455,10 +455,21 @@ a.btn-danger:hover {
     min-width: 0;
     /* The same top as the column's menu (16px), so a page's first line and the column's first
        title start together, whatever the page. */
-    padding: calc(var(--spacing) * 4) var(--page-gutter) var(--page-gutter);
+    padding: calc(var(--spacing) * 4) var(--page-gutter) 0;
     max-width: var(--page-max);
     width: 100%;
     margin: 0 auto;
+}
+
+/* The space under every page. Not bottom padding: the content stretches to the shell's height in
+   its scrolling row, so a long page overflows its box and the padding sat at the box's foot, mid-page,
+   leaving the last table against the window's edge (Notifications, Nov 2026). A block after the
+   last child is part of what overflows, so it is always the last thing scrolled to. The box itself
+   is unchanged, so a page that sizes to it (the Search preview) is not moved. */
+.content::after {
+    content: "";
+    display: block;
+    height: var(--page-gutter);
 }
 
 /* No page adds its own space at the top: the content's padding is the top on every page. */
