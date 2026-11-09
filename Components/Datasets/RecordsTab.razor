@@ -23,8 +23,10 @@
 @using Indx.Api
 @using Indx.Http
 @using IndxServer.Components.Shared
+@using IndxServer.Models
 @using IndxServer.Services
 @inject DataCheckService DataChecks
+@inject QueryParameterStore QueryParameters
 @inherits DatasetTabBase
 
 @if (!Active) { return; }
@@ -799,6 +801,7 @@
             Text = text, MaxNumberOfRecordsToReturn = Cap, EnableFacets = true, TimeOutLimitMilliseconds = ReadTimeoutMs,
             Filter = filter == null ? null : new FilterProxy(filter.SerializedKey),
             SortBy = sort, SortAscending = ascending,
+            Candidates = new CandidateProxy { MaxCandidates = ListBound(QueryParameters.Load(Ctx.TeamId, Ctx.Name)) },
         };
         var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
         if (result.Reason is { } reason) throw new InvalidOperationException(reason.Message);
@@ -814,14 +817,32 @@
     /// </summary>
     private IEnumerable<KeyValuePair<long, IReadOnlyList<SearchExplanation.Word>>> MatchesUpTo(QueryProxy listed, int upTo)
     {
-        var query = new QueryProxy
-        {
-            Text = listed.Text, MaxNumberOfRecordsToReturn = upTo, EnableMatchReport = true, TimeOutLimitMilliseconds = ReadTimeoutMs,
-            Filter = listed.Filter, SortBy = listed.SortBy, SortAscending = listed.SortAscending,
-        };
-        var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
+        var result = Ctx.Engines.Search(ReportQuery(listed, upTo), Ctx.Name, Ctx.TeamId);
         foreach (var m in result.MatchReport?.Matches ?? [])
             yield return new(m.DocumentKey, m.Words.Select(w => new SearchExplanation.Word(w.Word, w.Field, SearchExplanation.How(w.How), w.How != WordMatch.NotFound)).ToList());
+    }
+
+    /// <summary>The match report's search: the list's, with fewer rows and the list's candidate bound,
+    /// so it ranks the same candidates and returns the list's first <paramref name="upTo"/>.</summary>
+    internal static QueryProxy ReportQuery(QueryProxy listed, int upTo) => new()
+    {
+        Text = listed.Text, MaxNumberOfRecordsToReturn = upTo, EnableMatchReport = true, TimeOutLimitMilliseconds = ReadTimeoutMs,
+        Filter = listed.Filter, SortBy = listed.SortBy, SortAscending = listed.SortAscending, Candidates = listed.Candidates,
+    };
+
+    /// <summary>
+    /// The list's candidate bound, stated on the list and on its match report. Left to the engine
+    /// (the rows times CandidatesPerRow) the report, asking for fewer rows, ranked fewer candidates
+    /// and met other records: a listed record had no report and its Matched read "none" (9 Nov
+    /// 2026, "war" on tmdb23k, 7 of the first 50). The engine's rule, SearchEngine.CandidateBound,
+    /// is internal to it; the dataset's own CandidatesPerRow or MaxCandidates count.
+    /// </summary>
+    internal static int ListBound(DatasetQueryParameters? dataset)
+    {
+        var c = QueryParameterResolution.Resolve(new QueryProxy(), dataset).Candidates;
+        if (c.MaxCandidates is int bound) return Math.Max(1, bound);
+        long wanted = Math.Clamp((long)Cap * Math.Max(1, c.CandidatesPerRow), 100, 5000);
+        return Math.Max(Cap, (int)wanted);
     }
 
     /// <summary>Reads the open page's records, and only those, off the circuit. Each is checked
@@ -939,10 +960,12 @@
         return merged;
     }
 
-    /// <summary>The fields the words were met in, in the query's order; a word met nowhere is said too.</summary>
+    /// <summary>The fields the words were met in, in the query's order; a word met nowhere is said too.
+    /// A record the report does not cover (not yet read) shows nothing rather than "none".</summary>
     private static RenderFragment MatchedCell(IReadOnlyList<SearchExplanation.Word>? words) => __builder =>
     {
-        if (words == null || words.Count == 0) { <span class="records-missing">none</span>; return; }
+        if (words == null) return;
+        if (words.Count == 0) { <span class="records-missing">none</span>; return; }
         var fields = words.Where(w => w.Found && w.Field != null).Select(w => w.Field!).Distinct().ToList();
         var missing = words.Where(w => !w.Found).Select(w => w.Text).ToList();
         var tip = string.Join("; ", words.Select(w => $"{w.Text}: {w.How}{(w.Field != null ? $" in {w.Field}" : "")}"));
