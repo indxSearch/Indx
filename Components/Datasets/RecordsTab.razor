@@ -251,10 +251,12 @@
                                 else
                                 {
                                     var marked = MarkedWords(key, col);
+                                    var spans = MarkSpans(value, marked);
+                                    var shown = Excerpt(value, spans, CellChars, CellLead);
                                     <td class="@(IsNumber(f) ? "records-num" : null)">
-                                        @if (value.Length > CellChars)
+                                        @if (shown != value)
                                         {
-                                            <Tooltip Content="@Short(value, TipChars)" Class="records-tip"><span class="records-cell">@Marked(Short(value, CellChars), marked)</span></Tooltip>
+                                            <Tooltip Content="@Excerpt(value, spans, TipChars, TipChars - CellChars)" Class="records-tip"><span class="records-cell">@Marked(shown, marked)</span></Tooltip>
                                         }
                                         else
                                         {
@@ -346,6 +348,9 @@
     internal const int ShownValues = 50;
     private const int CellChars = 60;
     private const int TipChars = 400;
+    /// <summary>A marked word further in than this starts the cell a few words before it: a column of
+    /// the first width shows about 40 characters.</summary>
+    private const int CellLead = 24;
     private const int ReadTimeoutMs = 10_000;
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
@@ -987,7 +992,21 @@
           || string.Equals(f.FieldType, nameof(JsonValueKind.False), StringComparison.OrdinalIgnoreCase) ? 110
         : 260;
 
-    private static string Short(string value, int chars) => value.Length > chars ? value[..(chars - 1)] + "…" : value;
+    private static string Short(string value, int chars) => value.Length > chars ? value[..(chars - 1)].TrimEnd() + "…" : value;
+
+    /// <summary>What a cell shows of a value: its first characters, or, when the first marked word
+    /// starts past <paramref name="lead"/>, the text from a word or two before it, so a match in a
+    /// long description is seen without opening the record. "…" where it is cut, at either end.</summary>
+    internal static string Excerpt(string value, IReadOnlyList<(int Start, int Length)> spans, int chars, int lead)
+    {
+        if (spans.Count == 0 || spans[0].Start <= lead) return Short(value, chars);
+        var at = spans[0].Start;
+        var back = Math.Max(0, at - 16);
+        // From the start of a word: the first after a space between there and the match.
+        var space = value.IndexOf(' ', back, at - back);
+        var from = space >= 0 ? space + 1 : back;
+        return "…" + Short(value[from..], chars - 1);
+    }
 
     /// <summary>The record's fields as the field configuration groups them, empty groups left out.</summary>
     private IEnumerable<(string Title, IReadOnlyList<FieldProxy> Fields)> DetailGroups()
