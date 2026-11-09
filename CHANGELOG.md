@@ -4,13 +4,56 @@ All notable changes to the Indx server. The top section is the release notes for
 GitHub release: copy it as-is.
 
 Versions: the server has its own line (2.x). It bundles the Indx core library (`IndxSearchLib`,
-5.x) and serves the HTTP API contract `v2.0-beta`, which is the version in every URL. A server
-patch can pick up a newer core without changing the HTTP contract.
+5.x up to beta.3, 6.x from beta.4) and serves the HTTP API contract `v2.0-beta`, which is the
+version in every URL. A server patch can pick up a newer core without changing the HTTP contract.
 
-## [Unreleased]
+## [2.0.0-beta.4] - Unreleased
+
+Runs on IndxSearchLib 6.0.0-preview.1 or later, and changes the HTTP API: read the v5 to v6
+migration guide before upgrading a client.
 
 ### Added
 
+- **The terminal monitor opens with the indx mark.** It turns while the datasets load at startup,
+  then lands as the monitor's logo as the monitor draws itself in. It names the dataset loading
+  and how far it has got, and shows the versions and the address. Any key skips it.
+- The terminal monitor shows a dataset waiting its turn in the startup load as **Queued**, where
+  it said Hibernated.
+
+## [2.0.0-beta.3] - Unreleased
+
+Runs on IndxSearchLib 5.0.6 or later.
+
+### Added
+
+- **Webhooks.** A shop, a CMS or a product feed can keep a dataset in sync by calling a webhook
+  with its changes, or fill a dataset from nothing with one full sync. Sanity and Contentful are
+  ready-made and need no code. A brake holds a call that would delete more than a set share of the
+  dataset within an hour, until a team admin applies or discards it. Team admins make webhooks
+  under the dataset's **Webhooks**; the [guide](https://docs.indx.co/howto/webhooks) has the rest.
+- **Jump to anything.** Cmd+K (Ctrl+K) opens a command palette over your teams, datasets, their
+  sections and the admin pages, searched with Indx, so "synonim" finds Synonyms.
+- **Invites to a team.** Inviting someone to a team adds them at once when they have an account,
+  and otherwise emails a link to register straight into that team and role, with no team of their
+  own. Pending invites can be resent or revoked. An invite works whatever the registration mode.
+- **Get started.** A short checklist in the side column for a new team, with a demo dataset of
+  films to try everything on. It leaves once every step is done.
+- **Support from the console.** Write to Indx support from the foot of the side column, read the
+  replies and mark a ticket solved; a reply shows in the bell and by email. Diagnostics are
+  offered, never sent unasked, and addresses and keys in them are masked.
+- **Browsing paths in Statistics:** the fields people filter by, in what order, and where they
+  went next.
+- **Search or ask.** Five modes set how forward the offer is, from strict to proactive. Needs in
+  its Statistics group the questions visitors asked in different words, across visits, with how
+  each ended. A catalogue's best answer streams. OpenAI is a provider of its own, each provider takes
+  one key, models come from the provider's list, and an admin can offer more answer models for the
+  owners to choose from.
+- **Observr's Agent** keeps whole conversations with a History, remembers a No per dataset, offers
+  Undo for an hour after a Yes, and can draft a support ticket for you to send.
+- **Search timing.** A search answers with a `Server-Timing` header that splits its time into
+  lookup, search and the rest. `Indx:ServerTiming` set to `false` switches it off.
+- **Days woken.** A dataset on a timed keep-alive shows on its Status tab, and in Admin > Datasets,
+  on which days something woke it.
 - **Categories.** A dataset with a category hierarchy, a Google-style `product_type` with
   "Furniture > Chairs > Office chairs" or fields that each hold a level, gets a **Categories** tab:
   the whole catalogue as a tree, every category with its product count, the chosen one with its
@@ -31,11 +74,6 @@ patch can pick up a newer core without changing the HTTP contract.
 - **Admin > Monitor** shows the process's CPU and memory against what the machine allows, the
   native memory pool, searches a minute over the last hour and every dataset's state at a glance.
   The terminal monitor has the same gauges.
-- **The terminal monitor opens with the indx mark.** It turns while the datasets load at startup,
-  then lands as the monitor's logo as the monitor draws itself in. It names the dataset loading
-  and how far it has got, and shows the versions and the address. Any key skips it.
-- The terminal monitor shows a dataset waiting its turn in the startup load as **Queued**, where
-  it said Hibernated.
 - **Update notices.** Once a day the server checks which Indx release is the latest and tells its
   admins once when a newer one is out: a notification in the console and a line under the version in
   the admin area, with how to get it. A security release says so and is emailed too; an ordinary one is
@@ -53,8 +91,14 @@ patch can pick up a newer core without changing the HTTP contract.
 - **The statistics tiles sit with their pictures,** at the top of the Overview, so the other
   sections start at their own content; every tile wears an icon, on the Status tab and the
   monitor too. Conversions show only once the window holds one.
-
-
+- **Viewers can read** a dataset's boost rules, synonyms, query parameters and Search or ask
+  settings, without changing them. Before, these tabs were hidden from viewers.
+- **One name for a record everywhere:** its label field, else its Search or ask title, else its
+  heaviest searchable field. The search preview shows it first.
+- **A field's weight is a slider** in Field configuration, with the number beside it.
+- **Admin > Datasets can hide the hibernated datasets** with a switch at the top.
+- **Backups over the size limit** are removed oldest first, and each database always keeps its
+  newest copy.
 - **A sleeping dataset can be rescued.** Opening a dataset never loads it any more. One that is
   hibernated or not loaded opens on Status with Wake up, and its Options are open: download the
   data, change keep-alive, transfer or delete it, all without loading it into memory. That is the
@@ -62,7 +106,6 @@ patch can pick up a newer core without changing the HTTP contract.
   pinned dataset that was not loaded loaded it there and then, and the console waited.
 - **The console shows when it is working** on Refresh in Admin > Datasets and Admin > Users, on
   saving keep-alive there, and while the Statistics lists reorder or show more.
-
 - **A smaller install.** The server no longer carries design-time tools and web libraries it never
   used, about 45 MB less to download and deploy.
 
@@ -72,7 +115,7 @@ patch can pick up a newer core without changing the HTTP contract.
   search; on a shop with 300k searches in the window the tab never came back. It answers in a
   second now, and the two per-text measures step aside above 50,000 searches.
 
-## [2.0.0-beta.2] - Unreleased
+## [2.0.0-beta.2] - 2026-10-22
 
 Runs on IndxSearchLib 5.0.5 or later.
 

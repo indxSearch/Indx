@@ -16,7 +16,7 @@
 		<Version>2.0.0</Version>
 		<AssemblyVersion>2.0.0.0</AssemblyVersion>
 		<FileVersion>2.0.0.0</FileVersion>
-		<InformationalVersion>2.0.0-beta.2</InformationalVersion>
+		<InformationalVersion>2.0.0-beta.4</InformationalVersion>
 
 		<!-- License Information -->
 		<PackageLicenseFile>LICENSE</PackageLicenseFile>
@@ -142,7 +142,7 @@
 	<!-- Obfuscated NuGet package. The version is a property so the packaging pipeline can point
 	     a build at the package it just made (-p:IndxSearchLibVersion=… with a local feed). -->
 	<PropertyGroup>
-	  <IndxSearchLibVersion Condition="'$(IndxSearchLibVersion)' == ''">5.0.5</IndxSearchLibVersion>
+	  <IndxSearchLibVersion Condition="'$(IndxSearchLibVersion)' == ''">6.0.0-preview.1</IndxSearchLibVersion>
 	</PropertyGroup>
 	<ItemGroup Condition="'$(IndxReferenceMode)' == 'NuGet'">
 	  <PackageReference Include="IndxSearchLib" Version="$(IndxSearchLibVersion)" />
