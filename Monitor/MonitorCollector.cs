@@ -196,7 +196,7 @@ namespace IndxServer.Monitor
                 string label = line is not null
                     ? $"{line.TeamLabel}/{entry.DataSetName}"
                     : $"{Shorten(entry.TeamId)}/{entry.DataSetName}";
-                events.Add(new MonitorEvent(entry.At, "fields", $"{label} · {entry.Text}"));
+                events.Add(new MonitorEvent(entry.At, "fields", $"{label}: {entry.Text}"));
             }
             return events;
         }

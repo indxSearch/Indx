@@ -368,7 +368,7 @@
                                 @if (j.Answerable is { } a) { @Score("answerable", AnswerableHelp, a, []) }
                                 @if (j.Found is { } fd) { @Score("found", FoundHelp, fd, j.Thresholds.Found > 0 ? [new(j.Thresholds.Found, "Found below: the list is dimmed")] : []) }
                                 <Tooltip Content="@(j.Cached ? "The judge answered this text before; the cached answer, no call made." : "How long the judge took. A visitor's page waits at most 3 seconds.")">@(j.Cached ? "cached" : $"{j.Ms} ms")</Tooltip>
-                                @if (j.Reason is { } why) { <text> · @why</text> }
+                                @if (j.Reason is { } why) { <text>, @why</text> }
                             </span>
                             <span class="soa-try-spacer"></span>
                             @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
@@ -515,7 +515,7 @@
         if (m == Service.Setup.AnswerModel) label += ", best quality";
         else if (m == Service.Setup.FastAnswerModel) label += ", fast";
         if (_firstText.TryGetValue(m, out var t))
-            label += $" · first words {t.MedianMs / 1000.0:0.0} s here ({t.Answers:N0} {(t.Answers == 1 ? "answer" : "answers")})";
+            label += $", first words {t.MedianMs / 1000.0:0.0} s here ({t.Answers:N0} {(t.Answers == 1 ? "answer" : "answers")})";
         return new SelectField.SelectOption(label, m);
     });
 
@@ -655,11 +655,11 @@
                 <span class="soa-scale-strong" style="@($"width:{Pct(1 - strong)}")"></span>
             </div>
             <div class="soa-scale-ticks">
-                <span>0 · lookup</span>
+                <span>0 lookup</span>
                 @if (hint is { } hm) { <span class="soa-scale-mark" style="@($"left:{Pct(hm)}")">@Two(hm)</span> }
                 @if (invite is { } im) { <span class="soa-scale-mark" style="@($"left:{Pct(im)}")">@Two(im)</span> }
                 <span class="soa-scale-mark" style="@($"left:{Pct(strong)}")">@Two(strong)</span>
-                <span>question · 1</span>
+                <span>question 1</span>
             </div>
         </div>
     };

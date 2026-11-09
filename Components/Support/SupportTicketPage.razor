@@ -41,7 +41,7 @@
         <h2 class="support-title">@ticket.Subject</h2>
         <p class="support-meta">
             <Chip Color="@status.Color" TextColor="@status.Text">@status.Label</Chip>
-            <span class="support-quiet">#@ticket.Id · @SupportView.Kind(ticket.Kind) · opened <TimeAgo Value="ticket.CreatedAt" /> by @(ticket.Messages.FirstOrDefault(m => !m.FromStaff)?.AuthorName)@(ticket.DiagnosticsSent ? " · diagnostics sent" : "")</span>
+            <span class="support-quiet">#@ticket.Id, @SupportView.Kind(ticket.Kind), opened <TimeAgo Value="ticket.CreatedAt" /> by @(ticket.Messages.FirstOrDefault(m => !m.FromStaff)?.AuthorName)@(ticket.DiagnosticsSent ? ", diagnostics sent" : "")</span>
         </p>
         <div class="support-thread">
             @foreach (var m in ticket.Messages)

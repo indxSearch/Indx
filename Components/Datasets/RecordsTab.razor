@@ -537,7 +537,7 @@
         {
             <span class="records-head-note @(issue ? "records-issue" : null)">
                 @if (issue) { @DatasetIcons.Lacking(14) }
-                @(stats.Without == 0 ? "in all" : $"{stats.Without.ToString("N0", Inv)} without") · @stats.Distinct.ToString("N0", Inv)@(stats.DistinctCapped ? "+" : "") @(stats.Distinct == 1 ? "value" : "values")
+                @(stats.Without == 0 ? "in all" : $"{stats.Without.ToString("N0", Inv)} without"), @stats.Distinct.ToString("N0", Inv)@(stats.DistinctCapped ? "+" : "") @(stats.Distinct == 1 ? "value" : "values")
             </span>
         }
     };
@@ -949,7 +949,7 @@
         <Tooltip Content="@tip">
             <span class="records-matched">
                 @string.Join(", ", fields)
-                @if (missing.Count > 0) { <span class="records-missing">@((fields.Count > 0 ? " · " : "") + "not " + string.Join(", ", missing))</span> }
+                @if (missing.Count > 0) { <span class="records-missing">@((fields.Count > 0 ? ", " : "") + "not " + string.Join(", ", missing))</span> }
             </span>
         </Tooltip>
     };

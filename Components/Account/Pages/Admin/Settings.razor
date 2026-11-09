@@ -433,7 +433,7 @@
     private IEnumerable<SelectField.SelectOption> MoreModelOptions =>
         new[] { new SelectField.SelectOption("Choose a model", "") }
             .Concat(_models!.Where(m => !_moreModels.Contains(m.Id))
-                .Select(m => new SelectField.SelectOption(m.Price is { } p ? $"{m.Id} · {p}" : m.Id, m.Id)));
+                .Select(m => new SelectField.SelectOption(m.Price is { } p ? $"{m.Id}, {p}" : m.Id, m.Id)));
 
     private void AddMoreModel(string? model)
     {
@@ -449,7 +449,7 @@
         };
         if (!string.IsNullOrWhiteSpace(current) && _models!.All(m => m.Id != current))
             options.Add(new($"{current} (not in the provider's list)", current));
-        options.AddRange(_models!.Select(m => new SelectField.SelectOption(m.Price is { } p ? $"{m.Id} · {p}" : m.Id, m.Id)));
+        options.AddRange(_models!.Select(m => new SelectField.SelectOption(m.Price is { } p ? $"{m.Id}, {p}" : m.Id, m.Id)));
         return options;
     }
 

@@ -181,11 +181,11 @@ else if (licenseInfo != null)
                                 else
                                 {
                                     <span style="color: var(--CTeal);">✓ Configured</span>
-                                    <span style="color: var(--lv5); margin-left: 8px; font-size: 12px;">token set · re-fetched on startup and daily</span>
+                                    <span style="color: var(--lv5); margin-left: 8px; font-size: 12px;">token set, re-fetched on startup and daily</span>
                                     @if (autoFetch.FileExists)
                                     {
                                         <span style="color: var(--lv5); margin-left: 8px; font-size: 12px;">
-                                            · last fetched <TimeAgo Value="autoFetch.LastWriteUtc" /> (@FormatBytes(autoFetch.FileBytes))
+                                            last fetched <TimeAgo Value="autoFetch.LastWriteUtc" /> (@FormatBytes(autoFetch.FileBytes))
                                         </span>
                                     }
                                 }

@@ -200,7 +200,7 @@
 .indx-search-result-pin { display: flex; color: var(--lv7); }
 .indx-search-not-ready { color: var(--lv5); margin-top: 16px; }
 
-.indx-perf-sep { margin: 0 6px; color: var(--lv4); }
+.indx-perf-sep { display: inline-block; width: 12px; }
 
 /* ── Facets base ─────────────────────────────────────────────────────────────────────────────
    Fixed height, scrolling inside itself: whatever a search does to the facets, the page below

@@ -71,7 +71,8 @@
     }
 
     ::deep .admin-monitor-table td:nth-child(2)::before {
-        content: " · ";
+        content: "";
+        margin-left: 8px;
     }
 
     ::deep .admin-monitor-table td:last-child {

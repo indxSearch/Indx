@@ -87,8 +87,8 @@
                     @if (_perf != null)
                     {
                         <span class="indx-perf-result" title="@($"{_perf.Iterations} sequential searches after warm-up: min {_perf.MinMs:0.00} ms, max {_perf.MaxMs:0.00} ms. Throughput: the same {_perf.Iterations} searches run in parallel across all cores.")">
-                            latency <strong>@_perf.MedianMs.ToString("0.00") ms</strong> median · @_perf.P95Ms.ToString("0.00") ms p95
-                            <span class="indx-perf-sep">·</span>
+                            latency <strong>@_perf.MedianMs.ToString("0.00") ms</strong> median, @_perf.P95Ms.ToString("0.00") ms p95
+                            <span class="indx-perf-sep"></span>
                             throughput <strong>@_perf.PerSecond.ToString("N0")</strong>/s
                         </span>
                     }

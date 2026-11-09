@@ -41,7 +41,7 @@
         // Beside the bar's top, to the right or the left past the middle, never above the chart.
         double th = Top > 0 && double.IsFinite(g.Values[h.Index]) ? Math.Max(0, g.Values[h.Index]) / Top * Height : 0;
         <div class="indx-grouped-bars-tooltip @(left ? "indx-grouped-bars-tooltip-left" : "")" style="left: @F(left ? tx - 8 : tx + 8)px; top: @F(Math.Max(Head + 12, BarsBottom - th))px;">
-            <span class="indx-grouped-bars-tooltip-label">@g.Label@(Labels != null && h.Index < Labels.Count ? $" · {Labels[h.Index]}" : "")</span>
+            <span class="indx-grouped-bars-tooltip-label">@g.Label@(Labels != null && h.Index < Labels.Count ? $", {Labels[h.Index]}" : "")</span>
             <span class="indx-grouped-bars-tooltip-value">@Format(g.Values[h.Index], h.Group, h.Index)</span>
         </div>
     }

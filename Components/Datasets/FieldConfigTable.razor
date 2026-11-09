@@ -157,7 +157,7 @@
                     </Summary>
                     <ChildContent>
                         <div class="indx-field-card-detail">
-                            <span>@FieldTypeLabel(field)@(PopoverFlags(field) is { } flags ? $" · {flags}" : null)</span>
+                            <span>@FieldTypeLabel(field)@(PopoverFlags(field) is { } flags ? $", {flags}" : null)</span>
                             @if (field.SampleValue is { } sample) { <span class="indx-field-card-sample">@sample</span> }
                         </div>
                         <Table AriaLabel="@($"Settings for {field.FieldName}")">
@@ -304,7 +304,7 @@
     {
         var parts = Caps.Where(c => c.Get(f) == true).Select(c => c.Label).ToList();
         if (f.Weight is { } w && Math.Abs(w - 1f) > 0.001f) parts.Add("Weight " + w.ToString("0.0#", CultureInfo.InvariantCulture));
-        return parts.Count == 0 ? "Unused" : string.Join(" · ", parts);
+        return parts.Count == 0 ? "Unused" : string.Join(", ", parts);
     }
 
     private RenderFragment WeightControl(FieldProxy field, string scope) => __builder =>
@@ -642,7 +642,7 @@
         // above, so neither needs the flag as well.
         if (f.SampleValue == null && !IsContainer(f) && !HasNoValue(f)) parts.Add("Blank");
         if (f.Optional == true) parts.Add("Optional");
-        return parts.Count == 0 ? null : string.Join(" · ", parts);
+        return parts.Count == 0 ? null : string.Join(", ", parts);
     }
 
     /// <summary>"String", "Array (Strings)", "Object" for a field whose value is the nested fields

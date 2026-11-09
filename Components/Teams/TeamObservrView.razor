@@ -11,7 +11,7 @@
 @inject NavigationManager NavigationManager
 @implements IDisposable
 
-<PageTitle>Observr · @Team.Name</PageTitle>
+<PageTitle>@Team.Name Observr</PageTitle>
 
 @* The team's Observr page: [team ▾] › Observr (Notes/Anders/observr-plan.md). What Observr does on
    each of the team's datasets, chosen by the team's editors: on or off, how often it reports, and
@@ -31,7 +31,7 @@
         {
             @* Which datasets Observr watches: a dialog, since it is set once and read rarely,
                and the page is the findings. The label says what is on, so nobody opens it to know. *@
-            <Button Variant="ghost" Size="micro" IconLeft="_iconRecorder" Href="@TeamRoutes.TeamObservrDatasets(Team.Name)" title="Which datasets Observr watches">Datasets · @onCount of @allCount on</Button>
+            <Button Variant="ghost" Size="micro" IconLeft="_iconRecorder" Href="@TeamRoutes.TeamObservrDatasets(Team.Name)" title="Which datasets Observr watches">Datasets, @onCount of @allCount on</Button>
         }
     </div>
     <p class="indx-section-help">

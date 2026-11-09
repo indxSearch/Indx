@@ -203,5 +203,5 @@
         p.IndexSizes.AsSpan().SequenceEqual([3]) && p.NumberOfStartCharacters == 2 && p.NumberOfStopCharacters == 0;
 
     private static string PatternLabel(FieldProfile p) =>
-        $"[{string.Join(", ", p.IndexSizes)}] · start {p.NumberOfStartCharacters} · stop {p.NumberOfStopCharacters}";
+        $"[{string.Join(", ", p.IndexSizes)}], start {p.NumberOfStartCharacters}, stop {p.NumberOfStopCharacters}";
 }

@@ -244,12 +244,12 @@ namespace IndxServer.Services
         /// <summary>"Search only · docs-team · IndxDocs500, IndxDocsChunks" for the key list.</summary>
         public static string DescribeScope(ApiKey key, string? teamName)
         {
-            if (key.TeamId == null) return "Full access · all your teams (created before key scopes)";
+            if (key.TeamId == null) return "Full access, all your teams (created before key scopes)";
             var level = Enum.TryParse<ApiKeyLevel>(key.Level, out var l) ? ApiKeyScope.Describe(l) : key.Level;
             var datasets = key.Datasets == null
                 ? "all datasets"
                 : string.Join(", ", JsonSerializer.Deserialize<string[]>(key.Datasets) ?? []);
-            return $"{level} · {teamName ?? "unknown team"} · {datasets}";
+            return $"{level}, {teamName ?? "unknown team"}, {datasets}";
         }
     }
 }

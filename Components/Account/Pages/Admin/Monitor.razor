@@ -46,7 +46,7 @@ else
                 <ChildContent>@Gb(snapshot.Process.HeldMb) of @Gb(snapshot.Process.AvailableMb)@if (snapshot.Process.PackedAway) {<text>, @Gb(snapshot.Process.WorkingSetMb) in RAM</text>}</ChildContent>
             </Stat>
             <Stat Label="Native pool" Hint="The unmanaged memory the search engine holds for its score arrays, and the count of those allocations. A steady count means they are being released." Value="@Gb(snapshot.Process.NativePoolMb)">
-                @snapshot.Process.NativeBlocks.ToString("N0") blocks · @snapshot.Process.GcHeapMb.ToString("N0") MB managed heap
+                @snapshot.Process.NativeBlocks.ToString("N0") blocks, @snapshot.Process.GcHeapMb.ToString("N0") MB managed heap
             </Stat>
             <Stat Label="Searches" Hint="Counted since the monitor started." Value="@snapshot.SearchesTotal.ToString("N0")">
                 since the monitor started

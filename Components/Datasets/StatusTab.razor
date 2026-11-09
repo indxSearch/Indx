@@ -214,7 +214,7 @@
         {
             int.MaxValue => "Always on",
             0 => "Client managed",
-            var h when ka.Remaining is { } r => $"{h}h · {Math.Max(0, (int)Math.Ceiling(r.TotalMinutes))} min left",
+            var h when ka.Remaining is { } r => $"{h}h, {Math.Max(0, (int)Math.Ceiling(r.TotalMinutes))} min left",
             var h => $"{h}h",
         };
     }
