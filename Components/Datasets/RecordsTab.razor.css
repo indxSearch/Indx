@@ -23,6 +23,8 @@
 
 /* The filter, column and header menus: a systm Popover, each control a row of its own. */
 .records-tab ::deep .records-menu { width: 300px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+/* Labels from the left, as in a systm menu; a full-width button would centre them. */
+.records-tab ::deep .records-menu .indx-btn { justify-content: flex-start; }
 .records-tab ::deep .records-columns { width: 380px; max-height: 420px; overflow-y: auto; gap: 6px; }
 /* A field in the Columns menu, its roles as Field configuration has them on the right. */
 .records-column-row { display: flex; align-items: center; gap: 8px; min-width: 0; }

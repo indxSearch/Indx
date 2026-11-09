@@ -53,7 +53,7 @@
             @if (Ctx.IsEditor)
             {
                 <div class="browse-empty-actions">
-                    <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Fields" @onclick="@(() => { Ctx.ActiveTab = "fields"; Ctx.NotifyChanged(); })">Open Field configuration</Button>
+                    <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.FieldConfiguration" @onclick="@(() => { Ctx.ActiveTab = "fields"; Ctx.NotifyChanged(); })">Open Field configuration</Button>
                     <span class="browse-empty-hint">Mark the field, or the group's fields, Facetable and save; the tree reads them at once.</span>
                 </div>
             }

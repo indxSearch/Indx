@@ -26,7 +26,7 @@ namespace IndxServer.Components.Shared
         private static readonly (string Tab, string Label, RenderFragment<int> Icon, string? Role, string Keywords)[] Sections =
         [
             ("status", "Status", Components.Datasets.DatasetIcons.Status, null, "state overview"),
-            ("fields", "Field configuration", Components.Datasets.DatasetIcons.Fields, null, "fields searchable filterable facetable schema"),
+            ("fields", "Field configuration", Components.Datasets.DatasetIcons.FieldConfiguration, null, "fields searchable filterable facetable schema"),
             ("records", "Records", Components.Datasets.DatasetIcons.Records, null, "records documents data browse table rows"),
             ("categories", "Categories", Components.Datasets.DatasetIcons.Categories, null, "tree hierarchy taxonomy"),
             ("webhooks", "Webhooks", Components.Datasets.DatasetIcons.Webhooks, Services.TeamRoles.Admin, "webhook sync sanity optimizely cms"),

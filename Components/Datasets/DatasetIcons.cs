@@ -21,6 +21,8 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> Agent = Of<Icons.AiAgent>();
         public static readonly RenderFragment<int> PanelAdd = Of<Icons.PanelAdd>();
         public static readonly RenderFragment<int> Fields = Of<Icons.Field>();
+        /// <summary>Field configuration, the page and the way to it (Nov 2026).</summary>
+        public static readonly RenderFragment<int> FieldConfiguration = Of<Icons.FieldConfiguration>();
         /// <summary>Editing something in place: a field's profile (Nov 2026).</summary>
         public static readonly RenderFragment<int> Edit = Of<Icons.Compose>();
         /// <summary>The profile manager (Nov 2026).</summary>

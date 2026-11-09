@@ -366,7 +366,7 @@
             new(label, value, icon, Disabled: !enabled, Title: enabled ? null : NotYet, Badge: badge, BadgeTitle: badgeTitle);
 
         if (isReady || pending) items.Add(Tab("status", "Status", DatasetIcons.Status, isReady));
-        items.Add(Tab("fields", "Field configuration", DatasetIcons.Fields, true));
+        items.Add(Tab("fields", "Field configuration", DatasetIcons.FieldConfiguration, true));
         // The records as a table, read through a search: needs the built index.
         if (isReady || pending) items.Add(Tab("records", "Records", DatasetIcons.Records, isReady));
         // The categories of a catalogue, read from a facet: needs the built index.
