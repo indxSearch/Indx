@@ -479,9 +479,9 @@ namespace IndxServer.Engine
                 // "search works, just returns nothing" until documents are loaded and indexed.
                 if (engine == null || engine.DocumentFields == null)
                     return Result.MakeEmptyResult();
-                Query query = FromQueryProxy(queryProxy, engine, teamId, dataSetName);
+                Query query = FromQueryProxy(queryProxy, engine, teamId, dataSetName, out var focusing);
                 filterKey = query.Filter?.SerializedKey;
-                return engine.Search(query);
+                return focusing ? Services.Focusing.Search(engine, query) : engine.Search(query);
             }
             catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException or ArgumentException)
             {
@@ -1776,12 +1776,18 @@ namespace IndxServer.Engine
             return filter;
         }
 
-        private Query FromQueryProxy(QueryProxy queryProxy, IServerSearchEngine engine, string teamId, string dataSetName)
+        private Query FromQueryProxy(QueryProxy queryProxy, IServerSearchEngine engine, string teamId, string dataSetName) =>
+            FromQueryProxy(queryProxy, engine, teamId, dataSetName, out _);
+
+        /// <param name="focusing">Whether the search is to be focused (Services.Focusing): the
+        /// dataset turns it on and the request left the mode to it.</param>
+        private Query FromQueryProxy(QueryProxy queryProxy, IServerSearchEngine engine, string teamId, string dataSetName, out bool focusing)
         {
             // Each value: the request's if it sent one, else the dataset's query parameters, else
             // the engine default. The engine always gets the complete parts.
             var resolved = Services.QueryParameterResolution.Resolve(queryProxy,
                 _queryParameterStore?.Load(teamId, dataSetName));
+            focusing = resolved.Focusing;
             Query query = new Query(queryProxy.Text, queryProxy.MaxNumberOfRecordsToReturn)
             {
                 LogPrefix = queryProxy.LogPrefix,

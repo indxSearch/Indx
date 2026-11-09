@@ -25,6 +25,12 @@ namespace IndxServer.Models
 
         /// <summary>See <see cref="QueryProxy.Ranking"/>.</summary>
         public RankingProxy? Ranking { get; set; }
+
+        /// <summary>Focusing (9 Nov 2026, a prototype): when no record holds every word of a search,
+        /// the list in BM25F's order rather than the fallback's (<see cref="Services.Focusing"/>).
+        /// The dataset's alone, not a part of a search body: a request that names the mode is
+        /// searched in it. Null and false are off.</summary>
+        public bool? Focusing { get; set; }
     }
 
     /// <summary>GET …/query-parameters: what the dataset sets, and what a search that sends none of

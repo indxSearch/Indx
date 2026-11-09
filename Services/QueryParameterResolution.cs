@@ -24,8 +24,10 @@ namespace IndxServer.Services
         /// <summary>The values a search runs with, and which of them came from the dataset.</summary>
         /// <param name="FromDataset">The JSON names of the values the dataset supplied, e.g.
         /// <c>mode</c>, <c>candidates.maxCandidates</c>. Empty when the dataset decided nothing.</param>
+        /// <param name="Focusing">Whether this search is focused (<see cref="Services.Focusing"/>): the
+        /// dataset turns it on, and the request left the mode to the dataset.</param>
         public sealed record Resolved(SearchMode Mode, MatchSetup Match, CandidateSetup Candidates,
-            RankingSetup Ranking, IReadOnlyList<string> FromDataset);
+            RankingSetup Ranking, IReadOnlyList<string> FromDataset, bool Focusing = false);
 
         public static Resolved Resolve(QueryProxy request, DatasetQueryParameters? dataset)
         {
@@ -60,13 +62,16 @@ namespace IndxServer.Services
             Note(rr?.LongFieldFrom != null, dr?.LongFieldFrom != null, "ranking.longFieldFrom");
             Note(rr?.LongFieldWeightFloor != null, dr?.LongFieldWeightFloor != null, "ranking.longFieldWeightFloor");
             Note(rr?.WholeQueryFloor != null, dr?.WholeQueryFloor != null, "ranking.wholeQueryFloor");
+            var mode = request.Mode ?? dataset?.Mode ?? SearchMode.EditDistance;
+            var focusing = dataset?.Focusing == true && request.Mode == null && mode == SearchMode.EditDistance;
+            Note(request.Mode != null, dataset?.Focusing != null, "focusing");
 
             return new Resolved(
-                request.Mode ?? dataset?.Mode ?? SearchMode.EditDistance,
+                mode,
                 (rm ?? new MatchProxy()).ToSetup(dm),
                 (rc ?? new CandidateProxy()).ToSetup(dc),
                 (rr ?? new RankingProxy()).ToSetup(dr),
-                from);
+                from, focusing);
         }
 
         /// <summary>What a search that sends none of these values runs with on this dataset, every
@@ -106,6 +111,7 @@ namespace IndxServer.Services
                     LongFieldWeightFloor = e.Ranking.LongFieldWeightFloor,
                     WholeQueryFloor = e.Ranking.WholeQueryFloor,
                 },
+                Focusing = e.Focusing,
             };
         }
 
