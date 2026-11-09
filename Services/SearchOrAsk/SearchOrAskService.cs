@@ -760,11 +760,15 @@ namespace IndxServer.Services.SearchOrAsk
             if (!Available) return new IntentOutcome(IntentStatus.Unavailable);
             var settings = trial ?? Settings(teamId, dataSetName);
             if (trial == null && !settings.Enabled) return new IntentOutcome(IntentStatus.Disabled);
-            if (proactive && (settings.Mode != SearchOrAskSettings.ModeProactive || !TryTakeProactive(teamId, dataSetName, settings.DailyProactiveAnswers)))
+            if (proactive && settings.Mode != SearchOrAskSettings.ModeProactive)
                 return new IntentOutcome(IntentStatus.BudgetSpent, RetryAfterSeconds: SecondsToUtcMidnight());
             using (var lease = _askLimiter.AttemptAcquire(clientAddress))
                 if (!lease.IsAcquired)
                     return new IntentOutcome(IntentStatus.RateLimited, RetryAfterSeconds: RetryAfter(lease));
+            // The proactive answer is taken once the address may ask, so a rate-limited start does not
+            // use one up; a spent budget after it leaves nothing to answer today anyway.
+            if (proactive && !TryTakeProactive(teamId, dataSetName, settings.DailyProactiveAnswers))
+                return new IntentOutcome(IntentStatus.BudgetSpent, RetryAfterSeconds: SecondsToUtcMidnight());
             if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget))
                 return new IntentOutcome(IntentStatus.BudgetSpent, RetryAfterSeconds: SecondsToUtcMidnight());
             return new IntentOutcome(IntentStatus.Ok);

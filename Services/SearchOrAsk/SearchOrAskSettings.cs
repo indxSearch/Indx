@@ -65,8 +65,8 @@ namespace IndxServer.Services.SearchOrAsk
         // questions, 362 of them with the right record in the top five (Notes/search-or-ask.md,
         // "Strong matches only, removed"). A client that sends the old settings is not refused.
 
-        /// <summary>While asking, the page's own searches run with coverage on whole words only (no
-        /// fuzzy, prefix or joined matching, words of three letters or more), and the list is
+        /// <summary>While asking, the page's own searches match whole words only (no typos, no starts
+        /// of longer words, no joined words), and the list is
         /// searched once more when the offer turns strong. The forgiving matching that is right for a
         /// typed name is wrong under a question: on the school register "ullern videregående" confirmed
         /// seven other schools by prefix and fuzzy matches of the second word (14 Oct 2026). The

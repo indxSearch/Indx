@@ -52,7 +52,7 @@ namespace IndxServer.Controllers
 
         /// <summary>
         /// What the dataset sets, what it runs with (the site description and fields after defaults),
-        /// and whether this instance can run it at all (<c>available</c>: an API key is configured).
+        /// and whether a page can run it here (<c>available</c>: a model key is configured and the dataset shows it).
         /// A search key may read it: a search page needs to know whether to ask, and the thresholds.
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
@@ -84,7 +84,9 @@ namespace IndxServer.Controllers
                 new SearchOrAskEffective(service.SiteDescription(ctx.OwnerKey, dataSetName, settings),
                     fields.TitleField, fields.SectionFields, fields.SnippetFields,
                     service.Setup.ModelFor(settings), settings.SearchesResolved(), service.Setup.OfferedModels),
-                service.Available);
+                // Where the dataset does not show it, the visitor's routes answer 404: a page reading
+                // this must not offer what it cannot ask.
+                service.Available && service.ShownFor(ctx.OwnerKey, dataSetName));
         }
 
         /// <summary>Replaces the dataset's settings. Applies from the next call; no reindex.</summary>
