@@ -10,393 +10,263 @@
 @inject Services.ILicenseBootstrapper Bootstrapper
 @inject Services.InstanceSettingsService InstanceSettingsService
 @inject Services.IEditionService Edition
+@inject Indx.Systm.Blazor.ToastService Toasts
+@using IndxServer.Components.Datasets
 
-<PageTitle>License Information</PageTitle>
+<PageTitle>License</PageTitle>
 
-<h2>Indx License Information</h2>
+@* The console's half of the license (Nov 2026), drawn as the license portal draws the other half:
+   the license on the left, how it reaches this server on the right, in the portal's words for a token
+   and a fetch. The limit without a license is per dataset (a dataset past it takes its first 100,000
+   documents), so the page names the datasets it cuts and never adds documents across them. *@
+<div class="license-head">
+    <h2>License</h2>
+    <p>The license this server runs on, and how it gets a new one.</p>
+</div>
 
 @if (!Edition.LicensingVisible)
 {
-    <div style="padding: 20px; border: 1px solid var(--CLightBlue); border-radius: var(--radius); background: rgba(107, 158, 255, 0.1); margin: 20px 0;">
-        <h3>Managed by Indx</h3>
-        <p>This is a managed deployment — licensing is handled by Indx and there is nothing to configure here. Your plan determines available capacity.</p>
-    </div>
+    <Alert Variant="info">
+        <Title>Managed by Indx</Title>
+        <Description>Licensing is handled by Indx on a managed deployment, so there is nothing to set here. Your plan decides the capacity.</Description>
+    </Alert>
 }
 else if (isLoading)
 {
-    <p>Loading license information...</p>
+    <p class="license-loading"><Spinner Size="14" /> Loading the license…</p>
 }
-else if (licenseInfo != null)
+else if (licenseInfo is null)
 {
-    @if (!string.IsNullOrEmpty(errorMessage))
-    {
-        <div style="padding: 20px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255, 66, 56, 0.1); margin: 20px 0;">
-            <strong>Error:</strong> @errorMessage
-        </div>
-    }
-
-    <div style="margin: 40px 0;">
-        @if (isSourceBuild)
-        {
-            <div style="padding: 20px; border: 1px solid var(--CLightBlue); border-radius: var(--radius); background: rgba(107, 158, 255, 0.1); margin: 20px 0;">
-                <h3>Source Build</h3>
-                <p>Running from source. License validation is only available in obfuscated NuGet builds.</p>
-            </div>
-        }
-        else if (licenseInfo.Licensed && licenseInfo.ValidLicense)
-        {
-            <div style="padding: 20px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114, 245, 198, 0.1); margin: 20px 0;">
-                <h3>✓ Licensed</h3>
-                <p>Your Indx installation is properly licensed.</p>
-            </div>
-        }
-        else if (licenseInfo.Licensed && !licenseInfo.ValidLicense)
-        {
-            <div style="padding: 20px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255, 66, 56, 0.1); margin: 20px 0;">
-                <h3>⚠ License Expired</h3>
-                <p>Your license has expired. Please contact <a href="https://indx.co" target="_blank">indx.co</a> to renew.</p>
-            </div>
-        }
-        else if (autoFetch?.TokenConfigured == true)
-        {
-            @* Running without a license, but a token is configured — so a license will be
-               fetched automatically and become effective the next time a dataset is loaded or
-               indexed (engines read the license file at construction). Reassure rather than
-               nag to place a file. *@
-            <div style="padding: 20px; border: 1px solid var(--CLightBlue); border-radius: var(--radius); background: rgba(107, 158, 255, 0.1); margin: 20px 0;">
-                <h3>ℹ Running Without License — token configured</h3>
-                <p>You are currently running with the default 100,000 document limit, but a license token is set.</p>
-                <p style="margin-top: 10px;">
-                    A fresh license is fetched automatically (on startup and once a day) and becomes
-                    effective the <strong>next time each dataset is loaded or indexed</strong>. Use
-                    <strong>Fetch now</strong> below to pull it immediately, then reload or re-index
-                    your datasets to apply it.
-                </p>
-            </div>
-        }
-        else
-        {
-            <div style="padding: 20px; border: 1px solid var(--CLightBlue); border-radius: var(--radius); background: rgba(107, 158, 255, 0.1); margin: 20px 0;">
-                <h3>ℹ Running Without License</h3>
-                <p>You are running with the default 100,000 document limit.</p>
-                <p style="margin-top: 10px;">
-                    <strong>To remove this limit:</strong><br />
-                    1. Register at <a href="https://indx.co" target="_blank" style="color: var(--CLightBlue);">indx.co</a><br />
-                    2. Request your free extended license<br />
-                    3. Place the license file in <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">./IndxData/</code> directory,
-                    or paste a license token under <strong>License Files → Auto-fetch</strong> below
-                </p>
-            </div>
-        }
-
-        @if (runningLicensedNoFile)
-        {
-            <div style="padding: 16px 20px; border: 1px solid var(--CWarning); border-radius: var(--radius); background: rgba(255,178,41,0.1); margin: 20px 0;">
-                <h3 style="margin: 0 0 6px 0;">⚠ No license file on disk</h3>
-                @if (autoFetch?.TokenConfigured == true)
-                {
-                    <p style="margin: 0;">
-                        Existing datasets are still running with the license they loaded at startup, so search keeps working —
-                        but there is no <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">.license</code>
-                        file in <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">./IndxData/</code> right now.
-                        A license token is configured, so a fresh license is fetched automatically (on startup and daily) and
-                        re-applied the <strong>next time each dataset is loaded or indexed</strong>. Use <strong>Fetch now</strong>
-                        below to restore the file immediately.
-                    </p>
-                }
-                else
-                {
-                    <p style="margin: 0;">
-                        Existing datasets are still running with the license they loaded at startup, so search keeps working —
-                        but there is no <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">.license</code>
-                        file in <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">./IndxData/</code> anymore.
-                        On the next restart these datasets will drop to the 100,000-document limit. Upload a license file or
-                        configure auto-fetch below to keep them licensed.
-                    </p>
-                }
-            </div>
-        }
-
-        <div style="margin-top: 30px;">
-            <h3>License Details</h3>
-            <div style="padding: 20px; border: 1px solid var(--lv3); border-radius: var(--radius); background: var(--lv0); margin: 20px 0;">
-                <table style="width: 100%; border-collapse: collapse;">
-                    <tbody>
-                        <tr style="border-bottom: 1px solid var(--lv2);">
-                            <td style="padding: 12px 0; font-weight: bold; width: 200px;">Licensed To:</td>
-                            <td style="padding: 12px 0;">@licenseInfo.LicensedTo</td>
-                        </tr>
-                        <tr style="border-bottom: 1px solid var(--lv2);">
-                            <td style="padding: 12px 0; font-weight: bold;">Type:</td>
-                            <td style="padding: 12px 0;">@licenseInfo.Type</td>
-                        </tr>
-                        <tr style="border-bottom: 1px solid var(--lv2);">
-                            <td style="padding: 12px 0; font-weight: bold;">Description:</td>
-                            <td style="padding: 12px 0;">@licenseInfo.Description</td>
-                        </tr>
-                        <tr style="border-bottom: 1px solid var(--lv2);">
-                            <td style="padding: 12px 0; font-weight: bold;">Document Limit:</td>
-                            <td style="padding: 12px 0;">
-                                @if (licenseInfo.DocumentLimit == int.MaxValue)
-                                {
-                                    <span>Unlimited</span>
-                                }
-                                else
-                                {
-                                    <span>@licenseInfo.DocumentLimit.ToString("N0")</span>
-                                }
-                                @if (licenseInfo.DocumentLimitExceeded)
-                                {
-                                    <span style="color: var(--CSignal); margin-left: 10px;">⚠ Limit Exceeded</span>
-                                }
-                            </td>
-                        </tr>
-                        <tr style="border-bottom: 1px solid var(--lv2);">
-                            <td style="padding: 12px 0; font-weight: bold;">Expiration Date:</td>
-                            <td style="padding: 12px 0;">
-                                @if (licenseInfo.ExpirationDate.Year >= 3000)
-                                {
-                                    <span>Never</span>
-                                }
-                                else
-                                {
-                                    <TimeAgo Value="licenseInfo.ExpirationDate" />
-                                }
-                            </td>
-                        </tr>
-                        <tr style="border-bottom: 1px solid var(--lv2);">
-                            <td style="padding: 12px 0; font-weight: bold;">License File:</td>
-                            <td style="padding: 12px 0; font-family: var(--font-mono); font-size: 12px;">@licenseInfo.LicenseFileName</td>
-                        </tr>
-                        <tr style="border-bottom: 1px solid var(--lv2);">
-                            <td style="padding: 12px 0; font-weight: bold;">Auto-fetch:</td>
-                            <td style="padding: 12px 0;">
-                                @if (autoFetch is null || !autoFetch.TokenConfigured)
-                                {
-                                    <span style="color: var(--lv5);">Not configured</span>
-                                    <span style="color: var(--lv5); margin-left: 8px; font-size: 12px;">
-                                        (paste a license token below — the portal URL is predefined)
-                                    </span>
-                                }
-                                else
-                                {
-                                    <span style="color: var(--CTeal);">✓ Configured</span>
-                                    <span style="color: var(--lv5); margin-left: 8px; font-size: 12px;">token set, re-fetched on startup and daily</span>
-                                    @if (autoFetch.FileExists)
-                                    {
-                                        <span style="color: var(--lv5); margin-left: 8px; font-size: 12px;">
-                                            last fetched <TimeAgo Value="autoFetch.LastWriteUtc" /> (@FormatBytes(autoFetch.FileBytes))
-                                        </span>
-                                    }
-                                }
-                            </td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 12px 0; font-weight: bold;">Valid:</td>
-                            <td style="padding: 12px 0;">
-                                @if (licenseInfo.ValidLicense)
-                                {
-                                    <span style="color: var(--CTeal);">✓ Yes</span>
-                                }
-                                else
-                                {
-                                    <span style="color: var(--CSignal);">✗ No</span>
-                                }
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-
-        @if (!licenseInfo.Licensed || !licenseInfo.ValidLicense)
-        {
-            <div style="margin-top: 30px; padding: 20px; border: 1px solid var(--lv3); border-radius: var(--radius); background: var(--lv0);">
-                <h3>Getting a License</h3>
-                <div style="margin-top: 15px;">
-                    <h4>Option 1: Free Extended License (Recommended)</h4>
-                    <ul style="line-height: 1.8;">
-                        <li>Register an account at <a href="https://indx.co" target="_blank" style="color: var(--CLightBlue);">https://indx.co</a></li>
-                        <li>Request your free extended license</li>
-                        <li>No restrictions - use for any purpose including production</li>
-                        <li>Place file in <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">./IndxData/indx-developer.license</code></li>
-                    </ul>
-
-                    <h4 style="margin-top: 20px;">Option 2: Paid Company License</h4>
-                    <ul style="line-height: 1.8;">
-                        <li>For organizations requiring SLA and technical support</li>
-                        <li>Includes service level guarantees and priority support</li>
-                        <li>Same document capacity as extended license</li>
-                        <li>Contact <a href="https://indx.co" target="_blank" style="color: var(--CLightBlue);">indx.co</a> for pricing</li>
-                    </ul>
-                </div>
-            </div>
-        }
-
-        @* ── LICENSE FILE MANAGEMENT (admin only) ── *@
-        <AuthorizeView Roles="Admin">
-        <div style="margin-top: 40px;">
-            <h3>License Files</h3>
-
-            @if (!string.IsNullOrEmpty(fileOpMessage))
-            {
-                <div style="padding: 14px 18px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114,245,198,0.08); margin: 16px 0;">
-                    @fileOpMessage
-                </div>
-            }
-            @if (!string.IsNullOrEmpty(fileOpError))
-            {
-                <div style="padding: 14px 18px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255,66,56,0.08); margin: 16px 0;">
-                    @fileOpError
-                </div>
-            }
-
-            @if (licenseFiles.Count > 0)
-            {
-                <table style="width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 13px;">
-                    <thead>
-                        <tr style="border-bottom: 1px solid var(--lv3); color: var(--lv5);">
-                            <th style="text-align: left; padding: 8px 12px; font-weight: 500;">File</th>
-                            <th style="padding: 8px 12px; font-weight: 500;">Status</th>
-                            <th style="padding: 8px 12px;"></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var f in licenseFiles)
-                        {
-                            <tr style="border-bottom: 1px solid var(--lv2);">
-                                <td style="padding: 10px 12px; font-family: var(--font-mono); color: var(--lv6);">@f.Filename</td>
-                                <td style="padding: 10px 12px; text-align: center;">
-                                    @if (f.IsActive)
-                                    {
-                                        <Chip Color="var(--CTeal)" TextColor="#080809">Active</Chip>
-                                    }
-                                    else
-                                    {
-                                        <Chip Color="var(--lv3)" TextColor="var(--lv5)">Inactive</Chip>
-                                    }
-                                </td>
-                                <td style="padding: 10px 12px; text-align: right;">
-                                    <Button Variant="ghost" Size="micro" @onclick="() => ConfirmDelete(f.Filename)">Delete</Button>
-                                </td>
-                            </tr>
-                            @if (deleteConfirmFile == f.Filename)
-                            {
-                                <tr>
-                                    <td colspan="3" style="padding: 12px; background: rgba(255,178,41,0.06); border-bottom: 1px solid var(--lv2);">
-                                        <div style="display: flex; align-items: center; gap: 16px;">
-                                            <span style="font-size: 13px;">Delete <strong>@f.Filename</strong>? This cannot be undone.</span>
-                                            <Button Variant="danger" Size="micro" @onclick="ExecuteDelete">Yes, delete</Button>
-                                            <Button Variant="secondary" Size="micro" @onclick="() => deleteConfirmFile = null">Cancel</Button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            }
-                        }
-                    </tbody>
-                </table>
-            }
-            else
-            {
-                <p style="color: var(--lv5); font-size: 13px; margin: 16px 0;">No license files in <code style="background: var(--lv1); padding: 2px 6px; border-radius: 3px;">./IndxData/</code>.</p>
-            }
-
-            @* ── UPLOAD ── *@
-            <div style="margin-top: 12px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                <InputFile OnChange="HandleFileSelected" accept=".license" style="display:none" id="license-file-input" />
-                <label for="license-file-input" class="indx-upload-label">
-                    <Card Size="14" />
-                    @if (selectedFile != null)
-                    {
-                        <span>@selectedFile.Name (@((selectedFile.Size / 1024.0).ToString("F1")) KB)</span>
-                    }
-                    else
-                    {
-                        <span>Choose a .license file to upload</span>
-                    }
-                </label>
-                @if (selectedFile != null)
-                {
-                    <Button Variant="primary" Size="micro" @onclick="UploadFile" Disabled="@isUploading">
-                        @(isUploading ? "Uploading…" : "Upload")
-                    </Button>
-                    <Button Variant="ghost" Size="micro" @onclick="() => { selectedFile = null; fileOpError = null; }">Cancel</Button>
-                }
-            </div>
-
-            @* ── AUTO-FETCH FROM LICENSE SERVER ── *@
-            <div style="margin-top: 32px;">
-                <h4 style="margin-bottom: 4px;">Auto-fetch from license server</h4>
-                <p style="color: var(--lv5); font-size: 13px; margin-bottom: 12px;">
-                    A fresh license is fetched automatically on startup and once a day.
-                    Use <strong>Fetch now</strong> to pull one immediately.
-                </p>
-                <div style="display: flex; flex-direction: column; gap: 12px; max-width: 520px;">
-
-                    @* The fetch endpoint is hardcoded (only Indx issues licenses); show just the
-                       friendly portal host rather than the raw …/api/license/current endpoint. *@
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="color: var(--lv5); font-size: 13px; min-width: 48px;">Portal</span>
-                        <a href="@PortalUrl" target="_blank" rel="noopener noreferrer"
-                           style="flex: 1; font-size: 13px; color: var(--CLightBlue); text-decoration: none; overflow-wrap: anywhere;">
-                            @PortalHost
-                        </a>
-                    </div>
-
-                    @* Token is the per-deployment secret. Once set it is "locked in" — we hide the
-                       input and show edit/remove, so the deployment reads as actively licence-fetching. *@
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="color: var(--lv5); font-size: 13px; min-width: 48px;">Token</span>
-                        @if (autoFetch?.TokenConfigured == true && !_editingToken)
-                        {
-                            <span style="flex: 1; color: var(--CTeal); font-size: 13px;">✓ Token set — fetching enabled</span>
-                            <Button Variant="secondary" Size="micro" @onclick="BeginEditToken" Disabled="@_isFetching">Edit</Button>
-                            <ConfirmButton Label="Remove" ConfirmLabel="Remove token" Disabled="@_isFetching"
-                                           Prompt="Remove the license token? Auto-fetch stops; any license file already on disk is kept."
-                                           Open="@_removeTokenConfirm" OpenChanged="v => { _removeTokenConfirm = v; if (v) { _fetchMessage = null; _fetchError = null; } }"
-                                           OnConfirm="RemoveToken" />
-                        }
-                        else
-                        {
-                            <InputField @bind-Value="_licenseTokenInput" type="password" style="flex: 1;"
-                                        placeholder="@(autoFetch?.TokenConfigured == true ? "Enter new token" : "Paste license token")" />
-                            <Button Variant="primary" Size="micro" @onclick="SaveToken" Disabled="@_isFetching">Save</Button>
-                            @if (_editingToken)
-                            {
-                                <Button Variant="ghost" Size="micro" @onclick="CancelEditToken" Disabled="@_isFetching">Cancel</Button>
-                            }
-                        }
-                    </div>
-
-
-                    <div style="display: flex; gap: 8px; align-items: center;">
-                        <Button Variant="secondary" Size="micro" @onclick="FetchNow"
-                                Disabled="@(_isFetching || autoFetch?.UrlConfigured != true)">
-                            @(_isFetching ? "Fetching…" : "Fetch now")
-                        </Button>
-                    </div>
-                    @if (_isFetching)
-                    {
-                        <p style="color: var(--lv5); font-size: 12px; margin: 0;">Validating license…</p>
-                    }
-                    @if (!string.IsNullOrEmpty(_fetchMessage))
-                    {
-                        <p style="color: var(--CTeal); font-size: 12px; margin: 0;">@_fetchMessage</p>
-                    }
-                    @if (!string.IsNullOrEmpty(_fetchError))
-                    {
-                        <p style="color: var(--CSignal); font-size: 12px; margin: 0;">@_fetchError</p>
-                    }
-                </div>
-            </div>
-        </div>
-        </AuthorizeView>
-    </div>
+    <Alert Variant="destructive">
+        <Title>The license could not be read</Title>
+        <Description>@(errorMessage ?? "Try again in a moment, or see the server log.")</Description>
+    </Alert>
 }
 else
 {
-    <div style="padding: 20px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255, 66, 56, 0.1); margin: 20px 0;">
-        <strong>Error:</strong> Unable to load license information.
+    <div class="license-page">
+        @* What needs doing, only when something does. *@
+        @if (isSourceBuild)
+        {
+            <Alert Variant="info">
+                <Title>Built from source</Title>
+                <Description>
+                    This server runs the Indx engine from source, where no license is checked: no dataset has a document limit
+                    and the license file is not read. Customers run the published IndxSearchLib; build with
+                    <code class="license-code">-p:IndxFromNuGet=true</code> to see this page as they do.
+                </Description>
+            </Alert>
+        }
+        else if (licenseInfo.Licensed && !licenseInfo.ValidLicense)
+        {
+            <Alert Variant="destructive">
+                <Title>The license ended <TimeAgo Value="licenseInfo.ExpirationDate" /></Title>
+                <Description>A dataset loaded since then takes at most @Limit.ToString("N0") documents. Renew it at @PortalHost, or connect a token so this server renews it by itself.</Description>
+            </Alert>
+        }
+        else if (OverLimit.Count > 0)
+        {
+            <Alert Variant="warning">
+                <Title>@(OverLimit.Count == 1 ? "1 dataset is" : $"{OverLimit.Count} datasets are") over the @Limit.ToString("N0") document limit</Title>
+                <Description>Each takes its first @Limit.ToString("N0") documents and leaves the rest out of search. A free license from @PortalHost lifts the limit.</Description>
+            </Alert>
+        }
+        else if (!licenseInfo.Licensed && autoFetch?.TokenConfigured == true)
+        {
+            <Alert Variant="info">
+                <Title>A token is set, and no license has come yet</Title>
+                <Description>Fetch now to get it at once. It applies to each dataset the next time it is loaded or indexed.</Description>
+            </Alert>
+        }
+        @if (runningLicensedNoFile && !isSourceBuild)
+        {
+            <Alert Variant="warning">
+                <Title>No license file on disk</Title>
+                <Description>
+                    The datasets running now keep the license they loaded, so search goes on.
+                    @(autoFetch?.TokenConfigured == true
+                        ? "A token is set, so a new file is fetched on start and daily; Fetch now restores it at once."
+                        : "After a restart they drop to the free limit: connect a token or upload a license file.")
+                </Description>
+            </Alert>
+        }
+
+        <div class="license-columns">
+            <div class="license-column">
+                <h3>@(isSourceBuild ? "Source build" : licenseInfo.Licensed ? "Your Indx license" : "No license yet")</h3>
+                @if (!licenseInfo.Licensed && !isSourceBuild)
+                {
+                    <p class="license-text">Indx runs without a license, with up to @Limit.ToString("N0") documents in each dataset. A free license from @PortalHost lifts the limit, for any use.</p>
+                }
+                <div class="license-facts">
+                    <span class="license-faint">Edition</span>
+                    <span>
+                        @if (licenseInfo.Licensed && licenseInfo.ValidLicense && !isSourceBuild)
+                        {
+                            <Chip Color="var(--CLightBlue)" TextColor="#080809">@EditionLabel</Chip>
+                        }
+                        else
+                        {
+                            <Chip Color="var(--lv2)" TextColor="var(--lv6)">@(isSourceBuild ? "Source build" : licenseInfo.Licensed ? $"{EditionLabel}, ended" : "No license")</Chip>
+                        }
+                    </span>
+                    @if (isSourceBuild)
+                    {
+                        <span class="license-faint">Checked</span>
+                        <span>No, a source build does not check licenses</span>
+                    }
+                    @if (licenseInfo.Licensed && !string.IsNullOrWhiteSpace(licenseInfo.LicensedTo))
+                    {
+                        <span class="license-faint">Licensed to</span>
+                        <span>@licenseInfo.LicensedTo</span>
+                    }
+                    @if (licenseInfo.Licensed && licenseInfo.ExpirationDate.Year < 3000)
+                    {
+                        <span class="license-faint">@(licenseInfo.ValidLicense ? "Renews" : "Ended")</span>
+                        <span><TimeAgo Value="licenseInfo.ExpirationDate" /></span>
+                    }
+                    <span class="license-faint">Documents</span>
+                    <span>@(isSourceBuild ? "No limit, as built" : Limited ? $"At most {Limit:N0} per dataset" : "No limit")</span>
+                </div>
+
+                @if (OverLimit.Count > 0)
+                {
+                    <div class="license-over">
+                        <span class="license-faint">Over the limit</span>
+                        @foreach (var d in OverLimit)
+                        {
+                            <div class="license-over-row">
+                                <span class="license-mono">@d.Name</span>
+                                <BarMeter Value="Limit" Max="d.Documents" Color="var(--CSignal)" Format="@(v => v.ToString("N0"))"
+                                          MaxLabel="@($"of {d.Documents:N0} searched")" />
+                            </div>
+                        }
+                    </div>
+                }
+
+                <div class="license-links">
+                    <a class="license-link" href="@PortalUrl" target="_blank" rel="noopener">@DatasetIcons.User(14)<span>Your license at @PortalHost</span>@DatasetIcons.Open(14)</a>
+                    <a class="license-link" href="https://docs.indx.co" target="_blank" rel="noopener">@DatasetIcons.Documents(14)<span>Licensing in the documentation</span>@DatasetIcons.Open(14)</a>
+                </div>
+            </div>
+
+            <div class="license-column">
+                @* How the license reaches this server: a token from the portal, fetched on start and daily. *@
+                <div class="license-card">
+                    <h3>From @PortalHost</h3>
+                    @if (autoFetch?.TokenConfigured == true && !_editingToken)
+                    {
+                        <div class="license-connected">
+                            <span class="license-tick">@DatasetIcons.Fixed(14)</span>
+                            <span class="license-connected-text">
+                                <span>Connected with a token</span>
+                                <span class="license-faint">
+                                    @if (autoFetch.FileExists)
+                                    {
+                                        <text>Last fetched </text><TimeAgo Value="autoFetch.LastWriteUtc" /><text>. It fetches on start and once a day.</text>
+                                    }
+                                    else
+                                    {
+                                        <text>Nothing fetched yet. It fetches on start and once a day.</text>
+                                    }
+                                </span>
+                            </span>
+                        </div>
+                        <div class="license-inline">
+                            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Restore" Loading="@_isFetching"
+                                    Disabled="@(autoFetch?.UrlConfigured != true)" @onclick="FetchNow">Fetch now</Button>
+                            <Button Variant="ghost" Size="micro" Disabled="@_isFetching" @onclick="BeginEditToken">Change token</Button>
+                            <ConfirmButton Label="Remove" Title="Remove the token?" ConfirmLabel="Remove token" Disabled="@_isFetching"
+                                           Prompt="This server stops fetching the license. The license file it has keeps working until it ends."
+                                           OnConfirm="RemoveToken" />
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="license-text">Create a token on your license page at @PortalHost and paste it here. This server then fetches the license, and a new one whenever it renews.</p>
+                        <div><Button Href="@PortalUrl" Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" target="_blank" rel="noopener">Open @PortalHost</Button></div>
+                        <InputField Label="Token" type="password" Immediate @bind-Value="_licenseTokenInput"
+                                    placeholder="@(autoFetch?.TokenConfigured == true ? "Paste the new token" : "Paste the token")" />
+                        <div class="license-inline">
+                            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Key" Loading="@_isFetching"
+                                    Disabled="@string.IsNullOrWhiteSpace(_licenseTokenInput)" @onclick="SaveToken">Save and fetch</Button>
+                            @if (_editingToken)
+                            {
+                                <Button Variant="secondary" Size="micro" Disabled="@_isFetching" @onclick="CancelEditToken">Cancel</Button>
+                            }
+                        </div>
+                    }
+                    @if (!string.IsNullOrEmpty(_fetchError))
+                    {
+                        <Alert Variant="destructive">@_fetchError</Alert>
+                    }
+                </div>
+
+                <div class="license-card">
+                    <h3>License files</h3>
+                    <p class="license-text">In IndxData. A fetched license is written here; a server that cannot reach the portal takes one uploaded by hand.</p>
+                    @if (licenseFiles.Count > 0)
+                    {
+                        <div class="license-files">
+                            <Table AriaLabel="License files">
+                                <thead>
+                                    <tr>
+                                        <th scope="col">File</th>
+                                        <th scope="col">Status</th>
+                                        <th scope="col" aria-label="Actions"></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var f in licenseFiles)
+                                    {
+                                        var name = f.Filename;
+                                        <tr>
+                                            <td class="license-mono">@name</td>
+                                            <td>
+                                                @if (f.IsActive)
+                                                {
+                                                    <Chip Color="var(--lv8)" TextColor="var(--lv0)">In use</Chip>
+                                                }
+                                                else
+                                                {
+                                                    <Chip Color="var(--lv2)" TextColor="var(--lv5)">Not used</Chip>
+                                                }
+                                            </td>
+                                            <td class="license-actions">
+                                                <ConfirmButton Label="Delete" Title="@($"Delete {name}?")" ConfirmLabel="Delete file"
+                                                               Prompt="Datasets keep the license they loaded until the server restarts."
+                                                               OnConfirm="() => DeleteFile(name)" />
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </Table>
+                        </div>
+                    }
+                    else
+                    {
+                        <p class="license-faint">No license file yet.</p>
+                    }
+
+                    <div class="license-inline">
+                        <InputFile OnChange="HandleFileSelected" accept=".license" style="display:none" id="license-file-input" />
+                        <label for="license-file-input" class="indx-upload-label">
+                            <Card Size="14" />
+                            <span>@(selectedFile is null ? "Upload a .license file" : $"{selectedFile.Name} ({selectedFile.Size / 1024.0:F1} KB)")</span>
+                        </label>
+                        @if (selectedFile is not null)
+                        {
+                            <Button Variant="primary" Size="micro" Loading="@isUploading" @onclick="UploadFile">Upload</Button>
+                            <Button Variant="secondary" Size="micro" Disabled="@isUploading" @onclick="() => { selectedFile = null; fileOpError = null; }">Cancel</Button>
+                        }
+                    </div>
+                    @if (!string.IsNullOrEmpty(fileOpError))
+                    {
+                        <Alert Variant="destructive">@fileOpError</Alert>
+                    }
+                </div>
+            </div>
+        </div>
     </div>
 }
 
@@ -413,9 +283,21 @@ else
 
     private List<IndxServerInternalApi.LicenseFileInfo> licenseFiles = [];
     private bool runningLicensedNoFile;
-    private string? deleteConfirmFile;
-    private string? fileOpMessage;
     private string? fileOpError;
+
+    private sealed record DatasetOver(string Name, int Documents);
+    /// <summary>The datasets the limit cuts: the limit is per dataset, and one past it takes its first
+    /// Limit documents. Empty with a license, or in a source build, which has no limit.</summary>
+    private List<DatasetOver> OverLimit = [];
+    private int Limit => licenseInfo?.DocumentLimit ?? 100_000;
+    private bool Limited => !isSourceBuild && licenseInfo is not null && licenseInfo.DocumentLimit != int.MaxValue;
+    /// <summary>The license's type as people say it: "FreeDeveloper" is Free Developer.</summary>
+    private string EditionLabel => licenseInfo?.Type switch
+    {
+        null or "" => "Licensed",
+        "FreeDeveloper" => "Free Developer",
+        var t => t,
+    };
     private IBrowserFile? selectedFile;
     private bool isUploading;
 
@@ -427,11 +309,9 @@ else
 
     // Auto-fetch editor state.
     private string _licenseTokenInput = "";
-    private string? _fetchMessage;
     private string? _fetchError;
     private bool _isFetching;
     private bool _editingToken;        // true while replacing an existing token (input shown)
-    private bool _removeTokenConfirm;  // true while confirming token removal
 
     [CascadingParameter]
     private Task<AuthenticationState>? AuthState { get; set; }
@@ -453,13 +333,19 @@ else
         }
         autoFetch = Bootstrapper.GetStatus();
         await Task.WhenAll(LoadLicenseInfo(), LoadLicenseFiles());
+        await LoadOverLimit();
     }
 
-    private static string FormatBytes(long bytes)
+    /// <summary>Off the circuit thread: a sleeping dataset's records are a count, kept ten minutes.</summary>
+    private async Task LoadOverLimit()
     {
-        if (bytes >= 1024 * 1024) return $"{bytes / (1024.0 * 1024.0):0.#} MB";
-        if (bytes >= 1024) return $"{bytes / 1024.0:0.#} KB";
-        return $"{bytes} B";
+        if (!Limited) { OverLimit = []; return; }
+        var limit = Limit;
+        OverLimit = await Task.Run(() => IndxServerInternalApi.Manager.GetAllDataSets()
+            .Select(d => new DatasetOver(d.DataSetName, Services.DatasetRecordCounts.Get(d.DataSetName, d.TeamId)))
+            .Where(d => d.Documents > limit)
+            .OrderByDescending(d => d.Documents)
+            .ToList());
     }
 
     private async Task LoadLicenseInfo()
@@ -506,13 +392,12 @@ else
     private void HandleFileSelected(InputFileChangeEventArgs e)
     {
         selectedFile = e.File;
-        fileOpMessage = null;
         fileOpError = null;
     }
 
     private async Task SaveToken()
     {
-        _fetchMessage = null; _fetchError = null;
+        _fetchError = null;
         if (!isAdmin)
         {
             _fetchError = "Only administrators can change the license source.";
@@ -530,7 +415,6 @@ else
 
         _licenseTokenInput = "";
         _editingToken = false;
-        _removeTokenConfirm = false;
         autoFetch = Bootstrapper.GetStatus();
 
         // Immediately fetch with the new token so the license validates on the spot, instead of
@@ -542,8 +426,9 @@ else
             var result = await Bootstrapper.EnsureLocalLicenseAsync();
             await Task.WhenAll(LoadLicenseFiles(), LoadLicenseInfo());
             autoFetch = Bootstrapper.GetStatus();
+            await LoadOverLimit();
             if (result.Succeeded)
-                _fetchMessage = $"Token saved and license fetched. {result.Message}";
+                Toasts.Show("Token saved and the license fetched.", DatasetIcons.Key);
             else
                 _fetchError = $"Token saved, but the license could not be fetched: {result.Message}";
         }
@@ -560,8 +445,7 @@ else
 
     private void BeginEditToken()
     {
-        _fetchMessage = null; _fetchError = null;
-        _removeTokenConfirm = false;
+        _fetchError = null;
         _licenseTokenInput = "";
         _editingToken = true;
     }
@@ -575,8 +459,7 @@ else
 
     private void RemoveToken()
     {
-        _fetchMessage = null; _fetchError = null;
-        _removeTokenConfirm = false;
+        _fetchError = null;
         if (!isAdmin)
         {
             _fetchError = "Only administrators can change the license source.";
@@ -592,14 +475,14 @@ else
         autoFetch = Bootstrapper.GetStatus();
         // A token may still come from the Indx:LicenseToken app setting (env/config), which the UI
         // cannot clear — say so instead of implying auto-fetch is fully off.
-        _fetchMessage = autoFetch?.TokenConfigured == true
-            ? "Saved token removed. A token is still set via configuration (Indx:LicenseToken), so auto-fetch stays on."
-            : "Token removed. Auto-fetch is now off.";
+        Toasts.Show(autoFetch?.TokenConfigured == true
+            ? "Token removed here. One is still set in the configuration (Indx:LicenseToken), so fetching stays on."
+            : "Token removed. This server no longer fetches the license.", DatasetIcons.Key);
     }
 
     private async Task FetchNow()
     {
-        _fetchMessage = null; _fetchError = null;
+        _fetchError = null;
         if (!isAdmin)
         {
             _fetchError = "Only administrators can fetch the license.";
@@ -613,8 +496,9 @@ else
             var result = await Bootstrapper.EnsureLocalLicenseAsync();
             await Task.WhenAll(LoadLicenseFiles(), LoadLicenseInfo());
             autoFetch = Bootstrapper.GetStatus();
+            await LoadOverLimit();
             if (result.Succeeded)
-                _fetchMessage = result.Message;
+                Toasts.Show(result.Message, DatasetIcons.Restore);
             else
                 _fetchError = result.Message;
         }
@@ -652,7 +536,6 @@ else
         }
 
         isUploading = true;
-        fileOpMessage = null;
         fileOpError = null;
         StateHasChanged();
 
@@ -660,9 +543,10 @@ else
         {
             using var stream = selectedFile.OpenReadStream(1_048_576);
             await IndxServerInternalApi.Manager.SaveLicenseFileAsync(selectedFile.Name, stream);
-            fileOpMessage = $"'{selectedFile.Name}' uploaded. New datasets will use this license immediately. Restart the server to apply to existing datasets.";
+            Toasts.Show($"Uploaded {selectedFile.Name}. Datasets take it when they are next loaded or indexed.", DatasetIcons.Documents);
             selectedFile = null;
             await Task.WhenAll(LoadLicenseFiles(), LoadLicenseInfo());
+            await LoadOverLimit();
         }
         catch (Exception ex)
         {
@@ -676,19 +560,9 @@ else
         }
     }
 
-    private void ConfirmDelete(string filename)
+    private async Task DeleteFile(string name)
     {
-        deleteConfirmFile = filename;
-        fileOpMessage = null;
         fileOpError = null;
-    }
-
-    private async Task ExecuteDelete()
-    {
-        if (deleteConfirmFile == null) return;
-        var name = deleteConfirmFile;
-        deleteConfirmFile = null;
-
         if (!isAdmin)
         {
             fileOpError = "Only administrators can delete license files.";
@@ -699,14 +573,14 @@ else
         try
         {
             IndxServerInternalApi.Manager.DeleteLicenseFile(name);
-            fileOpMessage = $"'{name}' deleted. Restart the server to apply to existing datasets.";
+            Toasts.Show($"Deleted {name}. Datasets keep the license they loaded until the server restarts.", DatasetIcons.Documents);
             await Task.WhenAll(LoadLicenseFiles(), LoadLicenseInfo());
+            await LoadOverLimit();
         }
         catch (Exception ex)
         {
             fileOpError = $"Delete failed: {ex.Message}";
             Logger.LogError(ex, "Error deleting license file {Filename}", name);
         }
-        StateHasChanged();
     }
 }

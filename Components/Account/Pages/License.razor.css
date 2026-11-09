@@ -1,0 +1,38 @@
+/* License, drawn as the license portal draws its half: the license on the left, how it reaches this
+   server on the right, cards a surface a step up with no border and no shadow. ::deep reaches into
+   systm components; .license-page is this page's own element above them. */
+.license-head { display: flex; flex-direction: column; gap: 4px; margin-bottom: 32px; }
+.license-head h2 { margin: 0; }
+.license-head p { margin: 0; color: var(--lv5); }
+.license-loading { display: flex; align-items: center; gap: 8px; color: var(--lv5); }
+
+.license-page { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.license-columns { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 32px; align-items: start; }
+@media (max-width: 860px) { .license-columns { grid-template-columns: minmax(0, 1fr); gap: 24px; } }
+.license-column { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.license-column h3, .license-card h3 { margin: 0; font: var(--text-base); color: var(--lv8); }
+
+.license-card { background: var(--lv1); border-radius: var(--radius); padding: 20px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.license-text { font: var(--text-sm); color: var(--lv5); margin: 0; line-height: 1.5; }
+.license-faint { font: var(--text-xs); color: var(--lv5); margin: 0; }
+.license-mono { font-family: var(--font-mono); }
+.license-code { font-family: var(--font-mono); white-space: nowrap; }
+.license-inline { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+.license-facts { display: grid; grid-template-columns: 110px 1fr; gap: 8px 16px; align-items: center; font: var(--text-sm); color: var(--lv7); }
+
+/* The datasets the limit cuts: the name, then how much of it is searched. */
+.license-over { display: flex; flex-direction: column; gap: 10px; }
+.license-over-row { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; align-items: center; font: var(--text-sm); color: var(--lv7); }
+
+.license-links { display: flex; flex-direction: column; }
+.license-link { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--lv2); color: var(--lv7); font: var(--text-sm); text-decoration: none; }
+.license-link span { flex: 1; }
+.license-link:hover { color: var(--lv8); }
+
+.license-connected { display: flex; align-items: flex-start; gap: 10px; font: var(--text-sm); color: var(--lv8); }
+.license-tick { flex: none; width: 22px; height: 22px; border-radius: 50%; background: var(--lv8); color: var(--lv0); display: inline-flex; align-items: center; justify-content: center; }
+.license-connected-text { display: flex; flex-direction: column; gap: 2px; }
+
+.license-actions { text-align: right; width: 1%; white-space: nowrap; }
+.license-page ::deep .license-files td, .license-page ::deep .license-files th { font-size: 13px; }
