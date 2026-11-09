@@ -21,7 +21,7 @@ namespace IndxServer.Services.Observr
                 "fields" => ["Is my field setup sensible?", "Which fields should be facets?", "Which fields should weigh more?"],
                 "categories" => ["Are my categories set up well?", "Which category field should I use?"],
                 "webhooks" => ["Is the webhook keeping the dataset up to date?", "Why was a batch held?"],
-                "query-parameters" => ["Is the coverage depth right for this dataset?", "Should results be truncated?"],
+                "query-parameters" => ["How many typos should a search allow here?", "Should a search with no match show the closest records?"],
                 "boosts" => ["Which boost rules still do something?", "What would be worth boosting?"],
                 "synonyms" => [why != null ? $"Would a synonym help \"{missed}\"?" : "Which synonyms would help?", "Are any of my synonyms doing harm?"],
                 "search" => [why ?? "Why does a search rank as it does?", $"How do visitors search {ds}?"],

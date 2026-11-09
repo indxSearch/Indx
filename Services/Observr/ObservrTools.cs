@@ -67,12 +67,12 @@ namespace IndxServer.Services.Observr
                     Schema(new { type = "object", properties = new { days = new { type = "integer", description = "The period in days ending today: 7, 30 or 90." } } })),
                 new("query", "How often one exact query text was searched in a period, how often it found nothing, how often a result was chosen, and which records were chosen. The answer to \"how often did visitors search for X\", including a query searched only once.",
                     Schema(new { type = "object", properties = new { text = new { type = "string", description = "The query text, as the visitor typed it." }, days = new { type = "integer", description = "The period in days ending today: 7, 30 or 90." } }, required = new[] { "text" } })),
-                new("fields", "The fields and their roles (searchable, filterable, facetable, sortable, weight), with what a sample of the records holds in each: fill, distinct values, the commonest values, a number's range.",
+                new("fields", "The fields and their roles (matched by words, matched inside words, filterable, facetable, sortable) and settings (weight, typos, rerank weight), with what a sample of the records holds in each: fill, distinct values, the commonest values, a number's range.",
                     Schema(new { type = "object", properties = new { } })),
                 new("synonyms", "The dataset's synonym list.", Schema(new { type = "object", properties = new { } })),
-                new("settings", "The dataset's settings: its description, its query parameters (coverage depth, truncation) and its Search or ask settings.",
+                new("settings", "The dataset's settings: its description, its query parameters (as stored: mode; match with the typos allowed; candidates with how many are ranked, fallback, rest and fill reach; ranking with rerank; null where the dataset sets none and the default applies) and its Search or ask settings.",
                     Schema(new { type = "object", properties = new { } })),
-                new("zero_hit_evidence", "For a query that found nothing: what the same search finds with pattern matching on, and what each of its words finds alone. The evidence for a synonym.",
+                new("zero_hit_evidence", "For a query that found nothing: what the same search finds when records holding only some of the words may be listed, and what each of its words finds alone. The evidence for a synonym.",
                     Schema(new { type = "object", properties = new { query = new { type = "string" } }, required = new[] { "query" } })),
             ]);
             return tools;
@@ -211,9 +211,11 @@ namespace IndxServer.Services.Observr
             else
             {
                 var trusted = result.CountedInList();
+                var typos = result.ToleranceCounts is { } tc && result.CountedTolerance is { } level && level != Tolerance.Exact
+                    ? $", {result.Count - tc.Exact:N0} of them with a typo" : "";
                 sb.AppendLine(result.IsFallback
                     ? $"\"{text}\": no record holds every word; {records.Length} nearest returned (the first {take} asked for), by name:"
-                    : $"\"{text}\": {records.Length} records returned (the first {take} asked for), {trusted} of them hold every word; by name:");
+                    : $"\"{text}\": the search counts {result.Count:N0} records{typos}; {records.Length} returned (the first {take} asked for), {trusted} of them counted; by name:");
                 for (var i = 0; i < records.Length; i++)
                     sb.AppendLine($"- {label(records[i].DocumentKey) ?? records[i].DocumentKey.ToString()}{(i >= trusted && !result.IsFallback ? " (not every word)" : "")}");
             }
@@ -287,7 +289,7 @@ namespace IndxServer.Services.Observr
             Section("Top queries:", store.TopQueries(ctx.TeamId, ds, from, to, Top));
             Section("Found nothing:", store.TopQueries(ctx.TeamId, ds, from, to, Top, zeroHitsOnly: true));
             Section("Lowest click-through:", store.TopQueries(ctx.TeamId, ds, from, to, 10, order: QueryOrder.LowestClickThrough));
-            Section("Fuzzy finds (typos the search still matched):", store.TopQueries(ctx.TeamId, ds, from, to, 10, uncoveredOnly: true));
+            Section("Fuzzy finds (no record held every word; the visitor chose from the closest):", store.TopQueries(ctx.TeamId, ds, from, to, 10, uncoveredOnly: true));
             var docs = store.TopDocuments(ctx.TeamId, ds, from, to, 10);
             if (docs.Count > 0)
             {
@@ -343,11 +345,12 @@ namespace IndxServer.Services.Observr
             foreach (var f in ask.FieldEvidence)
             {
                 var roles = new List<string>();
-                if (f.Searchable) roles.Add("searchable");
+                if (f.WordMatching) roles.Add("matched by its words");
+                if (f.PatternMatching) roles.Add("matched inside its words");
                 if (f.Filterable) roles.Add("filterable");
                 if (f.Facetable) roles.Add("facetable");
                 if (f.Sortable) roles.Add("sortable");
-                sb.Append($"- {f.Name} ({f.Type}{(f.IsArray ? " array" : "")}): {(roles.Count > 0 ? string.Join(", ", roles) : "no role")}, weight {f.Weight}; filled in {f.Filled} of {ask.Sampled} sampled, {f.Distinct} distinct values over {f.ValuesOver:N0} records");
+                sb.Append($"- {f.Name} ({f.Type}{(f.IsArray ? " array" : "")}): {(roles.Count > 0 ? string.Join(", ", roles) : "no role")}{(f.WordMatching || f.PatternMatching ? $", weight {f.Weight}, {ObservrText.ToleranceText(f.Tolerance)}, rerank weight {f.RerankWeight}" : "")}; filled in {f.Filled} of {ask.Sampled} sampled, {f.Distinct} distinct values over {f.ValuesOver:N0} records");
                 if (f.TopValues.Count > 0) sb.Append($"; commonest: {string.Join(" | ", f.TopValues)}");
                 if (f.Min != null) sb.Append($"; {f.Min} to {f.Max}");
                 if (f.AvgLength > 0) sb.Append($"; about {f.AvgLength} characters");
@@ -387,7 +390,7 @@ namespace IndxServer.Services.Observr
             if (engine == null || engine.Status.SystemState != SystemState.Ready) return "The dataset is not loaded, so it cannot be searched now.";
             var ask = client.BuildZeroHitAsk(ctx.TeamId, ds, engine, query, 0);
             var sb = new StringBuilder();
-            sb.AppendLine(ask.NearMatches.Count == 0 ? "With pattern matching on, still nothing." : $"With pattern matching on: {string.Join("; ", ask.NearMatches.Select(n => n.Name))}.");
+            sb.AppendLine(ask.NearMatches.Count == 0 ? "With partial matches allowed, still nothing." : $"With partial matches allowed: {string.Join("; ", ask.NearMatches.Select(n => n.Name))}.");
             foreach (var w in ask.Words)
                 sb.AppendLine($"The word \"{w.Word}\" alone finds {(w.Matches.Count == 0 ? "nothing" : string.Join("; ", w.Matches.Select(m => m.Name)))}.");
             return sb.ToString();

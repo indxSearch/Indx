@@ -18,8 +18,8 @@ namespace IndxServer.Services.Observr
     public sealed record ObservrWordMatches(string Word, List<ObservrNamed> Matches);
 
     /// <summary>A search that found nothing, with the evidence Observr judges it by. Gathered here,
-    /// since only the instance has the index: the same search with strictness off, and what each
-    /// word finds alone. The format is the contract with IndxObservr.</summary>
+    /// since only the instance has the index: the same search with the rest and the fallback on
+    /// (the records holding only some of the words), and what each word finds alone. The format is the contract with IndxObservr.</summary>
     public sealed record ObservrZeroHitAsk(string Kind, string Team, string Dataset, string Site, List<string> Fields,
         string Query, long Searches, List<ObservrNamed> NearMatches, List<ObservrWordMatches> Words);
 
@@ -28,8 +28,9 @@ namespace IndxServer.Services.Observr
     /// (each with its count) are over <see cref="ValuesOver"/> records: every record for a
     /// facetable field, whose facets count the whole dataset, the sample for the rest. Values are
     /// the top few only, so a review sends little of the data.</summary>
-    public sealed record ObservrFieldEvidence(string Name, string Type, bool IsArray, bool Searchable, bool Filterable, bool Facetable,
-        bool Sortable, float Weight, int Filled, int Distinct, List<string> TopValues, double? Min, double? Max, int AvgLength, long ValuesOver);
+    public sealed record ObservrFieldEvidence(string Name, string Type, bool IsArray, bool WordMatching, bool PatternMatching, bool Filterable,
+        bool Facetable, bool Sortable, float Weight, int Filled, int Distinct, List<string> TopValues, double? Min, double? Max, int AvgLength,
+        long ValuesOver, string Tolerance, float RerankWeight);
 
     /// <summary>The dataset's setup for review: every field with its evidence, the key field, and
     /// what visitors searched for lately, which says what the fields are expected to answer.</summary>
@@ -37,11 +38,12 @@ namespace IndxServer.Services.Observr
         int Sampled, List<ObservrFieldEvidence> FieldEvidence, List<string> TopQueries);
 
     /// <summary>What Search or ask runs with today, for the setup help: the settings, the fields the
-    /// judge sees once the automatic choice is applied, and the query parameters.</summary>
+    /// judge sees once the automatic choice is applied, and the dataset's query parameters as stored
+    /// (mode, match, candidates, ranking; null where the dataset sets none).</summary>
     public sealed record ObservrSearchOrAskCurrent(bool Shown, bool Enabled, string Kind, string? SiteDescription, string EffectiveSite,
         string? TitleField, List<string>? SectionFields, List<string>? SnippetFields, string? EffectiveTitle, List<string> EffectiveSection,
         List<string> EffectiveSnippet, string? FilterNotes, string Answers, string? AnswerInstructions, string? AnswerLanguage, double Strong, double Invite,
-        int? CoverageDepth, bool? Truncate);
+        DatasetQueryParameters? QueryParameters);
 
     /// <summary>"Help me set this up" on the Search or ask tab: the dataset as the field review sees it,
     /// a few record names, the queries, and the settings as they stand. No record bodies.</summary>
@@ -49,22 +51,56 @@ namespace IndxServer.Services.Observr
         int Sampled, List<ObservrFieldEvidence> FieldEvidence, List<string> Names, List<ObservrSummaryQuery> TopQueries,
         List<string> ZeroHitQueries, ObservrSearchOrAskCurrent Current);
 
-    /// <summary>A change to one field's roles: null leaves that role as it is.</summary>
-    public sealed record ObservrFieldChange(string Name, bool? Searchable, bool? Filterable, bool? Facetable, bool? Sortable, float? Weight)
+    /// <summary>A change to one field's roles and settings (Indx 6): null leaves that one as it is.
+    /// <see cref="Tolerance"/> is a <see cref="Indx.Api.Tolerance"/> by name.</summary>
+    public sealed record ObservrFieldChange(string Name, bool? WordMatching, bool? PatternMatching, bool? Filterable, bool? Facetable,
+        bool? Sortable, float? Weight, string? Tolerance = null, float? RerankWeight = null)
     {
+        /// <summary>The roles as words, the way the console names them.</summary>
+        public static readonly (string Name, string Label)[] Roles =
+            [("wordMatching", "matched by its words"), ("patternMatching", "matched inside its words"), ("filterable", "filterable"), ("facetable", "facetable"), ("sortable", "sortable")];
+
+        [JsonIgnore]
+        public IEnumerable<(string Label, bool On)> RoleChanges
+        {
+            get
+            {
+                foreach (var (v, label) in new[] { (WordMatching, Roles[0].Label), (PatternMatching, Roles[1].Label), (Filterable, "filterable"), (Facetable, "facetable"), (Sortable, "sortable") })
+                    if (v != null) yield return (label, v.Value);
+            }
+        }
+
+        /// <summary>The settings as words: "weight 2", "rerank weight 0.5", "exact words only".</summary>
+        [JsonIgnore]
+        public IEnumerable<string> SettingChanges
+        {
+            get
+            {
+                if (Weight != null) yield return $"weight {Weight.Value.ToString("0.##", CultureInfo.InvariantCulture)}";
+                if (RerankWeight != null) yield return $"rerank weight {RerankWeight.Value.ToString("0.##", CultureInfo.InvariantCulture)}";
+                if (Tolerance != null) yield return ObservrText.ToleranceText(Tolerance);
+            }
+        }
+
         /// <summary>The change in words: "Elevtall: sortable", "Navn: weight 2, no longer facetable".</summary>
         [JsonIgnore]
         public string Summary
         {
             get
             {
-                var parts = new List<string>();
-                Role(Searchable, "searchable"); Role(Filterable, "filterable"); Role(Facetable, "facetable"); Role(Sortable, "sortable");
-                if (Weight != null) parts.Add($"weight {Weight.Value.ToString("0.##", CultureInfo.InvariantCulture)}");
+                var parts = RoleChanges.Select(r => r.On ? r.Label : $"no longer {r.Label}").Concat(SettingChanges).ToList();
                 return parts.Count == 0 ? "no change" : string.Join(", ", parts);
-                void Role(bool? v, string role) { if (v == true) parts.Add(role); else if (v == false) parts.Add($"no longer {role}"); }
             }
         }
+
+        /// <summary>The change as the engine takes it. Word and pattern matching are set as they come:
+        /// pattern matching on keeps a setup the field has, or takes the default.</summary>
+        public FieldProxy ToProxy() => new()
+        {
+            FieldName = Name, WordMatching = WordMatching, PatternMatching = PatternMatching,
+            Filterable = Filterable, Facetable = Facetable, Sortable = Sortable, Weight = Weight, RerankWeight = RerankWeight,
+            Tolerance = Tolerance != null && Enum.TryParse<Tolerance>(Tolerance, out var t) ? t : null,
+        };
     }
 
     /// <summary>A record with how often visitors chose it for a query, and where in the list it stood.</summary>
@@ -112,16 +148,22 @@ namespace IndxServer.Services.Observr
         }
     }
 
-    /// <summary>A change to the dataset's query parameters: null leaves that one as it is.</summary>
-    public sealed record ObservrQueryParametersChange(int? CoverageDepth, bool? Truncate)
+    /// <summary>A change to the dataset's query parameters (Indx 6): null leaves that one as it is.
+    /// <see cref="MaxCandidates"/> 0 hands the bound back to the default.</summary>
+    public sealed record ObservrQueryParametersChange(int? MaxCandidates = null, string? Tolerance = null, bool? Fallback = null,
+        bool? Rest = null, int? FillReach = null, bool? Rerank = null)
     {
         [JsonIgnore]
         public IEnumerable<string> Parts
         {
             get
             {
-                if (CoverageDepth != null) yield return $"coverage depth {CoverageDepth}";
-                if (Truncate != null) yield return Truncate.Value ? "truncation on" : "truncation off";
+                if (Tolerance != null) yield return ObservrText.ToleranceText(Tolerance);
+                if (MaxCandidates != null) yield return MaxCandidates == 0 ? "the default number of records ranked" : $"{MaxCandidates} records ranked";
+                if (Fallback != null) yield return Fallback.Value ? "the closest records when nothing matches" : "nothing when nothing matches";
+                if (Rest != null) yield return Rest.Value ? "partial matches below the hits" : "no partial matches below the hits";
+                if (FillReach != null) yield return FillReach == 0 ? "short pages not filled" : $"short pages filled from {FillReach} more typo level{(FillReach == 1 ? "" : "s")}";
+                if (Rerank != null) yield return Rerank.Value ? "reranked" : "not reranked";
             }
         }
     }
@@ -181,16 +223,16 @@ namespace IndxServer.Services.Observr
                     case FieldKind when Field != null:
                     {
                         var c = Field;
-                        var on = new List<string>(); var off = new List<string>();
-                        Role(c.Searchable, "searchable"); Role(c.Filterable, "filterable"); Role(c.Facetable, "facetable"); Role(c.Sortable, "sortable");
+                        var on = c.RoleChanges.Where(r => r.On).Select(r => r.Label).ToList();
+                        var off = c.RoleChanges.Where(r => !r.On).Select(r => r.Label).ToList();
                         var tail = new List<string>();
                         if (on.Count > 0) tail.Add(Join(on));
                         if (off.Count > 0) tail.Add("no longer " + Join(off));
-                        var weight = c.Weight is { } w ? $"weight {w.ToString("0.##", CultureInfo.InvariantCulture)}" : null;
+                        var settings = c.SettingChanges.ToList();
+                        var weight = settings.Count == 0 ? null : Join(settings);
                         if (tail.Count == 0 && weight != null) return ("Give", [c.Name], weight);
                         if (weight != null) tail.Add("with " + weight);
                         return ("Make", [c.Name], tail.Count == 0 ? "as it is" : string.Join(", ", tail));
-                        void Role(bool? v, string role) { if (v == true) on.Add(role); else if (v == false) off.Add(role); }
                         static string Join(List<string> roles) => roles.Count == 1 ? roles[0] : string.Join(", ", roles[..^1]) + " and " + roles[^1];
                     }
                     case SearchOrAskKind when SearchOrAsk != null:
@@ -257,6 +299,10 @@ namespace IndxServer.Services.Observr
         public string? SearchOrAskBefore { get; set; }
         public bool HasQueryParameters { get; set; }
         public string? QueryParametersBefore { get; set; }
+        /// <summary>Each changed field's configuration as it was (Indx 6): roles, pattern setup,
+        /// tolerance and weights, so an undo puts back exactly that.</summary>
+        public List<FieldProxy> FieldConfigurationBefore { get; set; } = [];
+        /// <summary>An undo kept before 9 Nov 2026: each field's roles as one searchable flag.</summary>
         public List<ObservrFieldChange> FieldsBefore { get; set; } = [];
     }
 
@@ -287,13 +333,23 @@ namespace IndxServer.Services.Observr
         /// with the value it has today when known.</summary>
         public static List<(string Text, bool On)> Parts(ObservrFieldChange c, float? currentWeight)
         {
-            var parts = new List<(string, bool)>();
-            Role(c.Searchable, "searchable"); Role(c.Filterable, "filterable"); Role(c.Facetable, "facetable"); Role(c.Sortable, "sortable");
+            var parts = c.RoleChanges.Select(r => (r.On ? r.Label : $"{r.Label} off", r.On)).ToList();
             if (c.Weight is { } w)
                 parts.Add((currentWeight is { } n ? $"weight {n:0.##} → {w:0.##}" : $"weight {w:0.##}", true));
+            if (c.RerankWeight is { } rw) parts.Add(($"rerank weight {rw:0.##}", true));
+            if (c.Tolerance != null) parts.Add((ToleranceText(c.Tolerance), true));
             return parts;
-            void Role(bool? v, string role) { if (v == true) parts.Add((role, true)); else if (v == false) parts.Add(($"{role} off", false)); }
         }
+
+        /// <summary>A tolerance as the owner reads it.</summary>
+        public static string ToleranceText(string tolerance) => tolerance switch
+        {
+            "Exact" => "exact words only",
+            "OneEdit" => "up to one typo",
+            "TwoEdits" => "up to two typos",
+            "ThreeEdits" => "up to three typos",
+            _ => tolerance,
+        };
 
         /// <summary>A refusal as the console says it; <paramref name="nothingYet"/> is the dataset-not-ready
         /// sentence's tail ("to look at", "to review").</summary>
@@ -612,7 +668,7 @@ namespace IndxServer.Services.Observr
             var current = new ObservrSearchOrAskCurrent(settings.Shown, settings.Enabled, settings.Kind, settings.SiteDescription,
                 searchOrAskService.SiteDescription(teamId, dataSetName, settings), settings.TitleField, settings.SectionFields, settings.SnippetFields,
                 effective.TitleField, effective.SectionFields.ToList(), effective.SnippetFields.ToList(), settings.FilterNotes, settings.Answers,
-                settings.AnswerInstructions, settings.AnswerLanguage, thresholds.Strong!.Value, thresholds.Invite!.Value, qp?.Candidates?.MaxCandidates, !qp?.Candidates?.Rest);
+                settings.AnswerInstructions, settings.AnswerLanguage, thresholds.Strong!.Value, thresholds.Invite!.Value, qp);
             var ask = new ObservrSearchOrAskSetupAsk(SetupKind, teamId, dataSetName, review.Site, review.FieldEvidence.Select(f => f.Name).ToList(),
                 review.Records, review.Sampled, review.FieldEvidence, names, top, zero, current);
             return await SendAsync(token, teamId, dataSetName, SetupKind, "", ask, ct);
@@ -858,9 +914,9 @@ namespace IndxServer.Services.Observr
                 }
                 var numbers = f.Type == JsonValueKind.Number
                     ? values.Select(v => v.TryGetValue<double>(out var n) ? n : (double?)null).Where(n => n != null).Select(n => n!.Value).ToList() : [];
-                evidence.Add(new ObservrFieldEvidence(f.Name, TypeName(f.Type), f.IsArray, f.WordMatching || f.PatternMatching != null, f.Filterable, f.Facetable, f.Sortable, f.Weight,
+                evidence.Add(new ObservrFieldEvidence(f.Name, TypeName(f.Type), f.IsArray, f.WordMatching, f.PatternMatching != null, f.Filterable, f.Facetable, f.Sortable, f.Weight,
                     filled, distinct, top, numbers.Count > 0 ? numbers.Min() : null, numbers.Count > 0 ? numbers.Max() : null,
-                    texts.Count == 0 ? 0 : (int)texts.Average(s => s.Length), over));
+                    texts.Count == 0 ? 0 : (int)texts.Average(s => s.Length), over, f.Tolerance.ToString(), f.RerankWeight));
             }
             var today = StatisticsDays.Today(TimeZoneInfo.Utc);
             var queries = statistics.Store?.TopQueries(teamId, dataSetName, today - ReviewQueryDays, today, ReviewTopQueries)
@@ -1034,14 +1090,14 @@ namespace IndxServer.Services.Observr
             var changes = chosen.Where(p => p.Kind == ObservrProposal.FieldKind && p.Field != null).Select(p => p.Field!).ToList();
             if (changes.Count > 0)
             {
-                // Each changed field's roles as they were, read before the change.
-                var fields = engines.FindSearchEngine(f.DataSetName, f.TeamId)?.GetFieldList() ?? [];
+                // Each changed field's configuration as it was, read before the change.
+                var configuration = engines.FindSearchEngine(f.DataSetName, f.TeamId)?.GetFieldConfiguration() ?? [];
                 var before = changes.Select(c => c.Name).Distinct()
-                    .Select(n => fields.FirstOrDefault(x => x.Name == n))
-                    .Where(x => x != null && !undo.FieldsBefore.Any(b => b.Name == x.Name))
-                    .Select(x => new ObservrFieldChange(x!.Name, x.WordMatching || x.PatternMatching != null, x.Filterable, x.Facetable, x.Sortable, x.Weight)).ToList();
+                    .Select(n => configuration.FirstOrDefault(x => x.FieldName == n))
+                    .Where(x => x != null && !undo.FieldConfigurationBefore.Any(b => b.FieldName == x.FieldName))
+                    .Select(x => Restorable(x!)).ToList();
                 if (ApplyFields(f.TeamId, f.DataSetName, changes) is { } why) return why;
-                undo.FieldsBefore.AddRange(before);
+                undo.FieldConfigurationBefore.AddRange(before);
                 done.Add(ObservrProposal.FieldKind);
             }
             return null;
@@ -1110,9 +1166,15 @@ namespace IndxServer.Services.Observr
                     done.Add(ObservrProposal.QueryParametersKind);
                 }
                 string? why = null;
-                if (undo.FieldsBefore.Count > 0)
+                if (undo.FieldConfigurationBefore.Count > 0)
                 {
-                    why = ApplyFields(f.TeamId, f.DataSetName, undo.FieldsBefore);
+                    why = ApplyFieldProxies(f.TeamId, f.DataSetName, undo.FieldConfigurationBefore.ToArray());
+                    if (why == null) done.Add(ObservrProposal.FieldKind);
+                }
+                else if (undo.FieldsBefore.Count > 0)
+                {
+                    // Kept before 9 Nov 2026 as one flag: searched puts both roles back.
+                    why = ApplyFieldProxies(f.TeamId, f.DataSetName, undo.FieldsBefore.Select(b => b.ToProxy()).ToArray());
                     if (why == null) done.Add(ObservrProposal.FieldKind);
                 }
                 if (why == null)
@@ -1192,41 +1254,44 @@ namespace IndxServer.Services.Observr
         public void ApplyQueryParameters(string teamId, string dataSetName, ObservrQueryParametersChange c)
         {
             var p = queryParameters.Load(teamId, dataSetName) ?? new DatasetQueryParameters();
-            // Observr speaks 5.0's names: the depth is the candidate bound, and a list not truncated
-            // is one with the rest below the counted (6.0).
-            if (c.CoverageDepth != null) (p.Candidates ??= new CandidateProxy()).MaxCandidates = c.CoverageDepth.Value <= 0 ? null : c.CoverageDepth;
-            if (c.Truncate != null) (p.Candidates ??= new CandidateProxy()).Rest = !c.Truncate;
+            if (c.Tolerance != null && Enum.TryParse<Tolerance>(c.Tolerance, out var tolerance)) (p.Match ??= new MatchProxy()).Tolerance = tolerance;
+            if (c.MaxCandidates != null) (p.Candidates ??= new CandidateProxy()).MaxCandidates = c.MaxCandidates.Value <= 0 ? null : c.MaxCandidates;
+            if (c.Fallback != null) (p.Candidates ??= new CandidateProxy()).Fallback = c.Fallback;
+            if (c.Rest != null) (p.Candidates ??= new CandidateProxy()).Rest = c.Rest;
+            if (c.FillReach != null) (p.Candidates ??= new CandidateProxy()).FillReach = Math.Clamp(c.FillReach.Value, 0, 2);
+            if (c.Rerank != null) (p.Ranking ??= new RankingProxy()).Rerank = c.Rerank;
             queryParameters.Save(teamId, dataSetName, p);
         }
+
+        /// <summary>A field's configuration as an undo puts it back: its roles, pattern setup,
+        /// tolerance and weights. Not its type or sample, which are read, nor its k1, which a BM25F
+        /// dataset refuses to have set.</summary>
+        private static FieldProxy Restorable(FieldProxy x) => new()
+        {
+            FieldName = x.FieldName, WordMatching = x.WordMatching, PatternMatching = x.PatternMatching,
+            IndexSizes = x.PatternMatching == true ? x.IndexSizes : null,
+            NumberOfStartCharacters = x.PatternMatching == true ? x.NumberOfStartCharacters : null,
+            NumberOfStopCharacters = x.PatternMatching == true ? x.NumberOfStopCharacters : null,
+            Filterable = x.Filterable, Facetable = x.Facetable, Sortable = x.Sortable, Weight = x.Weight,
+            Tolerance = x.Tolerance, RerankWeight = x.RerankWeight, TypingPrefixFrom = x.TypingPrefixFrom,
+        };
 
         /// <summary>Carries out field changes as the Fields tab's Save does: refused as a whole when
         /// invalid, announced, then on a shadow when the change needs a rebuild (this blocks until the
         /// swap) or in place. Returns the reason it could not, or null.</summary>
-        public string? ApplyFields(string teamId, string dataSetName, IReadOnlyList<ObservrFieldChange> changes)
+        public string? ApplyFields(string teamId, string dataSetName, IReadOnlyList<ObservrFieldChange> changes) =>
+            ApplyFieldProxies(teamId, dataSetName, changes.GroupBy(c => c.Name).Select(g => new ObservrFieldChange(g.Key,
+                g.Select(c => c.WordMatching).LastOrDefault(v => v != null), g.Select(c => c.PatternMatching).LastOrDefault(v => v != null),
+                g.Select(c => c.Filterable).LastOrDefault(v => v != null), g.Select(c => c.Facetable).LastOrDefault(v => v != null),
+                g.Select(c => c.Sortable).LastOrDefault(v => v != null), g.Select(c => c.Weight).LastOrDefault(v => v != null),
+                g.Select(c => c.Tolerance).LastOrDefault(v => v != null), g.Select(c => c.RerankWeight).LastOrDefault(v => v != null)).ToProxy()).ToArray());
+
+        /// <summary>Field configuration as the Fields tab's Save carries it out: refused as a whole
+        /// when invalid, announced, then on a shadow when it needs a rebuild or in place.</summary>
+        private string? ApplyFieldProxies(string teamId, string dataSetName, FieldProxy[] proposed)
         {
             var engine = engines.FindSearchEngine(dataSetName, teamId);
             if (engine == null || engine.Status.SystemState != SystemState.Ready) return "The dataset is not ready.";
-            var searchedNow = engine.GetFieldList().Where(f => f.WordMatching || f.PatternMatching != null)
-                .Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
-            var proposed = changes.GroupBy(c => c.Name).Select(g =>
-            {
-                var searchable = g.Select(c => c.Searchable).LastOrDefault(v => v != null);
-                return new FieldProxy
-                {
-                    FieldName = g.Key,
-                    // Observr proposes "searchable" (5.0's role, which searched a field by its words
-                    // and inside them). A field not searched yet gets both, as the migration guide
-                    // maps it (WordMatching plus the default pattern setup, 6 Nov 2026; word matching
-                    // alone until then); one already searched keeps the roles its owner chose.
-                    // Turned off, neither.
-                    WordMatching = searchable == true && searchedNow.Contains(g.Key) ? null : searchable,
-                    PatternMatching = searchable == true && searchedNow.Contains(g.Key) ? null : searchable,
-                    Filterable = g.Select(c => c.Filterable).LastOrDefault(v => v != null),
-                    Facetable = g.Select(c => c.Facetable).LastOrDefault(v => v != null),
-                    Sortable = g.Select(c => c.Sortable).LastOrDefault(v => v != null),
-                    Weight = g.Select(c => c.Weight).LastOrDefault(v => v != null),
-                };
-            }).ToArray();
             try
             {
                 if (!engine.TryValidateFieldConfiguration(proposed, out var invalid)) return invalid;
