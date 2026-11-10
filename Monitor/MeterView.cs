@@ -11,8 +11,9 @@ namespace IndxServer.Monitor;
 /// in glyphs, and the search rate over the last hour as a sparkline. Three rows, the bars as
 /// wide as the row leaves after the label and the figures.
 ///
-/// <para>CPU is this process's share of all cores over the last tick; memory is resident against
-/// what the runtime may use (<see cref="ProcessLine"/>). The lit bars are in the stone tone, the
+/// <para>CPU is this process's share of all cores over the last tick; memory is the instance's in
+/// use against its RAM, with this process's part in the figures, or where the instance cannot be
+/// read, the process against what the runtime may use (<see cref="ProcessLine"/>). The lit bars are in the stone tone, the
 /// signal red past 85 percent as in the console; the rest of the track is slate. The text parts
 /// are pure functions (<see cref="Lines"/>), so a test can read them without a terminal.</para>
 /// </summary>
@@ -94,6 +95,14 @@ public sealed class MeterView : View
         string memFigures = p.AvailableMb > 0
             ? string.Create(Inv, $"  {mem * 100,3:0}%  {Mb(p.HeldMb)} of {Mb(p.AvailableMb)}{inRam}")
             : string.Create(Inv, $"  {Mb(p.HeldMb)} {(p.FootprintMb > 0 ? "held" : "resident")}{inRam}");
+        // Where the machine's figure is known the bar is the machine: it is the limit that runs out,
+        // shared with every other process and, on App Service, every app and slot of the plan.
+        if (p.InstanceMb > 0)
+        {
+            mem = (double)p.InstanceUsedMb / p.InstanceMb;
+            memFigures = string.Create(Inv,
+                $"  {mem * 100,3:0}%  {Mb(p.InstanceUsedMb)} of {Mb(p.InstanceMb)} on the instance, {Mb(p.HeldMb)} this process{inRam}");
+        }
         var (memLit, memDim) = Bar(mem, BarWidth(width, memFigures));
 
         string rateFigures = s.SearchesPerMinute >= 0.05

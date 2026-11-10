@@ -57,7 +57,9 @@ namespace IndxServer.Monitor
     /// <para><see cref="CpuPercent"/> is this process's share of all cores over the last tick,
     /// what Task Manager shows for a process: the view from inside the box, which on App Service
     /// is the only one there is. <see cref="AvailableMb"/> is the memory the runtime believes it
-    /// may use, the machine's or the container's limit, so resident against it is a level.</para>
+    /// may use, the machine's or the container's limit, so resident against it is a level. It is
+    /// this process's alone: <see cref="InstanceMb"/> and <see cref="InstanceUsedMb"/> are the
+    /// machine's, every process on it together (<see cref="InstanceMemory"/>), 0 where unknown.</para>
     internal sealed record ProcessLine(
         long GcHeapMb,
         long PrivateMb,
@@ -69,7 +71,9 @@ namespace IndxServer.Monitor
         long NativePoolMb,
         double CpuPercent = 0,
         long AvailableMb = 0,
-        long FootprintMb = 0)
+        long FootprintMb = 0,
+        long InstanceMb = 0,
+        long InstanceUsedMb = 0)
     {
         /// <summary>What the process holds, in RAM or packed away (<see cref="ProcessFootprint"/>);
         /// the working set where the system offers no such figure.</summary>

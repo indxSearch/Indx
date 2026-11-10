@@ -60,6 +60,10 @@ namespace IndxServer.Monitor
             // reading and where no ceiling is known, rather than a confident 0.
             if (p.CpuPercent > 0 || p.AvailableMb > 0)
                 sb.Append(Inv, $"cpu {p.CpuPercent,3:0}%  mem {(p.AvailableMb > 0 ? (double)p.WorkingSetMb / p.AvailableMb * 100 : 0),3:0}%  ");
+            // The machine, every process on it: on App Service the plan's instance, shared by
+            // every app and slot on it.
+            if (p.InstanceMb > 0)
+                sb.Append(Inv, $"instance {p.InstanceUsedMb:N0} of {p.InstanceMb:N0}MB  ");
             sb.AppendLine(Inv, $"nat {p.NativeBlocks,6:N0} ({p.NativePoolMb:N0}MB pooled)");
 
             sb.AppendLine("           " + s.Filters.Describe());

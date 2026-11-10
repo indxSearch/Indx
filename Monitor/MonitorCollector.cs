@@ -341,6 +341,7 @@ namespace IndxServer.Monitor
             }
             _lastCpu = (now, cpu);
             long availableMb = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / 1024 / 1024;
+            var instance = InstanceMemory.Read();
             return new ProcessLine(
                 GcHeapMb: GC.GetTotalMemory(false) / 1024 / 1024,
                 PrivateMb: process.PrivateMemorySize64 / 1024 / 1024,
@@ -352,7 +353,9 @@ namespace IndxServer.Monitor
                 NativePoolMb: Indx.Utilities.NativeMemoryDiagnostics.OutstandingPoolBytes / 1024 / 1024,
                 CpuPercent: cpuPercent,
                 AvailableMb: availableMb,
-                FootprintMb: (ProcessFootprint.Bytes(process) ?? 0) / 1024 / 1024);
+                FootprintMb: (ProcessFootprint.Bytes(process) ?? 0) / 1024 / 1024,
+                InstanceMb: (instance?.TotalBytes ?? 0) / 1024 / 1024,
+                InstanceUsedMb: (instance?.UsedBytes ?? 0) / 1024 / 1024);
         }
     }
 }
