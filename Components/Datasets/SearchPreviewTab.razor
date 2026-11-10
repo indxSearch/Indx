@@ -557,8 +557,7 @@ else
             .All(w => w.Length < TokenizerSetup.Default.MinimumWordSize);
         var summary = SearchExplanation.Of(result, wordMatching: Ctx.SavedFields?.Any(f => f.WordMatching == true) != false, tooShort);
         // Focusing (a prototype) says what it did to the list, below what the search says.
-        if (summary != null && SearchExplanation.Focused(Focusing.OutcomeOf(result),
-                [.. Focusing.LeftOutOf(result).Select(r => (text ?? "")[r])]) is { } focused)
+        if (summary != null && SearchExplanation.Focused(Focusing.OutcomeOf(result)) is { } focused)
             summary = summary with { Notes = [.. summary.Notes, focused] };
         return (hits, summary);
     }

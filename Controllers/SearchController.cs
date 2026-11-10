@@ -78,8 +78,6 @@ namespace IndxServer.Controllers
                 // What focusing did to this search, when it did something: reordered or held.
                 if (Focusing.OutcomeOf(res) is var focus and not FocusOutcome.None)
                     Response.Headers[Focusing.ResponseHeader] = focus.ToString().ToLowerInvariant();
-                if (Focusing.LeftOutOf(res) is { Count: > 0 } leftOut)
-                    Response.Headers[Focusing.LeftOutHeader] = Focusing.Format(leftOut);
                 // The search event is logged server-side - that is what makes the zero-hit list
                 // exist at all - and the minted queryId is what select/convert events reference.
                 // Cost on this path is a struct and a queue append (measured in
