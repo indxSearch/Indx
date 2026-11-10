@@ -40,11 +40,23 @@ else
                 <ChildContent>of @Environment.ProcessorCount cores</ChildContent>
             </Stat>
             @* What the process holds, in RAM or packed away (5 Nov 2026): the working set alone read
-               193 MB on a Mac holding 3.9 GB, the rest compressed while nobody searched. *@
-            <Stat Label="Memory" LabelIcon="DatasetIcons.Ram" Hint="What the process holds, against what the runtime may use on this machine or in this container, whether in RAM or set aside by the system while idle (compressed on macOS, paged out on Windows, swapped on Linux), which a search brings back: on Windows the private bytes, as App Service reports them, with its working set as in RAM. It includes the unmanaged memory the search engine allocates itself, which the managed heap does not.">
-                <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.HeldMb" Max="@Math.Max(snapshot.Process.AvailableMb, 1)" Format="@(v => $"{v / Math.Max(snapshot.Process.AvailableMb, 1) * 100:0} %")" Zones="Pressure" /></Figure>
-                <ChildContent>@Gb(snapshot.Process.HeldMb) of @Gb(snapshot.Process.AvailableMb)@if (snapshot.Process.PackedAway) {<text>, @Gb(snapshot.Process.WorkingSetMb) in RAM</text>}</ChildContent>
-            </Stat>
+               193 MB on a Mac holding 3.9 GB, the rest compressed while nobody searched. Where the
+               machine can be read the ring is the machine (10 Nov 2026): on App Service every app
+               and slot of the plan shares the instance, and each read "of 12 GB" for itself. *@
+            @if (snapshot.Process.InstanceMb > 0)
+            {
+                <Stat Label="Memory" LabelIcon="DatasetIcons.Ram" Hint="The memory in use on this machine, every process on it together: on App Service the plan's instance, shared by every app and deployment slot on the plan. Then what this server holds, whether in RAM or set aside by the system while idle (compressed on macOS, paged out on Windows, swapped on Linux), which a search brings back. It includes the unmanaged memory the search engine allocates itself, which the managed heap does not.">
+                    <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.InstanceUsedMb" Max="@snapshot.Process.InstanceMb" Format="@(v => $"{v / snapshot.Process.InstanceMb * 100:0} %")" Zones="Pressure" /></Figure>
+                    <ChildContent>@Gb(snapshot.Process.InstanceUsedMb) of @Gb(snapshot.Process.InstanceMb) on the instance, @Gb(snapshot.Process.HeldMb) this server@if (snapshot.Process.PackedAway) {<text>, @Gb(snapshot.Process.WorkingSetMb) in RAM</text>}</ChildContent>
+                </Stat>
+            }
+            else
+            {
+                <Stat Label="Memory" LabelIcon="DatasetIcons.Ram" Hint="What the process holds, against what the runtime may use on this machine or in this container, whether in RAM or set aside by the system while idle (compressed on macOS, paged out on Windows, swapped on Linux), which a search brings back: on Windows the private bytes, as App Service reports them, with its working set as in RAM. It includes the unmanaged memory the search engine allocates itself, which the managed heap does not.">
+                    <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.HeldMb" Max="@Math.Max(snapshot.Process.AvailableMb, 1)" Format="@(v => $"{v / Math.Max(snapshot.Process.AvailableMb, 1) * 100:0} %")" Zones="Pressure" /></Figure>
+                    <ChildContent>@Gb(snapshot.Process.HeldMb) of @Gb(snapshot.Process.AvailableMb)@if (snapshot.Process.PackedAway) {<text>, @Gb(snapshot.Process.WorkingSetMb) in RAM</text>}</ChildContent>
+                </Stat>
+            }
             <Stat Label="Native pool" Hint="The unmanaged memory the search engine holds for its score arrays, and the count of those allocations. A steady count means they are being released." Value="@Gb(snapshot.Process.NativePoolMb)">
                 @snapshot.Process.NativeBlocks.ToString("N0") blocks, @snapshot.Process.GcHeapMb.ToString("N0") MB managed heap
             </Stat>
