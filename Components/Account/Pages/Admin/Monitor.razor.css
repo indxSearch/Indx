@@ -82,3 +82,9 @@
 
 /* The CPU and Memory tiles carry their pixl icon before the name, the label's companion as on a
    Tab: the same tone, the same line, under the hint's dotted underline together. */
+
+/* A line of its own in a stat's foot, which is a wrapping row: the server's part under the
+   instance's memory. */
+.admin-monitor-line {
+    flex-basis: 100%;
+}

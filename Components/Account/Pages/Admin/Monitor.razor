@@ -47,7 +47,7 @@ else
             {
                 <Stat Label="Memory" LabelIcon="DatasetIcons.Ram" Hint="The memory in use on this machine, every process on it together: on App Service the plan's instance, shared by every app and deployment slot on the plan. Then what this server holds of it, whether in RAM or set aside by the system while idle (compressed on macOS, paged out on Windows, swapped on Linux), which a search brings back. It includes the unmanaged memory the search engine allocates itself, which the managed heap does not.">
                     <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.InstanceUsedMb" Max="@snapshot.Process.InstanceMb" Format="@(v => $"{v / snapshot.Process.InstanceMb * 100:0} %")" Zones="Pressure" /></Figure>
-                    <ChildContent>@Gb(snapshot.Process.InstanceUsedMb) of @Gb(snapshot.Process.InstanceMb), @Gb(snapshot.Process.HeldMb) this server</ChildContent>
+                    <ChildContent><span>@Gb(snapshot.Process.InstanceUsedMb) of @Gb(snapshot.Process.InstanceMb)</span><span class="admin-monitor-line">@Gb(snapshot.Process.HeldMb) this server</span></ChildContent>
                 </Stat>
             }
             else
