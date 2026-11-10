@@ -45,9 +45,9 @@ else
                and slot of the plan shares the instance, and each read "of 12 GB" for itself. *@
             @if (snapshot.Process.InstanceMb > 0)
             {
-                <Stat Label="Memory" LabelIcon="DatasetIcons.Ram" Hint="The memory in use on this machine, every process on it together: on App Service the plan's instance, shared by every app and deployment slot on the plan. Then what this server holds, whether in RAM or set aside by the system while idle (compressed on macOS, paged out on Windows, swapped on Linux), which a search brings back. It includes the unmanaged memory the search engine allocates itself, which the managed heap does not.">
+                <Stat Label="Memory" LabelIcon="DatasetIcons.Ram" Hint="The memory in use on this machine, every process on it together: on App Service the plan's instance, shared by every app and deployment slot on the plan. Then what this server holds of it, whether in RAM or set aside by the system while idle (compressed on macOS, paged out on Windows, swapped on Linux), which a search brings back. It includes the unmanaged memory the search engine allocates itself, which the managed heap does not.">
                     <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.InstanceUsedMb" Max="@snapshot.Process.InstanceMb" Format="@(v => $"{v / snapshot.Process.InstanceMb * 100:0} %")" Zones="Pressure" /></Figure>
-                    <ChildContent>@Gb(snapshot.Process.InstanceUsedMb) of @Gb(snapshot.Process.InstanceMb) on the instance, @Gb(snapshot.Process.HeldMb) this server@if (snapshot.Process.PackedAway) {<text>, @Gb(snapshot.Process.WorkingSetMb) in RAM</text>}</ChildContent>
+                    <ChildContent>@Gb(snapshot.Process.InstanceUsedMb) of @Gb(snapshot.Process.InstanceMb), @Gb(snapshot.Process.HeldMb) this server</ChildContent>
                 </Stat>
             }
             else

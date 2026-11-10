@@ -101,7 +101,7 @@ public sealed class MeterView : View
         {
             mem = (double)p.InstanceUsedMb / p.InstanceMb;
             memFigures = string.Create(Inv,
-                $"  {mem * 100,3:0}%  {Mb(p.InstanceUsedMb)} of {Mb(p.InstanceMb)} on the instance, {Mb(p.HeldMb)} this process{inRam}");
+                $"  {mem * 100,3:0}%  {Mb(p.InstanceUsedMb)} of {Mb(p.InstanceMb)}, {Mb(p.HeldMb)} this server");
         }
         var (memLit, memDim) = Bar(mem, BarWidth(width, memFigures));
 
