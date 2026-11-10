@@ -45,12 +45,17 @@ namespace IndxServer.Components.Datasets
         public const string TooShort = "Too short to look up as a word: the records holding it as part of a word.";
 
         /// <summary>What focusing did to the list (Services.Focusing, a prototype), or null when nothing.</summary>
-        public static string? Focused(FocusOutcome outcome) => outcome switch
+        /// <param name="leftOut">The words of the text the list did not go by, as typed.</param>
+        public static string? Focused(FocusOutcome outcome, IReadOnlyList<string>? leftOut = null)
         {
-            FocusOutcome.Reordered => "Focused: no record holds every word, so the records holding the rarest of them come first.",
-            FocusOutcome.Held => "Focused: the last word is too short to look up yet, so the list is for the words before it.",
-            _ => null,
-        };
+            var without = leftOut is { Count: > 0 } ? $" Not searched for: {string.Join(' ', leftOut)}." : "";
+            return outcome switch
+            {
+                FocusOutcome.Reordered => "Focused: no record holds every word, so the records holding the rarest of them come first." + without,
+                FocusOutcome.Held => "Focused: the last word is too short to look up yet, so the list is for the words before it.",
+                _ => null,
+            };
+        }
 
         /// <param name="wordMatching">Whether any searched field has WordMatching on; without one
         /// the matches are the pattern matcher's, and the search says why first.</param>

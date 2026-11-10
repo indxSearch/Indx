@@ -34,16 +34,33 @@ namespace IndxServer.Services
     /// </summary>
     public static class Focusing
     {
-        private static readonly ConditionalWeakTable<Result, StrongBox<FocusOutcome>> Outcomes = new();
+        /// <summary>What focusing did to a result, and the words of the typed text it left out.</summary>
+        private sealed record Focus(FocusOutcome Outcome, IReadOnlyList<Range> LeftOut);
+        private static readonly ConditionalWeakTable<Result, Focus> Outcomes = new();
         // The tokenizer every server engine is built with; the property hands out a copy each read.
         private static readonly char[] Delimiters = TokenizerSetup.Default.Delimiters;
 
         /// <summary>How focusing changed this result; None for one it did not touch.</summary>
         public static FocusOutcome OutcomeOf(Result result) =>
-            Outcomes.TryGetValue(result, out var box) ? box.Value : FocusOutcome.None;
+            Outcomes.TryGetValue(result, out var f) ? f.Outcome : FocusOutcome.None;
+
+        /// <summary>The words of the typed text the list did not go by, as ranges of it: those the
+        /// first record does not hold when reordered, the short word being typed when held. Empty
+        /// for a result focusing did not touch.</summary>
+        public static IReadOnlyList<Range> LeftOutOf(Result result) =>
+            Outcomes.TryGetValue(result, out var f) ? f.LeftOut : [];
 
         /// <summary>The response header naming the outcome, when there is one.</summary>
         public const string ResponseHeader = "Indx-Focus";
+
+        /// <summary>The response header with the words left out, as <c>start:length</c> pairs in
+        /// UTF-16 characters of the request's text, comma separated ("0:4,5:3"), so a page can grey
+        /// them where they were typed. Absent when no word was left out.</summary>
+        public const string LeftOutHeader = "Indx-Focus-Left-Out";
+
+        /// <summary>The ranges as <see cref="LeftOutHeader"/> writes them.</summary>
+        public static string Format(IReadOnlyList<Range> ranges) =>
+            string.Join(',', ranges.Select(r => $"{r.Start.Value}:{r.End.Value - r.Start.Value}"));
 
         public static Result Search(IServerSearchEngine engine, Query query)
         {
@@ -63,25 +80,62 @@ namespace IndxServer.Services
                 query.Text = text;
                 query.Match.CursorAt = cursor;
                 if (!held.IsFallback && held.Reason == null)
-                    return Mark(held, FocusOutcome.Held);
+                    return Mark(held, FocusOutcome.Held, [new Range(text.Length - ShortWordLength(text), text.Length)]);
             }
 
-            var mode = query.Mode;
+            // With the match report, whether asked for or not: it says which words the first record
+            // holds. It reads the returned records once more, a small cost for a page of them.
+            var (mode, report) = (query.Mode, query.EnableMatchReport);
             query.Mode = SearchMode.Bm25f;
+            query.EnableMatchReport = true;
             var ordered = engine.Search(query);
             query.Mode = mode;
+            query.EnableMatchReport = report;
             if (ordered.Reason != null || ordered.Records.Length == 0)
                 return first;
+            var firstWords = ordered.MatchReport?.Matches?.FirstOrDefault(m => m.DocumentKey == ordered.Records[0].DocumentKey)?.Words ?? [];
+            var leftOut = LeftOut(query.Text, firstWords);
 
             // BM25F's records and how it met their words, in the fallback's result: BM25F counts
             // nearly every record (any part of any word), so the count, the levels and the facets
             // stay the search's own.
             Set(first, nameof(Result.Records), ordered.Records);
-            Set(first, nameof(Result.MatchReport), ordered.MatchReport);
+            Set(first, nameof(Result.MatchReport), report ? ordered.MatchReport : null);
             Set(first, nameof(Result.Reranked), ordered.Reranked);
             Set(first, nameof(Result.Fill), null);
-            return Mark(first, FocusOutcome.Reordered);
+            return Mark(first, FocusOutcome.Reordered, leftOut);
         }
+
+        /// <summary>The ranges of the typed text whose words the record did not hold, the report's
+        /// words (the engine's tokens: lower case, without punctuation, "children's" read as
+        /// "childrens") laid back onto the text in order. A word that cannot be placed is not greyed.</summary>
+        internal static IReadOnlyList<Range> LeftOut(string text, IReadOnlyList<MatchReport.QueryWordMatch> words)
+        {
+            var tokens = new List<(Range At, string Key)>();
+            for (var i = 0; i < text.Length;)
+            {
+                if (Array.IndexOf(Delimiters, text[i]) >= 0) { i++; continue; }
+                var start = i;
+                while (i < text.Length && Array.IndexOf(Delimiters, text[i]) < 0) i++;
+                if (Key(text[start..i]) is { Length: > 0 } key) tokens.Add((new Range(start, i), key));
+            }
+            var left = new List<Range>();
+            var next = 0;
+            foreach (var w in words)
+            {
+                var key = Key(w.Word);
+                var at = tokens.FindIndex(next, t => t.Key == key);
+                if (at < 0) continue;
+                if (w.How == WordMatch.NotFound) left.Add(tokens[at].At);
+                next = at + 1;
+            }
+            return left;
+        }
+
+        // A word as both sides can agree on it: lower case, letters and digits only.
+        private static string Key(string word) => new([.. word.ToLowerInvariant().Where(char.IsLetterOrDigit)]);
+
+        private static int ShortWordLength(string text) => text.Length - 1 - text.LastIndexOfAny(Delimiters);
 
         /// <summary>The text before the word being typed, when that word is shorter than the typing
         /// prefix (and at least one character); null otherwise. Only a cursor at the end, or none.</summary>
@@ -97,9 +151,9 @@ namespace IndxServer.Services
             return before.Length == 0 ? null : before;
         }
 
-        private static Result Mark(Result result, FocusOutcome outcome)
+        private static Result Mark(Result result, FocusOutcome outcome, IReadOnlyList<Range> leftOut)
         {
-            Outcomes.AddOrUpdate(result, new StrongBox<FocusOutcome>(outcome));
+            Outcomes.AddOrUpdate(result, new Focus(outcome, leftOut));
             return result;
         }
 
