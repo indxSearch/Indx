@@ -577,6 +577,14 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>What the search finds for a text, as the judge reads it, for the console's
         /// tester: the hits by title, section and snippet. No model call, so it costs nothing.</summary>
+        /// <summary>The page's results in the refocused order (IntentResult.Refocused), for the console's
+        /// tester: the same count, the records read as the judge reads them.</summary>
+        public SearchSummary RefocusedResults(IServerSearchEngine engine, IReadOnlyList<long> keys, SearchSummary page, SearchOrAskSettings settings)
+        {
+            var fields = Fields(settings, engine.GetFieldList());
+            return page with { Top = [.. keys.Take(ResultsForJudge).Select(k => Describe(engine, k, fields, SnippetChars, forAnswer: false))], Met = null };
+        }
+
         public SearchSummary Results(string teamId, string dataSetName, IServerSearchEngine engine, string text, SearchOrAskSettings settings) =>
             Search(engine, dataSetName, teamId, text, Fields(settings, engine.GetFieldList()), wholeWords: settings.StrictCoverageWhileAsking);
 

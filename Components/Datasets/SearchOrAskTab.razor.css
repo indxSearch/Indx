@@ -80,6 +80,7 @@
 .soa-try-head-row { display: flex; align-items: center; gap: 12px; }
 /* The hits, as the judge reads them: title, section, one line of snippet. */
 .soa-try-results { display: flex; flex-direction: column; gap: 6px; }
+.soa-try-results-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .soa-try-hits { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
 .soa-try-hit { font: var(--text-xs); color: var(--lv6); }
 .soa-try-hit-title { color: var(--lv8); font: var(--text-sm); }
