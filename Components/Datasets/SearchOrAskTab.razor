@@ -157,12 +157,12 @@
                         </TableCell>
                     </TableRow>
                     @* Refocusing (10 Nov 2026): a switch and its line on the question score, as the found line. *@
-                    @Row(Icon<Icons.SortDescending>(), "Refocus", "When no record holds every word of a question, the list comes back ordered by the rarest words the records hold, so the common words of the question count for little. The count and the filters stay the search's.",
+                    @Row(Icon<Icons.SortDescending>(), "Refocus", "When no record holds every word of a question or a description of what to list, the list comes back ordered by the rarest words the records hold, so the common words count for little. The count and the filters stay the search's.",
                          _edit.Thresholds.Refocus > 0,
                          @<div class="soa-thresholds">
-                             <ToggleSwitch Label="Refocus the list on a question" Checked="@Refocuses" CheckedChanged="SetRefocuses" />
-                             @Line("Question from", "The question score the list is refocused from. Below the answer offer's lines, so a question is refocused before the judge is sure of it.",
-                                 Refocuses ? _edit.Thresholds.Refocus : _refocusOn, 0.05, v => _edit.Thresholds.Refocus = v, "Refocus: question from",
+                             <ToggleSwitch Label="Refocus the list on a question or a description" Checked="@Refocuses" CheckedChanged="SetRefocuses" />
+                             @Line("Question or description from", "The question score or the description score the list is refocused from, whichever is higher. Below the answer offer's lines, so a question is refocused before the judge is sure of it.",
+                                 Refocuses ? _edit.Thresholds.Refocus : _refocusOn, 0.05, v => _edit.Thresholds.Refocus = v, "Refocus: question or description from",
                                  min: 0.05, disabled: !Refocuses)
                          </div>)
                     @Row(Icon<Icons.Results>(), "The list", Judge == SearchOrAskProviders.OpenAiDecisions
@@ -386,13 +386,13 @@
                                 @* Each score with its thresholds as ticks on a meter: where it stands against
                                    the lines that decide the offer, not only its number. *@
                                 @Score("question", QuestionHelp, j.P, QuestionMarks(j))
-                                @if (j.Criteria is { } c) { @Score("description", DescriptionHelp, c, [new(j.Thresholds.Strong!.Value, "Answer offer")]) }
+                                @if (j.Criteria is { } c) { @Score("description", DescriptionHelp, c, [new(j.Thresholds.Strong!.Value, "Answer offer"), .. j.Thresholds.Refocus > 0 ? new ScoreMeter.Mark[] { new(j.Thresholds.Refocus, "Refocus") } : []]) }
                                 @if (j.Finished is { } f) { @Score("finished", FinishedHelp, f, [new(j.Thresholds.Finished, "Full offer from")]) }
                                 @if (j.Answerable is { } a) { @Score("answerable", AnswerableHelp, a, []) }
                                 @if (j.Found is { } fd) { @Score("found", FoundHelp, fd, j.Thresholds.Found > 0 ? [new(j.Thresholds.Found, "Found below: the list is dimmed")] : []) }
                                 <Tooltip Content="@(j.Cached ? "The judge answered this text before; the cached answer, no call made." : "How long the judge took. A visitor's page waits at most 3 seconds.")">@(j.Cached ? "cached" : $"{j.Ms} ms")</Tooltip>
                                 @if (j.Reason is { } why) { <text>, @why</text> }
-                                @if (j.Refocused != null) { <Tooltip Content="The question score reached the refocus line and no record holds every word: the list is sent in the order of the rarest words the records hold.">, refocused</Tooltip> }
+                                @if (j.Refocused != null) { <Tooltip Content="The question or description score reached the refocus line and no record holds every word: the list is sent in the order of the rarest words the records hold.">, refocused</Tooltip> }
                             </span>
                             <span class="soa-try-spacer"></span>
                             @if (_edit.Kind == SearchOrAskRecipes.Catalogue)

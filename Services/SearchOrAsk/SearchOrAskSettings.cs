@@ -229,14 +229,18 @@ namespace IndxServer.Services.SearchOrAsk
         /// of 324 plain that did not. 0 is off. A judgement without the score (the Decisions API is not
         /// asked it yet) dims nothing.</summary>
         public double Found { get; set; } = 0.3;
-        /// <summary>Refocusing (10 Nov 2026): from this question score up, when no record holds every
+        /// <summary>Refocusing (10 Nov 2026): from this question score or description score up (a
+        /// description of what to list counts as well since 10 Nov: "show me second world war movies"
+        /// is 0.03 a question and 0.89 a description), when no record holds every
         /// word of the page's search, the intent answer carries the list in BM25F's order
         /// (<see cref="SearchOrAskService.IntentResult"/>'s Refocused), where the rarest words a
         /// record holds weigh most and the common words of a question little; the page shows it in
         /// place of its own, its count and facets kept. 0 is off, the default. Replayed word by word
         /// on the committed tmdb23k and school-register sets: every line from 0.2 to 0.65 refocused
         /// the questions (first place 19 to 23 of 30, 34 to 37 of 40) and not one lookup or
-        /// description, which the same order unguarded had moved (Notes/focusing.md).</summary>
+        /// description, which the same order unguarded had moved. With descriptions too, Jev found the
+        /// refocused list the better one for 9 descriptions and the worse for 1, of 79, no lookup
+        /// refocused (Notes/focusing.md).</summary>
         public double Refocus { get; set; }
 
         /// <summary>The line the console's switch turns refocusing on with: Jev's invitation.</summary>

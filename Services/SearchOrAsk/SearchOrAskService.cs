@@ -454,8 +454,10 @@ namespace IndxServer.Services.SearchOrAsk
             IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null, double? criteria = null,
                 double? finished = null, double? found = null)
             {
-                // Refocused only on the judge's word: a failing judge (p = 0, a reason) leaves the list alone.
-                var refocused = reason == null && settings.Thresholds.Refocus > 0 && p >= settings.Thresholds.Refocus
+                // Refocused only on the judge's word, a question or a description of what to list
+                // reaching the line: a failing judge (p = 0, a reason) leaves the list alone.
+                var line = settings.Thresholds.Refocus;
+                var refocused = reason == null && line > 0 && (p >= line || criteria >= line)
                     ? Refocused(dataSetName, teamId, searched, wholeWords) : null;
                 var result = new IntentResult(p, answerable, settings.OfferFor(judge, p, criteria, finished), settings.Thresholds.Resolved(settings.Kind, judge), cached, Ms(), reason, criteria,
                     settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping,
@@ -540,7 +542,7 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>How many records a refocused list holds: the page's first rows.</summary>
         private const int RefocusedRows = 20;
 
-        /// <summary>The page's search for a question, refocused (thresholds.refocus): when no record
+        /// <summary>The page's search for a question or a description, refocused (thresholds.refocus): when no record
         /// holds every word (a fallback), its records in BM25F's order, keys only, for the page to show
         /// in place of its own; null when a record holds every word, and the page's list stands. The
         /// page's own search as the judge reads it (the dataset's mode and query parameters, whole
