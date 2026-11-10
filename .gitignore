@@ -150,6 +150,11 @@ wwwroot/lib/
 # and can leak the token.
 IndxData/settings.json
 
+# A dataset's vector indexes, written beside the databases at runtime. One was committed by
+# mistake on 22 Oct 2026 (a 17 MB .indxvec); they are instance data, never source.
+IndxData/embeddings/
+*.indxvec
+
 # Secret/key material — never commit to the public repo.
 # (The root monorepo .gitignore covers these too, but it does NOT travel with the
 #  git-subtree split, so the rules must be repeated here.) jwt.key is the JWT
