@@ -7,7 +7,7 @@ Versions: the server has its own line (2.x). It bundles the Indx core library (`
 5.x) and serves the HTTP API contract `v2.0-beta`, which is the version in every URL. A server
 patch can pick up a newer core without changing the HTTP contract.
 
-## [2.0.0-beta.3] - Unreleased
+## [2.0.0-beta.3] - 2026-11-10
 
 Runs on IndxSearchLib 5.0.6 or later.
 
