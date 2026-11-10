@@ -66,7 +66,12 @@ namespace IndxServer.Controllers
             long askedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
             try
             {
-                Indx.Api.Result res = IndxServerInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey, out var resolvedFilterKey);
+                // ?refocus=true: a search no record holds every word of comes back in BM25F's order
+                // (Services.Refocusing); intrface asks while the judge reads a question or a description.
+                var refocus = string.Equals(Request.Query["refocus"].FirstOrDefault()?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+                Indx.Api.Result res = IndxServerInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey, out var resolvedFilterKey, refocus);
+                if (Refocusing.OutcomeOf(res) is var refocused and not RefocusOutcome.None)
+                    Response.Headers[Refocusing.ResponseHeader] = refocused.ToString().ToLowerInvariant();
                 var tSearch = Stopwatch.GetTimestamp();
                 // Which values the dataset's query parameters decided, because the request left
                 // them out: "why does my search find so few" is answered by one response. Absent

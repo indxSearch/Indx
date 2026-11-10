@@ -32,7 +32,7 @@ namespace IndxServer.Services.SearchOrAsk
         bool Cached, long Ms, string? Reason = null, double? Criteria = null,
         bool StrictCoverageWhileAsking = true, string FiltersWhileTyping = "off",
         string Mode = SearchOrAskSettings.ModeSoft, double? Finished = null, double? Found = null,
-        long[]? Refocused = null);
+        long[]? Refocused = null, bool Refocus = false);
 
     /// <summary>One source handed to the answer model, as the visitor's client sees it.</summary>
     public sealed record AskSource(int N, long DocumentKey, string Title);
@@ -456,12 +456,14 @@ namespace IndxServer.Services.SearchOrAsk
             {
                 // Refocused only on the judge's word, a question or a description of what to list
                 // reaching the line: a failing judge (p = 0, a reason) leaves the list alone.
+                // refocus: the page searches with ?refocus=true from here, until a judgement says
+                // otherwise; refocused: this text's list so ordered, when it falls back (the tester's).
                 var line = settings.Thresholds.Refocus;
-                var refocused = reason == null && line > 0 && (p >= line || criteria >= line)
-                    ? Refocused(dataSetName, teamId, searched, wholeWords) : null;
+                var refocus = reason == null && line > 0 && (p >= line || criteria >= line);
+                var refocused = refocus ? Refocused(dataSetName, teamId, searched, wholeWords) : null;
                 var result = new IntentResult(p, answerable, settings.OfferFor(judge, p, criteria, finished), settings.Thresholds.Resolved(settings.Kind, judge), cached, Ms(), reason, criteria,
                     settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping,
-                    EffectiveMode(teamId, dataSetName, settings), finished, found, refocused);
+                    EffectiveMode(teamId, dataSetName, settings), finished, found, refocused, refocus);
                 // A judgement is recorded once the judge or its cache answered for it, a failing
                 // judge included (its reason says so); an identifier never reaches here. A prefetch
                 // is not: the pause that follows is recorded, from the cache it filled.

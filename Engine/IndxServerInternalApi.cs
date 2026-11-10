@@ -468,7 +468,12 @@ namespace IndxServer.Engine
         /// <param name="filterKey">The key of the filter the search ran with: its token and its
         /// filter expression ANDed, resolved. Null when it had none. What statistics record, so a
         /// filter given as an expression is counted as one given as a token is.</param>
-        internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId, out string? filterKey)
+        internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId, out string? filterKey) =>
+            Search(queryProxy, dataSetName, teamId, out filterKey, refocus: false);
+
+        /// <param name="refocus">Order a search no record holds every word of by BM25F
+        /// (Services.Refocusing): the caller's own ask, <c>?refocus=true</c>.</param>
+        internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId, out string? filterKey, bool refocus)
         {
             filterKey = null;
             try
@@ -481,7 +486,7 @@ namespace IndxServer.Engine
                     return Result.MakeEmptyResult();
                 Query query = FromQueryProxy(queryProxy, engine, teamId, dataSetName);
                 filterKey = query.Filter?.SerializedKey;
-                return engine.Search(query);
+                return refocus ? Services.Refocusing.Search(engine, query) : engine.Search(query);
             }
             catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException or ArgumentException)
             {
