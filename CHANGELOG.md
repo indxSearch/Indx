@@ -21,7 +21,7 @@ migration guide before upgrading a client.
 - The terminal monitor shows a dataset waiting its turn in the startup load as **Queued**, where
   it said Hibernated.
 
-## [2.0.0-beta.3] - Unreleased
+## [2.0.0-beta.3] - 2026-11-10
 
 Runs on IndxSearchLib 5.0.6 or later.
 
