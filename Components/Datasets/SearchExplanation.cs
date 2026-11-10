@@ -44,14 +44,6 @@ namespace IndxServer.Components.Datasets
         /// (8 Nov 2026: a single letter showed the pattern note and the candidate bound's).</summary>
         public const string TooShort = "Too short to look up as a word: the records holding it as part of a word.";
 
-        /// <summary>What focusing did to the list (Services.Focusing, a prototype), or null when nothing.</summary>
-        public static string? Focused(FocusOutcome outcome) => outcome switch
-        {
-            FocusOutcome.Reordered => "Focused: no record holds every word, so the records holding the rarest of them come first.",
-            FocusOutcome.Held => "Focused: the last word is too short to look up yet, so the list is for the words before it.",
-            _ => null,
-        };
-
         /// <param name="wordMatching">Whether any searched field has WordMatching on; without one
         /// the matches are the pattern matcher's, and the search says why first.</param>
         /// <param name="tooShort">No word of the text is long enough for the word lookup

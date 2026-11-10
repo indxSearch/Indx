@@ -75,9 +75,6 @@ namespace IndxServer.Controllers
                     queryParameters.Load(ctx.OwnerKey, dataSetName)).FromDataset;
                 if (fromDataset.Count > 0)
                     Response.Headers[QueryParameterResolution.ResponseHeader] = string.Join(", ", fromDataset);
-                // What focusing did to this search, when it did something: reordered or held.
-                if (Focusing.OutcomeOf(res) is var focus and not FocusOutcome.None)
-                    Response.Headers[Focusing.ResponseHeader] = focus.ToString().ToLowerInvariant();
                 // The search event is logged server-side - that is what makes the zero-hit list
                 // exist at all - and the minted queryId is what select/convert events reference.
                 // Cost on this path is a struct and a queue append (measured in

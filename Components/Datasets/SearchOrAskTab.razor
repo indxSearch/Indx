@@ -153,9 +153,18 @@
                 <tbody>
                     <TableRow>
                         <TableCell Class="soa-cell">
-                            <span class="soa-help">What the page does with its list while a full offer is up.</span>
+                            <span class="soa-help">What the page does with its list when the text is a question.</span>
                         </TableCell>
                     </TableRow>
+                    @* Refocusing (10 Nov 2026): a switch and its line on the question score, as the found line. *@
+                    @Row(Icon<Icons.SortDescending>(), "Refocus", "When no record holds every word of a question, the list comes back ordered by the rarest words the records hold, so the common words of the question count for little. The count and the filters stay the search's.",
+                         _edit.Thresholds.Refocus > 0,
+                         @<div class="soa-thresholds">
+                             <ToggleSwitch Label="Refocus the list on a question" Checked="@Refocuses" CheckedChanged="SetRefocuses" />
+                             @Line("Question from", "The question score the list is refocused from. Below the answer offer's lines, so a question is refocused before the judge is sure of it.",
+                                 Refocuses ? _edit.Thresholds.Refocus : _refocusOn, 0.05, v => _edit.Thresholds.Refocus = v, "Refocus: question from",
+                                 min: 0.05, disabled: !Refocuses)
+                         </div>)
                     @Row(Icon<Icons.Results>(), "The list", Judge == SearchOrAskProviders.OpenAiDecisions
                              ? "Dims the list under an answer offer when the judge's found score is below the line. OpenAI's Decisions API is not asked for found yet, so nothing dims."
                              : "Dims the list under an answer offer when the judge's found score is below the line: what is asked about is not in it.",
@@ -558,6 +567,20 @@
         {
             if (_edit.Thresholds.Found > 0) _foundOn = _edit.Thresholds.Found;
             _edit.Thresholds.Found = 0;
+        }
+    }
+
+    /// <summary>Whether the list is refocused on a question: the refocus line above 0.</summary>
+    private bool Refocuses => _edit.Thresholds.Refocus > 0;
+    private double _refocusOn = SearchOrAskThresholds.RefocusOn;
+
+    private void SetRefocuses(bool on)
+    {
+        if (on) _edit.Thresholds.Refocus = _refocusOn > 0 ? _refocusOn : SearchOrAskThresholds.RefocusOn;
+        else
+        {
+            if (_edit.Thresholds.Refocus > 0) _refocusOn = _edit.Thresholds.Refocus;
+            _edit.Thresholds.Refocus = 0;
         }
     }
 

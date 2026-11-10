@@ -229,6 +229,18 @@ namespace IndxServer.Services.SearchOrAsk
         /// of 324 plain that did not. 0 is off. A judgement without the score (the Decisions API is not
         /// asked it yet) dims nothing.</summary>
         public double Found { get; set; } = 0.3;
+        /// <summary>Refocusing (10 Nov 2026): from this question score up, when no record holds every
+        /// word of the page's search, the intent answer carries the list in BM25F's order
+        /// (<see cref="SearchOrAskService.IntentResult"/>'s Refocused), where the rarest words a
+        /// record holds weigh most and the common words of a question little; the page shows it in
+        /// place of its own, its count and facets kept. 0 is off, the default. Replayed word by word
+        /// on the committed tmdb23k and school-register sets: every line from 0.2 to 0.65 refocused
+        /// the questions (first place 19 to 23 of 30, 34 to 37 of 40) and not one lookup or
+        /// description, which the same order unguarded had moved (Notes/focusing.md).</summary>
+        public double Refocus { get; set; }
+
+        /// <summary>The line the console's switch turns refocusing on with: Jev's invitation.</summary>
+        public const double RefocusOn = 0.4;
 
         /// <summary>Jev's, measured on the docs set (Notes/search-or-ask.md): no lookup scored above
         /// 0.22 there, and the lowest question that was not missed 0.47.</summary>
@@ -258,7 +270,7 @@ namespace IndxServer.Services.SearchOrAsk
             {
                 Strong = Strong ?? d.Strong, StrongHide = StrongHide ?? d.StrongHide,
                 Invite = Invite ?? d.Invite, InviteHide = InviteHide ?? d.InviteHide,
-                Hint = Hint ?? HintFor(kind, judge), Finished = Finished, Found = Found,
+                Hint = Hint ?? HintFor(kind, judge), Finished = Finished, Found = Found, Refocus = Refocus,
             };
         }
 
@@ -286,6 +298,7 @@ namespace IndxServer.Services.SearchOrAsk
                     return $"thresholds.{name} must be between 0 and 1.";
             if (double.IsNaN(Finished) || Finished < 0 || Finished > 1) return "thresholds.finished must be between 0 and 1.";
             if (double.IsNaN(Found) || Found < 0 || Found > 1) return "thresholds.found must be between 0 and 1.";
+            if (double.IsNaN(Refocus) || Refocus < 0 || Refocus > 1) return "thresholds.refocus must be between 0 and 1.";
             var r = Resolved(kind, judge);
             if (r.StrongHide > r.Strong) return "thresholds.strongHide cannot be above thresholds.strong.";
             if (r.InviteHide > r.Invite) return "thresholds.inviteHide cannot be above thresholds.invite.";

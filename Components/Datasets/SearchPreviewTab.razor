@@ -555,11 +555,7 @@ else
         // tokenizer the server builds every engine with (ConfigurationParameters.Default).
         bool tooShort = !string.IsNullOrWhiteSpace(text) && text.Split(TokenizerSetup.Default.Delimiters, StringSplitOptions.RemoveEmptyEntries)
             .All(w => w.Length < TokenizerSetup.Default.MinimumWordSize);
-        var summary = SearchExplanation.Of(result, wordMatching: Ctx.SavedFields?.Any(f => f.WordMatching == true) != false, tooShort);
-        // Focusing (a prototype) says what it did to the list, below what the search says.
-        if (summary != null && SearchExplanation.Focused(Focusing.OutcomeOf(result)) is { } focused)
-            summary = summary with { Notes = [.. summary.Notes, focused] };
-        return (hits, summary);
+        return (hits, SearchExplanation.Of(result, wordMatching: Ctx.SavedFields?.Any(f => f.WordMatching == true) != false, tooShort));
     }
 
     private async Task RunPerfTest()

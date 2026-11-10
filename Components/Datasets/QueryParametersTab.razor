@@ -193,8 +193,6 @@
             CandidateDefaults.FillWithMostWords, p => p.Candidates?.FillWithMostWords, (p, v) => C(p).FillWithMostWords = v),
         new("Rest", "Related below the matches", "Below the documents holding every word, the best of the rest by pattern recognition.",
             CandidateDefaults.Rest, p => p.Candidates?.Rest, (p, v) => C(p).Rest = v),
-        new("Focusing", "Focus a question", "When no document holds every query word, as in a question, list first those holding the rarest of them, so the common words of a question count little. Not for a search that names its mode. A prototype.",
-            false, p => p.Focusing, (p, v) => p.Focusing = v),
     ];
 
     private static readonly IntParam[] FetchingParams =

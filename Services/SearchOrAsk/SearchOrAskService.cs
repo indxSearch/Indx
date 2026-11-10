@@ -31,7 +31,8 @@ namespace IndxServer.Services.SearchOrAsk
     public sealed record IntentResult(double P, double? Answerable, string Offer, SearchOrAskThresholds Thresholds,
         bool Cached, long Ms, string? Reason = null, double? Criteria = null,
         bool StrictCoverageWhileAsking = true, string FiltersWhileTyping = "off",
-        string Mode = SearchOrAskSettings.ModeSoft, double? Finished = null, double? Found = null);
+        string Mode = SearchOrAskSettings.ModeSoft, double? Finished = null, double? Found = null,
+        long[]? Refocused = null);
 
     /// <summary>One source handed to the answer model, as the visitor's client sees it.</summary>
     public sealed record AskSource(int N, long DocumentKey, string Title);
@@ -453,9 +454,12 @@ namespace IndxServer.Services.SearchOrAsk
             IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null, double? criteria = null,
                 double? finished = null, double? found = null)
             {
+                // Refocused only on the judge's word: a failing judge (p = 0, a reason) leaves the list alone.
+                var refocused = reason == null && settings.Thresholds.Refocus > 0 && p >= settings.Thresholds.Refocus
+                    ? Refocused(dataSetName, teamId, searched, wholeWords) : null;
                 var result = new IntentResult(p, answerable, settings.OfferFor(judge, p, criteria, finished), settings.Thresholds.Resolved(settings.Kind, judge), cached, Ms(), reason, criteria,
                     settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping,
-                    EffectiveMode(teamId, dataSetName, settings), finished, found);
+                    EffectiveMode(teamId, dataSetName, settings), finished, found, refocused);
                 // A judgement is recorded once the judge or its cache answered for it, a failing
                 // judge included (its reason says so); an identifier never reaches here. A prefetch
                 // is not: the pause that follows is recorded, from the cache it filled.
@@ -531,6 +535,31 @@ namespace IndxServer.Services.SearchOrAsk
                 Refused("judge", ex);
                 return new IntentOutcome(IntentStatus.Ok, Result(0, null, false, "failed:unreachable"));
             }
+        }
+
+        /// <summary>How many records a refocused list holds: the page's first rows.</summary>
+        private const int RefocusedRows = 20;
+
+        /// <summary>The page's search for a question, refocused (thresholds.refocus): when no record
+        /// holds every word (a fallback), its records in BM25F's order, keys only, for the page to show
+        /// in place of its own; null when a record holds every word, and the page's list stands. The
+        /// page's own search as the judge reads it (the dataset's mode and query parameters, whole
+        /// words where the page searches so), then the same in Bm25f: two searches, about a
+        /// millisecond each. Until 10 Nov 2026 a dataset query parameter (focusing) did this on every
+        /// search that fell back, unasked, and moved lookups and descriptions too.</summary>
+        private static long[]? Refocused(string dataSetName, string teamId, string text, bool wholeWords)
+        {
+            QueryProxy Query(SearchMode? mode) => new()
+            {
+                Text = text,
+                MaxNumberOfRecordsToReturn = RefocusedRows,
+                Mode = mode,
+                Match = wholeWords ? new MatchProxy { Tolerance = Tolerance.Exact, TypingPrefixFrom = 0, JoinedWords = false } : null,
+            };
+            var page = IndxServerInternalApi.Manager.Search(Query(null), dataSetName, teamId);
+            if (!page.IsFallback || page.Records.Length == 0) return null;
+            var ordered = IndxServerInternalApi.Manager.Search(Query(SearchMode.Bm25f), dataSetName, teamId);
+            return ordered.Records.Length == 0 ? null : [.. ordered.Records.Select(r => r.DocumentKey)];
         }
 
         /// <summary>What the search found, reduced to what the judge reads.</summary>
