@@ -87,23 +87,46 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
-        /// Returns the raw json records as string[] for the keys.
+        /// Returns the raw json records as string[] for the keys, in their order; a key no record
+        /// has gives an empty string. A search answer's records give their keys
+        /// (<c>records.map(r => r.documentKey)</c>). <paramref name="start"/> and
+        /// <paramref name="length"/> read a part of the keys (all by default), a page of a result;
+        /// a part outside them answers 400 with what was wrong.
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/documents/lookup")]
-        public ActionResult<string[]> GetJson(string teamName, string dataSetName, [FromBody] long[] keys)
+        public ActionResult<string[]> GetJson(string teamName, string dataSetName, [FromBody] long[] keys,
+            [FromQuery] int start = 0, [FromQuery] int? length = null) =>
+            Lookup(teamName, dataSetName, keys?.Length, "document keys", start, length, engine => engine.GetJsonDataOfKeys(keys!, start, length));
+
+        /// <summary>The lookup: the part asked for checked against the
+        /// <paramref name="count"/> items sent, with a message that says what was wrong, before the
+        /// engine reads; the engine's own refusal answered the same way should it come.</summary>
+        private ActionResult<string[]> Lookup(string teamName, string dataSetName, int? count, string what, int start, int? length,
+            Func<IServerSearchEngine, string[]> read)
         {
             var ctx = ResolveTeam(teamName, out var error);
             if (ctx == null) return error!;
+            if (count is not int sent)
+                return ApiProblems.InvalidArgument($"The body must be a JSON array of {what}.");
+            if (start < 0 || start > sent)
+                return ApiProblems.InvalidArgument($"start is {start}; it must be from 0 to {sent}, the number of {what} sent.");
+            if (length is int asked && (asked < 0 || asked > sent - start))
+                return ApiProblems.InvalidArgument(
+                    $"length is {asked}; from start {start} it must be from 0 to {sent - start}, so that start + length is at most the {sent} {what} sent.");
             IServerSearchEngine? engine = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (engine == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(engine, "GetJson", SystemState.Loaded, SystemState.Indexing, SystemState.Ready) is { } stateError)
                 return stateError;
-            var jsonStrings = new string[keys.Length];
-            for (int i = 0; i < jsonStrings.Length; i++)
-                jsonStrings[i] = engine.GetJsonDataOfKey(keys[i]);
-            return jsonStrings;
+            try
+            {
+                return read(engine);
+            }
+            catch (ArgumentException e)
+            {
+                return ApiProblems.InvalidArgument(e.Message);
+            }
         }
 
         /// <summary>
