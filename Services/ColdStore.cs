@@ -34,15 +34,17 @@ namespace IndxServer.Services
     /// name, and the description the first of them gives.</summary>
     public sealed record ColdName(string Name, int Records, string Description);
 
-    /// <summary>Who reads: what each may see of an item's <see cref="ColdItem.Visibility"/>.</summary>
-    public enum ColdReader
+    /// <summary>What a caller may read of cold storage, by an item's <see cref="ColdItem.Visibility"/>
+    /// (<see cref="ColdValues.AccessFor"/> says who gets which).</summary>
+    public enum ColdAccess
     {
-        /// <summary>A Search key, shipped in a browser: public items only.</summary>
-        Browser,
-        /// <summary>The answer for a visitor, written on the server: public and answer items.</summary>
+        /// <summary>Public items only: a Search key over HTTP, a page in a browser.</summary>
+        Public,
+        /// <summary>Public and answer items: the answer for a visitor, a Read key, a Viewer.</summary>
         Answer,
-        /// <summary>A Read or Full key, MCP with one, the console: every item.</summary>
-        Owner,
+        /// <summary>Every item, private included: a Full key, a Read key with the private flag, an
+        /// Editor or Admin in the console.</summary>
+        All,
     }
 
     /// <summary>The values of an item's closed fields, as stored.</summary>
@@ -63,19 +65,37 @@ namespace IndxServer.Services
         public static readonly string[] ContentTypes = ["text/plain", "text/markdown", "application/json"];
         public static readonly string[] Visibilities = [Public, Answer, Private];
 
-        /// <summary>Whether <paramref name="reader"/> may read an item of <paramref name="visibility"/>.</summary>
-        public static bool Reads(ColdReader reader, string visibility) => reader switch
+        /// <summary>
+        /// What a caller may read (11 Nov 2026): a Search key over HTTP the public items, the ones a page
+        /// may show; a Search key over MCP nothing, since a key in a browser should not hand an agent
+        /// anyone's cold storage; a Read key and a Viewer public and answer; a Read key with the
+        /// private flag, a Full key, an Editor or Admin every item. Null: none at all. Without a key
+        /// (a signed-in person) the team role decides.
+        /// </summary>
+        public static ColdAccess? AccessFor(ApiKeyScope? scope, string? role, bool viaMcp = false)
         {
-            ColdReader.Owner => true,
-            ColdReader.Answer => visibility is Public or Answer,
+            if (scope == null) return TeamRoles.CanWrite(role) ? ColdAccess.All : ColdAccess.Answer;
+            return scope.Level switch
+            {
+                ApiKeyLevel.Search => viaMcp ? null : ColdAccess.Public,
+                ApiKeyLevel.Read => scope.PrivateCold ? ColdAccess.All : ColdAccess.Answer,
+                _ => ColdAccess.All,
+            };
+        }
+
+        /// <summary>Whether <paramref name="reader"/> may read an item of <paramref name="visibility"/>.</summary>
+        public static bool Reads(ColdAccess reader, string visibility) => reader switch
+        {
+            ColdAccess.All => true,
+            ColdAccess.Answer => visibility is Public or Answer,
             _ => visibility == Public,
         };
 
         /// <summary>The SQL condition for <see cref="Reads"/>, on the column Visibility.</summary>
-        internal static string Where(ColdReader reader) => reader switch
+        internal static string Where(ColdAccess reader) => reader switch
         {
-            ColdReader.Owner => "",
-            ColdReader.Answer => $"AND Visibility IN ('{Public}', '{Answer}')",
+            ColdAccess.All => "",
+            ColdAccess.Answer => $"AND Visibility IN ('{Public}', '{Answer}')",
             _ => $"AND Visibility = '{Public}'",
         };
     }
@@ -191,7 +211,7 @@ namespace IndxServer.Services
         /// <summary>The items of a record that <paramref name="reader"/> may read, by name and language;
         /// without content when <paramref name="withContent"/> is false (a listing). Empty when the
         /// database is not there yet.</summary>
-        public List<ColdItem> List(ColdScope scope, bool withContent, ColdReader reader, IReadOnlyCollection<string>? names = null)
+        public List<ColdItem> List(ColdScope scope, bool withContent, ColdAccess reader, IReadOnlyCollection<string>? names = null)
         {
             var items = new List<ColdItem>();
             if (!DbExists()) return items;
@@ -225,7 +245,7 @@ namespace IndxServer.Services
 
         /// <summary>The names the dataset's records hold items by, with how many records hold one, so
         /// an agent knows what it can read before it reads any (describe_dataset).</summary>
-        public List<ColdName> Names(string teamId, string dataSetName, ColdReader reader)
+        public List<ColdName> Names(string teamId, string dataSetName, ColdAccess reader)
         {
             var names = new List<ColdName>();
             if (!DbExists()) return names;
@@ -257,7 +277,7 @@ namespace IndxServer.Services
         /// names, each once and in order: what a search says of its records. From memory: the dataset's
         /// names are read from the table once, and again after a write to it. Empty when none holds any.
         /// </summary>
-        public Dictionary<long, string[]> NamesOf(string teamId, string dataSetName, IEnumerable<long> keys, ColdReader reader)
+        public Dictionary<long, string[]> NamesOf(string teamId, string dataSetName, IEnumerable<long> keys, ColdAccess reader)
         {
             var result = new Dictionary<long, string[]>();
             var byRecord = _names.GetOrAdd((teamId, dataSetName), _ => LoadNames(teamId, dataSetName));

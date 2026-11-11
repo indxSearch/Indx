@@ -32,8 +32,8 @@ namespace IndxServer.Controllers
     /// <summary>
     /// Cold storage: items kept beside a record, never searched and not in memory, read when a
     /// question needs them: a book's table of contents, a review, a whole article
-    /// (Notes/cold-storage.md). Reading takes a Search key, which sees the public items only; a Read
-    /// or Full key and the console see every one. Writing takes a Full key or an editor. An item is
+    /// (Notes/cold-storage.md). Reading takes a Search key, which sees the public items only; who sees
+    /// more is <see cref="ColdValues.AccessFor"/>. Writing takes a Full key or an editor. An item is
     /// private unless written otherwise. Who wrote an item is set from the caller, never from the body.
     /// </summary>
     public class ColdController(TeamContextResolver resolver, ColdStore cold) : DatasetApiController(resolver)
@@ -51,7 +51,7 @@ namespace IndxServer.Controllers
             if (!DatasetExists(dataSetName, ctx)) return ApiProblems.DatasetNotFound(dataSetName);
             var scope = new ColdScope(ctx.OwnerKey, dataSetName, documentKey);
             if (RecordGone(ctx, scope)) return Array.Empty<ColdView>();
-            return cold.List(scope, withContent: true, Reader())
+            return cold.List(scope, withContent: true, Reader(ctx))
                 .Select(n => ColdView.Of(n, withContent: false)).ToArray();
         }
 
@@ -65,7 +65,7 @@ namespace IndxServer.Controllers
             if (!DatasetExists(dataSetName, ctx)) return ApiProblems.DatasetNotFound(dataSetName);
             var scope = new ColdScope(ctx.OwnerKey, dataSetName, documentKey);
             var item = RecordGone(ctx, scope) ? null : cold.Get(scope, name, language ?? "");
-            if (item == null || !ColdValues.Reads(Reader(), item.Visibility))
+            if (item == null || !ColdValues.Reads(Reader(ctx), item.Visibility))
                 return NotFoundItem(name, language);
             Response.Headers.ETag = $"\"{item.Version}\"";
             return ColdView.Of(item, withContent: true);
@@ -145,10 +145,9 @@ namespace IndxServer.Controllers
             ApiProblems.Problem(StatusCodes.Status404NotFound, "coldNotFound", "Item not found",
                 $"No item '{name}'{(string.IsNullOrEmpty(language) ? "" : $" in '{language}'")} on this record.");
 
-        /// <summary>A Search key reads the public items only: it is shipped in a browser. A Read or Full
-        /// key and a signed-in user read every one.</summary>
-        private ColdReader Reader() => ApiKeyScope.For(HttpContext) is { } scope && !scope.AllowsLevel(ApiKeyLevel.Read)
-            ? ColdReader.Browser : ColdReader.Owner;
+        /// <summary>What the caller may read (<see cref="ColdValues.AccessFor"/>): over HTTP a Search key
+        /// reads the public items.</summary>
+        private ColdAccess Reader(TeamContext ctx) => ColdValues.AccessFor(ApiKeyScope.For(HttpContext), ctx.Role) ?? ColdAccess.Public;
 
         /// <summary>Who writes, as stored: a scoped key is a system, by its name for a team key and its
         /// user and id for a user's key; a signed-in person without a key is the console.</summary>

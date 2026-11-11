@@ -235,7 +235,7 @@ namespace IndxServer.Services.SearchOrAsk
                             sb.AppendLine($"The first {Math.Min(AgentRecordsPerSearch, docs.Count)}:");
                             var shownKeysOfSearch = keys.Take(AgentRecordsPerSearch).ToList();
                             // The cold storage each holds that an answer may read, for read_cold.
-                            var cold = IndxServerInternalApi.Manager.Cold?.NamesOf(teamId, dataSetName, shownKeysOfSearch, ColdReader.Answer) ?? [];
+                            var cold = IndxServerInternalApi.Manager.Cold?.NamesOf(teamId, dataSetName, shownKeysOfSearch, ColdAccess.Answer) ?? [];
                             foreach (var (doc, key) in docs.Zip(keys).Take(AgentRecordsPerSearch))
                             {
                                 read[key] = titleOf(doc);
@@ -327,7 +327,7 @@ namespace IndxServer.Services.SearchOrAsk
             var budget = AgentColdChars;
             foreach (var key in asked.Where(found.Contains).Take(AgentColdKeys))
             {
-                var items = store.List(new ColdScope(teamId, dataSetName, key), withContent: true, ColdReader.Answer, names)
+                var items = store.List(new ColdScope(teamId, dataSetName, key), withContent: true, ColdAccess.Answer, names)
                     .GroupBy(i => i.Name).Select(g => g.FirstOrDefault(i => i.Language.Length == 0) ?? g.First()).ToList();
                 var title = read.GetValueOrDefault(key, "");
                 if (items.Count == 0) { sb.AppendLine($"[{key}] {title}: no cold storage{(names.Count > 0 ? " by those names" : "")}."); continue; }

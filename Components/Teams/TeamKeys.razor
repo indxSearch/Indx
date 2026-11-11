@@ -143,6 +143,12 @@ else
         <div class="tk-field">
             <SelectField Label="Access" Value="@_level.ToString()" ValueChanged="OnLevelChanged" Options="LevelOptions" />
             <p class="tk-help">@LevelHelp(_level)</p>
+            @if (_level == ApiKeyLevel.Read)
+            {
+                @* Notes/cold-storage.md: a Read key reads public and answer items, private only when asked for. *@
+                <Checkbox Id="tk-private-cold" Label="Also reads private cold storage" Checked="@_privateCold" CheckedChanged="@(v => _privateCold = v)" />
+                <p class="tk-help">For a server that may see customer data kept beside the records, such as a support chatbot's backend.</p>
+            }
         </div>
 
         <div class="tk-field">
@@ -209,6 +215,7 @@ else
 
     private string? _name;
     private ApiKeyLevel _level = ApiKeyLevel.Search;
+    private bool _privateCold;
     private bool _limitDatasets = true;
     private readonly HashSet<string> _selected = new(StringComparer.Ordinal);
     private List<string> _teamDatasets = new();
@@ -271,6 +278,7 @@ else
         _error = null;
         _name = null;
         _level = ApiKeyLevel.Search;
+        _privateCold = false;
         _limitDatasets = true;
         _selected.Clear();
         _expiry = "90";
@@ -302,7 +310,8 @@ else
             if (user == null) { _error = "Your account could not be found."; return; }
             int? days = _expiry == Never ? null : int.Parse(_expiry);
 
-            _created = await Keys.CreateTeamKeyAsync(user, _name ?? "", days, _level, Team.Id, _limitDatasets ? _selected.ToArray() : null);
+            _created = await Keys.CreateTeamKeyAsync(user, _name ?? "", days, _level, Team.Id, _limitDatasets ? _selected.ToArray() : null,
+                _level == ApiKeyLevel.Read && _privateCold);
             _copied = false;
             _showCreate = false;
             await LoadKeys();

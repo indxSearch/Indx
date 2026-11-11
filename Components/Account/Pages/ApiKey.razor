@@ -169,6 +169,12 @@
             <div class="key-field">
                 <SelectField Label="Access" Value="@_level.ToString()" ValueChanged="OnLevelChanged" Options="LevelOptions" />
                 <p class="key-help">@LevelHelp(_level)</p>
+                @if (_level == IndxServer.Services.ApiKeyLevel.Read && CurrentRole is { } coldRole && TeamRoles.CanWrite(coldRole))
+                {
+                    @* Notes/cold-storage.md: a Read key reads public and answer items, private only when asked for. *@
+                    <Checkbox Id="key-private-cold" Label="Also reads private cold storage" Checked="@_privateCold" CheckedChanged="@(v => _privateCold = v)" />
+                    <p class="key-help">For a server that may see customer data kept beside the records, such as a support chatbot's backend.</p>
+                }
             </div>
 
             <div class="key-field">
@@ -261,6 +267,7 @@
     private string? _name;
     private string? _teamId;
     private IndxServer.Services.ApiKeyLevel _level = IndxServer.Services.ApiKeyLevel.Search;
+    private bool _privateCold;
     private bool _limitDatasets = true;
     private readonly HashSet<string> _selected = new(StringComparer.Ordinal);
     private List<string> _teamDatasets = new();
@@ -324,6 +331,7 @@
         _error = null;
         _name = null;
         _level = IndxServer.Services.ApiKeyLevel.Search;
+        _privateCold = false;
         _limitDatasets = true;
         _selected.Clear();
         _days = 90;
@@ -365,7 +373,8 @@
             if (user == null) { _error = "Your account could not be found."; return; }
             if (!Guid.TryParse(_teamId, out var teamId)) { _error = "Choose a team."; return; }
 
-            _created = await Keys.CreateAsync(user, _name ?? "", _days, _level, teamId, _limitDatasets ? _selected.ToArray() : null);
+            _created = await Keys.CreateAsync(user, _name ?? "", _days, _level, teamId, _limitDatasets ? _selected.ToArray() : null,
+                _level == IndxServer.Services.ApiKeyLevel.Read && _privateCold && CurrentRole is { } r && TeamRoles.CanWrite(r));
             _copied = false;
             _showCreate = false;
             await LoadKeys();

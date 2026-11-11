@@ -181,7 +181,7 @@ else
                                                     @(k.IsTeamKey ? "Team" : "Personal"),
                                                     @if (k.ExpiresAt is { } at) { <text>expires </text><TimeAgo Value="at" TooltipPosition="left" /> } else { <text>no expiry</text> }
                                                 </span>
-                                                <Chip Color="var(--lv2)" TextColor="var(--lv6)">@k.Level</Chip>
+                                                <Chip Color="var(--lv2)" TextColor="var(--lv6)">@(k.PrivateCold ? $"{k.Level}, private cold storage" : k.Level)</Chip>
                                             </div>
                                         }
                                     </div>

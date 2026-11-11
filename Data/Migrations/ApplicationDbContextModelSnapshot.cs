@@ -65,6 +65,9 @@ namespace IndxServer.Data.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("PrivateCold")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("SealedToken")
                         .HasColumnType("TEXT");
 

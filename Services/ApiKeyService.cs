@@ -33,7 +33,7 @@ namespace IndxServer.Services
         /// user when the request cannot be honoured.
         /// </summary>
         public async Task<Created> CreateAsync(ApplicationUser user, string name, int expirationDays,
-            ApiKeyLevel level, Guid teamId, IReadOnlyCollection<string>? datasets)
+            ApiKeyLevel level, Guid teamId, IReadOnlyCollection<string>? datasets, bool privateCold = false)
         {
             name = name?.Trim() ?? "";
             if (name.Length == 0) throw new ArgumentException("Enter a name for the key.");
@@ -48,11 +48,15 @@ namespace IndxServer.Services
             // but refusing a Full key a Viewer could never use keeps the key list honest.
             if (level == ApiKeyLevel.Full && !TeamRoles.CanWrite(role))
                 throw new ArgumentException("A Full access key needs the Editor or Admin role in the team. Viewers can create Search or Read keys.");
+            privateCold = PrivateCold(level, privateCold);
+            // A Viewer does not read private cold storage in the console, so cannot hand a key that does.
+            if (privateCold && !TeamRoles.CanWrite(role))
+                throw new ArgumentException("A key that reads private cold storage needs the Editor or Admin role in the team.");
 
             var names = ValidDatasets(teamId, datasets);
             var jti = Guid.NewGuid().ToString();
             var now = DateTime.UtcNow;   // one reading: CreatedAt and ExpiresAt must be exactly the lifetime apart
-            var token = await MintAsync(user, expirationDays, jti, level, teamId, names);
+            var token = await MintAsync(user, expirationDays, jti, level, teamId, names, privateCold);
             var record = new ApiKey
             {
                 UserId = user.Id,
@@ -62,6 +66,7 @@ namespace IndxServer.Services
                 SealedToken = CanBeShownAgain(level) ? ApiKeySealer.Seal(token, JwtKey) : null,
                 Jti = jti,
                 Level = level.ToString(),
+                PrivateCold = privateCold,
                 TeamId = teamId,
                 Datasets = names == null ? null : JsonSerializer.Serialize(names),
                 CreatedAt = now,
@@ -83,7 +88,7 @@ namespace IndxServer.Services
         /// so an expiry mostly schedules an outage, and revoking it is the real control.
         /// </summary>
         public async Task<Created> CreateTeamKeyAsync(ApplicationUser creator, string name, int? expirationDays,
-            ApiKeyLevel level, Guid teamId, IReadOnlyCollection<string>? datasets)
+            ApiKeyLevel level, Guid teamId, IReadOnlyCollection<string>? datasets, bool privateCold = false)
         {
             name = name?.Trim() ?? "";
             if (name.Length == 0) throw new ArgumentException("Enter a name for the key.");
@@ -93,6 +98,7 @@ namespace IndxServer.Services
                 throw new ArgumentException("Only a Search key can be set to never expire. Keys that read or change data need an expiry.");
             if (expirationDays is < 1 or > 366) throw new ArgumentException("Expiration must be between 1 and 366 days.");
             RequireTeamAdmin(teamId, creator.Id);
+            privateCold = PrivateCold(level, privateCold);
 
             var names = ValidDatasets(teamId, datasets);
             var jti = Guid.NewGuid().ToString();
@@ -101,7 +107,7 @@ namespace IndxServer.Services
                 [
                     new(ClaimTypes.Name, name),
                     new(JwtRegisteredClaimNames.Jti, jti),
-                    .. ApiKeyScope.ClaimsFor(level, teamId, names, teamKey: true),
+                    .. ApiKeyScope.ClaimsFor(level, teamId, names, teamKey: true, privateCold),
                 ],
                 expirationDays ?? NeverExpiresDays);
             var record = new ApiKey
@@ -114,6 +120,7 @@ namespace IndxServer.Services
                 SealedToken = CanBeShownAgain(level) ? ApiKeySealer.Seal(token, JwtKey) : null,
                 Jti = jti,
                 Level = level.ToString(),
+                PrivateCold = privateCold,
                 TeamId = teamId,
                 Datasets = names == null ? null : JsonSerializer.Serialize(names),
                 CreatedAt = now,
@@ -209,8 +216,17 @@ namespace IndxServer.Services
             return names.Length == 0 ? null : names;
         }
 
+        /// <summary>Whether a key reads private cold storage: asked for, and only a Read key carries it
+        /// (a Full key reads it anyway). A Search key cannot: it is shipped in a browser.</summary>
+        private static bool PrivateCold(ApiKeyLevel level, bool asked)
+        {
+            if (asked && level == ApiKeyLevel.Search)
+                throw new ArgumentException("A Search key cannot read private cold storage: it is shipped in a browser.");
+            return asked && level == ApiKeyLevel.Read;
+        }
+
         private async Task<string> MintAsync(ApplicationUser user, int expirationDays, string jti,
-            ApiKeyLevel level, Guid teamId, IReadOnlyCollection<string>? datasets)
+            ApiKeyLevel level, Guid teamId, IReadOnlyCollection<string>? datasets, bool privateCold = false)
         {
             // No security-stamp claim: a named key survives its owner's password change and is
             // retired by revocation instead (see the JwtBearer OnTokenValidated handler).
@@ -223,7 +239,7 @@ namespace IndxServer.Services
                 new(JwtRegisteredClaimNames.Email, user.Email ?? ""),
                 new(JwtRegisteredClaimNames.Jti, jti),
             };
-            claims.AddRange(ApiKeyScope.ClaimsFor(level, teamId, datasets));
+            claims.AddRange(ApiKeyScope.ClaimsFor(level, teamId, datasets, privateCold: privateCold));
             foreach (var role in await users.GetRolesAsync(user))
                 claims.Add(new Claim(ClaimTypes.Role, role));
             return Mint(claims, expirationDays);

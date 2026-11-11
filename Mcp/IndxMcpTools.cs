@@ -135,7 +135,7 @@ namespace IndxServer.Mcp
                 schema.Sample = ParseJson(engine.GetJsonDataOfKey(probe.Records[0].DocumentKey));
 
             // The cold storage the records hold, by name and how many records hold one: read with get_cold.
-            var names = cold.Names(ownerKey, dataset, Reader());
+            var names = await ColdAccessAsync(team) is { } access ? cold.Names(ownerKey, dataset, access) : [];
             if (names.Count > 0)
                 schema.Cold = names.Select(n => new McpColdName
                 {
@@ -150,7 +150,7 @@ namespace IndxServer.Mcp
         [McpServerTool(Name = "get_cold", UseStructuredContent = false, ReadOnly = true)]
         [System.ComponentModel.Description("Read a record's cold storage: texts kept beside it that are not searched but help answer, such as a " +
                      "book's table of contents or a review. A search hit's cold lists the names its record holds; describe_dataset lists " +
-                     "the names in use. Name the items you want, or get them all. Slower than a search.")]
+                     "the names in use. Name the items you want, or get them all. Slower than a search. Needs a Read or Full key.")]
         public async Task<List<McpColdItem>> GetCold(
             [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
             [System.ComponentModel.Description("Dataset name.")] string dataset,
@@ -163,7 +163,9 @@ namespace IndxServer.Mcp
             // A record that is not there (deleted where its cold storage was not told) has none.
             if (string.IsNullOrEmpty(engine.GetJsonDataOfKey(record)))
                 return [];
-            var found = cold.List(new ColdScope(ownerKey, dataset, record), withContent: true, Reader(), names)
+            var access = await ColdAccessAsync(team)
+                ?? throw new McpToolException("Cold storage is not read with a Search key over MCP. Use a Read key.");
+            var found = cold.List(new ColdScope(ownerKey, dataset, record), withContent: true, access, names)
                 // One per name: the asked language's, else the one without a language, else the first.
                 .GroupBy(n => n.Name)
                 .Select(g => g.FirstOrDefault(n => language != null && n.Language == language)
@@ -189,9 +191,14 @@ namespace IndxServer.Mcp
             return result;
         }
 
-        /// <summary>A Search key reads the public items only: it is shipped in a browser. A Read or Full
-        /// key reads every one.</summary>
-        private ColdReader Reader() => Scope() is { } scope && !scope.AllowsLevel(ApiKeyLevel.Read) ? ColdReader.Browser : ColdReader.Owner;
+        /// <summary>What the caller may read of cold storage over MCP (<see cref="ColdValues.AccessFor"/>):
+        /// nothing with a Search key, the rest by the key or the caller's role in the team.</summary>
+        private async Task<ColdAccess?> ColdAccessAsync(string team)
+        {
+            var scope = Scope();
+            var role = (await CallerTeamsAsync(scope)).FirstOrDefault(t => string.Equals(t.Team.Name, team, StringComparison.OrdinalIgnoreCase)).Role;
+            return ColdValues.AccessFor(scope, role, viaMcp: true);
+        }
 
         [McpServerTool(Name = "search", UseStructuredContent = false, ReadOnly = true)]
         [System.ComponentModel.Description("Search a dataset and return ranked documents with relevance scores. Call describe_dataset first so you " +
@@ -278,7 +285,8 @@ namespace IndxServer.Mcp
             var res = IndxServerInternalApi.Manager.Search(queryProxy, dataset, ownerKey);
             var shaped = ShapeResult(engine, res, fields, broaden);
             // Which hits hold cold storage this caller may read, from memory: what get_cold reads.
-            var held = cold.NamesOf(ownerKey, dataset, shaped.Hits.Select(h => h.Key), Reader());
+            var held = await ColdAccessAsync(team) is { } access
+                ? cold.NamesOf(ownerKey, dataset, shaped.Hits.Select(h => h.Key), access) : [];
             foreach (var hit in shaped.Hits) hit.Cold = held.GetValueOrDefault(hit.Key);
             return shaped;
         }

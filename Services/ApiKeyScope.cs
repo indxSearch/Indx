@@ -35,7 +35,7 @@ namespace IndxServer.Services
     /// limited by the user's team roles only.
     /// </para>
     /// </summary>
-    public sealed record ApiKeyScope(ApiKeyLevel Level, Guid TeamId, IReadOnlySet<string>? Datasets, bool IsTeamKey = false)
+    public sealed record ApiKeyScope(ApiKeyLevel Level, Guid TeamId, IReadOnlySet<string>? Datasets, bool IsTeamKey = false, bool PrivateCold = false)
     {
         public const string LevelClaim = "indx_key_level";
         /// <summary>
@@ -44,6 +44,11 @@ namespace IndxServer.Services
         /// </summary>
         public const string TeamKeyClaim = "indx_team_key";
         public const string TeamClaim = "indx_key_team";
+        /// <summary>
+        /// Present on a Read key that may read private cold storage (Notes/cold-storage.md): a
+        /// customer chatbot's backend, say. A Full key reads it anyway; a Search key never does.
+        /// </summary>
+        public const string PrivateColdClaim = "indx_key_private_cold";
         /// <summary>JSON array of dataset names; absent means every dataset in the team.</summary>
         public const string DatasetsClaim = "indx_key_datasets";
 
@@ -94,7 +99,8 @@ namespace IndxServer.Services
                     return Invalid;
                 }
             }
-            return new ApiKeyScope(parsedLevel, teamId, datasets, principal.FindFirst(TeamKeyClaim) != null);
+            return new ApiKeyScope(parsedLevel, teamId, datasets, principal.FindFirst(TeamKeyClaim) != null,
+                parsedLevel == ApiKeyLevel.Read && principal.FindFirst(PrivateColdClaim) != null);
         }
 
         /// <summary>
@@ -115,9 +121,11 @@ namespace IndxServer.Services
         public bool AllowsDataset(string dataSetName) => TeamId != Guid.Empty && (Datasets == null || Datasets.Contains(dataSetName));
 
         /// <summary>The claims to sign into a new key's JWT.</summary>
-        public static IEnumerable<Claim> ClaimsFor(ApiKeyLevel level, Guid teamId, IReadOnlyCollection<string>? datasets, bool teamKey = false)
+        public static IEnumerable<Claim> ClaimsFor(ApiKeyLevel level, Guid teamId, IReadOnlyCollection<string>? datasets, bool teamKey = false,
+            bool privateCold = false)
         {
             if (teamKey) yield return new Claim(TeamKeyClaim, "true");
+            if (privateCold && level == ApiKeyLevel.Read) yield return new Claim(PrivateColdClaim, "true");
             yield return new Claim(LevelClaim, level.ToString());
             yield return new Claim(TeamClaim, teamId.ToString());
             if (datasets is { Count: > 0 })

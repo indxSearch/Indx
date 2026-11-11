@@ -60,6 +60,12 @@ namespace IndxServer.Data
         [Required, MaxLength(10)]
         public string Level { get; set; } = "Full";
 
+        /// <summary>
+        /// A Read key that may read private cold storage (Notes/cold-storage.md). Display only, as
+        /// <see cref="Level"/> is: the enforced copy is signed into the JWT.
+        /// </summary>
+        public bool PrivateCold { get; set; }
+
         /// <summary>The one team the key reaches; null only on keys created before scopes existed.</summary>
         public Guid? TeamId { get; set; }
 

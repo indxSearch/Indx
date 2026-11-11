@@ -247,13 +247,12 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>Which of the result's records hold cold storage the caller may read, by key, from
-        /// the store's memory (Notes/cold-storage.md): a Search key sees the public items only.</summary>
+        /// the store's memory (Notes/cold-storage.md), as <see cref="ColdValues.AccessFor"/> lets the caller.</summary>
         private Dictionary<long, string[]> ColdOf(TeamContext ctx, string dataSetName, Indx.Api.Result result)
         {
             if (IndxServerInternalApi.Manager.Cold is not { } store || result.Records is not { Length: > 0 } records) return [];
-            var reader = ApiKeyScope.For(HttpContext) is { } scope && !scope.AllowsLevel(ApiKeyLevel.Read)
-                ? ColdReader.Browser : ColdReader.Owner;
-            return store.NamesOf(ctx.OwnerKey, dataSetName, records.Select(r => r.DocumentKey), reader);
+            if (ColdValues.AccessFor(ApiKeyScope.For(HttpContext), ctx.Role) is not { } access) return [];
+            return store.NamesOf(ctx.OwnerKey, dataSetName, records.Select(r => r.DocumentKey), access);
         }
 
         /// <summary>The answer with <c>cold</c>, the names each record holds by its key, where any does.</summary>

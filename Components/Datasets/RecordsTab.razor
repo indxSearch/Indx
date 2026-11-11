@@ -735,8 +735,10 @@
         var open = await Task.Run(() =>
         {
             var json = ReadJson(key);
-            // The console reads every item; listed with content only for its length.
-            var cold = json == null ? [] : ColdItems.List(new ColdScope(Ctx.TeamId, Ctx.Name, key), withContent: true, ColdReader.Owner)
+            // An Editor or Admin reads every item, a Viewer not the private ones; listed with content
+            // only for its length.
+            var access = Ctx.IsEditor ? ColdAccess.All : ColdAccess.Answer;
+            var cold = json == null ? [] : ColdItems.List(new ColdScope(Ctx.TeamId, Ctx.Name, key), withContent: true, access)
                 .Select(i => new ColdEntry(i.Name, i.Language, i.ContentType, i.Description, i.Visibility, i.Content.Length)).ToList();
             return new OpenRecord(json == null ? null : Pretty(json), Values(json, names), cold);
         });
