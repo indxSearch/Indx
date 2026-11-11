@@ -55,20 +55,8 @@ namespace IndxServer.Mcp
         public string Team { get; set; } = "";
         public string Dataset { get; set; } = "";
 
-        /// <summary>The owner's About the site: who reads the dataset and what its records hold. The
-        /// dataset's description when Search or ask's is not written. Named as the console names it;
-        /// "description" until 11 Nov 2026.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? AboutTheSite { get; set; }
-
-        /// <summary>The owner's About the fields: what the values mean here, one per line
-        /// ("barneskole: grades 1 to 7"), for filters that hit.</summary>
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? AboutTheFields { get; set; }
-
-        /// <summary>The owner's Knowledge, markdown: what is true about the dataset that no record holds.</summary>
-        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public string? Knowledge { get; set; }
+        public string? Description { get; set; }
 
         public long DocumentCount { get; set; }
         public string State { get; set; } = "";

@@ -21,7 +21,7 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>Which recipe the judge reads (<see cref="SearchOrAskRecipes"/>).</summary>
         public string Kind { get; set; } = SearchOrAskRecipes.Documentation;
 
-        /// <summary>The sentence or two the judge reads about the site. Null: the dataset's description.</summary>
+        /// <summary>The sentence or two the judge reads about the site. Null: a sentence naming the dataset.</summary>
         public string? SiteDescription { get; set; }
 
         /// <summary>What the judge sees of each result. Null: chosen from the field configuration.</summary>
@@ -337,8 +337,8 @@ namespace IndxServer.Services.SearchOrAsk
         [property: JsonPropertyName("effective")] SearchOrAskEffective Effective,
         bool Available);
 
-    /// <param name="SiteDescription">What the judge reads about the site: the setting, else the
-    /// dataset's description, else a sentence naming the dataset.</param>
+    /// <param name="SiteDescription">What the judge reads about the site: the setting, else a
+    /// sentence naming the dataset.</param>
     /// <param name="TitleField">The field a result is titled by for the judge (<see cref="SearchOrAskFields"/>).</param>
     /// <param name="SectionFields">The fields a result's section is read from.</param>
     /// <param name="SnippetFields">The fields a result's snippet is read from.</param>

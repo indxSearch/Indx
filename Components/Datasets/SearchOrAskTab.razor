@@ -69,7 +69,7 @@
                          _edit.Enabled, @<ToggleSwitch Label="Enabled" Variant="positive" Checked="@_edit.Enabled" CheckedChanged="@(v => _edit.Enabled = v)" />)
                     @Row(Icon<Icons.Book>(), "Kind of site", "How the judge tells a question from a lookup.",
                          false, @<div class="soa-select"><SelectField Size="micro" Options="KindOptions" Value="@_edit.Kind" ValueChanged="@(v => _edit.Kind = v ?? SearchOrAskRecipes.Documentation)" /></div>)
-                    @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold. Empty uses the dataset's description.",
+                    @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold.",
                          !string.IsNullOrWhiteSpace(_edit.SiteDescription),
                          @<Textarea Rows="3" @bind-Value="_edit.SiteDescription" placeholder="@_effectiveSite" />)
                     @if (_edit.Kind == SearchOrAskRecipes.Catalogue)

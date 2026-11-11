@@ -232,7 +232,6 @@ namespace IndxServer.Services.SearchOrAsk
             };
 
         private readonly SearchOrAskStore _store;
-        private readonly DatasetMetadataStore _metadata;
         private readonly ISearchOrAskModels _models;
         private readonly SearchOrAskOptions _options;
         private readonly ILogger<SearchOrAskService> _logger;
@@ -260,7 +259,7 @@ namespace IndxServer.Services.SearchOrAsk
         private const int SourcesForAnswer = 8;
         private const int SourceChars = 3000;
 
-        public SearchOrAskService(SearchOrAskStore store, DatasetMetadataStore metadata, ISearchOrAskModels models,
+        public SearchOrAskService(SearchOrAskStore store, ISearchOrAskModels models,
             SearchOrAskOptions options, ILogger<SearchOrAskService> logger, StatisticsService? statistics = null,
             ISearchOrAskSwitch? instance = null, SearchOrAskSetupProvider? setup = null)
         {
@@ -268,7 +267,6 @@ namespace IndxServer.Services.SearchOrAsk
             _setup = setup ?? new SearchOrAskSetupProvider(options, instance);
             _statistics = statistics;
             _store = store;
-            _metadata = metadata;
             _models = models;
             _options = options;
             _logger = logger;
@@ -383,14 +381,13 @@ namespace IndxServer.Services.SearchOrAsk
         public SearchOrAskSettings Settings(string teamId, string dataSetName) =>
             _store.Load(teamId, dataSetName) ?? new SearchOrAskSettings();
 
-        /// <summary>What the judge reads about the site: the setting, else the dataset's
-        /// description, else a plain sentence naming the dataset.</summary>
-        public string SiteDescription(string teamId, string dataSetName, SearchOrAskSettings settings)
-        {
-            if (!string.IsNullOrWhiteSpace(settings.SiteDescription)) return settings.SiteDescription.Trim();
-            var description = _metadata.Load(teamId, dataSetName);
-            return string.IsNullOrWhiteSpace(description) ? $"A search over the records of the dataset \"{dataSetName}\"." : description.Trim();
-        }
+        /// <summary>What the judge reads about the site: the setting, else a plain sentence naming the
+        /// dataset. Not the dataset's description (11 Nov 2026): that is written for agents over MCP,
+        /// and Search or ask, switched on per dataset, keeps texts of its own.</summary>
+        public string SiteDescription(string teamId, string dataSetName, SearchOrAskSettings settings) =>
+            !string.IsNullOrWhiteSpace(settings.SiteDescription)
+                ? settings.SiteDescription.Trim()
+                : $"A search over the records of the dataset \"{dataSetName}\".";
 
         /// <summary>The fields the judge sees, from the settings where set and otherwise from the
         /// field configuration: the highest-weighted searchable field is the title, the next two
