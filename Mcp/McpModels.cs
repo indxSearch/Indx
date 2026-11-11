@@ -66,20 +66,27 @@ namespace IndxServer.Mcp
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public JsonNode? Sample { get; set; }
 
-        /// <summary>The dataset's and the team's notes, by name, without content: read with get_notes.</summary>
+        /// <summary>The names the records hold notes by, with how many records hold one: read a
+        /// record's with get_notes.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public List<McpNote>? Notes { get; set; }
+        public List<McpNoteName>? RecordNotes { get; set; }
     }
 
-    /// <summary>A note an agent reads beside the search: its name, language and what it is, and its
-    /// content where get_notes returns it.</summary>
+    /// <summary>A name the dataset's records hold notes by ("toc", "review").</summary>
+    public class McpNoteName
+    {
+        public string Name { get; set; } = "";
+        public int Records { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public string? Description { get; set; }
+    }
+
+    /// <summary>A record's note as get_notes returns it.</summary>
     public class McpNote
     {
         public string Name { get; set; } = "";
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public string? Language { get; set; }
-        /// <summary>"dataset", "team" or "record".</summary>
-        public string Of { get; set; } = "";
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public string? Description { get; set; }
         public string ContentType { get; set; } = "";

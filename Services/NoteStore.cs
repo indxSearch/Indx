@@ -3,17 +3,18 @@ using Microsoft.Data.Sqlite;
 namespace IndxServer.Services
 {
     /// <summary>
-    /// A named text an agent reads beside the search (Notes/Jens/metadata-for-agents-2026-11-06.md,
-    /// "Revised 11 Nov 2026"): of the team, of a dataset, of one record, or of a console user, never
-    /// searched. A book's table of contents is a record's note; the dataset's terms a dataset's.
-    /// <see cref="RecordKey"/> 0 and an empty <see cref="DataSetName"/> or <see cref="UserId"/> stand
-    /// for "none", so a level is the fields that are set.
+    /// A named text kept beside one record and read by an agent when a question needs it, never
+    /// searched: a book's table of contents, a review, an author's biography, a whole article
+    /// (Notes/Anders/notes-for-the-answer-agent-2026-11-11.md). What is true of the dataset as a whole
+    /// is not a note: it is the dataset's About the site, About the fields and Knowledge, which Search
+    /// or ask keeps (<see cref="SearchOrAsk.SearchOrAskSettings"/>). Until 11 Nov 2026 notes were also
+    /// kept for the team, the dataset and a console user, in the table Notes; that was cut back to the
+    /// record when Anders and Jens settled what the answer agent needs.
     /// </summary>
     public sealed record Note(
         string TeamId,
         string DataSetName,
         long RecordKey,
-        string UserId,
         string Name,
         string Language,
         string Content,
@@ -28,14 +29,21 @@ namespace IndxServer.Services
         DateTime CreatedUtc,
         DateTime UpdatedUtc);
 
-    /// <summary>Where a note lives: the team, and within it a dataset, a record of it, a console user,
-    /// or none of them. The level is what is set.</summary>
-    public sealed record NoteScope(string TeamId, string DataSetName = "", long RecordKey = 0, string UserId = "");
+    /// <summary>The record a note is of.</summary>
+    public sealed record NoteScope(string TeamId, string DataSetName, long RecordKey);
+
+    /// <summary>A note's name as the dataset's records hold it: how many records have one by that
+    /// name, and the description the first of them gives.</summary>
+    public sealed record NoteName(string Name, int Records, string Description);
 
     /// <summary>The values of a note's closed fields, as stored.</summary>
     public static class NoteValues
     {
+        /// <summary>Read by anyone who may read the dataset, a Search key in a browser included.</summary>
         public const string Public = "public";
+        /// <summary>Read on the server only (the answer agent, Observr) and by the console and keys
+        /// above Search: the default, since a note may hold licensed text (a review from Bokbasen)
+        /// the page must not hand out.</summary>
         public const string Internal = "internal";
         public const string Console = "console";
         public const string System = "system";
@@ -44,23 +52,22 @@ namespace IndxServer.Services
     }
 
     /// <summary>
-    /// The server's table of notes in indx.db, opened as the other stores open it (a connection of
-    /// its own, <see cref="SqLiteManager"/> only to make sure the base schema is there), so the
-    /// library's store of the records is not touched. A dataset's notes go with it on delete, rename
-    /// and transfer, called where <see cref="IndxServer.Engine.IndxServerInternalApi"/> calls the
-    /// other stores; a record's when the server deletes the record, and a read leaves out a record's
-    /// notes whose record is gone, so a delete that did not reach here shows nothing.
+    /// The server's table of record notes in indx.db, opened as the other stores open it (a
+    /// connection of its own, <see cref="SqLiteManager"/> only to make sure the base schema is there),
+    /// so the library's store of the records is not touched. A dataset's notes go with it on delete,
+    /// rename and transfer, called where <see cref="IndxServer.Engine.IndxServerInternalApi"/> calls
+    /// the other stores; a record's when the server deletes the record, and a read leaves out the
+    /// notes of a record that is gone, so a delete that did not reach here shows nothing.
     /// </summary>
     public class NoteStore(ILogger<NoteStore> logger)
     {
-        private const string Table = "Notes";
+        private const string Table = "RecordNotes";
 
-        /// <summary>The longest a note's content may be, in characters: a user's is a fact or two, a
-        /// record's or a dataset's a table of contents or a review.</summary>
-        public const int MaxUserContent = 16_000;
+        /// <summary>The longest a note's content may be, in characters: a table of contents, a review,
+        /// an article.</summary>
         public const int MaxContent = 256_000;
-        /// <summary>The most notes a scope may hold (a record, a dataset, a user), languages counted.</summary>
-        public const int MaxPerScope = 50;
+        /// <summary>The most notes a record may hold, languages counted.</summary>
+        public const int MaxPerRecord = 50;
         public const int MaxName = 100;
         public const int MaxDescription = 500;
 
@@ -80,15 +87,14 @@ namespace IndxServer.Services
                 cmd.CommandText =
                     $@"CREATE TABLE IF NOT EXISTS {Table} (
                            TeamId           TEXT    NOT NULL,
-                           DataSetName      TEXT    NOT NULL DEFAULT '',
-                           RecordKey        INTEGER NOT NULL DEFAULT 0,
-                           UserId           TEXT    NOT NULL DEFAULT '',
+                           DataSetName      TEXT    NOT NULL,
+                           RecordKey        INTEGER NOT NULL,
                            Name             TEXT    NOT NULL,
                            Language         TEXT    NOT NULL DEFAULT '',
                            Content          TEXT    NOT NULL,
                            ContentType      TEXT    NOT NULL DEFAULT 'text/plain',
                            Description      TEXT    NOT NULL DEFAULT '',
-                           Visibility       TEXT    NOT NULL DEFAULT 'public',
+                           Visibility       TEXT    NOT NULL DEFAULT 'internal',
                            WrittenBy        TEXT    NOT NULL,
                            WrittenVia       TEXT    NOT NULL,
                            SourceRef        TEXT    NULL,
@@ -96,10 +102,9 @@ namespace IndxServer.Services
                            Version          INTEGER NOT NULL DEFAULT 1,
                            CreatedUtc       TEXT    NOT NULL,
                            UpdatedUtc       TEXT    NOT NULL,
-                           PRIMARY KEY (TeamId, DataSetName, RecordKey, UserId, Name, Language)
+                           PRIMARY KEY (TeamId, DataSetName, RecordKey, Name, Language)
                        );
-                       CREATE INDEX IF NOT EXISTS Notes_ByRecord ON {Table} (TeamId, DataSetName, RecordKey);
-                       CREATE INDEX IF NOT EXISTS Notes_BySource ON {Table} (TeamId, WrittenVia);";
+                       CREATE INDEX IF NOT EXISTS RecordNotes_BySource ON {Table} (TeamId, DataSetName, WrittenVia);";
                 cmd.ExecuteNonQuery();
             }
             catch (Exception ex)
@@ -109,15 +114,14 @@ namespace IndxServer.Services
         }
 
         /// <summary>Why a note may not be written as it is, or null: its name, sizes and closed values.</summary>
-        public static string? Objection(Note note, int notesInScope)
+        public static string? Objection(Note note, int notesOfRecord)
         {
             if (string.IsNullOrWhiteSpace(note.Name) || note.Name.Length > MaxName)
                 return $"name must be 1 to {MaxName} characters.";
             if (note.Name.Any(char.IsControl))
                 return "name must not hold control characters.";
-            int max = note.UserId.Length > 0 ? MaxUserContent : MaxContent;
-            if (note.Content.Length > max)
-                return $"content is {note.Content.Length} characters; {(note.UserId.Length > 0 ? "a user's note" : "a note")} holds at most {max}.";
+            if (note.Content.Length > MaxContent)
+                return $"content is {note.Content.Length} characters; a note holds at most {MaxContent}.";
             if (note.Description.Length > MaxDescription)
                 return $"description is at most {MaxDescription} characters.";
             if (!NoteValues.ContentTypes.Contains(note.ContentType))
@@ -126,14 +130,12 @@ namespace IndxServer.Services
                 return "visibility must be public or internal.";
             if (note.Language.Length > 20)
                 return "language is a language tag (nb, nn, en), at most 20 characters.";
-            if (note.RecordKey != 0 && note.DataSetName.Length == 0)
-                return "a record's note needs its dataset.";
-            if (notesInScope >= MaxPerScope)
-                return $"this {(note.RecordKey != 0 ? "record" : note.UserId.Length > 0 ? "user" : note.DataSetName.Length > 0 ? "dataset" : "team")} holds {MaxPerScope} notes already, the most it may.";
+            if (notesOfRecord >= MaxPerRecord)
+                return $"this record holds {MaxPerRecord} notes already, the most it may.";
             return null;
         }
 
-        /// <summary>The notes of a scope, by name and language; without content when
+        /// <summary>The notes of a record, by name and language; without content when
         /// <paramref name="withContent"/> is false (a listing). <paramref name="publicOnly"/> leaves out
         /// the internal ones. Empty when the database is not there yet.</summary>
         public List<Note> List(NoteScope scope, bool withContent, bool publicOnly, IReadOnlyCollection<string>? names = null)
@@ -146,11 +148,11 @@ namespace IndxServer.Services
                 using var conn = Connection();
                 conn.Open();
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = $@"SELECT TeamId, DataSetName, RecordKey, UserId, Name, Language,
+                cmd.CommandText = $@"SELECT TeamId, DataSetName, RecordKey, Name, Language,
                         {(withContent ? "Content" : "''")}, ContentType, Description, Visibility, WrittenBy, WrittenVia,
-                        SourceRef, SourceUpdatedUtc, Version, CreatedUtc, UpdatedUtc, length(Content)
+                        SourceRef, SourceUpdatedUtc, Version, CreatedUtc, UpdatedUtc
                     FROM {Table}
-                    WHERE TeamId = $t AND DataSetName = $d AND RecordKey = $r AND UserId = $u
+                    WHERE TeamId = $t AND DataSetName = $d AND RecordKey = $r
                       {(publicOnly ? "AND Visibility = 'public'" : "")}
                     ORDER BY Name, Language";
                 Scope(cmd, scope);
@@ -169,6 +171,35 @@ namespace IndxServer.Services
             return notes;
         }
 
+        /// <summary>The names the dataset's records hold notes by, with how many records hold one, so
+        /// an agent knows what it can read before it reads any (describe_dataset).</summary>
+        public List<NoteName> Names(string teamId, string dataSetName, bool publicOnly)
+        {
+            var names = new List<NoteName>();
+            if (!DbExists()) return names;
+            EnsureTable();
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $@"SELECT Name, COUNT(DISTINCT RecordKey), MAX(Description)
+                    FROM {Table}
+                    WHERE TeamId = $t AND DataSetName = $d {(publicOnly ? "AND Visibility = 'public'" : "")}
+                    GROUP BY Name ORDER BY Name";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSetName);
+                using var reader = cmd.ExecuteReader();
+                while (reader.Read())
+                    names.Add(new NoteName(reader.GetString(0), reader.GetInt32(1), reader.IsDBNull(2) ? "" : reader.GetString(2)));
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to list the note names of {Team}/{Dataset}", teamId, dataSetName);
+            }
+            return names;
+        }
+
         /// <summary>The note by name and language, or null.</summary>
         public Note? Get(NoteScope scope, string name, string language)
         {
@@ -183,10 +214,10 @@ namespace IndxServer.Services
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
-            cmd.CommandText = $@"SELECT TeamId, DataSetName, RecordKey, UserId, Name, Language, Content, ContentType,
-                    Description, Visibility, WrittenBy, WrittenVia, SourceRef, SourceUpdatedUtc, Version, CreatedUtc, UpdatedUtc, length(Content)
+            cmd.CommandText = $@"SELECT TeamId, DataSetName, RecordKey, Name, Language, Content, ContentType,
+                    Description, Visibility, WrittenBy, WrittenVia, SourceRef, SourceUpdatedUtc, Version, CreatedUtc, UpdatedUtc
                 FROM {Table}
-                WHERE TeamId = $t AND DataSetName = $d AND RecordKey = $r AND UserId = $u AND Name = $n AND Language = $l";
+                WHERE TeamId = $t AND DataSetName = $d AND RecordKey = $r AND Name = $n AND Language = $l";
             Scope(cmd, scope);
             cmd.Parameters.AddWithValue("$n", name);
             cmd.Parameters.AddWithValue("$l", language);
@@ -213,7 +244,7 @@ namespace IndxServer.Services
             using var conn = Connection();
             conn.Open();
             using var tx = conn.BeginTransaction();
-            var scope = new NoteScope(note.TeamId, note.DataSetName, note.RecordKey, note.UserId);
+            var scope = new NoteScope(note.TeamId, note.DataSetName, note.RecordKey);
             var old = Get(conn, scope, note.Name, note.Language, tx);
             if (ifVersion is long expected && (old?.Version ?? 0) != expected)
             {
@@ -243,10 +274,10 @@ namespace IndxServer.Services
             using (var cmd = conn.CreateCommand())
             {
                 cmd.Transaction = tx;
-                cmd.CommandText = $@"INSERT INTO {Table} (TeamId, DataSetName, RecordKey, UserId, Name, Language, Content, ContentType,
+                cmd.CommandText = $@"INSERT INTO {Table} (TeamId, DataSetName, RecordKey, Name, Language, Content, ContentType,
                         Description, Visibility, WrittenBy, WrittenVia, SourceRef, SourceUpdatedUtc, Version, CreatedUtc, UpdatedUtc)
-                    VALUES ($t, $d, $r, $u, $n, $l, $c, $ct, $desc, $vis, $by, $via, $sref, $supd, 1, $now, $now)
-                    ON CONFLICT(TeamId, DataSetName, RecordKey, UserId, Name, Language) DO UPDATE SET
+                    VALUES ($t, $d, $r, $n, $l, $c, $ct, $desc, $vis, $by, $via, $sref, $supd, 1, $now, $now)
+                    ON CONFLICT(TeamId, DataSetName, RecordKey, Name, Language) DO UPDATE SET
                         Content = $c, ContentType = $ct, Description = $desc, Visibility = $vis, WrittenBy = $by,
                         WrittenVia = $via, SourceRef = $sref, SourceUpdatedUtc = $supd, Version = Version + 1, UpdatedUtc = $now;";
                 Scope(cmd, scope);
@@ -273,7 +304,7 @@ namespace IndxServer.Services
         {
             if (!DbExists()) return false;
             EnsureTable();
-            return Execute($"DELETE FROM {Table} WHERE TeamId = $t AND DataSetName = $d AND RecordKey = $r AND UserId = $u AND Name = $n AND Language = $l",
+            return Execute($"DELETE FROM {Table} WHERE TeamId = $t AND DataSetName = $d AND RecordKey = $r AND Name = $n AND Language = $l",
                 scope, ("$n", name), ("$l", language)) > 0;
         }
 
@@ -294,76 +325,65 @@ namespace IndxServer.Services
             }
             if (prune && DbExists())
             {
-                var kept = new HashSet<(long, string, string, string)>(notes.Select(n => (n.RecordKey, n.UserId, n.Name, n.Language)));
+                var kept = new HashSet<(long, string, string)>(notes.Select(n => (n.RecordKey, n.Name, n.Language)));
                 using var conn = Connection();
                 conn.Open();
-                var stale = new List<(long, string, string, string)>();
+                var stale = new List<(long, string, string)>();
                 using (var cmd = conn.CreateCommand())
                 {
-                    cmd.CommandText = $"SELECT RecordKey, UserId, Name, Language FROM {Table} WHERE TeamId = $t AND DataSetName = $d AND WrittenVia = $via";
+                    cmd.CommandText = $"SELECT RecordKey, Name, Language FROM {Table} WHERE TeamId = $t AND DataSetName = $d AND WrittenVia = $via";
                     cmd.Parameters.AddWithValue("$t", teamId);
                     cmd.Parameters.AddWithValue("$d", dataSetName);
                     cmd.Parameters.AddWithValue("$via", writtenVia);
                     using var reader = cmd.ExecuteReader();
                     while (reader.Read())
                     {
-                        var row = (reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3));
+                        var row = (reader.GetInt64(0), reader.GetString(1), reader.GetString(2));
                         if (!kept.Contains(row)) stale.Add(row);
                     }
                 }
-                foreach (var (record, user, name, language) in stale)
-                    Delete(new NoteScope(teamId, dataSetName, record, user), name, language);
+                foreach (var (record, name, language) in stale)
+                    Delete(new NoteScope(teamId, dataSetName, record), name, language);
             }
             return outcomes;
         }
 
-        /// <summary>A dataset's notes, its records' included, on the dataset's delete.</summary>
+        /// <summary>Every note of the dataset's records, on the dataset's delete.</summary>
         public void DeleteDataset(string teamId, string dataSetName)
         {
             if (!DbExists() || dataSetName.Length == 0) return;
             EnsureTable();
-            Execute($"DELETE FROM {Table} WHERE TeamId = $t AND DataSetName = $d", new NoteScope(teamId, dataSetName));
+            Execute($"DELETE FROM {Table} WHERE TeamId = $t AND DataSetName = $d", new NoteScope(teamId, dataSetName, 0));
         }
 
         /// <summary>A record's notes, on the record's delete.</summary>
         public void DeleteRecord(string teamId, string dataSetName, long recordKey)
         {
-            if (!DbExists() || recordKey == 0) return;
+            if (!DbExists()) return;
             EnsureTable();
             Execute($"DELETE FROM {Table} WHERE TeamId = $t AND DataSetName = $d AND RecordKey = $r", new NoteScope(teamId, dataSetName, recordKey));
-        }
-
-        /// <summary>A user's notes in a team, on leaving it.</summary>
-        public void DeleteUser(string teamId, string userId)
-        {
-            if (!DbExists() || userId.Length == 0) return;
-            EnsureTable();
-            Execute($"DELETE FROM {Table} WHERE TeamId = $t AND UserId = $u", new NoteScope(teamId, UserId: userId));
         }
 
         /// <summary>Re-keys a dataset's notes under its new name (same team).</summary>
         public void Rename(string teamId, string dataSetName, string newName) => Move(teamId, dataSetName, teamId, newName);
 
-        /// <summary>Moves a dataset's notes to its new owning team. Its users' notes stay with the old
-        /// team, whose members they are.</summary>
+        /// <summary>Moves a dataset's notes to its new owning team.</summary>
         public void Transfer(string fromTeamId, string toTeamId, string dataSetName) => Move(fromTeamId, dataSetName, toTeamId, dataSetName);
 
         private void Move(string fromTeam, string fromName, string toTeam, string toName)
         {
             if (!DbExists() || fromName.Length == 0) return;
             EnsureTable();
-            Execute($"DELETE FROM {Table} WHERE TeamId = $nt AND DataSetName = $nd", new NoteScope(fromTeam), ("$nt", toTeam), ("$nd", toName));
-            Execute($"UPDATE {Table} SET TeamId = $nt, DataSetName = $nd WHERE TeamId = $t AND DataSetName = $fd AND (UserId = '' OR $t = $nt)",
-                new NoteScope(fromTeam), ("$nt", toTeam), ("$nd", toName), ("$fd", fromName));
-            if (fromTeam != toTeam)
-                Execute($"DELETE FROM {Table} WHERE TeamId = $t AND DataSetName = $fd", new NoteScope(fromTeam), ("$fd", fromName));
+            Execute($"DELETE FROM {Table} WHERE TeamId = $nt AND DataSetName = $nd", new NoteScope(fromTeam, fromName, 0), ("$nt", toTeam), ("$nd", toName));
+            Execute($"UPDATE {Table} SET TeamId = $nt, DataSetName = $nd WHERE TeamId = $t AND DataSetName = $d",
+                new NoteScope(fromTeam, fromName, 0), ("$nt", toTeam), ("$nd", toName));
         }
 
         private static int Count(SqliteConnection conn, NoteScope scope, SqliteTransaction? tx = null)
         {
             using var cmd = conn.CreateCommand();
             cmd.Transaction = tx;
-            cmd.CommandText = $"SELECT COUNT(*) FROM {Table} WHERE TeamId = $t AND DataSetName = $d AND RecordKey = $r AND UserId = $u";
+            cmd.CommandText = $"SELECT COUNT(*) FROM {Table} WHERE TeamId = $t AND DataSetName = $d AND RecordKey = $r";
             Scope(cmd, scope);
             return Convert.ToInt32(cmd.ExecuteScalar());
         }
@@ -392,16 +412,15 @@ namespace IndxServer.Services
             cmd.Parameters.AddWithValue("$t", scope.TeamId);
             cmd.Parameters.AddWithValue("$d", scope.DataSetName);
             cmd.Parameters.AddWithValue("$r", scope.RecordKey);
-            cmd.Parameters.AddWithValue("$u", scope.UserId);
         }
 
         private static Note Read(SqliteDataReader r) => new(
-            r.GetString(0), r.GetString(1), r.GetInt64(2), r.GetString(3), r.GetString(4), r.GetString(5),
-            r.GetString(6), r.GetString(7), r.GetString(8), r.GetString(9), r.GetString(10), r.GetString(11),
-            r.IsDBNull(12) ? null : r.GetString(12),
-            r.IsDBNull(13) ? null : DateTime.Parse(r.GetString(13), null, System.Globalization.DateTimeStyles.RoundtripKind),
-            r.GetInt64(14),
-            DateTime.Parse(r.GetString(15), null, System.Globalization.DateTimeStyles.RoundtripKind),
-            DateTime.Parse(r.GetString(16), null, System.Globalization.DateTimeStyles.RoundtripKind));
+            r.GetString(0), r.GetString(1), r.GetInt64(2), r.GetString(3), r.GetString(4),
+            r.GetString(5), r.GetString(6), r.GetString(7), r.GetString(8), r.GetString(9), r.GetString(10),
+            r.IsDBNull(11) ? null : r.GetString(11),
+            r.IsDBNull(12) ? null : DateTime.Parse(r.GetString(12), null, System.Globalization.DateTimeStyles.RoundtripKind),
+            r.GetInt64(13),
+            DateTime.Parse(r.GetString(14), null, System.Globalization.DateTimeStyles.RoundtripKind),
+            DateTime.Parse(r.GetString(15), null, System.Globalization.DateTimeStyles.RoundtripKind));
     }
 }
