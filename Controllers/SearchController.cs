@@ -76,9 +76,11 @@ namespace IndxServer.Controllers
             if (outcome.QueryId != null)
                 Response.Headers["Indx-Query-Id"] = outcome.QueryId;
             ServerTiming(tStart, tTeam, tDataset, outcome.SearchedAt);
+            var cold = ColdOf(ctx, dataSetName, outcome.Result!);
             if (query.IncludeDocuments)
-                return Ok(WithDocuments(outcome.Result!, matcher));
-            return outcome.Result!;
+                return Ok(WithCold(WithDocuments(outcome.Result!, matcher), cold));
+            // The result as it is, unless a record holds cold storage to say so.
+            return cold.Count == 0 ? outcome.Result! : Ok(WithCold(ToNode(outcome.Result!), cold));
         }
 
         /// <summary>The most searches one <see cref="MultiSearch"/> call takes.</summary>
@@ -123,7 +125,8 @@ namespace IndxServer.Controllers
                     answers.Add(ErrorOf(outcome.Problem));
                     continue;
                 }
-                var answer = query.IncludeDocuments ? WithDocuments(outcome.Result!, matcher) : ToNode(outcome.Result!);
+                var answer = WithCold(query.IncludeDocuments ? WithDocuments(outcome.Result!, matcher) : ToNode(outcome.Result!),
+                    ColdOf(ctx, dataSetName, outcome.Result!));
                 if (outcome.QueryId != null) answer["queryId"] = outcome.QueryId;
                 answers.Add(answer);
             }
@@ -240,6 +243,27 @@ namespace IndxServer.Controllers
             foreach (var json in engine.GetJsonDataOfKeys(result.Records ?? []))
                 documents.Add(string.IsNullOrEmpty(json) ? null : System.Text.Json.Nodes.JsonNode.Parse(json));
             node["documents"] = documents;
+            return node;
+        }
+
+        /// <summary>Which of the result's records hold cold storage the caller may read, by key, from
+        /// the store's memory (Notes/cold-storage.md): a Search key sees the public items only.</summary>
+        private Dictionary<long, string[]> ColdOf(TeamContext ctx, string dataSetName, Indx.Api.Result result)
+        {
+            if (IndxServerInternalApi.Manager.Cold is not { } store || result.Records is not { Length: > 0 } records) return [];
+            var reader = ApiKeyScope.For(HttpContext) is { } scope && !scope.AllowsLevel(ApiKeyLevel.Read)
+                ? ColdReader.Browser : ColdReader.Owner;
+            return store.NamesOf(ctx.OwnerKey, dataSetName, records.Select(r => r.DocumentKey), reader);
+        }
+
+        /// <summary>The answer with <c>cold</c>, the names each record holds by its key, where any does.</summary>
+        private static System.Text.Json.Nodes.JsonObject WithCold(System.Text.Json.Nodes.JsonObject node, Dictionary<long, string[]> cold)
+        {
+            if (cold.Count == 0) return node;
+            var map = new System.Text.Json.Nodes.JsonObject();
+            foreach (var (key, names) in cold)
+                map[key.ToString(System.Globalization.CultureInfo.InvariantCulture)] = new System.Text.Json.Nodes.JsonArray(names.Select(n => (System.Text.Json.Nodes.JsonNode?)n).ToArray());
+            node["cold"] = map;
             return node;
         }
 

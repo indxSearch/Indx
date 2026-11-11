@@ -830,7 +830,7 @@ namespace IndxServer.Engine
             _queryParameterStore?.Delete(teamId, dataSetName);
             _fieldProfileStore?.Delete(teamId, dataSetName);
             _dataCheckStore?.Delete(teamId, dataSetName);
-            _noteStore?.DeleteDataset(teamId, dataSetName);
+            _coldStore?.DeleteDataset(teamId, dataSetName);
             _searchOrAskStore?.Delete(teamId, dataSetName);
             _observrStore?.Delete(teamId, dataSetName);
             _observrConversations?.Delete(teamId, dataSetName);
@@ -1063,7 +1063,7 @@ namespace IndxServer.Engine
             _queryParameterStore?.Rename(teamId, dataSetName, newName);
             _fieldProfileStore?.Rename(teamId, dataSetName, newName);
             _dataCheckStore?.Rename(teamId, dataSetName, newName);
-            _noteStore?.Rename(teamId, dataSetName, newName);
+            _coldStore?.Rename(teamId, dataSetName, newName);
             _searchOrAskStore?.Rename(teamId, dataSetName, newName);
             _observrStore?.Rename(teamId, dataSetName, newName);
             _observrConversations?.Rename(teamId, dataSetName, newName);
@@ -1114,7 +1114,7 @@ namespace IndxServer.Engine
             _queryParameterStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _fieldProfileStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _dataCheckStore?.Transfer(currentTeamId, newTeamId, dataSetName);
-            _noteStore?.Transfer(currentTeamId, newTeamId, dataSetName);
+            _coldStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _searchOrAskStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _observrStore?.Transfer(currentTeamId, newTeamId, dataSetName);
             _observrConversations?.Transfer(currentTeamId, newTeamId, dataSetName);
@@ -1514,15 +1514,15 @@ namespace IndxServer.Engine
 
         internal void AttachDataCheckStore(Services.DataCheckStore store) => _dataCheckStore = store;
 
-        // The notes an agent reads beside the search (server-owned): a dataset's, its records'
-        // included, follow it through delete, rename and transfer.
-        private Services.NoteStore? _noteStore;
+        // Cold storage beside the records (server-owned, Notes/cold-storage.md): follows its dataset
+        // through delete, rename and transfer.
+        private Services.ColdStore? _coldStore;
 
-        internal void AttachNoteStore(Services.NoteStore store) => _noteStore = store;
+        internal void AttachColdStore(Services.ColdStore store) => _coldStore = store;
 
-        /// <summary>The note store, for the routes that delete a record (its notes go with it); null
-        /// before startup attaches it.</summary>
-        internal Services.NoteStore? Notes => _noteStore;
+        /// <summary>The cold store, for the routes that delete a record (its items go with it), and the
+        /// search, which says which of its records hold some; null before startup attaches it.</summary>
+        internal Services.ColdStore? Cold => _coldStore;
 
         // Per-dataset Search or ask settings: follow the dataset through delete, rename and transfer.
         private Services.SearchOrAsk.SearchOrAskStore? _searchOrAskStore;

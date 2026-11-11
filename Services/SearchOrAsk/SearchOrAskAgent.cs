@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Indx.Api;
+using IndxServer.Engine;
 
 namespace IndxServer.Services.SearchOrAsk
 {
@@ -47,6 +48,13 @@ namespace IndxServer.Services.SearchOrAsk
                 "description": "Read records in full, every field, by the keys your searches returned: what a book is about, a film's whole plot. Several keys in one call, at most 10.",
                 "parameters": {"type": "object", "properties": {
                   "keys": {"type": "array", "items": {"type": "integer"}}},
+                  "required": ["keys"]}}},
+              {"type": "function", "function": {
+                "name": "read_cold",
+                "description": "Read the text kept beside records but not in them, such as a book's table of contents or a review: a record's line in the search results names what it has (cold: toc, review). Several keys in one call, at most 5; name what you want, or get all. Slower than a search: read it when the answer depends on it.",
+                "parameters": {"type": "object", "properties": {
+                  "keys": {"type": "array", "items": {"type": "integer"}},
+                  "names": {"type": "array", "items": {"type": "string"}}},
                   "required": ["keys"]}}},
               {"type": "function", "function": {
                 "name": "show_picks",
@@ -199,6 +207,8 @@ namespace IndxServer.Services.SearchOrAsk
                     }
                     else if (name == "read_records")
                         result = ReadRecords(engine, argsJson, found, read, titleOf);
+                    else if (name == "read_cold")
+                        result = ReadCold(teamId, dataSetName, argsJson, found, read);
                     else
                     {
                         // The arguments go through the same check as the quick summary's filters.
@@ -223,10 +233,14 @@ namespace IndxServer.Services.SearchOrAsk
                             sb.AppendLine("Summary of all found:");
                             foreach (var line in Summary(docs, schema.Fields)) sb.AppendLine($"- {line}");
                             sb.AppendLine($"The first {Math.Min(AgentRecordsPerSearch, docs.Count)}:");
+                            var shownKeysOfSearch = keys.Take(AgentRecordsPerSearch).ToList();
+                            // The cold storage each holds that an answer may read, for read_cold.
+                            var cold = IndxServerInternalApi.Manager.Cold?.NamesOf(teamId, dataSetName, shownKeysOfSearch, ColdReader.Answer) ?? [];
                             foreach (var (doc, key) in docs.Zip(keys).Take(AgentRecordsPerSearch))
                             {
                                 read[key] = titleOf(doc);
-                                sb.AppendLine($"- {titleOf(doc)} [{key}]: {Facts(doc, schema.Fields, schema.Readable)}");
+                                var coldNote = cold.TryGetValue(key, out var coldNames) ? $" (cold: {string.Join(", ", coldNames)})" : "";
+                                sb.AppendLine($"- {titleOf(doc)} [{key}]: {Facts(doc, schema.Fields, schema.Readable)}{coldNote}");
                             }
                         }
                         result = sb.ToString();
@@ -293,6 +307,42 @@ namespace IndxServer.Services.SearchOrAsk
             var unknown = asked.Count(k => !found.Contains(k));
             if (unknown > 0) sb.AppendLine($"{unknown} keys were not read: they are not from your searches.");
             if (asked.Count(found.Contains) > AgentReadKeys) sb.AppendLine($"Only the first {AgentReadKeys} were read.");
+            return sb.Length > 0 ? sb.ToString() : "No keys to read.";
+        }
+
+        /// <summary>The most keys a read_cold call reads, the characters of one item and of the whole.</summary>
+        private const int AgentColdKeys = 5, AgentColdItemChars = 6000, AgentColdChars = 20000;
+
+        /// <summary>A read_cold call: the cold storage an answer may read (public and answer, never
+        /// private: what the agent reads can reach the visitor) of the keys the searches found, one item
+        /// per name, the one without a language first. Cut per item and in all.</summary>
+        private static string ReadCold(string teamId, string dataSetName, string argsJson, HashSet<long> found, Dictionary<long, string> read)
+        {
+            if (IndxServerInternalApi.Manager.Cold is not { } store) return "This dataset has no cold storage.";
+            var args = JsonNode.Parse(argsJson);
+            var asked = (args?["keys"]?.AsArray() ?? [])
+                .Select(n => long.TryParse(n?.ToString(), out var k) ? k : (long?)null).OfType<long>().Distinct().ToList();
+            var names = (args?["names"]?.AsArray() ?? []).Select(n => n?.ToString()).OfType<string>().ToList();
+            var sb = new StringBuilder();
+            var budget = AgentColdChars;
+            foreach (var key in asked.Where(found.Contains).Take(AgentColdKeys))
+            {
+                var items = store.List(new ColdScope(teamId, dataSetName, key), withContent: true, ColdReader.Answer, names)
+                    .GroupBy(i => i.Name).Select(g => g.FirstOrDefault(i => i.Language.Length == 0) ?? g.First()).ToList();
+                var title = read.GetValueOrDefault(key, "");
+                if (items.Count == 0) { sb.AppendLine($"[{key}] {title}: no cold storage{(names.Count > 0 ? " by those names" : "")}."); continue; }
+                foreach (var item in items)
+                {
+                    var take = Math.Min(Math.Min(item.Content.Length, AgentColdItemChars), Math.Max(0, budget));
+                    budget -= take;
+                    var about = item.Description.Length > 0 ? $" ({item.Description})" : "";
+                    sb.AppendLine($"[{key}] {title}, {item.Name}{about}:");
+                    sb.AppendLine(take < item.Content.Length ? item.Content[..take] + " (cut)" : item.Content);
+                }
+            }
+            var unknown = asked.Count(k => !found.Contains(k));
+            if (unknown > 0) sb.AppendLine($"{unknown} keys were not read: they are not from your searches.");
+            if (asked.Count(found.Contains) > AgentColdKeys) sb.AppendLine($"Only the first {AgentColdKeys} were read.");
             return sb.Length > 0 ? sb.ToString() : "No keys to read.";
         }
 
@@ -366,7 +416,9 @@ namespace IndxServer.Services.SearchOrAsk
 
                 You can search its records with the search tool, as often as you need. Each record it returns has its
                 key in brackets. Search results give each record's facts, not all of it: when the answer depends on what
-                a record says (what a book is about, where a film is set), read it with read_records before you pick it. Write no text in a message that searches. When you know the answer, write it in one
+                a record says (what a book is about, where a film is set), read it with read_records before you pick it.
+                A record whose line ends in (cold: ...) has more text beside it, such as a table of contents; read it
+                with read_cold when the question is about what that holds. Write no text in a message that searches. When you know the answer, write it in one
                 message that also calls show_picks, once, with the records that answer the visitor, best first: the
                 page lists your picks as its results, so pick what you would recommend by reading the records, not
                 what merely contains their words. Give each a reason of a few words in the visitor's language. Search for what they

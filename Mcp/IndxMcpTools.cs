@@ -22,7 +22,7 @@ namespace IndxServer.Mcp
         IHttpContextAccessor http,
         TeamService teams,
         DatasetMetadataStore metadata,
-        NoteStore notes)
+        ColdStore cold)
     {
         // Default match semantics for agents: precise near-exact only (EditDistance reranked, the
         // fallback and the rest off). A query with no near-exact hit returns nothing rather than
@@ -134,10 +134,10 @@ namespace IndxServer.Mcp
             if (probe is { Records.Length: > 0 })
                 schema.Sample = ParseJson(engine.GetJsonDataOfKey(probe.Records[0].DocumentKey));
 
-            // The notes the records hold, by name and how many records hold one: read with get_notes.
-            var names = notes.Names(ownerKey, dataset, PublicOnly());
+            // The cold storage the records hold, by name and how many records hold one: read with get_cold.
+            var names = cold.Names(ownerKey, dataset, Reader());
             if (names.Count > 0)
-                schema.RecordNotes = names.Select(n => new McpNoteName
+                schema.Cold = names.Select(n => new McpColdName
                 {
                     Name = n.Name,
                     Records = n.Records,
@@ -147,33 +147,33 @@ namespace IndxServer.Mcp
             return schema;
         }
 
-        [McpServerTool(Name = "get_notes", UseStructuredContent = false, ReadOnly = true)]
-        [System.ComponentModel.Description("Read a record's notes: texts kept beside it that are not searched but help answer, such as a " +
-                     "book's table of contents, a review or an author's biography. describe_dataset lists the names the records hold " +
-                     "notes by; take the record's key from a search hit. Name the notes you want, or get them all.")]
-        public async Task<List<McpNote>> GetNotes(
+        [McpServerTool(Name = "get_cold", UseStructuredContent = false, ReadOnly = true)]
+        [System.ComponentModel.Description("Read a record's cold storage: texts kept beside it that are not searched but help answer, such as a " +
+                     "book's table of contents or a review. A search hit's cold lists the names its record holds; describe_dataset lists " +
+                     "the names in use. Name the items you want, or get them all. Slower than a search.")]
+        public async Task<List<McpColdItem>> GetCold(
             [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
             [System.ComponentModel.Description("Dataset name.")] string dataset,
             [System.ComponentModel.Description("The record's key, taken from a search hit.")] long record,
-            [System.ComponentModel.Description("The names of the notes to read, as listed; omit for every one.")] string[]? names = null,
-            [System.ComponentModel.Description("A language tag (nb, nn, en): the note in that language where there is one, else the one there is.")] string? language = null)
+            [System.ComponentModel.Description("The names of the items to read, as listed; omit for every one.")] string[]? names = null,
+            [System.ComponentModel.Description("A language tag (nb, nn, en): the item in that language where there is one, else the one there is.")] string? language = null)
         {
             var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Search);
             var engine = ResolveEngine(dataset, ownerKey);
-            // A record that is not there (deleted where the notes were not told) has no notes.
+            // A record that is not there (deleted where its cold storage was not told) has none.
             if (string.IsNullOrEmpty(engine.GetJsonDataOfKey(record)))
                 return [];
-            var found = notes.List(new NoteScope(ownerKey, dataset, record), withContent: true, PublicOnly(), names)
+            var found = cold.List(new ColdScope(ownerKey, dataset, record), withContent: true, Reader(), names)
                 // One per name: the asked language's, else the one without a language, else the first.
                 .GroupBy(n => n.Name)
                 .Select(g => g.FirstOrDefault(n => language != null && n.Language == language)
                              ?? g.FirstOrDefault(n => n.Language.Length == 0) ?? g.First())
                 .ToList();
-            var result = new List<McpNote>();
+            var result = new List<McpColdItem>();
             int budget = MaxResponseBytes;
             foreach (var n in found)
             {
-                var note = new McpNote
+                var note = new McpColdItem
                 {
                     Name = n.Name,
                     Language = n.Language.Length > 0 ? n.Language : null,
@@ -189,8 +189,9 @@ namespace IndxServer.Mcp
             return result;
         }
 
-        /// <summary>A Search key reads the public notes only: it is shipped in a browser.</summary>
-        private bool PublicOnly() => Scope() is { } scope && !scope.AllowsLevel(ApiKeyLevel.Read);
+        /// <summary>A Search key reads the public items only: it is shipped in a browser. A Read or Full
+        /// key reads every one.</summary>
+        private ColdReader Reader() => Scope() is { } scope && !scope.AllowsLevel(ApiKeyLevel.Read) ? ColdReader.Browser : ColdReader.Owner;
 
         [McpServerTool(Name = "search", UseStructuredContent = false, ReadOnly = true)]
         [System.ComponentModel.Description("Search a dataset and return ranked documents with relevance scores. Call describe_dataset first so you " +
@@ -275,7 +276,11 @@ namespace IndxServer.Mcp
             }
 
             var res = IndxServerInternalApi.Manager.Search(queryProxy, dataset, ownerKey);
-            return ShapeResult(engine, res, fields, broaden);
+            var shaped = ShapeResult(engine, res, fields, broaden);
+            // Which hits hold cold storage this caller may read, from memory: what get_cold reads.
+            var held = cold.NamesOf(ownerKey, dataset, shaped.Hits.Select(h => h.Key), Reader());
+            foreach (var hit in shaped.Hits) hit.Cold = held.GetValueOrDefault(hit.Key);
+            return shaped;
         }
 
         [McpServerTool(Name = "get_document", UseStructuredContent = false, ReadOnly = true)]

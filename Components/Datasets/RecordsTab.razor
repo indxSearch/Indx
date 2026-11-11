@@ -27,6 +27,7 @@
 @using IndxServer.Services
 @inject DataCheckService DataChecks
 @inject QueryParameterStore QueryParameters
+@inject ColdStore ColdItems
 @inherits DatasetTabBase
 
 @if (!Active) { return; }
@@ -313,6 +314,36 @@
                                                 </div>
                                             }
                                         </div>
+                                        @* Below the record's own fields: what is kept beside it, not in it
+                                           (Notes/cold-storage.md), each opened on demand, since an item can
+                                           be long and is read from disk. *@
+                                        @if (open.Cold.Count > 0)
+                                        {
+                                            <div class="records-cold">
+                                                <h4 class="records-group-title records-cold-title">@DatasetIcons.Cold(14)Cold storage</h4>
+                                                @foreach (var item in open.Cold)
+                                                {
+                                                    var id = (key, item.Name, item.Language);
+                                                    var content = _coldOpen.GetValueOrDefault(id);
+                                                    <div class="records-cold-item">
+                                                        <div class="records-cold-head">
+                                                            <span class="records-field-name">@item.Name@(item.Language.Length > 0 ? $" ({item.Language})" : "")</span>
+                                                            <span class="records-faint">@ColdLine(item)</span>
+                                                            <span class="records-spacer"></span>
+                                                            <Button Variant="ghost" Size="micro" @onclick="() => ToggleCold(key, item)">@(content == null ? "Open" : "Close")</Button>
+                                                        </div>
+                                                        @if (item.Description.Length > 0)
+                                                        {
+                                                            <span class="records-faint">@item.Description</span>
+                                                        }
+                                                        @if (content != null)
+                                                        {
+                                                            <pre class="records-json">@content</pre>
+                                                        }
+                                                    </div>
+                                                }
+                                            </div>
+                                        }
                                     }
                                 </div>
                             </td>
@@ -378,7 +409,14 @@
     /// <summary>A row on the page: its cells, whether it has a cut value now, and whether it is gone
     /// (deleted since a report listed it).</summary>
     private sealed record Row(long Key, IReadOnlyDictionary<string, string> Cells, bool Cut, bool Gone);
-    private sealed record OpenRecord(string? Json, IReadOnlyDictionary<string, string> Values);
+    private sealed record OpenRecord(string? Json, IReadOnlyDictionary<string, string> Values, IReadOnlyList<ColdEntry> Cold);
+
+    /// <summary>A cold storage item as the opened record lists it: without its content, which is read
+    /// when it is opened.</summary>
+    private sealed record ColdEntry(string Name, string Language, string ContentType, string Description, string Visibility, int Length);
+
+    /// <summary>The cold storage items opened, by record, name and language: their content as read.</summary>
+    private readonly Dictionary<(long Key, string Name, string Language), string> _coldOpen = new();
 
     private string _text = "";
     private readonly List<Condition> _filters = new();
@@ -686,15 +724,54 @@
 
     private async Task Toggle(long key)
     {
-        if (_open.Remove(key)) { _jsonRows.Remove(key); return; }
+        if (_open.Remove(key))
+        {
+            _jsonRows.Remove(key);
+            foreach (var id in _coldOpen.Keys.Where(k => k.Key == key).ToList()) _coldOpen.Remove(id);
+            return;
+        }
         _open[key] = null;
         var names = Fields.Select(f => f.FieldName).ToList();
         var open = await Task.Run(() =>
         {
             var json = ReadJson(key);
-            return new OpenRecord(json == null ? null : Pretty(json), Values(json, names));
+            // The console reads every item; listed with content only for its length.
+            var cold = json == null ? [] : ColdItems.List(new ColdScope(Ctx.TeamId, Ctx.Name, key), withContent: true, ColdReader.Owner)
+                .Select(i => new ColdEntry(i.Name, i.Language, i.ContentType, i.Description, i.Visibility, i.Content.Length)).ToList();
+            return new OpenRecord(json == null ? null : Pretty(json), Values(json, names), cold);
         });
         if (_open.ContainsKey(key)) _open[key] = open;
+    }
+
+    /// <summary>Opens a cold storage item, read from disk, or closes it.</summary>
+    private async Task ToggleCold(long key, ColdEntry item)
+    {
+        var id = (key, item.Name, item.Language);
+        if (_coldOpen.Remove(id)) return;
+        var stored = await Task.Run(() => ColdItems.Get(new ColdScope(Ctx.TeamId, Ctx.Name, key), item.Name, item.Language));
+        _coldOpen[id] = stored == null ? "This item is no longer stored." : PrettyCold(stored);
+    }
+
+    /// <summary>JSON indented; text and markdown as written.</summary>
+    private static string PrettyCold(ColdItem item)
+    {
+        if (item.ContentType != "application/json") return item.Content;
+        try { return JsonSerializer.Serialize(JsonDocument.Parse(item.Content).RootElement, new JsonSerializerOptions { WriteIndented = true }); }
+        catch (JsonException) { return item.Content; }
+    }
+
+    /// <summary>An item's kind, size and who may read it.</summary>
+    private static string ColdLine(ColdEntry item)
+    {
+        var kind = item.ContentType switch { "text/markdown" => "Markdown", "application/json" => "JSON", _ => "Text" };
+        var size = item.Length >= 1000 ? $"{item.Length / 1000.0:0.#}k characters" : $"{item.Length} characters";
+        var who = item.Visibility switch
+        {
+            ColdValues.Public => "public",
+            ColdValues.Answer => "answers only",
+            _ => "private",
+        };
+        return $"{kind}, {size}, {who}";
     }
 
     private async Task OnRowKey(KeyboardEventArgs e, long key)

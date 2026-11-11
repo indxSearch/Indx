@@ -66,14 +66,14 @@ namespace IndxServer.Mcp
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public JsonNode? Sample { get; set; }
 
-        /// <summary>The names the records hold notes by, with how many records hold one: read a
-        /// record's with get_notes.</summary>
+        /// <summary>The names the records hold cold storage by, with how many records hold one: read a
+        /// record's with get_cold.</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public List<McpNoteName>? RecordNotes { get; set; }
+        public List<McpColdName>? Cold { get; set; }
     }
 
-    /// <summary>A name the dataset's records hold notes by ("toc", "review").</summary>
-    public class McpNoteName
+    /// <summary>A name the dataset's records hold cold storage by ("toc", "review").</summary>
+    public class McpColdName
     {
         public string Name { get; set; } = "";
         public int Records { get; set; }
@@ -81,8 +81,8 @@ namespace IndxServer.Mcp
         public string? Description { get; set; }
     }
 
-    /// <summary>A record's note as get_notes returns it.</summary>
-    public class McpNote
+    /// <summary>A record's cold storage item as get_cold returns it.</summary>
+    public class McpColdItem
     {
         public string Name { get; set; } = "";
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -104,6 +104,9 @@ namespace IndxServer.Mcp
         public long Key { get; set; }
         public int Score { get; set; }
         public JsonNode? Document { get; set; }
+        /// <summary>The names of the record's cold storage the caller may read, for get_cold.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string[]? Cold { get; set; }
     }
 
     /// <summary>Search response: ranked hits, optional facets, truncation note.</summary>

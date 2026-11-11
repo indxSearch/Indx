@@ -109,3 +109,9 @@
 /* The Table's ResizableColumns fix the widths and cut what overflows; a value stays on one line.
    The open record's cell is not a column: it wraps, and shows all of itself. */
 .records-tab ::deep .records-table .records-expanded > td { overflow: visible; white-space: normal; }
+
+/* Cold storage under an opened record's fields: kept beside it, opened one item at a time. */
+.records-cold { display: flex; flex-direction: column; gap: 8px; width: 100%; padding-top: 6px; border-top: 0.5px solid var(--lv3); }
+.records-cold-title { display: inline-flex; align-items: center; gap: 6px; }
+.records-cold-item { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.records-cold-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
