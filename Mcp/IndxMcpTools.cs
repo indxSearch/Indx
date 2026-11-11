@@ -197,7 +197,8 @@ namespace IndxServer.Mcp
                      "know the field names and the values that exist. An empty result is meaningful here: matching is precise by " +
                      "default (near-exact only, incl. typo tolerance) — an empty result means nothing matches well, " +
                      "which is a trustworthy 'not found' (don't retry with looser wording unless you set broaden=true). " +
-                     "count is the hits returned, total how many documents hold every query word (report total as the number of matches). " +
+                     "count is the hits returned, total how many documents hold every query word (report total as the number of matches), " +
+                     "matched how: exact, or within oneEdit or twoEdits of the words, which you should check mean what was asked. " +
                      "With broaden=true, isFallback true means no document held every word: the hits are the nearest, not matches. " +
                      "Saved boost rules are applied. Use filters for structured constraints on filterable fields, and filter " +
                      "(an expression) for OR, NOT, IN or open ranges (get valid fields/values from describe_dataset).")]
@@ -575,6 +576,15 @@ namespace IndxServer.Mcp
             // empty list is the answer (the library reports IsFallback for any search that counted nothing).
             outp.IsFallback = res.IsFallback && broaden;
             outp.Total = res.IsFallback ? 0 : CountedOf(res);
+            // So an agent knows what it holds: every word as written, or within edits it should check.
+            outp.Matched = res.IsFallback ? null : res.CountedTolerance switch
+            {
+                Tolerance.Exact => "exact",
+                Tolerance.OneEdit => "oneEdit",
+                Tolerance.TwoEdits => "twoEdits",
+                Tolerance.ThreeEdits => "threeEdits",
+                _ => null,
+            };
 
             if (res.Facets != null)
             {

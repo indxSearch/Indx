@@ -32,14 +32,22 @@ namespace IndxServer.Services.SearchOrAsk
             [
               {"type": "function", "function": {
                 "name": "search",
-                "description": "Search the dataset with filters, words and an order. Returns how many match, a summary of all of them (ranges, common values, counts) and the first records' facts. Leave text empty to list everything the filters match; words narrow the list to records containing them.",
+                "description": "Search the dataset with filters, words and an order. Returns how many match and how their words matched, a summary of all of them (ranges, common values, counts) and the first records' facts. Leave text empty to list everything the filters match; words narrow the list to records holding every one of them.",
                 "parameters": {"type": "object", "properties": {
                   "filters": {"type": "array", "items": {"type": "object", "properties": {
                     "field": {"type": "string"}, "value": {"type": "string"}, "min": {"type": "number"}, "max": {"type": "number"}},
                     "required": ["field"]}},
+                  "filter": {"type": "string", "description": "A filter expression, for what the filters list cannot say, ANDed with it: field = value, !=, <, <=, >, >=, field IN [v1, v2], field BETWEEN a AND b, combined with AND, OR, NOT and parentheses. Text in double quotes, numbers bare, a field name with spaces in backticks. Example: genre IN [\"Drama\", \"Crime\"] AND NOT year < 1990"},
                   "text": {"type": "string"},
+                  "broaden": {"type": "boolean", "description": "Only after a search with words found nothing: the records nearest to the words, said to be nearest, not matches."},
                   "sort": {"type": "object", "properties": {"field": {"type": "string"}, "descending": {"type": "boolean"}}, "required": ["field"]}},
                   "required": ["filters"]}}},
+              {"type": "function", "function": {
+                "name": "read_records",
+                "description": "Read records in full, every field, by the keys your searches returned: what a book is about, a film's whole plot. Several keys in one call, at most 10.",
+                "parameters": {"type": "object", "properties": {
+                  "keys": {"type": "array", "items": {"type": "integer"}}},
+                  "required": ["keys"]}}},
               {"type": "function", "function": {
                 "name": "show_picks",
                 "description": "Put your picks on the visitor's page, as its result list: the records that answer them, in the order you recommend them, each by the key in brackets from your searches and with a short reason. Call it once, in the message that answers: write your answer as that message's text and call this beside it. Cite pick n as [n], n being its place in picks. When the visitor asked for everything a search states exactly (every private school in a town), also give that search, so the page can offer all it found.",
@@ -88,6 +96,8 @@ namespace IndxServer.Services.SearchOrAsk
             // Every record the agent has read, by key: a pick must be one of them, so a key it made
             // up (or misread) never puts a stranger on the page.
             var read = new Dictionary<long, string>();
+            // Every record its searches found, read or not: read_records reads only these.
+            var found = new HashSet<long>();
             var titleOf = (JsonNode? doc) => doc != null && fields.TitleField != null ? ReadField(doc, fields.TitleField) ?? "" : "";
 
             // The agent answers in the message that puts its list on the page (show_results), so
@@ -187,18 +197,27 @@ namespace IndxServer.Services.SearchOrAsk
                         result = $"The page now lists your {picks.Count} picks, numbered in that order."
                             + (dropped > 0 ? $" {dropped} were left out: their key was not one your searches returned." : "");
                     }
+                    else if (name == "read_records")
+                        result = ReadRecords(engine, argsJson, found, read, titleOf);
                     else
                     {
                         // The arguments go through the same check as the quick summary's filters.
                         var (filters, text, sort) = ParseFilters(argsJson, schema);
-                        var (used, keys) = RunFiltered(engine, teamId, dataSetName, filters, text, sort, CatalogueFound);
+                        var args = JsonNode.Parse(argsJson);
+                        var expression = args?["filter"]?.ToString();
+                        var broaden = args?["broaden"] is JsonValue b && b.TryGetValue<bool>(out var bv) && bv;
+                        var (used, expressionError, searched) = RunSearch(engine, teamId, dataSetName, filters, expression, text, sort, CatalogueFound, broaden);
+                        var keys = KeysOf(searched);
+                        found.UnionWith(keys);
                         await send("status", new { step = $"Searching: {Step(used, text, sort)}" });
                         var docs = keys.Select(k => Parse(engine.GetJsonDataOfKey(k))).ToList();
                         var sb = new StringBuilder();
-                        sb.AppendLine($"Searched with: {(used.Count > 0 ? string.Join("; ", used.Select(Describe)) : "no filters")}{(text.Length > 0 ? $"; words \"{text}\"" : "")}{(sort != null ? $"; sorted by {sort.Field} {(sort.Descending ? "descending" : "ascending")}" : "")}.");
-                        if (filters.Length < (JsonNode.Parse(argsJson)?["filters"]?.AsArray().Count ?? 0))
+                        if (expressionError != null)
+                            sb.AppendLine($"Not searched: the filter expression makes no filter. {expressionError} Fields must be filter fields, values as they are listed.");
+                        sb.AppendLine($"Searched with: {(used.Count > 0 ? string.Join("; ", used.Select(Describe)) : "no filters")}{(string.IsNullOrWhiteSpace(expression) ? "" : $"; filter {expression}")}{(text.Length > 0 ? $"; words \"{text}\"" : "")}{(sort != null ? $"; sorted by {sort.Field} {(sort.Descending ? "descending" : "ascending")}" : "")}.");
+                        if (filters.Length < (args?["filters"]?.AsArray().Count ?? 0))
                             sb.AppendLine("Some filters were dropped: their field is not a filter field, or their value does not occur.");
-                        sb.AppendLine($"Found: {Count(keys)}.");
+                        sb.AppendLine($"Found: {Count(keys)}.{(text.Length > 0 && searched != null ? " " + HowMatched(searched) : "")}");
                         if (keys.Count > 0)
                         {
                             sb.AppendLine("Summary of all found:");
@@ -234,6 +253,47 @@ namespace IndxServer.Services.SearchOrAsk
             Succeeded("answer");
             await send("done", new { model, askId, latencyMs = Ms(), turns = AgentMaxTurns });
             return new AgentOutcome("answered", shownKeys, firstText, cost);
+        }
+
+        /// <summary>How the words of a search matched, so the agent knows what it holds: every word
+        /// exactly, within one edit or two (the rung v6 counted), or, broadened, the nearest records,
+        /// which are not matches. <see cref="Result.IsFallback"/> is set whenever nothing was counted.</summary>
+        private static string HowMatched(Result result) => result switch
+        {
+            { IsFallback: true, Records.Length: > 0 } => "No record holds every word: these are the nearest, not matches.",
+            { IsFallback: true } => "No record holds every word.",
+            { CountedTolerance: Tolerance.Exact } => "Every word matched exactly.",
+            { CountedTolerance: Tolerance.OneEdit } => "No record holds every word exactly: these hold them within one letter's difference.",
+            { CountedTolerance: { } } => "No record holds every word exactly: these hold them within two or more letters' difference, so check they mean what was asked.",
+            _ => "",
+        };
+
+        /// <summary>The most keys a read_records call reads, and the characters of each record's JSON.</summary>
+        private const int AgentReadKeys = 10, AgentReadChars = 4000;
+
+        /// <summary>A read_records call: the records' JSON in full, those of the keys the searches found,
+        /// at most <see cref="AgentReadKeys"/>, each cut at <see cref="AgentReadChars"/>. A record read
+        /// may be picked.</summary>
+        private static string ReadRecords(IServerSearchEngine engine, string argsJson, HashSet<long> found,
+            Dictionary<long, string> read, Func<JsonNode?, string> titleOf)
+        {
+            var asked = (JsonNode.Parse(argsJson)?["keys"]?.AsArray() ?? [])
+                .Select(n => long.TryParse(n?.ToString(), out var k) ? k : (long?)null).OfType<long>().Distinct().ToList();
+            var keys = asked.Where(found.Contains).Take(AgentReadKeys).ToArray();
+            var sb = new StringBuilder();
+            if (keys.Length > 0)
+            {
+                foreach (var (key, json) in keys.Zip(engine.GetJsonDataOfKeys(keys)))
+                {
+                    if (string.IsNullOrEmpty(json)) { sb.AppendLine($"[{key}]: no longer in the dataset."); continue; }
+                    read[key] = titleOf(Parse(json));
+                    sb.AppendLine($"[{key}]: {(json.Length > AgentReadChars ? json[..AgentReadChars] + " (cut)" : json)}");
+                }
+            }
+            var unknown = asked.Count(k => !found.Contains(k));
+            if (unknown > 0) sb.AppendLine($"{unknown} keys were not read: they are not from your searches.");
+            if (asked.Count(found.Contains) > AgentReadKeys) sb.AppendLine($"Only the first {AgentReadKeys} were read.");
+            return sb.Length > 0 ? sb.ToString() : "No keys to read.";
         }
 
         /// <summary>The answer's language in the agent's own instructions. The reminder after the
@@ -305,7 +365,8 @@ namespace IndxServer.Services.SearchOrAsk
                 You answer a visitor who typed into the search field of a website. About the site: {site}
 
                 You can search its records with the search tool, as often as you need. Each record it returns has its
-                key in brackets. Write no text in a message that searches. When you know the answer, write it in one
+                key in brackets. Search results give each record's facts, not all of it: when the answer depends on what
+                a record says (what a book is about, where a film is set), read it with read_records before you pick it. Write no text in a message that searches. When you know the answer, write it in one
                 message that also calls show_picks, once, with the records that answer the visitor, best first: the
                 page lists your picks as its results, so pick what you would recommend by reading the records, not
                 what merely contains their words. Give each a reason of a few words in the visitor's language. Search for what they
@@ -331,6 +392,8 @@ namespace IndxServer.Services.SearchOrAsk
             sb.AppendLine("""
 
                 A filter is {"field", "value"} with a listed value (or true/false), or {"field", "min", "max"} for a number.
+                For one of several values, an exclusion or an open range, use the filter expression instead.
+                Words with no record holding every one of them find nothing; then try other words, or broaden.
                 Then answer, as a short answer the visitor can act on: lead with how many you found, in their words for
                 what they asked; then what stands out (what most share, the largest and smallest, notable differences),
                 naming a few, each cited as [n] by its place in your picks; if many, end with one sentence on how to

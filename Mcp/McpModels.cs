@@ -119,6 +119,12 @@ namespace IndxServer.Mcp
         public bool IsFallback { get; set; }
         public List<McpSearchHit> Hits { get; set; } = new();
 
+        /// <summary>How the hits hold the query's words: "exact", "oneEdit", "twoEdits" or
+        /// "threeEdits", the nearest rung with hits (v6's counted rung). Null for a browse, and when
+        /// nothing was counted (an empty list, or broaden's nearest with isFallback).</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Matched { get; set; }
+
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Dictionary<string, Dictionary<string, int>>? Facets { get; set; }
 

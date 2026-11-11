@@ -111,6 +111,20 @@ namespace IndxServer.Services.SearchOrAsk
         private static (List<FilterSuggestion> Used, List<long> Keys) RunFiltered(IServerSearchEngine engine, string teamId,
             string dataSetName, IEnumerable<FilterSuggestion> filters, string text, SortSuggestion? sort, int cap)
         {
+            var (used, _, result) = RunSearch(engine, teamId, dataSetName, filters, null, text, sort, cap, broaden: false);
+            return (used, KeysOf(result));
+        }
+
+        private static List<long> KeysOf(Result? result) => (result?.Records ?? []).Select(r => r.DocumentKey).ToList();
+
+        /// <summary><see cref="RunFiltered"/> for the agent: also a filter expression (OR, NOT, IN, open
+        /// ranges), ANDed with the filters, and <paramref name="broaden"/>, the nearest records when none
+        /// holds every word. Returns the engine's result, which says how the records matched, or null
+        /// with nothing to search for; an expression that makes no filter is the errors, not a search.</summary>
+        private static (List<FilterSuggestion> Used, string? ExpressionError, Result? Result) RunSearch(IServerSearchEngine engine,
+            string teamId, string dataSetName, IEnumerable<FilterSuggestion> filters, string? expression, string text,
+            SortSuggestion? sort, int cap, bool broaden)
+        {
             Filter? combined = null;
             var used = new List<FilterSuggestion>();
             foreach (var f in filters)
@@ -119,7 +133,14 @@ namespace IndxServer.Services.SearchOrAsk
                 combined = combined == null ? built : combined & built;
                 used.Add(f);
             }
-            if (combined == null && string.IsNullOrWhiteSpace(text)) return (used, []);
+            // Compiled here, as MCP's search does, so every error comes back with its place.
+            if (!string.IsNullOrWhiteSpace(expression))
+            {
+                if (engine.CreateFilter(expression, out var errors) is not { } byExpression)
+                    return (used, string.Join(" ", errors.Select(e => $"At position {e.Start}: {e.Message}")), null);
+                combined = combined == null ? byExpression : combined & byExpression;
+            }
+            if (combined == null && string.IsNullOrWhiteSpace(text)) return (used, null, null);
             var result = IndxServerInternalApi.Manager.Search(new QueryProxy
             {
                 Text = text,
@@ -130,14 +151,15 @@ namespace IndxServer.Services.SearchOrAsk
                 // Words narrow the list to the records holding them all, finished words: nothing
                 // holding them all is an empty list, not the fallback's nearest, so the summary's
                 // retries with fewer conditions run and the agent is not told near records "match"
-                // (6 Nov 2026; with the fallback on by default the list was never empty).
+                // (6 Nov 2026; with the fallback on by default the list was never empty). Broaden,
+                // the agent's choice after such an empty list, takes the nearest, said as such.
                 Match = text.Length > 0 ? new MatchProxy { CursorAt = 0 } : null,
-                Candidates = text.Length > 0 ? new CandidateProxy { Fallback = false } : null,
+                Candidates = text.Length > 0 ? new CandidateProxy { Fallback = broaden, Rest = broaden } : null,
                 // An order asked for ("the largest") puts those first: what is read first is what leads.
                 SortBy = sort?.Field ?? string.Empty,
                 SortAscending = sort is { Descending: false },
             }, dataSetName, teamId);
-            return (used, (result.Records ?? []).Select(r => r.DocumentKey).ToList());
+            return (used, null, result);
         }
 
         private static JsonNode? Parse(string? json)
