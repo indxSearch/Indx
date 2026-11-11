@@ -360,6 +360,10 @@ internal static class StartupPipeline
             dataCheckStore.EnsureTable();
             IndxServerInternalApi.Manager.AttachDataCheckStore(dataCheckStore);
             IndxServerInternalApi.Manager.AttachChangeSink(dataCheckStore);
+            // The notes an agent reads beside the search follow their dataset.
+            var noteStore = app.Services.GetRequiredService<IndxServer.Services.NoteStore>();
+            noteStore.EnsureTable();
+            IndxServerInternalApi.Manager.AttachNoteStore(noteStore);
             var searchOrAskStore = app.Services.GetRequiredService<IndxServer.Services.SearchOrAsk.SearchOrAskStore>();
             searchOrAskStore.EnsureTable();
             IndxServerInternalApi.Manager.AttachSearchOrAskStore(searchOrAskStore);

@@ -65,6 +65,30 @@ namespace IndxServer.Mcp
         /// <summary>One full document, so the agent sees the real record shape (incl. non-queryable fields).</summary>
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public JsonNode? Sample { get; set; }
+
+        /// <summary>The dataset's and the team's notes, by name, without content: read with get_notes.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public List<McpNote>? Notes { get; set; }
+    }
+
+    /// <summary>A note an agent reads beside the search: its name, language and what it is, and its
+    /// content where get_notes returns it.</summary>
+    public class McpNote
+    {
+        public string Name { get; set; } = "";
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public string? Language { get; set; }
+        /// <summary>"dataset", "team" or "record".</summary>
+        public string Of { get; set; } = "";
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public string? Description { get; set; }
+        public string ContentType { get; set; } = "";
+        public int Length { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Content { get; set; }
+        /// <summary>The content was cut to keep the answer within the agent's context.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool Truncated { get; set; }
     }
 
     /// <summary>One ranked hit: full document + relevance score.</summary>

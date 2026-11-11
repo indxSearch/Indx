@@ -53,6 +53,7 @@ namespace IndxServer.Controllers
             var result = matcher.DeleteJsonRecord(documentKey);
             if (!result)
                 return ApiProblems.DocumentNotFound(documentKey);
+            IndxServerInternalApi.Manager.Notes?.DeleteRecord(ctx.OwnerKey, dataSetName, documentKey);
             Count(dataSetName, ctx.OwnerKey, matcher, "delete", deleted: 1);
             return NoContent();
         }
@@ -80,6 +81,7 @@ namespace IndxServer.Controllers
                     var result = engine.DeleteJsonRecord(documentKey);
                     if (!result)
                         return ApiProblems.DocumentNotFound(documentKey);
+                    IndxServerInternalApi.Manager.Notes?.DeleteRecord(ctx.OwnerKey, dataSetName, documentKey);
                 }
                 Count(dataSetName, ctx.OwnerKey, engine, "delete", deleted: documentKeys.Length);
                 return NoContent();
