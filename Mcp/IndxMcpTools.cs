@@ -21,7 +21,8 @@ namespace IndxServer.Mcp
     public sealed class IndxMcpTools(
         IHttpContextAccessor http,
         TeamService teams,
-        DatasetMetadataStore metadata)
+        DatasetMetadataStore metadata,
+        NoteStore notes)
     {
         // Default match semantics for agents: precise near-exact only (EditDistance reranked, the
         // fallback and the rest off). A query with no near-exact hit returns nothing rather than
@@ -133,8 +134,64 @@ namespace IndxServer.Mcp
             if (probe is { Records.Length: > 0 })
                 schema.Sample = ParseJson(engine.GetJsonDataOfKey(probe.Records[0].DocumentKey));
 
+            // The notes an agent may read beside the search, by name: the dataset's and the team's.
+            bool publicOnly = PublicOnly();
+            var listed = notes.List(new NoteScope(ownerKey, dataset), withContent: true, publicOnly).Select(n => Listed(n, "dataset"))
+                .Concat(notes.List(new NoteScope(ownerKey), withContent: true, publicOnly).Select(n => Listed(n, "team")))
+                .ToList();
+            if (listed.Count > 0) schema.Notes = listed;
+
             return schema;
         }
+
+        [McpServerTool(Name = "get_notes", UseStructuredContent = false, ReadOnly = true)]
+        [System.ComponentModel.Description("Read the notes kept beside the search: texts that are not searched but help answer, such as a " +
+                     "record's table of contents or reviews, or the dataset's terms. Without a record, the dataset's notes (describe_dataset " +
+                     "lists them by name); with a record key from a search hit, that record's. Name the notes you want, or get them all.")]
+        public async Task<List<McpNote>> GetNotes(
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset,
+            [System.ComponentModel.Description("A record's key, taken from a search hit, for that record's notes; omit for the dataset's.")] long? record = null,
+            [System.ComponentModel.Description("The names of the notes to read, as listed; omit for every one.")] string[]? names = null,
+            [System.ComponentModel.Description("A language tag (nb, nn, en): the note in that language where there is one, else the one there is.")] string? language = null)
+        {
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Search);
+            var engine = ResolveEngine(dataset, ownerKey);
+            long key = record ?? 0;
+            // A record that is not there (deleted where the notes were not told) has no notes.
+            if (key != 0 && string.IsNullOrEmpty(engine.GetJsonDataOfKey(key)))
+                return [];
+            var found = notes.List(new NoteScope(ownerKey, dataset, key), withContent: true, PublicOnly(), names)
+                // One per name: the asked language's, else the one without a language, else the first.
+                .GroupBy(n => n.Name)
+                .Select(g => g.FirstOrDefault(n => language != null && n.Language == language)
+                             ?? g.FirstOrDefault(n => n.Language.Length == 0) ?? g.First())
+                .ToList();
+            var result = new List<McpNote>();
+            int budget = MaxResponseBytes;
+            foreach (var n in found)
+            {
+                var note = Listed(n, key != 0 ? "record" : "dataset");
+                note.Content = n.Content.Length <= budget ? n.Content : n.Content[..Math.Max(0, budget)];
+                note.Truncated = note.Content.Length < n.Content.Length;
+                budget -= note.Content.Length;
+                result.Add(note);
+            }
+            return result;
+        }
+
+        private static McpNote Listed(Note n, string of) => new()
+        {
+            Name = n.Name,
+            Language = n.Language.Length > 0 ? n.Language : null,
+            Of = of,
+            Description = n.Description.Length > 0 ? n.Description : null,
+            ContentType = n.ContentType,
+            Length = n.Content.Length,
+        };
+
+        /// <summary>A Search key reads the public notes only: it is shipped in a browser.</summary>
+        private bool PublicOnly() => Scope() is { } scope && !scope.AllowsLevel(ApiKeyLevel.Read);
 
         [McpServerTool(Name = "search", UseStructuredContent = false, ReadOnly = true)]
         [System.ComponentModel.Description("Search a dataset and return ranked documents with relevance scores. Call describe_dataset first so you " +
