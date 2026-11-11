@@ -8,23 +8,24 @@ namespace IndxServer.Services
     /// dataset says its own count at no cost. A sleeping one is a COUNT(*) over its JsonData rows,
     /// which on a 10 GB store took 7.5 s for every dataset together on a cold cache (Nov 2026), on
     /// every load of Admin &gt; Teams. A sleeping dataset's records change only once it is woken, and
-    /// a woken one is read from its engine, so a count is kept for <see cref="Fresh"/> and Refresh
-    /// counts again.
+    /// a woken one is read from its engine, so a sleeping dataset's count is kept until it wakes, is
+    /// deleted, renamed or moved, and Refresh counts again.
+    /// <para>Until 11 Nov 2026 a count was kept for ten minutes only. The team page, which lists every
+    /// dataset, then counted a sleeping one again every ten minutes: on alpha, millum's 646 276
+    /// records took 8 s over App Service's network storage once its pages had left the cache, and
+    /// the cards after it waited. Nothing was gained by it: the count cannot change while asleep.</para>
     /// </summary>
     internal static class DatasetRecordCounts
     {
-        /// <summary>How long a count of a sleeping dataset is used before it is taken again.</summary>
-        public static readonly TimeSpan Fresh = TimeSpan.FromMinutes(10);
-
-        private static readonly ConcurrentDictionary<(string DataSet, string Team), (int Count, DateTime At)> Counts = new();
+        private static readonly ConcurrentDictionary<(string DataSet, string Team), int> Counts = new();
 
         /// <summary>The records of one dataset: its engine's count when it is loaded, else the count
-        /// kept from the last <see cref="Fresh"/>, else counted now. <paramref name="recount"/> counts
-        /// a sleeping dataset again whatever is kept.</summary>
+        /// kept since it went to sleep, else counted now. <paramref name="recount"/> counts a sleeping
+        /// dataset again whatever is kept. An engine in error is counted each time: a load that failed
+        /// may have written part of its rows.</summary>
         public static int Get(string dataSet, string teamId, bool recount = false)
         {
             var manager = IndxServerInternalApi.Manager;
-            var now = DateTime.UtcNow;
             // Never GetState: it wakes a hibernated dataset (see Admin/Datasets.razor).
             var engine = manager.FindSearchEngine(dataSet, teamId);
             // Not when the free limit cut it: the engine then holds the first 100,000 and the store
@@ -32,13 +33,15 @@ namespace IndxServer.Services
             if (engine is { IsDisposed: false } && engine.Status is { SystemState: Indx.Api.SystemState.Ready } status
                 && status.LicenseInfo?.DocumentLimitExceeded != true)
             {
-                Counts[(dataSet, teamId)] = (status.DocumentCount, now);
+                Counts[(dataSet, teamId)] = status.DocumentCount;
                 return status.DocumentCount;
             }
-            if (!recount && Counts.TryGetValue((dataSet, teamId), out var kept) && now - kept.At < Fresh)
-                return kept.Count;
+            if (engine is { IsDisposed: false, Status.SystemState: Indx.Api.SystemState.Error })
+                recount = true;
+            if (!recount && Counts.TryGetValue((dataSet, teamId), out var kept))
+                return kept;
             int counted = manager.GetKeepAliveInfo(dataSet, teamId).RecordCount;
-            Counts[(dataSet, teamId)] = (counted, now);
+            Counts[(dataSet, teamId)] = counted;
             return counted;
         }
 

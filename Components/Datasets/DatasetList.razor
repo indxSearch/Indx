@@ -307,8 +307,9 @@ else
     }
 
     /// <summary>Re-read the team's datasets: the names render at once, each card's state is
-    /// filled in off the circuit thread as it is read (a record count per dataset is a COUNT(*)
-    /// on disk — cheap, but not free on a large dataset, and never worth blocking the page for).</summary>
+    /// filled in off the circuit thread as it is read, every card at once (a sleeping dataset's
+    /// record count is a COUNT(*) on disk the first time, 8 s for 646 276 records on App Service,
+    /// and the cards after it waited for it while they were read one by one, 11 Nov 2026).</summary>
     public void Reload()
     {
         List<string> names;
@@ -322,7 +323,7 @@ else
         var teamId = TeamId;
         _ = Task.Run(async () =>
         {
-            foreach (var name in names)
+            await Task.WhenAll(names.Select(name => Task.Run(async () =>
             {
                 if (cts.IsCancellationRequested) return;
                 var row = Describe(name, teamId);
@@ -333,7 +334,8 @@ else
                     if (i >= 0) _rows[i] = row;
                     StateHasChanged();
                 });
-            }
+            })));
+            if (cts.IsCancellationRequested) return;
 
             // Keep the moving ones moving. The loop re-describes only the rows that were in a
             // transient state and stops as soon as none are, so a settled team page costs nothing:
