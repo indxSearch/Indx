@@ -22,7 +22,8 @@ namespace IndxServer.Mcp
         IHttpContextAccessor http,
         TeamService teams,
         DatasetMetadataStore metadata,
-        NoteStore notes)
+        NoteStore notes,
+        IndxServer.Services.SearchOrAsk.SearchOrAskStore searchOrAsk)
     {
         // Default match semantics for agents: precise near-exact only (EditDistance reranked, the
         // fallback and the rest off). A query with no near-exact hit returns nothing rather than
@@ -69,8 +70,10 @@ namespace IndxServer.Mcp
 
         [McpServerTool(Name = "describe_dataset", UseStructuredContent = false, ReadOnly = true)]
         [System.ComponentModel.Description("CALL THIS BEFORE SEARCHING. Reports the fields you can search, filter, facet and sort on, the real values " +
-                     "those fields hold (distinct values for facetable fields, min and max for numeric ones), an owner-written " +
-                     "description, and one sample document. Use it so you filter with values that exist instead of guessing: " +
+                     "those fields hold (distinct values for facetable fields, min and max for numeric ones), the owner's own texts " +
+                     "about the dataset (aboutTheSite: who reads it and what the records hold; aboutTheFields: what the values mean " +
+                     "here; knowledge: what is true that no record holds), and one sample document. Read the owner's texts before you " +
+                     "filter or answer. Use it so you filter with values that exist instead of guessing: " +
                      "a filter naming a field that is not filterable, or a value that never occurs, returns nothing. " +
                      "Fields the owner has not made searchable, filterable, facetable or sortable are not listed, " +
                      "because they cannot be used in a query.")]
@@ -82,11 +85,17 @@ namespace IndxServer.Mcp
             var engine = ResolveEngine(dataset, ownerKey);
 
             var ka = IndxServerInternalApi.Manager.GetKeepAliveInfo(dataset, ownerKey);
+            // The owner's texts, as Search or ask keeps them and the console names them, read where
+            // they are kept on every call: written for the answers, they are about the data, so they
+            // are given whether or not Search or ask is switched on.
+            var texts = searchOrAsk.Load(ownerKey, dataset);
             var schema = new McpDatasetSchema
             {
                 Team = team,
                 Dataset = dataset,
-                Description = NullIfEmpty(metadata.Load(ownerKey, dataset)),
+                AboutTheSite = NullIfEmpty(texts?.SiteDescription) ?? NullIfEmpty(metadata.Load(ownerKey, dataset)),
+                AboutTheFields = NullIfEmpty(texts?.FilterNotes),
+                Knowledge = NullIfEmpty(texts?.Knowledge),
                 DocumentCount = ka.RecordCount,
                 State = engine.Status.SystemState.ToString(),
             };
