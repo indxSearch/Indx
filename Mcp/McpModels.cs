@@ -131,9 +131,40 @@ namespace IndxServer.Mcp
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Dictionary<string, Dictionary<string, int>>? Facets { get; set; }
 
+        /// <summary>With facets, each number field's lowest and highest value over the matches and how
+        /// many hold one: the range to filter on without reading every value.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Dictionary<string, Indx.Api.FacetStats>? FacetStats { get; set; }
+
         public bool Truncated { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Note { get; set; }
+    }
+
+    /// <summary>One search of search_many, with the search tool's settings.</summary>
+    public class McpSearchRequest
+    {
+        /// <summary>What to search for; empty lists what the filters match.</summary>
+        public string? Query { get; set; }
+        public McpFilter[]? Filters { get; set; }
+        /// <summary>A filter expression, ANDed with filters.</summary>
+        public string? Filter { get; set; }
+        public int Limit { get; set; } = 10;
+        public string[]? Fields { get; set; }
+        public bool Broaden { get; set; }
+        public bool Facets { get; set; }
+        public string[]? FacetFields { get; set; }
+        public int FacetLimit { get; set; } = 20;
+        public int Offset { get; set; }
+    }
+
+    /// <summary>One answer of search_many: the result, or why the search failed.</summary>
+    public class McpSearchManyResult
+    {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public McpSearchResult? Result { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Error { get; set; }
     }
 }
