@@ -61,9 +61,9 @@ namespace IndxServer.Monitor
             if (p.CpuPercent > 0 || p.AvailableMb > 0)
                 sb.Append(Inv, $"cpu {p.CpuPercent,3:0}%  mem {(p.AvailableMb > 0 ? (double)p.WorkingSetMb / p.AvailableMb * 100 : 0),3:0}%  ");
             // The machine, every process on it: on App Service the plan's instance, shared by
-            // every app and slot on it.
+            // every app and slot on it. In GB: the line has to stay under 200 columns.
             if (p.InstanceMb > 0)
-                sb.Append(Inv, $"instance {p.InstanceUsedMb:N0} of {p.InstanceMb:N0}MB  ");
+                sb.Append(Inv, $"instance {p.InstanceUsedMb / 1024.0:0.0}/{p.InstanceMb / 1024.0:0.0}GB  ");
             sb.AppendLine(Inv, $"nat {p.NativeBlocks,6:N0} ({p.NativePoolMb:N0}MB pooled)");
 
             sb.AppendLine("           " + s.Filters.Describe());
