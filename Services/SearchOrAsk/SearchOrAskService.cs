@@ -990,6 +990,16 @@ namespace IndxServer.Services.SearchOrAsk
                     Refused("answer", ex);
                     await send("error", new { code = "failed", message = "The answer could not be written." });
                 }
+                // Anything else is ours, not the provider's (a tool call's arguments read unguarded, a
+                // reply that was not JSON: gdagency, 11 Nov 2026). Until then it escaped: the console's
+                // circuit ended with the answer left loading, and a visitor's stream broke off with no
+                // error event. Logged as an error, said to the page as the provider's failures are.
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    outcome = "failed";
+                    _logger.LogError(ex, "Search or ask answer failed for {Team}/{Dataset}", teamId, dataSetName);
+                    await send("error", new { code = "failed", message = "The answer could not be written." });
+                }
             }
             finally
             {
