@@ -48,7 +48,10 @@ namespace IndxServer.Monitor
             var p = s.Process;
 
             sb.Append(Inv, $"[indx {Clock(s.TakenUtc)}] datasets {s.Datasets.Count} ({s.LoadedCount} loaded)  ");
-            sb.Append(Inv, $"docs {s.TotalDocuments,12:N0}  {s.DescribeSearches()}  heap {p.GcHeapMb,6:N0}MB  ");
+            sb.AppendLine(Inv, $"docs {s.TotalDocuments,12:N0}  {s.DescribeSearches()}");
+            // The process on a line of its own (11 Nov 2026): on one line with the counts it reached
+            // 204 columns under a full test run's load, past the 200 a log viewer shows.
+            sb.Append(Inv, $"           heap {p.GcHeapMb,6:N0}MB  ");
             // Process.PrivateMemorySize64 is 0 on Unix, which is where this actually runs in a
             // container. A confident "priv 0MB" is worse than no column, so it is only shown where
             // the platform reports it.
@@ -61,7 +64,7 @@ namespace IndxServer.Monitor
             if (p.CpuPercent > 0 || p.AvailableMb > 0)
                 sb.Append(Inv, $"cpu {p.CpuPercent,3:0}%  mem {(p.AvailableMb > 0 ? (double)p.WorkingSetMb / p.AvailableMb * 100 : 0),3:0}%  ");
             // The machine, every process on it: on App Service the plan's instance, shared by
-            // every app and slot on it. In GB: the line has to stay under 200 columns.
+            // every app and slot on it.
             if (p.InstanceMb > 0)
                 sb.Append(Inv, $"instance {p.InstanceUsedMb / 1024.0:0.0}/{p.InstanceMb / 1024.0:0.0}GB  ");
             sb.AppendLine(Inv, $"nat {p.NativeBlocks,6:N0} ({p.NativePoolMb:N0}MB pooled)");

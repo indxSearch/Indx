@@ -242,7 +242,7 @@ namespace IndxServer.Mcp
             {
                 Query = query, Filters = filters, Filter = filter, Limit = limit, Fields = fields, Broaden = broaden,
                 Facets = facets, FacetFields = facetFields, FacetLimit = facetLimit, Offset = offset,
-            }, MaxResponseBytes);
+            }, MaxResponseBytes, await ColdAccessAsync(team));
         }
 
         private const string FacetFieldsHelp = "With facets: count only these facetable fields (as describe_dataset lists them); omit to count " +
@@ -275,12 +275,13 @@ namespace IndxServer.Mcp
             var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Search);
             var engine = ResolveEngine(dataset, ownerKey);
             int budget = MaxResponseBytes / searches.Length;
+            var access = await ColdAccessAsync(team);
             var answers = new List<McpSearchManyResult>(searches.Length);
             foreach (var search in searches)
             {
                 try
                 {
-                    answers.Add(new McpSearchManyResult { Result = RunSearch(engine, ownerKey, dataset, search ?? new McpSearchRequest(), budget) });
+                    answers.Add(new McpSearchManyResult { Result = RunSearch(engine, ownerKey, dataset, search ?? new McpSearchRequest(), budget, access) });
                 }
                 catch (McpToolException ex)
                 {
@@ -291,8 +292,10 @@ namespace IndxServer.Mcp
         }
 
         /// <summary>One search as the search tool runs it, for search and search_many alike: one way
-        /// in. <paramref name="budget"/> is the most bytes of documents it may answer with.</summary>
-        private McpSearchResult RunSearch(IServerSearchEngine engine, string ownerKey, string dataset, McpSearchRequest request, int budget)
+        /// in. <paramref name="budget"/> is the most bytes of documents it may answer with;
+        /// <paramref name="coldAccess"/> what the caller may read of cold storage, none when null.</summary>
+        private McpSearchResult RunSearch(IServerSearchEngine engine, string ownerKey, string dataset, McpSearchRequest request, int budget,
+            ColdAccess? coldAccess)
         {
             string query = request.Query ?? "";
             var filters = request.Filters;
@@ -364,7 +367,7 @@ namespace IndxServer.Mcp
                 throw new McpToolException(reason.Message);
             var shaped = ShapeResult(engine, res, request.Fields, broaden, budget);
             // Which hits hold cold storage this caller may read, from memory: what get_cold reads.
-            var held = await ColdAccessAsync(team) is { } access
+            var held = coldAccess is { } access
                 ? cold.NamesOf(ownerKey, dataset, shaped.Hits.Select(h => h.Key), access) : [];
             foreach (var hit in shaped.Hits) hit.Cold = held.GetValueOrDefault(hit.Key);
             return shaped;
