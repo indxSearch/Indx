@@ -24,7 +24,8 @@ namespace IndxServer.Controllers
     /// <see cref="DatasetApiController"/>.
     /// </summary>
     public class SearchController(TeamContextResolver resolver, StatisticsService statistics,
-        QueryParameterStore queryParameters, IConfiguration configuration)
+        QueryParameterStore queryParameters, IConfiguration configuration,
+        Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Mvc.JsonOptions> mvcJson)
         : DatasetApiController(resolver)
     {
         /// <summary>A search's own steps as a <c>Server-Timing</c> header (milliseconds): the team
@@ -43,7 +44,9 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
-        /// Search will validate the search query and return the search result.
+        /// Search will validate the search query and return the search result. With
+        /// <c>includeDocuments</c> the records' JSON comes with it, in <c>documents</c>, in the order
+        /// of <c>records</c> (null for a record gone since), so a search is one call, not two.
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/search")]
@@ -61,6 +64,82 @@ namespace IndxServer.Controllers
             if (RequireState(matcher, "Search", SystemState.Ready) is { } stateError)
                 return stateError;
             var tDataset = Stopwatch.GetTimestamp();
+            var outcome = RunSearch(ctx, dataSetName, matcher, query);
+            if (outcome.Problem != null) return outcome.Problem;
+            if (outcome.Refocused is not RefocusOutcome.None)
+                Response.Headers[Refocusing.ResponseHeader] = outcome.Refocused.ToString().ToLowerInvariant();
+            // Which values the dataset's query parameters decided, because the request left
+            // them out: "why does my search find so few" is answered by one response. Absent
+            // when the request (or the engine default) decided everything.
+            if (outcome.FromDataset.Count > 0)
+                Response.Headers[QueryParameterResolution.ResponseHeader] = string.Join(", ", outcome.FromDataset);
+            if (outcome.QueryId != null)
+                Response.Headers["Indx-Query-Id"] = outcome.QueryId;
+            ServerTiming(tStart, tTeam, tDataset, outcome.SearchedAt);
+            if (query.IncludeDocuments)
+                return Ok(WithDocuments(outcome.Result!, matcher));
+            return outcome.Result!;
+        }
+
+        /// <summary>The most searches one <see cref="MultiSearch"/> call takes.</summary>
+        public const int MaxSearchesPerCall = 20;
+
+        /// <summary>
+        /// Several searches of the dataset in one call, answered in the order sent: what an
+        /// InstantSearch page asks for at once, its list and the counts of each refined OR facet
+        /// without that facet's own filter (11 Nov 2026, backlog 90 step 4). Each runs as
+        /// <see cref="Search"/> runs it, the statistics and the query string's parameters included;
+        /// a search that fails is an <c>error</c> in its place, with the status and problem a single
+        /// search would have answered, and the others are answered. Each answer carries its
+        /// <c>queryId</c> where a single search's header would. At most
+        /// <see cref="MaxSearchesPerCall"/> searches.
+        /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
+        [HttpPost(DataSetRoute + "/search/multi")]
+        public ActionResult MultiSearch(string teamName, string dataSetName, [FromBody] QueryProxy[] queries)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (queries == null || queries.Length == 0)
+                return ApiProblems.InvalidArgument("The body must be a JSON array of one or more searches.");
+            if (queries.Length > MaxSearchesPerCall)
+                return ApiProblems.InvalidArgument($"{queries.Length} searches; one call takes at most {MaxSearchesPerCall}.");
+            var matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
+            if (RequireState(matcher, "Search", SystemState.Ready) is { } stateError)
+                return stateError;
+            var answers = new System.Text.Json.Nodes.JsonArray();
+            foreach (var query in queries)
+            {
+                if (query == null)
+                {
+                    answers.Add(ErrorOf(ApiProblems.InvalidArgument("A search in the list is null.")));
+                    continue;
+                }
+                var outcome = RunSearch(ctx, dataSetName, matcher, query);
+                if (outcome.Problem != null)
+                {
+                    answers.Add(ErrorOf(outcome.Problem));
+                    continue;
+                }
+                var answer = query.IncludeDocuments ? WithDocuments(outcome.Result!, matcher) : ToNode(outcome.Result!);
+                if (outcome.QueryId != null) answer["queryId"] = outcome.QueryId;
+                answers.Add(answer);
+            }
+            return Ok(answers);
+        }
+
+        /// <summary>What one search came to: its result, or the problem a single search answers
+        /// with; the refocus, the parameters the dataset decided and the query id, which a single
+        /// search sends as headers.</summary>
+        private sealed record SearchOutcome(Indx.Api.Result? Result, ObjectResult? Problem, RefocusOutcome Refocused,
+            IReadOnlyList<string> FromDataset, string? QueryId, long SearchedAt);
+
+        /// <summary>One search as the search route runs it, for <see cref="Search"/> and
+        /// <see cref="MultiSearch"/> alike: one way in, so the two cannot drift.</summary>
+        private SearchOutcome RunSearch(TeamContext ctx, string dataSetName, IServerSearchEngine matcher, QueryProxy query)
+        {
             // When the search was asked for, not when it finished: a short text can take longer than
             // the keystroke after it, and the keystroke rule reads the session's searches in order.
             long askedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -70,16 +149,11 @@ namespace IndxServer.Controllers
                 // (Services.Refocusing); intrface asks while the judge reads a question or a description.
                 var refocus = string.Equals(Request.Query["refocus"].FirstOrDefault()?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
                 Indx.Api.Result res = IndxServerInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey, out var resolvedFilterKey, refocus);
-                if (Refocusing.OutcomeOf(res) is var refocused and not RefocusOutcome.None)
-                    Response.Headers[Refocusing.ResponseHeader] = refocused.ToString().ToLowerInvariant();
+                var refocused = Refocusing.OutcomeOf(res);
                 var tSearch = Stopwatch.GetTimestamp();
-                // Which values the dataset's query parameters decided, because the request left
-                // them out: "why does my search find so few" is answered by one response. Absent
-                // when the request (or the engine default) decided everything.
                 var fromDataset = QueryParameterResolution.Resolve(query,
                     queryParameters.Load(ctx.OwnerKey, dataSetName)).FromDataset;
-                if (fromDataset.Count > 0)
-                    Response.Headers[QueryParameterResolution.ResponseHeader] = string.Join(", ", fromDataset);
+                string? minted = null;
                 // The search event is logged server-side - that is what makes the zero-hit list
                 // exist at all - and the minted queryId is what select/convert events reference.
                 // Cost on this path is a struct and a queue append (measured in
@@ -87,7 +161,7 @@ namespace IndxServer.Controllers
                 if (statistics.Enabled)
                 {
                     var queryId = Guid.NewGuid().ToString("N");
-                    Response.Headers["Indx-Query-Id"] = queryId;
+                    minted = queryId;
                     var subject = Request.Query["subject"].FirstOrDefault();
                     // ?session= is any per-page-load random id. It identifies no one; it lets the
                     // rollup see that "o", "os", "osl", "oslo" were one visitor typing one search.
@@ -132,16 +206,15 @@ namespace IndxServer.Controllers
                             Typed: string.IsNullOrWhiteSpace(typed) ? null : typed.Length > 1000 ? typed[..1000] : typed,
                             Locale: locale));
                 }
-                ServerTiming(tStart, tTeam, tDataset, tSearch);
-                return res;
+                return new SearchOutcome(res, null, refocused, fromDataset, minted, tSearch);
             }
             catch (UnknownFilterException ex)
             {
-                return ApiProblems.UnknownFilter(ex.Message);
+                return Failed(ApiProblems.UnknownFilter(ex.Message));
             }
             catch (InvalidFilterExpressionException ex)
             {
-                return ApiProblems.InvalidFilterExpression(ex.Expression, ex.Errors);
+                return Failed(ApiProblems.InvalidFilterExpression(ex.Expression, ex.Errors));
             }
             // PrepareSorting throws ArgumentException("invalid type") for a SortBy field whose type
             // is not one it can compare. Reaching it takes a field that is Sortable and untyped, which
@@ -151,9 +224,36 @@ namespace IndxServer.Controllers
             // costs us an alert and tells them nothing. Same mapping fields/configuration already uses.
             catch (ArgumentException ex)
             {
-                return ApiProblems.InvalidArgument(ex.Message);
+                return Failed(ApiProblems.InvalidArgument(ex.Message));
             }
+
+            static SearchOutcome Failed(ObjectResult problem) => new(null, problem, RefocusOutcome.None, [], null, 0);
         }
+
+        /// <summary>The result as the response writes it, with the records' JSON in
+        /// <c>documents</c>, in the order of <c>records</c>: each an object, null for a record gone
+        /// since the search.</summary>
+        private System.Text.Json.Nodes.JsonObject WithDocuments(Indx.Api.Result result, IServerSearchEngine engine)
+        {
+            var node = ToNode(result);
+            var documents = new System.Text.Json.Nodes.JsonArray();
+            foreach (var json in engine.GetJsonDataOfKeys(result.Records ?? []))
+                documents.Add(string.IsNullOrEmpty(json) ? null : System.Text.Json.Nodes.JsonNode.Parse(json));
+            node["documents"] = documents;
+            return node;
+        }
+
+        /// <summary>The result as the response writes it (MVC's own JSON options), as a node.</summary>
+        private System.Text.Json.Nodes.JsonObject ToNode(Indx.Api.Result result) =>
+            System.Text.Json.JsonSerializer.SerializeToNode(result, result.GetType(), mvcJson.Value.JsonSerializerOptions)!.AsObject();
+
+        /// <summary>A failed search in a multi-search's list: the status and the problem a single
+        /// search would have answered with.</summary>
+        private System.Text.Json.Nodes.JsonObject ErrorOf(ObjectResult problem) => new()
+        {
+            ["error"] = System.Text.Json.JsonSerializer.SerializeToNode(problem.Value, mvcJson.Value.JsonSerializerOptions),
+            ["status"] = problem.StatusCode,
+        };
 
         /// <summary>
         /// Searches a single embedding field using approximate nearest-neighbour search.
