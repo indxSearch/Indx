@@ -224,10 +224,83 @@ namespace IndxServer.Mcp
             [System.ComponentModel.Description("Set true to include looser character-pattern matches, below the near-exact ones, and when nothing matches near-exactly. Default false, which is near-exact only. Worth one retry when a " +
                          "query you expected to match returns nothing; it trades precision for recall, so prefer the default.")] bool broaden = false,
             [System.ComponentModel.Description("Set true to also return counts per value for facetable fields. Use them to offer the user a way to narrow the " +
-                         "search, or to pick the filter for your next call.")] bool facets = false)
+                         "search, or to pick the filter for your next call.")] bool facets = false,
+            [System.ComponentModel.Description(FacetFieldsHelp)] string[]? facetFields = null,
+            [System.ComponentModel.Description(FacetLimitHelp)] int facetLimit = DefaultFacetLimit,
+            [System.ComponentModel.Description(OffsetHelp)] int offset = 0)
         {
             var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Search);
             var engine = ResolveEngine(dataset, ownerKey);
+            return RunSearch(engine, ownerKey, dataset, new McpSearchRequest
+            {
+                Query = query, Filters = filters, Filter = filter, Limit = limit, Fields = fields, Broaden = broaden,
+                Facets = facets, FacetFields = facetFields, FacetLimit = facetLimit, Offset = offset,
+            }, MaxResponseBytes);
+        }
+
+        private const string FacetFieldsHelp = "With facets: count only these facetable fields (as describe_dataset lists them); omit to count " +
+            "every one. Name the ones you will use: counting fewer is cheaper and keeps the answer short.";
+        private const string FacetLimitHelp = "With facets: the most values returned per field, the commonest first. Default 20; 0 returns every " +
+            "value. facetStats (the lowest and highest value of each number field) is of every value either way.";
+        private const string OffsetHelp = "How many ranked hits to pass over before the first returned, to page: offset 10 with limit 10 returns " +
+            "the 11th to the 20th. Only ranked hits can be returned, so a page past total may come back empty.";
+        private const int DefaultFacetLimit = 20;
+
+        /// <summary>The most searches one search_many call takes.</summary>
+        public const int MaxSearchesPerCall = 10;
+
+        [McpServerTool(Name = "search_many", UseStructuredContent = false, ReadOnly = true)]
+        [System.ComponentModel.Description("Run several searches of one dataset in one call, answered in the order given: each as the search tool runs it, " +
+                     "with the same settings. Use it when you already know the searches you need (two spellings, a title and an author, " +
+                     "the same words under different filters) instead of calling search once for each: one call costs less than several. " +
+                     "A search that fails answers with its error in its place; the others are answered. At most 10 searches; the " +
+                     "response size is shared between them, so ask each for the hits you will read.")]
+        public async Task<List<McpSearchManyResult>> SearchMany(
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset,
+            [System.ComponentModel.Description("The searches, each with the search tool's settings: query, and as you need them filters, filter, limit, " +
+                         "fields, broaden, facets, facetFields, facetLimit and offset.")] McpSearchRequest[] searches)
+        {
+            if (searches is not { Length: > 0 })
+                throw new McpToolException("searches must list one or more searches.");
+            if (searches.Length > MaxSearchesPerCall)
+                throw new McpToolException($"{searches.Length} searches; one call takes at most {MaxSearchesPerCall}. Split them over two calls.");
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Search);
+            var engine = ResolveEngine(dataset, ownerKey);
+            int budget = MaxResponseBytes / searches.Length;
+            var answers = new List<McpSearchManyResult>(searches.Length);
+            foreach (var search in searches)
+            {
+                try
+                {
+                    answers.Add(new McpSearchManyResult { Result = RunSearch(engine, ownerKey, dataset, search ?? new McpSearchRequest(), budget) });
+                }
+                catch (McpToolException ex)
+                {
+                    answers.Add(new McpSearchManyResult { Error = ex.Message });
+                }
+            }
+            return answers;
+        }
+
+        /// <summary>One search as the search tool runs it, for search and search_many alike: one way
+        /// in. <paramref name="budget"/> is the most bytes of documents it may answer with.</summary>
+        private McpSearchResult RunSearch(IServerSearchEngine engine, string ownerKey, string dataset, McpSearchRequest request, int budget)
+        {
+            string query = request.Query ?? "";
+            var filters = request.Filters;
+            string? filter = request.Filter;
+            bool broaden = request.Broaden;
+            if (request.Offset < 0)
+                throw new McpToolException($"offset is {request.Offset}; it is 0 or more.");
+            if (request.FacetLimit < 0)
+                throw new McpToolException($"facetLimit is {request.FacetLimit}; it is 0 (every value) or more.");
+            if (request.FacetFields is { Length: > 0 } named)
+            {
+                var facetable = engine.GetFacetableFieldList().Select(f => f.Name).ToHashSet();
+                if (named.Where(n => !facetable.Contains(n)).ToList() is { Count: > 0 } unknown)
+                    throw new McpToolException($"Not a facetable field: {string.Join(", ", unknown)}. Call describe_dataset for the facetable fields.");
+            }
 
             // An empty query is a browse: "everything matching the filters". The engine only
             // serves it with facets on, so enable them regardless of what the agent asked for —
@@ -235,8 +308,11 @@ namespace IndxServer.Mcp
             var isBrowse = string.IsNullOrWhiteSpace(query);
             var queryProxy = new QueryProxy
             {
-                Text = query ?? "",
-                MaxNumberOfRecordsToReturn = Math.Clamp(limit, 1, 100),
+                Text = query,
+                MaxNumberOfRecordsToReturn = Math.Clamp(request.Limit, 1, 100),
+                Offset = request.Offset,
+                FacetFields = request.FacetFields,
+                FacetValueLimit = request.FacetLimit,
                 Mode = SearchMode.EditDistance,
                 // An agent's text is finished: no word in it is being typed, so none is met as the
                 // start of a longer one (6.0 reads an open last word as typed, and "mel" found
@@ -245,7 +321,7 @@ namespace IndxServer.Mcp
                 // broaden: the pattern matches below the counted (Rest, 3 Nov 2026) and, when nothing
                 // is counted, the fallback's.
                 Candidates = new CandidateProxy { Fallback = broaden, Rest = broaden },
-                EnableFacets = facets || isBrowse,
+                EnableFacets = request.Facets || isBrowse,
             };
 
             if (filters is { Length: > 0 })
@@ -276,7 +352,10 @@ namespace IndxServer.Mcp
             }
 
             var res = IndxServerInternalApi.Manager.Search(queryProxy, dataset, ownerKey);
-            var shaped = ShapeResult(engine, res, fields, broaden);
+            // A refusal (a facet field, an offset) is the agent's to fix, said as an error, not an empty answer.
+            if (res.Reason is { } reason && res.Records.Length == 0)
+                throw new McpToolException(reason.Message);
+            var shaped = ShapeResult(engine, res, request.Fields, broaden, budget);
             // Which hits hold cold storage this caller may read, from memory: what get_cold reads.
             var held = cold.NamesOf(ownerKey, dataset, shaped.Hits.Select(h => h.Key), Reader());
             foreach (var hit in shaped.Hits) hit.Cold = held.GetValueOrDefault(hit.Key);
@@ -555,7 +634,8 @@ namespace IndxServer.Mcp
             return IndxServerInternalApi.Manager.Search(q, dataset, ownerKey);
         }
 
-        private static McpSearchResult ShapeResult(IServerSearchEngine engine, Result res, string[]? fields, bool broaden = false)
+        private static McpSearchResult ShapeResult(IServerSearchEngine engine, Result res, string[]? fields, bool broaden = false,
+            int maxBytes = MaxResponseBytes)
         {
             var outp = new McpSearchResult();
             int bytes = 0;
@@ -564,7 +644,7 @@ namespace IndxServer.Mcp
                 var doc = ParseJson(engine.GetJsonDataOfKey(rec.DocumentKey));
                 if (doc != null && fields is { Length: > 0 }) doc = Project(doc, fields);
                 int sz = doc?.ToJsonString().Length ?? 0;
-                if (bytes + sz > MaxResponseBytes && outp.Hits.Count > 0)
+                if (bytes + sz > maxBytes && outp.Hits.Count > 0)
                 {
                     outp.Truncated = true;
                     outp.Note = $"Truncated to {outp.Hits.Count} hits to fit the response size limit.";
@@ -597,6 +677,7 @@ namespace IndxServer.Mcp
                     kv => kv.Key,
                     kv => kv.Value.ToDictionary(p => p.Key, p => p.Value));
             }
+            outp.FacetStats = res.FacetStats;
             return outp;
         }
 
