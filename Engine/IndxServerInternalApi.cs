@@ -1808,6 +1808,9 @@ namespace IndxServer.Engine
                 Mode = resolved.Mode,
                 EnableMatchReport = queryProxy.EnableMatchReport,
                 EnableFacets = queryProxy.EnableFacets,
+                FacetFields = queryProxy.FacetFields ?? [],
+                FacetValueLimit = queryProxy.FacetValueLimit,
+                Offset = queryProxy.Offset,
                 SortAscending = queryProxy.SortAscending,
                 SortBy = queryProxy.SortBy != null ? engine.DocumentFields.GetField(queryProxy.SortBy) : null,
                 TimeOutLimitMilliseconds = queryProxy.TimeOutLimitMilliseconds
