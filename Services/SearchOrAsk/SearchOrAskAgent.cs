@@ -160,7 +160,12 @@ namespace IndxServer.Services.SearchOrAsk
                     var name = call!["function"]?["name"]?.GetValue<string>();
                     var argsJson = call["function"]?["arguments"]?.GetValue<string>() ?? "{}";
                     string result;
-                    if (name == "show_picks")
+                    // A model can send arguments that are not JSON ('7' is an invalid end of a number,
+                    // gdagency, 11 Nov 2026); parsed below unguarded, that ended the console's circuit
+                    // with the answer left loading. Said to the model instead, which calls again.
+                    if (ArgumentsError(argsJson) is { } argumentsError)
+                        result = $"Your call to {name} was not run: its arguments are not valid JSON ({argumentsError}). Call it again with valid JSON.";
+                    else if (name == "show_picks")
                     {
                         var (picks, dropped) = ParsePicks(argsJson, read);
                         // The search behind the picks, when the visitor asked for all of something: the
@@ -252,6 +257,13 @@ namespace IndxServer.Services.SearchOrAsk
 
         /// <summary>The most picks a page lists.</summary>
         private const int MaxPicks = CatalogueShown;
+
+        /// <summary>Why <paramref name="argsJson"/> is not JSON, or null when it is.</summary>
+        private static string? ArgumentsError(string argsJson)
+        {
+            try { JsonNode.Parse(argsJson); return null; }
+            catch (JsonException ex) { return ex.Message; }
+        }
 
         /// <summary>The picks of a show_picks call, in its order, each a record the agent read; how many
         /// it named that it had not read (or twice), which are left out.</summary>
