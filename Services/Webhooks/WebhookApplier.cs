@@ -116,16 +116,15 @@ namespace IndxServer.Services.Webhooks
             }
 
             int changes = plan.Inserts.Count + plan.Updates.Count + plan.Deletes.Count;
-            // A small call writes in place, and a rebuild running beside the engine would swap its
-            // clone in over the write: wait for it, as a large call waits for the shadow (12 Nov 2026).
-            if (IndxServerInternalApi.Manager.IsShadowBuildInProgress(hook.DatasetName, hook.TeamId))
-                return WebhookOutcome.Retry;
             string? failure = null;
             try
             {
                 failure = changes > ShadowAbove && state == SystemState.Ready
                     ? IndxServerInternalApi.Manager.RunHeavyOnShadowIfReady(hook.DatasetName, hook.TeamId, e => Write(e, plan))
-                    : Write(engine, plan);
+                    // A small call writes in place, and a rebuild running beside the engine would swap
+                    // its clone in over the write: refused while one runs, and retried, as a large call
+                    // waits for the shadow (12 Nov 2026).
+                    : IndxServerInternalApi.Manager.RunSmallWrite(hook.DatasetName, hook.TeamId, () => Write(engine, plan));
             }
             catch (ShadowBusyException) { return WebhookOutcome.Retry; }
             catch (Exception ex)

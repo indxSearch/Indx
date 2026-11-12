@@ -50,9 +50,9 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "DeleteJsonRecord", SystemState.Ready) is { } stateError)
                 return stateError;
-            if (RefusedWhileRebuilding(dataSetName, ctx.OwnerKey) is { } rebuilding)
+            var result = WriteUnlessRebuilding(dataSetName, ctx.OwnerKey, () => matcher.DeleteJsonRecord(documentKey), out var rebuilding);
+            if (rebuilding != null)
                 return rebuilding;
-            var result = matcher.DeleteJsonRecord(documentKey);
             if (!result)
                 return ApiProblems.DocumentNotFound(documentKey);
             IndxServerInternalApi.Manager.Cold?.DeleteRecord(ctx.OwnerKey, dataSetName, documentKey);
@@ -166,12 +166,13 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "InsertJsonRecord", SystemState.Created, SystemState.Loaded, SystemState.Ready) is { } stateError)
                 return stateError;
-            if (RefusedWhileRebuilding(dataSetName, ctx.OwnerKey) is { } rebuilding)
-                return rebuilding;
             if (TryReadBodyKey(matcher, jsonData, out long bodyKey) && bodyKey != documentKey)
                 return ApiProblems.InvalidArgument(
                     $"The route addresses document {documentKey} but the body's key field says {bodyKey}. Nothing was inserted.");
-            var result = matcher.InsertJsonRecord(jsonData, out string error2);
+            string error2 = "";
+            var result = WriteUnlessRebuilding(dataSetName, ctx.OwnerKey, () => matcher.InsertJsonRecord(jsonData, out error2), out var rebuilding);
+            if (rebuilding != null)
+                return rebuilding;
             if (!result)
                 return ApiProblems.InvalidArgument(error2);
             Count(dataSetName, ctx.OwnerKey, matcher, "insert", inserted: 1);
@@ -252,14 +253,15 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "UpdateJsonRecord", SystemState.Ready) is { } stateError)
                 return stateError;
-            if (RefusedWhileRebuilding(dataSetName, ctx.OwnerKey) is { } rebuilding)
-                return rebuilding;
             if (string.IsNullOrEmpty(matcher.GetJsonDataOfKey(documentKey)))
                 return ApiProblems.DocumentNotFound(documentKey);
             if (TryReadBodyKey(matcher, jsonData, out long bodyKey) && bodyKey != documentKey)
                 return ApiProblems.InvalidArgument(
                     $"The route addresses document {documentKey} but the body's key field says {bodyKey}. Nothing was updated.");
-            var result = matcher.UpdateJsonRecord(jsonData, out string error2);
+            string error2 = "";
+            var result = WriteUnlessRebuilding(dataSetName, ctx.OwnerKey, () => matcher.UpdateJsonRecord(jsonData, out error2), out var rebuilding);
+            if (rebuilding != null)
+                return rebuilding;
             if (!result)
             {
                 // The engine skips records whose key matches no live document; for a single
@@ -288,9 +290,11 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "UpdateField", SystemState.Loaded, SystemState.Ready) is { } stateError)
                 return stateError;
-            if (RefusedWhileRebuilding(dataSetName, ctx.OwnerKey) is { } rebuilding)
+            string error2 = "";
+            var result = WriteUnlessRebuilding(dataSetName, ctx.OwnerKey,
+                () => matcher.UpdateField(documentKey, update.FieldName, UnwrapJsonElement(update.Value)!, out error2), out var rebuilding);
+            if (rebuilding != null)
                 return rebuilding;
-            var result = matcher.UpdateField(documentKey, update.FieldName, UnwrapJsonElement(update.Value)!, out string error2);
             if (!result)
                 return ApiProblems.InvalidArgument(error2);
             Count(dataSetName, ctx.OwnerKey, matcher, "updateField", updated: 1);

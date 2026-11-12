@@ -70,10 +70,12 @@ namespace IndxServer.Controllers
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             // The rebuilt engine takes the list it was cloned with: a list set now would be gone at the swap.
-            if (RefusedWhileRebuilding(dataSetName, ctx.OwnerKey) is { } rebuilding)
+            var stored = WriteUnlessRebuilding(dataSetName, ctx.OwnerKey,
+                () => IndxServerInternalApi.Manager.SetSynonyms(dataSetName, ctx.OwnerKey, list), out var rebuilding);
+            if (rebuilding != null)
                 return rebuilding;
 
-            if (!IndxServerInternalApi.Manager.SetSynonyms(dataSetName, ctx.OwnerKey, list))
+            if (!stored)
                 return ApiProblems.OperationFailed(
                     "The synonym list could not be stored — the dataset has no storage attached.");
             return NoContent();

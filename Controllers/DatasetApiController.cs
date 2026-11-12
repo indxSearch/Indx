@@ -105,16 +105,25 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
-        /// The 409 a write gets while the dataset's index is being rebuilt beside it, or null (12 Nov
-        /// 2026). A rebuild clones the engine and swaps the clone in when it is done; a write made on
-        /// the old engine after the clone was taken would be gone with it at the swap. Heavy writes
-        /// already go through the shadow path, which refuses them the same way; this is for the small
-        /// ones that write in place: one document, one field, the synonym list.
+        /// Runs a write that changes the live engine in place (one document, one field, the synonym
+        /// list), or refuses it with 409 shadowBusy while the dataset's index is being rebuilt beside
+        /// it (12 Nov 2026; <see cref="IndxServerInternalApi.RunSmallWrite{T}"/>). A rebuild clones the
+        /// engine and swaps the clone in; a write on the old engine after the clone was taken would be
+        /// gone at the swap. Heavy writes go through the shadow path, which refuses them the same way.
         /// </summary>
-        protected static ActionResult? RefusedWhileRebuilding(string dataSetName, string teamId) =>
-            IndxServerInternalApi.Manager.IsShadowBuildInProgress(dataSetName, teamId)
-                ? ApiProblems.ShadowBusy(new ShadowBusyException(dataSetName).Message)
-                : null;
+        protected static bool WriteUnlessRebuilding(string dataSetName, string teamId, Func<bool> write, out ActionResult? refused)
+        {
+            refused = null;
+            try
+            {
+                return IndxServerInternalApi.Manager.RunSmallWrite(dataSetName, teamId, write);
+            }
+            catch (ShadowBusyException ex)
+            {
+                refused = ApiProblems.ShadowBusy(ex.Message);
+                return false;
+            }
+        }
 
         /// <summary>
         /// Runs a heavy mutation against the team's dataset, using the shadow-swap path when the

@@ -48,9 +48,41 @@ namespace IndxServer.Engine
         /// <see cref="ReleaseShadowBuild"/>.</summary>
         private void ClaimShadowBuild(string key, string dataSetName)
         {
-            if (!_shadowBuildsInProgress.TryAdd(key, TimeProvider.GetUtcNow().UtcDateTime))
-                throw new ShadowBusyException(dataSetName);
+            // Under the dataset's write gate, so no small write is between its check and its write
+            // when the build claims the dataset (RunSmallWrite).
+            lock (WriteGate(key))
+            {
+                if (!_shadowBuildsInProgress.TryAdd(key, TimeProvider.GetUtcNow().UtcDateTime))
+                    throw new ShadowBusyException(dataSetName);
+            }
             _shadowOutcomes.TryRemove(key, out _);
+        }
+
+        /// <summary>One lock per dataset (12 Nov 2026), held by a small write for its check and its
+        /// write, and by a build while it claims the dataset.</summary>
+        private object WriteGate(string key) => _writeGates.GetOrAdd(key, _ => new object());
+
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, object> _writeGates = new();
+
+        /// <summary>
+        /// A write that changes the live engine in place (one document, one field, the synonym list,
+        /// a small webhook call), refused with <see cref="ShadowBusyException"/> while a rebuild runs.
+        /// A rebuild clones the engine and swaps the clone in, so a write on the live engine after the
+        /// clone was taken would be gone at the swap. The check and the write hold the dataset's write
+        /// gate, which the build holds to claim the dataset: a write is done before the build claims
+        /// it, and is in the clone, or it sees the build and is refused. Until 12 Nov 2026 the check
+        /// came before the write with nothing held, and a write that passed it just before a build
+        /// claimed the dataset could land after the clone.
+        /// </summary>
+        internal T RunSmallWrite<T>(string dataSetName, string teamId, Func<T> write)
+        {
+            var key = MakeKey(dataSetName, teamId);
+            lock (WriteGate(key))
+            {
+                if (_shadowBuildsInProgress.ContainsKey(key))
+                    throw new ShadowBusyException(dataSetName);
+                return write();
+            }
         }
 
         /// <summary>Records how the build ended and gives the dataset up for the next one. In
