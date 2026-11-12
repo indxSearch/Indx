@@ -59,6 +59,11 @@ namespace IndxServer.Services
 
         public string Word => word;
 
+        /// <summary>Keeps <paramref name="rules"/> as the dataset's, as if read from the database: for a
+        /// test that renders without one.</summary>
+        internal void SeedForTest(string teamId, string dataSetName, IReadOnlyList<TRule> rules) =>
+            _cache.SeedForTest(Key(teamId, dataSetName), rules);
+
         /// <summary>Test seam: called with the dataset's name when its rules have been read from the
         /// database and before they are kept, so a test can hold a read there while a save runs.</summary>
         internal Action<string>? ReadFromDbForTest { get; set; }

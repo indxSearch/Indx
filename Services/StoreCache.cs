@@ -36,6 +36,14 @@ namespace IndxServer.Services
             return value;
         }
 
+        /// <summary>Keeps <paramref name="value"/> for <paramref name="key"/> as if it had been read:
+        /// for a test that renders without a database.</summary>
+        internal void SeedForTest(TKey key, TValue value)
+        {
+            lock (_lock)
+                _values[key] = value;
+        }
+
         /// <summary>Drops the kept value of <paramref name="key"/>, and keeps a read that began
         /// before this from keeping what it read.</summary>
         public void Invalidate(TKey key)
