@@ -894,8 +894,7 @@ namespace IndxServer.Engine
                     FilterParameters = query.FilterParameters,
                     TimeOutLimitMilliseconds = query.TimeOutLimitMilliseconds,
                     Mode = SearchMode.Bm25f,
-                    Ranking = new RankingProxy { Rerank = false },
-                    RemoveDuplicates = true
+                    Ranking = new RankingProxy { Rerank = false }
                 };
                 Query textQuery = FromQueryProxy(queryProxy, engine, teamId, dataSetName);
                 var textResult = engine.Search(textQuery);
@@ -1809,7 +1808,6 @@ namespace IndxServer.Engine
             Query query = new Query(queryProxy.Text, queryProxy.MaxNumberOfRecordsToReturn)
             {
                 LogPrefix = queryProxy.LogPrefix,
-                RemoveDuplicates = queryProxy.RemoveDuplicates,
                 MeasureFit = queryProxy.MeasureFit,
                 Mode = resolved.Mode,
                 EnableMatchReport = queryProxy.EnableMatchReport,
@@ -1826,6 +1824,10 @@ namespace IndxServer.Engine
             query.Ranking = resolved.Ranking;
             var ranking = queryProxy.Ranking;
             query.Filter = ResolveRequestFilter(engine, queryProxy.Filter, queryProxy.FilterExpression, queryProxy.FilterParameters);
+            // The named counts, an expression each (12 Nov 2026); one that makes no filter is a 400.
+            if (queryProxy.Counts != null)
+                foreach (var (name, expression) in queryProxy.Counts)
+                    query.Counts[name] = ResolveRequestFilter(engine, null, expression ?? string.Empty, queryProxy.FilterParameters)!;
 
             // The client's boosts merged with the dataset's stored, currently active boost rules,
             // which apply to every search (6.0: until then only with the client's EnableBoost).
