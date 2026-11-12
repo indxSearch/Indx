@@ -12,9 +12,12 @@ namespace IndxServer.Controllers
     public sealed record ColdWrite(string Content, string? ContentType = null, string? Description = null, string? Visibility = null,
         string? SourceRef = null, DateTime? SourceUpdatedUtc = null);
 
-    /// <summary>One item of a sync's batch: <see cref="ColdWrite"/> with the record it is of.</summary>
-    public sealed record ColdBatchItem(long RecordKey, string Name, string Content, string? Language = null, string? ContentType = null,
-        string? Description = null, string? Visibility = null, string? SourceRef = null, DateTime? SourceUpdatedUtc = null);
+    /// <summary>One item of a sync's batch: <see cref="ColdWrite"/> with the record it is of, by its
+    /// Indx key (<see cref="RecordKey"/>) or by the sender's own id (<see cref="Id"/>): the id a webhook
+    /// gave the record, or the record's key as text (12 Nov 2026, Notes/cold-storage.md).</summary>
+    public sealed record ColdBatchItem(string Name, string Content, long? RecordKey = null, string? Id = null, string? Language = null,
+        string? ContentType = null, string? Description = null, string? Visibility = null, string? SourceRef = null,
+        DateTime? SourceUpdatedUtc = null);
 
     /// <summary>An item as read; <see cref="Content"/> is null in a listing.</summary>
     public sealed record ColdView(string Name, string Language, long RecordKey, string? Content,
@@ -26,8 +29,9 @@ namespace IndxServer.Controllers
             n.SourceRef, n.SourceUpdatedUtc, n.Version, n.CreatedUtc, n.UpdatedUtc);
     }
 
-    /// <summary>The outcome of one item in a batch.</summary>
-    public sealed record ColdBatchOutcome(long RecordKey, string Name, string Language, string Outcome, string? Detail);
+    /// <summary>The outcome of one item in a batch; <see cref="Id"/> as the item gave it, and its key
+    /// once found (0 when no record has that id).</summary>
+    public sealed record ColdBatchOutcome(long RecordKey, string Name, string Language, string Outcome, string? Detail, string? Id = null);
 
     /// <summary>
     /// Cold storage: items kept beside a record, never searched and not in memory, read when a
@@ -36,7 +40,7 @@ namespace IndxServer.Controllers
     /// more is <see cref="ColdValues.AccessFor"/>. Writing takes a Full key or an editor. An item is
     /// private unless written otherwise. Who wrote an item is set from the caller, never from the body.
     /// </summary>
-    public class ColdController(TeamContextResolver resolver, ColdStore cold) : DatasetApiController(resolver)
+    public class ColdController(TeamContextResolver resolver, ColdStore cold, IndxServer.Services.Webhooks.WebhookStore webhooks) : DatasetApiController(resolver)
     {
         private const string DatasetCold = DataSetRoute + "/cold";
         private const string RecordCold = DataSetRoute + "/documents/{documentKey:long}/cold";
@@ -121,12 +125,55 @@ namespace IndxServer.Controllers
             if (body == null) return ApiProblems.InvalidArgument("The body must be a JSON array of items.");
             if (!DatasetExists(dataSetName, ctx)) return ApiProblems.DatasetNotFound(dataSetName);
             var (by, via) = Writer();
-            var items = body.Select(i => new ColdItem(ctx.OwnerKey, dataSetName, i.RecordKey, i.Name ?? "", i.Language ?? "", i.Content ?? "",
-                i.ContentType ?? "text/plain", i.Description ?? "", i.Visibility ?? ColdValues.Private, by, via, i.SourceRef, i.SourceUpdatedUtc,
-                0, default, default)).ToList();
+            var keys = KeysOf(ctx, dataSetName, body);
+            var items = new List<ColdItem>();
+            var answers = new ColdBatchOutcome?[body.Length];
+            var slots = new List<int>();
+            for (int i = 0; i < body.Length; i++)
+            {
+                var b = body[i];
+                if (keys[i] is not { } key)
+                {
+                    answers[i] = new ColdBatchOutcome(0, b?.Name ?? "", b?.Language ?? "", "refused",
+                        b is { RecordKey: null, Id: null } || b == null
+                            ? "Name the record by recordKey (its Indx key) or id (your own id for it)."
+                            : $"No record has the id '{b.Id}': one sent by this dataset's webhook, or the record's key as a number.",
+                        b?.Id);
+                    continue;
+                }
+                items.Add(new ColdItem(ctx.OwnerKey, dataSetName, key, b.Name ?? "", b.Language ?? "", b.Content ?? "",
+                    b.ContentType ?? "text/plain", b.Description ?? "", b.Visibility ?? ColdValues.Private, by, via, b.SourceRef, b.SourceUpdatedUtc,
+                    0, default, default));
+                slots.Add(i);
+            }
             var outcomes = cold.PutBatch(ctx.OwnerKey, dataSetName, via, items, prune);
-            return outcomes.Select(o => new ColdBatchOutcome(o.Item.RecordKey, o.Item.Name, o.Item.Language,
-                o.Outcome.ToString().ToLowerInvariant(), o.Objection)).ToArray();
+            for (int j = 0; j < outcomes.Count; j++)
+            {
+                var o = outcomes[j];
+                answers[slots[j]] = new ColdBatchOutcome(o.Item.RecordKey, o.Item.Name, o.Item.Language,
+                    o.Outcome.ToString().ToLowerInvariant(), o.Objection, body[slots[j]].Id);
+            }
+            return answers.Select(a => a!).ToArray();
+        }
+
+        /// <summary>
+        /// Each item's record key: its <c>recordKey</c>, else its <c>id</c> as the dataset's webhook gave
+        /// the record (the key registry, one lookup for the batch), else the id itself when it is a
+        /// whole number, the dataset's own key. Null where none is found.
+        /// </summary>
+        private long?[] KeysOf(TeamContext ctx, string dataSetName, ColdBatchItem?[] body)
+        {
+            var ids = body.Where(b => b is { RecordKey: null, Id: { Length: > 0 } }).Select(b => b!.Id!).Distinct().ToList();
+            var registered = ids.Count > 0 ? webhooks.Keys(ctx.OwnerKey, dataSetName, ids) : new Dictionary<string, long>();
+            return body.Select(b => b switch
+            {
+                null => (long?)null,
+                { RecordKey: { } key } => key,
+                { Id: { Length: > 0 } id } when registered.TryGetValue(id, out var key) => key,
+                { Id: { Length: > 0 } id } when long.TryParse(id, System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture, out var key) => key,
+                _ => null,
+            }).ToArray();
         }
 
         /// <summary>Deletes an item (204; 404 when there was none).</summary>
