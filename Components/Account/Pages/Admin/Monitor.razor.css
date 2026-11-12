@@ -36,6 +36,17 @@
    the screen. So the row becomes a block -- when and where on one line, what happened under it --
    and nothing scrolls in either direction. */
 @media (max-width: 768px) {
+    /* ResizableColumns writes the columns' widths together as the table's own min-width (720px,
+       inline), which kept the stacked rows that wide and scrolled the frame on a phone (12 Nov
+       2026). Inline needs !important to be undone; the table and its body become blocks, so a row
+       is as wide as the screen. */
+    ::deep .admin-monitor-table,
+    ::deep .admin-monitor-table tbody {
+        display: block;
+        width: 100%;
+        min-width: 0 !important;
+    }
+
     ::deep .admin-monitor-table thead {
         /* The stacked row labels itself, and a header naming columns that are no longer beside
            each other reads as noise. Hidden from the eye, not from a screen reader. */
