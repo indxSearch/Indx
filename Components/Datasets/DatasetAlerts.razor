@@ -34,7 +34,9 @@
     {
         var list = new List<(string, string?, string)>();
         if (status.LicenseInfo?.DocumentLimitExceeded == true)
-            list.Add(("License limit exceeded", $"{status.DocumentCount:N0} of {status.LicenseInfo.DocumentLimit:N0} documents. Searches still work; loading more does not.", "destructive"));
+            // Every document is stored and loaded; the ones past the limit are left out of search
+            // (12 Nov 2026: it said loading stopped, which it does not).
+            list.Add(("License limit exceeded", $"Only the first {status.LicenseInfo.DocumentLimit:N0} of {status.DocumentCount:N0} documents are searched. A free license from license.indx.co lifts the limit.", "destructive"));
         if (status.InvalidArgument) list.Add(("Invalid argument", "The last operation was rejected; see the server log.", "warning"));
         if (status.InvalidState) list.Add(("Invalid state", "An operation was attempted in a state that does not allow it.", "warning"));
         if (status.TooLongSearchText) list.Add(("Too long search text", "A query exceeded the search-text ceiling and was refused, not cut.", "warning"));

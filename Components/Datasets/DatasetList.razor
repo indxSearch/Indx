@@ -188,7 +188,7 @@ else
                         <Chip Size="small" Color="@row.Chip.Color" TextColor="@row.Chip.TextColor" Icon="@row.Chip.Icon">@row.ChipLabel</Chip>
                         @if (row.Count is { } n)
                         {
-                            <span class="indx-dataset-card-count">@n.ToString("N0") @row.CountNoun</span>
+                            <span class="indx-dataset-card-count">@n.ToString("N0") @row.CountNoun@if (row.SearchedOnly is { } searched) {<text>, @searched.ToString("N0") searched</text>}</span>
                         }
                     }
                 </span>
@@ -235,7 +235,7 @@ else
                               FieldShape? Fields = null, DateTime? LastIndexed = null,
                               DateTime? LastUsed = null, int KeepAliveHrs = int.MaxValue,
                               bool CountsAreOnDisk = false, string? Error = null,
-                              IReadOnlyList<double>? Activity = null)
+                              IReadOnlyList<double>? Activity = null, int? SearchedOnly = null)
     {
         /// <summary>Documents when the engine holds them, records on disk when it does not. The
         /// noun changes with it, because "41,562 documents" on a hibernated dataset would claim
@@ -385,7 +385,8 @@ else
                     : new Row(name, "Ready", DatasetStateChip.For(SystemState.Ready), engine!.Status.DocumentCount,
                               Fields: Shape(engine), LastIndexed: engine!.Status.TimeOfLastIndexBuild,
                               LastUsed: lastUsed, KeepAliveHrs: ka.KeepAliveTimeHrs,
-                              Activity: SearchActivity(name, teamId));
+                              Activity: SearchActivity(name, teamId),
+                              SearchedOnly: engine!.Status.LicenseInfo is { DocumentLimitExceeded: true } l ? l.DocumentLimit : null);
             }
             // A wake being cancelled leaves its engine in Error (load) or Loaded (index) until it is
             // disposed a moment later. Asked first, so neither is reported as the dataset's state.

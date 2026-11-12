@@ -49,7 +49,17 @@
         <StatGroup Columns="6">
             @{ var stateChip = DatasetStateChip.For(status.SystemState); }
             @Tile("State", DatasetIcons.Status, "Ready: searches are answered. Loading and Indexing are on the way there. Created with records on disk: asleep.", @<Chip Size="large" Color="@stateChip.Color" TextColor="@stateChip.TextColor" Icon="@stateChip.Icon">@status.SystemState</Chip>)
-            @Tile("Documents", DatasetIcons.Documents, "The records in memory now: what a search sees. Deleted records are not counted.", @<text>@status.DocumentCount.ToString("N0")</text>)
+            @if (status.LicenseInfo is { DocumentLimitExceeded: true } license)
+            {
+                @* Over the limit without a license: every document is loaded, the first ones searched. *@
+                <Stat Label="Documents" LabelIcon="DatasetIcons.Documents" Hint="The records in memory now. Without a license only the first of them are searched." Value="@status.DocumentCount.ToString("N0")">
+                    @license.DocumentLimit.ToString("N0") searched
+                </Stat>
+            }
+            else
+            {
+                @Tile("Documents", DatasetIcons.Documents, "The records in memory now: what a search sees. Deleted records are not counted.", @<text>@status.DocumentCount.ToString("N0")</text>)
+            }
             @Tile("Records on disk", DatasetIcons.Disk, "The records kept in the server's database, which the dataset is loaded from after a restart or a sleep. The same as Documents once it is loaded and up to date.", @<text>@((ka?.RecordCount ?? 0).ToString("N0"))</text>)
             @Tile("Last index build", DatasetIcons.Changes, "When the index was last built in full.", @<TimeAgo Value="status.TimeOfLastIndexBuild" />)
             @Tile("Seconds to index", DatasetIcons.HourGlass, "How long that build took.", @<text>@status.SecondsToIndex.ToString("0.##")s</text>)
