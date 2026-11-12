@@ -96,12 +96,14 @@ public sealed class MeterView : View
             ? string.Create(Inv, $"  {mem * 100,3:0}%  {Mb(p.HeldMb)} of {Mb(p.AvailableMb)}{inRam}")
             : string.Create(Inv, $"  {Mb(p.HeldMb)} {(p.FootprintMb > 0 ? "held" : "resident")}{inRam}");
         // Where the machine's figure is known the bar is the machine: it is the limit that runs out,
-        // shared with every other process and, on App Service, every app and slot of the plan.
+        // shared with every other process and, on App Service, every app and slot of the plan. The
+        // percentage sits by "machine" and Indx's own figure is named, so a busy Mac does not read
+        // as Indx using most of it (12 Nov 2026).
         if (p.InstanceMb > 0)
         {
             mem = (double)p.InstanceUsedMb / p.InstanceMb;
             memFigures = string.Create(Inv,
-                $"  {mem * 100,3:0}%  {Mb(p.InstanceUsedMb)} of {Mb(p.InstanceMb)}, {Mb(p.HeldMb)} this server");
+                $"  {mem * 100,3:0}%  machine {Mb(p.InstanceUsedMb)} of {Mb(p.InstanceMb)} in use, Indx {Mb(p.HeldMb)}");
         }
         var (memLit, memDim) = Bar(mem, BarWidth(width, memFigures));
 
