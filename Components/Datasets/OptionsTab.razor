@@ -340,19 +340,30 @@
         }
     }
 
+    /// <summary>The section chosen in the menu; until a choice, the one the address asks for (a
+    /// refresh, a link), else the parameter (a test's), else General. Kept here rather than read
+    /// back from the address: a change of the query alone does not render the tab again, so the
+    /// menu changed nothing until a refresh (12 Nov 2026).</summary>
+    private string? _chosen;
+
     private string CurrentSection
     {
         get
         {
-            var asked = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query)
-                .TryGetValue(SectionQuery, out var v) ? v.ToString() : Section;
+            var asked = _chosen ?? (Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query)
+                .TryGetValue(SectionQuery, out var v) ? v.ToString() : Section);
             return Menu[0].Items.Any(i => i.Key == asked) ? asked! : "general";
         }
     }
 
-    /// <summary>Into the address, replacing it, so Back still leaves the dataset as it does for the tabs.</summary>
-    private void SelectSection(string key) =>
+    /// <summary>Shows the section, and puts it in the address, replacing it, so a refresh keeps it
+    /// and Back still leaves the dataset as it does for the tabs.</summary>
+    private void SelectSection(string key)
+    {
+        _chosen = key;
+        StateHasChanged();
         Nav.NavigateTo(Nav.GetUriWithQueryParameter(SectionQuery, key == "general" ? null : key), replace: true);
+    }
 
     private void SetSearchOrAskShown(bool shown)
     {
