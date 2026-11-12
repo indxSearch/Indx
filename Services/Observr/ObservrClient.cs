@@ -30,12 +30,21 @@ namespace IndxServer.Services.Observr
     /// the top few only, so a review sends little of the data.</summary>
     public sealed record ObservrFieldEvidence(string Name, string Type, bool IsArray, bool WordMatching, bool PatternMatching, bool Filterable,
         bool Facetable, bool Sortable, float Weight, int Filled, int Distinct, List<string> TopValues, double? Min, double? Max, int AvgLength,
-        long ValuesOver, string Tolerance, float RerankWeight);
+        long ValuesOver, string Tolerance, float RerankWeight, string? Profile = null);
+
+    /// <summary>A field profile of the dataset as Observr reads it (Nov 2026): the five built-ins and
+    /// the dataset's own, with their values; <see cref="Pattern"/> the pattern setup in words.</summary>
+    public sealed record ObservrProfileInfo(string Id, string Name, string About, bool BuiltIn, string Tolerance, float RerankWeight, string Pattern)
+    {
+        public static ObservrProfileInfo Of(FieldProfile p) => new(p.Id, p.Name, p.About ?? "", p.BuiltIn, p.Tolerance.ToString(), p.RerankWeight,
+            $"pieces of {string.Join(" and ", p.IndexSizes)} letters, {p.NumberOfStartCharacters} start mark(s){(p.NumberOfStopCharacters > 0 ? ", a whole value first" : "")}");
+    }
 
     /// <summary>The dataset's setup for review: every field with its evidence, the key field, and
     /// what visitors searched for lately, which says what the fields are expected to answer.</summary>
     public sealed record ObservrFieldReviewAsk(string Kind, string Team, string Dataset, string Site, string KeyField, long Records,
-        int Sampled, List<ObservrFieldEvidence> FieldEvidence, List<string> TopQueries, ObservrRecordsReport? RecordsReport = null);
+        int Sampled, List<ObservrFieldEvidence> FieldEvidence, List<string> TopQueries, ObservrRecordsReport? RecordsReport = null,
+        List<ObservrProfileInfo>? Profiles = null);
 
     /// <summary>What Search or ask runs with today, for the setup help: the settings, the fields the
     /// judge sees once the automatic choice is applied, and the dataset's query parameters as stored
@@ -54,7 +63,7 @@ namespace IndxServer.Services.Observr
     /// <summary>A change to one field's roles and settings (Indx 6): null leaves that one as it is.
     /// <see cref="Tolerance"/> is a <see cref="Indx.Api.Tolerance"/> by name.</summary>
     public sealed record ObservrFieldChange(string Name, bool? WordMatching, bool? PatternMatching, bool? Filterable, bool? Facetable,
-        bool? Sortable, float? Weight, string? Tolerance = null, float? RerankWeight = null)
+        bool? Sortable, float? Weight, string? Tolerance = null, float? RerankWeight = null, string? Profile = null)
     {
         /// <summary>The roles as words, the way the console names them.</summary>
         public static readonly (string Name, string Label)[] Roles =
@@ -184,7 +193,10 @@ namespace IndxServer.Services.Observr
         /// shipped. Observr is deployed ahead of every installed server and narrows what it proposes
         /// to this list. A part added here must be applied in the same change, or Observr sends it
         /// and a yes leaves it out.</summary>
-        public static readonly string[] Accepted = [Synonym, FieldKind, SearchOrAskKind, QueryParametersKind];
+        public static readonly string[] Accepted = [Synonym, FieldKind, SearchOrAskKind, QueryParametersKind, FieldProfilePart];
+
+        /// <summary>A field change that gives the field one of the dataset's profiles (Nov 2026).</summary>
+        public const string FieldProfilePart = "field.profile";
 
         /// <summary>What this server can carry out right now: <see cref="Accepted"/>, and a support
         /// ticket while support is on (it is sent through the Portal, which an instance with support
@@ -302,6 +314,9 @@ namespace IndxServer.Services.Observr
         /// <summary>Each changed field's configuration as it was (Indx 6): roles, pattern setup,
         /// tolerance and weights, so an undo puts back exactly that.</summary>
         public List<FieldProxy> FieldConfigurationBefore { get; set; } = [];
+        /// <summary>Each changed field's profile as it was, null where it had none (Nov 2026): an undo
+        /// puts the choice back with the values.</summary>
+        public Dictionary<string, string?> ProfilesBefore { get; set; } = [];
         /// <summary>An undo kept before 9 Nov 2026: each field's roles as one searchable flag.</summary>
         public List<ObservrFieldChange> FieldsBefore { get; set; } = [];
     }
@@ -336,6 +351,7 @@ namespace IndxServer.Services.Observr
             var parts = c.RoleChanges.Select(r => (r.On ? r.Label : $"{r.Label} off", r.On)).ToList();
             if (c.Weight is { } w)
                 parts.Add((currentWeight is { } n ? $"weight {n:0.##} → {w:0.##}" : $"weight {w:0.##}", true));
+            if (c.Profile != null) parts.Add(($"the {c.Profile} profile", true));
             if (c.RerankWeight is { } rw) parts.Add(($"rerank weight {rw:0.##}", true));
             if (c.Tolerance != null) parts.Add((ToleranceText(c.Tolerance), true));
             return parts;
@@ -439,7 +455,8 @@ namespace IndxServer.Services.Observr
         IConfiguration configuration, IDatasetEngines engines, DatasetMetadataStore metadata, StatisticsService statistics,
         ObservrFindingStore findings, ObservrSummaryBuilder summaries, SearchOrAsk.SearchOrAskStore searchOrAsk,
         SearchOrAsk.SearchOrAskService searchOrAskService, QueryParameterStore queryParameters, ILogger<ObservrClient> logger,
-        Support.SupportOptions supportOptions, Support.SupportClient support, Support.SupportState supportState, DataCheckStore dataChecks)
+        Support.SupportOptions supportOptions, Support.SupportClient support, Support.SupportState supportState, DataCheckStore dataChecks,
+        FieldProfileStore profiles)
     {
         /// <summary>The match of a search the server runs on a finished text (a recorded query, a
         /// word, a synonym's expansion): no word is being typed, so none is met as the start of a
@@ -881,6 +898,8 @@ namespace IndxServer.Services.Observr
             var (keys, facets, total) = Spread(teamId, dataSetName, ReviewSample);
             var docs = keys.Select(k => Parse(engine.GetJsonDataOfKey(k))).Where(d => d != null).ToList();
             var evidence = new List<ObservrFieldEvidence>();
+            var own = profiles.Load(teamId, dataSetName);
+            var configuration = engine.GetFieldConfiguration().ToDictionary(x => x.FieldName, StringComparer.Ordinal);
             foreach (var f in engine.GetFieldList())
             {
                 var values = docs.SelectMany(d => Leaves(d!, f.Name)).ToList();
@@ -916,14 +935,16 @@ namespace IndxServer.Services.Observr
                     ? values.Select(v => v.TryGetValue<double>(out var n) ? n : (double?)null).Where(n => n != null).Select(n => n!.Value).ToList() : [];
                 evidence.Add(new ObservrFieldEvidence(f.Name, TypeName(f.Type), f.IsArray, f.WordMatching, f.PatternMatching != null, f.Filterable, f.Facetable, f.Sortable, f.Weight,
                     filled, distinct, top, numbers.Count > 0 ? numbers.Min() : null, numbers.Count > 0 ? numbers.Max() : null,
-                    texts.Count == 0 ? 0 : (int)texts.Average(s => s.Length), over, f.Tolerance.ToString(), f.RerankWeight));
+                    texts.Count == 0 ? 0 : (int)texts.Average(s => s.Length), over, f.Tolerance.ToString(), f.RerankWeight,
+                    configuration.TryGetValue(f.Name, out var proxy) ? FieldProfiles.ProfileOf(proxy, own)?.Id : null));
             }
             var today = StatisticsDays.Today(TimeZoneInfo.Utc);
             var queries = statistics.Store?.TopQueries(teamId, dataSetName, today - ReviewQueryDays, today, ReviewTopQueries)
                 .Select(q => q.QueryText).ToList() ?? [];
             return new ObservrFieldReviewAsk(FieldReviewKind, teamId, dataSetName, Site(teamId, dataSetName), engine.DocumentFields?.NameOfDocumentKeyField ?? "",
                 engine.Status.DocumentCount, docs.Count, evidence, queries,
-                ObservrRecordsReport.From(dataChecks.Load(teamId, dataSetName), engine.GetFieldConfiguration()));
+                ObservrRecordsReport.From(dataChecks.Load(teamId, dataSetName), engine.GetFieldConfiguration()),
+                FieldProfiles.All(own).Select(ObservrProfileInfo.Of).ToList());
         }
 
         /// <summary>A value with its count, as the evidence lists it: "E-bok (10,595)".</summary>
@@ -1097,8 +1118,13 @@ namespace IndxServer.Services.Observr
                     .Select(n => configuration.FirstOrDefault(x => x.FieldName == n))
                     .Where(x => x != null && !undo.FieldConfigurationBefore.Any(b => b.FieldName == x.FieldName))
                     .Select(x => Restorable(x!)).ToList();
+                var own = profiles.Load(f.TeamId, f.DataSetName);
+                var profilesBefore = changes.Where(c => c.Profile != null).Select(c => c.Name).Distinct()
+                    .Where(n => !undo.ProfilesBefore.ContainsKey(n))
+                    .ToDictionary(n => n, n => own?.Assignments.GetValueOrDefault(n));
                 if (ApplyFields(f.TeamId, f.DataSetName, changes) is { } why) return why;
                 undo.FieldConfigurationBefore.AddRange(before);
+                foreach (var (n, id) in profilesBefore) undo.ProfilesBefore[n] = id;
                 done.Add(ObservrProposal.FieldKind);
             }
             return null;
@@ -1170,6 +1196,13 @@ namespace IndxServer.Services.Observr
                 if (undo.FieldConfigurationBefore.Count > 0)
                 {
                     why = ApplyFieldProxies(f.TeamId, f.DataSetName, undo.FieldConfigurationBefore.ToArray());
+                    if (why == null && undo.ProfilesBefore.Count > 0)
+                    {
+                        var own = profiles.Load(f.TeamId, f.DataSetName) ?? new DatasetFieldProfiles();
+                        foreach (var (n, id) in undo.ProfilesBefore)
+                            if (id == null) own.Assignments.Remove(n); else own.Assignments[n] = id;
+                        profiles.Save(f.TeamId, f.DataSetName, own);
+                    }
                     if (why == null) done.Add(ObservrProposal.FieldKind);
                 }
                 else if (undo.FieldsBefore.Count > 0)
@@ -1280,12 +1313,40 @@ namespace IndxServer.Services.Observr
         /// <summary>Carries out field changes as the Fields tab's Save does: refused as a whole when
         /// invalid, announced, then on a shadow when the change needs a rebuild (this blocks until the
         /// swap) or in place. Returns the reason it could not, or null.</summary>
-        public string? ApplyFields(string teamId, string dataSetName, IReadOnlyList<ObservrFieldChange> changes) =>
-            ApplyFieldProxies(teamId, dataSetName, changes.GroupBy(c => c.Name).Select(g => new ObservrFieldChange(g.Key,
+        public string? ApplyFields(string teamId, string dataSetName, IReadOnlyList<ObservrFieldChange> changes)
+        {
+            var merged = changes.GroupBy(c => c.Name).Select(g => new ObservrFieldChange(g.Key,
                 g.Select(c => c.WordMatching).LastOrDefault(v => v != null), g.Select(c => c.PatternMatching).LastOrDefault(v => v != null),
                 g.Select(c => c.Filterable).LastOrDefault(v => v != null), g.Select(c => c.Facetable).LastOrDefault(v => v != null),
                 g.Select(c => c.Sortable).LastOrDefault(v => v != null), g.Select(c => c.Weight).LastOrDefault(v => v != null),
-                g.Select(c => c.Tolerance).LastOrDefault(v => v != null), g.Select(c => c.RerankWeight).LastOrDefault(v => v != null)).ToProxy()).ToArray());
+                g.Select(c => c.Tolerance).LastOrDefault(v => v != null), g.Select(c => c.RerankWeight).LastOrDefault(v => v != null),
+                g.Select(c => c.Profile).LastOrDefault(v => v != null))).ToList();
+            // A profile: its values written onto the field as choosing it in the field table does, on
+            // the field's pattern matching as the change leaves it, and the choice recorded after.
+            var own = profiles.Load(teamId, dataSetName) ?? new DatasetFieldProfiles();
+            var all = FieldProfiles.All(own);
+            var current = engines.FindSearchEngine(dataSetName, teamId)?.GetFieldConfiguration().ToDictionary(x => x.FieldName, StringComparer.Ordinal) ?? [];
+            var proxies = new List<FieldProxy>();
+            foreach (var c in merged)
+            {
+                var proxy = c.ToProxy();
+                if (c.Profile != null)
+                {
+                    if (all.FirstOrDefault(p => p.Id == c.Profile) is not { } profile) return $"The dataset has no profile '{c.Profile}'.";
+                    proxy.PatternMatching ??= current.GetValueOrDefault(c.Name)?.PatternMatching;
+                    proxy.WordMatching ??= current.GetValueOrDefault(c.Name)?.WordMatching;
+                    FieldProfiles.Apply(proxy, profile);
+                }
+                proxies.Add(proxy);
+            }
+            if (ApplyFieldProxies(teamId, dataSetName, proxies.ToArray()) is { } why) return why;
+            if (merged.Any(c => c.Profile != null))
+            {
+                foreach (var c in merged.Where(c => c.Profile != null)) own.Assignments[c.Name] = c.Profile!;
+                profiles.Save(teamId, dataSetName, own);
+            }
+            return null;
+        }
 
         /// <summary>Field configuration as the Fields tab's Save carries it out: refused as a whole
         /// when invalid, announced, then on a shadow when it needs a rebuild or in place.</summary>

@@ -345,6 +345,10 @@ namespace IndxServer.Services.Observr
             var ask = client.BuildFieldReviewAsk(ctx.TeamId, ds, engine);
             var sb = new StringBuilder();
             sb.AppendLine($"Key field: {ask.KeyField}. {ask.Records:N0} records, {ask.Sampled} sampled.");
+            // The profiles a searched field may be given, by id, as a proposal names them.
+            if (ask.Profiles is { Count: > 0 } profiles)
+                sb.AppendLine("Profiles: " + string.Join("; ", profiles.Select(p =>
+                    $"{p.Id}{(p.BuiltIn ? "" : " (the dataset's own)")}: {ObservrText.ToleranceText(p.Tolerance)}, rerank weight {p.RerankWeight:0.##}")) + ".");
             foreach (var f in ask.FieldEvidence)
             {
                 var roles = new List<string>();
@@ -353,7 +357,7 @@ namespace IndxServer.Services.Observr
                 if (f.Filterable) roles.Add("filterable");
                 if (f.Facetable) roles.Add("facetable");
                 if (f.Sortable) roles.Add("sortable");
-                sb.Append($"- {f.Name} ({f.Type}{(f.IsArray ? " array" : "")}): {(roles.Count > 0 ? string.Join(", ", roles) : "no role")}{(f.WordMatching || f.PatternMatching ? $", weight {f.Weight}, {ObservrText.ToleranceText(f.Tolerance)}, rerank weight {f.RerankWeight}" : "")}; filled in {f.Filled} of {ask.Sampled} sampled, {f.Distinct} distinct values over {f.ValuesOver:N0} records");
+                sb.Append($"- {f.Name} ({f.Type}{(f.IsArray ? " array" : "")}): {(roles.Count > 0 ? string.Join(", ", roles) : "no role")}{(f.WordMatching || f.PatternMatching ? $", weight {f.Weight}, {ObservrText.ToleranceText(f.Tolerance)}, rerank weight {f.RerankWeight}, profile {f.Profile ?? "none (its own values)"}" : "")}; filled in {f.Filled} of {ask.Sampled} sampled, {f.Distinct} distinct values over {f.ValuesOver:N0} records");
                 if (f.TopValues.Count > 0) sb.Append($"; commonest: {string.Join(" | ", f.TopValues)}");
                 if (f.Min != null) sb.Append($"; {f.Min} to {f.Max}");
                 if (f.AvgLength > 0) sb.Append($"; about {f.AvgLength} characters");
