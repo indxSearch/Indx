@@ -109,6 +109,9 @@ namespace IndxServer.Controllers
         /// session (<c>count</c>, <c>source</c>, <c>session</c> in its body), over the query string's:
         /// a page sends its visitor's search beside its helper searches and counts only the first
         /// (12 Nov 2026, Gyldendal). <c>Server-Timing</c> gives the searches' time together.</para>
+        /// <para>Experimental, not documented: <c>?parallel=true</c> runs the searches at once
+        /// (Parallel.For), and <c>Server-Timing</c>'s search is then the time until the last is
+        /// answered, for measuring one call against the same run in order (12 Nov 2026).</para>
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/search/multi")]
@@ -129,13 +132,14 @@ namespace IndxServer.Controllers
                 return stateError;
             var tDataset = Stopwatch.GetTimestamp();
             long searching = 0;
-            var answers = new System.Text.Json.Nodes.JsonArray();
-            foreach (var query in queries)
+            var nodes = new System.Text.Json.Nodes.JsonNode?[queries.Length];
+            void Run(int i)
             {
+                var query = queries[i];
                 if (query == null)
                 {
-                    answers.Add(ErrorOf(ApiProblems.InvalidArgument("A search in the list is null.")));
-                    continue;
+                    nodes[i] = ErrorOf(ApiProblems.InvalidArgument("A search in the list is null."));
+                    return;
                 }
                 var before = Stopwatch.GetTimestamp();
                 var outcome = RunSearch(ctx, dataSetName, matcher, query, SearchStats.FromQueryString with
@@ -144,12 +148,30 @@ namespace IndxServer.Controllers
                 });
                 if (outcome.Problem != null)
                 {
-                    answers.Add(ErrorOf(outcome.Problem));
-                    continue;
+                    nodes[i] = ErrorOf(outcome.Problem);
+                    return;
                 }
-                searching += outcome.SearchedAt - before;
-                answers.Add(Answer(ctx, dataSetName, matcher, query, outcome));
+                Interlocked.Add(ref searching, outcome.SearchedAt - before);
+                nodes[i] = Answer(ctx, dataSetName, matcher, query, outcome);
             }
+            bool parallel = string.Equals(Request.Query["parallel"].FirstOrDefault()?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+            if (parallel)
+            {
+                // What the searches read of the request, read once here: HttpContext is not
+                // thread-safe, and the query string and the key's scope are filled on first read.
+                _ = Request.Query.Count;
+                _ = Request.Headers.AcceptLanguage;
+                _ = ApiKeyScope.For(HttpContext);
+                Parallel.For(0, queries.Length, Run);
+                // The time until the last search was answered, not their sum.
+                searching = Stopwatch.GetTimestamp() - tDataset;
+            }
+            else
+                for (int i = 0; i < queries.Length; i++)
+                    Run(i);
+            var answers = new System.Text.Json.Nodes.JsonArray();
+            foreach (var node in nodes)
+                answers.Add(node);
             ServerTiming(tStart, tTeam, tDataset, searching, queries.Length);
             return Ok(answers);
         }
