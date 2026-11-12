@@ -13,9 +13,10 @@ namespace IndxServer.Models
         /// <summary>
         /// With <c>includeDocuments</c>: only these top-level fields of each record in
         /// <c>documents</c>, in the record's own order; a field a record lacks is left out of it.
-        /// Null or empty: the whole record.
+        /// Null or empty: the whole record. Holds every field of <c>collapseBy</c>, or the search is
+        /// refused.
         /// </summary>
-        public string[]? DocumentFields { get; set; }
+        public string[]? IncludeFields { get; set; }
     }
 
     /// <summary>

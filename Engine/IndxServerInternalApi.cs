@@ -1813,6 +1813,7 @@ namespace IndxServer.Engine
                 EnableMatchReport = queryProxy.EnableMatchReport,
                 EnableFacets = queryProxy.EnableFacets,
                 FacetFields = queryProxy.FacetFields ?? [],
+                CollapseBy = queryProxy.CollapseBy ?? [],
                 FacetValueLimit = queryProxy.FacetValueLimit,
                 Offset = queryProxy.Offset,
                 SortAscending = queryProxy.SortAscending,

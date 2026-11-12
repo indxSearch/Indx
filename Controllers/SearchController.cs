@@ -56,7 +56,7 @@ namespace IndxServer.Controllers
         /// Search will validate the search query and return the search result. With
         /// <c>includeDocuments</c> the records' JSON comes with it, in <c>documents</c>, in the order
         /// of <c>records</c> (null for a record gone since), so a search is one call, not two;
-        /// <c>documentFields</c> keeps only the fields named.
+        /// <c>includeFields</c> keeps only the fields named.
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/search")]
@@ -88,7 +88,7 @@ namespace IndxServer.Controllers
             ServerTiming(tStart, tTeam, tDataset, outcome.SearchedAt);
             var cold = ColdOf(ctx, dataSetName, outcome.Result!);
             if (query.IncludeDocuments)
-                return Ok(WithCold(WithDocuments(outcome.Result!, matcher, query.DocumentFields), cold));
+                return Ok(WithCold(WithDocuments(outcome.Result!, matcher, query.IncludeFields), cold));
             // The result as it is, unless a record holds cold storage to say so.
             return cold.Count == 0 ? outcome.Result! : Ok(WithCold(ToNode(outcome.Result!), cold));
         }
@@ -273,7 +273,7 @@ namespace IndxServer.Controllers
         private System.Text.Json.Nodes.JsonObject Answer(TeamContext ctx, string dataSetName, IServerSearchEngine matcher,
             ServerQueryProxy query, SearchOutcome outcome)
         {
-            var answer = WithCold(query.IncludeDocuments ? WithDocuments(outcome.Result!, matcher, query.DocumentFields) : ToNode(outcome.Result!),
+            var answer = WithCold(query.IncludeDocuments ? WithDocuments(outcome.Result!, matcher, query.IncludeFields) : ToNode(outcome.Result!),
                 ColdOf(ctx, dataSetName, outcome.Result!));
             if (outcome.QueryId != null) answer["queryId"] = outcome.QueryId;
             return answer;
@@ -301,6 +301,12 @@ namespace IndxServer.Controllers
             // When the search was asked for, not when it finished: a short text can take longer than
             // the keystroke after it, and the keystroke rule reads the session's searches in order.
             long askedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            // The fields collapsed by come with the documents (12 Nov 2026): a record left out for
+            // its value must be seen to hold it.
+            if (query is ServerQueryProxy { IncludeFields: { Length: > 0 } include, CollapseBy: { Length: > 0 } collapse }
+                && collapse.Except(include).ToList() is { Count: > 0 } missing)
+                return Failed(ApiProblems.InvalidArgument(
+                    $"includeFields must hold the fields of collapseBy; it lacks {string.Join(", ", missing)}."));
             try
             {
                 // ?refocus=true: a search no record holds every word of comes back in BM25F's order
