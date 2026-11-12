@@ -35,22 +35,32 @@ namespace IndxServer.Controllers
         /// cloud.indx.co a search took about twice the library's own time (22 Oct 2026), and this is
         /// how to see where. Off with <c>Indx:ServerTiming=false</c>.</summary>
         private void ServerTiming(long start, long team, long dataset, long search)
+            => ServerTiming(start, team, dataset, search - dataset, 1);
+
+        /// <summary><see cref="ServerTiming(long, long, long, long)"/> for a call of several searches:
+        /// <paramref name="searching"/> is their engine time together (Stopwatch ticks), named with how
+        /// many there were, and <c>after</c> what is left of the call (the records' JSON, the cold
+        /// storage, the statistics).</summary>
+        private void ServerTiming(long start, long team, long dataset, long searching, int searches)
         {
             if (!configuration.GetValue("Indx:ServerTiming", true)) return;
             var end = Stopwatch.GetTimestamp();
             static string Ms(long from, long to) => Stopwatch.GetElapsedTime(from, to).TotalMilliseconds.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture);
+            var search = dataset + searching;
+            var desc = searches == 1 ? "" : $";desc=\"{searches} searches\"";
             Response.Headers["Server-Timing"] =
-                $"team;dur={Ms(start, team)}, dataset;dur={Ms(team, dataset)}, search;dur={Ms(dataset, search)}, after;dur={Ms(search, end)}, total;dur={Ms(start, end)}";
+                $"team;dur={Ms(start, team)}, dataset;dur={Ms(team, dataset)}, search;dur={Ms(dataset, search)}{desc}, after;dur={Ms(search, end)}, total;dur={Ms(start, end)}";
         }
 
         /// <summary>
         /// Search will validate the search query and return the search result. With
         /// <c>includeDocuments</c> the records' JSON comes with it, in <c>documents</c>, in the order
-        /// of <c>records</c> (null for a record gone since), so a search is one call, not two.
+        /// of <c>records</c> (null for a record gone since), so a search is one call, not two;
+        /// <c>documentFields</c> keeps only the fields named.
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/search")]
-        public ActionResult<Indx.Api.Result> Search(string teamName, string dataSetName, [FromBody] QueryProxy query)
+        public ActionResult<Indx.Api.Result> Search(string teamName, string dataSetName, [FromBody] ServerQueryProxy query)
         {
             var tStart = Stopwatch.GetTimestamp();
             var ctx = ResolveTeam(teamName, out var error);
@@ -64,7 +74,7 @@ namespace IndxServer.Controllers
             if (RequireState(matcher, "Search", SystemState.Ready) is { } stateError)
                 return stateError;
             var tDataset = Stopwatch.GetTimestamp();
-            var outcome = RunSearch(ctx, dataSetName, matcher, query);
+            var outcome = RunSearch(ctx, dataSetName, matcher, query, SearchStats.FromQueryString);
             if (outcome.Problem != null) return outcome.Problem;
             if (outcome.Refocused is not RefocusOutcome.None)
                 Response.Headers[Refocusing.ResponseHeader] = outcome.Refocused.ToString().ToLowerInvariant();
@@ -78,7 +88,7 @@ namespace IndxServer.Controllers
             ServerTiming(tStart, tTeam, tDataset, outcome.SearchedAt);
             var cold = ColdOf(ctx, dataSetName, outcome.Result!);
             if (query.IncludeDocuments)
-                return Ok(WithCold(WithDocuments(outcome.Result!, matcher), cold));
+                return Ok(WithCold(WithDocuments(outcome.Result!, matcher, query.DocumentFields), cold));
             // The result as it is, unless a record holds cold storage to say so.
             return cold.Count == 0 ? outcome.Result! : Ok(WithCold(ToNode(outcome.Result!), cold));
         }
@@ -95,12 +105,18 @@ namespace IndxServer.Controllers
         /// search would have answered, and the others are answered. Each answer carries its
         /// <c>queryId</c> where a single search's header would. At most
         /// <see cref="MaxSearchesPerCall"/> searches.
+        /// <para>A search may say for itself whether it counts in the statistics, and its source and
+        /// session (<c>count</c>, <c>source</c>, <c>session</c> in its body), over the query string's:
+        /// a page sends its visitor's search beside its helper searches and counts only the first
+        /// (12 Nov 2026, Gyldendal). <c>Server-Timing</c> gives the searches' time together.</para>
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/search/multi")]
-        public ActionResult MultiSearch(string teamName, string dataSetName, [FromBody] QueryProxy[] queries)
+        public ActionResult MultiSearch(string teamName, string dataSetName, [FromBody] MultiSearchItem[] queries)
         {
+            var tStart = Stopwatch.GetTimestamp();
             var ctx = ResolveTeam(teamName, out var error);
+            var tTeam = Stopwatch.GetTimestamp();
             if (ctx == null) return error!;
             if (queries == null || queries.Length == 0)
                 return ApiProblems.InvalidArgument("The body must be a JSON array of one or more searches.");
@@ -111,6 +127,8 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "Search", SystemState.Ready) is { } stateError)
                 return stateError;
+            var tDataset = Stopwatch.GetTimestamp();
+            long searching = 0;
             var answers = new System.Text.Json.Nodes.JsonArray();
             foreach (var query in queries)
             {
@@ -119,18 +137,146 @@ namespace IndxServer.Controllers
                     answers.Add(ErrorOf(ApiProblems.InvalidArgument("A search in the list is null.")));
                     continue;
                 }
-                var outcome = RunSearch(ctx, dataSetName, matcher, query);
+                var before = Stopwatch.GetTimestamp();
+                var outcome = RunSearch(ctx, dataSetName, matcher, query, SearchStats.FromQueryString with
+                {
+                    Count = query.Count, Source = query.Source, Session = query.Session,
+                });
                 if (outcome.Problem != null)
                 {
                     answers.Add(ErrorOf(outcome.Problem));
                     continue;
                 }
-                var answer = WithCold(query.IncludeDocuments ? WithDocuments(outcome.Result!, matcher) : ToNode(outcome.Result!),
-                    ColdOf(ctx, dataSetName, outcome.Result!));
-                if (outcome.QueryId != null) answer["queryId"] = outcome.QueryId;
-                answers.Add(answer);
+                searching += outcome.SearchedAt - before;
+                answers.Add(Answer(ctx, dataSetName, matcher, query, outcome));
             }
+            ServerTiming(tStart, tTeam, tDataset, searching, queries.Length);
             return Ok(answers);
+        }
+
+        /// <summary>The most groups one <see cref="GroupedSearch"/> takes.</summary>
+        public const int MaxGroupsPerCall = MaxSearchesPerCall;
+
+        /// <summary>
+        /// One text, answered in named sections: a search box's books, authors, articles and events
+        /// in one call, each section with its own filter (ANDed with the search's), rows and count
+        /// (12 Nov 2026, Gyldendal: one search per keystroke instead of eight). A section may count
+        /// by another filter than it lists (<c>countFilter</c>: list the upcoming events, count them
+        /// all), and take its own candidates, ranking and match. The answer is
+        /// <c>{ "groups": { name: result }, "queryId" }</c>, each result as a single search's, a
+        /// section that fails an error in its place.
+        /// <para>One search in the statistics: the section marked <c>primary</c>, else the first,
+        /// whose <c>queryId</c> (also the <c>Indx-Query-Id</c> header) a click in any section
+        /// references. Each section is its own search in the engine for now; the library is to
+        /// match once for them all (Notes/Jens/from-anders-one-search-per-keystroke-gyldendal-2026-11-12.md),
+        /// and the request and answer stay as they are when it does.</para>
+        /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
+        [HttpPost(DataSetRoute + "/search/groups")]
+        public ActionResult GroupedSearch(string teamName, string dataSetName, [FromBody] GroupedSearchRequest request)
+        {
+            var tStart = Stopwatch.GetTimestamp();
+            var ctx = ResolveTeam(teamName, out var error);
+            var tTeam = Stopwatch.GetTimestamp();
+            if (ctx == null) return error!;
+            if (request?.Groups is not { Length: > 0 } groups)
+                return ApiProblems.InvalidArgument("The search needs one or more groups.");
+            if (groups.Length > MaxGroupsPerCall)
+                return ApiProblems.InvalidArgument($"{groups.Length} groups; one search takes at most {MaxGroupsPerCall}.");
+            if (groups.Any(g => g == null || string.IsNullOrWhiteSpace(g.Name)))
+                return ApiProblems.InvalidArgument("Every group needs a name.");
+            if (groups.GroupBy(g => g.Name, StringComparer.Ordinal).FirstOrDefault(n => n.Count() > 1) is { } twice)
+                return ApiProblems.InvalidArgument($"Two groups are named '{twice.Key}'; a name answers one group.");
+            if (groups.Count(g => g.Primary) > 1)
+                return ApiProblems.InvalidArgument("Only one group can be primary: the one that is the visitor's search.");
+            if (groups.FirstOrDefault(g => g.Rows < 0) is { } negative)
+                return ApiProblems.InvalidArgument($"Group '{negative.Name}' asks for {negative.Rows} rows.");
+            var matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null)
+                return ApiProblems.DatasetNotFound(dataSetName);
+            if (RequireState(matcher, "Search", SystemState.Ready) is { } stateError)
+                return stateError;
+            var tDataset = Stopwatch.GetTimestamp();
+
+            var primary = groups.FirstOrDefault(g => g.Primary) ?? groups[0];
+            string? queryId = null;
+            long searching = 0;
+            int searches = 0;
+            var answers = new System.Text.Json.Nodes.JsonObject();
+            foreach (var group in groups)
+            {
+                var query = GroupQuery(request, group, group.Filter, group.Rows);
+                var before = Stopwatch.GetTimestamp();
+                var outcome = RunSearch(ctx, dataSetName, matcher, query,
+                    group == primary ? SearchStats.FromQueryString : SearchStats.NotRecorded);
+                searches++;
+                if (outcome.Problem != null)
+                {
+                    answers[group.Name] = ErrorOf(outcome.Problem);
+                    continue;
+                }
+                searching += outcome.SearchedAt - before;
+                if (group == primary) queryId = outcome.QueryId;
+                var answer = Answer(ctx, dataSetName, matcher, query, outcome with { QueryId = null });
+                if (group.CountFilter != null)
+                {
+                    // The count by its own filter: the same search, one row, nothing recorded.
+                    var counting = GroupQuery(request, group, group.CountFilter, 1);
+                    counting.IncludeDocuments = false;
+                    // Facets cost and are thrown away here, but an empty text is answered through
+                    // them (Notes/Jens/empty-search-without-facetable-field-2026-11-08.md): off, a
+                    // browse would count nothing.
+                    if (!string.IsNullOrWhiteSpace(counting.Text)) counting.EnableFacets = false;
+                    before = Stopwatch.GetTimestamp();
+                    var counted = RunSearch(ctx, dataSetName, matcher, counting, SearchStats.NotRecorded);
+                    searches++;
+                    if (counted.Problem != null)
+                    {
+                        answers[group.Name] = ErrorOf(counted.Problem);
+                        continue;
+                    }
+                    searching += counted.SearchedAt - before;
+                    answer["count"] = counted.Result!.Count;
+                }
+                answers[group.Name] = answer;
+            }
+            if (queryId != null)
+                Response.Headers["Indx-Query-Id"] = queryId;
+            ServerTiming(tStart, tTeam, tDataset, searching, searches);
+            var body = new System.Text.Json.Nodes.JsonObject { ["groups"] = answers };
+            if (queryId != null) body["queryId"] = queryId;
+            return Ok(body);
+        }
+
+        /// <summary>A group's search: the request's, its filter ANDed with <paramref name="filter"/>,
+        /// <paramref name="rows"/> rows, and the group's own candidates, ranking and match where it
+        /// gives them. A copy, so one group's settings never reach the next.</summary>
+        private ServerQueryProxy GroupQuery(GroupedSearchRequest request, SearchGroup group, string? filter, int rows)
+        {
+            var options = mvcJson.Value.JsonSerializerOptions;
+            var query = JsonSerializer.Deserialize<ServerQueryProxy>(JsonSerializer.Serialize<ServerQueryProxy>(request, options), options)!;
+            query.MaxNumberOfRecordsToReturn = rows;
+            query.FilterExpression = (query.FilterExpression, filter) switch
+            {
+                ({ Length: > 0 } a, { Length: > 0 } b) => $"({a}) AND ({b})",
+                (_, { Length: > 0 } b) => b,
+                var (a, _) => a,
+            };
+            if (group.Candidates != null) query.Candidates = group.Candidates;
+            if (group.Ranking != null) query.Ranking = group.Ranking;
+            if (group.Match != null) query.Match = group.Match;
+            return query;
+        }
+
+        /// <summary>One search's answer in a list: the result, its records' JSON when asked for, the
+        /// cold storage they hold, and its <c>queryId</c>.</summary>
+        private System.Text.Json.Nodes.JsonObject Answer(TeamContext ctx, string dataSetName, IServerSearchEngine matcher,
+            ServerQueryProxy query, SearchOutcome outcome)
+        {
+            var answer = WithCold(query.IncludeDocuments ? WithDocuments(outcome.Result!, matcher, query.DocumentFields) : ToNode(outcome.Result!),
+                ColdOf(ctx, dataSetName, outcome.Result!));
+            if (outcome.QueryId != null) answer["queryId"] = outcome.QueryId;
+            return answer;
         }
 
         /// <summary>What one search came to: its result, or the problem a single search answers
@@ -139,9 +285,18 @@ namespace IndxServer.Controllers
         private sealed record SearchOutcome(Indx.Api.Result? Result, ObjectResult? Problem, RefocusOutcome Refocused,
             IReadOnlyList<string> FromDataset, string? QueryId, long SearchedAt);
 
-        /// <summary>One search as the search route runs it, for <see cref="Search"/> and
-        /// <see cref="MultiSearch"/> alike: one way in, so the two cannot drift.</summary>
-        private SearchOutcome RunSearch(TeamContext ctx, string dataSetName, IServerSearchEngine matcher, QueryProxy query)
+        /// <summary>How a search goes into the statistics: recorded or not at all, and whether it
+        /// counts, its source and its session where the search says so itself (null: the query
+        /// string's <c>?count=</c>, <c>?source=</c>, <c>?session=</c>).</summary>
+        private sealed record SearchStats(bool Record, bool? Count = null, string? Source = null, string? Session = null)
+        {
+            public static readonly SearchStats FromQueryString = new(true);
+            public static readonly SearchStats NotRecorded = new(false);
+        }
+
+        /// <summary>One search as the search route runs it, for <see cref="Search"/>,
+        /// <see cref="MultiSearch"/> and <see cref="GroupedSearch"/> alike: one way in, so they cannot drift.</summary>
+        private SearchOutcome RunSearch(TeamContext ctx, string dataSetName, IServerSearchEngine matcher, QueryProxy query, SearchStats stats)
         {
             // When the search was asked for, not when it finished: a short text can take longer than
             // the keystroke after it, and the keystroke rule reads the session's searches in order.
@@ -161,14 +316,14 @@ namespace IndxServer.Controllers
                 // exist at all - and the minted queryId is what select/convert events reference.
                 // Cost on this path is a struct and a queue append (measured in
                 // Notes/statistics-design.md); the optional ?subject= gives per-subject history.
-                if (statistics.Enabled)
+                if (statistics.Enabled && stats.Record)
                 {
                     var queryId = Guid.NewGuid().ToString("N");
                     minted = queryId;
                     var subject = Request.Query["subject"].FirstOrDefault();
                     // ?session= is any per-page-load random id. It identifies no one; it lets the
                     // rollup see that "o", "os", "osl", "oslo" were one visitor typing one search.
-                    var session = Request.Query["session"].FirstOrDefault();
+                    var session = stats.Session ?? Request.Query["session"].FirstOrDefault();
                     // ?typed= is what the visitor typed when the page searched something else for
                     // it (the Ask phrases taken off a question): the keystroke rule follows the
                     // typing, which the searched text jumps out of as the phrases start to match.
@@ -180,7 +335,7 @@ namespace IndxServer.Controllers
                     // does not read their own probes back. Two facts, two parameters: until Oct 2026
                     // one ?probe= did both, and a surface that should count could not be named.
                     // A caller can only hide its own searches.
-                    var source = StatisticsService.CleanSource(Request.Query["source"].FirstOrDefault());
+                    var source = StatisticsService.CleanSource(stats.Source ?? Request.Query["source"].FirstOrDefault());
                     // ?locale=<tag> is the language the page was in, as the storefront reports it
                     // (intrface sends the document's lang, else the browser's). Without it, the
                     // browser's own preference from Accept-Language, which a storefront calling from
@@ -189,7 +344,7 @@ namespace IndxServer.Controllers
                     // search in, not where they are: nothing here reads an address.
                     var locale = StatisticsService.CleanLocale(Request.Query["locale"].FirstOrDefault())
                                  ?? StatisticsService.CleanLocale(StatisticsService.FirstAcceptLanguage(Request.Headers.AcceptLanguage));
-                    bool counted = !string.Equals(Request.Query["count"].FirstOrDefault()?.Trim(), "false",
+                    bool counted = stats.Count ?? !string.Equals(Request.Query["count"].FirstOrDefault()?.Trim(), "false",
                         StringComparison.OrdinalIgnoreCase);
                     // The header is minted either way, so a client can always read one; a click
                     // that references an unrecorded search is accepted as an orphan and still
@@ -235,13 +390,29 @@ namespace IndxServer.Controllers
 
         /// <summary>The result as the response writes it, with the records' JSON in
         /// <c>documents</c>, in the order of <c>records</c>: each an object, null for a record gone
-        /// since the search.</summary>
-        private System.Text.Json.Nodes.JsonObject WithDocuments(Indx.Api.Result result, IServerSearchEngine engine)
+        /// since the search. With <paramref name="fields"/>, each record with those top-level fields
+        /// only: a display card and an id rather than the long text and the filter fields.</summary>
+        private System.Text.Json.Nodes.JsonObject WithDocuments(Indx.Api.Result result, IServerSearchEngine engine, string[]? fields)
         {
             var node = ToNode(result);
+            var kept = fields is { Length: > 0 } ? new HashSet<string>(fields, StringComparer.Ordinal) : null;
             var documents = new System.Text.Json.Nodes.JsonArray();
             foreach (var json in engine.GetJsonDataOfKeys(result.Records ?? []))
-                documents.Add(string.IsNullOrEmpty(json) ? null : System.Text.Json.Nodes.JsonNode.Parse(json));
+            {
+                var document = string.IsNullOrEmpty(json) ? null : System.Text.Json.Nodes.JsonNode.Parse(json);
+                if (kept != null && document is System.Text.Json.Nodes.JsonObject whole)
+                {
+                    var only = new System.Text.Json.Nodes.JsonObject();
+                    foreach (var name in whole.Select(p => p.Key).Where(kept.Contains).ToList())
+                    {
+                        var value = whole[name];
+                        whole.Remove(name);
+                        only[name] = value;
+                    }
+                    document = only;
+                }
+                documents.Add(document);
+            }
             node["documents"] = documents;
             return node;
         }
