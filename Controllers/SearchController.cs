@@ -109,9 +109,9 @@ namespace IndxServer.Controllers
         /// session (<c>count</c>, <c>source</c>, <c>session</c> in its body), over the query string's:
         /// a page sends its visitor's search beside its helper searches and counts only the first
         /// (12 Nov 2026, Gyldendal). <c>Server-Timing</c> gives the searches' time together.</para>
-        /// <para>Experimental, not documented: <c>?parallel=true</c> runs the searches at once
-        /// (Parallel.For), and <c>Server-Timing</c>'s search is then the time until the last is
-        /// answered, for measuring one call against the same run in order (12 Nov 2026).</para>
+        /// <para>The engine searches them in one call, at once on the search slots it has free and one
+        /// after the other when none is (ISearchEngine.Search(Query[]), 12 Nov 2026); <c>Server-Timing</c>'s
+        /// search is the time until the last is answered.</para>
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/search/multi")]
@@ -131,47 +131,19 @@ namespace IndxServer.Controllers
             if (RequireState(matcher, "Search", SystemState.Ready) is { } stateError)
                 return stateError;
             var tDataset = Stopwatch.GetTimestamp();
-            long searching = 0;
-            var nodes = new System.Text.Json.Nodes.JsonNode?[queries.Length];
-            void Run(int i)
-            {
-                var query = queries[i];
-                if (query == null)
-                {
-                    nodes[i] = ErrorOf(ApiProblems.InvalidArgument("A search in the list is null."));
-                    return;
-                }
-                var before = Stopwatch.GetTimestamp();
-                var outcome = RunSearch(ctx, dataSetName, matcher, query, SearchStats.FromQueryString with
+            var outcomes = RunSearches(ctx, dataSetName, [.. queries.Select(query => ((QueryProxy?)query,
+                query == null ? SearchStats.NotRecorded : SearchStats.FromQueryString with
                 {
                     Count = query.Count, Source = query.Source, Session = query.Session,
-                });
-                if (outcome.Problem != null)
-                {
-                    nodes[i] = ErrorOf(outcome.Problem);
-                    return;
-                }
-                Interlocked.Add(ref searching, outcome.SearchedAt - before);
-                nodes[i] = Answer(ctx, dataSetName, matcher, query, outcome);
-            }
-            bool parallel = string.Equals(Request.Query["parallel"].FirstOrDefault()?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
-            if (parallel)
-            {
-                // What the searches read of the request, read once here: HttpContext is not
-                // thread-safe, and the query string and the key's scope are filled on first read.
-                _ = Request.Query.Count;
-                _ = Request.Headers.AcceptLanguage;
-                _ = ApiKeyScope.For(HttpContext);
-                Parallel.For(0, queries.Length, Run);
-                // The time until the last search was answered, not their sum.
-                searching = Stopwatch.GetTimestamp() - tDataset;
-            }
-            else
-                for (int i = 0; i < queries.Length; i++)
-                    Run(i);
+                }))], out long searching);
             var answers = new System.Text.Json.Nodes.JsonArray();
-            foreach (var node in nodes)
-                answers.Add(node);
+            for (int i = 0; i < queries.Length; i++)
+                answers.Add(outcomes[i] switch
+                {
+                    null => ErrorOf(ApiProblems.InvalidArgument("A search in the list is null.")),
+                    { Problem: { } problem } => ErrorOf(problem),
+                    var outcome => Answer(ctx, dataSetName, matcher, queries[i], outcome),
+                });
             ServerTiming(tStart, tTeam, tDataset, searching, queries.Length);
             return Ok(answers);
         }
@@ -189,9 +161,10 @@ namespace IndxServer.Controllers
         /// section that fails an error in its place.
         /// <para>One search in the statistics: the section marked <c>primary</c>, else the first,
         /// whose <c>queryId</c> (also the <c>Indx-Query-Id</c> header) a click in any section
-        /// references. Each section is its own search in the engine for now; the library is to
-        /// match once for them all (Notes/Jens/from-anders-one-search-per-keystroke-gyldendal-2026-11-12.md),
-        /// and the request and answer stay as they are when it does.</para>
+        /// references. Each section is its own search in the engine, all of them searched in one call,
+        /// at once on the free search slots (ISearchEngine.Search(Query[]), 12 Nov 2026); were the
+        /// library to match once for them all (Notes/Jens/from-anders-one-search-per-keystroke-gyldendal-2026-11-12.md),
+        /// the request and answer would stay as they are.</para>
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]
         [HttpPost(DataSetRoute + "/search/groups")]
@@ -222,42 +195,43 @@ namespace IndxServer.Controllers
 
             var primary = groups.FirstOrDefault(g => g.Primary) ?? groups[0];
             string? queryId = null;
-            long searching = 0;
-            int searches = 0;
-            var answers = new System.Text.Json.Nodes.JsonObject();
-            foreach (var group in groups)
+            // Each group's search, then each count by its own filter: the same search, one row,
+            // nothing recorded. All searched by the engine in one call.
+            var listed = groups.Select(group => GroupQuery(request, group, group.Filter, group.Rows)).ToArray();
+            var counting = groups.Select(group =>
             {
-                var query = GroupQuery(request, group, group.Filter, group.Rows);
-                var before = Stopwatch.GetTimestamp();
-                var outcome = RunSearch(ctx, dataSetName, matcher, query,
-                    group == primary ? SearchStats.FromQueryString : SearchStats.NotRecorded);
-                searches++;
+                if (group.CountFilter == null) return null;
+                var count = GroupQuery(request, group, group.CountFilter, 1);
+                count.IncludeDocuments = false;
+                // Facets cost and are thrown away here, but an empty text is answered through
+                // them (Notes/Jens/empty-search-without-facetable-field-2026-11-08.md): off, a
+                // browse would count nothing.
+                if (!string.IsNullOrWhiteSpace(count.Text)) count.EnableFacets = false;
+                return count;
+            }).ToArray();
+            var outcomes = RunSearches(ctx, dataSetName,
+                [.. listed.Select((query, i) => ((QueryProxy?)query, groups[i] == primary ? SearchStats.FromQueryString : SearchStats.NotRecorded)),
+                 .. counting.Select(query => ((QueryProxy?)query, SearchStats.NotRecorded))], out long searching);
+            int searches = listed.Length + counting.Count(c => c != null);
+            var answers = new System.Text.Json.Nodes.JsonObject();
+            for (int i = 0; i < groups.Length; i++)
+            {
+                var group = groups[i];
+                var outcome = outcomes[i]!;
                 if (outcome.Problem != null)
                 {
                     answers[group.Name] = ErrorOf(outcome.Problem);
                     continue;
                 }
-                searching += outcome.SearchedAt - before;
                 if (group == primary) queryId = outcome.QueryId;
-                var answer = Answer(ctx, dataSetName, matcher, query, outcome with { QueryId = null });
-                if (group.CountFilter != null)
+                var answer = Answer(ctx, dataSetName, matcher, listed[i], outcome with { QueryId = null });
+                if (outcomes[groups.Length + i] is { } counted)
                 {
-                    // The count by its own filter: the same search, one row, nothing recorded.
-                    var counting = GroupQuery(request, group, group.CountFilter, 1);
-                    counting.IncludeDocuments = false;
-                    // Facets cost and are thrown away here, but an empty text is answered through
-                    // them (Notes/Jens/empty-search-without-facetable-field-2026-11-08.md): off, a
-                    // browse would count nothing.
-                    if (!string.IsNullOrWhiteSpace(counting.Text)) counting.EnableFacets = false;
-                    before = Stopwatch.GetTimestamp();
-                    var counted = RunSearch(ctx, dataSetName, matcher, counting, SearchStats.NotRecorded);
-                    searches++;
                     if (counted.Problem != null)
                     {
                         answers[group.Name] = ErrorOf(counted.Problem);
                         continue;
                     }
-                    searching += counted.SearchedAt - before;
                     answer["count"] = counted.Result!.Count;
                 }
                 answers[group.Name] = answer;
@@ -323,18 +297,84 @@ namespace IndxServer.Controllers
             // When the search was asked for, not when it finished: a short text can take longer than
             // the keystroke after it, and the keystroke rule reads the session's searches in order.
             long askedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-            // The fields collapsed by come with the documents (12 Nov 2026): a record left out for
-            // its value must be seen to hold it.
-            if (query is ServerQueryProxy { IncludeFields: { Length: > 0 } include, CollapseBy: { Length: > 0 } collapse }
-                && collapse.Except(include).ToList() is { Count: > 0 } missing)
-                return Failed(ApiProblems.InvalidArgument(
-                    $"includeFields must hold the fields of collapseBy; it lacks {string.Join(", ", missing)}."));
+            if (Objection(query) is { } objection)
+                return Failed(objection);
+            IndxServerInternalApi.Searched searched;
             try
             {
-                // ?refocus=true: a search no record holds every word of comes back in BM25F's order
-                // (Services.Refocusing); intrface asks while the judge reads a question or a description.
-                var refocus = string.Equals(Request.Query["refocus"].FirstOrDefault()?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
-                Indx.Api.Result res = IndxServerInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey, out var resolvedFilterKey, refocus);
+                var res = IndxServerInternalApi.Manager.Search(query, dataSetName, ctx.OwnerKey, out var filterKey, RefocusAsked());
+                searched = new(res, filterKey, null);
+            }
+            catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException or ArgumentException)
+            {
+                searched = new(null, null, ex);
+            }
+            return Finish(ctx, dataSetName, query, stats, askedAt, searched);
+        }
+
+        /// <summary>?refocus=true: a search no record holds every word of comes back in BM25F's
+        /// order (Services.Refocusing); intrface asks while the judge reads a question or a
+        /// description.</summary>
+        private bool RefocusAsked() =>
+            string.Equals(Request.Query["refocus"].FirstOrDefault()?.Trim(), "true", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>Why a search is refused before it runs, or null. The fields collapsed by come
+        /// with the documents (12 Nov 2026): a record left out for its value must be seen to hold it.</summary>
+        private static ObjectResult? Objection(QueryProxy query) =>
+            query is ServerQueryProxy { IncludeFields: { Length: > 0 } include, CollapseBy: { Length: > 0 } collapse }
+                && collapse.Except(include).ToList() is { Count: > 0 } missing
+                ? ApiProblems.InvalidArgument($"includeFields must hold the fields of collapseBy; it lacks {string.Join(", ", missing)}.")
+                : null;
+
+        private static SearchOutcome Failed(ObjectResult problem) => new(null, problem, RefocusOutcome.None, [], null, 0);
+
+        /// <summary>
+        /// Several searches as the search route runs each, the engine searching them in one call
+        /// (<see cref="IndxServerInternalApi.SearchMany"/>: at once on its free search slots): for
+        /// <see cref="MultiSearch"/> and <see cref="GroupedSearch"/>. A null query is answered null,
+        /// for the caller to say why. <paramref name="searching"/> is the time the engine took for
+        /// them all.
+        /// </summary>
+        private SearchOutcome?[] RunSearches(TeamContext ctx, string dataSetName, (QueryProxy? Query, SearchStats Stats)[] searches, out long searching)
+        {
+            long askedAt = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var outcomes = new SearchOutcome?[searches.Length];
+            var proxies = new QueryProxy?[searches.Length];
+            for (int i = 0; i < searches.Length; i++)
+            {
+                if (searches[i].Query is not { } query) continue;
+                if (Objection(query) is { } objection) outcomes[i] = Failed(objection);
+                else proxies[i] = query;
+            }
+            var before = Stopwatch.GetTimestamp();
+            var searched = IndxServerInternalApi.Manager.SearchMany(proxies, dataSetName, ctx.OwnerKey, RefocusAsked());
+            searching = Stopwatch.GetTimestamp() - before;
+            for (int i = 0; i < searches.Length; i++)
+                if (proxies[i] is { } query)
+                    outcomes[i] = Finish(ctx, dataSetName, query, searches[i].Stats, askedAt, searched[i]);
+            return outcomes;
+        }
+
+        /// <summary>What follows a search, for one or several: its problem when it was refused, the
+        /// refocus, the parameters the dataset decided, and the statistics.</summary>
+        private SearchOutcome Finish(TeamContext ctx, string dataSetName, QueryProxy query, SearchStats stats, long askedAt,
+            IndxServerInternalApi.Searched searched)
+        {
+            switch (searched.Error)
+            {
+                case UnknownFilterException ex: return Failed(ApiProblems.UnknownFilter(ex.Message));
+                case InvalidFilterExpressionException ex: return Failed(ApiProblems.InvalidFilterExpression(ex.Expression, ex.Errors));
+                // PrepareSorting throws ArgumentException("invalid type") for a SortBy field whose type
+                // is not one it can compare. Reaching it takes a field that is Sortable and untyped, which
+                // the Field setters now refuse and Deserialize strips, and Search nulls a SortBy that is
+                // not Sortable before sorting runs - so this is a guard, not a live path. It is here
+                // because the cost of being wrong is asymmetric: a caller mistake logged as our incident
+                // costs us an alert and tells them nothing. Same mapping fields/configuration already uses.
+                case ArgumentException ex: return Failed(ApiProblems.InvalidArgument(ex.Message));
+            }
+            var res = searched.Result!;
+            var resolvedFilterKey = searched.FilterKey;
+            {
                 var refocused = Refocusing.OutcomeOf(res);
                 var tSearch = Stopwatch.GetTimestamp();
                 var fromDataset = QueryParameterResolution.Resolve(query,
@@ -394,26 +434,6 @@ namespace IndxServer.Controllers
                 }
                 return new SearchOutcome(res, null, refocused, fromDataset, minted, tSearch);
             }
-            catch (UnknownFilterException ex)
-            {
-                return Failed(ApiProblems.UnknownFilter(ex.Message));
-            }
-            catch (InvalidFilterExpressionException ex)
-            {
-                return Failed(ApiProblems.InvalidFilterExpression(ex.Expression, ex.Errors));
-            }
-            // PrepareSorting throws ArgumentException("invalid type") for a SortBy field whose type
-            // is not one it can compare. Reaching it takes a field that is Sortable and untyped, which
-            // the Field setters now refuse and Deserialize strips, and Search nulls a SortBy that is
-            // not Sortable before sorting runs - so this is a guard, not a live path. It is here
-            // because the cost of being wrong is asymmetric: a caller mistake logged as our incident
-            // costs us an alert and tells them nothing. Same mapping fields/configuration already uses.
-            catch (ArgumentException ex)
-            {
-                return Failed(ApiProblems.InvalidArgument(ex.Message));
-            }
-
-            static SearchOutcome Failed(ObjectResult problem) => new(null, problem, RefocusOutcome.None, [], null, 0);
         }
 
         /// <summary>The result as the response writes it, with the records' JSON in

@@ -500,6 +500,80 @@ namespace IndxServer.Engine
             }
         }
 
+        /// <summary>What one of <see cref="SearchMany"/>'s searches came to: its result and its
+        /// filter's key, or the client error that refused it (an unknown filter, an expression that
+        /// makes none, an argument), which the controller answers as a single search would.</summary>
+        internal readonly record struct Searched(Result? Result, string? FilterKey, Exception? Error);
+
+        /// <summary>
+        /// Several searches of one dataset, answered in their order: each query built as
+        /// <see cref="Search(Indx.Http.QueryProxy, string, string, out string?, bool)"/> builds it,
+        /// then all searched in one call to the engine (<see cref="ISearchEngine.Search(Query[])"/>),
+        /// which runs them at once on the search slots it has free (12 Nov 2026). A null in
+        /// <paramref name="proxies"/> is not searched and answers default. With
+        /// <paramref name="refocus"/> each is searched by Refocusing, one after the other.
+        /// </summary>
+        internal Searched[] SearchMany(Indx.Http.QueryProxy?[] proxies, string dataSetName, string teamId, bool refocus)
+        {
+            var searched = new Searched[proxies.Length];
+            var engine = ResolveEngine(dataSetName, teamId);
+            if (engine == null || engine.DocumentFields == null)
+            {
+                for (int i = 0; i < proxies.Length; i++)
+                    if (proxies[i] != null) searched[i] = new(Result.MakeEmptyResult(), null, null);
+                return searched;
+            }
+            var queries = new List<(int Index, Query Query)>(proxies.Length);
+            for (int i = 0; i < proxies.Length; i++)
+            {
+                if (proxies[i] is not { } proxy) continue;
+                try
+                {
+                    queries.Add((i, FromQueryProxy(proxy, engine, teamId, dataSetName)));
+                }
+                catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException or ArgumentException)
+                {
+                    searched[i] = new(null, null, ex);
+                }
+            }
+            Result Single(Query query) => refocus ? Services.Refocusing.Search(engine, query) : engine.Search(query);
+            try
+            {
+                var results = refocus
+                    ? [.. queries.Select(q => Single(q.Query))]
+                    : engine.Search([.. queries.Select(q => q.Query)]);
+                for (int j = 0; j < queries.Count; j++)
+                    searched[queries[j].Index] = new(results[j], queries[j].Query.Filter?.SerializedKey, null);
+            }
+            catch (Exception batchFailed) when (batchFailed is AggregateException or ArgumentException)
+            {
+                // One search threw (a client error, see Search): each again on its own, so only it
+                // answers an error and the others are answered.
+                foreach (var (index, query) in queries)
+                {
+                    try
+                    {
+                        searched[index] = new(Single(query), query.Filter?.SerializedKey, null);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        searched[index] = new(null, null, ex);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        _logger.LogError(ex, "{Prefix}Search failed", MakeLogPrefix(teamId, dataSetName));
+                        throw;
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                _logger.LogError(ex, "{Prefix}Search failed", MakeLogPrefix(teamId, dataSetName));
+                throw;
+            }
+            return searched;
+        }
+
         /// <summary>
         /// Removes and disposes all SearchEngine instances owned by a specific team.
         /// Call before deleting a team.
