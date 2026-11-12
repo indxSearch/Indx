@@ -29,12 +29,36 @@
 .opt-step-label { flex: none; }
 .opt-step-pct { font: var(--text-xs); color: var(--lv8); font-variant-numeric: tabular-nums; margin-left: 4px; }
 
-/* The sections' menu beside the section, as Admin > Settings has it; on a phone the row above. */
-.opt-layout { display: flex; align-items: flex-start; gap: 32px; }
-.opt-side { width: 180px; flex: none; position: sticky; top: 0; }
-.opt-side ::deep .side-menu { padding-left: 0; }
-.opt-main { flex: 1; min-width: 0; max-width: 640px; }
+/* The sections' menu beside the section, built as Admin > Settings builds its own
+   (Settings.razor.css): a column from the header to the window's bottom, sticking while the
+   section scrolls, its title level with the dataset menu's. The layout reaches out over the
+   content's padding and the panel Surface's (one --spacing more on each side than the admin page
+   has) and the section takes them back; without that it sat lower than the admin one (12 Nov 2026).
+   On a phone the menu is the row above the section. */
+.opt-layout {
+    display: flex;
+    align-items: flex-start;
+    margin: calc(var(--spacing) * -5) 0 calc((var(--page-gutter) + var(--spacing)) * -1) calc((var(--page-gutter) + var(--spacing)) * -1);
+}
+.opt-side {
+    width: 200px;
+    flex: none;
+    position: sticky;
+    top: 0;
+    height: calc(100vh - var(--header-height));
+    overflow-y: auto;
+}
+/* As on the admin page: the icons under the header trail's icon. */
+.opt-side ::deep .side-menu { padding-left: 39px; }
+.opt-main {
+    flex: 1;
+    min-width: 0;
+    max-width: calc(640px + var(--page-gutter) * 2);
+    padding: calc(var(--spacing) * 5) var(--page-gutter) var(--page-gutter);
+}
 @media (max-width: 768px) {
-    .opt-layout { flex-direction: column; align-items: stretch; gap: 16px; }
-    .opt-side { width: auto; position: static; border-bottom: 1px solid var(--lv2); padding-bottom: 8px; }
+    .opt-layout { flex-direction: column; align-items: stretch; margin: 0; }
+    .opt-side { width: auto; height: auto; position: static; border-bottom: 1px solid var(--lv2); overflow: visible; padding-bottom: 8px; }
+    .opt-side ::deep .side-menu { padding-left: 0; }
+    .opt-main { padding: 16px 0 0; max-width: none; }
 }
