@@ -116,6 +116,10 @@ namespace IndxServer.Services.Webhooks
             }
 
             int changes = plan.Inserts.Count + plan.Updates.Count + plan.Deletes.Count;
+            // A small call writes in place, and a rebuild running beside the engine would swap its
+            // clone in over the write: wait for it, as a large call waits for the shadow (12 Nov 2026).
+            if (IndxServerInternalApi.Manager.IsShadowBuildInProgress(hook.DatasetName, hook.TeamId))
+                return WebhookOutcome.Retry;
             string? failure = null;
             try
             {

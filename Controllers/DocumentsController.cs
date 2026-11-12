@@ -50,6 +50,8 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "DeleteJsonRecord", SystemState.Ready) is { } stateError)
                 return stateError;
+            if (RefusedWhileRebuilding(dataSetName, ctx.OwnerKey) is { } rebuilding)
+                return rebuilding;
             var result = matcher.DeleteJsonRecord(documentKey);
             if (!result)
                 return ApiProblems.DocumentNotFound(documentKey);
@@ -164,6 +166,8 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "InsertJsonRecord", SystemState.Created, SystemState.Loaded, SystemState.Ready) is { } stateError)
                 return stateError;
+            if (RefusedWhileRebuilding(dataSetName, ctx.OwnerKey) is { } rebuilding)
+                return rebuilding;
             if (TryReadBodyKey(matcher, jsonData, out long bodyKey) && bodyKey != documentKey)
                 return ApiProblems.InvalidArgument(
                     $"The route addresses document {documentKey} but the body's key field says {bodyKey}. Nothing was inserted.");
@@ -248,6 +252,8 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "UpdateJsonRecord", SystemState.Ready) is { } stateError)
                 return stateError;
+            if (RefusedWhileRebuilding(dataSetName, ctx.OwnerKey) is { } rebuilding)
+                return rebuilding;
             if (string.IsNullOrEmpty(matcher.GetJsonDataOfKey(documentKey)))
                 return ApiProblems.DocumentNotFound(documentKey);
             if (TryReadBodyKey(matcher, jsonData, out long bodyKey) && bodyKey != documentKey)
@@ -282,6 +288,8 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "UpdateField", SystemState.Loaded, SystemState.Ready) is { } stateError)
                 return stateError;
+            if (RefusedWhileRebuilding(dataSetName, ctx.OwnerKey) is { } rebuilding)
+                return rebuilding;
             var result = matcher.UpdateField(documentKey, update.FieldName, UnwrapJsonElement(update.Value)!, out string error2);
             if (!result)
                 return ApiProblems.InvalidArgument(error2);

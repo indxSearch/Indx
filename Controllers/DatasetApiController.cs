@@ -105,6 +105,18 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>
+        /// The 409 a write gets while the dataset's index is being rebuilt beside it, or null (12 Nov
+        /// 2026). A rebuild clones the engine and swaps the clone in when it is done; a write made on
+        /// the old engine after the clone was taken would be gone with it at the swap. Heavy writes
+        /// already go through the shadow path, which refuses them the same way; this is for the small
+        /// ones that write in place: one document, one field, the synonym list.
+        /// </summary>
+        protected static ActionResult? RefusedWhileRebuilding(string dataSetName, string teamId) =>
+            IndxServerInternalApi.Manager.IsShadowBuildInProgress(dataSetName, teamId)
+                ? ApiProblems.ShadowBusy(new ShadowBusyException(dataSetName).Message)
+                : null;
+
+        /// <summary>
         /// Runs a heavy mutation against the team's dataset, using the shadow-swap path when the
         /// engine is Ready so live searches are not blocked. Maps not-found to 400 and a concurrent
         /// shadow build to 409.

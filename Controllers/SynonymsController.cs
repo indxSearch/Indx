@@ -69,6 +69,9 @@ namespace IndxServer.Controllers
             IServerSearchEngine? matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
+            // The rebuilt engine takes the list it was cloned with: a list set now would be gone at the swap.
+            if (RefusedWhileRebuilding(dataSetName, ctx.OwnerKey) is { } rebuilding)
+                return rebuilding;
 
             if (!IndxServerInternalApi.Manager.SetSynonyms(dataSetName, ctx.OwnerKey, list))
                 return ApiProblems.OperationFailed(
