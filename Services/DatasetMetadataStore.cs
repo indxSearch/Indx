@@ -1,5 +1,4 @@
 using IndxServer.Engine;
-using System.Collections.Concurrent;
 using Microsoft.Data.Sqlite;
 
 namespace IndxServer.Services
@@ -17,9 +16,9 @@ namespace IndxServer.Services
     {
         private const string Table = "DatasetMetadata";
 
-        private readonly ConcurrentDictionary<string, string> _cache = new();
-        private readonly ConcurrentDictionary<string, string> _keyFieldCache = new();
-        private readonly ConcurrentDictionary<string, CategorySetting> _categoryCache = new();
+        private readonly StoreCache<string, string> _cache = new();
+        private readonly StoreCache<string, string> _keyFieldCache = new();
+        private readonly StoreCache<string, CategorySetting> _categoryCache = new();
 
         /// <summary>The Categories tab's choice: which facetable field holds the category paths and what
         /// separates the levels in them; an empty field means not chosen, an empty separator that the
@@ -89,7 +88,7 @@ namespace IndxServer.Services
         /// <summary>The dataset's description, or empty string if none. Cached after first read.</summary>
         public string Load(string teamId, string dataSetName)
         {
-            return _cache.GetOrAdd(Key(teamId, dataSetName), _ => ReadFromDb(teamId, dataSetName));
+            return _cache.Get(Key(teamId, dataSetName), () => ReadFromDb(teamId, dataSetName));
         }
 
         private string ReadFromDb(string teamId, string dataSetName)
@@ -131,7 +130,7 @@ namespace IndxServer.Services
             cmd.Parameters.AddWithValue("$x", description ?? "");
             cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
             cmd.ExecuteNonQuery();
-            _cache.TryRemove(Key(teamId, dataSetName), out _);
+            _cache.Invalidate(Key(teamId, dataSetName));
         }
 
         /// <summary>
@@ -140,7 +139,7 @@ namespace IndxServer.Services
         /// </summary>
         public string LoadKeyField(string teamId, string dataSetName)
         {
-            return _keyFieldCache.GetOrAdd(Key(teamId, dataSetName), _ => ReadKeyFieldFromDb(teamId, dataSetName));
+            return _keyFieldCache.Get(Key(teamId, dataSetName), () => ReadKeyFieldFromDb(teamId, dataSetName));
         }
 
         private string ReadKeyFieldFromDb(string teamId, string dataSetName)
@@ -183,14 +182,14 @@ namespace IndxServer.Services
             cmd.Parameters.AddWithValue("$k", keyField ?? "");
             cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
             cmd.ExecuteNonQuery();
-            _keyFieldCache.TryRemove(Key(teamId, dataSetName), out _);
+            _keyFieldCache.Invalidate(Key(teamId, dataSetName));
         }
 
         /// <summary>The dataset's category field and separator for the Categories tab; <see cref="CategorySetting.None"/>
         /// when not chosen. Cached after first read.</summary>
         public CategorySetting LoadCategory(string teamId, string dataSetName)
         {
-            return _categoryCache.GetOrAdd(Key(teamId, dataSetName), _ => ReadCategoryFromDb(teamId, dataSetName));
+            return _categoryCache.Get(Key(teamId, dataSetName), () => ReadCategoryFromDb(teamId, dataSetName));
         }
 
         private CategorySetting ReadCategoryFromDb(string teamId, string dataSetName)
@@ -237,13 +236,13 @@ namespace IndxServer.Services
             cmd.Parameters.AddWithValue("$sv", (object?)setting.ScopeValue ?? DBNull.Value);
             cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
             cmd.ExecuteNonQuery();
-            _categoryCache.TryRemove(Key(teamId, dataSetName), out _);
+            _categoryCache.Invalidate(Key(teamId, dataSetName));
         }
 
         /// <summary>Removes a dataset's description (on dataset delete) and invalidates the cache.</summary>
         public void Delete(string teamId, string dataSetName)
         {
-            if (!DbExists()) { _cache.TryRemove(Key(teamId, dataSetName), out _); _keyFieldCache.TryRemove(Key(teamId, dataSetName), out _); _categoryCache.TryRemove(Key(teamId, dataSetName), out _); return; }
+            if (!DbExists()) { _cache.Invalidate(Key(teamId, dataSetName)); _keyFieldCache.Invalidate(Key(teamId, dataSetName)); _categoryCache.Invalidate(Key(teamId, dataSetName)); return; }
             try
             {
                 using var conn = Connection();
@@ -260,9 +259,9 @@ namespace IndxServer.Services
             }
             finally
             {
-                _cache.TryRemove(Key(teamId, dataSetName), out _);
-                _keyFieldCache.TryRemove(Key(teamId, dataSetName), out _);
-                _categoryCache.TryRemove(Key(teamId, dataSetName), out _);
+                _cache.Invalidate(Key(teamId, dataSetName));
+                _keyFieldCache.Invalidate(Key(teamId, dataSetName));
+                _categoryCache.Invalidate(Key(teamId, dataSetName));
             }
         }
 

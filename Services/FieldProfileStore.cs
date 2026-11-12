@@ -1,5 +1,4 @@
 using IndxServer.Engine;
-using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Indx.Storage;
@@ -28,7 +27,7 @@ namespace IndxServer.Services
         };
 
         // (teamId\0dataset) -> profiles, or null for none. Invalidate on write; never mutate.
-        private readonly ConcurrentDictionary<string, DatasetFieldProfiles?> _cache = new();
+        private readonly StoreCache<string, DatasetFieldProfiles?> _cache = new();
 
         private static string Key(string teamId, string dataSetName) => $"{teamId}\0{dataSetName}";
         private static string DbPath => IndxServerInternalApi.SearchDbConnectionString;
@@ -64,7 +63,7 @@ namespace IndxServer.Services
         /// <summary>The dataset's profiles and assignments, or null when it has none. Cached after
         /// first read. The instance is shared: callers copy before changing it.</summary>
         public DatasetFieldProfiles? Load(string teamId, string dataSetName) =>
-            _cache.GetOrAdd(Key(teamId, dataSetName), _ => ReadFromDb(teamId, dataSetName));
+            _cache.Get(Key(teamId, dataSetName), () => ReadFromDb(teamId, dataSetName));
 
         private DatasetFieldProfiles? ReadFromDb(string teamId, string dataSetName)
         {
@@ -129,12 +128,12 @@ namespace IndxServer.Services
             cmd.Parameters.AddWithValue("$j", JsonSerializer.Serialize(stored, JsonOptions));
             cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
             cmd.ExecuteNonQuery();
-            _cache.TryRemove(Key(teamId, dataSetName), out _);
+            _cache.Invalidate(Key(teamId, dataSetName));
         }
 
         public void Delete(string teamId, string dataSetName)
         {
-            if (!DbExists()) { _cache.TryRemove(Key(teamId, dataSetName), out _); return; }
+            if (!DbExists()) { _cache.Invalidate(Key(teamId, dataSetName)); return; }
             try
             {
                 using var conn = Connection();
@@ -152,7 +151,7 @@ namespace IndxServer.Services
             }
             finally
             {
-                _cache.TryRemove(Key(teamId, dataSetName), out _);
+                _cache.Invalidate(Key(teamId, dataSetName));
             }
         }
 

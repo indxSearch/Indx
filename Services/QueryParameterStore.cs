@@ -1,6 +1,5 @@
 using IndxServer.Engine;
 using IndxServer.Models;
-using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Indx.Storage;
@@ -28,7 +27,7 @@ namespace IndxServer.Services
         };
 
         // (teamId\0dataset) -> parameters, or null for "none set". Invalidate on write; never mutate.
-        private readonly ConcurrentDictionary<string, DatasetQueryParameters?> _cache = new();
+        private readonly StoreCache<string, DatasetQueryParameters?> _cache = new();
 
         private static string Key(string teamId, string dataSetName) => $"{teamId}\0{dataSetName}";
         private static string DbPath => IndxServerInternalApi.SearchDbConnectionString;
@@ -68,7 +67,7 @@ namespace IndxServer.Services
         /// <summary>The dataset's query parameters, or null when it sets none. Cached after first read.
         /// The instance is shared: callers must not modify it.</summary>
         public DatasetQueryParameters? Load(string teamId, string dataSetName) =>
-            _cache.GetOrAdd(Key(teamId, dataSetName), _ => ReadFromDb(teamId, dataSetName));
+            _cache.Get(Key(teamId, dataSetName), () => ReadFromDb(teamId, dataSetName));
 
         private DatasetQueryParameters? ReadFromDb(string teamId, string dataSetName)
         {
@@ -123,7 +122,7 @@ namespace IndxServer.Services
                 cmd.Parameters.AddWithValue("$j", JsonSerializer.Serialize(stored, JsonOptions));
                 cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
                 cmd.ExecuteNonQuery();
-                _cache.TryRemove(Key(teamId, dataSetName), out _);
+                _cache.Invalidate(Key(teamId, dataSetName));
             }
 
             // The names of the values that changed, never the values: the Changes list says what
@@ -136,7 +135,7 @@ namespace IndxServer.Services
         /// <summary>Removes the dataset's query parameters (on dataset delete) and invalidates the cache.</summary>
         public void Delete(string teamId, string dataSetName)
         {
-            if (!DbExists()) { _cache.TryRemove(Key(teamId, dataSetName), out _); return; }
+            if (!DbExists()) { _cache.Invalidate(Key(teamId, dataSetName)); return; }
             try
             {
                 using var conn = Connection();
@@ -154,7 +153,7 @@ namespace IndxServer.Services
             }
             finally
             {
-                _cache.TryRemove(Key(teamId, dataSetName), out _);
+                _cache.Invalidate(Key(teamId, dataSetName));
             }
         }
 

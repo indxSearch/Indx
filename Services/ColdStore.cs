@@ -129,7 +129,7 @@ namespace IndxServer.Services
         private static SqliteConnection Connection() => new($"Data Source={DbPath}");
 
         /// <summary>Per dataset, each record's names with their visibility; built on first use.</summary>
-        private readonly System.Collections.Concurrent.ConcurrentDictionary<(string, string), Dictionary<long, (string Name, string Visibility)[]>> _names = new();
+        private readonly StoreCache<(string, string), Dictionary<long, (string Name, string Visibility)[]>> _names = new();
 
         /// <summary>Creates the table if the search DB exists, taking over Jens's RecordNotes where it is
         /// there (internal became private). Idempotent; called at startup and before a write.</summary>
@@ -280,7 +280,7 @@ namespace IndxServer.Services
         public Dictionary<long, string[]> NamesOf(string teamId, string dataSetName, IEnumerable<long> keys, ColdAccess reader)
         {
             var result = new Dictionary<long, string[]>();
-            var byRecord = _names.GetOrAdd((teamId, dataSetName), _ => LoadNames(teamId, dataSetName));
+            var byRecord = _names.Get((teamId, dataSetName), () => LoadNames(teamId, dataSetName));
             if (byRecord.Count == 0) return result;
             foreach (var key in keys)
             {
@@ -315,7 +315,7 @@ namespace IndxServer.Services
         }
 
         /// <summary>Drops the dataset's names from memory, read again on the next search.</summary>
-        private void Changed(string teamId, string dataSetName) => _names.TryRemove((teamId, dataSetName), out _);
+        private void Changed(string teamId, string dataSetName) => _names.Invalidate((teamId, dataSetName));
 
         /// <summary>The item by name and language, or null.</summary>
         public ColdItem? Get(ColdScope scope, string name, string language)

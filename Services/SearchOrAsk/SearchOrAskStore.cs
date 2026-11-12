@@ -1,5 +1,4 @@
 using IndxServer.Engine;
-using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Indx.Storage;
@@ -25,7 +24,7 @@ namespace IndxServer.Services.SearchOrAsk
         };
 
         // (teamId\0dataset) -> settings, or null for "none saved". Invalidate on write; never mutate.
-        private readonly ConcurrentDictionary<string, SearchOrAskSettings?> _cache = new();
+        private readonly StoreCache<string, SearchOrAskSettings?> _cache = new();
 
         private static string Key(string teamId, string dataSetName) => $"{teamId}\0{dataSetName}";
         private static string DbPath => IndxServerInternalApi.SearchDbConnectionString;
@@ -61,7 +60,7 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>The dataset's settings, or null when none are saved (the feature is off). Cached
         /// after first read. The instance is shared: callers must not modify it.</summary>
         public SearchOrAskSettings? Load(string teamId, string dataSetName) =>
-            _cache.GetOrAdd(Key(teamId, dataSetName), _ => ReadFromDb(teamId, dataSetName));
+            _cache.Get(Key(teamId, dataSetName), () => ReadFromDb(teamId, dataSetName));
 
         private SearchOrAskSettings? ReadFromDb(string teamId, string dataSetName)
         {
@@ -113,13 +112,13 @@ namespace IndxServer.Services.SearchOrAsk
             cmd.Parameters.AddWithValue("$j", JsonSerializer.Serialize(settings, JsonOptions));
             cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
             cmd.ExecuteNonQuery();
-            _cache.TryRemove(Key(teamId, dataSetName), out _);
+            _cache.Invalidate(Key(teamId, dataSetName));
         }
 
         /// <summary>Removes the dataset's settings (on dataset delete, or DELETE) and invalidates the cache.</summary>
         public void Delete(string teamId, string dataSetName)
         {
-            if (!DbExists()) { _cache.TryRemove(Key(teamId, dataSetName), out _); return; }
+            if (!DbExists()) { _cache.Invalidate(Key(teamId, dataSetName)); return; }
             try
             {
                 using var conn = Connection();
@@ -137,7 +136,7 @@ namespace IndxServer.Services.SearchOrAsk
             }
             finally
             {
-                _cache.TryRemove(Key(teamId, dataSetName), out _);
+                _cache.Invalidate(Key(teamId, dataSetName));
             }
         }
 

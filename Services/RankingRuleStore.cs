@@ -1,5 +1,4 @@
 using IndxServer.Engine;
-using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Indx.Api;
@@ -41,7 +40,7 @@ namespace IndxServer.Services
         };
 
         // (teamId\0dataset) -> rules. Invalidate on write; never mutate in place.
-        private readonly ConcurrentDictionary<string, IReadOnlyList<TRule>> _cache = new();
+        private readonly StoreCache<string, IReadOnlyList<TRule>> _cache = new();
 
         private static string Key(string teamId, string dataSetName) => $"{teamId}\0{dataSetName}";
 
@@ -59,6 +58,10 @@ namespace IndxServer.Services
             new($"Data Source={DbPath}");
 
         public string Word => word;
+
+        /// <summary>Test seam: called with the dataset's name when its rules have been read from the
+        /// database and before they are kept, so a test can hold a read there while a save runs.</summary>
+        internal Action<string>? ReadFromDbForTest { get; set; }
 
         public void EnsureTable()
         {
@@ -86,7 +89,12 @@ namespace IndxServer.Services
 
         public IReadOnlyList<TRule> Load(string teamId, string dataSetName)
         {
-            return _cache.GetOrAdd(Key(teamId, dataSetName), _ => ReadFromDb(teamId, dataSetName));
+            return _cache.Get(Key(teamId, dataSetName), () =>
+            {
+                var rules = ReadFromDb(teamId, dataSetName);
+                ReadFromDbForTest?.Invoke(dataSetName);
+                return rules;
+            });
         }
 
         private IReadOnlyList<TRule> ReadFromDb(string teamId, string dataSetName)
@@ -136,7 +144,7 @@ namespace IndxServer.Services
             cmd.Parameters.AddWithValue("$j", json);
             cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
             cmd.ExecuteNonQuery();
-            _cache.TryRemove(Key(teamId, dataSetName), out _);
+            _cache.Invalidate(Key(teamId, dataSetName));
 
             // Counts and the schedule as saved, so a chart can mark when a scheduled rule starts
             // and ends without an event of its own. Names and conditions stay out: counts only.
@@ -153,7 +161,7 @@ namespace IndxServer.Services
 
         public void Delete(string teamId, string dataSetName)
         {
-            if (!DbExists()) { _cache.TryRemove(Key(teamId, dataSetName), out _); return; }
+            if (!DbExists()) { _cache.Invalidate(Key(teamId, dataSetName)); return; }
             try
             {
                 using var conn = Connection();
@@ -170,7 +178,7 @@ namespace IndxServer.Services
             }
             finally
             {
-                _cache.TryRemove(Key(teamId, dataSetName), out _);
+                _cache.Invalidate(Key(teamId, dataSetName));
             }
         }
 
