@@ -79,8 +79,19 @@ namespace IndxServer.Services
             catch (OperationCanceledException) { }
         }
 
-        /// <summary>Drains the queue into one store transaction. Also called directly by tests.</summary>
+        /// <summary>Drains the queue into one store transaction. Also called directly by tests.
+        /// One at a time (12 Nov 2026): the timer and TransferOwnership's flush could run together,
+        /// both changing _lastBySession, a plain Dictionary, and a transfer's "flushed first" did not
+        /// hold while the timer was still writing what it had taken from the queue.</summary>
         public void Flush()
+        {
+            lock (_flushLock)
+                FlushLocked();
+        }
+
+        private readonly Lock _flushLock = new();
+
+        private void FlushLocked()
         {
             if (_queue.IsEmpty) return;
             var searches = new List<SearchEventRow>();
