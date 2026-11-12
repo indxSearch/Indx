@@ -1,6 +1,8 @@
-@* Dataset options for team admins: description (MCP context), keep-alive policy, manual
-   hibernate, atomic Replace, download of the data, transfer to another team, and the
-   danger-zone delete. *@
+@* Dataset options for team admins, one section at a time chosen in a menu of its own, as Admin >
+   Settings has it (12 Nov 2026: the tab had grown to eight sections in one scroll): the description
+   for agents, memory (keep-alive, hibernate), statistics, Search or ask, the data (replace,
+   download) and the danger zone (transfer, rename, erase statistics, delete). The section is in the
+   address (?section=), so a refresh keeps it. *@
 @using Indx.Api
 @using IndxServer.Models
 @using IndxServer.Engine
@@ -10,13 +12,19 @@
 @inject StatisticsService Stats
 @inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
 @inject IndxServer.Services.SearchOrAsk.SearchOrAskStore SearchOrAskStore
+@inject NavigationManager Nav
 
 @if (!Active) { return; }
 
-<div class="opt-tab">
+<div class="opt-tab opt-layout">
+    <aside class="opt-side">
+        <SideMenu Groups="Menu" Active="@CurrentSection" OnSelect="SelectSection" />
+    </aside>
+    <div class="opt-main">
+    @{ var section = CurrentSection; }
 
     @* ── Description (domain context for AI agents over MCP) ── *@
-    @if (Ctx.IsEditor)
+    @if (section == "general" && Ctx.IsEditor)
     {
         <h3 class="indx-section-heading indx-section-heading--first">Description</h3>
         <p class="indx-section-help">
@@ -35,11 +43,13 @@
     }
 
     @* ── Keep-alive (team admins manage their dataset's memory lifecycle) ── *@
-    <h3 class="indx-section-heading">Keep-alive</h3>
+    @if (section == "memory")
+    {
+    <h3 class="indx-section-heading indx-section-heading--first">Keep-alive</h3>
     <p class="indx-section-help">
         Controls how long this dataset stays loaded in memory. <strong>Pinned</strong> keeps it always loaded; <strong>Off</strong> lets the client load it on demand; <strong>Timed</strong> unloads it after inactivity and reloads it automatically on next use.
     </p>
-    @{ var ka = Ctx.KeepAlive; }
+    var ka = Ctx.KeepAlive;
     @if (_editingKeepAlive)
     {
         <div class="opt-row">
@@ -83,12 +93,13 @@
             <p class="opt-muted opt-row--top10">Set keep-alive to <strong>Off</strong> to hibernate this dataset manually.</p>
         }
     }
+    }
 
     @* ── Statistics: whether each search's filter is stored (the Browsing report). A privacy
        setting, so a team admin's call; editors see where it stands. ── *@
-    @if (Stats.Enabled && Stats.Store != null)
+    @if (section == "statistics" && StatisticsShown)
     {
-        <h3 class="indx-section-heading">Statistics</h3>
+        <h3 class="indx-section-heading indx-section-heading--first">Statistics</h3>
         <p class="indx-section-help">
             The Statistics tab's Browsing report stores the filter of every search. On a dataset of
             products that is catalogue vocabulary. On a dataset of people, a filter can hold a name
@@ -130,9 +141,9 @@
 
     @* ── Search or ask (experimental): whether this dataset has it. A team admin's call, as the
        statistics' privacy settings are; only while the instance shows the feature. ── *@
-    @if (SearchOrAsk.Shown)
+    @if (section == "search-or-ask" && SearchOrAsk.Shown)
     {
-        <h3 class="indx-section-heading">Search or ask <span class="opt-muted">experimental</span></h3>
+        <h3 class="indx-section-heading indx-section-heading--first">Search or ask <span class="opt-muted">experimental</span></h3>
         <p class="indx-section-help">
             Offers to answer what visitors ask, or turns a description of what to list into filters, from
             this dataset's records. Switching it on adds a Search or ask tab, where editors set it up, try it,
@@ -150,9 +161,9 @@
     }
 
     @* ── Replace data (atomic full reload) ── *@
-    @if (Ctx.IsEditor)
+    @if (section == "data" && Ctx.IsEditor)
     {
-        <h3 class="indx-section-heading">Replace data</h3>
+        <h3 class="indx-section-heading indx-section-heading--first">Replace data</h3>
         <p class="indx-section-help">
             Atomically reload the whole dataset from a new JSON file. The current data keeps serving with zero downtime until the new index is ready; field configuration, boost rules and the description are preserved. If the new file fails to load, the current data is left untouched.
         </p>
@@ -231,7 +242,7 @@
     }
 
     @* ── Download data (any member; a plain link, so the browser streams the file itself; DatasetDownloadButton shows how far) ── *@
-    @if (Ctx.TeamName is { } teamName)
+    @if (section == "data" && Ctx.TeamName is { } teamName)
     {
         <h3 class="indx-section-heading">Download data</h3>
         <p class="indx-section-help">
@@ -242,15 +253,15 @@
         </div>
     }
 
+    @if (section == "danger")
+    {
     @* ── Transfer to another team ── *@
-    @{
-        var transferTargets = Ctx.MyTeams
-            .Where(t => t.Team.Id.ToString() != Ctx.TeamId && TeamRoles.CanAdmin(t.Role))
-            .ToList();
-    }
+    var transferTargets = Ctx.MyTeams
+        .Where(t => t.Team.Id.ToString() != Ctx.TeamId && TeamRoles.CanAdmin(t.Role))
+        .ToList();
     @if (transferTargets.Count > 0)
     {
-        <h3 class="indx-section-heading">Transfer to another team</h3>
+        <h3 class="indx-section-heading indx-section-heading--first">Transfer to another team</h3>
         <p class="indx-section-help">Move this dataset to another team you administer. The current team loses access.</p>
         <Button Variant="secondary" Size="micro" @onclick="OpenTransfer">Transfer…</Button>
 
@@ -297,9 +308,52 @@
                   CanConfirm="RenameReady" ConfirmLabel="Rename dataset" ConfirmIcon="DatasetIcons.Tag" OnConfirm="RenameAsync">
         <InputField Label="New name" @bind-Value="_renameInput" Immediate />
     </ConfirmModal>
+    }
+    </div>
 </div>
 
 @code {
+    /// <summary>The section asked for in the address, else the parameter (a test's), else the first.</summary>
+    [Parameter] public string? Section { get; set; }
+    private const string SectionQuery = "section";
+
+    private bool StatisticsShown => Stats.Enabled && Stats.Store != null;
+
+    private static readonly RenderFragment<int> _iconDanger = DatasetIcons.Warning;
+
+    /// <summary>The sections that apply here: Statistics only where the instance keeps them,
+    /// Search or ask only where the instance shows it.</summary>
+    private IReadOnlyList<SideMenuGroup> Menu
+    {
+        get
+        {
+            var items = new List<SideMenuItem>
+            {
+                new("general", "General", DatasetIcons.Sliders),
+                new("memory", "Memory", DatasetIcons.Ram),
+            };
+            if (StatisticsShown) items.Add(new("statistics", "Statistics", DatasetIcons.Statistics));
+            if (SearchOrAsk.Shown) items.Add(new("search-or-ask", "Search or ask", DatasetIcons.SearchOrAsk, Experimental: true));
+            items.Add(new("data", "Data", DatasetIcons.Json));
+            items.Add(new("danger", "Danger zone", _iconDanger));
+            return [new SideMenuGroup("Options", items)];
+        }
+    }
+
+    private string CurrentSection
+    {
+        get
+        {
+            var asked = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query)
+                .TryGetValue(SectionQuery, out var v) ? v.ToString() : Section;
+            return Menu[0].Items.Any(i => i.Key == asked) ? asked! : "general";
+        }
+    }
+
+    /// <summary>Into the address, replacing it, so Back still leaves the dataset as it does for the tabs.</summary>
+    private void SelectSection(string key) =>
+        Nav.NavigateTo(Nav.GetUriWithQueryParameter(SectionQuery, key == "general" ? null : key), replace: true);
+
     private void SetSearchOrAskShown(bool shown)
     {
         if (!Ctx.IsAdmin) return;
