@@ -1899,6 +1899,14 @@ namespace IndxServer.Engine
             query.Ranking = resolved.Ranking;
             var ranking = queryProxy.Ranking;
             query.Filter = ResolveRequestFilter(engine, queryProxy.Filter, queryProxy.FilterExpression, queryProxy.FilterParameters);
+            // The facet selections, and the facet ranges an expression each (13 Nov 2026); one that
+            // makes no filter is a 400.
+            if (queryProxy.FacetSelections != null)
+                foreach (var (name, values) in queryProxy.FacetSelections)
+                    query.FacetSelections[name] = values ?? [];
+            if (queryProxy.FacetRanges != null)
+                foreach (var (name, expression) in queryProxy.FacetRanges)
+                    query.FacetRanges[name] = ResolveRequestFilter(engine, null, expression ?? string.Empty, queryProxy.FilterParameters)!;
             // The named counts, an expression each (12 Nov 2026); one that makes no filter is a 400.
             if (queryProxy.Counts != null)
                 foreach (var (name, expression) in queryProxy.Counts)
