@@ -50,6 +50,7 @@ namespace IndxServer.Services
             Note(rm?.JoinedWords != null, dm?.JoinedWords != null, "match.joinedWords");
             Note(rc?.CandidatesPerRow != null, dc?.CandidatesPerRow != null, "candidates.candidatesPerRow");
             Note(rc?.MaxCandidates != null, dc?.MaxCandidates != null, "candidates.maxCandidates");
+            Note(rc?.MinCandidates != null, dc?.MinCandidates != null, "candidates.minCandidates");
             Note(rc?.Fallback != null, dc?.Fallback != null, "candidates.fallback");
             Note(rc?.FillWithMostWords != null, dc?.FillWithMostWords != null, "candidates.fillWithMostWords");
             Note(rc?.FillReach != null, dc?.FillReach != null, "candidates.fillReach");
@@ -92,6 +93,7 @@ namespace IndxServer.Services
                 {
                     CandidatesPerRow = e.Candidates.CandidatesPerRow,
                     MaxCandidates = e.Candidates.MaxCandidates,
+                    MinCandidates = e.Candidates.MinCandidates,
                     Fallback = e.Candidates.Fallback,
                     FillWithMostWords = e.Candidates.FillWithMostWords,
                     FillReach = e.Candidates.FillReach,
@@ -135,6 +137,8 @@ namespace IndxServer.Services
                     return "candidates.candidatesPerRow must be between 1 and 1,000.";
                 if (c.MaxCandidates is { } max && (max < 1 || max > MaxCandidates))
                     return $"candidates.maxCandidates must be between 1 and {MaxCandidates:N0}.";
+                if (c.MinCandidates is < 1 or > 5000)
+                    return "candidates.minCandidates must be between 1 and 5,000.";
             }
             if (p.Ranking is { } r)
             {

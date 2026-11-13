@@ -925,7 +925,7 @@
     {
         var c = QueryParameterResolution.Resolve(new QueryProxy(), dataset).Candidates;
         if (c.MaxCandidates is int bound) return Math.Max(1, bound);
-        long wanted = Math.Clamp((long)Cap * Math.Max(1, c.CandidatesPerRow), 100, 5000);
+        long wanted = Math.Clamp((long)Cap * Math.Max(1, c.CandidatesPerRow), Math.Clamp(c.MinCandidates, 1, 5000), 5000);
         return Math.Max(Cap, (int)wanted);
     }
 
