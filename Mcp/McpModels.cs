@@ -136,6 +136,11 @@ namespace IndxServer.Mcp
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Dictionary<string, Indx.Api.FacetStats>? FacetStats { get; set; }
 
+        /// <summary>With counts, how many of the matches each named filter lets through: how many of
+        /// each kind, in the same search.</summary>
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Dictionary<string, int>? Counts { get; set; }
+
         public bool Truncated { get; set; }
 
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -157,6 +162,10 @@ namespace IndxServer.Mcp
         public string[]? FacetFields { get; set; }
         public int FacetLimit { get; set; } = 20;
         public int Offset { get; set; }
+        /// <summary>Named counts: a filter expression each.</summary>
+        public Dictionary<string, string>? Counts { get; set; }
+        /// <summary>Values chosen on facets, by facetable field.</summary>
+        public Dictionary<string, string[]>? FacetSelections { get; set; }
     }
 
     /// <summary>One answer of search_many: the result, or why the search failed.</summary>

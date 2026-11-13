@@ -234,7 +234,9 @@ namespace IndxServer.Mcp
                          "search, or to pick the filter for your next call.")] bool facets = false,
             [System.ComponentModel.Description(FacetFieldsHelp)] string[]? facetFields = null,
             [System.ComponentModel.Description(FacetLimitHelp)] int facetLimit = DefaultFacetLimit,
-            [System.ComponentModel.Description(OffsetHelp)] int offset = 0)
+            [System.ComponentModel.Description(OffsetHelp)] int offset = 0,
+            [System.ComponentModel.Description(CountsHelp)] Dictionary<string, string>? counts = null,
+            [System.ComponentModel.Description(FacetSelectionsHelp)] Dictionary<string, string[]>? facetSelections = null)
         {
             var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Search);
             var engine = ResolveEngine(dataset, ownerKey);
@@ -242,8 +244,18 @@ namespace IndxServer.Mcp
             {
                 Query = query, Filters = filters, Filter = filter, Limit = limit, Fields = fields, Broaden = broaden,
                 Facets = facets, FacetFields = facetFields, FacetLimit = facetLimit, Offset = offset,
+                Counts = counts, FacetSelections = facetSelections,
             }, MaxResponseBytes, await ColdAccessAsync(team));
         }
+
+        private const string CountsHelp = "Named counts in the same search: a name and a filter expression each, such as " +
+            "{\"authors\": \"contentType = \\\"contributor\\\"\", \"events\": \"contentType = \\\"event\\\"\"}. The answer's counts says how many of " +
+            "the matches (total) each lets through: how many of each kind there are, without a search per kind. Same expression " +
+            "rules as filter.";
+        private const string FacetSelectionsHelp = "Values chosen on facets, by facetable field: {\"format\": [\"Paperback\", \"Audiobook\"]}. " +
+            "The hits hold one of a field's values (OR within a field, AND between fields and with the filters), and with " +
+            "facets, a chosen field's counts leave out its own choice: you see what the other values would give, to suggest " +
+            "or widen the choice. Use filters instead when the other values do not matter.";
 
         private const string FacetFieldsHelp = "With facets: count only these facetable fields (as describe_dataset lists them); omit to count " +
             "every one. Name the ones you will use: counting fewer is cheaper and keeps the answer short.";
@@ -266,7 +278,7 @@ namespace IndxServer.Mcp
             [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
             [System.ComponentModel.Description("Dataset name.")] string dataset,
             [System.ComponentModel.Description("The searches, each with the search tool's settings: query, and as you need them filters, filter, limit, " +
-                         "fields, broaden, facets, facetFields, facetLimit and offset.")] McpSearchRequest[] searches)
+                         "fields, broaden, facets, facetFields, facetLimit, offset, counts and facetSelections.")] McpSearchRequest[] searches)
         {
             if (searches is not { Length: > 0 })
                 throw new McpToolException("searches must list one or more searches.");
@@ -311,6 +323,23 @@ namespace IndxServer.Mcp
                 if (named.Where(n => !facetable.Contains(n)).ToList() is { Count: > 0 } unknown)
                     throw new McpToolException($"Not a facetable field: {string.Join(", ", unknown)}. Call describe_dataset for the facetable fields.");
             }
+            if (request.FacetSelections is { Count: > 0 } chosen)
+            {
+                var facetable = engine.GetFacetableFieldList().Select(f => f.Name).ToHashSet();
+                if (chosen.Keys.Where(n => !facetable.Contains(n)).ToList() is { Count: > 0 } unknown)
+                    throw new McpToolException($"facetSelections names a field that is not facetable: {string.Join(", ", unknown)}. " +
+                        "Call describe_dataset for the facetable fields, or use filters.");
+            }
+            foreach (var (name, expression) in request.Counts ?? [])
+            {
+                // As the filter below: every error with its place in one message, not the first as a 400.
+                if (string.IsNullOrWhiteSpace(expression))
+                    throw new McpToolException($"The count '{name}' has no filter expression.");
+                if (engine.CreateFilter(expression, out var errors) == null)
+                    throw new McpToolException($"The count '{name}' makes no filter: " +
+                        string.Join(" ", errors.Select(e => $"At position {e.Start}: {e.Message}")) +
+                        " Call describe_dataset for the fields that can be filtered and the values they hold.");
+            }
 
             // An empty query is a browse: "everything matching the filters". The engine only
             // serves it with facets on, so enable them regardless of what the agent asked for —
@@ -332,6 +361,8 @@ namespace IndxServer.Mcp
                 // is counted, the fallback's.
                 Candidates = new CandidateProxy { Fallback = broaden, Rest = broaden },
                 EnableFacets = request.Facets || isBrowse,
+                Counts = request.Counts is { Count: > 0 } ? request.Counts : null,
+                FacetSelections = request.FacetSelections is { Count: > 0 } ? request.FacetSelections : null,
             };
 
             if (filters is { Length: > 0 })
@@ -689,6 +720,11 @@ namespace IndxServer.Mcp
                     kv => kv.Value.ToDictionary(p => p.Key, p => p.Value));
             }
             outp.FacetStats = res.FacetStats;
+            // Of the set Result.Count counts: the matches, and with broaden the looser ones below them;
+            // 0 each where nothing was counted, as total is.
+            outp.Counts = res.Counts is { Count: > 0 } counts
+                ? (res.IsFallback ? counts.ToDictionary(kv => kv.Key, _ => 0) : new Dictionary<string, int>(counts))
+                : null;
             return outp;
         }
 
