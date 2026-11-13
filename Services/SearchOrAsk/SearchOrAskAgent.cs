@@ -140,7 +140,10 @@ namespace IndxServer.Services.SearchOrAsk
                 await Emit(delta);
             }
 
-            await send("status", new { step = "Reading the question" });
+            // Each step as a sentence (step) and as its parts (kind, and a search's or the picks'), so a
+            // page can say it in its own language and words (Gyldendal, 13 Nov 2026: they parsed the
+            // sentence to show it in Norwegian).
+            await send("status", new { step = "Reading the question", kind = "read" });
             for (var turn = 1; turn <= AgentMaxTurns; turn++)
             {
                 held = listShown ? null : new StringBuilder();
@@ -197,7 +200,7 @@ namespace IndxServer.Services.SearchOrAsk
                             search = new { filters = sUsed, text = st, sort = ss, found = sKeys.Count, more = sKeys.Count >= CatalogueFound };
                         }
                         // Under an answer already on its way, the step would only flicker.
-                        if (streamed.Length == 0) await send("status", new { step = $"Picked {picks.Count}" });
+                        if (streamed.Length == 0) await send("status", new { step = $"Picked {picks.Count}", kind = "pick", count = picks.Count });
                         await send("picks", new { picks, search });
                         shownKeys = picks.Select(p => p.DocumentKey).ToList();
                         await send("sources", picks.Select(p => new AskSource(p.N, p.DocumentKey, p.Title)).ToArray());
@@ -219,7 +222,16 @@ namespace IndxServer.Services.SearchOrAsk
                         var (used, expressionError, searched) = RunSearch(engine, teamId, dataSetName, filters, expression, text, sort, CatalogueFound, broaden);
                         var keys = KeysOf(searched);
                         found.UnionWith(keys);
-                        await send("status", new { step = $"Searching: {Step(used, text, sort)}" });
+                        await send("status", new
+                        {
+                            step = $"Searching: {Step(used, text, sort)}",
+                            kind = "search",
+                            search = new
+                            {
+                                filters = used, filter = string.IsNullOrWhiteSpace(expression) ? null : expression, text, sort,
+                                found = keys.Count, more = keys.Count >= CatalogueFound,
+                            },
+                        });
                         var docs = keys.Select(k => Parse(engine.GetJsonDataOfKey(k))).ToList();
                         var sb = new StringBuilder();
                         if (expressionError != null)
