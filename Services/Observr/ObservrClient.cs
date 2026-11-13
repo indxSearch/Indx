@@ -679,7 +679,7 @@ namespace IndxServer.Services.Observr
             var zero = statistics.Store?.TopQueries(teamId, dataSetName, today - 29, today, 15, zeroHitsOnly: true).Select(q => q.QueryText).ToList() ?? [];
 
             var settings = searchOrAsk.Load(teamId, dataSetName) ?? new SearchOrAsk.SearchOrAskSettings();
-            var effective = SearchOrAsk.SearchOrAskService.Fields(settings, engine.GetFieldList());
+            var effective = searchOrAskService.FieldsFor(teamId, dataSetName, settings, engine);
             var thresholds = settings.Thresholds.Resolved(settings.Kind, searchOrAskService.Setup.JudgeProvider);
             var qp = queryParameters.Load(teamId, dataSetName);
             var current = new ObservrSearchOrAskCurrent(settings.Shown, settings.Enabled, settings.Kind, settings.SiteDescription,

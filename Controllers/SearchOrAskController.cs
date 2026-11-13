@@ -79,7 +79,7 @@ namespace IndxServer.Controllers
             settings = System.Text.Json.JsonSerializer.Deserialize<SearchOrAskSettings>(System.Text.Json.JsonSerializer.Serialize(settings))!;
             settings.Thresholds = settings.Thresholds.Resolved(settings.Kind, service.Setup.JudgeProvider);
             var engine = IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey);
-            var fields = SearchOrAskService.Fields(settings, engine?.DocumentFields == null ? null : engine.GetFieldList());
+            var fields = service.FieldsFor(ctx.OwnerKey, dataSetName, settings, engine);
             return new SearchOrAskSettingsResponse(settings,
                 new SearchOrAskEffective(service.SiteDescription(ctx.OwnerKey, dataSetName, settings),
                     fields.TitleField, fields.SectionFields, fields.SnippetFields,

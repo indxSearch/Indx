@@ -389,15 +389,88 @@ namespace IndxServer.Services.SearchOrAsk
                 ? settings.SiteDescription.Trim()
                 : $"A search over the records of the dataset \"{dataSetName}\".";
 
-        /// <summary>The fields the judge sees, from the settings where set and otherwise from the
-        /// field configuration: the highest-weighted searchable field is the title, the next two
-        /// searchable fields the snippet. Section is only what the owner names.</summary>
-        public static SearchOrAskFields Fields(SearchOrAskSettings settings, IReadOnlyList<Field>? fields)
+        /// <summary>The fields the judge sees, from the settings where set and otherwise Automatic's
+        /// (<see cref="SearchOrAskAutomatic"/>), read from the records once per field configuration.
+        /// Every caller with a dataset goes through here, so the console shows what the judge reads.</summary>
+        public SearchOrAskFields FieldsFor(string teamId, string dataSetName, SearchOrAskSettings settings, IServerSearchEngine? engine)
+        {
+            var fields = engine?.DocumentFields == null ? null : engine.GetFieldList();
+            bool automatic = settings.TitleField == null || settings.SectionFields == null || settings.SnippetFields is not { Count: > 0 };
+            return Fields(settings, fields, automatic && fields != null ? Automatic(teamId, dataSetName, fields, engine!.Status.DocumentCount) : null);
+        }
+
+        /// <summary>The fields the judge sees, from the settings where set and otherwise from
+        /// <paramref name="automatic"/>. Without it (no records read): the highest-weighted searchable
+        /// field is the title, the next two the snippet, and no section.</summary>
+        public static SearchOrAskFields Fields(SearchOrAskSettings settings, IReadOnlyList<Field>? fields, SearchOrAskAutomatic.Picks? automatic = null)
         {
             var searchable = (fields ?? []).Where(f => f.WordMatching || f.PatternMatching != null).OrderByDescending(f => f.Weight).Select(f => f.Name).ToList();
-            var title = settings.TitleField ?? searchable.FirstOrDefault();
-            var snippet = settings.SnippetFields is { Count: > 0 } s ? s : searchable.Where(n => n != title).Take(2).ToList();
-            return new SearchOrAskFields(title, settings.SectionFields ?? [], snippet);
+            var title = settings.TitleField ?? automatic?.Title ?? searchable.FirstOrDefault();
+            var snippet = settings.SnippetFields is { Count: > 0 } s ? s
+                : automatic != null ? automatic.Snippet.Where(n => n != title).ToList()
+                : searchable.Where(n => n != title).Take(2).ToList();
+            var section = settings.SectionFields ?? automatic?.Section.Where(n => n != title && !snippet.Contains(n)).ToList() ?? [];
+            return new SearchOrAskFields(title, section, snippet);
+        }
+
+        private readonly ConcurrentDictionary<string, (string Fingerprint, SearchOrAskAutomatic.Picks? Picks)> _automatic = new(StringComparer.Ordinal);
+
+        /// <summary>The records Automatic reads; the tests' seam.</summary>
+        internal Func<string, string, IReadOnlyList<JsonNode>> SampleRecords { get; set; } = ReadSample;
+
+        /// <summary>Automatic's picks for a dataset, chosen again when a field's type or role changes
+        /// or the record count doubles or halves. Null when no records could be read: then the
+        /// fields are chosen from the configuration alone.</summary>
+        private SearchOrAskAutomatic.Picks? Automatic(string teamId, string dataSetName, IReadOnlyList<Field> fields, long count)
+        {
+            var fingerprint = string.Join(';', fields.Select(f =>
+                $"{f.Name}:{f.Type}:{f.IsArray}:{f.WordMatching}:{f.PatternMatching != null}:{f.Filterable}:{f.Facetable}:{f.Weight}"))
+                + "|" + (int)Math.Log2(count + 1);
+            var key = teamId + "\0" + dataSetName;
+            if (_automatic.TryGetValue(key, out var known) && known.Fingerprint == fingerprint) return known.Picks;
+            SearchOrAskAutomatic.Picks? picks = null;
+            try
+            {
+                var sample = SampleRecords(teamId, dataSetName);
+                if (sample.Count > 0) picks = SearchOrAskAutomatic.Choose(fields, sample);
+            }
+            catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
+            {
+                _logger.LogWarning(e, "Search or ask could not read records of {DataSet} to choose its fields", dataSetName);
+            }
+            _automatic[key] = (fingerprint, picks);
+            return picks;
+        }
+
+        /// <summary>Up to <see cref="SearchOrAskAutomatic.SampleSize"/> records spread evenly over the
+        /// dataset in the order they were stored, read from the store (as the records scan reads
+        /// them), so it works whatever the engine is doing.</summary>
+        private static IReadOnlyList<JsonNode> ReadSample(string teamId, string dataSetName)
+        {
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={IndxServerInternalApi.SearchDbConnectionString};Mode=ReadOnly");
+            conn.Open();
+            long total;
+            using (var count = conn.CreateCommand())
+            {
+                count.CommandText = "SELECT COUNT(*) FROM JsonData WHERE UserName = $t AND Name = $d";
+                count.Parameters.AddWithValue("$t", teamId);
+                count.Parameters.AddWithValue("$d", dataSetName);
+                total = Convert.ToInt64(count.ExecuteScalar());
+            }
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT RawText FROM JsonData WHERE UserName = $t AND Name = $d AND rowid % $m = 0 LIMIT $n";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSetName);
+            cmd.Parameters.AddWithValue("$m", Math.Max(1, total / SearchOrAskAutomatic.SampleSize));
+            cmd.Parameters.AddWithValue("$n", SearchOrAskAutomatic.SampleSize);
+            var sample = new List<JsonNode>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                try { if (JsonNode.Parse(reader.GetString(0)) is { } node) sample.Add(node); }
+                catch (System.Text.Json.JsonException) { }
+            }
+            return sample;
         }
 
         // ── Intent ──────────────────────────────────────────────────────────────────────────
@@ -483,7 +556,7 @@ namespace IndxServer.Services.SearchOrAsk
                 return new IntentOutcome(IntentStatus.Ok, Result(0, null, false, Paused));
 
             var site = SiteDescription(teamId, dataSetName, settings);
-            var fields = Fields(settings, engine.GetFieldList());
+            var fields = FieldsFor(teamId, dataSetName, settings, engine);
             var cacheKey = string.Join('\0', teamId, dataSetName, settings.Kind, judge, site, fields.TitleField,
                 string.Join(',', fields.SectionFields), string.Join(',', fields.SnippetFields), wholeWords ? "whole" : "", Normalise(text));
             if (_cache.TryGetValue(cacheKey, out var hit))
@@ -580,14 +653,14 @@ namespace IndxServer.Services.SearchOrAsk
         /// tester: the hits by title, section and snippet. No model call, so it costs nothing.</summary>
         /// <summary>The page's results in the refocused order (IntentResult.Refocused), for the console's
         /// tester: the same count, the records read as the judge reads them.</summary>
-        public SearchSummary RefocusedResults(IServerSearchEngine engine, IReadOnlyList<long> keys, SearchSummary page, SearchOrAskSettings settings)
+        public SearchSummary RefocusedResults(string teamId, string dataSetName, IServerSearchEngine engine, IReadOnlyList<long> keys, SearchSummary page, SearchOrAskSettings settings)
         {
-            var fields = Fields(settings, engine.GetFieldList());
+            var fields = FieldsFor(teamId, dataSetName, settings, engine);
             return page with { Top = [.. keys.Take(ResultsForJudge).Select(k => Describe(engine, k, fields, SnippetChars, forAnswer: false))], Met = null };
         }
 
         public SearchSummary Results(string teamId, string dataSetName, IServerSearchEngine engine, string text, SearchOrAskSettings settings) =>
-            Search(engine, dataSetName, teamId, text, Fields(settings, engine.GetFieldList()), wholeWords: settings.StrictCoverageWhileAsking);
+            Search(engine, dataSetName, teamId, text, FieldsFor(teamId, dataSetName, settings, engine), wholeWords: settings.StrictCoverageWhileAsking);
 
         /// <summary>Runs the search the visitor's client already ran, here, so the judge sees the
         /// same results without the client sending results it could forge. Through the manager
@@ -859,7 +932,7 @@ namespace IndxServer.Services.SearchOrAsk
             var started = Stopwatch.GetTimestamp();
             long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
             var settings = trial ?? Settings(teamId, dataSetName);
-            var fields = Fields(settings, engine.GetFieldList());
+            var fields = FieldsFor(teamId, dataSetName, settings, engine);
             var model = Setup.ModelFor(settings);
             var outcome = "stopped";
             long? firstText = null;

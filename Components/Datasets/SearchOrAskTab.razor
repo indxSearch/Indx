@@ -647,8 +647,7 @@
         get
         {
             var engine = Ctx.FindEngine();
-            return SearchOrAskService.Fields(new SearchOrAskSettings(), engine?.DocumentFields == null ? null : engine.GetFieldList())
-                .TitleField ?? "none";
+            return Service.FieldsFor(Ctx.TeamId, Ctx.Name, new SearchOrAskSettings(), engine).TitleField ?? "none";
         }
     }
 
@@ -844,7 +843,7 @@
     private void Refresh()
     {
         var engine = Ctx.FindEngine();
-        var fields = SearchOrAskService.Fields(_edit, engine?.DocumentFields == null ? null : engine.GetFieldList());
+        var fields = Service.FieldsFor(Ctx.TeamId, Ctx.Name, _edit, engine);
         _effectiveSite = Service.SiteDescription(Ctx.TeamId, Ctx.Name, new SearchOrAskSettings());
         _effective = new SearchOrAskEffective(_effectiveSite, fields.TitleField, fields.SectionFields, fields.SnippetFields);
         _callsToday = Service.CallsToday(Ctx.TeamId, Ctx.Name);
@@ -985,7 +984,7 @@
     private void Refocus()
     {
         _refocused = _showResults && _try?.Refocused is { } keys && _results is { } page && Ctx.FindEngine() is { } engine
-            ? Service.RefocusedResults(engine, keys, page, _edit) : null;
+            ? Service.RefocusedResults(Ctx.TeamId, Ctx.Name, engine, keys, page, _edit) : null;
     }
     /// <summary>The text changed and the pause has not passed; then the judge is reading.</summary>
     private bool _typingNow, _judging;
