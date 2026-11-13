@@ -243,7 +243,7 @@
                         @Row(Icon<Icons.TextSize>(), "Title", "Each result's name.",
                              _edit.TitleField != null,
                              @<div class="soa-select"><SelectField Size="micro" Options="TitleOptions" Value="@(_edit.TitleField ?? Automatic)" ValueChanged="@(v => _edit.TitleField = v == Automatic ? null : v)" /></div>)
-                        @Row(Icon<Icons.Tag>(), "Section", "Where a result belongs, such as a category or year.",
+                        @Row(Icon<Icons.Tag>(), "Section", "Short facts visitors name besides the name, such as a category, a colour or an author. A true/false field shows as its name when true.",
                              _edit.SectionFields != null, FieldChoice(PlaceFields, () => _edit.SectionFields, v => _edit.SectionFields = v, _effective?.SectionFields))
                         @Row(Icon<Icons.Paragraph>(), "Snippet", "The text the judge reads and answers are written from.",
                              _edit.SnippetFields != null, FieldChoice(TextFields, () => _edit.SnippetFields, v => _edit.SnippetFields = v, _effective?.SnippetFields))
@@ -631,9 +631,10 @@
         .OrderByDescending(f => f.WordMatching == true || f.PatternMatching == true).ThenByDescending(f => f.Weight ?? 0).ThenBy(f => f.FieldName)
         .Select(f => f.FieldName).ToList();
 
-    /// <summary>What can place a result: text and numbers (a category, a year).</summary>
+    /// <summary>What can place a result: text, numbers (a category, a year) and true/false fields,
+    /// which the judge reads as the field's name when true.</summary>
     private List<string> PlaceFields => (Ctx.SavedFields ?? [])
-        .Where(f => f.FieldType is "String" or "Number")
+        .Where(f => f.FieldType is "String" or "Number" or "Boolean")
         .OrderBy(f => f.FieldName).Select(f => f.FieldName).ToList();
 
     private IEnumerable<SelectField.SelectOption> TitleOptions =>

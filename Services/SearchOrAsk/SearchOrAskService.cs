@@ -639,10 +639,15 @@ namespace IndxServer.Services.SearchOrAsk
             JsonNode? doc = null;
             try { doc = JsonNode.Parse(engine.GetJsonDataOfKey(key) ?? ""); }
             catch (System.Text.Json.JsonException) { }
+            // A true/false field is its name when true and nothing when false: the judge reads values
+            // without field names, so "False; True" told it nothing, and "ErPrivatskole" told it as
+            // much as a list of readable categories (13 Nov 2026, JevProbe/search-or-ask/fields).
             string Read(IEnumerable<string> names, string separator) => doc == null ? "" :
                 string.Join(separator, names.Select(n => FieldAt(doc, n) switch
                 {
                     JsonArray a => string.Join(", ", a.Select(x => x?.ToString())),
+                    JsonValue v when v.GetValueKind() is System.Text.Json.JsonValueKind.True => n[(n.LastIndexOf('.') + 1)..],
+                    JsonValue v when v.GetValueKind() is System.Text.Json.JsonValueKind.False => "",
                     JsonNode v => v.ToString(),
                     null => "",
                 }).Where(s => s.Length > 0));
