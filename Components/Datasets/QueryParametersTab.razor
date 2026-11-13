@@ -203,6 +203,8 @@
             CandidateDefaults.FillReach, 0, 2, p => p.Candidates?.FillReach, (p, v) => C(p).FillReach = v),
         new("candidatesPerRow", "Candidates per row", "How many documents are ranked for each row a search asks for, at least the fewest candidates below and at most 5,000 in all.",
             CandidateDefaults.CandidatesPerRow, 1, 1000, p => p.Candidates?.CandidatesPerRow, (p, v) => C(p).CandidatesPerRow = v),
+        new("noFallbackForNumbersFrom", "No fallback for a number from", "A search that is one number of at least this many digits (an ISBN, an EAN, a part number) and that no record holds shows nothing, rather than records sharing some of its digits. 0 is off. The field holding the numbers must be matched by its words.",
+            CandidateDefaults.NoFallbackForNumbersFrom, 0, 64, p => p.Candidates?.NoFallbackForNumbersFrom, (p, v) => C(p).NoFallbackForNumbersFrom = v),
         new("minCandidates", "Fewest candidates", "The fewest documents ranked, when the rows times the candidates per row are fewer: a search for a few rows still ranks this many. 100 by default; higher finds more of a large match for a short list, and every such search pays for it.",
             CandidateDefaults.MinCandidates, 1, 5000, p => p.Candidates?.MinCandidates, (p, v) => C(p).MinCandidates = v),
         new("typingPrefixOneEditFrom", "Start of a word with a typo from", "The start of a word being typed, within one typo, from this many characters. 0 is never.",
