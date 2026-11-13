@@ -157,7 +157,7 @@
                         </TableCell>
                     </TableRow>
                     @* Refocusing (10 Nov 2026): a switch and its line on the question score, as the found line. *@
-                    @Row(Icon<Icons.SortDescending>(), "Refocus", "When no record holds every word of a question or a description of what to list, the list comes back ordered by the rarest words the records hold, so the common words count for little. The count and the filters stay the search's.",
+                    @Row(Icon<Icons.SearchRefocus>(), "Refocus", "When no record holds every word of a question or a description of what to list, the list comes back ordered by the rarest words the records hold, so the common words count for little. The count and the filters stay the search's.",
                          _edit.Thresholds.Refocus > 0,
                          @<div class="soa-thresholds">
                              <ToggleSwitch Label="Refocus the list on a question or a description" Checked="@Refocuses" CheckedChanged="SetRefocuses" />
@@ -515,11 +515,12 @@
     // First-word times measured on the docs with eight sources (Notes/search-or-ask-server.md).
     private static readonly IReadOnlyList<SegmentedControl.Item> ModeItems =
     [
-        new(SearchOrAskSettings.ModeStrict, "Strict"),
-        new(SearchOrAskSettings.ModeSoft, "Soft"),
-        new(SearchOrAskSettings.ModeOpen, "Open"),
-        new(SearchOrAskSettings.ModeInviting, "Inviting"),
-        new(SearchOrAskSettings.ModeProactive, "Proactive"),
+        // A gate from shut to open, and what comes through it (pixl, 13 Nov 2026).
+        new(SearchOrAskSettings.ModeStrict, "Strict", Icon<Icons.AskModeStrict>()),
+        new(SearchOrAskSettings.ModeSoft, "Soft", Icon<Icons.AskModeSoft>()),
+        new(SearchOrAskSettings.ModeOpen, "Open", Icon<Icons.AskModeOpen>()),
+        new(SearchOrAskSettings.ModeInviting, "Inviting", Icon<Icons.AskModeInviting>()),
+        new(SearchOrAskSettings.ModeProactive, "Proactive", Icon<Icons.AskModeProactive>()),
     ];
 
     private static string ModeHelp(string mode) => mode switch
