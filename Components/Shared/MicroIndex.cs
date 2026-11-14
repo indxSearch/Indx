@@ -10,8 +10,8 @@ namespace IndxServer.Components.Shared
     /// searchable field the text itself. A few hundred index in milliseconds, so it is built when
     /// first searched and thrown away when the list changes. It holds native memory: dispose it.
     /// A facet's values (FacetValueIndex) can be more than the 100 000 records an engine takes
-    /// without a license, so a caller may pass the instance's. Matching inside words can be left off:
-    /// on 89 367 actors it cost a fifth of the memory (101 MB against 81) and found nothing more.
+    /// without a license, so a caller may pass the instance's. Matching inside words can be left off
+    /// for a fifth less memory (101 MB against 81 on 89 367 actors).
     /// </summary>
     internal static class MicroIndex
     {

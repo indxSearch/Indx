@@ -28,8 +28,8 @@ namespace IndxServer.Services
         public static readonly TimeSpan MaxAge = TimeSpan.FromMinutes(10);
 
         /// <summary>A micro-index nobody has searched for this long is let go. It costs memory while
-        /// held (about 90 MB for 89 367 actors, 18 MB for 9 910 directors, measured in-process), so
-        /// it is held only while a facet is in use.</summary>
+        /// held (about 110 MB for 89 367 actors, 18 MB for 9 910 directors, measured in-process; words
+        /// and matching inside them, as any searched field), so it is held only while a facet is in use.</summary>
         public static readonly TimeSpan IdleAfter = TimeSpan.FromMinutes(30);
 
         private sealed class Entry(string fingerprint, SearchEngine engine, string[] values, DateTime built) : IDisposable
@@ -47,24 +47,27 @@ namespace IndxServer.Services
 
         /// <summary>The values of <paramref name="field"/> that <paramref name="text"/> finds, best
         /// match first: the rung of fewest edits that has any, so "tom hanks" gives Tom Hanks and not
-        /// every Tom within two edits. <paramref name="readValues"/> gives every value of the field
-        /// when the micro-index has to be built.</summary>
-        public IReadOnlyList<string> Find(string teamId, string dataSetName, IServerSearchEngine engine, string field, string text,
+        /// every Tom within two edits. When no value holds every word and two or more were typed, the
+        /// values holding the most of them, closest first (<c>Fallback</c> true): while "donna rea" is
+        /// typed, no actor's name holds "rea", and Donna Reed should not drop out of the list between
+        /// "donna re" and "donna read". One word that matches nothing gives nothing, not the pattern
+        /// matches of a stray string. <paramref name="readValues"/> gives every value of the field when
+        /// the micro-index has to be built.</summary>
+        public (IReadOnlyList<string> Values, bool Fallback) Find(string teamId, string dataSetName, IServerSearchEngine engine, string field, string text,
             Func<IReadOnlyList<string>> readValues)
         {
             var entry = Get(teamId, dataSetName, engine, field, readValues);
             entry.LastUsed = DateTime.UtcNow;
             LetIdleGo();
-            if (entry.Values.Length == 0) return [];
+            if (entry.Values.Length == 0) return ([], false);
             var query = new Query { Text = text, MaxNumberOfRecordsToReturn = Matches };
-            // No most-words fallback: a value that holds none of what was typed is no answer.
-            query.Candidates.Fallback = false;
+            query.Candidates.Fallback = text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 2;
             var result = entry.Engine.Search(query);
             var found = new List<string>(result.Records?.Length ?? 0);
             foreach (var record in result.Records ?? [])
                 if (record.DocumentKey >= 0 && record.DocumentKey < entry.Values.Length)
                     found.Add(entry.Values[record.DocumentKey]);
-            return found;
+            return (found, result.IsFallback);
         }
 
         private Entry Get(string teamId, string dataSetName, IServerSearchEngine engine, string field, Func<IReadOnlyList<string>> readValues)
@@ -80,7 +83,7 @@ namespace IndxServer.Services
                 if (_entries.TryGetValue(key, out known) && Fresh(known)) return known;
                 var started = System.Diagnostics.Stopwatch.GetTimestamp();
                 var values = readValues().ToArray();
-                var built = new Entry(fingerprint, MicroIndex.Build(values, IndxServerInternalApi.GetLicensePath(), insideWords: false), values, DateTime.UtcNow);
+                var built = new Entry(fingerprint, MicroIndex.Build(values, IndxServerInternalApi.GetLicensePath()), values, DateTime.UtcNow);
                 if (_entries.TryGetValue(key, out var old)) Retire(old);
                 _entries[key] = built;
                 logger.LogInformation("Facet values of {Field} in {DataSet}: {Count} values indexed in {Ms} ms",

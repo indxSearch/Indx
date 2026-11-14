@@ -1,7 +1,7 @@
 @* Ported from the React @indxsearch/systm SearchField. Search-as-you-type friendly: reports
    Value on every keystroke (oninput), and does not write the typed text back into the box, so
    a slow handler cannot eat keystrokes (see LiveInputState). *@
-<div class="searchfield @SizeClass">
+<div class="searchfield @SizeClass @(Filled ? "filled" : "")">
     @if (!string.IsNullOrEmpty(Label))
     {
         <label for="@_id" class="label">@Label</label>
@@ -51,6 +51,9 @@
     [Parameter] public bool ShowSearchIcon { get; set; } = true;
     /// <summary>Show a ghost "Clear" button when there's text (default true).</summary>
     [Parameter] public bool Clearable { get; set; } = true;
+    /// <summary>A filled field, the grey of a checkbox, with no line: for a search inside a panel
+    /// (a long facet's own search). As the React systm's <c>filled</c>.</summary>
+    [Parameter] public bool Filled { get; set; }
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public string? Id { get; set; }
     [Parameter] public RenderFragment? RightContent { get; set; }

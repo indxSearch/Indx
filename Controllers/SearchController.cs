@@ -294,7 +294,7 @@ namespace IndxServer.Controllers
             IEnumerable<KeyValuePair<string, int>> values;
             var text = request.Text?.Trim() ?? "";
             if (text.Length == 0)
-                values = counts;
+                values = counts.OrderByDescending(v => v.Value);
             else
             {
                 // Every value of the field, for the micro-index when it has to be built: counted over
@@ -303,12 +303,14 @@ namespace IndxServer.Controllers
                         new QueryProxy { Text = "", EnableFacets = true, FacetFields = [field], FacetValueLimit = 0, MaxNumberOfRecordsToReturn = 0 },
                         dataSetName, ctx.OwnerKey).Facets?.GetValueOrDefault(field) ?? [])
                     .Where(v => v.Key is not ("null" or "")).Select(v => v.Key).ToList();
-                var found = facetValues.Find(ctx.OwnerKey, dataSetName, matcher, field, text, All);
-                // The match decides which values, the count their order: "jackson" gives Samuel L.
-                // Jackson (111 films) before Jackson Yee (5), whose name merely starts with it.
+                var (found, fallback) = facetValues.Find(ctx.OwnerKey, dataSetName, matcher, field, text, All);
                 values = found.Where(counts.ContainsKey).Select(v => new KeyValuePair<string, int>(v, counts[v]));
+                // The match decides which values, the count their order: "jackson" gives Samuel L.
+                // Jackson (111 films) before Jackson Yee (5), whose name merely starts with it. Not when
+                // no value held every word: then the closest first, as the micro-index ordered them.
+                if (!fallback) values = values.OrderByDescending(v => v.Value);
             }
-            var answer = values.OrderByDescending(v => v.Value).Take(request.Rows)
+            var answer = values.Take(request.Rows)
                 .Select(v => new { value = v.Key, count = v.Value }).ToList();
             ServerTiming(tStart, tTeam, tDataset, outcome.SearchedAt);
             return Ok(new { values = answer, exhaustive = true });

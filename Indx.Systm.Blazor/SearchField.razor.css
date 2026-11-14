@@ -112,3 +112,9 @@
     font: var(--text-2xs);
     color: var(--CSignal);
 }
+
+/* Filled: the grey of a checkbox, no line (a search inside a panel), as the React systm's. */
+.filled .input {
+    background: var(--lv2);
+    border-radius: var(--radius);
+}
