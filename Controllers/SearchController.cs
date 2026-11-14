@@ -274,36 +274,65 @@ namespace IndxServer.Controllers
             if (RequireState(matcher, "Search", SystemState.Ready) is { } stateError) return stateError;
             if (matcher.DocumentFields?.GetField(field) is not { Facetable: true })
                 return ApiProblems.InvalidArgument($"'{field}' is not a facetable field of this dataset.");
+            if (request.Values is { Length: > FacetValueIndex.AmongLimit })
+                return ApiProblems.InvalidArgument($"values holds at most {FacetValueIndex.AmongLimit}.");
             var tDataset = Stopwatch.GetTimestamp();
 
-            // The counts: the facet over the visitor's search, or over every record.
-            var options = mvcJson.Value.JsonSerializerOptions;
-            var counting = request.Search == null ? new ServerQueryProxy { Text = "" }
-                : JsonSerializer.Deserialize<ServerQueryProxy>(JsonSerializer.Serialize(request.Search, options), options)!;
-            counting.EnableFacets = true;
-            counting.FacetFields = [field];
-            counting.FacetValueLimit = 0;
-            counting.MaxNumberOfRecordsToReturn = 0;
-            counting.IncludeDocuments = false;
-            var outcome = RunSearch(ctx, dataSetName, matcher, counting, SearchStats.NotRecorded);
-            if (outcome.Problem != null) return outcome.Problem;
-            var counts = new Dictionary<string, int>(StringComparer.Ordinal);
-            foreach (var (value, count) in outcome.Result?.Facets?.GetValueOrDefault(field) ?? [])
-                if (count > 0 && value is not ("null" or "")) counts[value] = count;
-
-            IEnumerable<KeyValuePair<string, int>> values;
-            var text = request.Text?.Trim() ?? "";
-            if (text.Length == 0)
-                values = counts.OrderByDescending(v => v.Value);
+            // The counts: the facet over the visitor's search, or over every record. Over every record
+            // it is the engine's own empty search, which the engine caches and clears on any change;
+            // the counts made from its answer are kept with that answer, so a keystroke costs no
+            // counting and a change in the data reaches the counts at once (14 Nov 2026).
+            Dictionary<string, int> counts;
+            long searchedAt;
+            if (request.Search == null)
+            {
+                var facet = IndxServerInternalApi.Manager.Search(
+                    new QueryProxy { Text = "", EnableFacets = true, FacetFields = [field], FacetValueLimit = 0, MaxNumberOfRecordsToReturn = 0 },
+                    dataSetName, ctx.OwnerKey).Facets?.GetValueOrDefault(field) ?? [];
+                counts = CountsOf(facet);
+                searchedAt = Stopwatch.GetTimestamp();
+            }
             else
             {
-                // Every value of the field, for the micro-index when it has to be built: counted over
-                // every record, whatever the visitor's search holds.
-                IReadOnlyList<string> All() => (IndxServerInternalApi.Manager.Search(
-                        new QueryProxy { Text = "", EnableFacets = true, FacetFields = [field], FacetValueLimit = 0, MaxNumberOfRecordsToReturn = 0 },
-                        dataSetName, ctx.OwnerKey).Facets?.GetValueOrDefault(field) ?? [])
-                    .Where(v => v.Key is not ("null" or "")).Select(v => v.Key).ToList();
-                var (found, fallback) = facetValues.Find(ctx.OwnerKey, dataSetName, matcher, field, text, All);
+                var options = mvcJson.Value.JsonSerializerOptions;
+                var counting = JsonSerializer.Deserialize<ServerQueryProxy>(JsonSerializer.Serialize(request.Search, options), options)!;
+                counting.EnableFacets = true;
+                counting.FacetFields = [field];
+                counting.FacetValueLimit = 0;
+                counting.MaxNumberOfRecordsToReturn = 0;
+                counting.IncludeDocuments = false;
+                var outcome = RunSearch(ctx, dataSetName, matcher, counting, SearchStats.NotRecorded);
+                if (outcome.Problem != null) return outcome.Problem;
+                counts = CountsOf(outcome.Result?.Facets?.GetValueOrDefault(field) ?? []);
+                searchedAt = outcome.SearchedAt;
+            }
+
+            IEnumerable<KeyValuePair<string, int>> values;
+            IReadOnlyList<string> found = [];
+            bool fallback = false;
+            var text = request.Text?.Trim() ?? "";
+            // Every value of the field, for the micro-index when it has to be built: counted over
+            // every record, whatever the visitor's search holds.
+            IReadOnlyList<string> All() => (IndxServerInternalApi.Manager.Search(
+                    new QueryProxy { Text = "", EnableFacets = true, FacetFields = [field], FacetValueLimit = 0, MaxNumberOfRecordsToReturn = 0 },
+                    dataSetName, ctx.OwnerKey).Facets?.GetValueOrDefault(field) ?? [])
+                .Where(v => v.Key is not ("null" or "")).Select(v => v.Key).ToList();
+            if (text.Length == 0)
+            {
+                values = counts.OrderByDescending(v => v.Value);
+                // The panel asks with no text when its field gets the focus: the micro-index is built
+                // then, not on the first letter typed (0.7 s for 89 367 actors).
+                _ = Task.Run(() => facetValues.Warm(ctx.OwnerKey, dataSetName, matcher, field, All));
+            }
+            else
+            {
+                // Among the values the caller names (a panel's own, whose counts it holds), or those a
+                // visitor's search holds when they are few; else the whole field, and the values the
+                // search does not hold dropped.
+                var among = request.Values ?? (request.Search != null && counts.Count <= FacetValueIndex.AmongLimit ? counts.Keys.ToArray() : null);
+                (found, fallback) = among != null
+                    ? facetValues.FindAmong(ctx.OwnerKey, dataSetName, field, among, text)
+                    : facetValues.Find(ctx.OwnerKey, dataSetName, matcher, field, text, All);
                 values = found.Where(counts.ContainsKey).Select(v => new KeyValuePair<string, int>(v, counts[v]));
                 // The match decides which values, the count their order: "jackson" gives Samuel L.
                 // Jackson (111 films) before Jackson Yee (5), whose name merely starts with it. Not when
@@ -312,9 +341,23 @@ namespace IndxServer.Controllers
             }
             var answer = values.Take(request.Rows)
                 .Select(v => new { value = v.Key, count = v.Value }).ToList();
-            ServerTiming(tStart, tTeam, tDataset, outcome.SearchedAt);
-            return Ok(new { values = answer, exhaustive = true });
+            ServerTiming(tStart, tTeam, tDataset, searchedAt);
+            return Ok(new { values = answer, fallback, exhaustive = true });
         }
+
+        /// <summary>A facet's counts by value, kept with the facet array the engine answered: the same
+        /// array (the engine's cached empty search) gives the same counts without making them again,
+        /// and a new array, after any change to the data, makes new ones.</summary>
+        private static Dictionary<string, int> CountsOf(KeyValuePair<string, int>[] facet) =>
+            FacetCounts.GetValue(facet, f =>
+            {
+                var counts = new Dictionary<string, int>(f.Length, StringComparer.Ordinal);
+                foreach (var (value, count) in f)
+                    if (count > 0 && value is not ("null" or "")) counts[value] = count;
+                return counts;
+            });
+
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<KeyValuePair<string, int>[], Dictionary<string, int>> FacetCounts = new();
 
         /// <summary>A group's search: the request's, its filter ANDed with <paramref name="filter"/>,
         /// <paramref name="rows"/> rows, and the group's own candidates, ranking and match where it

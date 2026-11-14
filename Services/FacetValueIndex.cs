@@ -59,6 +59,50 @@ namespace IndxServer.Services
             var entry = Get(teamId, dataSetName, engine, field, readValues);
             entry.LastUsed = DateTime.UtcNow;
             LetIdleGo();
+            return Search(entry, text);
+        }
+
+        /// <summary>Builds the field's micro-index if it is not built, so the first letter typed does
+        /// not wait for it: a panel asks when its search field gets the focus.</summary>
+        public void Warm(string teamId, string dataSetName, IServerSearchEngine engine, string field, Func<IReadOnlyList<string>> readValues) =>
+            Get(teamId, dataSetName, engine, field, readValues).LastUsed = DateTime.UtcNow;
+
+        /// <summary>The most values a visitor's search may hold for <see cref="FindAmong"/>.</summary>
+        public const int AmongLimit = 3000;
+
+        /// <summary>A search's own values, indexed apart, at most this many kept.</summary>
+        private const int AmongKept = 32;
+
+        private readonly ConcurrentDictionary<string, Entry> _among = new(StringComparer.Ordinal);
+
+        /// <summary>
+        /// As <see cref="Find"/>, among the values a visitor's search holds (at most
+        /// <see cref="AmongLimit"/>): "le" within the search "titanic" (14 Nov 2026). Over the whole
+        /// field "le" starts thousands of names, the 500 taken missed Titanic's cast, and nothing was
+        /// left once the values the search does not hold were dropped. The values are indexed apart,
+        /// a few milliseconds for a few hundred, and kept for the next keystrokes of the same search.
+        /// </summary>
+        public (IReadOnlyList<string> Values, bool Fallback) FindAmong(string teamId, string dataSetName, string field,
+            IReadOnlyCollection<string> values, string text)
+        {
+            var sorted = values.Order(StringComparer.Ordinal).ToArray();
+            var hash = new HashCode();
+            foreach (var v in sorted) hash.Add(v, StringComparer.Ordinal);
+            var key = $"{teamId}\0{dataSetName}\0{field}\0{sorted.Length}\0{hash.ToHashCode()}";
+            if (!_among.TryGetValue(key, out var entry))
+            {
+                entry = new Entry(key, MicroIndex.Build(sorted, IndxServerInternalApi.GetLicensePath()), sorted, DateTime.UtcNow);
+                if (!_among.TryAdd(key, entry)) { Retire(entry); entry = _among[key]; }
+                // The oldest let go: a search's values matter while its visitor types.
+                foreach (var (oldKey, old) in _among.OrderBy(e => e.Value.LastUsed).Take(Math.Max(0, _among.Count - AmongKept)).ToList())
+                    if (_among.TryRemove(new KeyValuePair<string, Entry>(oldKey, old))) Retire(old);
+            }
+            entry.LastUsed = DateTime.UtcNow;
+            return Search(entry, text);
+        }
+
+        private static (IReadOnlyList<string> Values, bool Fallback) Search(Entry entry, string text)
+        {
             if (entry.Values.Length == 0) return ([], false);
             var query = new Query { Text = text, MaxNumberOfRecordsToReturn = Matches };
             query.Candidates.Fallback = text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 2;
@@ -115,8 +159,9 @@ namespace IndxServer.Services
 
         public void Dispose()
         {
-            foreach (var entry in _entries.Values) entry.Dispose();
+            foreach (var entry in _entries.Values.Concat(_among.Values)) entry.Dispose();
             _entries.Clear();
+            _among.Clear();
         }
     }
 }

@@ -94,5 +94,10 @@ namespace IndxServer.Models
         /// <summary>The search the facet belongs to: the values it finds are counted in its records,
         /// and those it holds none of left out. Null: counted over every record.</summary>
         public ServerQueryProxy? Search { get; set; }
+
+        /// <summary>Match among these values only (at most <c>FacetValueIndex.AmongLimit</c>): a panel
+        /// that holds its facet's values and counts for the visitor's search sends them, and the server
+        /// need not count that search again on every keystroke.</summary>
+        public string[]? Values { get; set; }
     }
 }
