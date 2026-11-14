@@ -47,12 +47,12 @@ namespace IndxServer.Services
 
         /// <summary>The values of <paramref name="field"/> that <paramref name="text"/> finds, best
         /// match first: the rung of fewest edits that has any, so "tom hanks" gives Tom Hanks and not
-        /// every Tom within two edits. When no value holds every word and two or more were typed, the
-        /// values holding the most of them, closest first (<c>Fallback</c> true): while "donna rea" is
-        /// typed, no actor's name holds "rea", and Donna Reed should not drop out of the list between
-        /// "donna re" and "donna read". One word that matches nothing gives nothing, not the pattern
-        /// matches of a stray string. <paramref name="readValues"/> gives every value of the field when
-        /// the micro-index has to be built.</summary>
+        /// every Tom within two edits. When no value holds every word, the fallback, closest first
+        /// (<c>Fallback</c> true): the values holding the most of the words, then the pattern matches.
+        /// So Donna Reed stays in the list while "donna rea" is typed, and "leodicaprio" (the start of a
+        /// word run into the next) finds Leonardo DiCaprio through the pattern index.
+        /// <paramref name="readValues"/> gives every value of the field when the micro-index has to be
+        /// built.</summary>
         public (IReadOnlyList<string> Values, bool Fallback) Find(string teamId, string dataSetName, IServerSearchEngine engine, string field, string text,
             Func<IReadOnlyList<string>> readValues)
         {
@@ -105,7 +105,6 @@ namespace IndxServer.Services
         {
             if (entry.Values.Length == 0) return ([], false);
             var query = new Query { Text = text, MaxNumberOfRecordsToReturn = Matches };
-            query.Candidates.Fallback = text.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length >= 2;
             var result = entry.Engine.Search(query);
             var found = new List<string>(result.Records?.Length ?? 0);
             foreach (var record in result.Records ?? [])
