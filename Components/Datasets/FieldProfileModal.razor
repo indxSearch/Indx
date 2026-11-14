@@ -207,7 +207,7 @@
         ? "Never: a word being typed is met only as a whole word, within its typos. For codes and numbers, found by the whole code."
         : $"From {from} letters: a word being typed meets the longer words it starts once it has {from}, or the search's own number when that is larger.";
 
-    private const string StartsHelp = "Field.TypingPrefixFrom: the word still being typed also finds the longer words it starts (\"mat\" finds Matrix), from the search's number of letters, 3 by default (Start of a word from, under Query parameters). Here a field can only start later, or never: the larger number wins. Off, the field follows the search.";
+    private const string StartsHelp = "Field.TypingPrefixFrom: the word still being typed also finds the longer words it starts (\"mat\" finds Matrix), from the search's number of letters, 2 by default (Start of a word from, under Query parameters). Here a field can only start later, or never: the larger number wins. Off, the field follows the search.";
 
     private static string ToleranceAbout(Tolerance t) => t switch
     {

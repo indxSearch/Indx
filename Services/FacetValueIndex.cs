@@ -105,11 +105,6 @@ namespace IndxServer.Services
         {
             if (entry.Values.Length == 0) return ([], false);
             var query = new Query { Text = text, MaxNumberOfRecordsToReturn = Matches };
-            // The word being typed is the start of a longer word from its first letter: a facet's
-            // values are names, and "le" within Titanic should give Leonardo DiCaprio. The default (3)
-            // is for record searches, where two letters start too much; here it made "le" a whole
-            // word only, nothing in Titanic's cast, between "l" and "leo" (14 Nov 2026).
-            query.Match.TypingPrefixFrom = 1;
             var result = entry.Engine.Search(query);
             var found = new List<string>(result.Records?.Length ?? 0);
             foreach (var record in result.Records ?? [])
