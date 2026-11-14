@@ -126,6 +126,7 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.DataCheckStore>();
         builder.Services.AddSingleton<IndxServer.Services.ColdStore>();
         builder.Services.AddSingleton<IndxServer.Services.DataCheckService>();
+        builder.Services.AddSingleton<IndxServer.Services.FacetValueIndex>();
 
         // Search or ask (Notes/search-or-ask-server.md): off unless a key is set (configuration or
         // console), and then only for datasets an owner switches on. The customer's own key with

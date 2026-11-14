@@ -141,7 +141,7 @@ namespace IndxServer.Engine
             return ConfigurationParameters.Default;
         }
 
-        private static string GetLicensePath()
+        internal static string GetLicensePath()
         {
             // If explicitly configured, use that
             if (!string.IsNullOrWhiteSpace(LicensePath) && File.Exists(LicensePath))

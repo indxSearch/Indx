@@ -79,4 +79,20 @@ namespace IndxServer.Models
         /// <c>queryId</c> the request's. One at most; none marked: the first.</summary>
         public bool Primary { get; set; }
     }
+
+    /// <summary>The body of <c>facets/{field}/search</c>: what a visitor typed into a facet's own
+    /// search field ("Search actors…"), how many values to answer, and the search the facet belongs
+    /// to, so the counts are of its records.</summary>
+    public sealed class FacetValueSearchRequest
+    {
+        /// <summary>What was typed. Empty: the field's commonest values.</summary>
+        public string? Text { get; set; }
+
+        /// <summary>How many values to answer, 1 to <c>MaxFacetValueRows</c>. Default 10.</summary>
+        public int Rows { get; set; } = 10;
+
+        /// <summary>The search the facet belongs to: the values it finds are counted in its records,
+        /// and those it holds none of left out. Null: counted over every record.</summary>
+        public ServerQueryProxy? Search { get; set; }
+    }
 }

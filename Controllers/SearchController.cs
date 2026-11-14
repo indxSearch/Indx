@@ -25,7 +25,7 @@ namespace IndxServer.Controllers
     /// </summary>
     public class SearchController(TeamContextResolver resolver, StatisticsService statistics,
         QueryParameterStore queryParameters, IConfiguration configuration,
-        Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Mvc.JsonOptions> mvcJson)
+        Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Mvc.JsonOptions> mvcJson, FacetValueIndex facetValues)
         : DatasetApiController(resolver)
     {
         /// <summary>A search's own steps as a <c>Server-Timing</c> header (milliseconds): the team
@@ -242,6 +242,76 @@ namespace IndxServer.Controllers
             var body = new System.Text.Json.Nodes.JsonObject { ["groups"] = answers };
             if (queryId != null) body["queryId"] = queryId;
             return Ok(body);
+        }
+
+        /// <summary>The most values one <see cref="FacetValueSearch"/> answers: InstantSearch's
+        /// <c>maxFacetHits</c> goes to 100.</summary>
+        public const int MaxFacetValueRows = 100;
+
+        /// <summary>
+        /// Searches the values of a facetable field, for a long facet's own search field ("Search
+        /// actors…", InstantSearch's searchable refinement list): the values that match what was typed,
+        /// with Indx's matching (typos, word starts, whole words anywhere in a value), each with how
+        /// many records hold it, the most first (FacetValueIndex, 14 Nov 2026). With <c>search</c>
+        /// the counts are of that search's records, as its facet would count them, and a value it
+        /// holds none of is left out; a field ticked in its <c>facetSelections</c> is counted without
+        /// its own ticks, as InstantSearch asks. Answers <c>{ values: [{ value, count }], exhaustive }</c>;
+        /// the counts are exact. Nothing goes into the statistics.
+        /// </summary>
+        [KeyAccess(ApiKeyLevel.Search)]
+        [HttpPost(DataSetRoute + "/facets/{field}/search")]
+        public ActionResult FacetValueSearch(string teamName, string dataSetName, string field, [FromBody] FacetValueSearchRequest request)
+        {
+            var tStart = Stopwatch.GetTimestamp();
+            var ctx = ResolveTeam(teamName, out var error);
+            var tTeam = Stopwatch.GetTimestamp();
+            if (ctx == null) return error!;
+            if (request == null) return ApiProblems.InvalidArgument("The body is required.");
+            if (request.Rows is < 1 or > MaxFacetValueRows)
+                return ApiProblems.InvalidArgument($"rows is from 1 to {MaxFacetValueRows}.");
+            var matcher = IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey);
+            if (matcher == null) return ApiProblems.DatasetNotFound(dataSetName);
+            if (RequireState(matcher, "Search", SystemState.Ready) is { } stateError) return stateError;
+            if (matcher.DocumentFields?.GetField(field) is not { Facetable: true })
+                return ApiProblems.InvalidArgument($"'{field}' is not a facetable field of this dataset.");
+            var tDataset = Stopwatch.GetTimestamp();
+
+            // The counts: the facet over the visitor's search, or over every record.
+            var options = mvcJson.Value.JsonSerializerOptions;
+            var counting = request.Search == null ? new ServerQueryProxy { Text = "" }
+                : JsonSerializer.Deserialize<ServerQueryProxy>(JsonSerializer.Serialize(request.Search, options), options)!;
+            counting.EnableFacets = true;
+            counting.FacetFields = [field];
+            counting.FacetValueLimit = 0;
+            counting.MaxNumberOfRecordsToReturn = 0;
+            counting.IncludeDocuments = false;
+            var outcome = RunSearch(ctx, dataSetName, matcher, counting, SearchStats.NotRecorded);
+            if (outcome.Problem != null) return outcome.Problem;
+            var counts = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach (var (value, count) in outcome.Result?.Facets?.GetValueOrDefault(field) ?? [])
+                if (count > 0 && value is not ("null" or "")) counts[value] = count;
+
+            IEnumerable<KeyValuePair<string, int>> values;
+            var text = request.Text?.Trim() ?? "";
+            if (text.Length == 0)
+                values = counts;
+            else
+            {
+                // Every value of the field, for the micro-index when it has to be built: counted over
+                // every record, whatever the visitor's search holds.
+                IReadOnlyList<string> All() => (IndxServerInternalApi.Manager.Search(
+                        new QueryProxy { Text = "", EnableFacets = true, FacetFields = [field], FacetValueLimit = 0, MaxNumberOfRecordsToReturn = 0 },
+                        dataSetName, ctx.OwnerKey).Facets?.GetValueOrDefault(field) ?? [])
+                    .Where(v => v.Key is not ("null" or "")).Select(v => v.Key).ToList();
+                var found = facetValues.Find(ctx.OwnerKey, dataSetName, matcher, field, text, All);
+                // The match decides which values, the count their order: "jackson" gives Samuel L.
+                // Jackson (111 films) before Jackson Yee (5), whose name merely starts with it.
+                values = found.Where(counts.ContainsKey).Select(v => new KeyValuePair<string, int>(v, counts[v]));
+            }
+            var answer = values.OrderByDescending(v => v.Value).Take(request.Rows)
+                .Select(v => new { value = v.Key, count = v.Value }).ToList();
+            ServerTiming(tStart, tTeam, tDataset, outcome.SearchedAt);
+            return Ok(new { values = answer, exhaustive = true });
         }
 
         /// <summary>A group's search: the request's, its filter ANDed with <paramref name="filter"/>,

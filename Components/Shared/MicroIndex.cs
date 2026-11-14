@@ -9,19 +9,22 @@ namespace IndxServer.Components.Shared
     /// palette's pages, a Combobox's options. Each text is a record keyed by its position, its one
     /// searchable field the text itself. A few hundred index in milliseconds, so it is built when
     /// first searched and thrown away when the list changes. It holds native memory: dispose it.
+    /// A facet's values (FacetValueIndex) can be more than the 100 000 records an engine takes
+    /// without a license, so a caller may pass the instance's. Matching inside words can be left off:
+    /// on 89 367 actors it cost a fifth of the memory (101 MB against 81) and found nothing more.
     /// </summary>
     internal static class MicroIndex
     {
-        public static SearchEngine Build(IEnumerable<string> texts)
+        public static SearchEngine Build(IEnumerable<string> texts, string licensePath = "", bool insideWords = true)
         {
             var docs = texts.Select((text, i) => new { key = i, text });
             using var stream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(JsonSerializer.Serialize(docs)));
-            var engine = new SearchEngine();
+            var engine = new SearchEngine(licensePath);
             var init = new ProcessMonitor();
             engine.Init(stream, "key", init);
             init.WaitForCompletion();
             foreach (var field in engine.GetFieldList())
-                if (field.Name == "text") { field.WordMatching = true; field.PatternMatching = PatternMatchingSetup.Default; }
+                if (field.Name == "text") { field.WordMatching = true; field.PatternMatching = insideWords ? PatternMatchingSetup.Default : null; }
             stream.Position = 0;
             var load = new ProcessMonitor();
             engine.Load(stream, load);
