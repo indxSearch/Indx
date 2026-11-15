@@ -13,10 +13,16 @@ namespace IndxServer.Services
     /// in a value included (14 Nov 2026). Prototyped on tmdb23k's 89 367 actors: 73 ms to read the
     /// values, a fraction of a second to index them, a search in 0.1 to 1.5 ms; "tom hnks" finds Tom
     /// Hanks and "scarlet johanson" Scarlett Johansson, where the regex others offer finds neither.
-    /// <para>Built on the first search of a field and kept, rebuilt when the dataset's engine, its
-    /// record count or its last index build changes, and at most <see cref="MaxAge"/> after it was
-    /// built, so a value an update renamed comes in without a rebuild per change. The counts are not
-    /// kept here: the route counts the facet over the visitor's search, or over every record.</para>
+    /// <para>Built on the first search of a field (or when its panel field gets the focus) and kept
+    /// in step with the data without a rebuild per change (15 Nov 2026): the engine answers its empty
+    /// search from a cache that every insert, update and delete clears, so a new facet answer means
+    /// the data changed. The values it holds that the index does not are then inserted into the
+    /// micro-index, a few records in milliseconds; values gone stay (their count is 0, so they are
+    /// never shown) until they are a fifth of the index, which is then rebuilt off the request. Until
+    /// then a rebuild came on every change of the record count, paid by a visitor's keystroke (0.7 s
+    /// for 89 367 actors), and a value an update added was missing for up to ten minutes. A new
+    /// engine (a reindex, a swap) builds afresh. The counts are not kept here: the route counts the
+    /// facet over the visitor's search, or over every record.</para>
     /// </summary>
     public sealed class FacetValueIndex(ILogger<FacetValueIndex> logger) : IDisposable
     {
@@ -24,8 +30,8 @@ namespace IndxServer.Services
         /// enough that a common value reached by a short text ("jackson", 146 actors) is among them.</summary>
         public const int Matches = 500;
 
-        /// <summary>How long a micro-index serves before it is built again on its next search.</summary>
-        public static readonly TimeSpan MaxAge = TimeSpan.FromMinutes(10);
+        /// <summary>The share of an index's values gone from the data at which it is rebuilt.</summary>
+        private const double RebuildAtGone = 0.2;
 
         /// <summary>A micro-index nobody has searched for this long is let go. It costs memory while
         /// held (about 110 MB for 89 367 actors, 18 MB for 9 910 directors, measured in-process; words
@@ -36,7 +42,14 @@ namespace IndxServer.Services
         {
             public string Fingerprint { get; } = fingerprint;
             public SearchEngine Engine { get; } = engine;
-            public string[] Values { get; } = values;
+            /// <summary>The value of each record of the micro-index, by its key. Replaced whole, never
+            /// changed in place, so a search reading it meanwhile sees one or the other.</summary>
+            public volatile string[] Values = values;
+            /// <summary>The engine's facet answer the index was last brought in step with.</summary>
+            public object? Facet;
+            public HashSet<string> Held { get; } = new(values, StringComparer.Ordinal);
+            public bool Rebuilding;
+            public object Sync { get; } = new();
             public DateTime Built { get; } = built;
             public DateTime LastUsed { get; set; } = built;
             public void Dispose() => Engine.Dispose();
@@ -54,9 +67,9 @@ namespace IndxServer.Services
         /// <paramref name="readValues"/> gives every value of the field when the micro-index has to be
         /// built.</summary>
         public (IReadOnlyList<string> Values, bool Fallback) Find(string teamId, string dataSetName, IServerSearchEngine engine, string field, string text,
-            Func<IReadOnlyList<string>> readValues)
+            Func<KeyValuePair<string, int>[]> readFacet)
         {
-            var entry = Get(teamId, dataSetName, engine, field, readValues);
+            var entry = Get(teamId, dataSetName, engine, field, readFacet);
             entry.LastUsed = DateTime.UtcNow;
             LetIdleGo();
             return Search(entry, text);
@@ -64,8 +77,8 @@ namespace IndxServer.Services
 
         /// <summary>Builds the field's micro-index if it is not built, so the first letter typed does
         /// not wait for it: a panel asks when its search field gets the focus.</summary>
-        public void Warm(string teamId, string dataSetName, IServerSearchEngine engine, string field, Func<IReadOnlyList<string>> readValues) =>
-            Get(teamId, dataSetName, engine, field, readValues).LastUsed = DateTime.UtcNow;
+        public void Warm(string teamId, string dataSetName, IServerSearchEngine engine, string field, Func<KeyValuePair<string, int>[]> readFacet) =>
+            Get(teamId, dataSetName, engine, field, readFacet).LastUsed = DateTime.UtcNow;
 
         /// <summary>The most values a visitor's search may hold for <see cref="FindAmong"/>.</summary>
         public const int AmongLimit = 3000;
@@ -106,32 +119,81 @@ namespace IndxServer.Services
             if (entry.Values.Length == 0) return ([], false);
             var query = new Query { Text = text, MaxNumberOfRecordsToReturn = Matches };
             var result = entry.Engine.Search(query);
+            // Read after the search: a value inserted meanwhile is in the array before its record.
+            var values = entry.Values;
             var found = new List<string>(result.Records?.Length ?? 0);
             foreach (var record in result.Records ?? [])
-                if (record.DocumentKey >= 0 && record.DocumentKey < entry.Values.Length)
-                    found.Add(entry.Values[record.DocumentKey]);
+                if (record.DocumentKey >= 0 && record.DocumentKey < values.Length)
+                    found.Add(values[record.DocumentKey]);
             return (found, result.IsFallback);
         }
 
-        private Entry Get(string teamId, string dataSetName, IServerSearchEngine engine, string field, Func<IReadOnlyList<string>> readValues)
+        private static string[] Present(KeyValuePair<string, int>[] facet) =>
+            facet.Where(v => v.Value > 0 && v.Key is not ("null" or "")).Select(v => v.Key).ToArray();
+
+        private Entry Get(string teamId, string dataSetName, IServerSearchEngine engine, string field, Func<KeyValuePair<string, int>[]> readFacet)
         {
             var key = $"{teamId}\0{dataSetName}\0{field}";
-            var status = engine.Status;
-            var fingerprint = $"{RuntimeHelpers.GetHashCode(engine)}|{status.DocumentCount}|{status.TimeOfLastIndexBuild:O}";
-            bool Fresh(Entry e) => e.Fingerprint == fingerprint && DateTime.UtcNow - e.Built < MaxAge;
-            if (_entries.TryGetValue(key, out var known) && Fresh(known)) return known;
+            // The engine itself: a reindex or a swap is a new one, and a new index.
+            var fingerprint = RuntimeHelpers.GetHashCode(engine).ToString(System.Globalization.CultureInfo.InvariantCulture);
+            var facet = readFacet();
+            if (_entries.TryGetValue(key, out var known) && known.Fingerprint == fingerprint)
+            {
+                if (!ReferenceEquals(known.Facet, facet)) CatchUp(key, known, facet, dataSetName, field);
+                return known;
+            }
             // One build per field at a time; a search meanwhile waits for it rather than building again.
             lock (_building.GetOrAdd(key, _ => new object()))
             {
-                if (_entries.TryGetValue(key, out known) && Fresh(known)) return known;
-                var started = System.Diagnostics.Stopwatch.GetTimestamp();
-                var values = readValues().ToArray();
-                var built = new Entry(fingerprint, MicroIndex.Build(values, IndxServerInternalApi.GetLicensePath()), values, DateTime.UtcNow);
+                if (_entries.TryGetValue(key, out known) && known.Fingerprint == fingerprint) return known;
+                var built = Build(fingerprint, facet, dataSetName, field);
                 if (_entries.TryGetValue(key, out var old)) Retire(old);
                 _entries[key] = built;
-                logger.LogInformation("Facet values of {Field} in {DataSet}: {Count} values indexed in {Ms} ms",
-                    field, dataSetName, values.Length, (long)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
                 return built;
+            }
+        }
+
+        private Entry Build(string fingerprint, KeyValuePair<string, int>[] facet, string dataSetName, string field)
+        {
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
+            var values = Present(facet);
+            var built = new Entry(fingerprint, MicroIndex.Build(values, IndxServerInternalApi.GetLicensePath()), values, DateTime.UtcNow) { Facet = facet };
+            logger.LogInformation("Facet values of {Field} in {DataSet}: {Count} values indexed in {Ms} ms",
+                field, dataSetName, values.Length, (long)System.Diagnostics.Stopwatch.GetElapsedTime(started).TotalMilliseconds);
+            return built;
+        }
+
+        /// <summary>Brings an index in step with a new facet answer: the values new to it inserted,
+        /// and a rebuild off the request when a fifth of what it holds is gone from the data.</summary>
+        private void CatchUp(string key, Entry entry, KeyValuePair<string, int>[] facet, string dataSetName, string field)
+        {
+            lock (entry.Sync)
+            {
+                if (ReferenceEquals(entry.Facet, facet)) return;
+                var present = Present(facet);
+                var added = present.Where(v => !entry.Held.Contains(v)).ToArray();
+                if (added.Length > 0)
+                {
+                    var start = entry.Values.Length;
+                    // The values first, so a search that meets a new record finds its value.
+                    entry.Values = [.. entry.Values, .. added];
+                    var records = added.Select((v, i) => System.Text.Json.JsonSerializer.Serialize(new { key = start + i, text = v }));
+                    if (!entry.Engine.InsertJsonRecords(records, null, out var error))
+                        logger.LogWarning("Facet values of {Field} in {DataSet}: {Count} new values not inserted: {Error}", field, dataSetName, added.Length, error);
+                    entry.Held.UnionWith(added);
+                }
+                entry.Facet = facet;
+                var gone = entry.Held.Count - present.Length;
+                if (gone > RebuildAtGone * entry.Held.Count && !entry.Rebuilding)
+                {
+                    entry.Rebuilding = true;
+                    _ = Task.Run(() =>
+                    {
+                        var rebuilt = Build(entry.Fingerprint, facet, dataSetName, field);
+                        if (_entries.TryUpdate(key, rebuilt, entry)) Retire(entry);
+                        else rebuilt.Dispose();
+                    });
+                }
             }
         }
 

@@ -311,12 +311,11 @@ namespace IndxServer.Controllers
             IReadOnlyList<string> found = [];
             bool fallback = false;
             var text = request.Text?.Trim() ?? "";
-            // Every value of the field, for the micro-index when it has to be built: counted over
-            // every record, whatever the visitor's search holds.
-            IReadOnlyList<string> All() => (IndxServerInternalApi.Manager.Search(
+            // Every value of the field with its count over every record: the engine's cached empty
+            // search, a new answer only when the data changed (FacetValueIndex keeps in step by it).
+            KeyValuePair<string, int>[] All() => IndxServerInternalApi.Manager.Search(
                     new QueryProxy { Text = "", EnableFacets = true, FacetFields = [field], FacetValueLimit = 0, MaxNumberOfRecordsToReturn = 0 },
-                    dataSetName, ctx.OwnerKey).Facets?.GetValueOrDefault(field) ?? [])
-                .Where(v => v.Key is not ("null" or "")).Select(v => v.Key).ToList();
+                    dataSetName, ctx.OwnerKey).Facets?.GetValueOrDefault(field) ?? [];
             if (text.Length == 0)
             {
                 values = counts.OrderByDescending(v => v.Value);
