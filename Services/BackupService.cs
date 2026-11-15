@@ -19,7 +19,7 @@ namespace IndxServer.Services
     /// it protects against corruption and operator error, not disk failure; point it elsewhere
     /// for that), <c>TimeOfDay</c> (UTC, default 03:30), <c>IntervalHours</c> (default 24,
     /// anchored to TimeOfDay), <c>Keep</c> (copies per database, default 7), <c>MaxTotalMB</c>
-    /// (emergency brake on the folder, default 2048).
+    /// (a cap on the folder, default 2048: past it the oldest copies go, as routine rotation).
     /// </summary>
     public sealed class BackupService(
         IConfiguration configuration,
@@ -224,14 +224,20 @@ namespace IndxServer.Services
             var candidates = files.Where(fi => !newest.Contains(fi.Name))
                 .OrderBy(Stamp, StringComparer.Ordinal).ThenBy(fi => fi.Name, StringComparer.Ordinal)
                 .ToList();
+            // Routine, not a fault (15 Nov 2026): with a stats.db of a few hundred MB, seven copies pass
+            // the default 2 048 MB within a week, and a warning a night read like an error. One line
+            // a run says what the rotation took; the warning is kept for the newest copies not fitting.
+            var removed = new List<string>();
             foreach (var oldest in candidates)
             {
-                if (files.Sum(fi => fi.Length) <= budget) return;
+                if (files.Sum(fi => fi.Length) <= budget) break;
                 files.Remove(oldest);
                 oldest.Delete();
-                logger.LogWarning("backup folder exceeded Backup:MaxTotalMB ({MaxMb} MB); deleted {Name}",
-                    maxTotalMb, oldest.Name);
+                removed.Add(oldest.Name);
             }
+            if (removed.Count > 0)
+                logger.LogInformation("backup rotation: kept the folder within {MaxMb} MB (Backup:MaxTotalMB) by removing the {Count} oldest {Copies}: {Names}",
+                    maxTotalMb, removed.Count, removed.Count == 1 ? "copy" : "copies", string.Join(", ", removed));
             if (files.Sum(fi => fi.Length) > budget)
                 logger.LogWarning("backup folder exceeds Backup:MaxTotalMB ({MaxMb} MB) with only the newest copy of each database left; raise it or move Backup:Folder",
                     maxTotalMb);
