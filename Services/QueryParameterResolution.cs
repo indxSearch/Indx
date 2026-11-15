@@ -51,6 +51,7 @@ namespace IndxServer.Services
             Note(rc?.CandidatesPerRow != null, dc?.CandidatesPerRow != null, "candidates.candidatesPerRow");
             Note(rc?.MaxCandidates != null, dc?.MaxCandidates != null, "candidates.maxCandidates");
             Note(rc?.MinCandidates != null, dc?.MinCandidates != null, "candidates.minCandidates");
+            Note(rc?.NoFallbackForNumbersFrom != null, dc?.NoFallbackForNumbersFrom != null, "candidates.noFallbackForNumbersFrom");
             Note(rc?.Fallback != null, dc?.Fallback != null, "candidates.fallback");
             Note(rc?.FillWithMostWords != null, dc?.FillWithMostWords != null, "candidates.fillWithMostWords");
             Note(rc?.FillReach != null, dc?.FillReach != null, "candidates.fillReach");
@@ -94,6 +95,7 @@ namespace IndxServer.Services
                     CandidatesPerRow = e.Candidates.CandidatesPerRow,
                     MaxCandidates = e.Candidates.MaxCandidates,
                     MinCandidates = e.Candidates.MinCandidates,
+                    NoFallbackForNumbersFrom = e.Candidates.NoFallbackForNumbersFrom,
                     Fallback = e.Candidates.Fallback,
                     FillWithMostWords = e.Candidates.FillWithMostWords,
                     FillReach = e.Candidates.FillReach,
@@ -139,6 +141,8 @@ namespace IndxServer.Services
                     return $"candidates.maxCandidates must be between 1 and {MaxCandidates:N0}.";
                 if (c.MinCandidates is < 1 or > 5000)
                     return "candidates.minCandidates must be between 1 and 5,000.";
+                if (c.NoFallbackForNumbersFrom is < 0 or > 64)
+                    return "candidates.noFallbackForNumbersFrom must be between 0 (off) and 64.";
             }
             if (p.Ranking is { } r)
             {
